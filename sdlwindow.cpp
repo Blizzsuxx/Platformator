@@ -1,9 +1,7 @@
 #include "sdlwindow.h"
 
-SDLWindow::SDLWindow()
+SDLWindow::SDLWindow() : window(NULL), screenSurface(NULL), e(), quit(false)
 {
-    window = NULL;
-    screenSurface = NULL;
 }
 
 SDLWindow::~SDLWindow()
@@ -21,7 +19,7 @@ bool SDLWindow::init()
     }
 
     //Create window
-    window = SDL_CreateWindow( "SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
+    window = SDL_CreateWindow( "Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
     if( window == NULL )
     {
         printf( "Window could not be created! SDL_Error: %s", SDL_GetError() );
@@ -43,6 +41,42 @@ void SDLWindow::close()
 
     //Quit SDL subsystems
     SDL_Quit();
+}
+
+void SDLWindow::handleEvents()
+{
+    SDL_PollEvent( &e );
+    if( e.type == SDL_QUIT )
+    {
+        quit = true;
+    }
+}
+
+void SDLWindow::applyPhysics()
+{
+
+}
+
+void SDLWindow::resolveCollisions()
+{
+
+}
+
+void SDLWindow::render()
+{
+    //Update the surface
+    SDL_UpdateWindowSurface( window );
+}
+
+void SDLWindow::loop()
+{
+    while( !quit )
+    {
+        handleEvents();
+        applyPhysics();
+        resolveCollisions();
+        render();
+    }
 }
 
 SDL_Window* SDLWindow::getWindow() const

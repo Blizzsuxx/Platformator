@@ -14,3 +14,12 @@ public:
 private:
     GameObject* gameObject;
 };
+
+enum ComponentType
+{
+    COMPONENT_TYPE_RIGIDBODY = 1,
+    COMPONENT_TYPE_RECTCOLLIDER = 2,
+    COMPONENT_TYPE_CIRCLECOLLIDER = 4,
+    COMPONENT_TYPE_SPRITE = 8,
+    
+};

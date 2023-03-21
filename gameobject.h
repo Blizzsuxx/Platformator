@@ -2,6 +2,7 @@
 
 #include <eigen3/Eigen/Dense>
 #include <list>
+#include "component.h"
 
 class GameObject
 {

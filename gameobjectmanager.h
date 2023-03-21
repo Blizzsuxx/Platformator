@@ -1,6 +1,5 @@
 #pragma once
 
-#include <list>
 #include "gameobject.h"
 
 class GameObjectManager

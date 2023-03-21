@@ -10,14 +10,14 @@ public:
     ~RectCollider();
 
     // Getters
-    Eigen::Vector2f getMin() const;
-    Eigen::Vector2f getMax() const;
+    float getWidth() const;
+    float getHeight() const;
 
     // Setters
-    void setMin(const Eigen::Vector2f& min);
-    void setMax(const Eigen::Vector2f& max);
-
+    void setWidth(const float width);
+    void setHeight(const float height);
+    
 private:
-    Eigen::Vector2f min;
-    Eigen::Vector2f max;
+    float width;
+    float height;
 };

@@ -45,10 +45,14 @@ void SDLWindow::close()
 
 void SDLWindow::handleEvents()
 {
-    SDL_PollEvent( &e );
-    if( e.type == SDL_QUIT )
+    //Handle events on queue
+    while( SDL_PollEvent( &e ) != 0 )
     {
-        quit = true;
+        //User requests quit
+        if( e.type == SDL_QUIT )
+        {
+            quit = true;
+        }
     }
 }
 

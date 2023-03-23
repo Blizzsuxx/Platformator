@@ -2,24 +2,28 @@
 
 #include "gameobject.h"
 
+constexpr auto _START = __LINE__;
+enum ComponentType
+{
+    ANIMATOR = 0,
+    AUDIO = 1,
+    CAMERA = 2,
+    COLLIDER = 3,
+    LIGHT = 4,
+    RIDIDBODY = 5,
+    SPRITE = 6
+};
+constexpr auto COMPONENT_TYPE_COUNT = __LINE__ - _START - 4;
+
 class Component
 {
 public:
-    Component(GameObject* gameObject);
+    Component(GameObject* gameObject, ComponentType type);
     virtual ~Component();
 
-    virtual void* getData() = 0;
-
     GameObject* getGameObject();
+    ComponentType getType();
 private:
     GameObject* gameObject;
-};
-
-enum ComponentType
-{
-    COMPONENT_TYPE_RIGIDBODY = 1,
-    COMPONENT_TYPE_RECTCOLLIDER = 2,
-    COMPONENT_TYPE_CIRCLECOLLIDER = 4,
-    COMPONENT_TYPE_SPRITE = 8,
-    
+    ComponentType type;
 };

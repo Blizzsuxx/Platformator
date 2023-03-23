@@ -1,6 +1,6 @@
 #include "sdlwindow.h"
 
-SDLWindow::SDLWindow() : window(NULL), screenSurface(NULL), e(), quit(false)
+SDLWindow::SDLWindow() : window(NULL), renderer(NULL), e(), quit(false)
 {
 }
 
@@ -12,22 +12,34 @@ SDLWindow::~SDLWindow()
 bool SDLWindow::init()
 {
     //Initialize SDL
-    if( SDL_Init( SDL_INIT_VIDEO ) < 0 )
+    if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_AUDIO ) < 0 )
     {
         printf( "SDL could not initialize! SDL_Error: %s", SDL_GetError() );
         return false;
     }
 
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
+    {
+        printf("SDL_mixer could not initialize! SDL_mixer Error: %s", Mix_GetError());
+        return false;
+    }
+
+    if (IMG_Init(IMG_INIT_PNG) != IMG_INIT_PNG)
+    {
+        printf("SDL_image could not initialize! SDL_image Error: %s", IMG_GetError());
+        return false;
+    }
+
     //Create window
     window = SDL_CreateWindow( "Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
-    if( window == NULL )
+    if ( window == NULL )
     {
         printf( "Window could not be created! SDL_Error: %s", SDL_GetError() );
         return false;
     }
 
     //Get window surface
-    screenSurface = SDL_GetWindowSurface( window );
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
     return true;
 }
@@ -36,8 +48,9 @@ void SDLWindow::close()
 {
     //Destroy window
     SDL_DestroyWindow( window );
+    SDL_DestroyRenderer( renderer );
     window = NULL;
-    screenSurface = NULL;
+    renderer = NULL;
 
     //Quit SDL subsystems
     SDL_Quit();
@@ -88,7 +101,7 @@ SDL_Window* SDLWindow::getWindow() const
     return window;
 }
 
-SDL_Surface* SDLWindow::getSurface() const
+SDL_Renderer* SDLWindow::getRenderer() const
 {
-    return screenSurface;
+    return renderer;
 }

@@ -1,9 +1,8 @@
 #pragma once
 
-#include <eigen3/Eigen/Dense>
-#include "component.h"
+#include "collider.h"
 
-class CircleCollider : public Component
+class CircleCollider : public Collider
 {
 public:
     CircleCollider(GameObject* gameObject);

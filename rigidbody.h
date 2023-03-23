@@ -1,7 +1,7 @@
 #pragma once
 
 #include <eigen3/Eigen/Dense>
-#include "component.h"
+#include "gameobject.h"
 
 class Rigidbody : public Component
 {

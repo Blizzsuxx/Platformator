@@ -1,7 +1,7 @@
 #pragma once
 
-#include "component.h"
 #include <SDL2/SDL.h>
+#include "gameobject.h"
 
 class Sprite : public Component
 {

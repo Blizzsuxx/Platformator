@@ -1,7 +1,7 @@
 #pragma once
 
-#include "component.h"
 #include <SDL2/SDL_mixer.h>
+#include "gameobject.h"
 
 class Audio : public Component
 {

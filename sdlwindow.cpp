@@ -1,6 +1,7 @@
 #include "sdlwindow.h"
 
-SDLWindow::SDLWindow() : window(NULL), renderer(NULL), e(), quit(false)
+SDLWindow::SDLWindow() : window(NULL), renderer(NULL), e(), quit(false), 
+                            gameObjectManager(new GameObjectManager()), mainCamera(new Camera(NULL, SCREEN_WIDTH, SCREEN_HEIGHT))
 {
 }
 
@@ -30,6 +31,12 @@ bool SDLWindow::init()
         return false;
     }
 
+    if (TTF_Init() == -1)
+    {
+        printf("SDL_ttf could not initialize! SDL_ttf Error: %s", TTF_GetError());
+        return false;
+    }
+
     //Create window
     window = SDL_CreateWindow( "Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
     if ( window == NULL )
@@ -51,8 +58,13 @@ void SDLWindow::close()
     SDL_DestroyRenderer( renderer );
     window = NULL;
     renderer = NULL;
+    delete gameObjectManager;
+    delete mainCamera;
 
     //Quit SDL subsystems
+    IMG_Quit();
+    Mix_Quit();
+    TTF_Quit();
     SDL_Quit();
 }
 
@@ -81,8 +93,12 @@ void SDLWindow::resolveCollisions()
 
 void SDLWindow::render()
 {
-    //Update the surface
-    SDL_UpdateWindowSurface( window );
+    //Clear screen
+    SDL_SetRenderDrawColor( renderer, 0xFF, 0xFF, 0xFF, 0xFF );
+    SDL_RenderClear( renderer );
+
+    //Update screen
+    SDL_RenderPresent( renderer );
 }
 
 void SDLWindow::loop()

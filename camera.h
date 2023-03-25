@@ -1,31 +1,26 @@
 #pragma once
 
+#include <SDL2/SDL.h>
 #include "gameobject.h"
+#include "sprite.h"
 
 class Camera : public Component
 {
 public:
     Camera(GameObject* gameObject);
+    Camera(GameObject* gameObject, int w, int h);
+    Camera(GameObject* gameObject, int x, int y, int w, int h);
+
     ~Camera();
 
+    void render(Sprite* sprite, SDL_Renderer* renderer);
+
     // Getters
-    float getZoom() const;
-    float getRotation() const;
-    float getAspectRatio() const;
-    float getNearPlane() const;
-    float getFarPlane() const;
+    const SDL_Rect& getCamera() const;
 
     // Setters
-    void setZoom(const float zoom);
-    void setRotation(const float rotation);
-    void setAspectRatio(const float aspectRatio);
-    void setNearPlane(const float nearPlane);
-    void setFarPlane(const float farPlane);
+    void setCamera(SDL_Rect& camera);
 
 private:
-    float zoom;
-    float rotation;
-    float aspectRatio;
-    float nearPlane;
-    float farPlane;
+    SDL_Rect camera;
 };

@@ -15,7 +15,6 @@ public:
 
     float getMass() const;
 
-    float getAngle() const;
     float getAngularVelocity() const;
     float getTorque() const;
 
@@ -28,7 +27,6 @@ public:
 
     void setMass(const float mass);
 
-    void setAngle(const float angle);
     void setAngularVelocity(const float angularVelocity);
     void setTorque(const float torque);
 
@@ -41,7 +39,6 @@ private:
 
     float mass;
 
-    float angle;
     float angularVelocity;
     float torque;
 

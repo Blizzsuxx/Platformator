@@ -35,31 +35,41 @@ class GameObject
 {
 public:
     GameObject();
-    GameObject(const std::string& name, const std::string& tag);
-    GameObject(const std::string& name, const std::string& tag, const Eigen::Vector2f& position);
+    GameObject(const float angle, const bool active, const Eigen::Vector2f& position, const Eigen::Vector2f& scale, const std::string& name, const std::string& tag);
 
     ~GameObject();
 
     // Getters
-    Eigen::Vector2f getPosition() const;
-    std::string getName() const;
-    std::string getTag() const;
+    float& getAngle() const;
+    bool& getActive() const;
+    Eigen::Vector2f& getPosition() const;
+    float getX() const;
+    float getY() const;
+    Eigen::Vector2f& getScale() const;
+    std::string& getName() const;
+    std::string& getTag() const;
 
     Component* getComponent(const ComponentType& componentType) const;
     std::list<Component*> getComponents() const;
     std::list<GameObject*> getChildren() const;
 
     // Setters
+    void setAngle(const float angle);
+    void setActive(const bool active);
     void setPosition(const Eigen::Vector2f& position);
+    void setScale(const Eigen::Vector2f& scale);
     void setName(const std::string& name);
     void setTag(const std::string& tag);
-
+    
     bool addComponent(Component* component);
     bool removeComponent(const ComponentType& componentType);
     bool addChild(GameObject* child);
     bool removeChild(GameObject* child);
 private:
+    float angle;
+    bool active;
     Eigen::Vector2f position;
+    Eigen::Vector2f scale;
     std::string name;
     std::string tag;
     

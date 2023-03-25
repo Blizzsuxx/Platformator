@@ -8,10 +8,15 @@ public:
     GameObjectManager();
     ~GameObjectManager();
 
-    void addGameObject(GameObject* gameObject);
-    void removeGameObject(GameObject* gameObject);
-    void update();
-    void render();
+    GameObject* addGameObject(GameObject* gameObject);
+    GameObject* removeGameObject(GameObject* gameObject);
+    GameObject* removeGameObject(int index);
+    GameObject* removeGameObject(std::string name);
+
+    GameObject* getGameObject(int index);
+    GameObject* getGameObject(std::string name);
+
+    std::list<GameObject*> getGameObjects();
 
 private:
     std::list<GameObject*> gameObjects;

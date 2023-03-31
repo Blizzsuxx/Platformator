@@ -5,6 +5,6 @@
 class Collider : public Component
 {
 public:
-    Collider(GameObject* gameObject);
+    Collider(GameObject* gameObject, ComponentType type);
     virtual ~Collider();
 };

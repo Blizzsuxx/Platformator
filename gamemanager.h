@@ -10,10 +10,6 @@ public:
     GameManager();
     ~GameManager();
 
-    void init();
-    void run();
-    void shutdown();
-
 private:
     SDLWindow* window;
     PhysicsManager* physicsManager;

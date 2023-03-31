@@ -3,6 +3,10 @@
 SDLWindow::SDLWindow() : window(NULL), renderer(NULL), e(), quit(false), 
                             gameObjectManager(new GameObjectManager()), mainCamera(new Camera(NULL, SCREEN_WIDTH, SCREEN_HEIGHT))
 {
+    if (!init())
+    {
+        printf("Failed to initialize SDLWindow!");
+    }
 }
 
 SDLWindow::~SDLWindow()

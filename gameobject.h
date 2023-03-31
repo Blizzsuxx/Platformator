@@ -40,18 +40,18 @@ public:
     ~GameObject();
 
     // Getters
-    float& getAngle() const;
-    bool& getActive() const;
-    Eigen::Vector2f& getPosition() const;
+    float getAngle() const;
+    bool getActive() const;
+    const Eigen::Vector2f& getPosition() const;
     float getX() const;
     float getY() const;
-    Eigen::Vector2f& getScale() const;
-    std::string& getName() const;
-    std::string& getTag() const;
+    const Eigen::Vector2f& getScale() const;
+    const std::string& getName() const;
+    const std::string& getTag() const;
 
-    Component* getComponent(const ComponentType& componentType) const;
-    std::list<Component*> getComponents() const;
-    std::list<GameObject*> getChildren() const;
+    const Component* getComponent(const ComponentType& componentType) const;
+    Component** getComponents();
+    const std::list<GameObject*> getChildren() const;
 
     // Setters
     void setAngle(const float angle);

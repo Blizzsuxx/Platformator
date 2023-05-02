@@ -5,5 +5,8 @@
             "binaryPath": "/home/user/Projects/Platformator/main",
             "binaryArgs": []
         }
-    ]
+    ],
+    "files.associations": {
+        "*.tcc": "cpp"
+    }
 }

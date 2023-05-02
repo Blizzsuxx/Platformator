@@ -6,6 +6,7 @@ Audio::Audio(GameObject* gameObject) : Component(gameObject, ComponentType::AUDI
 
 Audio::~Audio()
 {
+    delete chunk;
 }
 
 // Getters

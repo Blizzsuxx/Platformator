@@ -3,6 +3,15 @@
 #include <eigen3/Eigen/Dense>
 #include "gameobject.h"
 
+
+enum BodyType
+{
+    DYNAMIC,
+    STATIC,
+    KINEMATIC
+};
+
+
 class Rigidbody : public Component
 {
 public:
@@ -10,8 +19,8 @@ public:
     ~Rigidbody();
 
     // Getters
-    Eigen::Vector2f getVelocity() const;
-    Eigen::Vector2f getForce() const;
+    const Eigen::Vector2f& getVelocity() const;
+    const Eigen::Vector2f& getForce() const;
 
     float getMass() const;
 
@@ -20,6 +29,9 @@ public:
 
     float getMomentOfInertia() const;
     float getFriction() const;
+
+    BodyType getBodyType() const;
+    bool getGravity() const;
 
     // Setters
     void setVelocity(const Eigen::Vector2f& velocity);
@@ -33,6 +45,9 @@ public:
     void setMomentOfInertia(const float momentOfInertia);
     void setFriction(const float friction);
 
+    void setBodyType(const BodyType bodyType);
+    void setGravity(const bool gravity);
+
 private:
     Eigen::Vector2f velocity;
     Eigen::Vector2f force;
@@ -44,4 +59,7 @@ private:
 
     float momentOfInertia;
     float friction;
+
+    BodyType bodyType;
+    bool gravity;
 };

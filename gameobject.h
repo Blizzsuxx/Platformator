@@ -13,7 +13,7 @@ enum ComponentType
     CAMERA = 2,
     COLLIDER = 3,
     LIGHT = 4,
-    RIDIDBODY = 5,
+    RIGID_BODY = 5,
     SPRITE = 6
 };
 constexpr auto COMPONENT_TYPE_COUNT = __LINE__ - _START - 4;

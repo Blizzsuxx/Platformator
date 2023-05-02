@@ -18,26 +18,22 @@ GameObject* GameObjectManager::addGameObject(GameObject* gameObject)
     return gameObject;
 }
 
-GameObject* GameObjectManager::removeGameObject(GameObject* gameObject)
+void GameObjectManager::removeGameObject(GameObject* gameObject)
 {
     gameObjects.remove(gameObject);
     delete gameObject;
-
-    return gameObject;
 }
 
-GameObject* GameObjectManager::removeGameObject(int index)
+void GameObjectManager::removeGameObject(int index)
 {
     std::list<GameObject*>::iterator it = gameObjects.begin();
     std::advance(it, index);
     GameObject* gameObject = *it;
     gameObjects.erase(it);
     delete gameObject;
-
-    return gameObject;
 }
 
-GameObject* GameObjectManager::removeGameObject(std::string name)
+bool GameObjectManager::removeGameObject(std::string name)
 {
     for (GameObject* gameObject : gameObjects)
     {
@@ -45,11 +41,11 @@ GameObject* GameObjectManager::removeGameObject(std::string name)
         {
             gameObjects.remove(gameObject);
             delete gameObject;
-            return gameObject;
+            return true;
         }
     }
 
-    return nullptr;
+    return false;
 }
 
 GameObject* GameObjectManager::getGameObject(int index)
@@ -77,3 +73,7 @@ std::list<GameObject*> GameObjectManager::getGameObjects()
     return gameObjects;
 }
 
+void GameObjectManager::setPhysicsManager(PhysicsManager* physicsManager)
+{
+    this->physicsManager = physicsManager;
+}

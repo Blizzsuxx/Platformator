@@ -8,6 +8,9 @@ public:
     CircleCollider(GameObject* gameObject);
     ~CircleCollider();
 
+    // Inherited via Collider
+    float getBoundingRadius() const override;
+
     // Getters
     float getRadius() const;
 

@@ -35,12 +35,12 @@ class GameObject
 {
 public:
     GameObject();
-    GameObject(const float angle, const bool active, const Eigen::Vector2f& position, const Eigen::Vector2f& scale, const std::string& name, const std::string& tag);
+    GameObject(const float rotation, const bool active, const Eigen::Vector2f& position, const Eigen::Vector2f& scale, const std::string& name, const std::string& tag);
 
     ~GameObject();
 
     // Getters
-    float getAngle() const;
+    float getRotation() const;
     bool getActive() const;
     const Eigen::Vector2f& getPosition() const;
     float getX() const;
@@ -54,7 +54,7 @@ public:
     const std::list<GameObject*> getChildren() const;
 
     // Setters
-    void setAngle(const float angle);
+    void setRotation(const float rotation);
     void setActive(const bool active);
     void setPosition(const Eigen::Vector2f& position);
     void setScale(const Eigen::Vector2f& scale);
@@ -66,7 +66,7 @@ public:
     bool addChild(GameObject* child);
     bool removeChild(GameObject* child);
 private:
-    float angle;
+    float rotation;
     bool active;
     Eigen::Vector2f position;
     Eigen::Vector2f scale;

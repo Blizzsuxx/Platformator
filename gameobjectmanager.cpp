@@ -15,6 +15,7 @@ GameObjectManager::~GameObjectManager()
 GameObject* GameObjectManager::addGameObject(GameObject* gameObject)
 {
     gameObjects.push_back(gameObject);
+
     return gameObject;
 }
 

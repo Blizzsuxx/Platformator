@@ -6,7 +6,11 @@ class RectCollider : public Collider
 {
 public:
     RectCollider(GameObject* gameObject);
+    RectCollider(GameObject* gameObject, const float width, const float height);
     ~RectCollider();
+
+    // Inherited via Collider
+    float getBoundingRadius() const override;
 
     // Getters
     float getWidth() const;
@@ -19,4 +23,5 @@ public:
 private:
     float width;
     float height;
+    float boundingRadius;
 };

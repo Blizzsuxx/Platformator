@@ -4,8 +4,8 @@ GameObject::GameObject() : GameObject(0.0f, true, Eigen::Vector2f(0.0f, 0.0f), E
 {
 }
 
-GameObject::GameObject(const float angle, const bool active, const Eigen::Vector2f& position, const Eigen::Vector2f& scale, const std::string& name, const std::string& tag) 
-                        : angle(angle), active(active), position(position), scale(scale), name(name), tag(tag), children(), components()
+GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f& position, const Eigen::Vector2f& scale, const std::string& name, const std::string& tag) 
+                        : rotation(rotation), active(active), position(position), scale(scale), name(name), tag(tag), children(), components()
 {
 }
 
@@ -29,9 +29,9 @@ GameObject::~GameObject()
 }
 
 // Getters
-float GameObject::getAngle() const
+float GameObject::getRotation() const
 {
-    return angle;
+    return rotation;
 }
 
 bool GameObject::getActive() const
@@ -85,9 +85,9 @@ const std::list<GameObject*> GameObject::getChildren() const
 }
 
 // Setters
-void GameObject::setAngle(const float angle)
+void GameObject::setRotation(const float rotation)
 {
-    this->angle = angle;
+    this->rotation = rotation;
 }
 
 void GameObject::setActive(const bool active)

@@ -1,8 +1,7 @@
 #pragma once
 
 #include "gameobject.h"
-
-class PhysicsManager;
+#include "physicsmanager.h"
 
 class GameObjectManager
 {
@@ -26,21 +25,4 @@ private:
     std::list<GameObject*> gameObjects;
 
     PhysicsManager* physicsManager;
-};
-
-
-class PhysicsManager
-{
-public:
-    PhysicsManager(GameObjectManager* gameObjectManager);
-    ~PhysicsManager();
-
-    void applyPhysics();
-    void resolveCollisions();
-
-private:
-    GameObjectManager* gameObjectManager;
-
-    std::list<Component*> RigidBodyComponents;
-    std::list<Component*> ColliderComponents;
 };

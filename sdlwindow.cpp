@@ -1,4 +1,5 @@
 #include "sdlwindow.h"
+#include <iostream>
 
 SDLWindow::SDLWindow() : window(NULL), renderer(NULL), e(), quit(false), 
                             gameObjectManager(new GameObjectManager()), mainCamera(new Camera(NULL, SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -78,8 +79,11 @@ void SDLWindow::handleEvents()
     while( SDL_PollEvent( &e ) != 0 )
     {
         //User requests quit
+        std::cout << "Event type: " << e.type << std::endl;
+        std::cout << "Event key: " << e.key.keysym.sym << std::endl;
         if( e.type == SDL_QUIT )
         {
+            std::cout << "Quit event" << std::endl;
             quit = true;
         }
     }
@@ -114,6 +118,7 @@ void SDLWindow::loop()
         resolveCollisions();
         render();
     }
+    close();
 }
 
 SDL_Window* SDLWindow::getWindow() const

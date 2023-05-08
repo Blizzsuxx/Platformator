@@ -4,8 +4,8 @@ BoundingRadiusProjection::BoundingRadiusProjection()
 {
 }
 
-BoundingRadiusProjection::BoundingRadiusProjection(GameObject* gameObject, float min, float max)
-    : gameObject(gameObject), min(min), max(max)
+BoundingRadiusProjection::BoundingRadiusProjection(Collider* collider, float projectedPosition)
+    : collider(collider), projectedPosition(projectedPosition)
 {
 }
 
@@ -13,44 +13,29 @@ BoundingRadiusProjection::~BoundingRadiusProjection()
 {
 }
 
-GameObject* BoundingRadiusProjection::getGameObject()
+Collider* BoundingRadiusProjection::getCollider()
 {
-    return gameObject;
+    return collider;
 }
 
-float BoundingRadiusProjection::getMin() const
+float BoundingRadiusProjection::getProjectedPosition() const
 {
-    return min;
+    return projectedPosition;
 }
 
-float BoundingRadiusProjection::getMax() const
+void BoundingRadiusProjection::setCollider(Collider* collider)
 {
-    return max;
+    this->collider = collider;
 }
 
-void BoundingRadiusProjection::setGameObject(GameObject* gameObject)
+void BoundingRadiusProjection::setProjectedPosition(float projectedPosition)
 {
-    this->gameObject = gameObject;
-}
-
-void BoundingRadiusProjection::setMin(float min)
-{
-    this->min = min;
-}
-
-void BoundingRadiusProjection::setMax(float max)
-{
-    this->max = max;
-}
-
-bool BoundingRadiusProjection::isOverlapping(BoundingRadiusProjection* other)
-{
-    return (min <= other->getMax() && max >= other->getMin()) || (other->getMin() <= max && other->getMax() >= min);
+    this->projectedPosition = projectedPosition;
 }
 
 bool BoundingRadiusProjection::operator==(const BoundingRadiusProjection& other) const
 {
-    return min == other.min && max == other.max;
+    return projectedPosition == other.projectedPosition && collider->getBoundingRadius() == other.collider->getBoundingRadius();
 }
 
 bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection& other) const
@@ -60,22 +45,12 @@ bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection& other)
 
 bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection& other) const
 {
-    if (min == other.min)
-    {
-        return max < other.max;
-    }
-
-    return min < other.min;
+    return projectedPosition + collider->getBoundingRadius() < other.projectedPosition + other.collider->getBoundingRadius();
 }
 
 bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection& other) const
 {
-    if (min == other.min)
-    {
-        return max > other.max;
-    }
-
-    return min > other.min;
+    return projectedPosition + collider->getBoundingRadius() > other.projectedPosition + other.collider->getBoundingRadius();
 }
 
 bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection& other) const

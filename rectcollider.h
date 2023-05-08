@@ -24,4 +24,6 @@ private:
     float width;
     float height;
     float boundingRadius;
+
+    void recalculateBoundingRadius();
 };

@@ -1,5 +1,5 @@
 #OBJS specifies which files to compile as part of the project
-OBJS = main.cpp sdlwindow.h sdlwindow.cpp animator.h animator.cpp audio.h audio.cpp camera.h camera.cpp circlecollider.h circlecollider.cpp collider.h collider.cpp gamemanager.h gamemanager.cpp gameobject.h gameobject.cpp gameobjectmanager.h gameobjectmanager.cpp physicsmanager.h physicsmanager.cpp rectcollider.h rectcollider.cpp rigidbody.h rigidbody.cpp sprite.h sprite.cpp
+OBJS = main.cpp sdlwindow.h sdlwindow.cpp animator.h animator.cpp audio.h audio.cpp boundingradiousprojection.h boundingradiousprojection.cpp camera.h camera.cpp circlecollider.h circlecollider.cpp collider.h collider.cpp collision.h collision.cpp component.cpp gamemanager.h gamemanager.cpp gameobject.h gameobject.cpp gameobjectmanager.h gameobjectmanager.cpp localsortarray.h localsortarray.cpp physicsmanager.h physicsmanager.cpp rectcollider.h rectcollider.cpp rigidbody.h rigidbody.cpp segmentedintervallist.h segmentedintervallist.cpp sprite.h sprite.cpp
 
 #CC specifies which compiler we're using
 CC = g++

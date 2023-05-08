@@ -1,24 +1,20 @@
 #pragma once
 
-#include "gameobject.h"
+#include "collider.h"
 
 class BoundingRadiusProjection
 {
 public:
     BoundingRadiusProjection();
-    BoundingRadiusProjection(GameObject* gameObject, float min, float max);
+    BoundingRadiusProjection(Collider*, float projectedPosition);
     ~BoundingRadiusProjection();
 
-    GameObject* getGameObject();
-    float getMin() const;
-    float getMax() const;
+    Collider* getCollider();
+    float getProjectedPosition() const;
 
-    void setGameObject(GameObject* gameObject);
-    void setMin(float min);
-    void setMax(float max);
+    void setCollider(Collider* collider);
+    void setProjectedPosition(float projectedPosition);
 
-    bool isOverlapping(BoundingRadiusProjection* other);
-    
     bool operator==(const BoundingRadiusProjection& other) const;
     bool operator!=(const BoundingRadiusProjection& other) const;
     bool operator<(const BoundingRadiusProjection& other) const;
@@ -27,7 +23,6 @@ public:
     bool operator>=(const BoundingRadiusProjection& other) const;
 
 private:
-    GameObject* gameObject;
-    float min;
-    float max;
+    Collider* collider;
+    float projectedPosition;
 };

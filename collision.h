@@ -6,6 +6,7 @@ class Collision
 {
 public:
     Collision();
+    Collision(GameObject* gameObjectA, GameObject* gameObjectB);
     Collision(Eigen::Vector2f* normal, float penetration, Eigen::Vector2f* contactPoint, GameObject* gameObjectA, GameObject* gameObjectB);
     ~Collision();
 

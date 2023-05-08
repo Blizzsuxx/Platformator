@@ -7,7 +7,7 @@ RectCollider::RectCollider(GameObject* gameObject) : Collider(gameObject, Compon
 RectCollider::RectCollider(GameObject* gameObject, const float width, const float height) 
     : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height)
 {
-    boundingRadius = sqrt(pow(width, 2) + pow(height, 2)) / 2;
+    recalculateBoundingRadius();
 }
 
 RectCollider::~RectCollider()
@@ -35,9 +35,16 @@ float RectCollider::getHeight() const
 void RectCollider::setWidth(const float width)
 {
     this->width = width;
+    recalculateBoundingRadius();
 }
 
 void RectCollider::setHeight(const float height)
 {
     this->height = height;
+    recalculateBoundingRadius();
+}
+
+void RectCollider::recalculateBoundingRadius()
+{
+    boundingRadius = sqrt(pow(width, 2) + pow(height, 2)) / 2;
 }

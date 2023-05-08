@@ -32,7 +32,7 @@ void Camera::render(Sprite* sprite, SDL_Renderer* renderer)
 {
     SDL_Rect renderQuad = { sprite->getGameObject()->getX() - camera.x, sprite->getGameObject()->getY() - camera.y, sprite->getWidth(), sprite->getHeight() };
 
-    SDL_RenderCopyEx(renderer, sprite->getTexture(), NULL, &renderQuad, sprite->getGameObject()->getAngle(), NULL, sprite->getFlip());
+    SDL_RenderCopyEx(renderer, sprite->getTexture(), NULL, &renderQuad, sprite->getGameObject()->getRotation(), NULL, sprite->getFlip());
 }
 
 // Getters

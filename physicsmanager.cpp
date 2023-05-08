@@ -1,6 +1,7 @@
 #include "physicsmanager.h"
 
 PhysicsManager::PhysicsManager()
+    : gravity(9.8f), timeDelta(0.0f), rigidBodyComponents(), colliderComponents(), boundingRadiusProjectionsX(), boundingRadiusProjectionsY()
 {
 }
 
@@ -43,9 +44,16 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody* rigidBodyComponent)
 void PhysicsManager::addColliderComponent(Collider* colliderComponent)
 {
     colliderComponents.push_back(colliderComponent);
+
+    boundingRadiusProjectionsX.push_back(BoundingRadiusProjection(colliderComponent, colliderComponent->getGameObject()->getPosition().x()));
+    boundingRadiusProjectionsY.push_back(BoundingRadiusProjection(colliderComponent, colliderComponent->getGameObject()->getPosition().y()));
 }
 
 std::list<Collision>* PhysicsManager::broadPhase()
 {
+    
+}
 
+std::list<Collision>* PhysicsManager::narrowPhase(std::list<Collision>* broadPhaseCollisions)
+{
 }

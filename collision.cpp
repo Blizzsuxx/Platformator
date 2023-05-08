@@ -4,6 +4,11 @@ Collision::Collision()
 {
 }
 
+Collision::Collision(GameObject* gameObjectA, GameObject* gameObjectB)
+    : gameObjectA(gameObjectA), gameObjectB(gameObjectB)
+{
+}
+
 Collision::Collision(Eigen::Vector2f* normal, float penetration, Eigen::Vector2f* contactPoint, GameObject* gameObjectA, GameObject* gameObjectB)
     : normal(normal), penetration(penetration), contactPoint(contactPoint), gameObjectA(gameObjectA), gameObjectB(gameObjectB)
 {

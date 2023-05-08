@@ -22,7 +22,7 @@ class Component
 {
 public:
     Component(GameObject* gameObject, ComponentType type);
-    virtual ~Component();
+    ~Component();
 
     GameObject* getGameObject();
     ComponentType getType();

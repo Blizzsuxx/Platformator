@@ -1,11 +1,23 @@
 #include "collider.h"
 
-Collider::Collider(GameObject* gameObject, ComponentType type) : Component(gameObject, type)
+Collider::Collider(GameObject* gameObject, ComponentType type)
+    : Component(gameObject, type), layer(0), isTrigger(false), projections()
 {
 }
 
 Collider::~Collider()
 {
+    
+}
+
+BoundingRadiusProjection& Collider::getProjection(const int index)
+{
+    return projections[index];
+}
+
+BoundingRadiusProjection* Collider::getProjections()
+{
+    return projections;
 }
 
 int Collider::getLayer() const

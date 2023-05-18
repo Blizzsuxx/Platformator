@@ -3,7 +3,6 @@
 #include "rigidbody.h"
 #include "collider.h"
 #include "collision.h"
-#include "boundingradiousprojection.h"
 
 class PhysicsManager
 {
@@ -19,8 +18,6 @@ public:
 private:
     std::list<Rigidbody*> rigidBodyComponents;
     std::list<Collider*> colliderComponents;
-    std::list<BoundingRadiusProjection> boundingRadiusProjectionsX;
-    std::list<BoundingRadiusProjection> boundingRadiusProjectionsY;
 
     float gravity;
     float timeDelta;

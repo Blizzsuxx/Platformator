@@ -3,18 +3,23 @@
 #include <vector>
 #include "localsortarray.h"
 
-template <typename T>
 class SegmentedIntervalList
 {
 public:
     SegmentedIntervalList();
     ~SegmentedIntervalList();
 
-    void add(T& element);
-    void remove(T& element);
+    void add(Collider* element, size_t index);
+    void remove(Collider* element, size_t index);
     void clear();
+    void sort();
+    void sort(size_t index);
 
 private:
-    std::vector<LocalSortArray<T>*> arrays;
+    std::vector<LocalSortArray*> arrays;
     size_t size;
+
+    size_t binarySearch(BoundingRadiusProjection* element);
+    size_t add(BoundingRadiusProjection* element);
+    size_t remove(BoundingRadiusProjection* element);
 };

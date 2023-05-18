@@ -59,8 +59,8 @@ bool SDLWindow::init()
 void SDLWindow::close()
 {
     //Destroy window
-    SDL_DestroyWindow( window );
     SDL_DestroyRenderer( renderer );
+    SDL_DestroyWindow( window );
     window = NULL;
     renderer = NULL;
     delete gameObjectManager;

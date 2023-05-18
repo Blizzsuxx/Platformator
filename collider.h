@@ -2,6 +2,9 @@
 
 #include "gameobject.h"
 
+class BoundingRadiusProjection;
+
+
 class Collider : public Component
 {
 public:
@@ -9,6 +12,9 @@ public:
     ~Collider();
     
     virtual float getBoundingRadius() const = 0;
+    BoundingRadiusProjection& getProjection(const int index);
+    BoundingRadiusProjection* getProjections();
+    void generateProjections();
 
     int getLayer() const;
     void setLayer(const int layer);
@@ -19,4 +25,33 @@ public:
     private:
         int layer;
         bool isTrigger;
+        BoundingRadiusProjection projections[4];
+};
+
+class BoundingRadiusProjection
+{
+public:
+    BoundingRadiusProjection();
+    BoundingRadiusProjection(Collider*, float projectedPosition, bool end);
+    ~BoundingRadiusProjection();
+
+    Collider* getCollider();
+    float getProjectedPosition() const;
+    bool isEnd() const;
+
+    void setCollider(Collider* collider);
+    void setProjectedPosition(float projectedPosition);
+    void setEnd(bool end);
+
+    bool operator==(const BoundingRadiusProjection& other) const;
+    bool operator!=(const BoundingRadiusProjection& other) const;
+    bool operator<(const BoundingRadiusProjection& other) const;
+    bool operator>(const BoundingRadiusProjection& other) const;
+    bool operator<=(const BoundingRadiusProjection& other) const;
+    bool operator>=(const BoundingRadiusProjection& other) const;
+
+private:
+    Collider* collider;
+    float projectedPosition;
+    bool end;
 };

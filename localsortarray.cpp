@@ -1,29 +1,20 @@
 #include "localsortarray.h"
 
-template <class T>
-LocalSortArray<T>::LocalSortArray()
-    : size(0)
+LocalSortArray::LocalSortArray()
+    : size(0), checkpoint()
 {
 }
 
-template <class T>
-LocalSortArray<T>::~LocalSortArray()
+LocalSortArray::~LocalSortArray()
 {
 }
 
-template <class T>
-bool LocalSortArray<T>::add(T& element)
+bool LocalSortArray::add(BoundingRadiusProjection *element)
 {
     // find the index where the element should be inserted using binary search
     if (size == MAX_SIZE)
     {
         return false;
-    }
-    else if (size == 0)
-    {
-        array[0] = element;
-        size++;
-        return true;
     }
     else
     {
@@ -31,26 +22,28 @@ bool LocalSortArray<T>::add(T& element)
         size_t high = size - 1;
         size_t mid = 0;
 
+        BoundingRadiusProjection value = *element;
+
         while (low <= high)
         {
             mid = (low + high) / 2;
 
             // check if the element belongs in the middle
-            if (element >= array[mid] && element <= array[mid + 1])
+            if (value >= *array[mid] && value <= *array[mid + 1])
             {
                 low = mid;
                 break;
             }
-            else if (element < array[mid])
+            else if (value < *array[mid])
             {
                 high = mid - 1;
             }
-            else if (element > array[mid])
+            else if (value > *array[mid])
             {
                 low = mid + 1;
             }
         }
-        
+
         // insert the element at the index
         for (size_t i = size; i > low; i--)
         {
@@ -62,57 +55,83 @@ bool LocalSortArray<T>::add(T& element)
     }
 }
 
-template <class T>
-bool LocalSortArray<T>::add(T* element)
+bool LocalSortArray::addWithoutSort(BoundingRadiusProjection *element)
 {
-    return add(*element);
-}
-
-template <class T>
-T LocalSortArray<T>::pop()
-{
-    T removed = array[size - 1];
-    size--;
-    return removed;
-}
-
-template <class T>
-T LocalSortArray<T>::addAndPop(T& element)
-{
-    T removed = array[size - 1];
-    size--;
-    add(element);
-    return removed;
-}
-
-template <class T>
-bool LocalSortArray<T>::remove(size_t index)
-{
-    // remove the element at the specified index
-    if (index < 0 || index >= size)
+    if (size == MAX_SIZE)
     {
         return false;
     }
     else
     {
-        for (size_t i = index; i < size - 1; i++)
-        {
-            array[i] = array[i + 1];
-        }
-        size--;
+        array[size] = element;
+        size++;
         return true;
     }
 }
 
-template <class T>
-void LocalSortArray<T>::sort()
+BoundingRadiusProjection* LocalSortArray::pop()
+{
+    BoundingRadiusProjection *removed = array[size - 1];
+    size--;
+    return removed;
+}
+
+BoundingRadiusProjection* LocalSortArray::addAndPop(BoundingRadiusProjection *element)
+{
+    BoundingRadiusProjection *removed = array[size - 1];
+    size--;
+    add(element);
+    return removed;
+}
+
+void LocalSortArray::remove(size_t index)
+{
+    // remove the element at the specified index
+    for (size_t i = index; i < size - 1; i++)
+    {
+        array[i] = array[i + 1];
+    }
+    size--;
+}
+
+bool LocalSortArray::remove(BoundingRadiusProjection *element)
+{
+    // find the index of the element using binary search
+    size_t low = 0;
+    size_t high = size - 1;
+    size_t mid = 0;
+    BoundingRadiusProjection value = *element;
+
+    while (low <= high)
+    {
+        mid = (low + high) / 2;
+
+        if (value == *array[mid])
+        {
+            remove(mid);
+            return true;
+        }
+        else if (value < *array[mid])
+        {
+            high = mid - 1;
+        }
+        else if (value > *array[mid])
+        {
+            low = mid + 1;
+        }
+    }
+
+    return false;
+}
+
+void LocalSortArray::sort()
 {
     // sort the array with insertion sort, sort from lowest to highest
     for (size_t i = 1; i < size; i++)
     {
-        T temp = array[i];
+        BoundingRadiusProjection *temp = array[i];
         size_t j = i - 1;
-        while (j >= 0 && array[j] > temp)
+        while (j >= 0 && *array[j] > *temp)
         {
             array[j + 1] = array[j];
             j--;
@@ -121,8 +140,7 @@ void LocalSortArray<T>::sort()
     }
 }
 
-template <class T>
-void LocalSortArray<T>::sort(size_t index)
+void LocalSortArray::sort(size_t index)
 {
     // sort only the element at the specified index, assume all other elements are sorted
     if (index < 0 || index >= size)
@@ -130,15 +148,15 @@ void LocalSortArray<T>::sort(size_t index)
         return;
     }
 
-    T value = array[index];
-    
-    if (value > array[index + 1])
+    BoundingRadiusProjection *value = array[index];
+
+    if (*value > *array[index + 1])
     {
         for (size_t i = index + 1; i < size; i++)
         {
-            T temp = array[i];
+            BoundingRadiusProjection *temp = array[i];
             size_t j = i - 1;
-            while (j >= 0 && array[j] > temp)
+            while (j >= 0 && *array[j] > *temp)
             {
                 array[j + 1] = array[j];
                 j--;
@@ -146,13 +164,13 @@ void LocalSortArray<T>::sort(size_t index)
             array[j + 1] = temp;
         }
     }
-    else if (value < array[index - 1])
+    else if (*value < *array[index - 1])
     {
         for (size_t i = index - 1; i >= 0; i--)
         {
-            T temp = array[i];
+            BoundingRadiusProjection *temp = array[i];
             size_t j = i + 1;
-            while (j < size && array[j] < temp)
+            while (j < size && *array[j] < *temp)
             {
                 array[j - 1] = array[j];
                 j++;
@@ -162,38 +180,43 @@ void LocalSortArray<T>::sort(size_t index)
     }
 }
 
-template <class T>
-T& LocalSortArray<T>::get(size_t index)
+BoundingRadiusProjection* LocalSortArray::get(size_t index)
 {
     return array[index];
 }
 
-template <class T>
-T& LocalSortArray<T>::operator[](size_t index)
+BoundingRadiusProjection* LocalSortArray::operator[](size_t index)
 {
     return array[index];
 }
 
-template <class T>
-T& LocalSortArray<T>::getMax()
+BoundingRadiusProjection* LocalSortArray::getMax()
 {
     return array[size - 1];
 }
 
-template <class T>
-size_t LocalSortArray<T>::getSize() const
+size_t LocalSortArray::getSize() const
 {
     return size;
 }
 
-template <class T>
-T* LocalSortArray<T>::getArray()
+BoundingRadiusProjection** LocalSortArray::getArray()
 {
     return array;
 }
 
-template <class T>
-void LocalSortArray<T>::clear()
+void LocalSortArray::clear()
 {
     size = 0;
+    checkpoint.clear();
+}
+
+void LocalSortArray::addCheckpoint(Collider* collider)
+{
+    checkpoint.push_back(collider);
+}
+
+void LocalSortArray::removeCheckpoint(Collider* collider)
+{
+    checkpoint.erase(std::remove(checkpoint.begin(), checkpoint.end(), collider), checkpoint.end());
 }

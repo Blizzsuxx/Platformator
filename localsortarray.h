@@ -1,31 +1,36 @@
 #pragma once
 
 #include <algorithm>
+#include <vector>
+#include "collider.h"
 
 const size_t MAX_SIZE = 32;
 
-template <class T>
 class LocalSortArray
 {
 public:
     LocalSortArray();
     ~LocalSortArray();
 
-    bool add(T& element);
-    bool add(T* element);
-    T pop();
-    T addAndPop(T& element);
-    bool remove(size_t index);
+    bool add(BoundingRadiusProjection* element);
+    bool addWithoutSort(BoundingRadiusProjection* element);
+    BoundingRadiusProjection* pop();
+    BoundingRadiusProjection* addAndPop(BoundingRadiusProjection* element);
+    void remove(size_t index);
+    bool remove(BoundingRadiusProjection* element);
     void sort();
     void sort(size_t index);
-    T& get(size_t index);
-    T& operator[](size_t index);
-    T& getMax();
+    BoundingRadiusProjection* get(size_t index);
+    BoundingRadiusProjection* operator[](size_t index);
+    BoundingRadiusProjection* getMax();
     size_t getSize() const;
-    T* getArray();
+    BoundingRadiusProjection** getArray();
     void clear();
+    void addCheckpoint(Collider* element);
+    void removeCheckpoint(Collider* element);
 
 private:
-    T array[MAX_SIZE];
+    BoundingRadiusProjection* array[MAX_SIZE];
+    std::vector<Collider*> checkpoint;
     size_t size;
 };

@@ -1,11 +1,11 @@
-#include "boundingradiousprojection.h"
+#include "collider.h"
 
 BoundingRadiusProjection::BoundingRadiusProjection()
 {
 }
 
-BoundingRadiusProjection::BoundingRadiusProjection(Collider* collider, float projectedPosition)
-    : collider(collider), projectedPosition(projectedPosition)
+BoundingRadiusProjection::BoundingRadiusProjection(Collider* collider, float projectedPosition, bool end)
+    : collider(collider), projectedPosition(projectedPosition), end(end)
 {
 }
 
@@ -23,6 +23,11 @@ float BoundingRadiusProjection::getProjectedPosition() const
     return projectedPosition;
 }
 
+bool BoundingRadiusProjection::isEnd() const
+{
+    return end;
+}
+
 void BoundingRadiusProjection::setCollider(Collider* collider)
 {
     this->collider = collider;
@@ -33,9 +38,14 @@ void BoundingRadiusProjection::setProjectedPosition(float projectedPosition)
     this->projectedPosition = projectedPosition;
 }
 
+void BoundingRadiusProjection::setEnd(bool end)
+{
+    this->end = end;
+}
+
 bool BoundingRadiusProjection::operator==(const BoundingRadiusProjection& other) const
 {
-    return projectedPosition == other.projectedPosition && collider->getBoundingRadius() == other.collider->getBoundingRadius();
+    return projectedPosition == other.projectedPosition;
 }
 
 bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection& other) const
@@ -45,12 +55,12 @@ bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection& other)
 
 bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection& other) const
 {
-    return projectedPosition + collider->getBoundingRadius() < other.projectedPosition + other.collider->getBoundingRadius();
+    return projectedPosition < other.projectedPosition;
 }
 
 bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection& other) const
 {
-    return projectedPosition + collider->getBoundingRadius() > other.projectedPosition + other.collider->getBoundingRadius();
+    return projectedPosition > other.projectedPosition;
 }
 
 bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection& other) const

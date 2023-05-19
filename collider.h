@@ -4,15 +4,14 @@
 
 class BoundingRadiusProjection;
 
-
 class Collider : public Component
 {
 public:
     Collider(GameObject *gameObject, ComponentType type);
     ~Collider();
-    
+
     virtual float getBoundingRadius() const = 0;
-    BoundingRadiusProjection& getProjection(const int index);
+    BoundingRadiusProjection &getProjection(const int index);
     BoundingRadiusProjection *getProjections();
     void generateProjections();
 
@@ -22,17 +21,17 @@ public:
     bool isTriggered() const;
     void setTrigger(const bool isTrigger);
 
-    private:
-        int layer;
-        bool isTrigger;
-        BoundingRadiusProjection projections[4];
+private:
+    int layer;
+    bool isTrigger;
+    BoundingRadiusProjection projections[4];
 };
 
 class BoundingRadiusProjection
 {
 public:
     BoundingRadiusProjection();
-    BoundingRadiusProjection(Collider*, float projectedPosition, bool end);
+    BoundingRadiusProjection(Collider *, float projectedPosition, bool end);
     ~BoundingRadiusProjection();
 
     Collider *getCollider();
@@ -43,12 +42,12 @@ public:
     void setProjectedPosition(float projectedPosition);
     void setEnd(bool end);
 
-    bool operator==(const BoundingRadiusProjection& other) const;
-    bool operator!=(const BoundingRadiusProjection& other) const;
-    bool operator<(const BoundingRadiusProjection& other) const;
-    bool operator>(const BoundingRadiusProjection& other) const;
-    bool operator<=(const BoundingRadiusProjection& other) const;
-    bool operator>=(const BoundingRadiusProjection& other) const;
+    bool operator==(const BoundingRadiusProjection &other) const;
+    bool operator!=(const BoundingRadiusProjection &other) const;
+    bool operator<(const BoundingRadiusProjection &other) const;
+    bool operator>(const BoundingRadiusProjection &other) const;
+    bool operator<=(const BoundingRadiusProjection &other) const;
+    bool operator>=(const BoundingRadiusProjection &other) const;
 
 private:
     Collider *collider;

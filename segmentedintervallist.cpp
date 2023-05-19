@@ -58,16 +58,19 @@ void SegmentedIntervalList::sort()
         chunks[i]->sort();
     }
 
-    // check if the arrays are sorted
+    // check if the chunks are sorted
     for (size_t i = 1; i < size; i++)
     {
         while (*chunks[i - 1]->getMax() > *chunks[i]->getMin())
         {
-            // if the min element belongs to the previous array, move it to the previous array
-            if (i == 1 || *chunks[i]->getMin() >= *chunks[i - 2]->getMax())
+            // find the first chunk with a max value greater than the min value of the current chunk, counting backwards
+            size_t j = i - 1;
+            while (j > 0 && *chunks[j - 1]->getMax() <= *chunks[i]->getMin())
             {
-                chunk
+                j--;
             }
+
+            size_t indexWhereItWasAdded = add(chunks[i]->remove(0UL), j);
         }
     }
 }
@@ -112,19 +115,26 @@ size_t SegmentedIntervalList::add(BoundingRadiusProjection *element)
     size_t index = binarySearch(element);
 
     // insert the element at the index
-    if (!chunks[index]->add(element))
+    return add(element, index);
+}
+
+size_t SegmentedIntervalList::add(BoundingRadiusProjection *element, size_t chunkIndex)
+{
+    // insert the element at the index
+    if (!chunks[chunkIndex]->add(element))
     {
         // if the array is full, split it
         LocalSortArray *newArray = new LocalSortArray();
         for (size_t i = MAX_SIZE / 2; i < MAX_SIZE; i++)
         {
-            newArray->addWithoutSort(chunks[index]->pop());
+            newArray->addWithoutSort(chunks[chunkIndex]->pop());
         }
-        chunks.insert(chunks.begin() + index + 1, newArray);
+        chunks.insert(chunks.begin() + chunkIndex + 1, newArray);
         size++;
+        chunkIndex++;
     }
 
-    return index;
+    return chunkIndex;
 }
 
 size_t SegmentedIntervalList::remove(BoundingRadiusProjection *element)
@@ -175,6 +185,28 @@ void SegmentedIntervalList::swap(size_t chunkIndex1, size_t arrayIndex1, size_t 
 {
     chunks[chunkIndex1]->swap(arrayIndex1, chunks[chunkIndex2], arrayIndex2);
 
-    // update checkpoints
-    chunks[chunkIndex1]->get(arrayIndex1)->getCollider()->getPairProjection()
+    updateCheckpoint(chunkIndex1, arrayIndex1, chunkIndex2);
+}
+
+void SegmentedIntervalList::updateCheckpoint(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2)
+{
+    // chunkIndex1 is the chunk where the element was inserted
+    // arrayIndex1 is the index of the element in the chunk
+    // chunkIndex2 is the chunk where the element was removed
+    // chunkIndex2 is always greater than chunkIndex1
+
+    if (chunks[chunkIndex1]->get(arrayIndex1)->isEnd())
+    {
+        for(size_t i = chunkIndex1; i <= chunkIndex2; i++)
+        {
+            chunks[i]->removeCheckpoint(chunks[chunkIndex1]->get(arrayIndex1)->getCollider());
+        }
+    }
+    else
+    {
+        for(size_t i = chunkIndex1; i <= chunkIndex2; i++)
+        {
+            chunks[i]->addCheckpoint(chunks[chunkIndex1]->get(arrayIndex1)->getCollider());
+        }
+    }
 }

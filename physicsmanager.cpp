@@ -1,7 +1,7 @@
 #include "physicsmanager.h"
 
 PhysicsManager::PhysicsManager()
-    : gravity(9.8f), timeDelta(0.0f), rigidBodyComponents(), colliderComponents()
+    : gravity(9.8f), timeDelta(0.0f), rigidBodyComponents(), colliderComponents(), colliderProjectionsX(), colliderProjectionsY()
 {
 }
 
@@ -20,14 +20,14 @@ void PhysicsManager::applyPhysics()
 
         if (rigidBodyComponent->getGravity())
         {
-            rigidBodyComponent->setForce(rigidBodyComponent->getForce() + Eigen::Vector2f(0.0f, -gravity  *rigidBodyComponent->getMass()));
+            rigidBodyComponent->setForce(rigidBodyComponent->getForce() + Eigen::Vector2f(0.0f, -gravity * rigidBodyComponent->getMass()));
         }
 
-        rigidBodyComponent->setVelocity(rigidBodyComponent->getVelocity() + rigidBodyComponent->getForce()  *timeDelta / rigidBodyComponent->getMass());
+        rigidBodyComponent->setVelocity(rigidBodyComponent->getVelocity() + rigidBodyComponent->getForce() * timeDelta / rigidBodyComponent->getMass());
         rigidBodyComponent->setAngularVelocity(rigidBodyComponent->getAngularVelocity() + rigidBodyComponent->getTorque()  *timeDelta / rigidBodyComponent->getMomentOfInertia());
 
-        rigidBodyComponent->getGameObject()->setPosition(rigidBodyComponent->getGameObject()->getPosition() + rigidBodyComponent->getVelocity()  *timeDelta);
-        rigidBodyComponent->getGameObject()->setRotation(rigidBodyComponent->getGameObject()->getRotation() + rigidBodyComponent->getAngularVelocity()  *timeDelta);
+        rigidBodyComponent->getGameObject()->setPosition(rigidBodyComponent->getGameObject()->getPosition() + rigidBodyComponent->getVelocity() * timeDelta);
+        rigidBodyComponent->getGameObject()->setRotation(rigidBodyComponent->getGameObject()->getRotation() + rigidBodyComponent->getAngularVelocity() * timeDelta);
     }
 }
 
@@ -44,6 +44,10 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
     colliderComponents.push_back(colliderComponent);
+
+    colliderComponent->generateProjections();
+    colliderProjectionsX.add(colliderComponent, 0UL);
+    colliderProjectionsX.add(colliderComponent, 2UL);
 }
 
 std::list<Collision> *PhysicsManager::broadPhase()

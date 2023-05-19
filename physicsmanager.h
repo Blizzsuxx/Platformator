@@ -3,6 +3,7 @@
 #include "rigidbody.h"
 #include "collider.h"
 #include "collision.h"
+#include "segmentedintervallist.h"
 
 class PhysicsManager
 {
@@ -16,12 +17,14 @@ public:
     void addColliderComponent(Collider *colliderComponent);
 
 private:
-    std::list<Rigidbody*> rigidBodyComponents;
-    std::list<Collider*> colliderComponents;
+    std::list<Collision> *broadPhase();
+    std::list<Collision> *narrowPhase(std::list<Collision> *broadPhaseCollisions);
+
+    std::vector<Rigidbody*> rigidBodyComponents;
+    std::vector<Collider*> colliderComponents;
+    SegmentedIntervalList colliderProjectionsX;
+    SegmentedIntervalList colliderProjectionsY;
 
     float gravity;
     float timeDelta;
-
-    std::list<Collision> *broadPhase();
-    std::list<Collision> *narrowPhase(std::list<Collision> *broadPhaseCollisions);
 };

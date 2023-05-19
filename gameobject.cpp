@@ -11,7 +11,7 @@ GameObject::GameObject(const float rotation, const bool active, const Eigen::Vec
 
 GameObject::~GameObject()
 {
-    for (Component* component : components)
+    for (Component *component : components)
     {
         if (component != nullptr)
         {
@@ -19,7 +19,7 @@ GameObject::~GameObject()
         }
     }
 
-    for (GameObject* child : children)
+    for (GameObject *child : children)
     {
         if (child != nullptr)
         {
@@ -69,12 +69,12 @@ const std::string& GameObject::getTag() const
     return tag;
 }
 
-const Component* GameObject::getComponent(const ComponentType& componentType) const
+const Component *GameObject::getComponent(const ComponentType& componentType) const
 {
     return components[componentType];
 }
 
-Component** GameObject::getComponents()
+Component* *GameObject::getComponents()
 {
     return components;
 }
@@ -115,7 +115,7 @@ void GameObject::setTag(const std::string& tag)
     this->tag = tag;
 }
 
-bool GameObject::addComponent(Component* component)
+bool GameObject::addComponent(Component *component)
 {
     if (component == nullptr)
     {
@@ -144,7 +144,7 @@ bool GameObject::removeComponent(const ComponentType& componentType)
     return true;
 }
 
-bool GameObject::addChild(GameObject* child)
+bool GameObject::addChild(GameObject *child)
 {
     if (child == nullptr)
     {
@@ -155,7 +155,7 @@ bool GameObject::addChild(GameObject* child)
     return true;
 }
 
-bool GameObject::removeChild(GameObject* child)
+bool GameObject::removeChild(GameObject *child)
 {
     if (child == nullptr)
     {

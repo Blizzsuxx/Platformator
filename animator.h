@@ -5,6 +5,6 @@
 class Animator : public Component
 {
 public:
-    Animator(GameObject* gameObject);
+    Animator(GameObject *gameObject);
     virtual ~Animator();
 };

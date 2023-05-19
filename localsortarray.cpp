@@ -69,14 +69,14 @@ bool LocalSortArray::addWithoutSort(BoundingRadiusProjection *element)
     }
 }
 
-BoundingRadiusProjection* LocalSortArray::pop()
+BoundingRadiusProjection *LocalSortArray::pop()
 {
     BoundingRadiusProjection *removed = array[size - 1];
     size--;
     return removed;
 }
 
-BoundingRadiusProjection* LocalSortArray::addAndPop(BoundingRadiusProjection *element)
+BoundingRadiusProjection *LocalSortArray::addAndPop(BoundingRadiusProjection *element)
 {
     BoundingRadiusProjection *removed = array[size - 1];
     size--;
@@ -180,17 +180,17 @@ void LocalSortArray::sort(size_t index)
     }
 }
 
-BoundingRadiusProjection* LocalSortArray::get(size_t index)
+BoundingRadiusProjection *LocalSortArray::get(size_t index)
 {
     return array[index];
 }
 
-BoundingRadiusProjection* LocalSortArray::operator[](size_t index)
+BoundingRadiusProjection *LocalSortArray::operator[](size_t index)
 {
     return array[index];
 }
 
-BoundingRadiusProjection* LocalSortArray::getMax()
+BoundingRadiusProjection *LocalSortArray::getMax()
 {
     return array[size - 1];
 }
@@ -200,7 +200,7 @@ size_t LocalSortArray::getSize() const
     return size;
 }
 
-BoundingRadiusProjection** LocalSortArray::getArray()
+BoundingRadiusProjection* *LocalSortArray::getArray()
 {
     return array;
 }
@@ -211,12 +211,12 @@ void LocalSortArray::clear()
     checkpoint.clear();
 }
 
-void LocalSortArray::addCheckpoint(Collider* collider)
+void LocalSortArray::addCheckpoint(Collider *collider)
 {
     checkpoint.push_back(collider);
 }
 
-void LocalSortArray::removeCheckpoint(Collider* collider)
+void LocalSortArray::removeCheckpoint(Collider *collider)
 {
     checkpoint.erase(std::remove(checkpoint.begin(), checkpoint.end(), collider), checkpoint.end());
 }

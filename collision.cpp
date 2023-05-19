@@ -4,12 +4,12 @@ Collision::Collision()
 {
 }
 
-Collision::Collision(GameObject* gameObjectA, GameObject* gameObjectB)
+Collision::Collision(GameObject *gameObjectA, GameObject *gameObjectB)
     : gameObjectA(gameObjectA), gameObjectB(gameObjectB)
 {
 }
 
-Collision::Collision(Eigen::Vector2f* normal, float penetration, Eigen::Vector2f* contactPoint, GameObject* gameObjectA, GameObject* gameObjectB)
+Collision::Collision(Eigen::Vector2f *normal, float penetration, Eigen::Vector2f *contactPoint, GameObject *gameObjectA, GameObject *gameObjectB)
     : normal(normal), penetration(penetration), contactPoint(contactPoint), gameObjectA(gameObjectA), gameObjectB(gameObjectB)
 {
 }
@@ -28,7 +28,7 @@ Collision::~Collision()
 }
 
 // Getters
-const Eigen::Vector2f* Collision::getNormal() const
+const Eigen::Vector2f *Collision::getNormal() const
 {
     return normal;
 }
@@ -38,24 +38,24 @@ float Collision::getPenetration() const
     return penetration;
 }
 
-const Eigen::Vector2f* Collision::getContactPoint() const
+const Eigen::Vector2f *Collision::getContactPoint() const
 {
     return contactPoint;
 }
 
-const GameObject* Collision::getGameObjectA() const
+const GameObject *Collision::getGameObjectA() const
 {
     return gameObjectA;
 }
 
-const GameObject* Collision::getGameObjectB() const
+const GameObject *Collision::getGameObjectB() const
 {
     return gameObjectB;
 }
 
 // Setters
 
-void Collision::setNormal(Eigen::Vector2f* normal)
+void Collision::setNormal(Eigen::Vector2f *normal)
 {
     this->normal = normal;
 }
@@ -65,17 +65,17 @@ void Collision::setPenetration(const float penetration)
     this->penetration = penetration;
 }
 
-void Collision::setContactPoint(Eigen::Vector2f* contactPoint)
+void Collision::setContactPoint(Eigen::Vector2f *contactPoint)
 {
     this->contactPoint = contactPoint;
 }
 
-void Collision::setGameObjectA(GameObject* gameObjectA)
+void Collision::setGameObjectA(GameObject *gameObjectA)
 {
     this->gameObjectA = gameObjectA;
 }
 
-void Collision::setGameObjectB(GameObject* gameObjectB)
+void Collision::setGameObjectB(GameObject *gameObjectB)
 {
     this->gameObjectB = gameObjectB;
 }

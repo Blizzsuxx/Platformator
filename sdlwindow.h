@@ -23,17 +23,17 @@ public:
 
     void loop();
 
-    SDL_Window* getWindow() const;
-    SDL_Renderer* getRenderer() const;
+    SDL_Window *getWindow() const;
+    SDL_Renderer *getRenderer() const;
 
     const int SCREEN_WIDTH = 640;
     const int SCREEN_HEIGHT = 480;
 
 private:
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    GameObjectManager* gameObjectManager;
-    Camera* mainCamera;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    GameObjectManager *gameObjectManager;
+    Camera *mainCamera;
     SDL_Event e;
     bool quit;
 };

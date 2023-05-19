@@ -121,12 +121,12 @@ void SDLWindow::loop()
     close();
 }
 
-SDL_Window* SDLWindow::getWindow() const
+SDL_Window *SDLWindow::getWindow() const
 {
     return window;
 }
 
-SDL_Renderer* SDLWindow::getRenderer() const
+SDL_Renderer *SDLWindow::getRenderer() const
 {
     return renderer;
 }

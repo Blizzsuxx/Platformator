@@ -5,8 +5,8 @@
 class RectCollider : public Collider
 {
 public:
-    RectCollider(GameObject* gameObject);
-    RectCollider(GameObject* gameObject, const float width, const float height);
+    RectCollider(GameObject *gameObject);
+    RectCollider(GameObject *gameObject, const float width, const float height);
     ~RectCollider();
 
     // Inherited via Collider

@@ -4,7 +4,7 @@ BoundingRadiusProjection::BoundingRadiusProjection()
 {
 }
 
-BoundingRadiusProjection::BoundingRadiusProjection(Collider* collider, float projectedPosition, bool end)
+BoundingRadiusProjection::BoundingRadiusProjection(Collider *collider, float projectedPosition, bool end)
     : collider(collider), projectedPosition(projectedPosition), end(end)
 {
 }
@@ -13,7 +13,7 @@ BoundingRadiusProjection::~BoundingRadiusProjection()
 {
 }
 
-Collider* BoundingRadiusProjection::getCollider()
+Collider *BoundingRadiusProjection::getCollider()
 {
     return collider;
 }
@@ -28,7 +28,7 @@ bool BoundingRadiusProjection::isEnd() const
     return end;
 }
 
-void BoundingRadiusProjection::setCollider(Collider* collider)
+void BoundingRadiusProjection::setCollider(Collider *collider)
 {
     this->collider = collider;
 }

@@ -7,13 +7,13 @@
 class Camera : public Component
 {
 public:
-    Camera(GameObject* gameObject);
-    Camera(GameObject* gameObject, int w, int h);
-    Camera(GameObject* gameObject, int x, int y, int w, int h);
+    Camera(GameObject *gameObject);
+    Camera(GameObject *gameObject, int w, int h);
+    Camera(GameObject *gameObject, int x, int y, int w, int h);
 
     ~Camera();
 
-    void render(Sprite* sprite, SDL_Renderer* renderer);
+    void render(Sprite *sprite, SDL_Renderer *renderer);
 
     // Getters
     const SDL_Rect& getCamera() const;

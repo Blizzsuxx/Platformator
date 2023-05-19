@@ -21,13 +21,13 @@ constexpr auto COMPONENT_TYPE_COUNT = __LINE__ - _START - 4;
 class Component
 {
 public:
-    Component(GameObject* gameObject, ComponentType type);
+    Component(GameObject *gameObject, ComponentType type);
     ~Component();
 
-    GameObject* getGameObject();
+    GameObject *getGameObject();
     ComponentType getType();
 private:
-    GameObject* gameObject;
+    GameObject *gameObject;
     ComponentType type;
 };
 
@@ -49,8 +49,8 @@ public:
     const std::string& getName() const;
     const std::string& getTag() const;
 
-    const Component* getComponent(const ComponentType& componentType) const;
-    Component** getComponents();
+    const Component *getComponent(const ComponentType& componentType) const;
+    Component* *getComponents();
     const std::list<GameObject*> getChildren() const;
 
     // Setters
@@ -61,10 +61,10 @@ public:
     void setName(const std::string& name);
     void setTag(const std::string& tag);
     
-    bool addComponent(Component* component);
+    bool addComponent(Component *component);
     bool removeComponent(const ComponentType& componentType);
-    bool addChild(GameObject* child);
-    bool removeChild(GameObject* child);
+    bool addChild(GameObject *child);
+    bool removeChild(GameObject *child);
 private:
     float rotation;
     bool active;
@@ -73,6 +73,6 @@ private:
     std::string name;
     std::string tag;
     
-    Component* components[COMPONENT_TYPE_COUNT];
+    Component *components[COMPONENT_TYPE_COUNT];
     std::list<GameObject*> children;
 };

@@ -5,7 +5,7 @@
 class CircleCollider : public Collider
 {
 public:
-    CircleCollider(GameObject* gameObject);
+    CircleCollider(GameObject *gameObject);
     ~CircleCollider();
 
     // Inherited via Collider

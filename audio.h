@@ -6,15 +6,15 @@
 class Audio : public Component
 {
 public:
-    Audio(GameObject* gameObject);
+    Audio(GameObject *gameObject);
     ~Audio();
 
     // Getters
-    Mix_Chunk* getChunk() const;
+    Mix_Chunk *getChunk() const;
 
     // Setters
-    void setChunk(Mix_Chunk* chunk);
+    void setChunk(Mix_Chunk *chunk);
 
 private:
-    Mix_Chunk* chunk;
+    Mix_Chunk *chunk;
 };

@@ -8,12 +8,12 @@ class BoundingRadiusProjection;
 class Collider : public Component
 {
 public:
-    Collider(GameObject* gameObject, ComponentType type);
+    Collider(GameObject *gameObject, ComponentType type);
     ~Collider();
     
     virtual float getBoundingRadius() const = 0;
     BoundingRadiusProjection& getProjection(const int index);
-    BoundingRadiusProjection* getProjections();
+    BoundingRadiusProjection *getProjections();
     void generateProjections();
 
     int getLayer() const;
@@ -35,11 +35,11 @@ public:
     BoundingRadiusProjection(Collider*, float projectedPosition, bool end);
     ~BoundingRadiusProjection();
 
-    Collider* getCollider();
+    Collider *getCollider();
     float getProjectedPosition() const;
     bool isEnd() const;
 
-    void setCollider(Collider* collider);
+    void setCollider(Collider *collider);
     void setProjectedPosition(float projectedPosition);
     void setEnd(bool end);
 
@@ -51,7 +51,7 @@ public:
     bool operator>=(const BoundingRadiusProjection& other) const;
 
 private:
-    Collider* collider;
+    Collider *collider;
     float projectedPosition;
     bool end;
 };

@@ -1,6 +1,6 @@
 #include "rigidbody.h"
 
-Rigidbody::Rigidbody(GameObject* gameObject) : Component(gameObject, ComponentType::RIGID_BODY)
+Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY)
 {
 }
 

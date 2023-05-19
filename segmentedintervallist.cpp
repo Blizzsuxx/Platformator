@@ -25,13 +25,13 @@ void SegmentedIntervalList::add(Collider *element, size_t index)
     }
 }
 
-void SegmentedIntervalList::remove(Collider* element, size_t index)
+void SegmentedIntervalList::remove(Collider *element, size_t index)
 {
     // find the index of the element using binary search
-    BoundingRadiusProjection* lowerProjection = &element->getProjection(index);
+    BoundingRadiusProjection *lowerProjection = &element->getProjection(index);
     size_t chunkWhereItWasRemoved = remove(lowerProjection);
 
-    BoundingRadiusProjection* upperProjection = &element->getProjection(index + 1);
+    BoundingRadiusProjection *upperProjection = &element->getProjection(index + 1);
     size_t chunkWhereItWasRemoved2 = remove(upperProjection);
 
     for (size_t i = chunkWhereItWasRemoved + 1; i < chunkWhereItWasRemoved2; i++)

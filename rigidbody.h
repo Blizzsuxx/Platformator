@@ -15,7 +15,7 @@ enum BodyType
 class Rigidbody : public Component
 {
 public:
-    Rigidbody(GameObject* gameObject);
+    Rigidbody(GameObject *gameObject);
     ~Rigidbody();
 
     // Getters

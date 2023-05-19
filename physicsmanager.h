@@ -12,8 +12,8 @@ public:
 
     void applyPhysics();
     void resolveCollisions();
-    void addRigidBodyComponent(Rigidbody* rigidBodyComponent);
-    void addColliderComponent(Collider* colliderComponent);
+    void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
+    void addColliderComponent(Collider *colliderComponent);
 
 private:
     std::list<Rigidbody*> rigidBodyComponents;
@@ -22,6 +22,6 @@ private:
     float gravity;
     float timeDelta;
 
-    std::list<Collision>* broadPhase();
-    std::list<Collision>* narrowPhase(std::list<Collision>* broadPhaseCollisions);
+    std::list<Collision> *broadPhase();
+    std::list<Collision> *narrowPhase(std::list<Collision> *broadPhaseCollisions);
 };

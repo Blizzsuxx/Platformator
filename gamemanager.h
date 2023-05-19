@@ -11,7 +11,7 @@ public:
     ~GameManager();
 
 private:
-    SDLWindow* window;
-    PhysicsManager* physicsManager;
-    GameObjectManager* gameObjectManager;
+    SDLWindow *window;
+    PhysicsManager *physicsManager;
+    GameObjectManager *gameObjectManager;
 };

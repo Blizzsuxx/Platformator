@@ -1,10 +1,10 @@
 #include "rectcollider.h"
 
-RectCollider::RectCollider(GameObject* gameObject) : Collider(gameObject, ComponentType::COLLIDER)
+RectCollider::RectCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER)
 {
 }
 
-RectCollider::RectCollider(GameObject* gameObject, const float width, const float height) 
+RectCollider::RectCollider(GameObject *gameObject, const float width, const float height) 
     : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height)
 {
     recalculateBoundingRadius();

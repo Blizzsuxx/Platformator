@@ -1,15 +1,15 @@
 #include "sprite.h"
 
-Sprite::Sprite(GameObject* gameObject) : Sprite(gameObject, NULL, SDL_FLIP_NONE)
+Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, NULL, SDL_FLIP_NONE)
 {
 
 }
 
-Sprite::Sprite(GameObject* gameObject, SDL_Texture* texture) : Sprite(gameObject, texture, SDL_FLIP_NONE)
+Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture) : Sprite(gameObject, texture, SDL_FLIP_NONE)
 {
 }
 
-Sprite::Sprite(GameObject* gameObject, SDL_Texture* texture, SDL_RendererFlip flip) : Component(gameObject, SPRITE), texture(texture), flip(flip)
+Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip) : Component(gameObject, SPRITE), texture(texture), flip(flip)
 {
     SDL_QueryTexture(texture, NULL, NULL, &width, &height);
 }
@@ -19,7 +19,7 @@ Sprite::~Sprite()
 }
 
 // Getters
-SDL_Texture* Sprite::getTexture() const
+SDL_Texture *Sprite::getTexture() const
 {
     return texture;
 }
@@ -40,7 +40,7 @@ int Sprite::getHeight() const
 }
 
 // Setters
-void Sprite::setTexture(SDL_Texture* texture)
+void Sprite::setTexture(SDL_Texture *texture)
 {
     this->texture = texture;
 }

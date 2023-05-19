@@ -1,6 +1,6 @@
 #include "circlecollider.h"
 
-CircleCollider::CircleCollider(GameObject* gameObject) : Collider(gameObject, ComponentType::COLLIDER)
+CircleCollider::CircleCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER)
 {
 }
 

@@ -1,7 +1,7 @@
 #include "segmentedintervallist.h"
 
 SegmentedIntervalList::SegmentedIntervalList()
-    : size(0), arrays()
+    : size(0), chunks()
 {
 }
 
@@ -21,7 +21,7 @@ void SegmentedIntervalList::add(Collider *element, size_t index)
 
     for (size_t i = chunkWhereItWasInserted + 1; i < chunkWhereItWasInserted2; i++)
     {
-        arrays[i]->addCheckpoint(element);
+        chunks[i]->addCheckpoint(element);
     }
 }
 
@@ -36,7 +36,7 @@ void SegmentedIntervalList::remove(Collider *element, size_t index)
 
     for (size_t i = chunkWhereItWasRemoved + 1; i < chunkWhereItWasRemoved2; i++)
     {
-        arrays[i]->removeCheckpoint(element);
+        chunks[i]->removeCheckpoint(element);
     }
 }
 
@@ -44,9 +44,9 @@ void SegmentedIntervalList::clear()
 {
     for (size_t i = 0; i < size; i++)
     {
-        delete arrays[i];
+        delete chunks[i];
     }
-    arrays.clear();
+    chunks.clear();
     size = 0;
 }
 
@@ -55,13 +55,26 @@ void SegmentedIntervalList::sort()
     // TODO: parallelize this
     for (size_t i = 0; i < size; i++)
     {
-        arrays[i]->sort();
+        chunks[i]->sort();
+    }
+
+    // check if the arrays are sorted
+    for (size_t i = 1; i < size; i++)
+    {
+        while (*chunks[i - 1]->getMax() > *chunks[i]->getMin())
+        {
+            // if the min element belongs to the previous array, move it to the previous array
+            if (i == 1 || *chunks[i]->getMin() >= *chunks[i - 2]->getMax())
+            {
+                chunk
+            }
+        }
     }
 }
 
 void SegmentedIntervalList::sort(size_t index)
 {
-    arrays[index]->sort();
+    chunks[index]->sort();
 }
 
 size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
@@ -76,15 +89,15 @@ size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
     {
         mid = (low + high) / 2;
 
-        if (value <= *arrays[mid]->getMax() && (mid == 0 || value >= *arrays[mid - 1]->getMax()))
+        if (value <= *chunks[mid]->getMax() && (mid == 0 || value >= *chunks[mid - 1]->getMax()))
         {
             return mid;
         }
-        else if (value >= *arrays[mid]->getMax())
+        else if (value >= *chunks[mid]->getMax())
         {
             low = mid + 1;
         }
-        else if (value <= *arrays[mid]->getMax())
+        else if (value <= *chunks[mid]->getMax())
         {
             high = mid - 1;
         }
@@ -99,15 +112,15 @@ size_t SegmentedIntervalList::add(BoundingRadiusProjection *element)
     size_t index = binarySearch(element);
 
     // insert the element at the index
-    if (!arrays[index]->add(element))
+    if (!chunks[index]->add(element))
     {
         // if the array is full, split it
         LocalSortArray *newArray = new LocalSortArray();
         for (size_t i = MAX_SIZE / 2; i < MAX_SIZE; i++)
         {
-            newArray->addWithoutSort(arrays[index]->pop());
+            newArray->addWithoutSort(chunks[index]->pop());
         }
-        arrays.insert(arrays.begin() + index + 1, newArray);
+        chunks.insert(chunks.begin() + index + 1, newArray);
         size++;
     }
 
@@ -119,15 +132,49 @@ size_t SegmentedIntervalList::remove(BoundingRadiusProjection *element)
     // find the index of the element using binary search
     size_t index = binarySearch(element);
 
-    arrays[index]->remove(element);
+    chunks[index]->remove(element);
 
     // if the array is empty, remove it
-    if (arrays[index]->getSize() == 0)
+    if (chunks[index]->getSize() == 0)
     {
-        delete arrays[index];
-        arrays.erase(arrays.begin() + index);
+        delete chunks[index];
+        chunks.erase(chunks.begin() + index);
         size--;
     }
 
     return index;
+}
+
+BoundingRadiusProjection *SegmentedIntervalList::remove(size_t chunkIndex, size_t arrayIndex)
+{
+    BoundingRadiusProjection *removedElement = chunks[chunkIndex]->remove(arrayIndex);
+
+    // if the array is empty, remove it
+    if (chunks[chunkIndex]->getSize() == 0)
+    {
+        delete chunks[chunkIndex];
+        chunks.erase(chunks.begin() + chunkIndex);
+        size--;
+    }
+
+    return removedElement;
+}
+
+void SegmentedIntervalList::swap(BoundingRadiusProjection *element1, BoundingRadiusProjection *element2)
+{
+    size_t chunkIndex1 = binarySearch(element1);
+    size_t arrayIndex1 = chunks[chunkIndex1]->binarySearch(element1);
+
+    size_t chunkIndex2 = binarySearch(element2);
+    size_t arrayIndex2 = chunks[chunkIndex2]->binarySearch(element2);
+
+    swap(chunkIndex1, arrayIndex1, chunkIndex2, arrayIndex2);
+}
+
+void SegmentedIntervalList::swap(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2, size_t arrayIndex2)
+{
+    chunks[chunkIndex1]->swap(arrayIndex1, chunks[chunkIndex2], arrayIndex2);
+
+    // update checkpoints
+    chunks[chunkIndex1]->get(arrayIndex1)->getCollider()->getPairProjection()
 }

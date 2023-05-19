@@ -16,10 +16,13 @@ public:
     void sort(size_t index);
 
 private:
-    std::vector<LocalSortArray*> arrays;
-    size_t size;
-
     size_t binarySearch(BoundingRadiusProjection *element);
     size_t add(BoundingRadiusProjection *element);
     size_t remove(BoundingRadiusProjection *element);
+    BoundingRadiusProjection *remove(size_t chunkIndex, size_t arrayIndex);
+    void swap(BoundingRadiusProjection *element1, BoundingRadiusProjection *element2);
+    void swap(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2, size_t arrayIndex2);
+
+    std::vector<LocalSortArray*> chunks;
+    size_t size;
 };

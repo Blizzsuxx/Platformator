@@ -18,38 +18,14 @@ bool LocalSortArray::add(BoundingRadiusProjection *element)
     }
     else
     {
-        size_t low = 0;
-        size_t high = size - 1;
-        size_t mid = 0;
-
-        BoundingRadiusProjection value = *element;
-
-        while (low <= high)
-        {
-            mid = (low + high) / 2;
-
-            // check if the element belongs in the middle
-            if (value >= *array[mid] && value <= *array[mid + 1])
-            {
-                low = mid;
-                break;
-            }
-            else if (value < *array[mid])
-            {
-                high = mid - 1;
-            }
-            else if (value > *array[mid])
-            {
-                low = mid + 1;
-            }
-        }
+        size_t index = binarySearch(element);
 
         // insert the element at the index
-        for (size_t i = size; i > low; i--)
+        for (size_t i = size; i > index; i--)
         {
             array[i] = array[i - 1];
         }
-        array[low] = element;
+        array[index] = element;
         size++;
         return true;
     }
@@ -84,41 +60,29 @@ BoundingRadiusProjection *LocalSortArray::addAndPop(BoundingRadiusProjection *el
     return removed;
 }
 
-void LocalSortArray::remove(size_t index)
+BoundingRadiusProjection *LocalSortArray::remove(size_t index)
 {
     // remove the element at the specified index
+    BoundingRadiusProjection *removed = array[index];
+
     for (size_t i = index; i < size - 1; i++)
     {
         array[i] = array[i + 1];
     }
     size--;
+
+    return removed;
 }
 
 bool LocalSortArray::remove(BoundingRadiusProjection *element)
 {
     // find the index of the element using binary search
-    size_t low = 0;
-    size_t high = size - 1;
-    size_t mid = 0;
-    BoundingRadiusProjection value = *element;
+    size_t index = binarySearch(element);
 
-    while (low <= high)
+    if (index != -1)
     {
-        mid = (low + high) / 2;
-
-        if (value == *array[mid])
-        {
-            remove(mid);
-            return true;
-        }
-        else if (value < *array[mid])
-        {
-            high = mid - 1;
-        }
-        else if (value > *array[mid])
-        {
-            low = mid + 1;
-        }
+        remove(index);
+        return true;
     }
 
     return false;
@@ -195,6 +159,11 @@ BoundingRadiusProjection *LocalSortArray::getMax()
     return array[size - 1];
 }
 
+BoundingRadiusProjection *LocalSortArray::getMin()
+{
+    return array[0];
+}
+
 size_t LocalSortArray::getSize() const
 {
     return size;
@@ -219,4 +188,40 @@ void LocalSortArray::addCheckpoint(Collider *collider)
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
     checkpoint.erase(std::remove(checkpoint.begin(), checkpoint.end(), collider), checkpoint.end());
+}
+
+size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
+{
+    // find the index of the element using binary search
+    size_t low = 0;
+    size_t high = size - 1;
+    size_t mid = 0;
+    BoundingRadiusProjection value = *element;
+
+    while (low <= high)
+    {
+        mid = (low + high) / 2;
+
+        if (value == *array[mid])
+        {
+            return mid;
+        }
+        else if (value < *array[mid])
+        {
+            high = mid - 1;
+        }
+        else if (value > *array[mid])
+        {
+            low = mid + 1;
+        }
+    }
+
+    return -1;
+}
+
+void LocalSortArray::swap(size_t index1, LocalSortArray *array2, size_t index2)
+{
+    BoundingRadiusProjection *temp = array[index1];
+    array[index1] = array2->array[index2];
+    array2->array[index2] = temp;
 }

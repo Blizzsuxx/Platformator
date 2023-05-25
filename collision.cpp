@@ -43,12 +43,12 @@ const Eigen::Vector2f *Collision::getContactPoint() const
     return contactPoint;
 }
 
-const GameObject *Collision::getGameObjectA() const
+GameObject *Collision::getGameObjectA()
 {
     return gameObjectA;
 }
 
-const GameObject *Collision::getGameObjectB() const
+GameObject *Collision::getGameObjectB()
 {
     return gameObjectB;
 }

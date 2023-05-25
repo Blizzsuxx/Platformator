@@ -1,8 +1,27 @@
 #include "localsortarray.h"
 
 LocalSortArray::LocalSortArray()
-    : size(0), checkpoint()
+    : size(0), checkpoint(), array()
 {
+}
+
+LocalSortArray::LocalSortArray(LocalSortArray *other)
+    : size(other->size / 2), checkpoint(other->checkpoint)
+{
+    std::copy(other->array + size, other->array + MAX_SIZE, array);
+    other->size = size;
+
+    for(size_t i = size - 1; i >= 0; i--)
+    {
+        if (array[i]->isEnd())
+        {
+            other->addCheckpoint(array[i]->getCollider());
+        }
+        else
+        {
+            other->removeCheckpoint(array[i]->getCollider());
+        }
+    }
 }
 
 LocalSortArray::~LocalSortArray()
@@ -182,12 +201,12 @@ void LocalSortArray::clear()
 
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
-    checkpoint.push_back(collider);
+    checkpoint.insert(collider);
 }
 
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
-    checkpoint.erase(std::remove(checkpoint.begin(), checkpoint.end(), collider), checkpoint.end());
+    checkpoint.erase(collider);
 }
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
@@ -224,4 +243,9 @@ void LocalSortArray::swap(size_t index1, LocalSortArray *array2, size_t index2)
     BoundingRadiusProjection *temp = array[index1];
     array[index1] = array2->array[index2];
     array2->array[index2] = temp;
+}
+
+ std::unordered_set<Collider*> *LocalSortArray::getCheckpoint()
+{
+    return &checkpoint;
 }

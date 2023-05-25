@@ -14,8 +14,8 @@ public:
     const Eigen::Vector2f *getNormal() const;
     float getPenetration() const;
     const Eigen::Vector2f *getContactPoint() const;
-    const GameObject *getGameObjectA() const;
-    const GameObject *getGameObjectB() const;
+    GameObject *getGameObjectA();
+    GameObject *getGameObjectB();
 
     // Setters
     void setNormal(Eigen::Vector2f *normal);

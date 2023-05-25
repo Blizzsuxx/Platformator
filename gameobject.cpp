@@ -69,7 +69,7 @@ const std::string& GameObject::getTag() const
     return tag;
 }
 
-const Component *GameObject::getComponent(const ComponentType& componentType) const
+Component *GameObject::getComponent(const ComponentType& componentType) const
 {
     return components[componentType];
 }

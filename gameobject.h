@@ -49,7 +49,7 @@ public:
     const std::string& getName() const;
     const std::string& getTag() const;
 
-    const Component *getComponent(const ComponentType& componentType) const;
+    Component *getComponent(const ComponentType& componentType) const;
     Component* *getComponents();
     const std::list<GameObject*> getChildren() const;
 

@@ -1,31 +1,9 @@
 #pragma once
 
 #include "gameobject.h"
+#include <memory>
 
-class BoundingRadiusProjection;
-
-class Collider : public Component
-{
-public:
-    Collider(GameObject *gameObject, ComponentType type);
-    ~Collider();
-
-    virtual float getBoundingRadius() const = 0;
-    BoundingRadiusProjection &getProjection(const int index);
-    BoundingRadiusProjection *getProjections();
-    void generateProjections();
-
-    int getLayer() const;
-    void setLayer(const int layer);
-
-    bool isTriggered() const;
-    void setTrigger(const bool isTrigger);
-
-private:
-    int layer;
-    bool isTrigger;
-    BoundingRadiusProjection projections[4];
-};
+class Collider;
 
 class BoundingRadiusProjection
 {
@@ -53,4 +31,39 @@ private:
     Collider *collider;
     float projectedPosition;
     bool end;
+};
+
+enum class ColliderType
+{
+    CircleCollider,
+    BoxCollider
+};
+
+class Collider : public Component
+{
+public:
+    Collider(GameObject *gameObject, ComponentType type);
+    ~Collider();
+
+    virtual float getBoundingBoxLengthX() const = 0;
+    virtual float getBoundingBoxLengthY() const = 0;
+    virtual ColliderType getColliderType() const = 0;
+    virtual std::auto_ptr<std::vector<Eigen::Vector2f>> getNormals(Collider *other) = 0;
+    virtual std::auto_ptr<std::vector<Eigen::Vector2f>> getVertices() = 0;
+    virtual std::auto_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) = 0;
+    virtual std::auto_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) = 0;
+    BoundingRadiusProjection &getProjection(const int index);
+    BoundingRadiusProjection *getProjections();
+    void generateProjections();
+
+    int getLayer() const;
+    void setLayer(const int layer);
+
+    bool isTriggered() const;
+    void setTrigger(const bool isTrigger);
+
+private:
+    int layer;
+    bool isTrigger;
+    BoundingRadiusProjection projections[4];
 };

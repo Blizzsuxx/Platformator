@@ -2,11 +2,12 @@
 
 #include "collider.h"
 
-class CircleCollider : public Collider
+class RectCollider : public Collider
 {
 public:
-    CircleCollider(GameObject *gameObject);
-    ~CircleCollider();
+    RectCollider(GameObject *gameObject);
+    RectCollider(GameObject *gameObject, const float width, const float height);
+    ~RectCollider();
 
     // Inherited via Collider
     float getBoundingBoxLengthX() const override;
@@ -18,11 +19,14 @@ public:
     std::auto_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) override;
 
     // Getters
-    float getRadius() const;
+    float getWidth() const;
+    float getHeight() const;
 
     // Setters
-    void setRadius(const float radius);
-
+    void setWidth(const float width);
+    void setHeight(const float height);
+    
 private:
-    float radius;
+    float width;
+    float height;
 };

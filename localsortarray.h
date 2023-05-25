@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <unordered_set>
 #include "collider.h"
 
 const size_t MAX_SIZE = 32;
@@ -10,6 +11,7 @@ class LocalSortArray
 {
 public:
     LocalSortArray();
+    LocalSortArray(LocalSortArray *other);
     ~LocalSortArray();
 
     bool add(BoundingRadiusProjection *element);
@@ -30,12 +32,13 @@ public:
     void addCheckpoint(Collider *element);
     void removeCheckpoint(Collider *element);
     void swap(size_t index1, LocalSortArray *array2, size_t index2);
+    std::unordered_set<Collider*> *getCheckpoint();
 
 private:
     size_t binarySearch(BoundingRadiusProjection *element);
 
     BoundingRadiusProjection *array[MAX_SIZE];
-    std::vector<Collider*> checkpoint;
+    std::unordered_set<Collider*> checkpoint;
     size_t size;
 
     friend class SegmentedIntervalList;

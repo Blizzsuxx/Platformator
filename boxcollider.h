@@ -13,10 +13,9 @@ public:
     float getBoundingBoxLengthX() const override;
     float getBoundingBoxLengthY() const override;
     ColliderType getColliderType() const override;
-    std::auto_ptr<std::vector<Eigen::Vector2f>> getNormals(Collider *other) override;
-    std::auto_ptr<std::vector<Eigen::Vector2f>> getVertices() override;
-    std::auto_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) override;
-    std::auto_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) override;
+    std::vector<Eigen::Vector2f*> *getNormals(Collider *other) override;
+    std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) override;
+    std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) override;
 
     // Getters
     float getWidth() const;
@@ -29,4 +28,6 @@ public:
 private:
     float width;
     float height;
+
+    std::unique_ptr<std::vector<Eigen::Vector2f>> getVertices();
 };

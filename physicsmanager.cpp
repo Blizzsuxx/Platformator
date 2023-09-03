@@ -31,7 +31,7 @@ void PhysicsManager::applyPhysics()
     }
 }
 
-void PhysicsManager::resolveCollisions()
+void PhysicsManager::checkForCollisions()
 {
     narrowPhase(broadPhase());
 }
@@ -50,20 +50,21 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     colliderProjectionsY.add(colliderComponent, 2UL);
 }
 
-std::list<Collision> *PhysicsManager::broadPhase()
+std::list<std::shared_ptr<Collision>> *PhysicsManager::broadPhase()
 {
-    std::list<Collision *> *broadPhaseCollisions = new std::list<Collision *>();
-    std::vector<Collider *> potentialCollisions = std::vector<Collider *>();
+    std::list<std::shared_ptr<Collision>> *broadPhaseCollisions = new std::list<std::shared_ptr<Collision>>();
 
     // TODO: parallelize this loop
     for (LocalSortArray *chunk : *colliderProjectionsX.getChunks())
     {
-        checkForPotentialCollisionsInsideChunk(chunk, potentialCollisions, broadPhaseCollisions);
-        checkForCollisionsWithCheckpoint(chunk, potentialCollisions, broadPhaseCollisions);
+        checkForPotentialCollisionsInsideChunk(chunk, broadPhaseCollisions);
+        checkForCollisionsWithCheckpoint(chunk, broadPhaseCollisions);
     }
+
+    return broadPhaseCollisions;
 }
 
-void PhysicsManager::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::vector<Collider *> &potentialCollisions, std::list<Collision *> *broadPhaseCollisions)
+void PhysicsManager::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions)
 {
     for (size_t i = 0; i < chunk->getSize(); i++)
     {
@@ -77,23 +78,20 @@ void PhysicsManager::checkForPotentialCollisionsInsideChunk(LocalSortArray *chun
 
         if (projection->isEnd())
         {
-            for (auto previousProjection = potentialCollisions.rbegin(); previousProjection != potentialCollisions.rend(); previousProjection++)
+            for (size_t j = i - 1; j >= 0; j--)
             {
-                if ((*previousProjection) == collider)
+                Collider *previousProjection = chunk->get(j)->getCollider();
+                if (previousProjection == collider)
                 {
                     break;
                 }
-                broadPhaseCollisions->push_back(new Collision(collider->getGameObject(), (*previousProjection)->getGameObject()));
+                broadPhaseCollisions->push_back(std::make_shared<Collision>(collider->getGameObject(), previousProjection->getGameObject()));
             }
-        }
-        else
-        {
-            potentialCollisions.push_back(collider);
         }
     }
 }
 
-void PhysicsManager::checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std::vector<Collider *> &potentialCollisions, std::list<Collision *> *broadPhaseCollisions)
+void PhysicsManager::checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions)
 {
     for (Collider *checkpoint : *(chunk->getCheckpoint()))
     {
@@ -102,57 +100,149 @@ void PhysicsManager::checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std
             continue;
         }
 
-        for (auto previousProjection = potentialCollisions.rbegin(); previousProjection != potentialCollisions.rend(); previousProjection++)
+        for (size_t i = chunk->getSize() - 1; i >= 0; i--)
         {
-            if ((*previousProjection) == checkpoint)
+            Collider *previousProjection = chunk->get(i)->getCollider();
+            if (previousProjection == checkpoint)
             {
                 break;
             }
-            broadPhaseCollisions->push_back(new Collision(checkpoint->getGameObject(), (*previousProjection)->getGameObject()));
+            broadPhaseCollisions->push_back(std::make_shared<Collision>(checkpoint->getGameObject(), previousProjection->getGameObject()));
         }
     }
 }
 
-std::list<Collision> *PhysicsManager::narrowPhase(std::list<Collision> *broadPhaseCollisions)
+std::list<std::shared_ptr<Collision>> *PhysicsManager::narrowPhase(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions)
 {
+    std::list<std::shared_ptr<Collision>> *narrowPhaseCollisions = new std::list<std::shared_ptr<Collision>>();
+
     // we can use the separating axis theorem to determine if there is a collision
-    for (auto &collision : *broadPhaseCollisions)
+    auto collisionIterator = broadPhaseCollisions->begin();
+    auto endOfList = broadPhaseCollisions->end();
+    while (collisionIterator != endOfList)
     {
-        GameObject *gameObject1 = collision.getGameObjectA();
-        GameObject *gameObject2 = collision.getGameObjectB();
+        Collision *collision = (*collisionIterator).get();
 
-        Collider *collider1 = (Collider *)gameObject1->getComponent(ComponentType::COLLIDER);
-        Collider *collider2 = (Collider *)gameObject2->getComponent(ComponentType::COLLIDER);
-
-        std::auto_ptr<Eigen::Vector2f>
-    }
-}
-
-std::auto_ptr<Eigen::Vector2f> PhysicsManager::findDeepestCollision(Collider *collider1, Collider *collider2, std::auto_ptr<std::vector<Eigen::Vector2f>> &normals)
-{
-    float minOverlap = std::numeric_limits<float>::max();
-    Eigen::Vector2f *minNormal = nullptr;
-
-    for (size_t i = 0; i < normals->size(); i++)
-    {
-        Eigen::Vector2f &normal = (*normals)[i];
-        std::auto_ptr<std::vector<float>> projections1 = collider1->projectOntoAxis(normal, i); // we are using the index on the owner of the normal to further optimize projection
-        std::auto_ptr<std::vector<float>> projections2 = collider2->projectOntoAxis(normal);
-
-        if (projections1->at(1) < projections2->at(0) || projections2->at(1) < projections1->at(0))
+        if (checkCollisions(collision))
         {
-            return std::auto_ptr<Eigen::Vector2f>(nullptr);
+            broadPhaseCollisions->erase(collisionIterator);
         }
         else
         {
-            float overlap = std::min(projections1->at(1), projections2->at(1)) - std::max(projections1->at(0), projections2->at(0));
+            collisionIterator++;
+        }
+    }
+
+    return broadPhaseCollisions;
+}
+
+void PhysicsManager::deleteNormals(std::vector<Eigen::Vector2f *> *normals)
+{
+    for (Eigen::Vector2f *normal : *normals)
+    {
+        delete normal;
+    }
+    delete normals;
+}
+
+void PhysicsManager::deleteNormals(std::vector<Eigen::Vector2f *> *normals, Eigen::Vector2f *normalNotToDelete)
+{
+    for (Eigen::Vector2f *normal : *normals)
+    {
+        if (normal == normalNotToDelete)
+            continue;
+        delete normal;
+    }
+    delete normals;
+}
+
+bool PhysicsManager::checkCollisions(Collision *collision)
+{
+    Collider *referenceCollider = (Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
+    Collider *incidentCollider = (Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
+
+    float minOverlap = std::numeric_limits<float>::max();
+    Eigen::Vector2f *minNormal = nullptr;
+    std::vector<Eigen::Vector2f *> *normals = referenceCollider->getNormals(incidentCollider);
+    Eigen::Vector2f *incidentProjection = nullptr;
+    Collider *realIncidentCollider = incidentCollider;
+
+    for (size_t i = 0; i < normals->size(); i++)
+    {
+        Eigen::Vector2f &normal = *((*normals)[i]);
+        auto projections1 = referenceCollider->projectOntoAxis(normal, i); // we are using the index on the owner of the normal to further optimize projection
+        auto projections2 = incidentCollider->projectOntoAxis(normal);     // TODO: see if it's better to approximate from the perspective of the incident or reference object
+
+        if (projections1->y() < projections2->x() || projections2->y() < projections1->x())
+        {
+            deleteNormals(normals);
+            return false;
+        }
+        else
+        {
+            float overlap = std::min(projections1->y(), projections2->y()) - std::max(projections1->x(), projections2->x());
             if (overlap < minOverlap)
             {
                 minOverlap = overlap;
                 minNormal = &normal;
+                incidentProjection = projections2.get();
+            }
+        }
+    }
+    deleteNormals(normals, minNormal);
+
+    const Eigen::Vector2f *minNormalBefore = minNormal;
+    std::swap(incidentCollider, referenceCollider);
+    normals = referenceCollider->getNormals(incidentCollider);
+
+    for (size_t i = 0; i < normals->size(); i++)
+    {
+        Eigen::Vector2f &normal = *((*normals)[i]);
+        auto projections1 = referenceCollider->projectOntoAxis(normal, i); // we are using the index on the owner of the normal to further optimize projection
+        auto projections2 = incidentCollider->projectOntoAxis(normal);     // TODO: see if it's better to approximate from the perspective of the incident or reference object
+
+        if (projections1->y() < projections2->x() || projections2->y() < projections1->x())
+        {
+            deleteNormals(normals);
+            delete minNormalBefore;
+            return false;
+        }
+        else
+        {
+            float overlap = std::min(projections1->y(), projections2->y()) - std::max(projections1->x(), projections2->x());
+            if (overlap < minOverlap)
+            {
+                minOverlap = overlap;
+                minNormal = &normal;
+                incidentProjection = projections1.get();
+                realIncidentCollider = incidentCollider;
             }
         }
     }
 
-    return std::auto_ptr<Eigen::Vector2f>(minNormal);
+    if (minNormal != minNormalBefore)
+    {
+        delete minNormalBefore;
+    }
+
+    deleteNormals(normals, minNormal);
+    collision->setNormal(minNormal);
+    collision->setPenetration(minOverlap);
+    collision->setIncidentObject(realIncidentCollider->getGameObject());
+    collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider->getGameObject() : incidentCollider->getGameObject());
+
+    auto directionVector = incidentCollider->getGameObject()->getPosition() - referenceCollider->getGameObject()->getPosition();
+    if (minNormal->dot(directionVector) < 0){
+        *minNormal *= -1.0f;
+    }
+    
+    float projectionDelta = (incidentProjection->y() - incidentProjection->x()) / 2;
+    collision->setContactPoint(new Eigen::Vector2f((realIncidentCollider->getGameObject()->getPosition() + ((*minNormal) * projectionDelta))));
+
+    return true;
+}
+
+void PhysicsManager::resolveCollisions(std::list<std::shared_ptr<Collision>> *narrowPhaseCollisions)
+{
+
 }

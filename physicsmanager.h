@@ -12,16 +12,19 @@ public:
     ~PhysicsManager();
 
     void applyPhysics();
-    void resolveCollisions();
+    void checkForCollisions();
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
 
 private:
-    std::list<Collision> *broadPhase();
-    std::list<Collision> *narrowPhase(std::list<Collision> *broadPhaseCollisions);
-    void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::vector<Collider *> &potentialCollisions, std::list<Collision *> *broadPhaseCollisions);
-    void checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std::vector<Collider *> &potentialCollisions, std::list<Collision *> *broadPhaseCollisions);
-    std::auto_ptr<Eigen::Vector2f> findDeepestCollision(Collider *collider1, Collider *collider2, std::auto_ptr<std::vector<Eigen::Vector2f>> &normals);
+    std::list<std::shared_ptr<Collision>> *broadPhase();
+    std::list<std::shared_ptr<Collision>> *narrowPhase(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+    void resolveCollisions(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+    void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+    void checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+    bool checkCollisions(Collision *collision);
+    void deleteNormals(std::vector<Eigen::Vector2f*> *normals);
+    void deleteNormals(std::vector<Eigen::Vector2f*> *normals, Eigen::Vector2f *normalNotToDelete);
 
     std::vector<Rigidbody*> rigidBodyComponents;
     std::vector<Collider*> colliderComponents;

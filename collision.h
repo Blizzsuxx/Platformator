@@ -14,20 +14,20 @@ public:
     const Eigen::Vector2f *getNormal() const;
     float getPenetration() const;
     const Eigen::Vector2f *getContactPoint() const;
-    GameObject *getGameObjectA();
-    GameObject *getGameObjectB();
+    GameObject *getReferenceObject();
+    GameObject *getIncidentObject();
 
     // Setters
     void setNormal(Eigen::Vector2f *normal);
     void setPenetration(const float penetration);
     void setContactPoint(Eigen::Vector2f *contactPoint);
-    void setGameObjectA(GameObject *gameObjectA);
-    void setGameObjectB(GameObject *gameObjectB);
+    void setReferenceObject(GameObject *gameObjectA);
+    void setIncidentObject(GameObject *gameObjectB);
 
 private:
     Eigen::Vector2f *normal;
     float penetration;
     Eigen::Vector2f *contactPoint;
-    GameObject *gameObjectA;
-    GameObject *gameObjectB;
+    GameObject *referenceObject;
+    GameObject *incidentObject;
 };

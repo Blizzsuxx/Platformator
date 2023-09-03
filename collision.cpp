@@ -5,12 +5,12 @@ Collision::Collision()
 }
 
 Collision::Collision(GameObject *gameObjectA, GameObject *gameObjectB)
-    : gameObjectA(gameObjectA), gameObjectB(gameObjectB)
+    : referenceObject(gameObjectA), incidentObject(gameObjectB)
 {
 }
 
 Collision::Collision(Eigen::Vector2f *normal, float penetration, Eigen::Vector2f *contactPoint, GameObject *gameObjectA, GameObject *gameObjectB)
-    : normal(normal), penetration(penetration), contactPoint(contactPoint), gameObjectA(gameObjectA), gameObjectB(gameObjectB)
+    : normal(normal), penetration(penetration), contactPoint(contactPoint), referenceObject(gameObjectA), incidentObject(gameObjectB)
 {
 }
 
@@ -43,14 +43,14 @@ const Eigen::Vector2f *Collision::getContactPoint() const
     return contactPoint;
 }
 
-GameObject *Collision::getGameObjectA()
+GameObject *Collision::getReferenceObject()
 {
-    return gameObjectA;
+    return referenceObject;
 }
 
-GameObject *Collision::getGameObjectB()
+GameObject *Collision::getIncidentObject()
 {
-    return gameObjectB;
+    return incidentObject;
 }
 
 // Setters
@@ -70,12 +70,12 @@ void Collision::setContactPoint(Eigen::Vector2f *contactPoint)
     this->contactPoint = contactPoint;
 }
 
-void Collision::setGameObjectA(GameObject *gameObjectA)
+void Collision::setReferenceObject(GameObject *gameObjectA)
 {
-    this->gameObjectA = gameObjectA;
+    this->referenceObject = gameObjectA;
 }
 
-void Collision::setGameObjectB(GameObject *gameObjectB)
+void Collision::setIncidentObject(GameObject *gameObjectB)
 {
-    this->gameObjectB = gameObjectB;
+    this->incidentObject = gameObjectB;
 }

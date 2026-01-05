@@ -49,7 +49,7 @@ std::unique_ptr<Eigen::Vector2f> CircleCollider::projectOntoAxis(const Eigen::Ve
 {
     float value = axis.dot(getGameObject()->getPosition());
 
-    return std::make_unique<Eigen::Vector2f>(new Eigen::Vector2f(value - radius, value + radius));
+    return std::make_unique<Eigen::Vector2f>(value - radius, value + radius);
 }
 
 std::unique_ptr<Eigen::Vector2f> CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis, size_t index)

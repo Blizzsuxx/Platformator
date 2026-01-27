@@ -2,12 +2,12 @@
 
 #include "collider.h"
 
-class RectCollider : public Collider
+class BoxCollider : public Collider
 {
 public:
-    RectCollider(GameObject *gameObject);
-    RectCollider(GameObject *gameObject, const float width, const float height);
-    ~RectCollider();
+    BoxCollider(GameObject *gameObject);
+    BoxCollider(GameObject *gameObject, const float width, const float height);
+    ~BoxCollider();
 
     // Inherited via Collider
     float getBoundingBoxLengthX() const override;

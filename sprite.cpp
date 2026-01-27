@@ -1,6 +1,6 @@
 #include "sprite.h"
 
-Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, NULL, SDL_FLIP_NONE)
+Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, nullptr, SDL_FLIP_NONE)
 {
 
 }
@@ -11,7 +11,7 @@ Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture) : Sprite(gameObject
 
 Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip) : Component(gameObject, SPRITE), texture(texture), flip(flip)
 {
-    SDL_QueryTexture(texture, NULL, NULL, &width, &height);
+    SDL_QueryTexture(texture, nullptr, nullptr, &width, &height);
 }
 
 Sprite::~Sprite()

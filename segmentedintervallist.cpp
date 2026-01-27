@@ -1,7 +1,7 @@
 #include "segmentedintervallist.h"
 
 SegmentedIntervalList::SegmentedIntervalList()
-    : size(0), chunks()
+    : size(0) 
 {
 }
 

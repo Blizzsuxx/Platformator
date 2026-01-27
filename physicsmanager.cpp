@@ -1,7 +1,7 @@
 #include "physicsmanager.h"
 
 PhysicsManager::PhysicsManager()
-    : gravity(9.8f), timeDelta(0.0f), rigidBodyComponents(), colliderComponents(), colliderProjectionsX(), colliderProjectionsY()
+    : gravity(9.8f), timeDelta(0.0f) 
 {
 }
 
@@ -149,8 +149,9 @@ void PhysicsManager::deleteNormals(std::vector<Eigen::Vector2f *> *normals, Eige
 {
     for (Eigen::Vector2f *normal : *normals)
     {
-        if (normal == normalNotToDelete)
+        if (normal == normalNotToDelete) {
             continue;
+}
         delete normal;
     }
     delete normals;

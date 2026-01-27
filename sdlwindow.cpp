@@ -1,8 +1,8 @@
 #include "sdlwindow.h"
 #include <iostream>
 
-SDLWindow::SDLWindow() : window(NULL), renderer(NULL), e(), quit(false), 
-                            gameObjectManager(new GameObjectManager()), mainCamera(new Camera(NULL, SCREEN_WIDTH, SCREEN_HEIGHT))
+SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr), e(), quit(false), 
+                            gameObjectManager(new GameObjectManager()), mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT))
 {
     if (!init())
     {
@@ -44,7 +44,7 @@ bool SDLWindow::init()
 
     //Create window
     window = SDL_CreateWindow( "Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
-    if ( window == NULL )
+    if ( window == nullptr )
     {
         printf( "Window could not be created! SDL_Error: %s", SDL_GetError() );
         return false;
@@ -61,8 +61,8 @@ void SDLWindow::close()
     //Destroy window
     SDL_DestroyRenderer( renderer );
     SDL_DestroyWindow( window );
-    window = NULL;
-    renderer = NULL;
+    window = nullptr;
+    renderer = nullptr;
     delete gameObjectManager;
     delete mainCamera;
 

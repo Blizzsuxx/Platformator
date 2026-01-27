@@ -1,6 +1,6 @@
 #include "gamemanager.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjectManager(new GameObjectManager()), physicsManager(new PhysicsManager())
+GameManager::GameManager() : window(new SDLWindow()), physicsManager(new PhysicsManager()), gameObjectManager(new GameObjectManager())
 {
 }
 

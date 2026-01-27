@@ -1,7 +1,7 @@
 #include "localsortarray.h"
 
 LocalSortArray::LocalSortArray()
-    : size(0), checkpoint(), array()
+    : size(0),  array()
 {
 }
 

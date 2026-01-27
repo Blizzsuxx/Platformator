@@ -48,10 +48,10 @@ public:
     virtual float getBoundingBoxLengthX() const = 0;
     virtual float getBoundingBoxLengthY() const = 0;
     virtual ColliderType getColliderType() const = 0;
-    virtual std::vector<Eigen::Vector2f*> *getNormals(Collider *other) = 0;
+    virtual std::vector<Eigen::Vector2f *> *getNormals(Collider *other) = 0;
     virtual std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) = 0;
     virtual std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) = 0;
-    BoundingRadiusProjection &getProjection(const int index);
+    BoundingRadiusProjection &getProjection(const size_t index);
     BoundingRadiusProjection *getProjections();
     void generateProjections();
 

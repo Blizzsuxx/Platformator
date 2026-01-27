@@ -30,7 +30,9 @@ Camera::~Camera()
 
 void Camera::render(Sprite *sprite, SDL_Renderer *renderer)
 {
-    SDL_Rect renderQuad = { sprite->getGameObject()->getX() - camera.x, sprite->getGameObject()->getY() - camera.y, sprite->getWidth(), sprite->getHeight() };
+    const int cameraX = static_cast<int>(sprite->getGameObject()->getX());
+    const int cameraY = static_cast<int>(sprite->getGameObject()->getY());
+    SDL_Rect renderQuad = { cameraX - camera.x, cameraY - camera.y, sprite->getWidth(), sprite->getHeight() };
 
     SDL_RenderCopyEx(renderer, sprite->getTexture(), nullptr, &renderQuad, sprite->getGameObject()->getRotation(), nullptr, sprite->getFlip());
 }
@@ -42,7 +44,7 @@ const SDL_Rect& Camera::getCamera() const
 }
 
 // Setters
-void Camera::setCamera(SDL_Rect& camera)
+void Camera::setCamera(const SDL_Rect& camera)
 {
     this->camera = camera;
 }

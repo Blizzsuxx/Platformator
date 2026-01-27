@@ -19,7 +19,7 @@ public:
     const SDL_Rect& getCamera() const;
 
     // Setters
-    void setCamera(SDL_Rect& camera);
+    void setCamera(const SDL_Rect& camera);
 
 private:
     SDL_Rect camera;

@@ -1,8 +1,8 @@
 #include "sdlwindow.h"
 #include <iostream>
 
-SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr), e(), quit(false), 
-                            gameObjectManager(new GameObjectManager()), mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT))
+SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
+                         gameObjectManager(new GameObjectManager()), mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT)), e(), quit(false)
 {
     if (!init())
     {
@@ -17,10 +17,10 @@ SDLWindow::~SDLWindow()
 
 bool SDLWindow::init()
 {
-    //Initialize SDL
-    if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_AUDIO ) < 0 )
+    // Initialize SDL
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
     {
-        printf( "SDL could not initialize! SDL_Error: %s", SDL_GetError() );
+        printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
         return false;
     }
 
@@ -42,15 +42,15 @@ bool SDLWindow::init()
         return false;
     }
 
-    //Create window
-    window = SDL_CreateWindow( "Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
-    if ( window == nullptr )
+    // Create window
+    window = SDL_CreateWindow("Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    if (window == nullptr)
     {
-        printf( "Window could not be created! SDL_Error: %s", SDL_GetError() );
+        printf("Window could not be created! SDL_Error: %s", SDL_GetError());
         return false;
     }
 
-    //Get window surface
+    // Get window surface
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
     return true;
@@ -58,15 +58,15 @@ bool SDLWindow::init()
 
 void SDLWindow::close()
 {
-    //Destroy window
-    SDL_DestroyRenderer( renderer );
-    SDL_DestroyWindow( window );
+    // Destroy window
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
     window = nullptr;
     renderer = nullptr;
     delete gameObjectManager;
     delete mainCamera;
 
-    //Quit SDL subsystems
+    // Quit SDL subsystems
     IMG_Quit();
     Mix_Quit();
     TTF_Quit();
@@ -75,13 +75,13 @@ void SDLWindow::close()
 
 void SDLWindow::handleEvents()
 {
-    //Handle events on queue
-    while( SDL_PollEvent( &e ) != 0 )
+    // Handle events on queue
+    while (SDL_PollEvent(&e) != 0)
     {
-        //User requests quit
+        // User requests quit
         std::cout << "Event type: " << e.type << std::endl;
         std::cout << "Event key: " << e.key.keysym.sym << std::endl;
-        if( e.type == SDL_QUIT )
+        if (e.type == SDL_QUIT)
         {
             std::cout << "Quit event" << std::endl;
             quit = true;
@@ -91,27 +91,25 @@ void SDLWindow::handleEvents()
 
 void SDLWindow::applyPhysics()
 {
-
 }
 
 void SDLWindow::resolveCollisions()
 {
-
 }
 
 void SDLWindow::render()
 {
-    //Clear screen
-    SDL_SetRenderDrawColor( renderer, 0xFF, 0xFF, 0xFF, 0xFF );
-    SDL_RenderClear( renderer );
+    // Clear screen
+    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    SDL_RenderClear(renderer);
 
-    //Update screen
-    SDL_RenderPresent( renderer );
+    // Update screen
+    SDL_RenderPresent(renderer);
 }
 
 void SDLWindow::loop()
 {
-    while( !quit )
+    while (!quit)
     {
         handleEvents();
         applyPhysics();

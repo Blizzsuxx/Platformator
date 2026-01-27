@@ -12,7 +12,7 @@ public:
     void add(Collider *element, size_t index);
     void remove(Collider *element, size_t index);
     size_t getSize() const;
-    std::vector<LocalSortArray*> *getChunks();
+    std::vector<LocalSortArray *> *getChunks();
     void clear();
     void sort();
     void sort(size_t index);
@@ -28,6 +28,6 @@ private:
     void updateCheckpoint(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2);
     void updateCheckpoint(size_t chunkIndex, BoundingRadiusProjection *element, size_t chunkIndex2);
 
-    std::vector<LocalSortArray*> chunks;
+    std::vector<LocalSortArray *> chunks;
     size_t size;
 };

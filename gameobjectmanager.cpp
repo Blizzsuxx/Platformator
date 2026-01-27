@@ -1,6 +1,6 @@
 #include "gameobjectmanager.h"
 
-GameObjectManager::GameObjectManager()  
+GameObjectManager::GameObjectManager()
 {
 }
 
@@ -25,9 +25,9 @@ void GameObjectManager::removeGameObject(GameObject *gameObject)
     delete gameObject;
 }
 
-void GameObjectManager::removeGameObject(int index)
+void GameObjectManager::removeGameObject(size_t index)
 {
-    std::list<GameObject*>::iterator it = gameObjects.begin();
+    std::list<GameObject *>::iterator it = gameObjects.begin();
     std::advance(it, index);
     GameObject *gameObject = *it;
     gameObjects.erase(it);
@@ -49,9 +49,9 @@ bool GameObjectManager::removeGameObject(std::string name)
     return false;
 }
 
-GameObject *GameObjectManager::getGameObject(int index)
+GameObject *GameObjectManager::getGameObject(size_t index)
 {
-    std::list<GameObject*>::iterator it = gameObjects.begin();
+    std::list<GameObject *>::iterator it = gameObjects.begin();
     std::advance(it, index);
     return *it;
 }
@@ -69,7 +69,7 @@ GameObject *GameObjectManager::getGameObject(std::string name)
     return nullptr;
 }
 
-std::list<GameObject*> GameObjectManager::getGameObjects()
+std::list<GameObject *> GameObjectManager::getGameObjects()
 {
     return gameObjects;
 }

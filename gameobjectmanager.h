@@ -11,18 +11,18 @@ public:
 
     GameObject *addGameObject(GameObject *gameObject);
     void removeGameObject(GameObject *gameObject);
-    void removeGameObject(int index);
+    void removeGameObject(size_t index);
     bool removeGameObject(std::string name);
 
-    GameObject *getGameObject(int index);
+    GameObject *getGameObject(size_t index);
     GameObject *getGameObject(std::string name);
 
-    std::list<GameObject*> getGameObjects();
+    std::list<GameObject *> getGameObjects();
 
     void setPhysicsManager(PhysicsManager *physicsManager);
 
 private:
-    std::list<GameObject*> gameObjects;
+    std::list<GameObject *> gameObjects;
 
     PhysicsManager *physicsManager;
 };

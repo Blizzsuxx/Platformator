@@ -7,10 +7,9 @@ Collider::Collider(GameObject *gameObject, ComponentType type)
 
 Collider::~Collider()
 {
-    
 }
 
-BoundingRadiusProjection& Collider::getProjection(const int index)
+BoundingRadiusProjection &Collider::getProjection(const size_t index)
 {
     return projections[index];
 }

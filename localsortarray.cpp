@@ -1,17 +1,17 @@
 #include "localsortarray.h"
 
 LocalSortArray::LocalSortArray()
-    : size(0),  array()
+    : size(0), array(), checkpoint()
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(other->size / 2), checkpoint(other->checkpoint)
+    : size(other->size / 2), array(), checkpoint(other->checkpoint)
 {
     std::copy(other->array + size, other->array + MAX_SIZE, array);
     other->size = size;
 
-    for(size_t i = size - 1; i >= 0; i--)
+    for (int i = size - 1; i >= 0; i--)
     {
         if (array[i]->isEnd())
         {
@@ -81,6 +81,10 @@ BoundingRadiusProjection *LocalSortArray::addAndPop(BoundingRadiusProjection *el
 
 BoundingRadiusProjection *LocalSortArray::remove(size_t index)
 {
+    if (index >= size)
+    {
+        return nullptr;
+    }
     // remove the element at the specified index
     BoundingRadiusProjection *removed = array[index];
 
@@ -98,7 +102,7 @@ bool LocalSortArray::remove(BoundingRadiusProjection *element)
     // find the index of the element using binary search
     size_t index = binarySearch(element);
 
-    if (index != -1)
+    if (index != (size_t)-1)
     {
         remove(index);
         return true;
@@ -114,7 +118,7 @@ void LocalSortArray::sort()
     {
         BoundingRadiusProjection *temp = array[i];
         size_t j = i - 1;
-        while (j >= 0 && *array[j] > *temp)
+        while (j != (size_t)-1 && *array[j] > *temp)
         {
             array[j + 1] = array[j];
             j--;
@@ -125,41 +129,34 @@ void LocalSortArray::sort()
 
 void LocalSortArray::sort(size_t index)
 {
-    // sort only the element at the specified index, assume all other elements are sorted
-    if (index < 0 || index >= size)
+    if (index >= size)
     {
         return;
     }
 
     BoundingRadiusProjection *value = array[index];
 
-    if (*value > *array[index + 1])
+    // Move right if value is greater than the next element
+    if (index + 1 < size && *value > *array[index + 1])
     {
-        for (size_t i = index + 1; i < size; i++)
+        size_t j = index;
+        while (j + 1 < size && *value > *array[j + 1])
         {
-            BoundingRadiusProjection *temp = array[i];
-            size_t j = i - 1;
-            while (j >= 0 && *array[j] > *temp)
-            {
-                array[j + 1] = array[j];
-                j--;
-            }
-            array[j + 1] = temp;
+            array[j] = array[j + 1];
+            j++;
         }
+        array[j] = value;
     }
-    else if (*value < *array[index - 1])
+    // Move left if value is less than the previous element
+    else if (index > 0 && *value < *array[index - 1])
     {
-        for (size_t i = index - 1; i >= 0; i--)
+        size_t j = index;
+        while (j > 0 && *value < *array[j - 1])
         {
-            BoundingRadiusProjection *temp = array[i];
-            size_t j = i + 1;
-            while (j < size && *array[j] < *temp)
-            {
-                array[j - 1] = array[j];
-                j++;
-            }
-            array[j - 1] = temp;
+            array[j] = array[j - 1];
+            j--;
         }
+        array[j] = value;
     }
 }
 
@@ -183,12 +180,12 @@ BoundingRadiusProjection *LocalSortArray::getMin()
     return array[0];
 }
 
-size_t LocalSortArray::getSize() const
+int LocalSortArray::getSize() const
 {
     return size;
 }
 
-BoundingRadiusProjection* *LocalSortArray::getArray()
+BoundingRadiusProjection **LocalSortArray::getArray()
 {
     return array;
 }
@@ -245,7 +242,7 @@ void LocalSortArray::swap(size_t index1, LocalSortArray *array2, size_t index2)
     array2->array[index2] = temp;
 }
 
- std::unordered_set<Collider*> *LocalSortArray::getCheckpoint()
+std::unordered_set<Collider *> *LocalSortArray::getCheckpoint()
 {
     return &checkpoint;
 }

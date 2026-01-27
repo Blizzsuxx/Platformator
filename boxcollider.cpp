@@ -4,7 +4,7 @@ BoxCollider::BoxCollider(GameObject *gameObject) : Collider(gameObject, Componen
 {
 }
 
-BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height) 
+BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
     : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height)
 {
 }
@@ -29,9 +29,9 @@ ColliderType BoxCollider::getColliderType() const
     return ColliderType::BoxCollider;
 }
 
-std::vector<Eigen::Vector2f*> *BoxCollider::getNormals(Collider *other)
+std::vector<Eigen::Vector2f *> *BoxCollider::getNormals(Collider *other)
 {
-    std::vector<Eigen::Vector2f*> *normals(new std::vector<Eigen::Vector2f*>(2));
+    std::vector<Eigen::Vector2f *> *normals(new std::vector<Eigen::Vector2f *>(2));
     (*normals)[0] = new Eigen::Vector2f(1, 0);
     (*normals)[1] = new Eigen::Vector2f(0, 1);
 
@@ -59,7 +59,7 @@ std::unique_ptr<std::vector<Eigen::Vector2f>> BoxCollider::getVertices()
     (*extremePoints)[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() - height / 2);
     (*extremePoints)[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() + height / 2);
     (*extremePoints)[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() + height / 2);
-    
+
     // Rotate the extreme points
     float angle = getGameObject()->getRotation();
     float xOrigin = getGameObject()->getPosition().x();
@@ -71,7 +71,7 @@ std::unique_ptr<std::vector<Eigen::Vector2f>> BoxCollider::getVertices()
     {
         float xMinusXOrigin = (*extremePoints)[i].x() - xOrigin;
         float yMinusYOrigin = (*extremePoints)[i].y() - yOrigin;
-        
+
         (*extremePoints)[i].x() = xMinusXOrigin * cosAngle - yMinusYOrigin * sinAngle + xOrigin;
         (*extremePoints)[i].y() = xMinusXOrigin * sinAngle + yMinusYOrigin * cosAngle + yOrigin;
     }

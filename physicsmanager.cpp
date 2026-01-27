@@ -1,7 +1,7 @@
 #include "physicsmanager.h"
 
 PhysicsManager::PhysicsManager()
-    : gravity(9.8f), timeDelta(0.0f) 
+    : gravity(9.8f), timeDelta(0.0f)
 {
 }
 
@@ -66,7 +66,7 @@ std::list<std::shared_ptr<Collision>> *PhysicsManager::broadPhase()
 
 void PhysicsManager::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions)
 {
-    for (size_t i = 0; i < chunk->getSize(); i++)
+    for (int i = 0; i < chunk->getSize(); i++)
     {
         BoundingRadiusProjection *projection = chunk->get(i);
         Collider *collider = projection->getCollider();
@@ -78,7 +78,7 @@ void PhysicsManager::checkForPotentialCollisionsInsideChunk(LocalSortArray *chun
 
         if (projection->isEnd())
         {
-            for (size_t j = i - 1; j >= 0; j--)
+            for (int j = i - 1; j >= 0; j--)
             {
                 Collider *previousProjection = chunk->get(j)->getCollider();
                 if (previousProjection == collider)
@@ -100,7 +100,7 @@ void PhysicsManager::checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std
             continue;
         }
 
-        for (size_t i = chunk->getSize() - 1; i >= 0; i--)
+        for (int i = chunk->getSize() - 1; i >= 0; i--)
         {
             Collider *previousProjection = chunk->get(i)->getCollider();
             if (previousProjection == checkpoint)
@@ -149,9 +149,10 @@ void PhysicsManager::deleteNormals(std::vector<Eigen::Vector2f *> *normals, Eige
 {
     for (Eigen::Vector2f *normal : *normals)
     {
-        if (normal == normalNotToDelete) {
+        if (normal == normalNotToDelete)
+        {
             continue;
-}
+        }
         delete normal;
     }
     delete normals;
@@ -168,7 +169,7 @@ bool PhysicsManager::checkCollisions(Collision *collision)
     Eigen::Vector2f *incidentProjection = nullptr;
     Collider *realIncidentCollider = incidentCollider;
 
-    for (size_t i = 0; i < normals->size(); i++)
+    for (long unsigned int i = 0; i < normals->size(); i++)
     {
         Eigen::Vector2f &normal = *((*normals)[i]);
         auto projections1 = referenceCollider->projectOntoAxis(normal, i); // we are using the index on the owner of the normal to further optimize projection
@@ -196,7 +197,7 @@ bool PhysicsManager::checkCollisions(Collision *collision)
     std::swap(incidentCollider, referenceCollider);
     normals = referenceCollider->getNormals(incidentCollider);
 
-    for (size_t i = 0; i < normals->size(); i++)
+    for (long unsigned int i = 0; i < normals->size(); i++)
     {
         Eigen::Vector2f &normal = *((*normals)[i]);
         auto projections1 = referenceCollider->projectOntoAxis(normal, i); // we are using the index on the owner of the normal to further optimize projection
@@ -233,10 +234,11 @@ bool PhysicsManager::checkCollisions(Collision *collision)
     collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider->getGameObject() : incidentCollider->getGameObject());
 
     auto directionVector = incidentCollider->getGameObject()->getPosition() - referenceCollider->getGameObject()->getPosition();
-    if (minNormal->dot(directionVector) < 0){
+    if (minNormal->dot(directionVector) < 0)
+    {
         *minNormal *= -1.0f;
     }
-    
+
     float projectionDelta = (incidentProjection->y() - incidentProjection->x()) / 2;
     collision->setContactPoint(new Eigen::Vector2f((realIncidentCollider->getGameObject()->getPosition() + ((*minNormal) * projectionDelta))));
 
@@ -245,5 +247,4 @@ bool PhysicsManager::checkCollisions(Collision *collision)
 
 void PhysicsManager::resolveCollisions(std::list<std::shared_ptr<Collision>> *narrowPhaseCollisions)
 {
-
 }

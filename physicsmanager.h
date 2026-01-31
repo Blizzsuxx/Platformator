@@ -12,22 +12,24 @@ public:
     ~PhysicsManager();
 
     void applyPhysics();
-    void checkForCollisions();
+
+    std::list<std::shared_ptr<Collision>> *checkForCollisions();
+    void resolveCollisions(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
 
 private:
     std::list<std::shared_ptr<Collision>> *broadPhase();
     std::list<std::shared_ptr<Collision>> *narrowPhase(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
-    void resolveCollisions(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
     void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
     void checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
     bool checkCollisions(Collision *collision);
-    void deleteNormals(std::vector<Eigen::Vector2f*> *normals);
-    void deleteNormals(std::vector<Eigen::Vector2f*> *normals, Eigen::Vector2f *normalNotToDelete);
+    void deleteNormals(std::vector<Eigen::Vector2f *> *normals);
+    void deleteNormals(std::vector<Eigen::Vector2f *> *normals, Eigen::Vector2f *normalNotToDelete);
 
-    std::vector<Rigidbody*> rigidBodyComponents;
-    std::vector<Collider*> colliderComponents;
+    std::vector<Rigidbody *> rigidBodyComponents;
+    std::vector<Collider *> colliderComponents;
     SegmentedIntervalList colliderProjectionsX;
     SegmentedIntervalList colliderProjectionsY;
 

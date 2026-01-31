@@ -2,7 +2,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         gameObjectManager(new GameObjectManager()), mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT)), e(), quit(false)
+                         gameObjectManager(new GameObjectManager()), mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT)), sdlEvent(), quit(false)
 {
     if (!init())
     {
@@ -76,12 +76,12 @@ void SDLWindow::close()
 void SDLWindow::handleEvents()
 {
     // Handle events on queue
-    while (SDL_PollEvent(&e) != 0)
+    while (SDL_PollEvent(&sdlEvent) != 0)
     {
         // User requests quit
-        std::cout << "Event type: " << e.type << std::endl;
-        std::cout << "Event key: " << e.key.keysym.sym << std::endl;
-        if (e.type == SDL_QUIT)
+        std::cout << "Event type: " << sdlEvent.type << std::endl;
+        std::cout << "Event key: " << sdlEvent.key.keysym.sym << std::endl;
+        if (sdlEvent.type == SDL_QUIT)
         {
             std::cout << "Quit event" << std::endl;
             quit = true;
@@ -91,17 +91,19 @@ void SDLWindow::handleEvents()
 
 void SDLWindow::applyPhysics()
 {
+    gameObjectManager->applyPhysics();
 }
 
 void SDLWindow::resolveCollisions()
 {
+    gameObjectManager->resolveCollisions();
 }
 
 void SDLWindow::render()
 {
     // Clear screen
-    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-    SDL_RenderClear(renderer);
+    // SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    // SDL_RenderClear(renderer);
 
     // Update screen
     SDL_RenderPresent(renderer);

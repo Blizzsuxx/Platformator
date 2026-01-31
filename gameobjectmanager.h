@@ -20,6 +20,10 @@ public:
     std::list<GameObject *> getGameObjects();
 
     void setPhysicsManager(PhysicsManager *physicsManager);
+    PhysicsManager *getPhysicsManager() const;
+
+    void applyPhysics();
+    void resolveCollisions();
 
 private:
     std::list<GameObject *> gameObjects;

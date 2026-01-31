@@ -11,6 +11,7 @@ PhysicsManager::~PhysicsManager()
 
 void PhysicsManager::applyPhysics()
 {
+    // TODO: parallelize this loop
     for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
     {
         if (rigidBodyComponent->getBodyType() != DYNAMIC || rigidBodyComponent->getGameObject()->getActive() == false)
@@ -31,9 +32,9 @@ void PhysicsManager::applyPhysics()
     }
 }
 
-void PhysicsManager::checkForCollisions()
+std::list<std::shared_ptr<Collision>> *PhysicsManager::checkForCollisions()
 {
-    narrowPhase(broadPhase());
+    return narrowPhase(broadPhase());
 }
 
 void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)

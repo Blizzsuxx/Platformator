@@ -34,6 +34,6 @@ private:
     SDL_Renderer *renderer;
     GameObjectManager *gameObjectManager;
     Camera *mainCamera;
-    SDL_Event e;
+    SDL_Event sdlEvent;
     bool quit;
 };

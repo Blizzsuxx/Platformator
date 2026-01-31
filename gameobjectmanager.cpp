@@ -1,6 +1,6 @@
 #include "gameobjectmanager.h"
 
-GameObjectManager::GameObjectManager()
+GameObjectManager::GameObjectManager() : physicsManager(new PhysicsManager())
 {
 }
 
@@ -77,4 +77,28 @@ std::list<GameObject *> GameObjectManager::getGameObjects()
 void GameObjectManager::setPhysicsManager(PhysicsManager *physicsManager)
 {
     this->physicsManager = physicsManager;
+}
+
+PhysicsManager *GameObjectManager::getPhysicsManager() const
+{
+    return physicsManager;
+}
+
+void GameObjectManager::applyPhysics()
+{
+    if (physicsManager)
+    {
+        physicsManager->applyPhysics();
+    }
+}
+
+void GameObjectManager::resolveCollisions()
+{
+    if (physicsManager)
+    {
+        std::list<std::shared_ptr<Collision>> *collisions = physicsManager->checkForCollisions();
+        physicsManager->resolveCollisions(collisions);
+
+        delete collisions;
+    }
 }

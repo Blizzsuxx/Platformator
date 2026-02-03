@@ -5,7 +5,7 @@ BoundingRadiusProjection::BoundingRadiusProjection()
 }
 
 BoundingRadiusProjection::BoundingRadiusProjection(Collider *collider, float projectedPosition, bool end)
-    : collider(collider), projectedPosition(projectedPosition), end(end)
+    : collider(collider), projectedPosition(projectedPosition), isEnd(end)
 {
 }
 
@@ -23,9 +23,9 @@ float BoundingRadiusProjection::getProjectedPosition() const
     return projectedPosition;
 }
 
-bool BoundingRadiusProjection::isEnd() const
+bool BoundingRadiusProjection::getIsEnd() const
 {
-    return end;
+    return isEnd;
 }
 
 void BoundingRadiusProjection::setCollider(Collider *collider)
@@ -38,37 +38,37 @@ void BoundingRadiusProjection::setProjectedPosition(float projectedPosition)
     this->projectedPosition = projectedPosition;
 }
 
-void BoundingRadiusProjection::setEnd(bool end)
+void BoundingRadiusProjection::setIsEnd(bool end)
 {
-    this->end = end;
+    this->isEnd = end;
 }
 
-bool BoundingRadiusProjection::operator==(const BoundingRadiusProjection& other) const
+bool BoundingRadiusProjection::operator==(const BoundingRadiusProjection &other) const
 {
     return projectedPosition == other.projectedPosition;
 }
 
-bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection& other) const
+bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection &other) const
 {
     return !(*this == other);
 }
 
-bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection& other) const
+bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection &other) const
 {
     return projectedPosition < other.projectedPosition;
 }
 
-bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection& other) const
+bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection &other) const
 {
     return projectedPosition > other.projectedPosition;
 }
 
-bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection& other) const
+bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection &other) const
 {
     return *this < other || *this == other;
 }
 
-bool BoundingRadiusProjection::operator>=(const BoundingRadiusProjection& other) const
+bool BoundingRadiusProjection::operator>=(const BoundingRadiusProjection &other) const
 {
     return *this > other || *this == other;
 }

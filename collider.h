@@ -9,16 +9,16 @@ class BoundingRadiusProjection
 {
 public:
     BoundingRadiusProjection();
-    BoundingRadiusProjection(Collider *, float projectedPosition, bool end);
+    BoundingRadiusProjection(Collider *, float projectedPosition, bool isEnd);
     ~BoundingRadiusProjection();
 
     Collider *getCollider();
     float getProjectedPosition() const;
-    bool isEnd() const;
+    bool getIsEnd() const;
 
     void setCollider(Collider *collider);
     void setProjectedPosition(float projectedPosition);
-    void setEnd(bool end);
+    void setIsEnd(bool isEnd);
 
     bool operator==(const BoundingRadiusProjection &other) const;
     bool operator!=(const BoundingRadiusProjection &other) const;
@@ -30,7 +30,21 @@ public:
 private:
     Collider *collider;
     float projectedPosition;
-    bool end;
+    bool isEnd;
+};
+
+class BoundingRadiusProjectionAxis
+{
+public:
+    BoundingRadiusProjectionAxis(Collider *collider, float min, float max);
+    ~BoundingRadiusProjectionAxis();
+
+    BoundingRadiusProjection *getMin();
+    BoundingRadiusProjection *getMax();
+
+private:
+    BoundingRadiusProjection min;
+    BoundingRadiusProjection max;
 };
 
 enum class ColliderType
@@ -51,18 +65,20 @@ public:
     virtual std::vector<Eigen::Vector2f *> *getNormals(Collider *other) = 0;
     virtual std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) = 0;
     virtual std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) = 0;
-    BoundingRadiusProjection &getProjection(const size_t index);
-    BoundingRadiusProjection *getProjections();
-    void generateProjections();
+    BoundingRadiusProjectionAxis *getXProjections();
+    BoundingRadiusProjectionAxis *getYProjections();
 
     int getLayer() const;
     void setLayer(const int layer);
 
-    bool isTriggered() const;
-    void setTrigger(const bool isTrigger);
+    bool getIsTrigger() const;
+    void setIsTrigger(const bool isTrigger);
 
 private:
     int layer;
     bool isTrigger;
-    BoundingRadiusProjection projections[4];
+
+    BoundingRadiusProjectionAxis xProjections;
+    BoundingRadiusProjectionAxis yProjections;
+    void generateProjections();
 };

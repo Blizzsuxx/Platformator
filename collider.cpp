@@ -1,22 +1,23 @@
 #include "collider.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), layer(0), isTrigger(false), projections()
+    : Component(gameObject, type), layer(0), isTrigger(false), xProjections(nullptr, 0, 0), yProjections(nullptr, 0, 0)
 {
+    generateProjections();
 }
 
 Collider::~Collider()
 {
 }
 
-BoundingRadiusProjection &Collider::getProjection(const size_t index)
+BoundingRadiusProjectionAxis *Collider::getXProjections()
 {
-    return projections[index];
+    return &xProjections;
 }
 
-BoundingRadiusProjection *Collider::getProjections()
+BoundingRadiusProjectionAxis *Collider::getYProjections()
 {
-    return projections;
+    return &yProjections;
 }
 
 int Collider::getLayer() const
@@ -29,12 +30,12 @@ void Collider::setLayer(const int layer)
     this->layer = layer;
 }
 
-bool Collider::isTriggered() const
+bool Collider::getIsTrigger() const
 {
     return isTrigger;
 }
 
-void Collider::setTrigger(const bool isTrigger)
+void Collider::setIsTrigger(const bool isTrigger)
 {
     this->isTrigger = isTrigger;
 }
@@ -44,8 +45,7 @@ void Collider::generateProjections()
     float x = getGameObject()->getPosition().x();
     float y = getGameObject()->getPosition().y();
     float radius = getBoundingBoxLengthX();
-    projections[0] = BoundingRadiusProjection(this, x - radius, false);
-    projections[1] = BoundingRadiusProjection(this, x + radius, true);
-    projections[2] = BoundingRadiusProjection(this, y - radius, false);
-    projections[3] = BoundingRadiusProjection(this, y + radius, true);
+
+    xProjections = BoundingRadiusProjectionAxis(this, x - radius, x + radius);
+    yProjections = BoundingRadiusProjectionAxis(this, y - radius, y + radius);
 }

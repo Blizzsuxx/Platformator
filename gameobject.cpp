@@ -4,8 +4,8 @@ GameObject::GameObject() : GameObject(0.0f, true, Eigen::Vector2f(0.0f, 0.0f), E
 {
 }
 
-GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f& position, const Eigen::Vector2f& scale, const std::string& name, const std::string& tag) 
-                        : rotation(rotation), active(active), position(position), scale(scale), name(name), tag(tag),  components()
+GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
+    : rotation(rotation), isActive(active), position(position), scale(scale), name(name), tag(tag), components()
 {
 }
 
@@ -36,10 +36,10 @@ float GameObject::getRotation() const
 
 bool GameObject::getActive() const
 {
-    return active;
+    return isActive;
 }
 
-const Eigen::Vector2f& GameObject::getPosition() const
+const Eigen::Vector2f &GameObject::getPosition() const
 {
     return position;
 }
@@ -54,32 +54,32 @@ float GameObject::getY() const
     return position.y();
 }
 
-const Eigen::Vector2f& GameObject::getScale() const
+const Eigen::Vector2f &GameObject::getScale() const
 {
     return scale;
 }
 
-const std::string& GameObject::getName() const
+const std::string &GameObject::getName() const
 {
     return name;
 }
 
-const std::string& GameObject::getTag() const
+const std::string &GameObject::getTag() const
 {
     return tag;
 }
 
-Component *GameObject::getComponent(const ComponentType& componentType) const
+Component *GameObject::getComponent(const ComponentType &componentType) const
 {
     return components[componentType];
 }
 
-Component* *GameObject::getComponents()
+Component **GameObject::getComponents()
 {
     return components;
 }
 
-const std::list<GameObject*> GameObject::getChildren() const
+const std::list<GameObject *> GameObject::getChildren() const
 {
     return children;
 }
@@ -92,25 +92,25 @@ void GameObject::setRotation(const float rotation)
 
 void GameObject::setActive(const bool active)
 {
-    this->active = active;
+    this->isActive = active;
 }
 
-void GameObject::setPosition(const Eigen::Vector2f& position)
+void GameObject::setPosition(const Eigen::Vector2f &position)
 {
     this->position = position;
 }
 
-void GameObject::setScale(const Eigen::Vector2f& scale)
+void GameObject::setScale(const Eigen::Vector2f &scale)
 {
     this->scale = scale;
 }
 
-void GameObject::setName(const std::string& name)
+void GameObject::setName(const std::string &name)
 {
     this->name = name;
 }
 
-void GameObject::setTag(const std::string& tag)
+void GameObject::setTag(const std::string &tag)
 {
     this->tag = tag;
 }
@@ -132,7 +132,7 @@ bool GameObject::addComponent(Component *component)
     return true;
 }
 
-bool GameObject::removeComponent(const ComponentType& componentType)
+bool GameObject::removeComponent(const ComponentType &componentType)
 {
     if (components[componentType] == nullptr)
     {

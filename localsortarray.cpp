@@ -13,7 +13,7 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
 
     for (int i = size - 1; i >= 0; i--)
     {
-        if (array[i]->isEnd())
+        if (array[i]->getIsEnd())
         {
             other->addCheckpoint(array[i]->getCollider());
         }
@@ -208,7 +208,6 @@ void LocalSortArray::removeCheckpoint(Collider *collider)
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
 {
-    // find the index of the element using binary search
     size_t low = 0;
     size_t high = size - 1;
     size_t mid = 0;
@@ -232,7 +231,7 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
         }
     }
 
-    return -1;
+    return low;
 }
 
 void LocalSortArray::swap(size_t index1, LocalSortArray *array2, size_t index2)

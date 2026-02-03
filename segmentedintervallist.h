@@ -9,8 +9,8 @@ public:
     SegmentedIntervalList();
     ~SegmentedIntervalList();
 
-    void add(Collider *element, size_t index);
-    void remove(Collider *element, size_t index);
+    void add(Collider *element);
+    void remove(Collider *element);
     size_t getSize() const;
     std::vector<LocalSortArray *> *getChunks();
     void clear();
@@ -19,6 +19,7 @@ public:
 
 private:
     size_t binarySearch(BoundingRadiusProjection *element);
+    void add(BoundingRadiusProjectionAxis *axis);
     size_t add(BoundingRadiusProjection *element);
     size_t add(BoundingRadiusProjection *element, size_t chunkIndex);
     size_t remove(BoundingRadiusProjection *element);

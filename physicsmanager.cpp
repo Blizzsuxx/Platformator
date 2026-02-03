@@ -46,9 +46,7 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
     colliderComponents.push_back(colliderComponent);
 
-    colliderComponent->generateProjections();
-    colliderProjectionsX.add(colliderComponent, 0UL);
-    colliderProjectionsY.add(colliderComponent, 2UL);
+    colliderProjectionsX.add(colliderComponent);
 }
 
 std::list<std::shared_ptr<Collision>> *PhysicsManager::broadPhase()
@@ -77,7 +75,7 @@ void PhysicsManager::checkForPotentialCollisionsInsideChunk(LocalSortArray *chun
             continue;
         }
 
-        if (projection->isEnd())
+        if (projection->getIsEnd())
         {
             for (int j = i - 1; j >= 0; j--)
             {

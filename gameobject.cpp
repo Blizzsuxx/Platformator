@@ -1,11 +1,12 @@
 #include "gameobject.h"
+#include "collider.h"
 
-GameObject::GameObject() : GameObject(0.0f, true, Eigen::Vector2f(0.0f, 0.0f), Eigen::Vector2f(1.0f, 1.0f), "GameObject", "GameObject")
+GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), isActive(true), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components()
 {
 }
 
 GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), isActive(active), position(position), scale(scale), name(name), tag(tag), components()
+    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), isActive(active), position(position), scale(scale), name(name), tag(tag), components()
 {
 }
 
@@ -32,6 +33,11 @@ GameObject::~GameObject()
 float GameObject::getRotation() const
 {
     return rotation;
+}
+
+float GameObject::getRotationInDegrees() const
+{
+    return rotation * 180.0f / static_cast<float>(M_PI);
 }
 
 bool GameObject::getActive() const
@@ -79,15 +85,29 @@ Component **GameObject::getComponents()
     return components;
 }
 
-const std::list<GameObject *> GameObject::getChildren() const
+const std::list<GameObject *> &GameObject::getChildren() const
 {
     return children;
+}
+
+float GameObject::getCosRotation() const
+{
+    return cosRotation;
+}
+
+float GameObject::getSinRotation() const
+{
+    return sinRotation;
 }
 
 // Setters
 void GameObject::setRotation(const float rotation)
 {
     this->rotation = rotation;
+    this->sinRotation = std::sin(rotation);
+    this->cosRotation = std::cos(rotation);
+
+    updateCollider();
 }
 
 void GameObject::setActive(const bool active)
@@ -98,11 +118,24 @@ void GameObject::setActive(const bool active)
 void GameObject::setPosition(const Eigen::Vector2f &position)
 {
     this->position = position;
+
+    updateCollider();
+}
+
+void GameObject::updateCollider()
+{
+    Component *colliderComponent = components[ComponentType::COLLIDER];
+    if (colliderComponent != nullptr)
+    {
+        static_cast<Collider *>(colliderComponent)->updateCollider();
+    }
 }
 
 void GameObject::setScale(const Eigen::Vector2f &scale)
 {
     this->scale = scale;
+
+    updateCollider();
 }
 
 void GameObject::setName(const std::string &name)
@@ -141,6 +174,7 @@ bool GameObject::removeComponent(const ComponentType &componentType)
 
     delete components[componentType];
     components[componentType] = nullptr;
+
     return true;
 }
 

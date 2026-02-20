@@ -1,6 +1,6 @@
 #include "collider.h"
 
-BoundingRadiusProjection::BoundingRadiusProjection()
+BoundingRadiusProjection::BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isEnd(false)
 {
 }
 
@@ -45,7 +45,7 @@ void BoundingRadiusProjection::setIsEnd(bool end)
 
 bool BoundingRadiusProjection::operator==(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition == other.projectedPosition;
+    return this->projectedPosition == other.projectedPosition && this->isEnd == other.isEnd;
 }
 
 bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection &other) const
@@ -55,12 +55,12 @@ bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection &other)
 
 bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition < other.projectedPosition;
+    return projectedPosition < other.projectedPosition || (projectedPosition == other.projectedPosition && !isEnd && other.isEnd);
 }
 
 bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition > other.projectedPosition;
+    return projectedPosition > other.projectedPosition || (projectedPosition == other.projectedPosition && isEnd && !other.isEnd);
 }
 
 bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection &other) const

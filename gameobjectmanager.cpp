@@ -69,7 +69,7 @@ GameObject *GameObjectManager::getGameObject(std::string name)
     return nullptr;
 }
 
-std::list<GameObject *> GameObjectManager::getGameObjects()
+std::list<GameObject *> &GameObjectManager::getGameObjects()
 {
     return gameObjects;
 }
@@ -96,9 +96,7 @@ void GameObjectManager::resolveCollisions()
 {
     if (physicsManager)
     {
-        std::list<std::shared_ptr<Collision>> *collisions = physicsManager->checkForCollisions();
-        physicsManager->resolveCollisions(collisions);
-
-        delete collisions;
+        physicsManager->checkForCollisions();
+        physicsManager->resolveCollisions();
     }
 }

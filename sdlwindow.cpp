@@ -2,7 +2,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         gameObjectManager(new GameObjectManager()), mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT)), sdlEvent(), quit(false)
+                         mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT)), sdlEvent(), quit(false)
 {
     if (!init())
     {
@@ -63,7 +63,6 @@ void SDLWindow::close()
     SDL_DestroyWindow(window);
     window = nullptr;
     renderer = nullptr;
-    delete gameObjectManager;
     delete mainCamera;
 
     // Quit SDL subsystems
@@ -89,16 +88,6 @@ void SDLWindow::handleEvents()
     }
 }
 
-void SDLWindow::applyPhysics()
-{
-    gameObjectManager->applyPhysics();
-}
-
-void SDLWindow::resolveCollisions()
-{
-    gameObjectManager->resolveCollisions();
-}
-
 void SDLWindow::render()
 {
     // Clear screen
@@ -109,18 +98,6 @@ void SDLWindow::render()
     SDL_RenderPresent(renderer);
 }
 
-void SDLWindow::loop()
-{
-    while (!quit)
-    {
-        handleEvents();
-        applyPhysics();
-        resolveCollisions();
-        render();
-    }
-    close();
-}
-
 SDL_Window *SDLWindow::getWindow() const
 {
     return window;
@@ -129,4 +106,9 @@ SDL_Window *SDLWindow::getWindow() const
 SDL_Renderer *SDLWindow::getRenderer() const
 {
     return renderer;
+}
+
+bool SDLWindow::isRunning() const
+{
+    return !quit;
 }

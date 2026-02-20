@@ -10,8 +10,9 @@ public:
     GameManager();
     ~GameManager();
 
+    void loop();
+
 private:
     SDLWindow *window;
-    PhysicsManager *physicsManager;
     GameObjectManager *gameObjectManager;
 };

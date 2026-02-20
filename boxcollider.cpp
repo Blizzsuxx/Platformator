@@ -1,11 +1,11 @@
 #include "boxcollider.h"
 
-BoxCollider::BoxCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER)
+BoxCollider::BoxCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER), width(0.0f), height(0.0f), vertices()
 {
 }
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
-    : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height)
+    : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height), vertices()
 {
 }
 
@@ -13,81 +13,67 @@ BoxCollider::~BoxCollider()
 {
 }
 
-// Inherited via Collider
-float BoxCollider::getBoundingBoxLengthX() const
-{
-    return width;
-}
-
-float BoxCollider::getBoundingBoxLengthY() const
-{
-    return height;
-}
-
 ColliderType BoxCollider::getColliderType() const
 {
     return ColliderType::BoxCollider;
 }
 
-std::vector<Eigen::Vector2f *> *BoxCollider::getNormals(Collider *other)
+void BoxCollider::generateNormals()
 {
-    std::vector<Eigen::Vector2f *> *normals(new std::vector<Eigen::Vector2f *>(2));
-    (*normals)[0] = new Eigen::Vector2f(1, 0);
-    (*normals)[1] = new Eigen::Vector2f(0, 1);
+    float c = getGameObject()->getCosRotation();
+    float s = getGameObject()->getSinRotation();
 
-    // Rotate the normals
-    float angle = getGameObject()->getRotation();
-    // float xOrigin = getGameObject()->getPosition().x();
-    // float yOrigin = getGameObject()->getPosition().y();
-    float cosAngle = cos(angle);
-    float sinAngle = sin(angle);
-
-    for (int i = 0; i < 2; i++)
-    {
-        (*normals)[i]->x() = (*normals)[i]->x() * cosAngle - (*normals)[i]->y() * sinAngle;
-        (*normals)[i]->y() = (*normals)[i]->x() * sinAngle + (*normals)[i]->y() * cosAngle;
-    }
-
-    return normals;
+    static std::array<Eigen::Vector2f, 2> normals;
+    normals[0] = Eigen::Vector2f(c, s);
+    normals[1] = Eigen::Vector2f(-s, c);
 }
 
-std::unique_ptr<std::vector<Eigen::Vector2f>> BoxCollider::getVertices()
+void BoxCollider::generateProjections()
 {
-    std::unique_ptr<std::vector<Eigen::Vector2f>> extremePoints(new std::vector<Eigen::Vector2f>(4));
+    float x = getGameObject()->getPosition().x();
+    float y = getGameObject()->getPosition().y();
 
-    (*extremePoints)[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() - height / 2);
-    (*extremePoints)[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() - height / 2);
-    (*extremePoints)[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() + height / 2);
-    (*extremePoints)[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() + height / 2);
+    xProjections = BoundingRadiusProjectionAxis(this, x - width / 2, x + width / 2);
+    yProjections = BoundingRadiusProjectionAxis(this, y - height / 2, y + height / 2);
+}
+
+void BoxCollider::generateVertices()
+{
+    std::array<Eigen::Vector2f, 4> extremePoints;
+
+    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() - height / 2);
+    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() - height / 2);
+    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() + height / 2);
+    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() + height / 2);
 
     // Rotate the extreme points
-    float angle = getGameObject()->getRotation();
     float xOrigin = getGameObject()->getPosition().x();
     float yOrigin = getGameObject()->getPosition().y();
-    float cosAngle = cos(angle);
-    float sinAngle = sin(angle);
 
-    for (int i = 0; i < 4; i++)
+    for (size_t i = 0; i < vertices.size(); i++)
     {
-        float xMinusXOrigin = (*extremePoints)[i].x() - xOrigin;
-        float yMinusYOrigin = (*extremePoints)[i].y() - yOrigin;
+        float xMinusXOrigin = (vertices)[i].x() - xOrigin;
+        float yMinusYOrigin = (vertices)[i].y() - yOrigin;
 
-        (*extremePoints)[i].x() = xMinusXOrigin * cosAngle - yMinusYOrigin * sinAngle + xOrigin;
-        (*extremePoints)[i].y() = xMinusXOrigin * sinAngle + yMinusYOrigin * cosAngle + yOrigin;
+        (vertices)[i].x() = xMinusXOrigin * this->getGameObject()->getCosRotation() - yMinusYOrigin * this->getGameObject()->getSinRotation() + xOrigin;
+        (vertices)[i].y() = xMinusXOrigin * this->getGameObject()->getSinRotation() + yMinusYOrigin * this->getGameObject()->getCosRotation() + yOrigin;
     }
-
-    return extremePoints;
 }
 
-std::unique_ptr<Eigen::Vector2f> BoxCollider::projectOntoAxis(const Eigen::Vector2f &axis)
+std::array<Eigen::Vector2f, 4> &BoxCollider::getVertices()
 {
-    std::unique_ptr<std::vector<Eigen::Vector2f>> extremePoints = getVertices();
-    float min = axis.dot((*extremePoints)[0]);
+    return vertices;
+}
+
+Eigen::Vector2f BoxCollider::projectOntoAxis(const Eigen::Vector2f &axis)
+{
+    std::array<Eigen::Vector2f, 4> extremePoints = getVertices();
+    float min = axis.dot(extremePoints[0]);
     float max = min;
 
-    for (int i = 1; i < 4; i++)
+    for (size_t i = 1; i < extremePoints.size(); i++)
     {
-        float projection = axis.dot((*extremePoints)[i]);
+        float projection = axis.dot(extremePoints[i]);
 
         if (projection < min)
         {
@@ -99,21 +85,7 @@ std::unique_ptr<Eigen::Vector2f> BoxCollider::projectOntoAxis(const Eigen::Vecto
         }
     }
 
-    return std::unique_ptr<Eigen::Vector2f>(new Eigen::Vector2f(min, max));
-}
-
-std::unique_ptr<Eigen::Vector2f> BoxCollider::projectOntoAxis(const Eigen::Vector2f &axis, size_t index)
-{
-    float pos = axis.dot(getGameObject()->getPosition());
-
-    if (index == 0)
-    {
-        return std::unique_ptr<Eigen::Vector2f>(new Eigen::Vector2f(pos - width / 2, pos + width / 2));
-    }
-    else
-    {
-        return std::unique_ptr<Eigen::Vector2f>(new Eigen::Vector2f(pos - height / 2, pos + height / 2));
-    }
+    return Eigen::Vector2f(min, max);
 }
 
 // Getters
@@ -136,4 +108,11 @@ void BoxCollider::setWidth(const float width)
 void BoxCollider::setHeight(const float height)
 {
     this->height = height;
+}
+
+void BoxCollider::updateCollider()
+{
+    generateVertices();
+    generateNormals();
+    generateProjections();
 }

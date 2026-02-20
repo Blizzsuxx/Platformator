@@ -19,3 +19,13 @@ BoundingRadiusProjection *BoundingRadiusProjectionAxis::getMax()
 {
     return &max;
 }
+
+bool BoundingRadiusProjectionAxis::operator==(const BoundingRadiusProjectionAxis &other) const
+{
+    return min == other.min && max == other.max;
+}
+
+bool BoundingRadiusProjectionAxis::operator!=(const BoundingRadiusProjectionAxis &other) const
+{
+    return !(*this == other);
+}

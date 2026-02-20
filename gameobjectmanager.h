@@ -17,7 +17,7 @@ public:
     GameObject *getGameObject(size_t index);
     GameObject *getGameObject(std::string name);
 
-    std::list<GameObject *> getGameObjects();
+    std::list<GameObject *> &getGameObjects();
 
     void setPhysicsManager(PhysicsManager *physicsManager);
     PhysicsManager *getPhysicsManager() const;

@@ -2,6 +2,7 @@
 
 #include "gameobject.h"
 #include <memory>
+#include <span>
 
 class Collider;
 
@@ -42,6 +43,9 @@ public:
     BoundingRadiusProjection *getMin();
     BoundingRadiusProjection *getMax();
 
+    bool operator==(const BoundingRadiusProjectionAxis &other) const;
+    bool operator!=(const BoundingRadiusProjectionAxis &other) const;
+
 private:
     BoundingRadiusProjection min;
     BoundingRadiusProjection max;
@@ -55,16 +59,16 @@ enum class ColliderType
 
 class Collider : public Component
 {
+    friend class GameObject;
+
 public:
     Collider(GameObject *gameObject, ComponentType type);
     ~Collider();
 
-    virtual float getBoundingBoxLengthX() const = 0;
-    virtual float getBoundingBoxLengthY() const = 0;
     virtual ColliderType getColliderType() const = 0;
-    virtual std::vector<Eigen::Vector2f *> *getNormals(Collider *other) = 0;
-    virtual std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) = 0;
-    virtual std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) = 0;
+    virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) = 0;
+    virtual std::span<const Eigen::Vector2f> getNormals(Collider *other);
+
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
 
@@ -74,11 +78,18 @@ public:
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
 
-private:
+    bool getIsDirty() const;
+    void setIsDirty(const bool isDirty);
+
+protected:
     int layer;
     bool isTrigger;
+    bool isDirty;
+
+    std::span<const Eigen::Vector2f> normals;
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;
-    void generateProjections();
+
+    virtual void updateCollider() = 0;
 };

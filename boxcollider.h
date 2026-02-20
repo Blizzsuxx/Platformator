@@ -10,12 +10,8 @@ public:
     ~BoxCollider();
 
     // Inherited via Collider
-    float getBoundingBoxLengthX() const override;
-    float getBoundingBoxLengthY() const override;
     ColliderType getColliderType() const override;
-    std::vector<Eigen::Vector2f *> *getNormals(Collider *other) override;
-    std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) override;
-    std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) override;
+    Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) override;
 
     // Getters
     float getWidth() const;
@@ -28,6 +24,13 @@ public:
 private:
     float width;
     float height;
+    std::array<Eigen::Vector2f, 4> vertices;
 
-    std::unique_ptr<std::vector<Eigen::Vector2f>> getVertices();
+    std::array<Eigen::Vector2f, 4> &getVertices();
+
+    void generateNormals();
+    void generateProjections();
+    void generateVertices();
+
+    void updateCollider() override;
 };

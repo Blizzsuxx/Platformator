@@ -1,9 +1,8 @@
 #include "collider.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), layer(0), isTrigger(false), xProjections(nullptr, 0, 0), yProjections(nullptr, 0, 0)
+    : Component(gameObject, type), layer(0), isTrigger(false), isDirty(false), normals(), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
 {
-    generateProjections();
 }
 
 Collider::~Collider()
@@ -40,12 +39,17 @@ void Collider::setIsTrigger(const bool isTrigger)
     this->isTrigger = isTrigger;
 }
 
-void Collider::generateProjections()
+bool Collider::getIsDirty() const
 {
-    float x = getGameObject()->getPosition().x();
-    float y = getGameObject()->getPosition().y();
-    float radius = getBoundingBoxLengthX();
+    return isDirty;
+}
 
-    xProjections = BoundingRadiusProjectionAxis(this, x - radius, x + radius);
-    yProjections = BoundingRadiusProjectionAxis(this, y - radius, y + radius);
+void Collider::setIsDirty(const bool isDirty)
+{
+    this->isDirty = isDirty;
+}
+
+std::span<const Eigen::Vector2f> Collider::getNormals(Collider *other)
+{
+    return normals;
 }

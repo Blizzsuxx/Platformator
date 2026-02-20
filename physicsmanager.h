@@ -4,6 +4,8 @@
 #include "collider.h"
 #include "collision.h"
 #include "segmentedintervallist.h"
+#include <chrono>
+#include "aabb.h"
 
 class PhysicsManager
 {
@@ -13,26 +15,25 @@ public:
 
     void applyPhysics();
 
-    std::list<std::shared_ptr<Collision>> *checkForCollisions();
-    void resolveCollisions(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+    void checkForCollisions();
+    void resolveCollisions();
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
 
 private:
-    std::list<std::shared_ptr<Collision>> *broadPhase();
-    std::list<std::shared_ptr<Collision>> *narrowPhase(std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
-    void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
-    void checkForCollisionsWithCheckpoint(LocalSortArray *chunk, std::list<std::shared_ptr<Collision>> *broadPhaseCollisions);
+    void broadPhase();
+    void narrowPhase();
     bool checkCollisions(Collision *collision);
-    void deleteNormals(std::vector<Eigen::Vector2f *> *normals);
-    void deleteNormals(std::vector<Eigen::Vector2f *> *normals, Eigen::Vector2f *normalNotToDelete);
+    bool checkProjections(std::span<const Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider);
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collider *> colliderComponents;
-    SegmentedIntervalList colliderProjectionsX;
-    SegmentedIntervalList colliderProjectionsY;
+    std::list<Collision *> collisions;
+    AABB aabb;
 
-    float gravity;
-    float timeDelta;
+    Eigen::Vector2f gravityVector;
+
+    double timeDelta;
+    double lastUpdateTime;
 };

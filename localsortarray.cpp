@@ -208,6 +208,11 @@ void LocalSortArray::removeCheckpoint(Collider *collider)
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
 {
+    if (size == 0)
+    {
+        return 0;
+    }
+
     size_t low = 0;
     size_t high = size - 1;
     size_t mid = 0;

@@ -1,17 +1,10 @@
 #include <stdio.h>
-#include "sdlwindow.h"
+#include "gamemanager.h"
 
 int main(int argc, char *args[])
 {
-    SDLWindow window = SDLWindow();
-    if (!window.init())
-    {
-        printf("Failed to initialize!\n");
-    }
-    else
-    {
-        window.loop();
-    }
+    GameManager gameManager = GameManager();
+    gameManager.loop();
 
     return 0;
 }

@@ -17,11 +17,8 @@ public:
     void close();
 
     void handleEvents();
-    void applyPhysics();
-    void resolveCollisions();
     void render();
-
-    void loop();
+    bool isRunning() const;
 
     SDL_Window *getWindow() const;
     SDL_Renderer *getRenderer() const;
@@ -32,7 +29,6 @@ public:
 private:
     SDL_Window *window;
     SDL_Renderer *renderer;
-    GameObjectManager *gameObjectManager;
     Camera *mainCamera;
     SDL_Event sdlEvent;
     bool quit;

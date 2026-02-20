@@ -5,18 +5,17 @@
 
 class GameObject;
 
-constexpr auto _START = __LINE__;
 enum ComponentType
 {
     ANIMATOR = 0,
-    AUDIO = 1,
-    CAMERA = 2,
-    COLLIDER = 3,
-    LIGHT = 4,
-    RIGID_BODY = 5,
-    SPRITE = 6
+    AUDIO,
+    CAMERA,
+    COLLIDER,
+    LIGHT,
+    RIGID_BODY,
+    SPRITE,
+    COMPONENT_TYPE_COUNT // must be last
 };
-constexpr auto COMPONENT_TYPE_COUNT = __LINE__ - _START - 4;
 
 class Component
 {
@@ -42,6 +41,10 @@ public:
 
     // Getters
     float getRotation() const;
+    float getRotationInDegrees() const;
+    float getCosRotation() const;
+    float getSinRotation() const;
+
     bool getActive() const;
     const Eigen::Vector2f &getPosition() const;
     float getX() const;
@@ -52,7 +55,7 @@ public:
 
     Component *getComponent(const ComponentType &componentType) const;
     Component **getComponents();
-    const std::list<GameObject *> getChildren() const;
+    const std::list<GameObject *> &getChildren() const;
 
     // Setters
     void setRotation(const float rotation);
@@ -68,7 +71,11 @@ public:
     bool removeChild(GameObject *child);
 
 private:
+    // rotation is in radians
     float rotation;
+    float sinRotation;
+    float cosRotation;
+
     bool isActive;
     Eigen::Vector2f position;
     Eigen::Vector2f scale;
@@ -77,4 +84,6 @@ private:
 
     Component *components[COMPONENT_TYPE_COUNT];
     std::list<GameObject *> children;
+
+    void updateCollider();
 };

@@ -1,8 +1,9 @@
 #include "segmentedintervallist.h"
 
 SegmentedIntervalList::SegmentedIntervalList()
-    : size(0)
+    : chunks(), size(1)
 {
+    chunks.push_back(new LocalSortArray());
 }
 
 SegmentedIntervalList::~SegmentedIntervalList()
@@ -10,40 +11,53 @@ SegmentedIntervalList::~SegmentedIntervalList()
     clear();
 }
 
-void SegmentedIntervalList::add(Collider *element)
-{
-    // find the index of the element using binary search
-    BoundingRadiusProjectionAxis *xProjections = element->getXProjections();
-    BoundingRadiusProjectionAxis *yProjections = element->getYProjections();
+// void SegmentedIntervalList::add(Collider *element)
+// {
+//     // find the index of the element using binary search
+//     BoundingRadiusProjectionAxis *xProjections = element->getXProjections();
+//     BoundingRadiusProjectionAxis *yProjections = element->getYProjections();
 
-    add(xProjections);
-    add(yProjections);
-}
+//     add(xProjections);
+//     add(yProjections);
+// }
 
 void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
 {
     // find the index of the element using binary search
     BoundingRadiusProjection *lowerProjection = axis->getMin();
-    int chunkWhereItWasInserted = add(lowerProjection);
+    size_t chunkWhereItWasInserted = add(lowerProjection);
 
     BoundingRadiusProjection *upperProjection = axis->getMax();
-    int chunkWhereItWasInserted2 = add(upperProjection);
+    size_t chunkWhereItWasInserted2 = add(upperProjection);
 
-    for (int i = chunkWhereItWasInserted; i < chunkWhereItWasInserted2; i++)
+    for (size_t i = chunkWhereItWasInserted; i < chunkWhereItWasInserted2; i++)
     {
         chunks[i]->addCheckpoint(lowerProjection->getCollider());
     }
 }
 
-void SegmentedIntervalList::remove(Collider *element)
-{
-    BoundingRadiusProjectionAxis *xProjections = element->getXProjections();
-    BoundingRadiusProjectionAxis *yProjections = element->getYProjections();
+// void SegmentedIntervalList::remove(Collider *element)
+// {
+//     BoundingRadiusProjectionAxis *xProjections = element->getXProjections();
+//     BoundingRadiusProjectionAxis *yProjections = element->getYProjections();
 
-    remove(xProjections->getMin());
-    remove(xProjections->getMax());
-    remove(yProjections->getMin());
-    remove(yProjections->getMax());
+//     remove(xProjections);
+//     remove(yProjections);
+// }
+
+void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
+{
+    // find the index of the element using binary search
+    BoundingRadiusProjection *lowerProjection = axis->getMin();
+    size_t chunkWhereItWasRemoved = remove(lowerProjection);
+
+    BoundingRadiusProjection *upperProjection = axis->getMax();
+    size_t chunkWhereItWasRemoved2 = remove(upperProjection);
+
+    for (size_t i = chunkWhereItWasRemoved; i < chunkWhereItWasRemoved2; i++)
+    {
+        chunks[i]->removeCheckpoint(lowerProjection->getCollider());
+    }
 }
 
 size_t SegmentedIntervalList::getSize() const
@@ -69,6 +83,7 @@ void SegmentedIntervalList::clear()
 void SegmentedIntervalList::sort()
 {
     // TODO: parallelize this
+    // TODO: probably don't need this
     for (size_t i = 0; i < size; i++)
     {
         chunks[i]->sort();
@@ -126,7 +141,7 @@ size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
         {
             low = mid + 1;
         }
-        else if (value <= *chunks[mid]->getMax())
+        else if (value < *chunks[mid]->getMax())
         {
             high = mid - 1;
         }
@@ -173,16 +188,9 @@ size_t SegmentedIntervalList::remove(BoundingRadiusProjection *element)
 {
     // find the index of the element using binary search
     size_t index = binarySearch(element);
+    size_t index2 = chunks[index]->binarySearch(element);
 
-    chunks[index]->remove(element);
-
-    // if the array is empty, remove it
-    if (chunks[index]->getSize() == 0)
-    {
-        delete chunks[index];
-        chunks.erase(chunks.begin() + index);
-        size--;
-    }
+    remove(index, index2);
 
     return index;
 }
@@ -218,6 +226,7 @@ void SegmentedIntervalList::swap(size_t chunkIndex1, size_t arrayIndex1, size_t 
     chunks[chunkIndex1]->swap(arrayIndex1, chunks[chunkIndex2], arrayIndex2);
 
     updateCheckpoint(chunkIndex1, arrayIndex1, chunkIndex2);
+    updateCheckpoint(chunkIndex2, arrayIndex2, chunkIndex1);
 }
 
 void SegmentedIntervalList::updateCheckpoint(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2)

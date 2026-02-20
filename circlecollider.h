@@ -9,12 +9,9 @@ public:
     ~CircleCollider();
 
     // Inherited via Collider
-    float getBoundingBoxLengthX() const override;
-    float getBoundingBoxLengthY() const override;
     ColliderType getColliderType() const override;
-    std::vector<Eigen::Vector2f *> *getNormals(Collider *other) override;
-    std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis) override;
-    std::unique_ptr<Eigen::Vector2f> projectOntoAxis(const Eigen::Vector2f &axis, size_t index) override;
+    std::span<const Eigen::Vector2f> getNormals(Collider *other) override;
+    Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) override;
 
     // Getters
     float getRadius() const;
@@ -24,4 +21,8 @@ public:
 
 private:
     float radius;
+
+    void generateProjections();
+
+    void updateCollider() override;
 };

@@ -20,6 +20,7 @@ public:
 private:
     void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk);
     void checkForCollisionsWithCheckpoint(LocalSortArray *chunk);
+    void addCandidateCollision(Collider *colliderA, Collider *colliderB);
 
     SegmentedIntervalList intervalListX;
     // SegmentedIntervalList intervalListY;

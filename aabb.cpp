@@ -74,7 +74,7 @@ void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
                 {
                     break;
                 }
-                candidateCollisions.push_back(Collision(collider->getGameObject(), previousProjection->getGameObject()));
+                addCandidateCollision(collider, previousProjection);
             }
         }
     }
@@ -96,7 +96,20 @@ void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
             {
                 break;
             }
-            candidateCollisions.push_back(Collision(checkpoint->getGameObject(), previousProjection->getGameObject()));
+            addCandidateCollision(checkpoint, previousProjection);
         }
+    }
+}
+
+void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
+{
+    float aYMin = colliderA->getYProjections()->getMin()->getProjectedPosition();
+    float aYMax = colliderA->getYProjections()->getMax()->getProjectedPosition();
+    float bYMin = colliderB->getYProjections()->getMin()->getProjectedPosition();
+    float bYMax = colliderB->getYProjections()->getMax()->getProjectedPosition();
+
+    if (aYMax >= bYMin && bYMax >= aYMin)
+    {
+        candidateCollisions.push_back(Collision(colliderA->getGameObject(), colliderB->getGameObject()));
     }
 }

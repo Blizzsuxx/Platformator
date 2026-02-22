@@ -1,20 +1,16 @@
 #include "physicsmanager.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), colliderComponents(), collisions(), aabb(), gravityVector(0.0f, -9.81f), timeDelta(0.0f), lastUpdateTime(0.0f)
+    : rigidBodyComponents(), colliderComponents(), collisions(), aabb(), gravityVector(0.0f, -9.81f)
 {
-    lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
 }
 
 PhysicsManager::~PhysicsManager()
 {
 }
 
-void PhysicsManager::applyPhysics()
+void PhysicsManager::applyPhysics(double timeDelta)
 {
-    double currentTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
-    timeDelta = currentTime - lastUpdateTime;
-    lastUpdateTime = currentTime;
 
     // TODO: parallelize this loop
     for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
@@ -40,6 +36,18 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     colliderComponents.push_back(colliderComponent);
 
     aabb.add(colliderComponent);
+}
+
+void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
+{
+    rigidBodyComponents.erase(std::remove(rigidBodyComponents.begin(), rigidBodyComponents.end(), rigidBodyComponent), rigidBodyComponents.end());
+}
+
+void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
+{
+    colliderComponents.erase(std::remove(colliderComponents.begin(), colliderComponents.end(), colliderComponent), colliderComponents.end());
+
+    aabb.remove(colliderComponent);
 }
 
 void PhysicsManager::broadPhase()

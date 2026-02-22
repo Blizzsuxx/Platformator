@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 #include "gameobject.h"
 #include "sprite.h"
+#include "constants.h"
 
 class Camera : public Component
 {
@@ -16,10 +17,10 @@ public:
     void render(Sprite *sprite, SDL_Renderer *renderer);
 
     // Getters
-    const SDL_Rect& getCamera() const;
+    const SDL_Rect &getCamera() const;
 
     // Setters
-    void setCamera(const SDL_Rect& camera);
+    void setCamera(const SDL_Rect &camera);
 
 private:
     SDL_Rect camera;

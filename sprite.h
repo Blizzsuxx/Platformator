@@ -9,6 +9,7 @@ public:
     Sprite(GameObject *gameObject);
     Sprite(GameObject *gameObject, SDL_Texture *texture);
     Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip);
+    Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip, int width, int height);
     ~Sprite();
 
     // Getters

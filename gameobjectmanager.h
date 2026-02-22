@@ -1,32 +1,32 @@
-#pragma once
+// #pragma once
 
-#include "gameobject.h"
-#include "physicsmanager.h"
+// #include "gameobject.h"
+// #include "physicsmanager.h"
 
-class GameObjectManager
-{
-public:
-    GameObjectManager();
-    ~GameObjectManager();
+// class GameObjectManager
+// {
+// public:
+//     GameObjectManager();
+//     ~GameObjectManager();
 
-    GameObject *addGameObject(GameObject *gameObject);
-    void removeGameObject(GameObject *gameObject);
-    void removeGameObject(size_t index);
-    bool removeGameObject(std::string name);
+//     GameObject *addGameObject(GameObject *gameObject);
+//     void removeGameObject(GameObject *gameObject);
+//     bool removeGameObject(std::string name);
 
-    GameObject *getGameObject(size_t index);
-    GameObject *getGameObject(std::string name);
+//     GameObject *getGameObject(std::string name);
 
-    std::list<GameObject *> &getGameObjects();
+//     std::list<GameObject *> &getGameObjects();
 
-    void setPhysicsManager(PhysicsManager *physicsManager);
-    PhysicsManager *getPhysicsManager() const;
+//     void setPhysicsManager(PhysicsManager *physicsManager);
+//     PhysicsManager *getPhysicsManager() const;
 
-    void applyPhysics();
-    void resolveCollisions();
+//     void applyPhysics();
+//     void resolveCollisions();
 
-private:
-    std::list<GameObject *> gameObjects;
+// private:
+//     std::list<GameObject *> gameObjects;
 
-    PhysicsManager *physicsManager;
-};
+//     PhysicsManager *physicsManager;
+
+//     void deleteGameObject(GameObject *gameObject);
+// };

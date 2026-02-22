@@ -10,9 +10,33 @@ public:
     GameManager();
     ~GameManager();
 
+    GameObject *addGameObject(GameObject *gameObject);
+    void removeGameObject(GameObject *gameObject);
+    bool removeGameObject(std::string name);
+
+    GameObject *getGameObject(std::string name);
+
+    std::list<GameObject *> &getGameObjects();
+
+    void setPhysicsManager(PhysicsManager *physicsManager);
+    PhysicsManager *getPhysicsManager() const;
+
+    void applyPhysics();
+    void resolveCollisions();
+
     void loop();
 
 private:
     SDLWindow *window;
-    GameObjectManager *gameObjectManager;
+    std::list<GameObject *> gameObjects;
+
+    PhysicsManager *physicsManager;
+
+    double deltaTime;
+    double lastUpdateTime;
+
+    void initializeMainCamera();
+    void deleteGameObject(GameObject *gameObject);
+    void updateDeltaTime();
+    void delay();
 };

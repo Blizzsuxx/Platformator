@@ -23,18 +23,20 @@ void BoxCollider::generateNormals()
     float c = getGameObject()->getCosRotation();
     float s = getGameObject()->getSinRotation();
 
-    static std::array<Eigen::Vector2f, 2> normals;
     normals[0] = Eigen::Vector2f(c, s);
     normals[1] = Eigen::Vector2f(-s, c);
 }
 
 void BoxCollider::generateProjections()
 {
-    float x = getGameObject()->getPosition().x();
-    float y = getGameObject()->getPosition().y();
+    Eigen::Vector2f xAxis = projectOntoAxis(X_AXIS);
+    Eigen::Vector2f yAxis = projectOntoAxis(Y_AXIS);
 
-    xProjections = BoundingRadiusProjectionAxis(this, x - width / 2, x + width / 2);
-    yProjections = BoundingRadiusProjectionAxis(this, y - height / 2, y + height / 2);
+    xProjections.getMin()->setProjectedPosition(xAxis.x());
+    xProjections.getMax()->setProjectedPosition(xAxis.y());
+
+    yProjections.getMin()->setProjectedPosition(yAxis.x());
+    yProjections.getMax()->setProjectedPosition(yAxis.y());
 }
 
 void BoxCollider::generateVertices()

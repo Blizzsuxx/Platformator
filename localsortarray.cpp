@@ -180,7 +180,7 @@ BoundingRadiusProjection *LocalSortArray::getMin()
     return array[0];
 }
 
-int LocalSortArray::getSize() const
+size_t LocalSortArray::getSize() const
 {
     return size;
 }

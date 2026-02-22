@@ -1,6 +1,7 @@
 #pragma once
 
 #include "collider.h"
+#include "constants.h"
 
 class BoxCollider : public Collider
 {

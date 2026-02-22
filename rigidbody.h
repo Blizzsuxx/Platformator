@@ -18,7 +18,6 @@ public:
 
     void move(double timeDelta);
     void applyGravity(const Eigen::Vector2f &gravityVector);
-    void resetForce();
 
     // Getters
     const Eigen::Vector2f &getVelocity() const;
@@ -38,6 +37,8 @@ public:
     // Setters
     void setVelocity(const Eigen::Vector2f &velocity);
     void setForce(const Eigen::Vector2f &force);
+    void addForce(const Eigen::Vector2f &force);
+    void resetForce();
 
     void setMass(const float mass);
 

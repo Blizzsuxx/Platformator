@@ -1,12 +1,15 @@
 #include "audio.h"
 
-Audio::Audio(GameObject *gameObject) : Component(gameObject, ComponentType::AUDIO)
+Audio::Audio(GameObject *gameObject) : Component(gameObject, ComponentType::AUDIO), chunk(nullptr)
 {
 }
 
 Audio::~Audio()
 {
-    delete chunk;
+    if (chunk != nullptr)
+    {
+        Mix_FreeChunk(chunk);
+    }
 }
 
 // Getters

@@ -65,6 +65,16 @@ void Rigidbody::setForce(const Eigen::Vector2f &force)
     this->force = force;
 }
 
+void Rigidbody::addForce(const Eigen::Vector2f &force)
+{
+    this->force += force;
+}
+
+void Rigidbody::resetForce()
+{
+    this->force = Eigen::Vector2f(0.0f, 0.0f);
+}
+
 void Rigidbody::setMass(const float mass)
 {
     this->mass = mass;
@@ -100,11 +110,6 @@ void Rigidbody::setGravity(const bool gravity)
     this->gravity = gravity;
 }
 
-void Rigidbody::resetForce()
-{
-    this->force = Eigen::Vector2f(0.0f, 0.0f);
-}
-
 void Rigidbody::move(double timeDelta)
 {
     if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false)
@@ -124,8 +129,8 @@ void Rigidbody::move(double timeDelta)
 
 void Rigidbody::applyGravity(const Eigen::Vector2f &gravityVector)
 {
-    if (this->getGravity() == true)
+    if (this->getGravity() == true && this->getBodyType() == BodyType::DYNAMIC)
     {
-        this->setForce(this->getForce() + gravityVector * this->getMass());
+        this->addForce(gravityVector * this->getMass());
     }
 }

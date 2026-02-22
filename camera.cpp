@@ -1,27 +1,15 @@
 #include "camera.h"
 
-Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA)
+Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA), camera(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
 {
-    camera.x = 0;
-    camera.y = 0;
-    camera.w = 0;
-    camera.h = 0;
 }
 
-Camera::Camera(GameObject *gameObject, int w, int h) : Component(gameObject, CAMERA)
+Camera::Camera(GameObject *gameObject, int w, int h) : Component(gameObject, CAMERA), camera(0, 0, w, h)
 {
-    camera.x = 0;
-    camera.y = 0;
-    camera.w = w;
-    camera.h = h;
 }
 
-Camera::Camera(GameObject *gameObject, int x, int y, int w, int h) : Component(gameObject, CAMERA)
+Camera::Camera(GameObject *gameObject, int x, int y, int w, int h) : Component(gameObject, CAMERA), camera(x, y, w, h)
 {
-    camera.x = x;
-    camera.y = y;
-    camera.w = w;
-    camera.h = h;
 }
 
 Camera::~Camera()

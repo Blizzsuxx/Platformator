@@ -10,7 +10,7 @@ public:
 
     // Inherited via Collider
     ColliderType getColliderType() const override;
-    std::span<const Eigen::Vector2f> getNormals(Collider *other) override;
+    std::vector<Eigen::Vector2f> getNormals(Collider *other) override;
     Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) override;
 
     // Getters

@@ -13,7 +13,7 @@ public:
     PhysicsManager();
     ~PhysicsManager();
 
-    void applyPhysics();
+    void applyPhysics(double timeDelta);
 
     void checkForCollisions();
     void resolveCollisions();
@@ -21,19 +21,19 @@ public:
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
 
+    void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);
+    void removeColliderComponent(Collider *colliderComponent);
+
 private:
     void broadPhase();
     void narrowPhase();
     bool checkCollisions(Collision *collision);
     bool checkProjections(std::span<const Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider);
 
-    std::vector<Rigidbody *> rigidBodyComponents;
-    std::vector<Collider *> colliderComponents;
+    std::list<Rigidbody *> rigidBodyComponents;
+    std::list<Collider *> colliderComponents;
     std::list<Collision *> collisions;
     AABB aabb;
 
     Eigen::Vector2f gravityVector;
-
-    double timeDelta;
-    double lastUpdateTime;
 };

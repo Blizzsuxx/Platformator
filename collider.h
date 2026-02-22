@@ -67,7 +67,7 @@ public:
 
     virtual ColliderType getColliderType() const = 0;
     virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) = 0;
-    virtual std::span<const Eigen::Vector2f> getNormals(Collider *other);
+    virtual std::vector<Eigen::Vector2f> getNormals(Collider *other);
 
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
@@ -86,7 +86,7 @@ protected:
     bool isTrigger;
     bool isDirty;
 
-    std::span<const Eigen::Vector2f> normals;
+    std::vector<Eigen::Vector2f> normals;
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;

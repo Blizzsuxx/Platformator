@@ -2,16 +2,22 @@
 
 Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, nullptr, SDL_FLIP_NONE)
 {
-
 }
 
 Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture) : Sprite(gameObject, texture, SDL_FLIP_NONE)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip) : Component(gameObject, SPRITE), texture(texture), flip(flip)
+Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip) : Sprite(gameObject, texture, flip, 0, 0)
 {
-    SDL_QueryTexture(texture, nullptr, nullptr, &width, &height);
+}
+
+Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip, int width, int height) : Component(gameObject, SPRITE), texture(texture), flip(flip), width(width), height(height)
+{
+    if (texture != nullptr)
+    {
+        SDL_QueryTexture(texture, nullptr, nullptr, &this->width, &this->height);
+    }
 }
 
 Sprite::~Sprite()

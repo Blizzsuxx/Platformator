@@ -13,18 +13,17 @@ public:
     SDLWindow();
     ~SDLWindow();
 
-    bool init();
-    void close();
-
     void handleEvents();
     void render();
     bool isRunning() const;
 
+    void setMainCamera(Camera *mainCamera);
+
     SDL_Window *getWindow() const;
     SDL_Renderer *getRenderer() const;
 
-    const int SCREEN_WIDTH = 640;
-    const int SCREEN_HEIGHT = 480;
+    void addSpriteComponent(Sprite *spriteComponent);
+    void removeSpriteComponent(Sprite *spriteComponent);
 
 private:
     SDL_Window *window;
@@ -32,4 +31,9 @@ private:
     Camera *mainCamera;
     SDL_Event sdlEvent;
     bool quit;
+
+    std::list<Sprite *> spriteComponents;
+
+    bool init();
+    void close();
 };

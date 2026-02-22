@@ -26,7 +26,7 @@ public:
     BoundingRadiusProjection *operator[](size_t index);
     BoundingRadiusProjection *getMax();
     BoundingRadiusProjection *getMin();
-    int getSize() const;
+    size_t getSize() const;
     BoundingRadiusProjection **getArray();
     void clear();
     void addCheckpoint(Collider *element);

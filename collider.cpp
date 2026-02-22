@@ -49,7 +49,7 @@ void Collider::setIsDirty(const bool isDirty)
     this->isDirty = isDirty;
 }
 
-std::span<const Eigen::Vector2f> Collider::getNormals(Collider *other)
+std::vector<Eigen::Vector2f> Collider::getNormals(Collider *other)
 {
     return normals;
 }

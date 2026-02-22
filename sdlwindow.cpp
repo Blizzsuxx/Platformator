@@ -2,7 +2,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(new Camera(nullptr, SCREEN_WIDTH, SCREEN_HEIGHT)), sdlEvent(), quit(false)
+                         mainCamera(nullptr), sdlEvent(), quit(false)
 {
     if (!init())
     {
@@ -63,7 +63,7 @@ void SDLWindow::close()
     SDL_DestroyWindow(window);
     window = nullptr;
     renderer = nullptr;
-    delete mainCamera;
+    mainCamera = nullptr;
 
     // Quit SDL subsystems
     IMG_Quit();
@@ -90,11 +90,25 @@ void SDLWindow::handleEvents()
 
 void SDLWindow::render()
 {
-    // Clear screen
-    // SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-    // SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    SDL_RenderClear(renderer);
 
-    // Update screen
+    for (Sprite *spriteComponent : spriteComponents)
+    {
+        if (spriteComponent->getGameObject()->getActive() == true)
+        {
+            int renderX = static_cast<int>(spriteComponent->getGameObject()->getPosition().x() - mainCamera->getCamera().x);
+            int renderY = static_cast<int>(spriteComponent->getGameObject()->getPosition().y() - mainCamera->getCamera().y);
+
+            int renderW = spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x();
+            int renderH = spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y();
+
+            SDL_Rect renderQuad = {renderX, renderY, renderW, renderH};
+
+            SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotation(), nullptr, spriteComponent->getFlip());
+        }
+    }
+
     SDL_RenderPresent(renderer);
 }
 
@@ -111,4 +125,19 @@ SDL_Renderer *SDLWindow::getRenderer() const
 bool SDLWindow::isRunning() const
 {
     return !quit;
+}
+
+void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
+{
+    spriteComponents.push_back(spriteComponent);
+}
+
+void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
+{
+    spriteComponents.remove(spriteComponent);
+}
+
+void SDLWindow::setMainCamera(Camera *mainCamera)
+{
+    this->mainCamera = mainCamera;
 }

@@ -25,9 +25,9 @@ void CircleCollider::setRadius(const float radius)
     this->radius = radius;
 }
 
-std::span<const Eigen::Vector2f> CircleCollider::getNormals(Collider *other)
+std::vector<Eigen::Vector2f> CircleCollider::getNormals(Collider *other)
 {
-    std::array<Eigen::Vector2f, 1> normals;
+    std::vector<Eigen::Vector2f> normals(1);
 
     normals[0] = other->getGameObject()->getPosition() - getGameObject()->getPosition();
     normals[0].normalize();

@@ -1,11 +1,11 @@
 #include "boxcollider.h"
 
-BoxCollider::BoxCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER), width(0.0f), height(0.0f), vertices()
+BoxCollider::BoxCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER), width(0.0f), height(0.0f), vertices(), normals(2)
 {
 }
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
-    : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height), vertices()
+    : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height), vertices(), normals(2)
 {
 }
 
@@ -117,4 +117,9 @@ void BoxCollider::updateCollider()
     generateVertices();
     generateNormals();
     generateProjections();
+}
+
+std::vector<Eigen::Vector2f> BoxCollider::getNormals(Collider *other)
+{
+    return normals;
 }

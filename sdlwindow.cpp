@@ -100,12 +100,12 @@ void SDLWindow::render()
             int renderX = static_cast<int>(spriteComponent->getGameObject()->getPosition().x() - mainCamera->getCamera().x);
             int renderY = static_cast<int>(spriteComponent->getGameObject()->getPosition().y() - mainCamera->getCamera().y);
 
-            int renderW = spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x();
-            int renderH = spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y();
+            int renderW = static_cast<int>(spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x());
+            int renderH = static_cast<int>(spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y());
 
             SDL_Rect renderQuad = {renderX, renderY, renderW, renderH};
 
-            SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotation(), nullptr, spriteComponent->getFlip());
+            SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
         }
     }
 

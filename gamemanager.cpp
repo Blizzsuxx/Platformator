@@ -168,11 +168,10 @@ void GameManager::updateDeltaTime()
 
 void GameManager::delay()
 {
-    // Cap the frame rate to 60 FPS
-    double frameTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0 - lastUpdateTime;
-    if (frameTime < FRAME_TIME)
+    double elapsedTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0 - lastUpdateTime;
+    if (elapsedTime < FRAME_TIME)
     {
-        SDL_Delay(static_cast<Uint32>((FRAME_TIME - frameTime) * 1000.0));
+        SDL_Delay(static_cast<Uint32>((FRAME_TIME - elapsedTime) * 1000.0));
     }
 }
 

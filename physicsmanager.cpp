@@ -68,7 +68,7 @@ void PhysicsManager::narrowPhase()
     }
 }
 
-bool PhysicsManager::checkProjections(std::span<const Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider)
+bool PhysicsManager::checkProjections(std::vector<Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider)
 {
     for (long unsigned int i = 0; i < normals.size(); i++)
     {
@@ -106,7 +106,7 @@ bool PhysicsManager::checkCollisions(Collision *collision)
     Eigen::Vector2f incidentProjection;
     Collider *realIncidentCollider = incidentCollider;
 
-    std::span<const Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
+    std::vector<Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
     if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
     {
         return false;
@@ -119,19 +119,24 @@ bool PhysicsManager::checkCollisions(Collision *collision)
         return false;
     }
 
-    collision->setNormal(minNormal);
-    collision->setPenetration(minOverlap);
     collision->setIncidentObject(realIncidentCollider->getGameObject());
     collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider->getGameObject() : incidentCollider->getGameObject());
 
+    // Ensure the normal points from reference toward incident
     auto directionVector = collision->getIncidentObject()->getPosition() - collision->getReferenceObject()->getPosition();
     if (minNormal.dot(directionVector) < 0)
     {
         minNormal *= -1.0f;
     }
 
-    float projectionDelta = (incidentProjection.y() - incidentProjection.x()) / 2;
-    collision->setContactPoint(Eigen::Vector2f((realIncidentCollider->getGameObject()->getPosition() + (minNormal * projectionDelta))));
+    // Store the corrected normal
+    collision->setNormal(minNormal);
+    collision->setPenetration(minOverlap);
+
+    // Contact point: incident's near surface, offset halfway into the overlap
+    float incidentHalfExtent = (incidentProjection.y() - incidentProjection.x()) / 2.0f;
+    collision->setContactPoint(
+        realIncidentCollider->getGameObject()->getPosition() - minNormal * (incidentHalfExtent - minOverlap / 2.0f));
 
     return true;
 }

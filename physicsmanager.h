@@ -28,7 +28,7 @@ private:
     void broadPhase();
     void narrowPhase();
     bool checkCollisions(Collision *collision);
-    bool checkProjections(std::span<const Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider);
+    bool checkProjections(std::vector<Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider);
 
     std::list<Rigidbody *> rigidBodyComponents;
     std::list<Collider *> colliderComponents;

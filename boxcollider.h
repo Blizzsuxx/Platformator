@@ -22,12 +22,15 @@ public:
     void setWidth(const float width);
     void setHeight(const float height);
 
+    std::vector<Eigen::Vector2f> getNormals(Collider *other) override;
+
 private:
     float width;
     float height;
     std::array<Eigen::Vector2f, 4> vertices;
 
     std::array<Eigen::Vector2f, 4> &getVertices();
+    std::vector<Eigen::Vector2f> normals;
 
     void generateNormals();
     void generateProjections();

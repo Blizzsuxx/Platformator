@@ -1,7 +1,7 @@
 #include "collider.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), layer(0), isTrigger(false), isDirty(false), normals(), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
+    : Component(gameObject, type), layer(0), isTrigger(false), isDirty(false), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
 {
 }
 
@@ -47,9 +47,4 @@ bool Collider::getIsDirty() const
 void Collider::setIsDirty(const bool isDirty)
 {
     this->isDirty = isDirty;
-}
-
-std::vector<Eigen::Vector2f> Collider::getNormals(Collider *other)
-{
-    return normals;
 }

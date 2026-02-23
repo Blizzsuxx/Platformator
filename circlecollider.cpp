@@ -47,8 +47,10 @@ void CircleCollider::generateProjections()
     float x = getGameObject()->getPosition().x();
     float y = getGameObject()->getPosition().y();
 
-    xProjections = BoundingRadiusProjectionAxis(this, x - radius, x + radius);
-    yProjections = BoundingRadiusProjectionAxis(this, y - radius, y + radius);
+    xProjections.getMin()->setProjectedPosition(x - radius);
+    xProjections.getMax()->setProjectedPosition(x + radius);
+    yProjections.getMin()->setProjectedPosition(y - radius);
+    yProjections.getMax()->setProjectedPosition(y + radius);
 }
 
 void CircleCollider::updateCollider()

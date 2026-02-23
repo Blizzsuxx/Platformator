@@ -55,7 +55,7 @@ std::list<Collision> *AABB::getCandidateCollisions()
 
 void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
 {
-    for (int i = 0; i < chunk->getSize(); i++)
+    for (size_t i = 0; i < chunk->getSize(); i++)
     {
         BoundingRadiusProjection *projection = chunk->get(i);
         Collider *collider = projection->getCollider();
@@ -67,7 +67,7 @@ void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
 
         if (projection->getIsEnd())
         {
-            for (int j = i - 1; j >= 0; j--)
+            for (size_t j = i - 1; j != static_cast<size_t>(-1); j--)
             {
                 Collider *previousProjection = chunk->get(j)->getCollider();
                 if (previousProjection == collider)
@@ -89,7 +89,7 @@ void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
             continue;
         }
 
-        for (int i = chunk->getSize() - 1; i >= 0; i--)
+        for (size_t i = chunk->getSize() - 1; i != static_cast<size_t>(-1); i--)
         {
             Collider *previousProjection = chunk->get(i)->getCollider();
             if (previousProjection == checkpoint)

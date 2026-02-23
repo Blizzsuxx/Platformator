@@ -23,7 +23,6 @@ SegmentedIntervalList::~SegmentedIntervalList()
 
 void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
 {
-    // find the index of the element using binary search
     BoundingRadiusProjection *lowerProjection = axis->getMin();
     size_t chunkWhereItWasInserted = add(lowerProjection);
 

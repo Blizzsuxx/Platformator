@@ -1,3 +1,5 @@
+#pragma once
+
 #include <eigen3/Eigen/Dense>
 
 const Eigen::Vector2f X_AXIS(1.0f, 0.0f);

@@ -14,20 +14,44 @@ public:
     const Eigen::Vector2f &getNormal() const;
     float getPenetration() const;
     const Eigen::Vector2f &getContactPoint() const;
-    GameObject *getReferenceObject();
-    GameObject *getIncidentObject();
+
+    const GameObject *getReferenceObject() const;
+    const GameObject *getIncidentObject() const;
 
     // Setters
-    void setNormal(const Eigen::Vector2f &normal);
-    void setPenetration(const float penetration);
-    void setContactPoint(const Eigen::Vector2f &contactPoint);
-    void setReferenceObject(GameObject *gameObjectA);
-    void setIncidentObject(GameObject *gameObjectB);
+    void setNormal(const Eigen::Vector2f &normal) const;
+    void setPenetration(const float penetration) const;
+    void setContactPoint(const Eigen::Vector2f &contactPoint) const;
+    void setReferenceObject(GameObject *gameObjectA) const;
+    void setIncidentObject(GameObject *gameObjectB) const;
+
+    bool operator==(const Collision &other) const;
+    bool operator!=(const Collision &other) const;
+
+    class HashFunction
+    {
+    public:
+        size_t operator()(const Collision &collision) const
+        {
+            // sort them so that the order of the objects doesn't matter
+            const GameObject *objectA = collision.getReferenceObject();
+            const GameObject *objectB = collision.getIncidentObject();
+
+            if (objectA > objectB)
+            {
+                std::swap(objectA, objectB);
+            }
+
+            size_t hash1 = std::hash<const GameObject *>()(objectA);
+            size_t hash2 = std::hash<const GameObject *>()(objectB);
+            return hash1 ^ (hash2 << 1); // Combine the two hashes
+        }
+    };
 
 private:
-    Eigen::Vector2f normal;
-    float penetration;
-    Eigen::Vector2f contactPoint;
-    GameObject *referenceObject;
-    GameObject *incidentObject;
+    mutable Eigen::Vector2f normal;
+    mutable float penetration;
+    mutable Eigen::Vector2f contactPoint;
+    mutable GameObject *referenceObject;
+    mutable GameObject *incidentObject;
 };

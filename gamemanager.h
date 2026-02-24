@@ -2,7 +2,6 @@
 
 #include "sdlwindow.h"
 #include "physicsmanager.h"
-#include "gameobjectmanager.h"
 
 class GameManager
 {

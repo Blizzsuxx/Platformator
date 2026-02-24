@@ -10,8 +10,8 @@ public:
 
     // Inherited via Collider
     ColliderType getColliderType() const override;
-    std::vector<Eigen::Vector2f> getNormals(Collider *other) override;
-    Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) override;
+    std::vector<Eigen::Vector2f> getNormals(const Collider *other) const override;
+    Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const override;
 
     // Getters
     float getRadius() const;

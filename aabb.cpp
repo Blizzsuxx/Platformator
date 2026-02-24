@@ -1,7 +1,8 @@
 #include "aabb.h"
 
 AABB::AABB()
-    : intervalListX()
+    : intervalListX(),
+      candidateCollisions()
 {
 }
 
@@ -23,8 +24,6 @@ void AABB::remove(Collider *element)
 
 void AABB::updateCandidateList()
 {
-    candidateCollisions.clear();
-
     for (LocalSortArray *chunk : *intervalListX.getChunks())
     {
         checkForPotentialCollisionsInsideChunk(chunk);
@@ -48,7 +47,7 @@ SegmentedIntervalList *AABB::getIntervalListX()
 //     return &intervalListY;
 // }
 
-std::list<Collision> *AABB::getCandidateCollisions()
+const std::unordered_set<Collision, Collision::HashFunction> *AABB::getCandidateCollisions() const
 {
     return &candidateCollisions;
 }
@@ -60,7 +59,7 @@ void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
         BoundingRadiusProjection *projection = chunk->get(i);
         Collider *collider = projection->getCollider();
 
-        if (collider->getGameObject()->getActive() == false)
+        if (collider->getGameObject()->getActive() == false || collider->getIsDirty() == false)
         {
             continue;
         }
@@ -69,10 +68,16 @@ void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
         {
             for (size_t j = i - 1; j != static_cast<size_t>(-1); j--)
             {
+
                 Collider *previousProjection = chunk->get(j)->getCollider();
                 if (previousProjection == collider)
                 {
                     break;
+                }
+
+                if (!chunk->get(j)->getIsEnd())
+                {
+                    continue;
                 }
                 addCandidateCollision(collider, previousProjection);
             }
@@ -84,7 +89,7 @@ void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
 {
     for (Collider *checkpoint : *(chunk->getCheckpoint()))
     {
-        if (checkpoint->getGameObject()->getActive() == false)
+        if (checkpoint->getGameObject()->getActive() == false || checkpoint->getIsDirty() == false)
         {
             continue;
         }
@@ -96,6 +101,12 @@ void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
             {
                 break;
             }
+
+            if (!chunk->get(i)->getIsEnd())
+            {
+                continue;
+            }
+
             addCandidateCollision(checkpoint, previousProjection);
         }
     }
@@ -103,6 +114,11 @@ void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
 
 void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
 {
+    if (colliderA->getGameObject()->getActive() == false || colliderB->getGameObject()->getActive() == false)
+    {
+        return;
+    }
+
     float aYMin = colliderA->getYProjections()->getMin()->getProjectedPosition();
     float aYMax = colliderA->getYProjections()->getMax()->getProjectedPosition();
     float bYMin = colliderB->getYProjections()->getMin()->getProjectedPosition();
@@ -110,6 +126,12 @@ void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
 
     if (aYMax >= bYMin && bYMax >= aYMin)
     {
-        candidateCollisions.push_back(Collision(colliderA->getGameObject(), colliderB->getGameObject()));
+        candidateCollisions.insert(Collision(colliderA->getGameObject(), colliderB->getGameObject()));
     }
+}
+
+void AABB::sort()
+{
+    intervalListX.sort();
+    // intervalListY.sort();
 }

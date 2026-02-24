@@ -114,6 +114,7 @@ void Rigidbody::move(double timeDelta)
 {
     if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false)
     {
+        this->resetForce();
         return;
     }
 

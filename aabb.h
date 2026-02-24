@@ -3,6 +3,7 @@
 #include "segmentedintervallist.h"
 #include "collider.h"
 #include "collision.h"
+#include <set>
 
 class AABB
 {
@@ -15,7 +16,8 @@ public:
     SegmentedIntervalList *getIntervalListX();
     // SegmentedIntervalList *getIntervalListY();
     void updateCandidateList();
-    std::list<Collision> *getCandidateCollisions();
+    const std::unordered_set<Collision, Collision::HashFunction> *getCandidateCollisions() const;
+    void sort();
 
 private:
     void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk);
@@ -24,5 +26,5 @@ private:
 
     SegmentedIntervalList intervalListX;
     // SegmentedIntervalList intervalListY;
-    std::list<Collision> candidateCollisions;
+    std::unordered_set<Collision, Collision::HashFunction> candidateCollisions;
 };

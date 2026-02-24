@@ -8,12 +8,12 @@ Component::~Component()
 {
 }
 
-GameObject *Component::getGameObject()
+GameObject *Component::getGameObject() const
 {
     return gameObject;
 }
 
-ComponentType Component::getType()
+ComponentType Component::getType() const
 {
     return type;
 }

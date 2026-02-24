@@ -52,6 +52,7 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 
 void PhysicsManager::broadPhase()
 {
+    aabb.sort();
     aabb.updateCandidateList();
 }
 
@@ -59,7 +60,7 @@ void PhysicsManager::narrowPhase()
 {
     collisions.clear();
 
-    for (Collision &collision : *aabb.getCandidateCollisions())
+    for (const Collision &collision : *aabb.getCandidateCollisions())
     {
         if (checkCollisions(&collision))
         {
@@ -68,7 +69,7 @@ void PhysicsManager::narrowPhase()
     }
 }
 
-bool PhysicsManager::checkProjections(std::vector<Eigen::Vector2f> &normals, Collider *referenceCollider, Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, Collider *&realIncidentCollider)
+bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider)
 {
     for (long unsigned int i = 0; i < normals.size(); i++)
     {
@@ -96,15 +97,15 @@ bool PhysicsManager::checkProjections(std::vector<Eigen::Vector2f> &normals, Col
     return true;
 }
 
-bool PhysicsManager::checkCollisions(Collision *collision)
+bool PhysicsManager::checkCollisions(const Collision *collision)
 {
-    Collider *referenceCollider = (Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
-    Collider *incidentCollider = (Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
+    const Collider *referenceCollider = (const Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
+    const Collider *incidentCollider = (const Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
 
     float minOverlap = std::numeric_limits<float>::max();
     Eigen::Vector2f minNormal;
     Eigen::Vector2f incidentProjection;
-    Collider *realIncidentCollider = incidentCollider;
+    const Collider *realIncidentCollider = incidentCollider;
 
     std::vector<Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
     if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)

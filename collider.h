@@ -66,8 +66,8 @@ public:
     ~Collider();
 
     virtual ColliderType getColliderType() const = 0;
-    virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) = 0;
-    virtual std::vector<Eigen::Vector2f> getNormals(Collider *other) = 0;
+    virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
+    virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();

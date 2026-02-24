@@ -19,7 +19,7 @@ public:
     BoundingRadiusProjection *pop();
     BoundingRadiusProjection *addAndPop(BoundingRadiusProjection *element);
     BoundingRadiusProjection *remove(size_t index);
-    bool remove(BoundingRadiusProjection *element);
+    void remove(BoundingRadiusProjection *element);
     void sort();
     void sort(size_t index);
     BoundingRadiusProjection *get(size_t index);

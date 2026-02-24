@@ -23,8 +23,8 @@ public:
     Component(GameObject *gameObject, ComponentType type);
     ~Component();
 
-    GameObject *getGameObject();
-    ComponentType getType();
+    GameObject *getGameObject() const;
+    ComponentType getType() const;
 
 private:
     GameObject *gameObject;

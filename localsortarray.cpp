@@ -97,18 +97,12 @@ BoundingRadiusProjection *LocalSortArray::remove(size_t index)
     return removed;
 }
 
-bool LocalSortArray::remove(BoundingRadiusProjection *element)
+void LocalSortArray::remove(BoundingRadiusProjection *element)
 {
     // find the index of the element using binary search
     size_t index = binarySearch(element);
 
-    if (index != (size_t)-1)
-    {
-        remove(index);
-        return true;
-    }
-
-    return false;
+    remove(index);
 }
 
 void LocalSortArray::sort()
@@ -118,7 +112,7 @@ void LocalSortArray::sort()
     {
         BoundingRadiusProjection *temp = array[i];
         size_t j = i - 1;
-        while (j != (size_t)-1 && *array[j] > *temp)
+        while (j != static_cast<size_t>(-1) && *array[j] > *temp)
         {
             array[j + 1] = array[j];
             j--;
@@ -208,31 +202,20 @@ void LocalSortArray::removeCheckpoint(Collider *collider)
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
 {
-    if (size == 0)
-    {
-        return 0;
-    }
-
     size_t low = 0;
-    size_t high = size - 1;
-    size_t mid = 0;
-    BoundingRadiusProjection value = *element;
+    size_t high = size;
 
-    while (low <= high)
+    while (low < high)
     {
-        mid = (low + high) / 2;
+        size_t mid = low + (high - low) / 2;
 
-        if (value == *array[mid])
-        {
-            return mid;
-        }
-        else if (value < *array[mid])
-        {
-            high = mid - 1;
-        }
-        else if (value > *array[mid])
+        if (*array[mid] < *element)
         {
             low = mid + 1;
+        }
+        else
+        {
+            high = mid;
         }
     }
 

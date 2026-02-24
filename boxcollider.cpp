@@ -41,7 +41,7 @@ void BoxCollider::generateProjections()
 
 void BoxCollider::generateVertices()
 {
-    std::array<Eigen::Vector2f, 4> extremePoints;
+    const std::array<Eigen::Vector2f, 4> &extremePoints = getVertices();
 
     vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() - height / 2);
     vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() - height / 2);
@@ -62,14 +62,14 @@ void BoxCollider::generateVertices()
     }
 }
 
-std::array<Eigen::Vector2f, 4> &BoxCollider::getVertices()
+const std::array<Eigen::Vector2f, 4> &BoxCollider::getVertices() const
 {
     return vertices;
 }
 
-Eigen::Vector2f BoxCollider::projectOntoAxis(const Eigen::Vector2f &axis)
+Eigen::Vector2f BoxCollider::projectOntoAxis(const Eigen::Vector2f &axis) const
 {
-    std::array<Eigen::Vector2f, 4> extremePoints = getVertices();
+    const std::array<Eigen::Vector2f, 4> &extremePoints = getVertices();
     float min = axis.dot(extremePoints[0]);
     float max = min;
 
@@ -119,7 +119,7 @@ void BoxCollider::updateCollider()
     generateProjections();
 }
 
-std::vector<Eigen::Vector2f> BoxCollider::getNormals(Collider *other)
+std::vector<Eigen::Vector2f> BoxCollider::getNormals(const Collider *other) const
 {
     return normals;
 }

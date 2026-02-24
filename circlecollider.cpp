@@ -25,7 +25,7 @@ void CircleCollider::setRadius(const float radius)
     this->radius = radius;
 }
 
-std::vector<Eigen::Vector2f> CircleCollider::getNormals(Collider *other)
+std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) const
 {
     std::vector<Eigen::Vector2f> normals(1);
 
@@ -35,7 +35,7 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(Collider *other)
     return normals;
 }
 
-Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis)
+Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis) const
 {
     float value = axis.dot(getGameObject()->getPosition());
 

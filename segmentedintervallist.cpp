@@ -89,23 +89,26 @@ void SegmentedIntervalList::sort()
     }
 
     // check if the chunks are sorted
+    // find the first chunk with a max value greater than the min value of the current chunk, counting backwards
+    // example: let sorted max values of chunks be 1, 3, 4, 6. Let the current chunks min value be be 2.
+    // The first chunk with a max value greater than 2 is 3.
     for (size_t i = 1; i < size; i++)
     {
-        while (*chunks[i - 1]->getMax() > *chunks[i]->getMin())
+        while (chunks[i]->getSize() > 0 && *chunks[i - 1]->getMax() > *chunks[i]->getMin())
         {
-            // find the first chunk with a max value greater than the min value of the current chunk, counting backwards
-            // example: let sorted max values of chunks be 1, 3, 4, 6. Let the current chunks min value be be 2.
-            // The first chunk with a max value greater than 2 is 3.
 
             size_t j = i - 1;
-            while (j > 0 && *chunks[j - 1]->getMax() <= *chunks[i]->getMin())
+            while (j > 0 && *chunks[j - 1]->getMax() > *chunks[i]->getMin())
             {
                 j--;
             }
             BoundingRadiusProjection *element = chunks[i]->remove(0UL);
 
+            size_t prevSize = size;
             size_t indexWhereItWasAdded = add(element, j);
-            size_t indexWhereItWasRemoved = i + indexWhereItWasAdded - j; // in case the chunk split
+            size_t shift = size - prevSize; // 1 if split occurred, 0 otherwise
+            size_t indexWhereItWasRemoved = i + shift;
+
             updateCheckpoint(indexWhereItWasAdded, element, indexWhereItWasRemoved);
         }
     }

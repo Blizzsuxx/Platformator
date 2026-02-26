@@ -62,7 +62,7 @@ void PhysicsManager::narrowPhase()
 
     for (const Collision &collision : *aabb.getCandidateCollisions())
     {
-        if (checkCollisions(&collision))
+        if (checkCollision(&collision))
         {
             collisions.push_back(&collision);
         }
@@ -97,7 +97,7 @@ bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normal
     return true;
 }
 
-bool PhysicsManager::checkCollisions(const Collision *collision)
+bool PhysicsManager::checkCollision(const Collision *collision)
 {
     const Collider *referenceCollider = (const Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
     const Collider *incidentCollider = (const Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
@@ -144,4 +144,45 @@ bool PhysicsManager::checkCollisions(const Collision *collision)
 
 void PhysicsManager::resolveCollisions()
 {
+    for (const Collision *collision : collisions)
+    {
+        Rigidbody *referenceRigidbody = (Rigidbody *)collision->getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
+        Rigidbody *incidentRigidbody = (Rigidbody *)collision->getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
+
+        Collider *referenceCollider = (Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
+        Collider *incidentCollider = (Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
+
+        if (referenceRigidbody == nullptr || incidentRigidbody == nullptr || referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getIsTrigger() || incidentCollider->getIsTrigger())
+        {
+            referenceCollider->triggerCollisionEnter(incidentCollider);
+            incidentCollider->triggerCollisionEnter(referenceCollider);
+        }
+        else
+        {
+            resolveCollision(collision);
+        }
+    }
+}
+
+void PhysicsManager::resolveCollision(const Collision *collision)
+{
+    // sequential impulses
+    Rigidbody *referenceRigidbody = (Rigidbody *)collision->getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *incidentRigidbody = (Rigidbody *)collision->getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
+
+    Eigen::Vector2f relativeVelocity = incidentRigidbody->getVelocity() - referenceRigidbody->getVelocity();
+    float velocityAlongNormal = relativeVelocity.dot(collision->getNormal());
+    if (velocityAlongNormal > 0)
+    {
+        return;
+    }
+
+    float e = std::min(referenceRigidbody->getFriction(), incidentRigidbody->getFriction());
+    float j = -(1 + e) * velocityAlongNormal;
+    float inverseMassSum = (referenceRigidbody->getMass() > 0 ? 1.0f / referenceRigidbody->getMass() : 0.0f) + (incidentRigidbody->getMass() > 0 ? 1.0f / incidentRigidbody->getMass() : 0.0f);
+    j /= inverseMassSum;
+
+    Eigen::Vector2f impulse = j * collision->getNormal();
+    referenceRigidbody->setVelocity(referenceRigidbody->getVelocity() - (impulse / referenceRigidbody->getMass()));
+    incidentRigidbody->setVelocity(incidentRigidbody->getVelocity() + (impulse / incidentRigidbody->getMass()));
 }

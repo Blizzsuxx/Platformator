@@ -2,7 +2,7 @@
 
 #include <vector>
 #include "localsortarray.h"
-#include "onswapcallback.h"
+// #include "onswapcallback.h"
 
 class SegmentedIntervalList
 {
@@ -15,7 +15,7 @@ public:
     size_t getSize() const;
     std::vector<LocalSortArray *> *getChunks();
     void clear();
-    void sort(OnSwapCallback &callback);
+    void sort();
     void add(BoundingRadiusProjectionAxis *axis);
     void remove(BoundingRadiusProjectionAxis *axis);
 

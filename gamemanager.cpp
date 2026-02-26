@@ -181,8 +181,8 @@ void GameManager::loop()
     {
         updateDeltaTime();
         window->handleEvents();
-        applyPhysics();
         resolveCollisions();
+        applyPhysics();
         window->render();
         delay();
     }

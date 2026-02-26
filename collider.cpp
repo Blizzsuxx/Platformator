@@ -48,3 +48,15 @@ void Collider::setIsDirty(const bool isDirty)
 {
     this->isDirty = isDirty;
 }
+
+void Collider::triggerCollisionEnter(const Collider *other) const
+{
+    // Placeholder for collision enter event handling
+    // In a full implementation, this would notify the game object or other systems of the collision event
+}
+
+void Collider::triggerCollisionExit(const Collider *other) const
+{
+    // Placeholder for collision exit event handling
+    // In a full implementation, this would notify the game object or other systems of the collision event
+}

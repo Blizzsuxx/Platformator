@@ -41,8 +41,6 @@ void BoxCollider::generateProjections()
 
 void BoxCollider::generateVertices()
 {
-    const std::array<Eigen::Vector2f, 4> &extremePoints = getVertices();
-
     vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() - height / 2);
     vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() - height / 2);
     vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() + height / 2);

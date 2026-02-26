@@ -69,6 +69,9 @@ public:
     virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
     virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
+    void triggerCollisionEnter(const Collider *other) const;
+    void triggerCollisionExit(const Collider *other) const;
+
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
 

@@ -105,7 +105,7 @@ void LocalSortArray::remove(BoundingRadiusProjection *element)
     remove(index);
 }
 
-void LocalSortArray::sort(OnSwapCallback &callback)
+void LocalSortArray::sort()
 {
     // sort the array with insertion sort, sort from lowest to highest
     for (size_t i = 1; i < size; i++)
@@ -114,12 +114,12 @@ void LocalSortArray::sort(OnSwapCallback &callback)
         size_t j = i - 1;
         while (j != static_cast<size_t>(-1) && *array[j] > *temp)
         {
-            // temp is moving LEFT past array[j]
-            // That means temp's value decreased (or array[j]'s increased)
-            if (temp->getCollider() != array[j]->getCollider())
-            {
-                callback.onSwap(temp, array[j]);
-            }
+            // // temp is moving LEFT past array[j]
+            // // That means temp's value decreased (or array[j]'s increased)
+            // if (temp->getCollider() != array[j]->getCollider())
+            // {
+            //     callback.onSwap(temp, array[j]);
+            // }
             array[j + 1] = array[j];
             j--;
         }

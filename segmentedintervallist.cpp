@@ -79,13 +79,13 @@ void SegmentedIntervalList::clear()
     size = 0;
 }
 
-void SegmentedIntervalList::sort(OnSwapCallback &callback)
+void SegmentedIntervalList::sort()
 {
     // TODO: parallelize this
     // TODO: probably don't need this
     for (size_t i = 0; i < size; i++)
     {
-        chunks[i]->sort(callback);
+        chunks[i]->sort();
     }
 
     // check if the chunks are sorted

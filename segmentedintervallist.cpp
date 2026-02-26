@@ -79,13 +79,13 @@ void SegmentedIntervalList::clear()
     size = 0;
 }
 
-void SegmentedIntervalList::sort()
+void SegmentedIntervalList::sort(OnSwapCallback &callback)
 {
     // TODO: parallelize this
     // TODO: probably don't need this
     for (size_t i = 0; i < size; i++)
     {
-        chunks[i]->sort();
+        chunks[i]->sort(callback);
     }
 
     // check if the chunks are sorted
@@ -102,21 +102,16 @@ void SegmentedIntervalList::sort()
             {
                 j--;
             }
-            BoundingRadiusProjection *element = chunks[i]->remove(0UL);
+            BoundingRadiusProjection *element = remove(i, 0);
 
             size_t prevSize = size;
             size_t indexWhereItWasAdded = add(element, j);
             size_t shift = size - prevSize; // 1 if split occurred, 0 otherwise
             size_t indexWhereItWasRemoved = i + shift;
 
-            updateCheckpoint(indexWhereItWasAdded, element, indexWhereItWasRemoved);
+            updateCheckpoint(indexWhereItWasAdded, indexWhereItWasRemoved, element);
         }
     }
-}
-
-void SegmentedIntervalList::sort(size_t index)
-{
-    chunks[index]->sort();
 }
 
 size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
@@ -212,51 +207,19 @@ BoundingRadiusProjection *SegmentedIntervalList::remove(size_t chunkIndex, size_
     return removedElement;
 }
 
-void SegmentedIntervalList::swap(BoundingRadiusProjection *element1, BoundingRadiusProjection *element2)
+void SegmentedIntervalList::updateCheckpoint(size_t indexWhereItWasAdded, size_t indexWhereItWasRemoved, BoundingRadiusProjection *element)
 {
-    int chunkIndex1 = binarySearch(element1);
-    int arrayIndex1 = chunks[chunkIndex1]->binarySearch(element1);
-
-    int chunkIndex2 = binarySearch(element2);
-    int arrayIndex2 = chunks[chunkIndex2]->binarySearch(element2);
-
-    swap(chunkIndex1, arrayIndex1, chunkIndex2, arrayIndex2);
-}
-
-void SegmentedIntervalList::swap(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2, size_t arrayIndex2)
-{
-    chunks[chunkIndex1]->swap(arrayIndex1, chunks[chunkIndex2], arrayIndex2);
-
-    updateCheckpoint(chunkIndex1, arrayIndex1, chunkIndex2);
-    updateCheckpoint(chunkIndex2, arrayIndex2, chunkIndex1);
-}
-
-void SegmentedIntervalList::updateCheckpoint(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2)
-{
-    // chunkIndex1 is the chunk where the element was inserted
-    // arrayIndex1 is the index of the element in the chunk
-    // chunkIndex2 is the chunk where the element was removed
-    // chunkIndex2 is always greater than chunkIndex1
-
-    BoundingRadiusProjection *element = chunks[chunkIndex1]->get(arrayIndex1);
-    updateCheckpoint(chunkIndex1, element, chunkIndex2);
-}
-
-void SegmentedIntervalList::updateCheckpoint(size_t chunkIndex, BoundingRadiusProjection *element, size_t chunkIndex2)
-{
-    // chunkIndex is the chunk where the element was inserted
-    // chunkIndex2 is the chunk where the element was removed
 
     if (element->getIsEnd())
     {
-        for (size_t i = chunkIndex; i <= chunkIndex2; i++)
+        for (size_t i = indexWhereItWasAdded; i <= indexWhereItWasRemoved; i++)
         {
             chunks[i]->removeCheckpoint(element->getCollider());
         }
     }
     else
     {
-        for (size_t i = chunkIndex; i <= chunkIndex2; i++)
+        for (size_t i = indexWhereItWasAdded; i <= indexWhereItWasRemoved; i++)
         {
             chunks[i]->addCheckpoint(element->getCollider());
         }

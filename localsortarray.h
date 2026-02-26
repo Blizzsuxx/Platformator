@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_set>
 #include "collider.h"
+#include "onswapcallback.h"
 
 const int MAX_SIZE = 32;
 
@@ -20,8 +21,7 @@ public:
     BoundingRadiusProjection *addAndPop(BoundingRadiusProjection *element);
     BoundingRadiusProjection *remove(size_t index);
     void remove(BoundingRadiusProjection *element);
-    void sort();
-    void sort(size_t index);
+    void sort(OnSwapCallback &callback);
     BoundingRadiusProjection *get(size_t index);
     BoundingRadiusProjection *operator[](size_t index);
     BoundingRadiusProjection *getMax();

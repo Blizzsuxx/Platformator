@@ -105,7 +105,7 @@ void LocalSortArray::remove(BoundingRadiusProjection *element)
     remove(index);
 }
 
-void LocalSortArray::sort()
+void LocalSortArray::sort(OnSwapCallback &callback)
 {
     // sort the array with insertion sort, sort from lowest to highest
     for (size_t i = 1; i < size; i++)
@@ -114,43 +114,16 @@ void LocalSortArray::sort()
         size_t j = i - 1;
         while (j != static_cast<size_t>(-1) && *array[j] > *temp)
         {
+            // temp is moving LEFT past array[j]
+            // That means temp's value decreased (or array[j]'s increased)
+            if (temp->getCollider() != array[j]->getCollider())
+            {
+                callback.onSwap(temp, array[j]);
+            }
             array[j + 1] = array[j];
             j--;
         }
         array[j + 1] = temp;
-    }
-}
-
-void LocalSortArray::sort(size_t index)
-{
-    if (index >= size)
-    {
-        return;
-    }
-
-    BoundingRadiusProjection *value = array[index];
-
-    // Move right if value is greater than the next element
-    if (index + 1 < size && *value > *array[index + 1])
-    {
-        size_t j = index;
-        while (j + 1 < size && *value > *array[j + 1])
-        {
-            array[j] = array[j + 1];
-            j++;
-        }
-        array[j] = value;
-    }
-    // Move left if value is less than the previous element
-    else if (index > 0 && *value < *array[index - 1])
-    {
-        size_t j = index;
-        while (j > 0 && *value < *array[j - 1])
-        {
-            array[j] = array[j - 1];
-            j--;
-        }
-        array[j] = value;
     }
 }
 

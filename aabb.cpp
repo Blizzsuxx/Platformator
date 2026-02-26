@@ -2,6 +2,7 @@
 
 AABB::AABB()
     : intervalListX(),
+      intervalListY(),
       candidateCollisions()
 {
 }
@@ -13,104 +14,104 @@ AABB::~AABB()
 void AABB::add(Collider *element)
 {
     intervalListX.add(element->getXProjections());
-    // intervalListY.add(element->getYProjections());
+    intervalListY.add(element->getYProjections());
 }
 
 void AABB::remove(Collider *element)
 {
     intervalListX.remove(element->getXProjections());
-    // intervalListY.remove(element->getYProjections());
+    intervalListY.remove(element->getYProjections());
 }
 
-void AABB::updateCandidateList()
-{
-    for (LocalSortArray *chunk : *intervalListX.getChunks())
-    {
-        checkForPotentialCollisionsInsideChunk(chunk);
-        checkForCollisionsWithCheckpoint(chunk);
-    }
+// void AABB::updateCandidateList()
+// {
+//     for (LocalSortArray *chunk : *intervalListX.getChunks())
+//     {
+//         checkForPotentialCollisionsInsideChunk(chunk);
+//         checkForCollisionsWithCheckpoint(chunk);
+//     }
 
-    // for (LocalSortArray *chunk : *intervalListY.getChunks())
-    // {
-    //     checkForPotentialCollisionsInsideChunk(chunk);
-    //     checkForCollisionsWithCheckpoint(chunk);
-    // }
-}
+//     for (LocalSortArray *chunk : *intervalListY.getChunks())
+//     {
+//         checkForPotentialCollisionsInsideChunk(chunk);
+//         checkForCollisionsWithCheckpoint(chunk);
+//     }
+// }
 
 SegmentedIntervalList *AABB::getIntervalListX()
 {
     return &intervalListX;
 }
 
-// SegmentedIntervalList *AABB::getIntervalListY()
-// {
-//     return &intervalListY;
-// }
+SegmentedIntervalList *AABB::getIntervalListY()
+{
+    return &intervalListY;
+}
 
 const std::unordered_set<Collision, Collision::HashFunction> *AABB::getCandidateCollisions() const
 {
     return &candidateCollisions;
 }
 
-void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
-{
-    for (size_t i = 0; i < chunk->getSize(); i++)
-    {
-        BoundingRadiusProjection *projection = chunk->get(i);
-        Collider *collider = projection->getCollider();
+// void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
+// {
+//     for (size_t i = 0; i < chunk->getSize(); i++)
+//     {
+//         BoundingRadiusProjection *projection = chunk->get(i);
+//         Collider *collider = projection->getCollider();
 
-        if (collider->getGameObject()->getActive() == false || collider->getIsDirty() == false)
-        {
-            continue;
-        }
+//         if (collider->getGameObject()->getActive() == false || collider->getIsDirty() == false)
+//         {
+//             continue;
+//         }
 
-        if (projection->getIsEnd())
-        {
-            for (size_t j = i - 1; j != static_cast<size_t>(-1); j--)
-            {
+//         if (projection->getIsEnd())
+//         {
+//             for (size_t j = i - 1; j != static_cast<size_t>(-1); j--)
+//             {
 
-                Collider *previousProjection = chunk->get(j)->getCollider();
-                if (previousProjection == collider)
-                {
-                    break;
-                }
+//                 Collider *previousProjection = chunk->get(j)->getCollider();
+//                 if (previousProjection == collider)
+//                 {
+//                     break;
+//                 }
 
-                if (!chunk->get(j)->getIsEnd())
-                {
-                    continue;
-                }
-                addCandidateCollision(collider, previousProjection);
-            }
-        }
-    }
-}
+//                 if (!chunk->get(j)->getIsEnd())
+//                 {
+//                     continue;
+//                 }
+//                 addCandidateCollision(collider, previousProjection);
+//             }
+//         }
+//     }
+// }
 
-void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
-{
-    for (Collider *checkpoint : *(chunk->getCheckpoint()))
-    {
-        if (checkpoint->getGameObject()->getActive() == false || checkpoint->getIsDirty() == false)
-        {
-            continue;
-        }
+// void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
+// {
+//     for (Collider *checkpoint : *(chunk->getCheckpoint()))
+//     {
+//         if (checkpoint->getGameObject()->getActive() == false || checkpoint->getIsDirty() == false)
+//         {
+//             continue;
+//         }
 
-        for (size_t i = chunk->getSize() - 1; i != static_cast<size_t>(-1); i--)
-        {
-            Collider *previousProjection = chunk->get(i)->getCollider();
-            if (previousProjection == checkpoint)
-            {
-                break;
-            }
+//         for (size_t i = chunk->getSize() - 1; i != static_cast<size_t>(-1); i--)
+//         {
+//             Collider *previousProjection = chunk->get(i)->getCollider();
+//             if (previousProjection == checkpoint)
+//             {
+//                 break;
+//             }
 
-            if (!chunk->get(i)->getIsEnd())
-            {
-                continue;
-            }
+//             if (!chunk->get(i)->getIsEnd())
+//             {
+//                 continue;
+//             }
 
-            addCandidateCollision(checkpoint, previousProjection);
-        }
-    }
-}
+//             addCandidateCollision(checkpoint, previousProjection);
+//         }
+//     }
+// }
 
 void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
 {
@@ -132,6 +133,23 @@ void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
 
 void AABB::sort()
 {
-    intervalListX.sort();
-    // intervalListY.sort();
+    intervalListX.sort(*this);
+    intervalListY.sort(*this);
+}
+
+void AABB::onSwap(BoundingRadiusProjection *movedLeft, BoundingRadiusProjection *movedRight)
+{
+    bool leftIsMin = !movedLeft->getIsEnd();
+    bool rightIsMax = movedRight->getIsEnd();
+
+    if (leftIsMin && rightIsMax)
+    {
+        // min(A) crossed left past max(B) → NEW overlap on this axis
+        onAxisOverlapBegin(movedLeft->getCollider(), movedRight->getCollider());
+    }
+    else if (!leftIsMin && !rightIsMax)
+    {
+        // max(A) crossed left past min(B) → LOST overlap on this axis
+        onAxisOverlapEnd(movedLeft->getCollider(), movedRight->getCollider());
+    }
 }

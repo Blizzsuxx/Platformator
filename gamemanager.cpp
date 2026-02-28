@@ -8,13 +8,14 @@ GameManager::GameManager() : window(new SDLWindow()), gameObjects(), physicsMana
 
 GameManager::~GameManager()
 {
-    delete window;
-    delete physicsManager;
-
     for (std::list<GameObject *>::iterator it = gameObjects.begin(); it != gameObjects.end(); ++it)
     {
-        delete *it;
+        deleteGameObject(*it);
     }
+    gameObjects.clear();
+
+    delete physicsManager;
+    delete window;
 }
 
 void GameManager::initializeMainCamera()
@@ -140,6 +141,11 @@ void GameManager::setPhysicsManager(PhysicsManager *physicsManager)
 PhysicsManager *GameManager::getPhysicsManager() const
 {
     return physicsManager;
+}
+
+SDLWindow *GameManager::getWindow() const
+{
+    return window;
 }
 
 void GameManager::applyPhysics()

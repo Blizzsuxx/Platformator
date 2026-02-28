@@ -4,10 +4,6 @@ Component::Component(GameObject *gameObject, ComponentType type) : gameObject(ga
 {
 }
 
-Component::~Component()
-{
-}
-
 GameObject *Component::getGameObject() const
 {
     return gameObject;

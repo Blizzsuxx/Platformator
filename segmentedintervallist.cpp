@@ -114,9 +114,50 @@ void SegmentedIntervalList::sort()
     }
 }
 
-size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
+size_t SegmentedIntervalList::searchAround(size_t index, BoundingRadiusProjection *element)
 {
-    if (size == 0)
+    // search to the left
+    for (size_t i = index; i > 0; i--)
+    {
+        if (*chunks[i]->getMax() < *element)
+        {
+            break;
+        }
+        if (*chunks[i]->getMin() <= *element && *chunks[i]->getMax() >= *element)
+        {
+            size_t indexOfElement = chunks[i]->findBinarySearchIndex(element);
+
+            if (indexOfElement < chunks[i]->getSize() && chunks[i]->get(indexOfElement) == element)
+            {
+                return i;
+            }
+        }
+    }
+
+    // search to the right
+    for (size_t i = index + 1; i < size; i++)
+    {
+        if (*chunks[i]->getMin() > *element)
+        {
+            break;
+        }
+        if (*chunks[i]->getMin() <= *element && *chunks[i]->getMax() >= *element)
+        {
+            size_t indexOfElement = chunks[i]->findBinarySearchIndex(element);
+
+            if (indexOfElement < chunks[i]->getSize() && chunks[i]->get(indexOfElement) == element)
+            {
+                return i;
+            }
+        }
+    }
+
+    return index;
+}
+
+size_t SegmentedIntervalList::findBinarySearchIndex(BoundingRadiusProjection *element)
+{
+    if (size == 0 || chunks[0]->getSize() == 0)
     {
         return 0;
     }
@@ -130,7 +171,48 @@ size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
     {
         mid = (low + high) / 2;
 
-        if (value <= *chunks[mid]->getMax() && (mid == 0 || value >= *chunks[mid - 1]->getMax()))
+        if (mid == 0)
+        {
+            return mid;
+        }
+        if (value <= *chunks[mid]->getMax() && value >= *chunks[mid]->getMin())
+        {
+            return searchAround(mid, element);
+        }
+        else if (value >= *chunks[mid]->getMax())
+        {
+            low = mid + 1;
+        }
+        else if (value < *chunks[mid]->getMax())
+        {
+            high = mid - 1;
+        }
+    }
+
+    return mid;
+}
+
+size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
+{
+    if (size == 0 || chunks[0]->getSize() == 0)
+    {
+        return 0;
+    }
+
+    size_t low = 0;
+    size_t high = size - 1;
+    size_t mid = 0;
+    BoundingRadiusProjection value = *element;
+
+    while (low <= high)
+    {
+        mid = (low + high) / 2;
+
+        if (mid == 0)
+        {
+            return mid;
+        }
+        if (value <= *chunks[mid]->getMax() && value >= *chunks[mid]->getMin())
         {
             return mid;
         }
@@ -183,13 +265,44 @@ size_t SegmentedIntervalList::add(BoundingRadiusProjection *element, size_t chun
 
 size_t SegmentedIntervalList::remove(BoundingRadiusProjection *element)
 {
-    // find the index of the element using binary search
-    size_t index = binarySearch(element);
-    size_t index2 = chunks[index]->binarySearch(element);
+    // find the chunk using binary search
+    size_t chunkIndex = binarySearch(element);
 
-    remove(index, index2);
+    // Search by pointer identity, not value — multiple elements can share the same projected position
+    for (size_t i = 0; i < chunks[chunkIndex]->getSize(); i++)
+    {
+        if (chunks[chunkIndex]->get(i) == element)
+        {
+            remove(chunkIndex, i);
+            return chunkIndex;
+        }
+    }
 
-    return index;
+    // If not found in the expected chunk, check adjacent chunks (equal values can span boundaries)
+    if (chunkIndex + 1 < size)
+    {
+        for (size_t i = 0; i < chunks[chunkIndex + 1]->getSize(); i++)
+        {
+            if (chunks[chunkIndex + 1]->get(i) == element)
+            {
+                remove(chunkIndex + 1, i);
+                return chunkIndex + 1;
+            }
+        }
+    }
+    if (chunkIndex > 0)
+    {
+        for (size_t i = 0; i < chunks[chunkIndex - 1]->getSize(); i++)
+        {
+            if (chunks[chunkIndex - 1]->get(i) == element)
+            {
+                remove(chunkIndex - 1, i);
+                return chunkIndex - 1;
+            }
+        }
+    }
+
+    return chunkIndex;
 }
 
 BoundingRadiusProjection *SegmentedIntervalList::remove(size_t chunkIndex, size_t arrayIndex)

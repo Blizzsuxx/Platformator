@@ -20,7 +20,7 @@ public:
     BoundingRadiusProjection *pop();
     BoundingRadiusProjection *addAndPop(BoundingRadiusProjection *element);
     BoundingRadiusProjection *remove(size_t index);
-    void remove(BoundingRadiusProjection *element);
+    bool remove(BoundingRadiusProjection *element);
     void sort();
     BoundingRadiusProjection *get(size_t index);
     BoundingRadiusProjection *operator[](size_t index);
@@ -33,6 +33,9 @@ public:
     void removeCheckpoint(Collider *element);
     void swap(size_t index1, LocalSortArray *array2, size_t index2);
     std::unordered_set<Collider *> *getCheckpoint();
+
+    size_t findBinarySearchIndex(BoundingRadiusProjection *element);
+    size_t searchAround(size_t index, BoundingRadiusProjection *element);
 
 private:
     size_t binarySearch(BoundingRadiusProjection *element);

@@ -20,6 +20,8 @@ public:
     void setPhysicsManager(PhysicsManager *physicsManager);
     PhysicsManager *getPhysicsManager() const;
 
+    SDLWindow *getWindow() const;
+
     void applyPhysics();
     void resolveCollisions();
 

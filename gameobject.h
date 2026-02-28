@@ -21,7 +21,7 @@ class Component
 {
 public:
     Component(GameObject *gameObject, ComponentType type);
-    ~Component();
+    virtual ~Component() = default;
 
     GameObject *getGameObject() const;
     ComponentType getType() const;

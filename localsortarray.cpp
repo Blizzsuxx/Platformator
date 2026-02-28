@@ -97,12 +97,19 @@ BoundingRadiusProjection *LocalSortArray::remove(size_t index)
     return removed;
 }
 
-void LocalSortArray::remove(BoundingRadiusProjection *element)
+bool LocalSortArray::remove(BoundingRadiusProjection *element)
 {
     // find the index of the element using binary search
-    size_t index = binarySearch(element);
+    size_t index = findBinarySearchIndex(element);
 
-    remove(index);
+    if (index < size && array[index] == element)
+    {
+        remove(index);
+
+        return true;
+    }
+
+    return false;
 }
 
 void LocalSortArray::sort()
@@ -180,9 +187,13 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
 
     while (low < high)
     {
-        size_t mid = low + (high - low) / 2;
+        size_t mid = (low + high) / 2;
 
-        if (*array[mid] < *element)
+        if (*array[mid] == *element)
+        {
+            return mid;
+        }
+        else if (*array[mid] < *element)
         {
             low = mid + 1;
         }
@@ -205,4 +216,65 @@ void LocalSortArray::swap(size_t index1, LocalSortArray *array2, size_t index2)
 std::unordered_set<Collider *> *LocalSortArray::getCheckpoint()
 {
     return &checkpoint;
+}
+
+size_t LocalSortArray::findBinarySearchIndex(BoundingRadiusProjection *element)
+{
+    size_t low = 0;
+    size_t high = size;
+
+    while (low < high)
+    {
+        size_t mid = (low + high) / 2;
+
+        if (array[mid] == element)
+        {
+            return mid;
+        }
+        if (*array[mid] == *element)
+        {
+            return searchAround(mid, element);
+        }
+        else if (*array[mid] < *element)
+        {
+            low = mid + 1;
+        }
+        else
+        {
+            high = mid;
+        }
+    }
+
+    return low;
+}
+
+size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjection *element)
+{
+    // Search left
+    for (size_t i = index; i != static_cast<size_t>(-1); i--)
+    {
+        if (array[i] == element)
+        {
+            return i;
+        }
+        if (*array[i] != *element)
+        {
+            break;
+        }
+    }
+
+    // Search right
+    for (size_t i = index + 1; i < size; i++)
+    {
+        if (array[i] == element)
+        {
+            return i;
+        }
+        if (*array[i] != *element)
+        {
+            break;
+        }
+    }
+
+    return static_cast<size_t>(-1);
 }

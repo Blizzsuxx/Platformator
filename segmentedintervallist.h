@@ -29,6 +29,8 @@ private:
     // void swap(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2, size_t arrayIndex2);
     // void updateCheckpoint(size_t chunkIndex1, size_t arrayIndex1, size_t chunkIndex2);
     void updateCheckpoint(size_t indexWhereItWasAdded, size_t indexWhereItWasRemoved, BoundingRadiusProjection *element);
+    size_t searchAround(size_t index, BoundingRadiusProjection *element);
+    size_t findBinarySearchIndex(BoundingRadiusProjection *element);
 
     std::vector<LocalSortArray *> chunks;
     size_t size;

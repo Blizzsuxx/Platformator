@@ -24,13 +24,13 @@ public:
 
     std::vector<Eigen::Vector2f> getNormals(const Collider *other) const override;
 
+    const std::array<Eigen::Vector2f, 4> &getVertices() const;
+
 private:
     float width;
     float height;
     std::array<Eigen::Vector2f, 4> vertices;
     std::vector<Eigen::Vector2f> normals;
-
-    const std::array<Eigen::Vector2f, 4> &getVertices() const;
     void generateNormals();
     void generateProjections();
     void generateVertices();

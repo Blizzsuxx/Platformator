@@ -24,6 +24,9 @@ public:
     void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void removeColliderComponent(Collider *colliderComponent);
 
+    const std::list<Collider *> &getColliders() const;
+    const std::list<const Collision *> &getCollisions() const;
+
 private:
     void broadPhase();
     void narrowPhase();

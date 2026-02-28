@@ -148,23 +148,6 @@ SDLWindow *GameManager::getWindow() const
     return window;
 }
 
-void GameManager::applyPhysics()
-{
-    if (physicsManager)
-    {
-        physicsManager->applyPhysics(deltaTime);
-    }
-}
-
-void GameManager::resolveCollisions()
-{
-    if (physicsManager)
-    {
-        physicsManager->checkForCollisions();
-        physicsManager->resolveCollisions();
-    }
-}
-
 void GameManager::updateDeltaTime()
 {
     double currentTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
@@ -187,8 +170,9 @@ void GameManager::loop()
     {
         updateDeltaTime();
         window->handleEvents();
-        resolveCollisions();
-        applyPhysics();
+        physicsManager->checkForCollisions();
+        physicsManager->resolveCollisions();
+        physicsManager->applyPhysics(deltaTime);
         window->render();
         delay();
     }

@@ -2,12 +2,32 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(nullptr), sdlEvent(), quit(false)
+                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), quit(false), spriteComponents(), listeners()
 {
     if (!init())
     {
         printf("Failed to initialize SDLWindow!");
     }
+
+    listeners.push_back([this](SDL_Event event)
+                        {
+        if (event.type == SDL_KEYDOWN)
+        {
+            switch (event.key.keysym.sym)
+            {
+            case SDLK_F1:
+                debugDraw.toggleShowColliders();
+                break;
+            case SDLK_F2:
+                debugDraw.toggleShowCollisionPoints();
+                break;
+            case SDLK_F3:
+                debugDraw.toggleShowCollisionNormals();
+                break;
+            default:
+                break;
+            }
+        } });
 }
 
 SDLWindow::~SDLWindow()
@@ -77,13 +97,13 @@ void SDLWindow::handleEvents()
     // Handle events on queue
     while (SDL_PollEvent(&sdlEvent) != 0)
     {
-        // User requests quit
-        std::cout << "Event type: " << sdlEvent.type << std::endl;
-        std::cout << "Event key: " << sdlEvent.key.keysym.sym << std::endl;
         if (sdlEvent.type == SDL_QUIT)
         {
-            std::cout << "Quit event" << std::endl;
             quit = true;
+        }
+        for (const auto &listener : listeners)
+        {
+            listener(sdlEvent);
         }
     }
 }
@@ -104,12 +124,24 @@ void SDLWindow::render()
             int renderH = static_cast<int>(spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y());
 
             SDL_Rect renderQuad = {renderX, renderY, renderW, renderH};
-
             SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
+
+            Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
+            if (collider)
+            {
+                if (collider->getColliderType() == ColliderType::BoxCollider)
+                {
+                    debugDraw.addBoxColliderDebugObject(*(BoxCollider *)collider);
+                }
+                else if (collider->getColliderType() == ColliderType::CircleCollider)
+                {
+                    debugDraw.addCircleColliderDebugObject(*(CircleCollider *)collider);
+                }
+            }
         }
     }
 
-    SDL_RenderPresent(renderer);
+    debugDraw.render(renderer, mainCamera);
 }
 
 SDL_Window *SDLWindow::getWindow() const

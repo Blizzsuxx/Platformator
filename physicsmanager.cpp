@@ -1,4 +1,5 @@
 #include "physicsmanager.h"
+#include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
     : rigidBodyComponents(), colliderComponents(), collisions(), aabb(), gravityVector(0.0f, -9.81f)
@@ -65,6 +66,7 @@ void PhysicsManager::narrowPhase()
         if (checkCollision(&collision))
         {
             collisions.push_back(&collision);
+            DebugDraw::getInstance().addCollisionDebugObject(collision);
         }
     }
 }
@@ -162,6 +164,16 @@ void PhysicsManager::resolveCollisions()
             resolveCollision(collision);
         }
     }
+}
+
+const std::list<Collider *> &PhysicsManager::getColliders() const
+{
+    return colliderComponents;
+}
+
+const std::list<const Collision *> &PhysicsManager::getCollisions() const
+{
+    return collisions;
 }
 
 void PhysicsManager::resolveCollision(const Collision *collision)

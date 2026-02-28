@@ -22,9 +22,6 @@ public:
 
     SDLWindow *getWindow() const;
 
-    void applyPhysics();
-    void resolveCollisions();
-
     void loop();
 
 private:

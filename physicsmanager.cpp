@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), colliderComponents(), collisions(), aabb(), gravityVector(0.0f, -9.81f)
+    : rigidBodyComponents(), colliderComponents(), collisions(), aabb(), gravityVector(0.0f, 9.81f)
 {
 }
 

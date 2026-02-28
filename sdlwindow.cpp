@@ -123,6 +123,9 @@ void SDLWindow::render()
             int renderW = static_cast<int>(spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x());
             int renderH = static_cast<int>(spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y());
 
+            renderX -= renderW / 2;
+            renderY -= renderH / 2;
+
             SDL_Rect renderQuad = {renderX, renderY, renderW, renderH};
             SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
 

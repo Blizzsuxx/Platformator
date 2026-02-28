@@ -14,6 +14,7 @@ class Rigidbody : public Component
 {
 public:
     Rigidbody(GameObject *gameObject);
+    Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity);
     ~Rigidbody();
 
     void move(double timeDelta);

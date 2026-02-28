@@ -4,6 +4,10 @@ Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentTy
 {
 }
 
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), bodyType(bodyType), gravity(gravity)
+{
+}
+
 Rigidbody::~Rigidbody()
 {
 }
@@ -124,6 +128,7 @@ void Rigidbody::move(double timeDelta)
 
     this->setVelocity(this->getVelocity() + this->getForce() * timeDelta / this->getMass());
     this->getGameObject()->setPosition(this->getGameObject()->getPosition() + this->getVelocity() * timeDelta);
+    printf("Velocity: (%f, %f) friction: %f\n", this->getVelocity().x(), this->getVelocity().y(), this->getFriction());
     this->setVelocity(this->getVelocity() * (1.0f - this->getFriction() * timeDelta));
     this->resetForce();
 }

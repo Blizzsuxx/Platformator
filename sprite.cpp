@@ -14,7 +14,7 @@ Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip fl
 
 Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip, int width, int height) : Component(gameObject, SPRITE), texture(texture), flip(flip), width(width), height(height)
 {
-    if (texture != nullptr)
+    if (texture != nullptr && width == 0 && height == 0)
     {
         SDL_QueryTexture(texture, nullptr, nullptr, &this->width, &this->height);
     }

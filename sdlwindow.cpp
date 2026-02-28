@@ -142,6 +142,8 @@ void SDLWindow::render()
     }
 
     debugDraw.render(renderer, mainCamera);
+
+    SDL_RenderPresent(renderer);
 }
 
 SDL_Window *SDLWindow::getWindow() const

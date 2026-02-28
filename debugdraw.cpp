@@ -12,6 +12,10 @@ DebugDraw::~DebugDraw()
 
 void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
 {
+    SDL_BlendMode prevBlend;
+    SDL_GetRenderDrawBlendMode(renderer, &prevBlend);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
     for (const DebugObject &debugObject : debugObjectsBuffer)
     {
         const std::vector<Eigen::Vector2f> &vertices = debugObject.vertices;
@@ -20,20 +24,45 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
 
         SDL_SetRenderDrawColor(renderer, debugObject.r, debugObject.g, debugObject.b, debugObject.a);
 
-        for (size_t i = 0; i < vertices.size(); i++)
+        if (debugObject.closed)
         {
-            const Eigen::Vector2f &v1 = vertices[i];
-            const Eigen::Vector2f &v2 = vertices[(i + 1) % vertices.size()];
+            // Draw as a closed polygon (colliders)
+            for (size_t i = 0; i < vertices.size(); i++)
+            {
+                const Eigen::Vector2f &v1 = vertices[i];
+                const Eigen::Vector2f &v2 = vertices[(i + 1) % vertices.size()];
 
-            int x1 = static_cast<int>(v1.x()) - camX;
-            int y1 = static_cast<int>(v1.y()) - camY;
-            int x2 = static_cast<int>(v2.x()) - camX;
-            int y2 = static_cast<int>(v2.y()) - camY;
+                int x1 = static_cast<int>(v1.x()) - camX;
+                int y1 = static_cast<int>(v1.y()) - camY;
+                int x2 = static_cast<int>(v2.x()) - camX;
+                int y2 = static_cast<int>(v2.y()) - camY;
 
-            SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+                // Draw 3px thick by offsetting
+                SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+                SDL_RenderDrawLine(renderer, x1 + 1, y1, x2 + 1, y2);
+                SDL_RenderDrawLine(renderer, x1, y1 + 1, x2, y1 + 1);
+            }
+        }
+        else
+        {
+            // Draw as individual line segments (pairs of points)
+            for (size_t i = 0; i + 1 < vertices.size(); i += 2)
+            {
+                const Eigen::Vector2f &v1 = vertices[i];
+                const Eigen::Vector2f &v2 = vertices[i + 1];
+
+                int x1 = static_cast<int>(v1.x()) - camX;
+                int y1 = static_cast<int>(v1.y()) - camY;
+                int x2 = static_cast<int>(v2.x()) - camX;
+                int y2 = static_cast<int>(v2.y()) - camY;
+
+                SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+                SDL_RenderDrawLine(renderer, x1 + 1, y1, x2 + 1, y2);
+            }
         }
     }
 
+    SDL_SetRenderDrawBlendMode(renderer, prevBlend);
     clearDebugObjects();
 }
 
@@ -159,9 +188,14 @@ void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices)
     debugObjectsBuffer.push_back(DebugObject(vertices));
 }
 
-void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed)
 {
-    debugObjectsBuffer.push_back(DebugObject(vertices, r, g, b, a));
+    debugObjectsBuffer.push_back(DebugObject(vertices, r, g, b, a, closed));
+}
+
+void DebugDraw::addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed)
+{
+    debugObjectsBuffer.emplace_back(std::move(vertices), r, g, b, a, closed);
 }
 
 void DebugDraw::addBoxColliderDebugObject(const BoxCollider &collider)
@@ -171,7 +205,10 @@ void DebugDraw::addBoxColliderDebugObject(const BoxCollider &collider)
         return;
     }
 
-    addDebugObject(std::vector<Eigen::Vector2f>(collider.getVertices().begin(), collider.getVertices().end()), 0x00, 0xFF, 0x00, 0xFF);
+    const auto &v = collider.getVertices();
+    // Vertex order: 0=TL, 1=TR, 2=BL, 3=BR → draw as TL→TR→BR→BL (clockwise)
+    std::vector<Eigen::Vector2f> ordered = {v[0], v[1], v[3], v[2]};
+    addDebugObject(std::move(ordered), 0x00, 0xFF, 0x00, 0xCC, true);
 }
 
 void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
@@ -185,13 +222,18 @@ void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
     float radius = collider.getRadius();
 
     std::vector<Eigen::Vector2f> vertices;
-    const int numSegments = 20;
+    const int numSegments = 36;
     for (int i = 0; i < numSegments; i++)
     {
         float angle = static_cast<float>(i) / numSegments * 2.0f * static_cast<float>(M_PI);
         vertices.emplace_back(center.x() + radius * std::cos(angle), center.y() + radius * std::sin(angle));
     }
-    addDebugObject(vertices, 0x00, 0xFF, 0x00, 0xFF);
+    addDebugObject(std::move(vertices), 0x00, 0xFF, 0x00, 0xCC, true);
+
+    // Rotation indicator line from center to edge
+    float rot = collider.getGameObject()->getRotation();
+    Eigen::Vector2f edge(center.x() + radius * std::cos(rot), center.y() + radius * std::sin(rot));
+    addDebugObject({center, edge}, 0x00, 0xCC, 0x00, 0xCC, false);
 }
 
 void DebugDraw::addCollisionDebugObject(const Collision &collision)
@@ -205,19 +247,48 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
     auto normal = collision.getNormal();
     float penetration = collision.getPenetration();
 
-    if (showCollisionNormals)
-    {
-        // normal line from contact point, length = penetration * 5 (scaled for visibility)
-        addDebugObject({contactPoint, contactPoint + normal * penetration * 5.0f},
-                       0xFF, 0xFF, 0x00, 0xFF); // yellow normal
-    }
-
     if (showCollisionPoints)
     {
-        // cross at contact point
-        addDebugObject({contactPoint + Eigen::Vector2f(-5, -5), contactPoint + Eigen::Vector2f(5, 5),
-                        contactPoint + Eigen::Vector2f(-5, 5), contactPoint + Eigen::Vector2f(5, -5)},
-                       0xFF, 0x00, 0x00, 0xFF); // red cross
+        // Filled-looking cross at contact point (two separate line segments)
+        float size = 6.0f;
+        addDebugObject(
+            {contactPoint + Eigen::Vector2f(-size, -size), contactPoint + Eigen::Vector2f(size, size),
+             contactPoint + Eigen::Vector2f(-size, size), contactPoint + Eigen::Vector2f(size, -size)},
+            0xFF, 0x20, 0x20, 0xFF, false);
+
+        // Small diamond around the point for extra visibility
+        addDebugObject(
+            {contactPoint + Eigen::Vector2f(0, -size), contactPoint + Eigen::Vector2f(size, 0),
+             contactPoint + Eigen::Vector2f(0, size), contactPoint + Eigen::Vector2f(-size, 0)},
+            0xFF, 0x60, 0x60, 0xFF, true);
+    }
+
+    if (showCollisionNormals)
+    {
+        // Normal arrow with minimum visible length
+        float normalLength = std::max(penetration * 5.0f, 20.0f);
+        Eigen::Vector2f tip = contactPoint + normal * normalLength;
+
+        // Main shaft
+        addDebugObject({contactPoint, tip}, 0xFF, 0xFF, 0x00, 0xFF, false);
+
+        // Arrowhead
+        Eigen::Vector2f perp(-normal.y(), normal.x());
+        float arrowSize = 6.0f;
+        Eigen::Vector2f arrowBase = tip - normal * arrowSize;
+        addDebugObject(
+            {tip, arrowBase + perp * arrowSize * 0.5f,
+             tip, arrowBase - perp * arrowSize * 0.5f},
+            0xFF, 0xFF, 0x00, 0xFF, false);
+
+        // Penetration depth text-free indicator: small bar at penetration distance
+        if (penetration > 2.0f)
+        {
+            Eigen::Vector2f penTip = contactPoint + normal * penetration;
+            Eigen::Vector2f barLeft = penTip + perp * 4.0f;
+            Eigen::Vector2f barRight = penTip - perp * 4.0f;
+            addDebugObject({barLeft, barRight}, 0xFF, 0xAA, 0x00, 0xFF, false);
+        }
     }
 }
 
@@ -244,11 +315,11 @@ void DebugDraw::toggleShowCollisionNormals()
 ////////////
 
 DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices)
-    : vertices(std::move(vertices)), r(0x00), g(0xFF), b(0x00), a(0xFF)
+    : vertices(std::move(vertices)), r(0x00), g(0xFF), b(0x00), a(0xFF), closed(true)
 {
 }
-DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
-    : vertices(std::move(vertices)), r(r), g(g), b(b), a(a)
+DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed)
+    : vertices(std::move(vertices)), r(r), g(g), b(b), a(a), closed(closed)
 {
 }
 

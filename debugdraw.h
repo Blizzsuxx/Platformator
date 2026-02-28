@@ -12,11 +12,12 @@ class DebugObject
 {
 public:
     DebugObject(std::vector<Eigen::Vector2f> vertices);
-    DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+    DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed = true);
     ~DebugObject();
 
     std::vector<Eigen::Vector2f> vertices;
     Uint8 r, g, b, a;
+    bool closed;
 };
 
 class DebugDraw
@@ -32,7 +33,8 @@ public:
     DebugDraw &operator=(const DebugDraw &) = delete;
 
     void addDebugObject(const std::vector<Eigen::Vector2f> &vertices);
-    void addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+    void addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed = true);
+    void addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed);
 
     void addBoxColliderDebugObject(const BoxCollider &collider);
     void addCircleColliderDebugObject(const CircleCollider &collider);

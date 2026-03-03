@@ -31,6 +31,7 @@ public:
 
     float getMomentOfInertia() const;
     float getFriction() const;
+    float getRestitution() const;
 
     BodyType getBodyType() const;
     bool getGravity() const;
@@ -48,6 +49,7 @@ public:
 
     void setMomentOfInertia(const float momentOfInertia);
     void setFriction(const float friction);
+    void setRestitution(const float restitution);
 
     void setBodyType(const BodyType bodyType);
     void setGravity(const bool gravity);
@@ -63,6 +65,7 @@ private:
 
     float momentOfInertia;
     float friction;
+    float restitution;
 
     BodyType bodyType;
     bool gravity;

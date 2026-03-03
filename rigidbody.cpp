@@ -1,10 +1,10 @@
 #include "rigidbody.h"
 
-Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), bodyType(DYNAMIC), gravity(true)
+Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true)
 {
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), bodyType(bodyType), gravity(gravity)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity)
 {
 }
 
@@ -46,6 +46,11 @@ float Rigidbody::getMomentOfInertia() const
 float Rigidbody::getFriction() const
 {
     return friction;
+}
+
+float Rigidbody::getRestitution() const
+{
+    return restitution;
 }
 
 BodyType Rigidbody::getBodyType() const
@@ -104,6 +109,11 @@ void Rigidbody::setFriction(const float friction)
     this->friction = friction;
 }
 
+void Rigidbody::setRestitution(const float restitution)
+{
+    this->restitution = restitution;
+}
+
 void Rigidbody::setBodyType(const BodyType bodyType)
 {
     this->bodyType = bodyType;
@@ -124,12 +134,9 @@ void Rigidbody::move(double timeDelta)
 
     this->setAngularVelocity(this->getAngularVelocity() + this->getTorque() * timeDelta / this->getMomentOfInertia());
     this->getGameObject()->setRotation(this->getGameObject()->getRotation() + this->getAngularVelocity() * timeDelta);
-    this->setAngularVelocity(this->getAngularVelocity() * (1.0f - this->getFriction() * timeDelta));
 
     this->setVelocity(this->getVelocity() + this->getForce() * timeDelta / this->getMass());
     this->getGameObject()->setPosition(this->getGameObject()->getPosition() + this->getVelocity() * timeDelta);
-    printf("Velocity: (%f, %f) friction: %f\n", this->getVelocity().x(), this->getVelocity().y(), this->getFriction());
-    this->setVelocity(this->getVelocity() * (1.0f - this->getFriction() * timeDelta));
     this->resetForce();
 }
 

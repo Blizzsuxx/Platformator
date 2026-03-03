@@ -182,19 +182,79 @@ void PhysicsManager::resolveCollision(const Collision *collision)
     Rigidbody *referenceRigidbody = (Rigidbody *)collision->getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
     Rigidbody *incidentRigidbody = (Rigidbody *)collision->getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
 
-    Eigen::Vector2f relativeVelocity = incidentRigidbody->getVelocity() - referenceRigidbody->getVelocity();
-    float velocityAlongNormal = relativeVelocity.dot(collision->getNormal());
-    if (velocityAlongNormal > 0)
+    float refInvMass = (referenceRigidbody->getBodyType() == BodyType::STATIC) ? 0.0f : 1.0f / referenceRigidbody->getMass();
+    float incInvMass = (incidentRigidbody->getBodyType() == BodyType::STATIC) ? 0.0f : 1.0f / incidentRigidbody->getMass();
+    float inverseMassSum = refInvMass + incInvMass;
+
+    if (inverseMassSum == 0.0f)
     {
-        return;
+        return; // both static
     }
 
-    float e = std::min(referenceRigidbody->getFriction(), incidentRigidbody->getFriction());
-    float j = -(1 + e) * velocityAlongNormal;
-    float inverseMassSum = (referenceRigidbody->getMass() > 0 ? 1.0f / referenceRigidbody->getMass() : 0.0f) + (incidentRigidbody->getMass() > 0 ? 1.0f / incidentRigidbody->getMass() : 0.0f);
-    j /= inverseMassSum;
+    Eigen::Vector2f normal = collision->getNormal();
+    Eigen::Vector2f relativeVelocity = incidentRigidbody->getVelocity() - referenceRigidbody->getVelocity();
+    float velocityAlongNormal = relativeVelocity.dot(normal);
 
-    Eigen::Vector2f impulse = j * collision->getNormal();
-    referenceRigidbody->setVelocity(referenceRigidbody->getVelocity() - (impulse / referenceRigidbody->getMass()));
-    incidentRigidbody->setVelocity(incidentRigidbody->getVelocity() + (impulse / incidentRigidbody->getMass()));
+    if (velocityAlongNormal > 0)
+    {
+        return; // separating
+    }
+
+    // --- Normal impulse (restitution) ---
+    float e = std::min(referenceRigidbody->getRestitution(), incidentRigidbody->getRestitution());
+    float jN = -(1.0f + e) * velocityAlongNormal;
+    jN /= inverseMassSum;
+
+    Eigen::Vector2f normalImpulse = jN * normal;
+    referenceRigidbody->setVelocity(referenceRigidbody->getVelocity() - normalImpulse * refInvMass);
+    incidentRigidbody->setVelocity(incidentRigidbody->getVelocity() + normalImpulse * incInvMass);
+
+    // --- Friction impulse (Coulomb friction) ---
+    // Recompute relative velocity after normal impulse
+    relativeVelocity = incidentRigidbody->getVelocity() - referenceRigidbody->getVelocity();
+
+    // Tangent vector (velocity component along surface)
+    Eigen::Vector2f tangent = relativeVelocity - relativeVelocity.dot(normal) * normal;
+    float tangentLength = tangent.norm();
+    if (tangentLength > 1e-6f)
+    {
+        tangent /= tangentLength; // normalize
+
+        float jT = -relativeVelocity.dot(tangent);
+        jT /= inverseMassSum;
+
+        // Coulomb's law: clamp friction impulse to mu * normal impulse
+        float mu = std::sqrt(referenceRigidbody->getFriction() * incidentRigidbody->getFriction());
+
+        Eigen::Vector2f frictionImpulse;
+        if (std::abs(jT) < jN * mu)
+        {
+            // Static friction
+            frictionImpulse = jT * tangent;
+        }
+        else
+        {
+            // Dynamic friction
+            frictionImpulse = -jN * mu * tangent;
+        }
+
+        referenceRigidbody->setVelocity(referenceRigidbody->getVelocity() - frictionImpulse * refInvMass);
+        incidentRigidbody->setVelocity(incidentRigidbody->getVelocity() + frictionImpulse * incInvMass);
+    }
+
+    // --- Positional correction (prevent sinking) ---
+    const float percent = 0.4f; // penetration percentage to correct
+    const float slop = 0.01f;   // allowable penetration tolerance
+    float penetration = collision->getPenetration();
+    Eigen::Vector2f correction = std::max(penetration - slop, 0.0f) / inverseMassSum * percent * normal;
+    if (referenceRigidbody->getBodyType() != BodyType::STATIC)
+    {
+        referenceRigidbody->getGameObject()->setPosition(
+            referenceRigidbody->getGameObject()->getPosition() - correction * refInvMass);
+    }
+    if (incidentRigidbody->getBodyType() != BodyType::STATIC)
+    {
+        incidentRigidbody->getGameObject()->setPosition(
+            incidentRigidbody->getGameObject()->getPosition() + correction * incInvMass);
+    }
 }

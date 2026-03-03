@@ -1,10 +1,10 @@
 #include "rigidbody.h"
 
-Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true)
+Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true)
 {
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity)
 {
 }
 
@@ -87,6 +87,7 @@ void Rigidbody::resetForce()
 void Rigidbody::setMass(const float mass)
 {
     this->mass = mass;
+    this->inverseMass = (mass != 0.0f) ? 1.0f / mass : 0.0f;
 }
 
 void Rigidbody::setAngularVelocity(const float angularVelocity)
@@ -146,4 +147,19 @@ void Rigidbody::applyGravity(const Eigen::Vector2f &gravityVector)
     {
         this->addForce(gravityVector * this->getMass());
     }
+}
+
+float Rigidbody::getInverseMass() const
+{
+    return inverseMass;
+}
+
+void Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
+{
+    if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false)
+    {
+        return;
+    }
+
+    this->setVelocity(this->getVelocity() + impulse * this->getInverseMass());
 }

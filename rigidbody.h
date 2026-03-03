@@ -54,11 +54,16 @@ public:
     void setBodyType(const BodyType bodyType);
     void setGravity(const bool gravity);
 
+    float getInverseMass() const;
+
+    void addImpulse(const Eigen::Vector2f &impulse);
+
 private:
     Eigen::Vector2f velocity;
     Eigen::Vector2f force;
 
     float mass;
+    float inverseMass;
 
     float angularVelocity;
     float torque;
@@ -69,4 +74,10 @@ private:
 
     BodyType bodyType;
     bool gravity;
+};
+
+template <>
+struct ComponentTypeFor<Rigidbody>
+{
+    static constexpr ComponentType value = ComponentType::RIGID_BODY;
 };

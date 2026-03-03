@@ -8,3 +8,9 @@ public:
     Animator(GameObject *gameObject);
     virtual ~Animator();
 };
+
+template <>
+struct ComponentTypeFor<Animator>
+{
+    static constexpr ComponentType value = ComponentType::ANIMATOR;
+};

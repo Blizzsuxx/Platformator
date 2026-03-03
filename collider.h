@@ -94,3 +94,9 @@ protected:
 
     virtual void updateCollider() = 0;
 };
+
+template <>
+struct ComponentTypeFor<Collider>
+{
+    static constexpr ComponentType value = ComponentType::COLLIDER;
+};

@@ -55,6 +55,9 @@ public:
 
     Component *getComponent(const ComponentType &componentType) const;
     Component **getComponents();
+    template <typename T>
+    T *getComponent() const;
+
     const std::list<GameObject *> &getChildren() const;
 
     // Setters
@@ -87,3 +90,13 @@ private:
 
     void updateCollider();
 };
+
+template <typename T>
+struct ComponentTypeFor;
+
+template <typename T>
+T *GameObject::getComponent() const
+{
+    Component *component = components[ComponentTypeFor<T>::value];
+    return component ? static_cast<T *>(component) : nullptr;
+}

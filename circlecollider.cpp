@@ -4,6 +4,10 @@ CircleCollider::CircleCollider(GameObject *gameObject) : Collider(gameObject, Co
 {
 }
 
+CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER), radius(radius)
+{
+}
+
 CircleCollider::~CircleCollider()
 {
 }

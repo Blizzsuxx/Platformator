@@ -30,3 +30,9 @@ private:
     int width;
     int height;
 };
+
+template <>
+struct ComponentTypeFor<Sprite>
+{
+    static constexpr ComponentType value = ComponentType::SPRITE;
+};

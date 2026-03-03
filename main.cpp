@@ -19,6 +19,15 @@ int main(int argc, char *args[])
     const float wallWidth = static_cast<float>(SCREEN_WIDTH);
     const float wallHeight = static_cast<float>(SCREEN_HEIGHT);
 
+    GameObject *ball = new GameObject();
+    ball->addComponent(new CircleCollider(ball, 25.0f));
+    ball->addComponent(new Rigidbody(ball));
+    ball->addComponent(new Sprite(ball, IMG_LoadTexture(renderer, "assets/ball.png"), SDL_FLIP_NONE, 50, 50));
+    ball->setPosition(Eigen::Vector2f(SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f));
+    ball->setName("Ball");
+    ball->getComponent<Rigidbody>()->setVelocity(Eigen::Vector2f(200.0f, 150.0f));
+    gameManager.addGameObject(ball);
+
     // South wall (bottom)
     GameObject *wallSouth = new GameObject();
     wallSouth->addComponent(new BoxCollider(wallSouth, wallWidth, wallThickness));

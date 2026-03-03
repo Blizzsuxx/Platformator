@@ -25,3 +25,9 @@ public:
 private:
     SDL_Rect camera;
 };
+
+template <>
+struct ComponentTypeFor<Camera>
+{
+    static constexpr ComponentType value = ComponentType::CAMERA;
+};

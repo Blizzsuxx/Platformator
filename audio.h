@@ -18,3 +18,9 @@ public:
 private:
     Mix_Chunk *chunk;
 };
+
+template <>
+struct ComponentTypeFor<Audio>
+{
+    static constexpr ComponentType value = ComponentType::AUDIO;
+};

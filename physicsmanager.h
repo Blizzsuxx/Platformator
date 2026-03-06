@@ -6,6 +6,7 @@
 #include "segmentedintervallist.h"
 #include <chrono>
 #include "aabb.h"
+#include "helpers.h"
 
 class PhysicsManager
 {

@@ -1,10 +1,10 @@
 #include "rigidbody.h"
 
-Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true)
+Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true)
 {
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity)
 {
 }
 
@@ -103,6 +103,7 @@ void Rigidbody::setTorque(const float torque)
 void Rigidbody::setMomentOfInertia(const float momentOfInertia)
 {
     this->momentOfInertia = momentOfInertia;
+    this->inverseMomentOfInertia = (momentOfInertia != 0.0f) ? 1.0f / momentOfInertia : 0.0f;
 }
 
 void Rigidbody::setFriction(const float friction)
@@ -151,7 +152,20 @@ void Rigidbody::applyGravity(const Eigen::Vector2f &gravityVector)
 
 float Rigidbody::getInverseMass() const
 {
+    if (bodyType == BodyType::STATIC)
+    {
+        return 0.0f;
+    }
     return inverseMass;
+}
+
+float Rigidbody::getInverseMomentOfInertia() const
+{
+    if (bodyType == BodyType::STATIC)
+    {
+        return 0.0f;
+    }
+    return inverseMomentOfInertia;
 }
 
 void Rigidbody::addImpulse(const Eigen::Vector2f &impulse)

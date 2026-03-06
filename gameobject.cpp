@@ -103,9 +103,9 @@ float GameObject::getSinRotation() const
 // Setters
 void GameObject::setRotation(const float rotation)
 {
-    this->rotation = rotation;
-    this->sinRotation = std::sin(rotation);
-    this->cosRotation = std::cos(rotation);
+    this->rotation = std::fmod(rotation, 2.0f * static_cast<float>(M_PI));
+    this->sinRotation = std::sin(this->rotation);
+    this->cosRotation = std::cos(this->rotation);
 
     updateCollider();
 }

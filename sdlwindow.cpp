@@ -127,6 +127,7 @@ void SDLWindow::render()
             renderY -= renderH / 2;
 
             SDL_Rect renderQuad = {renderX, renderY, renderW, renderH};
+            printf("Rendering sprite at (%d, %d) with size (%d, %d) and rotation %.2f degrees\n", renderX, renderY, renderW, renderH, spriteComponent->getGameObject()->getRotationInDegrees());
             SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
 
             Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);

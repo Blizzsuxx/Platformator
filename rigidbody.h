@@ -55,6 +55,7 @@ public:
     void setGravity(const bool gravity);
 
     float getInverseMass() const;
+    float getInverseMomentOfInertia() const;
 
     void addImpulse(const Eigen::Vector2f &impulse);
 
@@ -69,6 +70,8 @@ private:
     float torque;
 
     float momentOfInertia;
+    float inverseMomentOfInertia;
+
     float friction;
     float restitution;
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Platformator LANGUAGES CXX)
+project(Platformator LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,23 +27,18 @@ add_subdirectory(vendored/eigen-5.0.1 EXCLUDE_FROM_ALL)
 
 file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendored/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendored/*.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendored/*.cxx"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendored/*.c"
 )
 
 add_executable(main ${PLATFORMATOR_SOURCES})
 
 target_include_directories(main PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendored"
 )
 
-# target_link_libraries(main PRIVATE
-#     SDL3::SDL3
-#     SDL3_mixer::SDL3_mixer
-#     SDL3_image::SDL3_image
-#     SDL3_ttf::SDL3_ttf
-#     eigen3::eigen
-# )
+target_link_libraries(main PRIVATE
+    SDL3::SDL3
+    SDL3_mixer::SDL3_mixer
+    SDL3_image::SDL3_image
+    SDL3_ttf::SDL3_ttf
+    Eigen3::Eigen
+)

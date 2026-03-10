@@ -1,6 +1,5 @@
 #pragma once
 
-#include <SDL2/SDL.h>
 #include "gameobject.h"
 #include "sprite.h"
 #include "constants.h"
@@ -9,21 +8,21 @@ class Camera : public Component
 {
 public:
     Camera(GameObject *gameObject);
-    Camera(GameObject *gameObject, int w, int h);
-    Camera(GameObject *gameObject, int x, int y, int w, int h);
+    Camera(GameObject *gameObject, float w, float h);
+    Camera(GameObject *gameObject, float x, float y, float w, float h);
 
     ~Camera();
 
     void render(Sprite *sprite, SDL_Renderer *renderer);
 
     // Getters
-    const SDL_Rect &getCamera() const;
+    const SDL_FRect &getCamera() const;
 
     // Setters
-    void setCamera(const SDL_Rect &camera);
+    void setCamera(const SDL_FRect &camera);
 
 private:
-    SDL_Rect camera;
+    SDL_FRect camera;
 };
 
 template <>

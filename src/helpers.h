@@ -1,6 +1,6 @@
 #pragma once
 
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 
 inline float cross2D(const Eigen::Vector2f &a, const Eigen::Vector2f &b)
 {

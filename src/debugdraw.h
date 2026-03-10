@@ -1,6 +1,5 @@
 #pragma once
 
-#include <SDL2/SDL.h>
 #include <list>
 #include "collider.h"
 #include "boxcollider.h"

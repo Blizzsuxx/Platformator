@@ -38,9 +38,9 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
                 int y2 = static_cast<int>(v2.y()) - camY;
 
                 // Draw 3px thick by offsetting
-                SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
-                SDL_RenderDrawLine(renderer, x1 + 1, y1, x2 + 1, y2);
-                SDL_RenderDrawLine(renderer, x1, y1 + 1, x2, y1 + 1);
+                SDL_RenderLine(renderer, x1, y1, x2, y2);
+                SDL_RenderLine(renderer, x1 + 1, y1, x2 + 1, y2);
+                SDL_RenderLine(renderer, x1, y1 + 1, x2, y1 + 1);
             }
         }
         else
@@ -56,8 +56,8 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
                 int x2 = static_cast<int>(v2.x()) - camX;
                 int y2 = static_cast<int>(v2.y()) - camY;
 
-                SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
-                SDL_RenderDrawLine(renderer, x1 + 1, y1, x2 + 1, y2);
+                SDL_RenderLine(renderer, x1, y1, x2, y2);
+                SDL_RenderLine(renderer, x1 + 1, y1, x2 + 1, y2);
             }
         }
     }
@@ -86,10 +86,10 @@ void DebugDraw::drawBoxCollider(SDL_Renderer *renderer, Camera *camera, const Bo
     int x3 = static_cast<int>(vertices[3].x()) - camX;
     int y3 = static_cast<int>(vertices[3].y()) - camY;
 
-    SDL_RenderDrawLine(renderer, x0, y0, x1, y1); // top
-    SDL_RenderDrawLine(renderer, x1, y1, x3, y3); // right
-    SDL_RenderDrawLine(renderer, x3, y3, x2, y2); // bottom
-    SDL_RenderDrawLine(renderer, x2, y2, x0, y0); // left
+    SDL_RenderLine(renderer, x0, y0, x1, y1); // top
+    SDL_RenderLine(renderer, x1, y1, x3, y3); // right
+    SDL_RenderLine(renderer, x3, y3, x2, y2); // bottom
+    SDL_RenderLine(renderer, x2, y2, x0, y0); // left
 }
 
 void DebugDraw::drawCircleCollider(SDL_Renderer *renderer, Camera *camera, const CircleCollider *collider)
@@ -106,7 +106,7 @@ void DebugDraw::drawCircleCollider(SDL_Renderer *renderer, Camera *camera, const
     float angle = collider->getGameObject()->getRotation();
     int edgeX = cx + static_cast<int>(r * std::cos(angle));
     int edgeY = cy + static_cast<int>(r * std::sin(angle));
-    SDL_RenderDrawLine(renderer, cx, cy, edgeX, edgeY);
+    SDL_RenderLine(renderer, cx, cy, edgeX, edgeY);
 }
 
 void DebugDraw::drawContactPoint(SDL_Renderer *renderer, Camera *camera, const Collision *collision)
@@ -132,7 +132,7 @@ void DebugDraw::drawNormal(SDL_Renderer *renderer, Camera *camera, const Collisi
     int nx = cx + static_cast<int>(collision->getNormal().x() * normalLength);
     int ny = cy + static_cast<int>(collision->getNormal().y() * normalLength);
 
-    SDL_RenderDrawLine(renderer, cx, cy, nx, ny);
+    SDL_RenderLine(renderer, cx, cy, nx, ny);
 
     // Small arrowhead
     Eigen::Vector2f normal = collision->getNormal();
@@ -142,8 +142,8 @@ void DebugDraw::drawNormal(SDL_Renderer *renderer, Camera *camera, const Collisi
     int ay1 = ny - static_cast<int>((normal.y() * arrowSize + perp.y() * arrowSize));
     int ax2 = nx - static_cast<int>((normal.x() * arrowSize - perp.x() * arrowSize));
     int ay2 = ny - static_cast<int>((normal.y() * arrowSize - perp.y() * arrowSize));
-    SDL_RenderDrawLine(renderer, nx, ny, ax1, ay1);
-    SDL_RenderDrawLine(renderer, nx, ny, ax2, ay2);
+    SDL_RenderLine(renderer, nx, ny, ax1, ay1);
+    SDL_RenderLine(renderer, nx, ny, ax2, ay2);
 }
 
 void DebugDraw::drawCircle(SDL_Renderer *renderer, int centerX, int centerY, int radius)
@@ -155,14 +155,14 @@ void DebugDraw::drawCircle(SDL_Renderer *renderer, int centerX, int centerY, int
 
     while (x >= y)
     {
-        SDL_RenderDrawPoint(renderer, centerX + x, centerY + y);
-        SDL_RenderDrawPoint(renderer, centerX + y, centerY + x);
-        SDL_RenderDrawPoint(renderer, centerX - y, centerY + x);
-        SDL_RenderDrawPoint(renderer, centerX - x, centerY + y);
-        SDL_RenderDrawPoint(renderer, centerX - x, centerY - y);
-        SDL_RenderDrawPoint(renderer, centerX - y, centerY - x);
-        SDL_RenderDrawPoint(renderer, centerX + y, centerY - x);
-        SDL_RenderDrawPoint(renderer, centerX + x, centerY - y);
+        SDL_RenderPoint(renderer, centerX + x, centerY + y);
+        SDL_RenderPoint(renderer, centerX + y, centerY + x);
+        SDL_RenderPoint(renderer, centerX - y, centerY + x);
+        SDL_RenderPoint(renderer, centerX - x, centerY + y);
+        SDL_RenderPoint(renderer, centerX - x, centerY - y);
+        SDL_RenderPoint(renderer, centerX - y, centerY - x);
+        SDL_RenderPoint(renderer, centerX + y, centerY - x);
+        SDL_RenderPoint(renderer, centerX + x, centerY - y);
 
         if (err <= 0)
         {
@@ -179,8 +179,8 @@ void DebugDraw::drawCircle(SDL_Renderer *renderer, int centerX, int centerY, int
 
 void DebugDraw::drawCross(SDL_Renderer *renderer, int centerX, int centerY, int size)
 {
-    SDL_RenderDrawLine(renderer, centerX - size, centerY - size, centerX + size, centerY + size);
-    SDL_RenderDrawLine(renderer, centerX - size, centerY + size, centerX + size, centerY - size);
+    SDL_RenderLine(renderer, centerX - size, centerY - size, centerX + size, centerY + size);
+    SDL_RenderLine(renderer, centerX - size, centerY + size, centerX + size, centerY - size);
 }
 
 void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices)

@@ -8,15 +8,15 @@ Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture) : Sprite(gameObject
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip) : Sprite(gameObject, texture, flip, 0, 0)
+Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_FlipMode flip) : Sprite(gameObject, texture, flip, 0, 0)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_RendererFlip flip, int width, int height) : Component(gameObject, SPRITE), texture(texture), flip(flip), width(width), height(height)
+Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), texture(texture), flip(flip), width(width), height(height)
 {
     if (texture != nullptr && width == 0 && height == 0)
     {
-        SDL_QueryTexture(texture, nullptr, nullptr, &this->width, &this->height);
+        SDL_GetTextureSize(texture, &this->width, &this->height);
     }
 }
 
@@ -30,17 +30,17 @@ SDL_Texture *Sprite::getTexture() const
     return texture;
 }
 
-SDL_RendererFlip Sprite::getFlip() const
+SDL_FlipMode Sprite::getFlip() const
 {
     return flip;
 }
 
-int Sprite::getWidth() const
+float Sprite::getWidth() const
 {
     return width;
 }
 
-int Sprite::getHeight() const
+float Sprite::getHeight() const
 {
     return height;
 }
@@ -51,17 +51,17 @@ void Sprite::setTexture(SDL_Texture *texture)
     this->texture = texture;
 }
 
-void Sprite::setFlip(SDL_RendererFlip flip)
+void Sprite::setFlip(SDL_FlipMode flip)
 {
     this->flip = flip;
 }
 
-void Sprite::setWidth(int width)
+void Sprite::setWidth(float width)
 {
     this->width = width;
 }
 
-void Sprite::setHeight(int height)
+void Sprite::setHeight(float height)
 {
     this->height = height;
 }

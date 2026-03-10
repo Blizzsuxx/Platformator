@@ -11,9 +11,9 @@ SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
 
     listeners.push_back([this](SDL_Event event)
                         {
-        if (event.type == SDL_KEYDOWN)
+        if (event.type == SDL_EVENT_KEY_DOWN)
         {
-            switch (event.key.keysym.sym)
+            switch (event.key.key)
             {
             case SDLK_F1:
                 debugDraw.toggleShowColliders();
@@ -44,26 +44,26 @@ bool SDLWindow::init()
         return false;
     }
 
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
+    if (!MIX_Init())
     {
-        printf("SDL_mixer could not initialize! SDL_mixer Error: %s", Mix_GetError());
+        printf("SDL_mixer could not initialize! SDL_mixer Error: %s", SDL_GetError());
         return false;
     }
 
-    if (IMG_Init(IMG_INIT_PNG) != IMG_INIT_PNG)
-    {
-        printf("SDL_image could not initialize! SDL_image Error: %s", IMG_GetError());
-        return false;
-    }
+    // if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
+    // {
+    //     printf("SDL_image could not initialize! SDL_image Error: %s", IMG_GetError());
+    //     return false;
+    // }
 
     if (TTF_Init() == -1)
     {
-        printf("SDL_ttf could not initialize! SDL_ttf Error: %s", TTF_GetError());
+        printf("SDL_ttf could not initialize! SDL_ttf Error: %s", SDL_GetError());
         return false;
     }
 
     // Create window
-    window = SDL_CreateWindow("Platformator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    window = SDL_CreateWindow("Platformator", SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_MAXIMIZED);
     if (window == nullptr)
     {
         printf("Window could not be created! SDL_Error: %s", SDL_GetError());
@@ -71,7 +71,7 @@ bool SDLWindow::init()
     }
 
     // Get window surface
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    renderer = SDL_CreateRenderer(window, nullptr);
 
     return true;
 }
@@ -86,8 +86,8 @@ void SDLWindow::close()
     mainCamera = nullptr;
 
     // Quit SDL subsystems
-    IMG_Quit();
-    Mix_Quit();
+    // IMG_Quit();
+    MIX_Quit();
     TTF_Quit();
     SDL_Quit();
 }
@@ -97,7 +97,7 @@ void SDLWindow::handleEvents()
     // Handle events on queue
     while (SDL_PollEvent(&sdlEvent) != 0)
     {
-        if (sdlEvent.type == SDL_QUIT)
+        if (sdlEvent.type == SDL_EVENT_QUIT)
         {
             quit = true;
         }
@@ -117,18 +117,18 @@ void SDLWindow::render()
     {
         if (spriteComponent->getGameObject()->getActive() == true)
         {
-            int renderX = static_cast<int>(spriteComponent->getGameObject()->getPosition().x() - mainCamera->getCamera().x);
-            int renderY = static_cast<int>(spriteComponent->getGameObject()->getPosition().y() - mainCamera->getCamera().y);
+            float renderX = spriteComponent->getGameObject()->getPosition().x() - mainCamera->getCamera().x;
+            float renderY = spriteComponent->getGameObject()->getPosition().y() - mainCamera->getCamera().y;
 
-            int renderW = static_cast<int>(spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x());
-            int renderH = static_cast<int>(spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y());
+            float renderW = spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x();
+            float renderH = spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y();
 
             renderX -= renderW / 2;
             renderY -= renderH / 2;
 
-            SDL_Rect renderQuad = {renderX, renderY, renderW, renderH};
-            printf("Rendering sprite at (%d, %d) with size (%d, %d) and rotation %.2f degrees\n", renderX, renderY, renderW, renderH, spriteComponent->getGameObject()->getRotationInDegrees());
-            SDL_RenderCopyEx(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
+            SDL_FRect renderQuad = {renderX, renderY, renderW, renderH};
+            printf("Rendering sprite at (%.2f, %.2f) with size (%.2f, %.2f) and rotation %.2f degrees\n", renderX, renderY, renderW, renderH, spriteComponent->getGameObject()->getRotationInDegrees());
+            SDL_RenderTextureRotated(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
 
             Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
             if (collider)

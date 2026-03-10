@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <SDL2/SDL_image.h>
 #include "gamemanager.h"
 #include "boxcollider.h"
 
@@ -12,7 +11,7 @@ int main(int argc, char *args[])
     SDL_Texture *wallTexture = IMG_LoadTexture(renderer, "assets/wall.png");
     if (!wallTexture)
     {
-        printf("Failed to load wall.png: %s\n", IMG_GetError());
+        printf("Failed to load wall.png: %s\n", SDL_GetError());
     }
 
     const float wallThickness = 50.0f;

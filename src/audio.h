@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL2/SDL_mixer.h>
+#include <SDL3_mixer/SDL_mixer.h>
 #include "gameobject.h"
 
 class Audio : public Component
@@ -10,13 +10,13 @@ public:
     ~Audio();
 
     // Getters
-    Mix_Chunk *getChunk() const;
+    MIX_Audio *getAudio() const;
 
     // Setters
-    void setChunk(Mix_Chunk *chunk);
+    void setAudio(MIX_Audio *audio);
 
 private:
-    Mix_Chunk *chunk;
+    MIX_Audio *audio;
 };
 
 template <>

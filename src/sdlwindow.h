@@ -34,6 +34,7 @@ private:
     Camera *mainCamera;
     SDL_Event sdlEvent;
     DebugDraw &debugDraw;
+    const char *rendererName;
     bool quit;
 
     std::list<Sprite *> spriteComponents;

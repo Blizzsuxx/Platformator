@@ -2,7 +2,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), quit(false), spriteComponents(), listeners()
+                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), spriteComponents(), listeners()
 {
     if (!init())
     {
@@ -73,6 +73,11 @@ bool SDLWindow::init()
     // Get window surface
     renderer = SDL_CreateRenderer(window, nullptr);
 
+    rendererName = SDL_GetRendererName(renderer);
+    printf("Renderer Used: %s\n", rendererName);
+
+    SDL_SetWindowTitle(window, ("Platformator: " + std::string(rendererName)).c_str());
+
     return true;
 }
 
@@ -127,7 +132,6 @@ void SDLWindow::render()
             renderY -= renderH / 2;
 
             SDL_FRect renderQuad = {renderX, renderY, renderW, renderH};
-            printf("Rendering sprite at (%.2f, %.2f) with size (%.2f, %.2f) and rotation %.2f degrees\n", renderX, renderY, renderW, renderH, spriteComponent->getGameObject()->getRotationInDegrees());
             SDL_RenderTextureRotated(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
 
             Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);

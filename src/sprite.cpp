@@ -1,33 +1,65 @@
 #include "sprite.h"
+#include "gamemanager.h"
+#include "texturewrapper.h"
 
-Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, nullptr, SDL_FLIP_NONE)
+Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, (TextureWrapper *)nullptr, SDL_FLIP_NONE)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture) : Sprite(gameObject, texture, SDL_FLIP_NONE)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper) : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_FlipMode flip) : Sprite(gameObject, texture, flip, 0, 0)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip) : Sprite(gameObject, textureWrapper, flip, 0, 0)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, SDL_Texture *texture, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), texture(texture), flip(flip), width(width), height(height)
+Sprite::Sprite(GameObject *gameObject, const char *filePath) : Sprite(gameObject, filePath, SDL_FLIP_NONE)
 {
-    if (texture != nullptr && width == 0 && height == 0)
+}
+
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip) : Sprite(gameObject, filePath, flip, 0, 0)
+{
+}
+
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height)
+{
+    if (filePath != nullptr)
     {
-        SDL_GetTextureSize(texture, &this->width, &this->height);
+        GameManager &gameManager = GameManager::getInstance();
+        TextureWrapper *newTextureWrapper = gameManager.loadTexture(filePath);
+        setTextureWrapper(newTextureWrapper);
+    }
+}
+
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(textureWrapper), flip(flip), width(width), height(height)
+{
+    if (textureWrapper != nullptr && width == 0 && height == 0)
+    {
+        SDL_GetTextureSize(textureWrapper->getTexture(), &this->width, &this->height);
+    }
+    if (textureWrapper != nullptr)
+    {
+        textureWrapper->addReference(this);
     }
 }
 
 Sprite::~Sprite()
 {
+    freeTexture();
 }
 
-// Getters
+void Sprite::freeTexture()
+{
+    if (textureWrapper != nullptr)
+    {
+        textureWrapper->removeReferenceAndFreeIfNoReferences(this);
+    }
+}
+
 SDL_Texture *Sprite::getTexture() const
 {
-    return texture;
+    return textureWrapper != nullptr ? textureWrapper->getTexture() : nullptr;
 }
 
 SDL_FlipMode Sprite::getFlip() const
@@ -45,10 +77,9 @@ float Sprite::getHeight() const
     return height;
 }
 
-// Setters
-void Sprite::setTexture(SDL_Texture *texture)
+TextureWrapper *Sprite::getTextureWrapper() const
 {
-    this->texture = texture;
+    return textureWrapper;
 }
 
 void Sprite::setFlip(SDL_FlipMode flip)
@@ -64,4 +95,15 @@ void Sprite::setWidth(float width)
 void Sprite::setHeight(float height)
 {
     this->height = height;
+}
+
+void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)
+{
+    freeTexture();
+
+    this->textureWrapper = textureWrapper;
+    if (this->textureWrapper != nullptr)
+    {
+        this->textureWrapper->addReference(this);
+    }
 }

@@ -6,8 +6,14 @@
 class GameManager
 {
 public:
-    GameManager();
-    ~GameManager();
+    static GameManager &getInstance()
+    {
+        static GameManager instance;
+        return instance;
+    }
+
+    GameManager(GameManager &) = delete;
+    GameManager &operator=(const GameManager &) = delete;
 
     GameObject *addGameObject(GameObject *gameObject);
     void removeGameObject(GameObject *gameObject);
@@ -23,10 +29,17 @@ public:
     SDLWindow *getWindow() const;
 
     void loop();
+    TextureWrapper *loadTexture(const std::string &filePath);
+    void freeTexture(const std::string &filePath);
+    void freeAllTextures();
 
 private:
+    GameManager();
+    ~GameManager();
+
     SDLWindow *window;
     std::list<GameObject *> gameObjects;
+    std::unordered_map<std::string, TextureWrapper> textureCache;
 
     PhysicsManager *physicsManager;
 

@@ -1,6 +1,7 @@
 #include "gamemanager.h"
+#include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     initializeMainCamera();
@@ -13,6 +14,8 @@ GameManager::~GameManager()
         deleteGameObject(*it);
     }
     gameObjects.clear();
+
+    freeAllTextures();
 
     delete physicsManager;
     delete window;
@@ -176,4 +179,46 @@ void GameManager::loop()
         window->render();
         delay();
     }
+}
+
+TextureWrapper *GameManager::loadTexture(const std::string &filePath)
+{
+    auto it = textureCache.find(filePath);
+    if (it != textureCache.end())
+    {
+        return &it->second;
+    }
+
+    SDL_Texture *texture = IMG_LoadTexture(window->getRenderer(), filePath.c_str());
+    if (!texture)
+    {
+        printf("Failed to load %s: %s\n", filePath.c_str(), SDL_GetError());
+    }
+
+    // need this so that TextureWrapper is made in-place (so it doesn't destroy the texture)
+    auto [insertedIt, inserted] = textureCache.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(filePath),
+        std::forward_as_tuple(texture, filePath)); // uses the TextureWrapper constructor that takes an SDL_Texture* and a file path
+
+    return &insertedIt->second;
+}
+
+void GameManager::freeTexture(const std::string &filePath)
+{
+    auto it = textureCache.find(filePath);
+    if (it != textureCache.end())
+    {
+        SDL_DestroyTexture(it->second.getTexture());
+        textureCache.erase(it);
+    }
+}
+
+void GameManager::freeAllTextures()
+{
+    for (auto &pair : textureCache)
+    {
+        SDL_DestroyTexture(pair.second.getTexture());
+    }
+    textureCache.clear();
 }

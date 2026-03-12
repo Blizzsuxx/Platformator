@@ -10,7 +10,10 @@
             "name": "default",
             "displayName": "Default",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/bin"
+            "binaryDir": "${sourceDir}/bin",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
         }
     ],
     "buildPresets": [

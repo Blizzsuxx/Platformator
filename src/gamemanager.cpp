@@ -28,7 +28,7 @@ void GameManager::initializeMainCamera()
     mainCameraGameObject->setTag("MainCamera");
 
     Camera *mainCameraComponent = new Camera(mainCameraGameObject);
-    mainCameraGameObject->addComponent(mainCameraComponent);
+    mainCameraGameObject->addComponentInternal(mainCameraComponent);
 
     addGameObject(mainCameraGameObject);
 
@@ -39,29 +39,9 @@ GameObject *GameManager::addGameObject(GameObject *gameObject)
 {
     gameObjects.push_back(gameObject);
 
-    if (physicsManager)
-    {
-        Collider *colliderComponent = (Collider *)gameObject->getComponent(ComponentType::COLLIDER);
-        if (colliderComponent)
-        {
-            physicsManager->addColliderComponent(colliderComponent);
-        }
-
-        Rigidbody *rigidBodyComponent = (Rigidbody *)gameObject->getComponent(ComponentType::RIGID_BODY);
-        if (rigidBodyComponent)
-        {
-            physicsManager->addRigidBodyComponent(rigidBodyComponent);
-        }
-    }
-
-    if (window)
-    {
-        Sprite *spriteComponent = (Sprite *)gameObject->getComponent(ComponentType::SPRITE);
-        if (spriteComponent)
-        {
-            window->addSpriteComponent(spriteComponent);
-        }
-    }
+    notifyComponentAdded(gameObject->getComponent(ComponentType::COLLIDER));
+    notifyComponentAdded(gameObject->getComponent(ComponentType::RIGID_BODY));
+    notifyComponentAdded(gameObject->getComponent(ComponentType::SPRITE));
 
     return gameObject;
 }
@@ -75,29 +55,9 @@ void GameManager::removeGameObject(GameObject *gameObject)
 
 void GameManager::deleteGameObject(GameObject *gameObject)
 {
-    if (physicsManager)
-    {
-        Collider *colliderComponent = (Collider *)gameObject->getComponent(ComponentType::COLLIDER);
-        if (colliderComponent)
-        {
-            physicsManager->removeColliderComponent(colliderComponent);
-        }
-
-        Rigidbody *rigidBodyComponent = (Rigidbody *)gameObject->getComponent(ComponentType::RIGID_BODY);
-        if (rigidBodyComponent)
-        {
-            physicsManager->removeRigidBodyComponent(rigidBodyComponent);
-        }
-    }
-
-    if (window)
-    {
-        Sprite *spriteComponent = (Sprite *)gameObject->getComponent(ComponentType::SPRITE);
-        if (spriteComponent)
-        {
-            window->removeSpriteComponent(spriteComponent);
-        }
-    }
+    notifyComponentRemoved(gameObject->getComponent(ComponentType::COLLIDER));
+    notifyComponentRemoved(gameObject->getComponent(ComponentType::RIGID_BODY));
+    notifyComponentRemoved(gameObject->getComponent(ComponentType::SPRITE));
 
     delete gameObject;
 }
@@ -221,4 +181,94 @@ void GameManager::freeAllTextures()
         SDL_DestroyTexture(pair.second.getTexture());
     }
     textureCache.clear();
+}
+
+GameObject *GameManager::createGameObject()
+{
+    GameObject *gameObject = new GameObject();
+
+    addGameObject(gameObject);
+    return gameObject;
+}
+
+void GameManager::notifyComponentAdded(Component *component)
+{
+    if (component == nullptr)
+    {
+        return;
+    }
+
+    notifyPhysicsManagerOfComponentAdded(component);
+    notifyWindowOfComponentAdded(component);
+}
+
+void GameManager::notifyComponentRemoved(Component *component)
+{
+    if (component == nullptr)
+    {
+        return;
+    }
+
+    notifyPhysicsManagerOfComponentRemoved(component);
+    notifyWindowOfComponentRemoved(component);
+}
+
+void GameManager::notifyPhysicsManagerOfComponentAdded(Component *component)
+{
+    if (component == nullptr || physicsManager == nullptr)
+    {
+        return;
+    }
+
+    if (component->getType() == ComponentType::COLLIDER)
+    {
+        physicsManager->addColliderComponent((Collider *)component);
+    }
+    else if (component->getType() == ComponentType::RIGID_BODY)
+    {
+        physicsManager->addRigidBodyComponent((Rigidbody *)component);
+    }
+}
+
+void GameManager::notifyWindowOfComponentAdded(Component *component)
+{
+    if (component == nullptr || window == nullptr)
+    {
+        return;
+    }
+
+    if (component->getType() == ComponentType::SPRITE)
+    {
+        window->addSpriteComponent((Sprite *)component);
+    }
+}
+
+void GameManager::notifyPhysicsManagerOfComponentRemoved(Component *component)
+{
+    if (component == nullptr || physicsManager == nullptr)
+    {
+        return;
+    }
+
+    if (component->getType() == ComponentType::COLLIDER)
+    {
+        physicsManager->removeColliderComponent((Collider *)component);
+    }
+    else if (component->getType() == ComponentType::RIGID_BODY)
+    {
+        physicsManager->removeRigidBodyComponent((Rigidbody *)component);
+    }
+}
+
+void GameManager::notifyWindowOfComponentRemoved(Component *component)
+{
+    if (component == nullptr || window == nullptr)
+    {
+        return;
+    }
+
+    if (component->getType() == ComponentType::SPRITE)
+    {
+        window->removeSpriteComponent((Sprite *)component);
+    }
 }

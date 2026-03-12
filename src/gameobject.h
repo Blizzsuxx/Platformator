@@ -2,6 +2,9 @@
 
 #include <Eigen/Dense>
 #include <list>
+#include <memory>
+#include <type_traits>
+#include <utility>
 
 class GameObject;
 
@@ -19,6 +22,8 @@ enum ComponentType
 
 class Component
 {
+    friend class GameManager;
+
 public:
     Component(GameObject *gameObject, ComponentType type);
     virtual ~Component() = default;
@@ -33,11 +38,11 @@ private:
 
 class GameObject
 {
-public:
-    GameObject();
-    GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag);
+    friend class GameManager;
 
-    ~GameObject();
+public:
+    GameObject(GameObject &) = delete;
+    GameObject &operator=(const GameObject &) = delete;
 
     // Getters
     float getRotation() const;
@@ -55,25 +60,33 @@ public:
 
     Component *getComponent(const ComponentType &componentType) const;
     Component **getComponents();
+
     template <typename T>
     T *getComponent() const;
+    template <typename T, typename... Args>
+    GameObject *addComponent(Args &&...args);
 
     const std::list<GameObject *> &getChildren() const;
 
     // Setters
-    void setRotation(const float rotation);
-    void setActive(const bool active);
-    void setPosition(const Eigen::Vector2f &position);
-    void setScale(const Eigen::Vector2f &scale);
-    void setName(const std::string &name);
-    void setTag(const std::string &tag);
+    GameObject *setRotation(const float rotation);
+    GameObject *setActive(const bool active);
+    GameObject *setPosition(const Eigen::Vector2f &position);
+    GameObject *setScale(const Eigen::Vector2f &scale);
+    GameObject *setName(const std::string &name);
+    GameObject *setTag(const std::string &tag);
 
-    bool addComponent(Component *component);
+    void addComponent(Component *component);
     bool removeComponent(const ComponentType &componentType);
-    bool addChild(GameObject *child);
+    void addChild(GameObject *child);
     bool removeChild(GameObject *child);
 
 private:
+    GameObject();
+    GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag);
+
+    ~GameObject();
+
     // rotation is in radians
     float rotation;
     float sinRotation;
@@ -89,6 +102,7 @@ private:
     std::list<GameObject *> children;
 
     void updateCollider();
+    void addComponentInternal(Component *component);
 };
 
 template <typename T>
@@ -99,4 +113,19 @@ T *GameObject::getComponent() const
 {
     Component *component = components[ComponentTypeFor<T>::value];
     return component ? static_cast<T *>(component) : nullptr;
+}
+
+template <typename T, typename... Args>
+GameObject *GameObject::addComponent(Args &&...args)
+{
+    static_assert(std::is_base_of_v<Component, T>, "addComponent<T> requires T to derive from Component");
+    static_assert(requires { ComponentTypeFor<T>::value; }, "addComponent<T> requires a visible ComponentTypeFor<T>::value specialization");
+    static_assert(std::is_constructible_v<T, GameObject *, Args...>, "addComponent<T>(args...) requires a matching constructor T(GameObject*, args...)");
+
+    // this is so if addComponent throws an exception, we won't have memory leak
+    std::unique_ptr<T> component = std::make_unique<T>(this, std::forward<Args>(args)...);
+    addComponent(component.get());
+    component.release();
+
+    return this;
 }

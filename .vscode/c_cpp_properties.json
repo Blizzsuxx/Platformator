@@ -8,11 +8,11 @@
                 "/usr/include/SDL2/"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/gcc",
+            "compilerPath": "/usr/bin/g++",
             "cStandard": "c17",
-            "cppStandard": "gnu++17",
+            "cppStandard": "gnu++20",
             "intelliSenseMode": "linux-gcc-x64",
-            "configurationProvider": "ms-vscode.makefile-tools"
+            "compileCommands": "${workspaceFolder}/bin/compile_commands.json"
         }
     ],
     "version": 4

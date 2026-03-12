@@ -15,11 +15,8 @@ public:
     GameManager(GameManager &) = delete;
     GameManager &operator=(const GameManager &) = delete;
 
-    GameObject *addGameObject(GameObject *gameObject);
-    void removeGameObject(GameObject *gameObject);
-    bool removeGameObject(std::string name);
-
     GameObject *getGameObject(std::string name);
+    GameObject *createGameObject();
 
     std::list<GameObject *> &getGameObjects();
 
@@ -32,6 +29,8 @@ public:
     TextureWrapper *loadTexture(const std::string &filePath);
     void freeTexture(const std::string &filePath);
     void freeAllTextures();
+    void notifyComponentAdded(Component *component);
+    void notifyComponentRemoved(Component *component);
 
 private:
     GameManager();
@@ -50,4 +49,14 @@ private:
     void deleteGameObject(GameObject *gameObject);
     void updateDeltaTime();
     void delay();
+
+    GameObject *addGameObject(GameObject *gameObject);
+    void removeGameObject(GameObject *gameObject);
+    bool removeGameObject(std::string name);
+
+    void notifyPhysicsManagerOfComponentAdded(Component *component);
+    void notifyWindowOfComponentAdded(Component *component);
+
+    void notifyPhysicsManagerOfComponentRemoved(Component *component);
+    void notifyWindowOfComponentRemoved(Component *component);
 };

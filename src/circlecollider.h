@@ -27,3 +27,9 @@ private:
 
     void updateCollider() override;
 };
+
+template <>
+struct ComponentTypeFor<CircleCollider>
+{
+    static constexpr ComponentType value = ComponentType::COLLIDER;
+};

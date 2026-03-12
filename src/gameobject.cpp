@@ -1,5 +1,6 @@
 #include "gameobject.h"
 #include "collider.h"
+#include "gamemanager.h"
 
 GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), isActive(true), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components()
 {
@@ -101,25 +102,28 @@ float GameObject::getSinRotation() const
 }
 
 // Setters
-void GameObject::setRotation(const float rotation)
+GameObject *GameObject::setRotation(const float rotation)
 {
     this->rotation = std::fmod(rotation, 2.0f * static_cast<float>(M_PI));
     this->sinRotation = std::sin(this->rotation);
     this->cosRotation = std::cos(this->rotation);
 
     updateCollider();
+    return this;
 }
 
-void GameObject::setActive(const bool active)
+GameObject *GameObject::setActive(const bool active)
 {
     this->isActive = active;
+    return this;
 }
 
-void GameObject::setPosition(const Eigen::Vector2f &position)
+GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
 {
     this->position = position;
 
     updateCollider();
+    return this;
 }
 
 void GameObject::updateCollider()
@@ -131,38 +135,46 @@ void GameObject::updateCollider()
     }
 }
 
-void GameObject::setScale(const Eigen::Vector2f &scale)
+GameObject *GameObject::setScale(const Eigen::Vector2f &scale)
 {
     this->scale = scale;
 
     updateCollider();
+    return this;
 }
 
-void GameObject::setName(const std::string &name)
+GameObject *GameObject::setName(const std::string &name)
 {
     this->name = name;
+    return this;
 }
 
-void GameObject::setTag(const std::string &tag)
+GameObject *GameObject::setTag(const std::string &tag)
 {
     this->tag = tag;
+    return this;
 }
 
-bool GameObject::addComponent(Component *component)
+void GameObject::addComponent(Component *component)
+{
+    addComponentInternal(component);
+    GameManager::getInstance().notifyComponentAdded(component);
+}
+
+void GameObject::addComponentInternal(Component *component)
 {
     if (component == nullptr)
     {
-        return false;
+        throw std::invalid_argument("Component cannot be null");
     }
 
     ComponentType type = component->getType();
     if (components[type] != nullptr)
     {
-        return false;
+        removeComponent(type);
     }
 
     components[type] = component;
-    return true;
 }
 
 bool GameObject::removeComponent(const ComponentType &componentType)
@@ -172,28 +184,28 @@ bool GameObject::removeComponent(const ComponentType &componentType)
         return false;
     }
 
+    GameManager::getInstance().notifyComponentRemoved(components[componentType]);
     delete components[componentType];
     components[componentType] = nullptr;
 
     return true;
 }
 
-bool GameObject::addChild(GameObject *child)
+void GameObject::addChild(GameObject *child)
 {
     if (child == nullptr)
     {
-        return false;
+        throw std::invalid_argument("Child cannot be null");
     }
 
     children.push_back(child);
-    return true;
 }
 
 bool GameObject::removeChild(GameObject *child)
 {
     if (child == nullptr)
     {
-        return false;
+        throw std::invalid_argument("Child cannot be null");
     }
 
     children.remove(child);

@@ -37,3 +37,9 @@ private:
 
     void updateCollider() override;
 };
+
+template <>
+struct ComponentTypeFor<BoxCollider>
+{
+    static constexpr ComponentType value = ComponentType::COLLIDER;
+};

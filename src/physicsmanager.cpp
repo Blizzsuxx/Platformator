@@ -156,8 +156,15 @@ void PhysicsManager::resolveCollisions()
 
         if (referenceRigidbody == nullptr || incidentRigidbody == nullptr || referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getIsTrigger() || incidentCollider->getIsTrigger())
         {
-            referenceCollider->triggerCollisionEnter(incidentCollider);
-            incidentCollider->triggerCollisionEnter(referenceCollider);
+            if (referenceCollider != nullptr)
+            {
+
+                referenceCollider->triggerCollisionEnter(incidentCollider);
+            }
+            if (incidentCollider != nullptr)
+            {
+                incidentCollider->triggerCollisionEnter(referenceCollider);
+            }
         }
         else
         {

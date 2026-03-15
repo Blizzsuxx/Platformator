@@ -55,6 +55,11 @@ void CircleCollider::generateProjections()
     xProjections.getMax()->setProjectedPosition(x + radius);
     yProjections.getMin()->setProjectedPosition(y - radius);
     yProjections.getMax()->setProjectedPosition(y + radius);
+
+    // TODO:
+    // maybe check if the projections actually changed before setting dirty to true
+    // this is only called when the position or the radius changes, so it is not that bad if we set dirty to true even if the projections did not change
+    this->setIsDirty(true);
 }
 
 void CircleCollider::updateCollider()

@@ -37,6 +37,11 @@ void BoxCollider::generateProjections()
 
     yProjections.getMin()->setProjectedPosition(yAxis.x());
     yProjections.getMax()->setProjectedPosition(yAxis.y());
+
+    // TODO:
+    // maybe check if the projections actually changed before setting dirty to true
+    // this is only called when the position, the width or the height changes, so it is not that bad if we set dirty to true even if the projections did not change
+    this->setIsDirty(true);
 }
 
 void BoxCollider::generateVertices()

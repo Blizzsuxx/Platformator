@@ -2,7 +2,7 @@
 
 AABB::AABB()
     : intervalListX(),
-      //   intervalListY(),
+      intervalListY(),
       candidateCollisions()
 {
 }
@@ -14,41 +14,41 @@ AABB::~AABB()
 void AABB::add(Collider *element)
 {
     intervalListX.add(element->getXProjections());
-    // intervalListY.add(element->getYProjections());
+    intervalListY.add(element->getYProjections());
 }
 
 void AABB::remove(Collider *element)
 {
     intervalListX.remove(element->getXProjections());
-    // intervalListY.remove(element->getYProjections());
+    intervalListY.remove(element->getYProjections());
 }
 
-void AABB::updateCandidateList()
-{
-    candidateCollisions.clear();
+// void AABB::updateCandidateList()
+// {
+//     candidateCollisions.clear();
 
-    for (LocalSortArray *chunk : *intervalListX.getChunks())
-    {
-        checkForPotentialCollisionsInsideChunk(chunk);
-        checkForCollisionsWithCheckpoint(chunk);
-    }
+//     for (LocalSortArray *chunk : *intervalListX.getChunks())
+//     {
+//         checkForPotentialCollisionsInsideChunk(chunk);
+//         checkForCollisionsWithCheckpoint(chunk);
+//     }
 
-    // for (LocalSortArray *chunk : *intervalListY.getChunks())
-    // {
-    //     checkForPotentialCollisionsInsideChunk(chunk);
-    //     checkForCollisionsWithCheckpoint(chunk);
-    // }
-}
+//     // for (LocalSortArray *chunk : *intervalListY.getChunks())
+//     // {
+//     //     checkForPotentialCollisionsInsideChunk(chunk);
+//     //     checkForCollisionsWithCheckpoint(chunk);
+//     // }
+// }
 
 SegmentedIntervalList *AABB::getIntervalListX()
 {
     return &intervalListX;
 }
 
-// SegmentedIntervalList *AABB::getIntervalListY()
-// {
-//     return &intervalListY;
-// }
+SegmentedIntervalList *AABB::getIntervalListY()
+{
+    return &intervalListY;
+}
 
 const std::vector<Collision> *AABB::getCandidateCollisions() const
 {
@@ -136,22 +136,34 @@ void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
 void AABB::sort()
 {
     intervalListX.sort();
-    // intervalListY.sort();
+    intervalListY.sort();
 }
 
-// void AABB::onSwap(BoundingRadiusProjection *movedLeft, BoundingRadiusProjection *movedRight)
-// {
-//     bool leftIsMin = !movedLeft->getIsEnd();
-//     bool rightIsMax = movedRight->getIsEnd();
+void AABB::onSwap(BoundingRadiusProjection *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjection *rightRadiusProjection, size_t rightRadiusProjectionIndex)
+{
+    // minimum of left crossing maximum of right means that the two projections are now overlapping
+    // maximum of left crossing minimum of right means that the two projections are no longer overlapping
+    // if both projections are from the same collider, then ignore (it's probably either a very fast object or a really small object)
+    // we also need to check if it's a cross chunk swap (need to update checkpoints)
+    // cross chunk:
+    // left is minimum - remove from checkpoint
+    // left is maximum - add to checkpoint
+    // right is minimum - add to checkpoint
+    // right is maximum - remove from checkpoint
 
-//     if (leftIsMin && rightIsMax)
-//     {
-//         // min(A) crossed left past max(B) → NEW overlap on this axis
-//         onAxisOverlapBegin(movedLeft->getCollider(), movedRight->getCollider());
-//     }
-//     else if (!leftIsMin && !rightIsMax)
-//     {
-//         // max(A) crossed left past min(B) → LOST overlap on this axis
-//         onAxisOverlapEnd(movedLeft->getCollider(), movedRight->getCollider());
-//     }
-// }
+    Collider *colliderA = leftRadiusProjection->getCollider();
+    Collider *colliderB = rightRadiusProjection->getCollider();
+
+    float aYMin = colliderA->getYProjections()->getMin()->getProjectedPosition();
+    float aYMax = colliderA->getYProjections()->getMax()->getProjectedPosition();
+    float bYMin = colliderB->getYProjections()->getMin()->getProjectedPosition();
+    float bYMax = colliderB->getYProjections()->getMax()->getProjectedPosition();
+
+    bool currentlyColliding = aYMax >= bYMin && bYMax >= aYMin;
+
+    // Check if the swap created a new potential collision
+    if (currentlyColliding)
+    {
+        addCandidateCollision(colliderA, colliderB);
+    }
+}

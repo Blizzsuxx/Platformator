@@ -4,8 +4,9 @@
 #include "collider.h"
 #include "collision.h"
 #include <set>
+#include "onswapcallback.h"
 
-class AABB
+class AABB : public OnSwapCallback
 {
 public:
     AABB();
@@ -15,9 +16,8 @@ public:
     void remove(Collider *element);
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
-    void updateCandidateList();
     const std::vector<Collision> *getCandidateCollisions() const;
-    // void onSwap(BoundingRadiusProjection *movedLeft, BoundingRadiusProjection *movedRight) override;
+    void onSwap(BoundingRadiusProjection *movedLeft, BoundingRadiusProjection *movedRight) override;
     void sort();
 
 private:
@@ -26,6 +26,6 @@ private:
     void addCandidateCollision(Collider *colliderA, Collider *colliderB);
 
     SegmentedIntervalList intervalListX;
-    // SegmentedIntervalList intervalListY;
+    SegmentedIntervalList intervalListY;
     std::vector<Collision> candidateCollisions;
 };

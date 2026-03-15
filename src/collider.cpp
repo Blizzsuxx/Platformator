@@ -47,6 +47,11 @@ bool Collider::getIsDirty() const
 void Collider::setIsDirty(const bool isDirty)
 {
     this->isDirty = isDirty;
+    this->getXProjections()->getMax()->getChunk()->setIsDirty(isDirty);
+    this->getXProjections()->getMin()->getChunk()->setIsDirty(isDirty);
+
+    this->getYProjections()->getMax()->getChunk()->setIsDirty(isDirty);
+    this->getYProjections()->getMin()->getChunk()->setIsDirty(isDirty);
 }
 
 void Collider::triggerCollisionEnter(const Collider *other) const

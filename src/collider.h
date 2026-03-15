@@ -10,16 +10,18 @@ class BoundingRadiusProjection
 {
 public:
     BoundingRadiusProjection();
-    BoundingRadiusProjection(Collider *, float projectedPosition, bool isEnd);
+    BoundingRadiusProjection(Collider *, float projectedPosition, bool isEnd, LocalSortArray *chunk);
     ~BoundingRadiusProjection();
 
     Collider *getCollider();
     float getProjectedPosition() const;
     bool getIsEnd() const;
+    LocalSortArray *getChunk() const;
 
     void setCollider(Collider *collider);
     void setProjectedPosition(float projectedPosition);
     void setIsEnd(bool isEnd);
+    void setChunk(LocalSortArray *chunk);
 
     bool operator==(const BoundingRadiusProjection &other) const;
     bool operator!=(const BoundingRadiusProjection &other) const;
@@ -32,6 +34,7 @@ private:
     Collider *collider;
     float projectedPosition;
     bool isEnd;
+    LocalSortArray *chunk;
 };
 
 class BoundingRadiusProjectionAxis

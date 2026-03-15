@@ -1,18 +1,20 @@
 #include "localsortarray.h"
 
 LocalSortArray::LocalSortArray()
-    : size(0), array(), checkpoint()
+    : size(0), array(), checkpoint(), isDirty(true)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(other->size / 2), array(), checkpoint(other->checkpoint)
+    : size(other->size / 2), array(), checkpoint(other->checkpoint), isDirty(true)
 {
     std::copy(other->array + size, other->array + MAX_SIZE, array);
     other->size = size;
 
-    for (int i = size - 1; i >= 0; i--)
+    for (int i = 0; i < size; i++)
     {
+        array[i]->setChunk(this);
+
         if (array[i]->getIsEnd())
         {
             other->addCheckpoint(array[i]->getCollider());
@@ -38,6 +40,7 @@ bool LocalSortArray::add(BoundingRadiusProjection *element)
     else
     {
         size_t index = binarySearch(element);
+        element->setChunk(this);
 
         // insert the element at the index
         for (size_t i = size; i > index; i--)
@@ -46,37 +49,14 @@ bool LocalSortArray::add(BoundingRadiusProjection *element)
         }
         array[index] = element;
         size++;
-        return true;
-    }
-}
 
-bool LocalSortArray::addWithoutSort(BoundingRadiusProjection *element)
-{
-    if (size == MAX_SIZE)
-    {
-        return false;
-    }
-    else
-    {
-        array[size] = element;
-        size++;
         return true;
     }
 }
 
 BoundingRadiusProjection *LocalSortArray::pop()
 {
-    BoundingRadiusProjection *removed = array[size - 1];
-    size--;
-    return removed;
-}
-
-BoundingRadiusProjection *LocalSortArray::addAndPop(BoundingRadiusProjection *element)
-{
-    BoundingRadiusProjection *removed = array[size - 1];
-    size--;
-    add(element);
-    return removed;
+    return remove(size - 1);
 }
 
 BoundingRadiusProjection *LocalSortArray::remove(size_t index)
@@ -87,6 +67,7 @@ BoundingRadiusProjection *LocalSortArray::remove(size_t index)
     }
     // remove the element at the specified index
     BoundingRadiusProjection *removed = array[index];
+    removed->setChunk(nullptr);
 
     for (size_t i = index; i < size - 1; i++)
     {
@@ -172,12 +153,12 @@ void LocalSortArray::clear()
 
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
-    checkpoint.insert(collider);
+    checkpoint.push_back(collider);
 }
 
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
-    checkpoint.erase(collider);
+    checkpoint.erase(std::remove(checkpoint.begin(), checkpoint.end(), collider), checkpoint.end());
 }
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
@@ -206,14 +187,7 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
     return low;
 }
 
-void LocalSortArray::swap(size_t index1, LocalSortArray *array2, size_t index2)
-{
-    BoundingRadiusProjection *temp = array[index1];
-    array[index1] = array2->array[index2];
-    array2->array[index2] = temp;
-}
-
-std::unordered_set<Collider *> *LocalSortArray::getCheckpoint()
+std::vector<Collider *> *LocalSortArray::getCheckpoint()
 {
     return &checkpoint;
 }
@@ -231,7 +205,7 @@ size_t LocalSortArray::findBinarySearchIndex(BoundingRadiusProjection *element)
         {
             return mid;
         }
-        if (*array[mid] == *element)
+        else if (*array[mid] == *element)
         {
             return searchAround(mid, element);
         }
@@ -277,4 +251,14 @@ size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjection *elem
     }
 
     return static_cast<size_t>(-1);
+}
+
+void LocalSortArray::setIsDirty(bool dirty)
+{
+    isDirty = dirty;
+}
+
+bool LocalSortArray::getIsDirty() const
+{
+    return isDirty;
 }

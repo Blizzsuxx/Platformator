@@ -1,8 +1,8 @@
 #include "collider.h"
 
 BoundingRadiusProjectionAxis::BoundingRadiusProjectionAxis(Collider *collider, float min, float max)
-    : min(BoundingRadiusProjection(collider, min, false)),
-      max(BoundingRadiusProjection(collider, max, true))
+    : min(BoundingRadiusProjection(collider, min, false, nullptr)),
+      max(BoundingRadiusProjection(collider, max, true, nullptr))
 {
 }
 

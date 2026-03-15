@@ -16,9 +16,7 @@ public:
     ~LocalSortArray();
 
     bool add(BoundingRadiusProjection *element);
-    bool addWithoutSort(BoundingRadiusProjection *element);
     BoundingRadiusProjection *pop();
-    BoundingRadiusProjection *addAndPop(BoundingRadiusProjection *element);
     BoundingRadiusProjection *remove(size_t index);
     bool remove(BoundingRadiusProjection *element);
     void sort();
@@ -31,18 +29,26 @@ public:
     void clear();
     void addCheckpoint(Collider *element);
     void removeCheckpoint(Collider *element);
-    void swap(size_t index1, LocalSortArray *array2, size_t index2);
-    std::unordered_set<Collider *> *getCheckpoint();
+    std::vector<Collider *> *getCheckpoint();
 
     size_t findBinarySearchIndex(BoundingRadiusProjection *element);
     size_t searchAround(size_t index, BoundingRadiusProjection *element);
+
+    void setIsDirty(bool dirty);
+    bool getIsDirty() const;
 
 private:
     size_t binarySearch(BoundingRadiusProjection *element);
 
     size_t size;
     BoundingRadiusProjection *array[MAX_SIZE];
-    std::unordered_set<Collider *> checkpoint;
+
+    // The ‘checkpoints’ set contains the set of object id’s which
+    // overlap with the ‘trailing edge’ of the chunk (AABBs whose min-
+    // ima is within this chunk or one to the left, but whose maxima is in
+    // a chunk to the right
+    std::vector<Collider *> checkpoint;
+    bool isDirty;
 
     friend class SegmentedIntervalList;
 };

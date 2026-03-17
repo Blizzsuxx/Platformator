@@ -1,15 +1,20 @@
 #include "localsortarray.h"
+#include "swapcallback.h"
 
 LocalSortArray::LocalSortArray()
-    : size(0), array(), checkpoint(), isDirty(true)
+    : size(0), array(), checkpoint(), isDirty(true), leftChunk(nullptr), rightChunk(nullptr)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(other->size / 2), array(), checkpoint(other->checkpoint), isDirty(true)
+    : size(other->size / 2), array(), checkpoint(other->checkpoint), isDirty(true), leftChunk(nullptr), rightChunk(nullptr)
 {
     std::copy(other->array + size, other->array + MAX_SIZE, array);
     other->size = size;
+
+    leftChunk = other;
+    rightChunk = other->rightChunk;
+    other->setRightChunk(this);
 
     for (int i = 0; i < size; i++)
     {
@@ -93,7 +98,7 @@ bool LocalSortArray::remove(BoundingRadiusProjection *element)
     return false;
 }
 
-void LocalSortArray::sort()
+void LocalSortArray::sort(SwapCallback *callback)
 {
     // sort the array with insertion sort, sort from lowest to highest
     for (size_t i = 1; i < size; i++)
@@ -106,12 +111,50 @@ void LocalSortArray::sort()
             // // That means temp's value decreased (or array[j]'s increased)
             // if (temp->getCollider() != array[j]->getCollider())
             // {
-            //     callback.onSwap(temp, array[j]);
+            //     callback->swap(temp, array[j]);
             // }
-            array[j + 1] = array[j];
+            callback->swap(array[j], j, temp, i);
             j--;
         }
-        array[j + 1] = temp;
+        callback->swap(array[j + 1], j + 1, temp, i);
+    }
+}
+
+void LocalSortArray::sortFromIndex(size_t arrayIndex, SwapCallback *callback)
+{
+    // cross swap from left to right
+    // swap to right until biggest
+    if (arrayIndex == 0)
+    {
+        for (size_t i = 1; i < getSize(); i++)
+        {
+            if (*array[arrayIndex] > *array[i])
+            {
+                callback->swap(array[arrayIndex], arrayIndex, array[i], i);
+                arrayIndex = i;
+            }
+            else
+            {
+                return;
+            }
+        }
+    }
+    // cross swap from right to left
+    // swap to left until smallest
+    else
+    {
+        for (size_t i = arrayIndex - 1; i != static_cast<size_t>(-1); i--)
+        {
+            if (*array[arrayIndex] < *array[i])
+            {
+                callback->swap(array[arrayIndex], arrayIndex, array[i], i);
+                arrayIndex = i;
+            }
+            else
+            {
+                return;
+            }
+        }
     }
 }
 

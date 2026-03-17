@@ -1,7 +1,7 @@
 #include "segmentedintervallist.h"
 
 SegmentedIntervalList::SegmentedIntervalList()
-    : chunks(), size(1)
+    : chunks(), dirtyChunks()
 {
     chunks.push_back(new LocalSortArray());
 }
@@ -44,70 +44,108 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
     }
 }
 
-size_t SegmentedIntervalList::getSize() const
-{
-    return size;
-}
-
-std::vector<LocalSortArray *> *SegmentedIntervalList::getChunks()
-{
-    return &chunks;
-}
-
 void SegmentedIntervalList::clear()
 {
-    for (size_t i = 0; i < size; i++)
+    for (size_t i = 0; i < chunks.size(); i++)
     {
         delete chunks[i];
     }
     chunks.clear();
-    size = 0;
+    dirtyChunks.clear();
 }
 
 void SegmentedIntervalList::sort()
 {
+    // from lowest to highest
     // TODO: parallelize this
-    // TODO: probably don't need this
-    for (size_t i = 0; i < size; i++)
+    for (LocalSortArray *chunk : dirtyChunks)
     {
-        chunks[i]->sort();
+        chunk->sort(this);
+    }
+    for (LocalSortArray *chunk : dirtyChunks)
+    {
+        LocalSortArray *currentChunk = chunk;
+        LocalSortArray *leftChunk = currentChunk->getLeftChunk();
+        LocalSortArray *rightChunk = currentChunk->getRightChunk();
+
+        // check if the chunks are sorted between each other, if not, sort them
+        while (*leftChunk->getMax() > *currentChunk->getMin())
+        {
+            swapBoundaries(leftChunk, currentChunk);
+            leftChunk->sortFromIndex(leftChunk->getSize() - 1, this);
+            currentChunk->sortFromIndex(0, this);
+
+            currentChunk = leftChunk;
+            leftChunk = leftChunk->getLeftChunk();
+        }
+
+        currentChunk = chunk;
+        while (*rightChunk->getMin() < *currentChunk->getMax())
+        {
+            swapBoundaries(currentChunk, rightChunk);
+            currentChunk->sortFromIndex(currentChunk->getSize() - 1, this);
+            rightChunk->sortFromIndex(0, this);
+
+            currentChunk = rightChunk;
+            rightChunk = rightChunk->getRightChunk();
+        }
     }
 
-    // check if the chunks are sorted
-    // find the first chunk with a max value greater than the min value of the current chunk, counting backwards
-    // example: let sorted max values of chunks be 1, 3, 4, 6. Let the current chunks min value be be 2.
-    // The first chunk with a max value greater than 2 is 3.
-    for (size_t i = 1; i < size; i++)
+    dirtyChunks.clear();
+}
+
+void SegmentedIntervalList::swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk)
+{
+    swap(leftChunk->getMax(), leftChunk->getSize() - 1, rightChunk->getMin(), 0);
+}
+
+void SegmentedIntervalList::sortChunkFromIndex(LocalSortArray *chunk, size_t arrayIndex)
+{
+    // cross swap from left to right
+    // swap to right until biggest
+    if (arrayIndex == 0)
     {
-        while (chunks[i]->getSize() > 0 && *chunks[i - 1]->getMax() > *chunks[i]->getMin())
+        for (size_t i = 1; i < chunk->getSize(); i++)
         {
-
-            size_t j = i - 1;
-            while (j > 0 && *chunks[j - 1]->getMax() > *chunks[i]->getMin())
+            if (*chunk->get(arrayIndex) > *chunk->get(i))
             {
-                j--;
+                swap(chunk->get(arrayIndex), arrayIndex, chunk->get(i), i);
+                arrayIndex = i;
             }
-            BoundingRadiusProjection *element = remove(i, 0);
-
-            size_t prevSize = size;
-            size_t indexWhereItWasAdded = add(element, j);
-            size_t shift = size - prevSize; // 1 if split occurred, 0 otherwise
-            size_t indexWhereItWasRemoved = i + shift;
-
-            updateCheckpoint(indexWhereItWasAdded, indexWhereItWasRemoved, element);
+            else
+            {
+                return;
+            }
+        }
+    }
+    // cross swap from right to left
+    // swap to left until smallest
+    else
+    {
+        for (size_t i = arrayIndex - 1; i != static_cast<size_t>(-1); i--)
+        {
+            if (*chunk->get(arrayIndex) < *chunk->get(i))
+            {
+                swap(chunk->get(arrayIndex), arrayIndex, chunk->get(i), i);
+                arrayIndex = i;
+            }
+            else
+            {
+                return;
+            }
         }
     }
 }
 
 size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
 {
-    if (size == 0 || chunks[0]->getSize() == 0)
+    if (chunks.empty() || (chunks[0]->getSize() == 0 && chunks.size() == 1))
     {
         return 0;
     }
 
     size_t low = 0;
-    size_t high = size - 1;
+    size_t high = chunks.size() - 1;
     size_t mid = 0;
     BoundingRadiusProjection value = *element;
 
@@ -138,13 +176,13 @@ size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
 
 size_t SegmentedIntervalList::binarySearch(LocalSortArray *array)
 {
-    if (size == 0 || chunks[0]->getSize() == 0)
+    if (chunks.empty() || (chunks[0]->getSize() == 0 && chunks.size() == 1))
     {
         return 0;
     }
 
     size_t low = 0;
-    size_t high = size - 1;
+    size_t high = chunks.size() - 1;
     size_t mid = 0;
 
     while (low <= high)
@@ -187,7 +225,6 @@ size_t SegmentedIntervalList::add(BoundingRadiusProjection *element, size_t chun
 
         // insert the new array after the current one
         chunks.insert(chunks.begin() + chunkIndex + 1, newArray);
-        size++;
 
         // check if the element should be inserted in the new array or the old one
         if (*element > *chunks[chunkIndex]->getMax())
@@ -217,29 +254,88 @@ BoundingRadiusProjection *SegmentedIntervalList::remove(size_t chunkIndex, size_
     // if the array is empty, remove it
     if (chunks[chunkIndex]->getSize() == 0)
     {
+        if (chunks[chunkIndex]->getIsDirty())
+        {
+            auto it = std::find(dirtyChunks.begin(), dirtyChunks.end(), chunks[chunkIndex]);
+            if (it != dirtyChunks.end())
+            {
+                dirtyChunks.erase(it);
+            }
+        }
+
+        if (chunkIndex > 0)
+        {
+            chunks[chunkIndex - 1]->setRightChunk(chunks[chunkIndex + 1]->getRightChunk());
+        }
+        if (chunkIndex < chunks.size() - 1)
+        {
+            chunks[chunkIndex + 1]->setLeftChunk(chunks[chunkIndex - 1]->getLeftChunk());
+        }
+
         delete chunks[chunkIndex];
         chunks.erase(chunks.begin() + chunkIndex);
-        size--;
     }
 
     return removedElement;
 }
 
-void SegmentedIntervalList::updateCheckpoint(size_t indexWhereItWasAdded, size_t indexWhereItWasRemoved, BoundingRadiusProjection *element)
+void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjection *rightRadiusProjection, size_t rightRadiusProjectionIndex)
 {
+    // minimum of left crossing maximum of right means that the two projections are now no longer overlapping
+    // maximum of left crossing minimum of right means that the two projections are now overlapping
+    // if both projections are from the same collider, then don't add collision (it's probably either a very fast object or a really small object)
+    // TODO: add the buffer for checkpoints (for fast moving objects)
+    // we also need to check if it's a cross chunk swap (need to update checkpoints)
+    // cross chunk:
+    // right is minimum - add to checkpoint (left chunk) - minimum crossing left into a chunk
+    // left is minimum - remove from checkpoint (left chunk) - minimum crossing right out of a chunk
+    // left is maximum - add to checkpoint (left chunk) - maximum crossing right into a chunk
+    // right is maximum - remove from checkpoint (left chunk) - maximum crossing left out of a chunk
 
-    if (element->getIsEnd())
+    Collider *colliderA = leftRadiusProjection->getCollider();
+    Collider *colliderB = rightRadiusProjection->getCollider();
+
+    LocalSortArray *leftChunk = leftRadiusProjection->getChunk();
+    LocalSortArray *rightChunk = rightRadiusProjection->getChunk();
+
+    leftChunk->getArray()[leftRadiusProjectionIndex] = rightRadiusProjection;
+    rightChunk->getArray()[rightRadiusProjectionIndex] = leftRadiusProjection;
+
+    // first emit collision events for the two colliders if they are now overlapping
+    if (colliderA != colliderB)
     {
-        for (size_t i = indexWhereItWasAdded; i <= indexWhereItWasRemoved; i++)
+        if (!leftRadiusProjection->getIsEnd() && rightRadiusProjection->getIsEnd())
         {
-            chunks[i]->removeCheckpoint(element->getCollider());
+            // remove collision
+        }
+        else if (leftRadiusProjection->getIsEnd() && !rightRadiusProjection->getIsEnd())
+        {
+            // add collision
         }
     }
-    else
+
+    // cross chunk swap - update checkpoints
+    if (leftChunk != rightChunk)
     {
-        for (size_t i = indexWhereItWasAdded; i <= indexWhereItWasRemoved; i++)
+        // left is minimum - remove from checkpoint (left chunk) - minimum crossing right out of a chunk
+        if (!leftRadiusProjection->getIsEnd())
         {
-            chunks[i]->addCheckpoint(element->getCollider());
+            leftChunk->removeCheckpoint(colliderA);
+        }
+        // left is maximum - add to checkpoint (left chunk) - maximum crossing right into a chunk
+        else
+        {
+            leftChunk->addCheckpoint(colliderA);
+        }
+        // right is minimum - add to checkpoint (left chunk) - minimum crossing left into a chunk
+        if (!rightRadiusProjection->getIsEnd())
+        {
+            leftChunk->addCheckpoint(colliderB);
+        }
+        // right is maximum - remove from checkpoint (left chunk) - maximum crossing left out of a chunk
+        else
+        {
+            leftChunk->removeCheckpoint(colliderB);
         }
     }
 }

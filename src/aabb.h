@@ -3,10 +3,8 @@
 #include "segmentedintervallist.h"
 #include "collider.h"
 #include "collision.h"
-#include <set>
-#include "onswapcallback.h"
 
-class AABB : public OnSwapCallback
+class AABB
 {
 public:
     AABB();
@@ -17,12 +15,12 @@ public:
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
     const std::vector<Collision> *getCandidateCollisions() const;
-    void onSwap(BoundingRadiusProjection *movedLeft, BoundingRadiusProjection *movedRight) override;
+    // sort the array with insertion sort, sort from lowest to highest
     void sort();
 
 private:
-    void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk);
-    void checkForCollisionsWithCheckpoint(LocalSortArray *chunk);
+    // void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk);
+    // void checkForCollisionsWithCheckpoint(LocalSortArray *chunk);
     void addCandidateCollision(Collider *colliderA, Collider *colliderB);
 
     SegmentedIntervalList intervalListX;

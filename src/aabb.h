@@ -14,7 +14,7 @@ public:
     void remove(Collider *element);
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
-    const std::vector<Collision> *getCandidateCollisions() const;
+    const std::unordered_set<Collision, Collision::HashFunction> *getCandidateCollisions() const;
     // sort the array with insertion sort, sort from lowest to highest
     void sort();
 
@@ -25,5 +25,7 @@ private:
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
-    std::vector<Collision> candidateCollisions;
+    std::unordered_set<Collision, Collision::HashFunction> candidateCollisions;
+
+    friend class SegmentedIntervalList;
 };

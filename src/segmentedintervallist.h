@@ -4,16 +4,19 @@
 #include "localsortarray.h"
 #include "swapcallback.h"
 
+class AABB;
+
 class SegmentedIntervalList : public SwapCallback
 {
 public:
-    SegmentedIntervalList();
+    SegmentedIntervalList(AABB *owner);
     ~SegmentedIntervalList();
 
     void clear();
     void sort();
     void add(BoundingRadiusProjectionAxis *axis);
     void remove(BoundingRadiusProjectionAxis *axis);
+    void addDirtyChunk(LocalSortArray *chunk);
 
 private:
     size_t binarySearch(BoundingRadiusProjection *element);
@@ -30,4 +33,5 @@ private:
 
     std::vector<LocalSortArray *> chunks;
     std::vector<LocalSortArray *> dirtyChunks;
+    AABB *owner;
 };

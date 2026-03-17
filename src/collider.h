@@ -5,6 +5,7 @@
 #include <span>
 
 class Collider;
+class LocalSortArray;
 
 class BoundingRadiusProjection
 {

@@ -1,9 +1,10 @@
 #include "segmentedintervallist.h"
+#include "aabb.h"
 
-SegmentedIntervalList::SegmentedIntervalList()
-    : chunks(), dirtyChunks()
+SegmentedIntervalList::SegmentedIntervalList(AABB *owner)
+    : chunks(), dirtyChunks(), owner(owner)
 {
-    chunks.push_back(new LocalSortArray());
+    chunks.push_back(new LocalSortArray(this));
 }
 
 SegmentedIntervalList::~SegmentedIntervalList()
@@ -69,7 +70,7 @@ void SegmentedIntervalList::sort()
         LocalSortArray *rightChunk = currentChunk->getRightChunk();
 
         // check if the chunks are sorted between each other, if not, sort them
-        while (*leftChunk->getMax() > *currentChunk->getMin())
+        while (leftChunk != nullptr && *leftChunk->getMax() > *currentChunk->getMin())
         {
             swapBoundaries(leftChunk, currentChunk);
             leftChunk->sortFromIndex(leftChunk->getSize() - 1, this);
@@ -80,7 +81,7 @@ void SegmentedIntervalList::sort()
         }
 
         currentChunk = chunk;
-        while (*rightChunk->getMin() < *currentChunk->getMax())
+        while (rightChunk != nullptr && *rightChunk->getMin() < *currentChunk->getMax())
         {
             swapBoundaries(currentChunk, rightChunk);
             currentChunk->sortFromIndex(currentChunk->getSize() - 1, this);
@@ -265,11 +266,11 @@ BoundingRadiusProjection *SegmentedIntervalList::remove(size_t chunkIndex, size_
 
         if (chunkIndex > 0)
         {
-            chunks[chunkIndex - 1]->setRightChunk(chunks[chunkIndex + 1]->getRightChunk());
+            chunks[chunkIndex - 1]->setRightChunk(chunks[chunkIndex]->getRightChunk());
         }
         if (chunkIndex < chunks.size() - 1)
         {
-            chunks[chunkIndex + 1]->setLeftChunk(chunks[chunkIndex - 1]->getLeftChunk());
+            chunks[chunkIndex + 1]->setLeftChunk(chunks[chunkIndex]->getLeftChunk());
         }
 
         delete chunks[chunkIndex];
@@ -307,16 +308,20 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
         if (!leftRadiusProjection->getIsEnd() && rightRadiusProjection->getIsEnd())
         {
             // remove collision
+            owner->addCandidateCollision(colliderA, colliderB);
         }
         else if (leftRadiusProjection->getIsEnd() && !rightRadiusProjection->getIsEnd())
         {
             // add collision
+            owner->addCandidateCollision(colliderA, colliderB);
         }
     }
 
     // cross chunk swap - update checkpoints
     if (leftChunk != rightChunk)
     {
+        leftRadiusProjection->setChunk(rightChunk);
+        rightRadiusProjection->setChunk(leftChunk);
         // left is minimum - remove from checkpoint (left chunk) - minimum crossing right out of a chunk
         if (!leftRadiusProjection->getIsEnd())
         {
@@ -338,4 +343,9 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
             leftChunk->removeCheckpoint(colliderB);
         }
     }
+}
+
+void SegmentedIntervalList::addDirtyChunk(LocalSortArray *chunk)
+{
+    dirtyChunks.push_back(chunk);
 }

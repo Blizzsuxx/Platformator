@@ -1,4 +1,5 @@
 #include "collider.h"
+#include "localsortarray.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
     : Component(gameObject, type), layer(0), isTrigger(false), isDirty(true), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)

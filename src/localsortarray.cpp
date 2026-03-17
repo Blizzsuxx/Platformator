@@ -1,22 +1,31 @@
 #include "localsortarray.h"
 #include "swapcallback.h"
+#include "segmentedintervallist.h"
 
-LocalSortArray::LocalSortArray()
-    : size(0), array(), checkpoint(), isDirty(true), leftChunk(nullptr), rightChunk(nullptr)
+LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
+    : size(0), array(), checkpoint(), isDirty(true), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(other->size / 2), array(), checkpoint(other->checkpoint), isDirty(true), leftChunk(nullptr), rightChunk(nullptr)
+    : size(0), array(), checkpoint(other->checkpoint), isDirty(true), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
 {
-    std::copy(other->array + size, other->array + MAX_SIZE, array);
-    other->size = size;
+    const size_t oldSize = other->size;
+    const size_t movedCount = oldSize / 2;
+    const size_t splitIndex = oldSize - movedCount;
 
-    leftChunk = other;
-    rightChunk = other->rightChunk;
-    other->setRightChunk(this);
+    size = movedCount;
+    std::copy(other->array + splitIndex, other->array + oldSize, array);
+    other->size = splitIndex;
 
-    for (int i = 0; i < size; i++)
+    other->rightChunk = this;
+
+    if (rightChunk != nullptr)
+    {
+        rightChunk->leftChunk = this;
+    }
+
+    for (size_t i = 0; i < size; i++)
     {
         array[i]->setChunk(this);
 
@@ -103,57 +112,34 @@ void LocalSortArray::sort(SwapCallback *callback)
     // sort the array with insertion sort, sort from lowest to highest
     for (size_t i = 1; i < size; i++)
     {
-        BoundingRadiusProjection *temp = array[i];
-        size_t j = i - 1;
-        while (j != static_cast<size_t>(-1) && *array[j] > *temp)
+        size_t j = i;
+
+        while (j > 0 && *array[j - 1] > *array[j])
         {
-            // // temp is moving LEFT past array[j]
-            // // That means temp's value decreased (or array[j]'s increased)
-            // if (temp->getCollider() != array[j]->getCollider())
-            // {
-            //     callback->swap(temp, array[j]);
-            // }
-            callback->swap(array[j], j, temp, i);
+            callback->swap(array[j - 1], j - 1, array[j], j);
             j--;
         }
-        callback->swap(array[j + 1], j + 1, temp, i);
     }
+
+    this->setIsDirty(false);
 }
 
 void LocalSortArray::sortFromIndex(size_t arrayIndex, SwapCallback *callback)
 {
-    // cross swap from left to right
-    // swap to right until biggest
     if (arrayIndex == 0)
     {
-        for (size_t i = 1; i < getSize(); i++)
+        while (arrayIndex + 1 < getSize() && *array[arrayIndex] > *array[arrayIndex + 1])
         {
-            if (*array[arrayIndex] > *array[i])
-            {
-                callback->swap(array[arrayIndex], arrayIndex, array[i], i);
-                arrayIndex = i;
-            }
-            else
-            {
-                return;
-            }
+            callback->swap(array[arrayIndex], arrayIndex, array[arrayIndex + 1], arrayIndex + 1);
+            arrayIndex++;
         }
     }
-    // cross swap from right to left
-    // swap to left until smallest
     else
     {
-        for (size_t i = arrayIndex - 1; i != static_cast<size_t>(-1); i--)
+        while (arrayIndex > 0 && *array[arrayIndex - 1] > *array[arrayIndex])
         {
-            if (*array[arrayIndex] < *array[i])
-            {
-                callback->swap(array[arrayIndex], arrayIndex, array[i], i);
-                arrayIndex = i;
-            }
-            else
-            {
-                return;
-            }
+            callback->swap(array[arrayIndex - 1], arrayIndex - 1, array[arrayIndex], arrayIndex);
+            arrayIndex--;
         }
     }
 }
@@ -298,10 +284,34 @@ size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjection *elem
 
 void LocalSortArray::setIsDirty(bool dirty)
 {
+    if (this->isDirty == false && dirty == true)
+    {
+        owner->addDirtyChunk(this);
+    }
     isDirty = dirty;
 }
 
 bool LocalSortArray::getIsDirty() const
 {
     return isDirty;
+}
+
+LocalSortArray *LocalSortArray::getLeftChunk() const
+{
+    return leftChunk;
+}
+
+LocalSortArray *LocalSortArray::getRightChunk() const
+{
+    return rightChunk;
+}
+
+void LocalSortArray::setLeftChunk(LocalSortArray *leftChunk)
+{
+    this->leftChunk = leftChunk;
+}
+
+void LocalSortArray::setRightChunk(LocalSortArray *rightChunk)
+{
+    this->rightChunk = rightChunk;
 }

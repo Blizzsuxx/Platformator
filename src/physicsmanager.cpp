@@ -54,7 +54,6 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 void PhysicsManager::broadPhase()
 {
     aabb.sort();
-    aabb.updateCandidateList();
 }
 
 void PhysicsManager::narrowPhase()

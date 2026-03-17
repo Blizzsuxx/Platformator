@@ -4,14 +4,16 @@
 #include <vector>
 #include <unordered_set>
 #include "collider.h"
-// #include "onswapcallback.h"
 
 const int MAX_SIZE = 32;
+
+class SwapCallback;
+class SegmentedIntervalList;
 
 class LocalSortArray
 {
 public:
-    LocalSortArray();
+    LocalSortArray(SegmentedIntervalList *owner);
     LocalSortArray(LocalSortArray *other);
     ~LocalSortArray();
 
@@ -61,6 +63,7 @@ private:
     bool isDirty;
     LocalSortArray *leftChunk;
     LocalSortArray *rightChunk;
+    SegmentedIntervalList *owner;
 
     friend class SegmentedIntervalList;
 };

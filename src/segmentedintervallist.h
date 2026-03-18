@@ -22,12 +22,14 @@ private:
     size_t binarySearch(BoundingRadiusProjection *element);
     size_t binarySearch(LocalSortArray *array);
 
-    size_t add(BoundingRadiusProjection *element);
-    size_t add(BoundingRadiusProjection *element, size_t chunkIndex);
-    LocalSortArray *remove(BoundingRadiusProjection *element);
-    BoundingRadiusProjection *remove(size_t chunkIndex, size_t arrayIndex);
+    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjection *element);
+    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjection *element, size_t chunkIndex);
+    std::pair<LocalSortArray *, size_t> remove(BoundingRadiusProjection *element);
+
     void swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk);
     void sortChunkFromIndex(LocalSortArray *chunk, size_t arrayIndex);
+    void addCollisionsForNewlyAddedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
+    void removeCollisionsForRemovedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
 
     void swap(BoundingRadiusProjection *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjection *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
 

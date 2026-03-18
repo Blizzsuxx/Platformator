@@ -17,10 +17,10 @@ public:
     LocalSortArray(LocalSortArray *other);
     ~LocalSortArray();
 
-    bool add(BoundingRadiusProjection *element);
+    size_t add(BoundingRadiusProjection *element);
     BoundingRadiusProjection *pop();
     BoundingRadiusProjection *remove(size_t index);
-    bool remove(BoundingRadiusProjection *element);
+    size_t remove(BoundingRadiusProjection *element);
     void sort(SwapCallback *callback);
     void sortFromIndex(size_t index, SwapCallback *callback);
 
@@ -35,8 +35,7 @@ public:
     void removeCheckpoint(Collider *element);
     std::vector<Collider *> *getCheckpoint();
 
-    size_t findBinarySearchIndex(BoundingRadiusProjection *element);
-    size_t searchAround(size_t index, BoundingRadiusProjection *element);
+    size_t find(BoundingRadiusProjection *element);
 
     void setIsDirty(bool dirty);
     bool getIsDirty() const;
@@ -48,6 +47,7 @@ public:
 
 private:
     size_t binarySearch(BoundingRadiusProjection *element);
+    size_t searchAround(size_t index, BoundingRadiusProjection *element);
 
     size_t size;
     BoundingRadiusProjection *array[MAX_SIZE];

@@ -3,12 +3,12 @@
 #include "segmentedintervallist.h"
 
 LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
-    : size(0), array(), checkpoint(), isDirty(true), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
+    : size(0), array(), checkpoint(), isDirty(false), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoint(other->checkpoint), isDirty(true), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
+    : size(0), array(), checkpoint(other->checkpoint), isDirty(false), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
 {
     const size_t oldSize = other->size;
     const size_t movedCount = oldSize / 2;
@@ -44,12 +44,12 @@ LocalSortArray::~LocalSortArray()
 {
 }
 
-bool LocalSortArray::add(BoundingRadiusProjection *element)
+size_t LocalSortArray::add(BoundingRadiusProjection *element)
 {
     // find the index where the element should be inserted using binary search
     if (size == MAX_SIZE)
     {
-        return false;
+        return SIZE_MAX;
     }
     else
     {
@@ -64,7 +64,7 @@ bool LocalSortArray::add(BoundingRadiusProjection *element)
         array[index] = element;
         size++;
 
-        return true;
+        return index;
     }
 }
 
@@ -92,19 +92,19 @@ BoundingRadiusProjection *LocalSortArray::remove(size_t index)
     return removed;
 }
 
-bool LocalSortArray::remove(BoundingRadiusProjection *element)
+size_t LocalSortArray::remove(BoundingRadiusProjection *element)
 {
     // find the index of the element using binary search
-    size_t index = findBinarySearchIndex(element);
+    size_t index = find(element);
 
     if (index < size && array[index] == element)
     {
         remove(index);
 
-        return true;
+        return index;
     }
 
-    return false;
+    return SIZE_MAX;
 }
 
 void LocalSortArray::sort(SwapCallback *callback)
@@ -221,7 +221,7 @@ std::vector<Collider *> *LocalSortArray::getCheckpoint()
     return &checkpoint;
 }
 
-size_t LocalSortArray::findBinarySearchIndex(BoundingRadiusProjection *element)
+size_t LocalSortArray::find(BoundingRadiusProjection *element)
 {
     size_t low = 0;
     size_t high = size;

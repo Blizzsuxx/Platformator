@@ -34,7 +34,6 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
 
 void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
 {
-    printf("Removing %s from segmented interval list\n", axis->getMin()->getCollider()->getGameObject()->getName().c_str());
     BoundingRadiusProjection *lowerProjection = axis->getMin();
     BoundingRadiusProjection *upperProjection = axis->getMax();
 
@@ -257,6 +256,26 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(BoundingRadius
     LocalSortArray *array = element->getChunk();
     size_t index = array->remove(element);
 
+    if (array->getSize() == 0 && chunks.size() > 1)
+    {
+        // if the array is empty and it's not the only one, remove it
+        LocalSortArray *leftChunk = array->getLeftChunk();
+        LocalSortArray *rightChunk = array->getRightChunk();
+
+        if (leftChunk != nullptr)
+        {
+            leftChunk->setRightChunk(rightChunk);
+        }
+        if (rightChunk != nullptr)
+        {
+            rightChunk->setLeftChunk(leftChunk);
+        }
+
+        size_t chunkIndex = binarySearch(array);
+        delete chunks[chunkIndex];
+        chunks.erase(chunks.begin() + chunkIndex);
+    }
+
     if (index != SIZE_MAX)
     {
         return {array, index};
@@ -292,13 +311,12 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
     // first emit collision events for the two colliders if they are now overlapping
     if (colliderA != colliderB)
     {
-        printf("Swapping %s and %s\n", colliderA->getGameObject()->getName().c_str(), colliderB->getGameObject()->getName().c_str());
-        if (!leftRadiusProjection->getIsEnd() && rightRadiusProjection->getIsEnd())
+        if (!leftRadiusProjection->getIsMaxima() && rightRadiusProjection->getIsMaxima())
         {
             // remove collision
             owner->axisOverlapEnd(colliderA, colliderB, axis);
         }
-        else if (leftRadiusProjection->getIsEnd() && !rightRadiusProjection->getIsEnd())
+        else if (leftRadiusProjection->getIsMaxima() && !rightRadiusProjection->getIsMaxima())
         {
             // add collision
             owner->axisOverlapBegin(colliderA, colliderB, axis);
@@ -311,7 +329,7 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
         leftRadiusProjection->setChunk(rightChunk);
         rightRadiusProjection->setChunk(leftChunk);
         // left is minimum - remove from checkpoint (left chunk) - minimum crossing right out of a chunk
-        if (!leftRadiusProjection->getIsEnd())
+        if (!leftRadiusProjection->getIsMaxima())
         {
             leftChunk->removeCheckpoint(colliderA);
         }
@@ -321,7 +339,7 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
             leftChunk->addCheckpoint(colliderA);
         }
         // right is minimum - add to checkpoint (left chunk) - minimum crossing left into a chunk
-        if (!rightRadiusProjection->getIsEnd())
+        if (!rightRadiusProjection->getIsMaxima())
         {
             leftChunk->addCheckpoint(colliderB);
         }
@@ -414,7 +432,7 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
         for (int i = currentIndex; i < currentChunk->getSize(); i++)
         {
             BoundingRadiusProjection *projection = projections[i];
-            if (projection->getCollider() != collider)
+            if (projection->getCollider() != collider && projection->getIsMaxima())
             {
                 owner->axisOverlapBegin(collider, projection->getCollider(), axis);
             }
@@ -429,7 +447,7 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
         currentIndex = 0;
     }
 
-    for (Collider *checkpoint : *upperProjection->getChunk()->getCheckpoint())
+    for (Collider *checkpoint : *upperProjection->getChunk()->getCheckpoints())
     {
         if (checkpoint != collider)
         {
@@ -469,7 +487,7 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
         currentIndex = 0;
     }
 
-    for (Collider *checkpoint : *upperProjection->getChunk()->getCheckpoint())
+    for (Collider *checkpoint : *upperProjection->getChunk()->getCheckpoints())
     {
         if (checkpoint != collider)
         {

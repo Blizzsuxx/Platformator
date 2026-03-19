@@ -3,12 +3,12 @@
 #include "segmentedintervallist.h"
 
 LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
-    : size(0), array(), checkpoint(), isDirty(false), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
+    : size(0), array(), checkpoints(), isDirty(false), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoint(other->checkpoint), isDirty(false), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
+    : size(0), array(), checkpoints(other->checkpoints), isDirty(false), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
 {
     const size_t oldSize = other->size;
     const size_t movedCount = oldSize / 2;
@@ -29,7 +29,7 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
     {
         array[i]->setChunk(this);
 
-        if (array[i]->getIsEnd())
+        if (array[i]->getIsMaxima())
         {
             other->addCheckpoint(array[i]->getCollider());
         }
@@ -177,17 +177,17 @@ BoundingRadiusProjection **LocalSortArray::getArray()
 void LocalSortArray::clear()
 {
     size = 0;
-    checkpoint.clear();
+    checkpoints.clear();
 }
 
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
-    checkpoint.push_back(collider);
+    checkpoints.insert(collider);
 }
 
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
-    checkpoint.erase(std::remove(checkpoint.begin(), checkpoint.end(), collider), checkpoint.end());
+    checkpoints.erase(collider);
 }
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
@@ -216,9 +216,9 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
     return low;
 }
 
-std::vector<Collider *> *LocalSortArray::getCheckpoint()
+std::unordered_set<Collider *> *LocalSortArray::getCheckpoints()
 {
-    return &checkpoint;
+    return &checkpoints;
 }
 
 size_t LocalSortArray::find(BoundingRadiusProjection *element)

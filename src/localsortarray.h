@@ -33,7 +33,7 @@ public:
     void clear();
     void addCheckpoint(Collider *element);
     void removeCheckpoint(Collider *element);
-    std::vector<Collider *> *getCheckpoint();
+    std::unordered_set<Collider *> *getCheckpoints();
 
     size_t find(BoundingRadiusProjection *element);
 
@@ -59,7 +59,7 @@ private:
 
     // Needed even in an event driven model (let's say (Amin, Bmax), (Cmin, Dmax), (Cmax, Amax),
     // and we want to add Emin and Emax at Cmin Dmax place, we need to check checkpoints for A (and we cannot see it with events))
-    std::vector<Collider *> checkpoint;
+    std::unordered_set<Collider *> checkpoints;
     bool isDirty;
     LocalSortArray *leftChunk;
     LocalSortArray *rightChunk;

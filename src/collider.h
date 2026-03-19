@@ -16,12 +16,12 @@ public:
 
     Collider *getCollider();
     float getProjectedPosition() const;
-    bool getIsEnd() const;
+    bool getIsMaxima() const;
     LocalSortArray *getChunk() const;
 
     void setCollider(Collider *collider);
     void setProjectedPosition(float projectedPosition);
-    void setIsEnd(bool isEnd);
+    void setIsMaxima(bool isMaxima);
     void setChunk(LocalSortArray *chunk);
 
     bool operator==(const BoundingRadiusProjection &other) const;
@@ -34,7 +34,7 @@ public:
 private:
     Collider *collider;
     float projectedPosition;
-    bool isEnd;
+    bool isMaxima;
     LocalSortArray *chunk;
 };
 

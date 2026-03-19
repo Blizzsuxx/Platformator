@@ -1,12 +1,12 @@
 #include "collider.h"
 #include "localsortarray.h"
 
-BoundingRadiusProjection::BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isEnd(false), chunk(nullptr)
+BoundingRadiusProjection::BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isMaxima(false), chunk(nullptr)
 {
 }
 
 BoundingRadiusProjection::BoundingRadiusProjection(Collider *collider, float projectedPosition, bool end, LocalSortArray *chunk)
-    : collider(collider), projectedPosition(projectedPosition), isEnd(end), chunk(chunk)
+    : collider(collider), projectedPosition(projectedPosition), isMaxima(end), chunk(chunk)
 {
 }
 
@@ -24,9 +24,9 @@ float BoundingRadiusProjection::getProjectedPosition() const
     return projectedPosition;
 }
 
-bool BoundingRadiusProjection::getIsEnd() const
+bool BoundingRadiusProjection::getIsMaxima() const
 {
-    return isEnd;
+    return isMaxima;
 }
 
 LocalSortArray *BoundingRadiusProjection::getChunk() const
@@ -44,9 +44,9 @@ void BoundingRadiusProjection::setProjectedPosition(float projectedPosition)
     this->projectedPosition = projectedPosition;
 }
 
-void BoundingRadiusProjection::setIsEnd(bool end)
+void BoundingRadiusProjection::setIsMaxima(bool end)
 {
-    this->isEnd = end;
+    this->isMaxima = end;
 }
 
 void BoundingRadiusProjection::setChunk(LocalSortArray *chunk)
@@ -56,7 +56,7 @@ void BoundingRadiusProjection::setChunk(LocalSortArray *chunk)
 
 bool BoundingRadiusProjection::operator==(const BoundingRadiusProjection &other) const
 {
-    return this->projectedPosition == other.projectedPosition && this->isEnd == other.isEnd;
+    return this->projectedPosition == other.projectedPosition && this->isMaxima == other.isMaxima;
 }
 
 bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection &other) const
@@ -66,12 +66,12 @@ bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection &other)
 
 bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition < other.projectedPosition || (projectedPosition == other.projectedPosition && !isEnd && other.isEnd);
+    return projectedPosition < other.projectedPosition || (projectedPosition == other.projectedPosition && !isMaxima && other.isMaxima);
 }
 
 bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition > other.projectedPosition || (projectedPosition == other.projectedPosition && isEnd && !other.isEnd);
+    return projectedPosition > other.projectedPosition || (projectedPosition == other.projectedPosition && isMaxima && !other.isMaxima);
 }
 
 bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection &other) const

@@ -60,13 +60,9 @@ void PhysicsManager::narrowPhase()
 {
     collisions.clear();
 
-    for (const Collision &collision : *aabb.getCandidateCollisions())
+    for (const ColliderPair &pair : *aabb.getCandidatePairSet())
     {
-        if (checkCollision(&collision))
-        {
-            collisions.push_back(&collision);
-            DebugDraw::getInstance().addCollisionDebugObject(collision);
-        }
+        createCollision(pair);
     }
 }
 
@@ -98,10 +94,10 @@ bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normal
     return true;
 }
 
-bool PhysicsManager::checkCollision(const Collision *collision)
+void PhysicsManager::createCollision(const ColliderPair &pair)
 {
-    const Collider *referenceCollider = (const Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
-    const Collider *incidentCollider = (const Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
+    const Collider *referenceCollider = pair.objectA;
+    const Collider *incidentCollider = pair.objectB;
 
     float minOverlap = std::numeric_limits<float>::max();
     Eigen::Vector2f minNormal;
@@ -111,47 +107,50 @@ bool PhysicsManager::checkCollision(const Collision *collision)
     std::vector<Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
     if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
     {
-        return false;
+        return;
     }
 
     normals = incidentCollider->getNormals(referenceCollider);
 
     if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
     {
-        return false;
+        return;
     }
 
-    collision->setIncidentObject(realIncidentCollider->getGameObject());
-    collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider->getGameObject() : incidentCollider->getGameObject());
+    collisions.emplace_back();
+    const Collision &collision = collisions.back();
+
+    collision.setIncidentObject(realIncidentCollider->getGameObject());
+    collision.setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider->getGameObject() : incidentCollider->getGameObject());
 
     // Ensure the normal points from reference toward incident
-    auto directionVector = collision->getIncidentObject()->getPosition() - collision->getReferenceObject()->getPosition();
+    auto directionVector = collision.getIncidentObject()->getPosition() - collision.getReferenceObject()->getPosition();
     if (minNormal.dot(directionVector) < 0)
     {
         minNormal *= -1.0f;
     }
 
     // Store the corrected normal
-    collision->setNormal(minNormal);
-    collision->setPenetration(minOverlap);
+    collision.setNormal(minNormal);
+    collision.setPenetration(minOverlap);
 
     // Contact point: incident's near surface, offset halfway into the overlap
     float incidentHalfExtent = (incidentProjection.y() - incidentProjection.x()) / 2.0f;
-    collision->setContactPoint(
+    collision.setContactPoint(
         realIncidentCollider->getGameObject()->getPosition() - minNormal * (incidentHalfExtent - minOverlap / 2.0f));
 
-    return true;
+    DebugDraw::getInstance().addCollisionDebugObject(collision);
 }
 
 void PhysicsManager::resolveCollisions()
 {
-    for (const Collision *collision : collisions)
+    for (const Collision &collision : collisions)
     {
-        Rigidbody *referenceRigidbody = (Rigidbody *)collision->getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
-        Rigidbody *incidentRigidbody = (Rigidbody *)collision->getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
+        Rigidbody *referenceRigidbody = (Rigidbody *)collision.getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
+        Rigidbody *incidentRigidbody = (Rigidbody *)collision.getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
 
-        Collider *referenceCollider = (Collider *)collision->getReferenceObject()->getComponent(ComponentType::COLLIDER);
-        Collider *incidentCollider = (Collider *)collision->getIncidentObject()->getComponent(ComponentType::COLLIDER);
+        Collider *referenceCollider = (Collider *)collision.getReferenceObject()->getComponent(ComponentType::COLLIDER);
+        Collider *incidentCollider = (Collider *)collision.getIncidentObject()->getComponent(ComponentType::COLLIDER);
 
         if (referenceRigidbody == nullptr || incidentRigidbody == nullptr || referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getIsTrigger() || incidentCollider->getIsTrigger())
         {
@@ -167,7 +166,7 @@ void PhysicsManager::resolveCollisions()
         }
         else
         {
-            resolveCollision(collision);
+            resolveCollision(&collision);
         }
     }
 }
@@ -175,11 +174,6 @@ void PhysicsManager::resolveCollisions()
 const std::list<Collider *> &PhysicsManager::getColliders() const
 {
     return colliderComponents;
-}
-
-const std::list<const Collision *> &PhysicsManager::getCollisions() const
-{
-    return collisions;
 }
 
 void PhysicsManager::resolveCollision(const Collision *collision)

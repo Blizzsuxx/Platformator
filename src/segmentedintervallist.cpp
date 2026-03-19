@@ -1,8 +1,8 @@
 #include "segmentedintervallist.h"
 #include "aabb.h"
 
-SegmentedIntervalList::SegmentedIntervalList(AABB *owner)
-    : chunks(), dirtyChunks(), owner(owner)
+SegmentedIntervalList::SegmentedIntervalList(AABB *owner, Axis axis)
+    : chunks(), dirtyChunks(), owner(owner), axis(axis)
 {
     chunks.push_back(new LocalSortArray(this));
 }
@@ -296,12 +296,12 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
         if (!leftRadiusProjection->getIsEnd() && rightRadiusProjection->getIsEnd())
         {
             // remove collision
-            owner->removeCandidateCollision(colliderA, colliderB);
+            owner->axisOverlapEnd(colliderA, colliderB, axis);
         }
         else if (leftRadiusProjection->getIsEnd() && !rightRadiusProjection->getIsEnd())
         {
             // add collision
-            owner->addCandidateCollision(colliderA, colliderB);
+            owner->axisOverlapBegin(colliderA, colliderB, axis);
         }
     }
 
@@ -416,7 +416,7 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
             BoundingRadiusProjection *projection = projections[i];
             if (projection->getCollider() != collider)
             {
-                owner->addCandidateCollision(collider, projection->getCollider());
+                owner->axisOverlapBegin(collider, projection->getCollider(), axis);
             }
 
             if (projection == upperProjection)
@@ -433,7 +433,7 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
     {
         if (checkpoint != collider)
         {
-            owner->addCandidateCollision(collider, checkpoint);
+            owner->axisOverlapBegin(collider, checkpoint, axis);
         }
     }
 }
@@ -456,7 +456,7 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
             BoundingRadiusProjection *projection = projections[i];
             if (projection->getCollider() != collider)
             {
-                owner->removeCandidateCollision(collider, projection->getCollider());
+                owner->axisOverlapEnd(collider, projection->getCollider(), axis);
             }
 
             if (projection == upperProjection)
@@ -473,7 +473,7 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
     {
         if (checkpoint != collider)
         {
-            owner->removeCandidateCollision(collider, checkpoint);
+            owner->axisOverlapEnd(collider, checkpoint, axis);
         }
     }
 }

@@ -1,15 +1,17 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 #include "localsortarray.h"
 #include "swapcallback.h"
 
 class AABB;
+enum Axis : uint8_t;
 
 class SegmentedIntervalList : public SwapCallback
 {
 public:
-    SegmentedIntervalList(AABB *owner);
+    SegmentedIntervalList(AABB *owner, Axis axis);
     ~SegmentedIntervalList();
 
     void clear();
@@ -36,4 +38,5 @@ private:
     std::vector<LocalSortArray *> chunks;
     std::vector<LocalSortArray *> dirtyChunks;
     AABB *owner;
+    Axis axis;
 };

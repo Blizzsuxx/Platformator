@@ -26,18 +26,17 @@ public:
     void removeColliderComponent(Collider *colliderComponent);
 
     const std::list<Collider *> &getColliders() const;
-    const std::list<const Collision *> &getCollisions() const;
 
 private:
     void broadPhase();
     void narrowPhase();
-    bool checkCollision(const Collision *collision);
+    void createCollision(const ColliderPair &pair);
     bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider);
     void resolveCollision(const Collision *collision);
 
     std::list<Rigidbody *> rigidBodyComponents;
     std::list<Collider *> colliderComponents;
-    std::list<const Collision *> collisions;
+    std::list<Collision> collisions;
     AABB aabb;
 
     Eigen::Vector2f gravityVector;

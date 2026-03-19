@@ -2,9 +2,10 @@
 #include <iostream>
 
 AABB::AABB()
-    : intervalListX(this),
-      intervalListY(this),
-      candidateCollisions()
+    : intervalListX(this, Axis::X),
+      intervalListY(this, Axis::Y),
+      candidateCollisions(),
+      pairStates()
 {
 }
 
@@ -51,39 +52,54 @@ SegmentedIntervalList *AABB::getIntervalListY()
     return &intervalListY;
 }
 
-const std::unordered_set<Collision, Collision::HashFunction> *AABB::getCandidateCollisions() const
+const std::unordered_set<ColliderPair, ColliderPair::HashFunction> *AABB::getCandidatePairSet() const
 {
     return &candidateCollisions;
 }
 
-void AABB::addCandidateCollision(Collider *colliderA, Collider *colliderB)
+void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    printf("Adding candidate collision between %s and %s\n", colliderA->getGameObject()->getName().c_str(), colliderB->getGameObject()->getName().c_str());
     if (colliderA->getGameObject()->getActive() == false || colliderB->getGameObject()->getActive() == false)
     {
         return;
     }
 
-    float aYMin = colliderA->getYProjections()->getMin()->getProjectedPosition();
-    float aYMax = colliderA->getYProjections()->getMax()->getProjectedPosition();
-    float bYMin = colliderB->getYProjections()->getMin()->getProjectedPosition();
-    float bYMax = colliderB->getYProjections()->getMax()->getProjectedPosition();
+    ColliderPair collisionKey = ColliderPair(colliderA, colliderB);
+    PairState &collisionState = pairStates[collisionKey];
 
-    float aXMin = colliderA->getXProjections()->getMin()->getProjectedPosition();
-    float aXMax = colliderA->getXProjections()->getMax()->getProjectedPosition();
-    float bXMin = colliderB->getXProjections()->getMin()->getProjectedPosition();
-    float bXMax = colliderB->getXProjections()->getMax()->getProjectedPosition();
+    collisionState.axisMask |= static_cast<uint8_t>(axis);
 
-    if (aYMax >= bYMin && bYMax >= aYMin && aXMax >= bXMin && bXMax >= aXMin)
+    if (collisionState.axisMask == static_cast<uint8_t>(Axis::ALL_AXES) && !collisionState.isInCandidateSet)
     {
-        candidateCollisions.insert(Collision(colliderA->getGameObject(), colliderB->getGameObject()));
+        candidateCollisions.insert(collisionKey);
+        collisionState.isInCandidateSet = true;
     }
 }
 
-void AABB::removeCandidateCollision(Collider *colliderA, Collider *colliderB)
+void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    printf("Removing candidate collision between %s and %s\n", colliderA->getGameObject()->getName().c_str(), colliderB->getGameObject()->getName().c_str());
-    candidateCollisions.erase(Collision(colliderA->getGameObject(), colliderB->getGameObject()));
+    ColliderPair key(colliderA, colliderB);
+
+    auto iterator = pairStates.find(key);
+    if (iterator == pairStates.end())
+    {
+        return;
+    }
+
+    PairState &state = iterator->second;
+
+    if (state.isInCandidateSet && state.axisMask == static_cast<uint8_t>(Axis::ALL_AXES))
+    {
+        candidateCollisions.erase(key);
+        state.isInCandidateSet = false;
+    }
+
+    state.axisMask &= static_cast<uint8_t>(~static_cast<uint8_t>(axis));
+
+    if (state.axisMask == 0)
+    {
+        pairStates.erase(key);
+    }
 }
 
 void AABB::sort()

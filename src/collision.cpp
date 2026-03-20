@@ -4,13 +4,13 @@ Collision::Collision() : normal(), penetration(0.0f), contactPoint(), referenceO
 {
 }
 
-Collision::Collision(GameObject *gameObjectA, GameObject *gameObjectB)
-    : normal(), penetration(0.0f), contactPoint(), referenceObject(gameObjectA), incidentObject(gameObjectB)
+Collision::Collision(Collider *colliderA, Collider *colliderB)
+    : normal(), penetration(0.0f), contactPoint(), referenceObject(colliderA), incidentObject(colliderB)
 {
 }
 
-Collision::Collision(const Eigen::Vector2f &normal, float penetration, const Eigen::Vector2f &contactPoint, GameObject *gameObjectA, GameObject *gameObjectB)
-    : normal(normal), penetration(penetration), contactPoint(contactPoint), referenceObject(gameObjectA), incidentObject(gameObjectB)
+Collision::Collision(const Eigen::Vector2f &normal, float penetration, const Eigen::Vector2f &contactPoint, Collider *colliderA, Collider *colliderB)
+    : normal(normal), penetration(penetration), contactPoint(contactPoint), referenceObject(colliderA), incidentObject(colliderB)
 {
 }
 
@@ -34,12 +34,12 @@ const Eigen::Vector2f &Collision::getContactPoint() const
     return contactPoint;
 }
 
-const GameObject *Collision::getReferenceObject() const
+const Collider *Collision::getReferenceObject() const
 {
     return referenceObject;
 }
 
-const GameObject *Collision::getIncidentObject() const
+const Collider *Collision::getIncidentObject() const
 {
     return incidentObject;
 }
@@ -61,14 +61,14 @@ void Collision::setContactPoint(const Eigen::Vector2f &contactPoint) const
     this->contactPoint = contactPoint;
 }
 
-void Collision::setReferenceObject(GameObject *gameObjectA) const
+void Collision::setReferenceObject(const Collider *colliderA) const
 {
-    this->referenceObject = gameObjectA;
+    this->referenceObject = colliderA;
 }
 
-void Collision::setIncidentObject(GameObject *gameObjectB) const
+void Collision::setIncidentObject(const Collider *colliderB) const
 {
-    this->incidentObject = gameObjectB;
+    this->incidentObject = colliderB;
 }
 
 bool Collision::operator==(const Collision &other) const

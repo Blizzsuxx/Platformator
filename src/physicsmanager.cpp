@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), colliderComponents(), collisions(), aabb(), gravityVector(0.0f, 9.81f)
+    : rigidBodyComponents(), collisions(), aabb(), gravityVector(0.0f, 9.81f)
 {
 }
 
@@ -12,7 +12,6 @@ PhysicsManager::~PhysicsManager()
 
 void PhysicsManager::applyPhysics(double timeDelta)
 {
-
     // TODO: parallelize this loop
     for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
     {
@@ -34,8 +33,6 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
-    colliderComponents.push_back(colliderComponent);
-
     aabb.add(colliderComponent);
 }
 
@@ -46,8 +43,6 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
-    colliderComponents.erase(std::remove(colliderComponents.begin(), colliderComponents.end(), colliderComponent), colliderComponents.end());
-
     aabb.remove(colliderComponent);
 }
 
@@ -59,9 +54,15 @@ void PhysicsManager::broadPhase()
 void PhysicsManager::narrowPhase()
 {
     collisions.clear();
+    const std::unordered_set<ColliderPair, ColliderPair::HashFunction> *candidatePairs = aabb.getCandidatePairSet();
 
-    for (const ColliderPair &pair : *aabb.getCandidatePairSet())
+    for (const ColliderPair &pair : *candidatePairs)
     {
+        if (pair.objectA == nullptr || pair.objectB == nullptr || pair.objectA->getGameObject()->getIsMarkedForDeletion() || pair.objectB->getGameObject()->getIsMarkedForDeletion())
+        {
+            aabb.markPairForRemoval(pair);
+            continue;
+        }
         if (!pair.objectA->getGameObject()->getActive() || !pair.objectB->getGameObject()->getActive())
         {
             continue;
@@ -69,6 +70,8 @@ void PhysicsManager::narrowPhase()
 
         createCollision(pair);
     }
+
+    aabb.removeMarkedPairs();
 }
 
 bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider)
@@ -122,14 +125,13 @@ void PhysicsManager::createCollision(const ColliderPair &pair)
         return;
     }
 
-    collisions.emplace_back();
-    const Collision &collision = collisions.back();
+    const Collision &collision = collisions.emplace_back();
 
-    collision.setIncidentObject(realIncidentCollider->getGameObject());
-    collision.setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider->getGameObject() : incidentCollider->getGameObject());
+    collision.setIncidentObject(realIncidentCollider);
+    collision.setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
 
     // Ensure the normal points from reference toward incident
-    auto directionVector = collision.getIncidentObject()->getPosition() - collision.getReferenceObject()->getPosition();
+    auto directionVector = collision.getIncidentObject()->getGameObject()->getPosition() - collision.getReferenceObject()->getGameObject()->getPosition();
     if (minNormal.dot(directionVector) < 0)
     {
         minNormal *= -1.0f;
@@ -149,39 +151,43 @@ void PhysicsManager::createCollision(const ColliderPair &pair)
 
 void PhysicsManager::resolveCollisions()
 {
-    for (const Collision &collision : collisions)
+    auto it = collisions.begin();
+
+    while (it != collisions.end())
     {
-        Rigidbody *referenceRigidbody = (Rigidbody *)collision.getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
-        Rigidbody *incidentRigidbody = (Rigidbody *)collision.getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
+        const Collision &collision = *it;
 
-        Collider *referenceCollider = (Collider *)collision.getReferenceObject()->getComponent(ComponentType::COLLIDER);
-        Collider *incidentCollider = (Collider *)collision.getIncidentObject()->getComponent(ComponentType::COLLIDER);
+        const Collider *referenceCollider = collision.getReferenceObject();
+        const Collider *incidentCollider = collision.getIncidentObject();
 
-        if (referenceCollider != nullptr)
+        if (referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getGameObject()->getIsMarkedForDeletion() || incidentCollider->getGameObject()->getIsMarkedForDeletion())
         {
-            referenceCollider->triggerCollisionEnter(incidentCollider);
+            it = collisions.erase(it);
+            continue;
         }
-        if (incidentCollider != nullptr)
-        {
-            incidentCollider->triggerCollisionEnter(referenceCollider);
-        }
-        if (referenceRigidbody != nullptr && incidentRigidbody != nullptr && referenceCollider != nullptr && incidentCollider != nullptr && !referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
+
+        referenceCollider->triggerCollisionEnter(incidentCollider);
+        incidentCollider->triggerCollisionEnter(referenceCollider);
+
+        if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {
             resolveCollision(&collision);
         }
-    }
-}
 
-const std::list<Collider *> &PhysicsManager::getColliders() const
-{
-    return colliderComponents;
+        ++it;
+    }
 }
 
 void PhysicsManager::resolveCollision(const Collision *collision)
 {
     // sequential impulses with angular velocity
-    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getComponent(ComponentType::RIGID_BODY);
-    Rigidbody *rbB = (Rigidbody *)collision->getIncidentObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbB = (Rigidbody *)collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+
+    if (rbA == nullptr || rbB == nullptr)
+    {
+        return;
+    }
 
     float invMassA = rbA->getInverseMass();
     float invMassB = rbB->getInverseMass();

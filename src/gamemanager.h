@@ -31,6 +31,7 @@ public:
     void freeAllTextures();
     void notifyComponentAdded(Component *component);
     void notifyComponentRemoved(Component *component);
+    void deleteMarkedGameObjects();
 
 private:
     GameManager();
@@ -39,6 +40,7 @@ private:
     SDLWindow *window;
     std::list<GameObject *> gameObjects;
     std::unordered_map<std::string, TextureWrapper> textureCache;
+    std::list<GameObject *> gameObjectsToDelete;
 
     PhysicsManager *physicsManager;
 
@@ -46,7 +48,7 @@ private:
     double lastUpdateTime;
 
     void initializeMainCamera();
-    void deleteGameObject(GameObject *gameObject);
+    void startDeletingGameObject(GameObject *gameObject);
     void updateDeltaTime();
     void delay();
 

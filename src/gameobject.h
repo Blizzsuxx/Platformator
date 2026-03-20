@@ -75,11 +75,13 @@ public:
     GameObject *setScale(const Eigen::Vector2f &scale);
     GameObject *setName(const std::string &name);
     GameObject *setTag(const std::string &tag);
+    GameObject *setIsMarkedForDeletion(const bool markedForDeletion);
 
     void addComponent(Component *component);
     bool removeComponent(const ComponentType &componentType);
     void addChild(GameObject *child);
     bool removeChild(GameObject *child);
+    bool getIsMarkedForDeletion() const;
 
 private:
     GameObject();
@@ -100,6 +102,7 @@ private:
 
     Component *components[COMPONENT_TYPE_COUNT];
     std::list<GameObject *> children;
+    bool markedForDeletion;
 
     void updateCollider();
     void addComponentInternal(Component *component);

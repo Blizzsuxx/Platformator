@@ -2,12 +2,12 @@
 #include "collider.h"
 #include "gamemanager.h"
 
-GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), isActive(true), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components()
+GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), isActive(true), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), markedForDeletion(false)
 {
 }
 
 GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), isActive(active), position(position), scale(scale), name(name), tag(tag), components()
+    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), isActive(active), position(position), scale(scale), name(name), tag(tag), components(), children(), markedForDeletion(false)
 {
 }
 
@@ -212,4 +212,15 @@ bool GameObject::removeChild(GameObject *child)
     delete child;
 
     return true;
+}
+
+bool GameObject::getIsMarkedForDeletion() const
+{
+    return markedForDeletion;
+}
+
+GameObject *GameObject::setIsMarkedForDeletion(const bool markedForDeletion)
+{
+    this->markedForDeletion = markedForDeletion;
+    return this;
 }

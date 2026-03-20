@@ -57,12 +57,6 @@ struct ColliderPair
     };
 };
 
-struct PairState
-{
-    uint8_t axisMask = 0; // bit 0 = X, bit 1 = Y
-    bool isInCandidateSet = false;
-};
-
 class AABB
 {
 public:
@@ -76,10 +70,10 @@ public:
     const std::unordered_set<ColliderPair, ColliderPair::HashFunction> *getCandidatePairSet() const;
     // sort the array with insertion sort, sort from lowest to highest
     void sort();
+    void markPairForRemoval(const ColliderPair &pair);
+    void removeMarkedPairs();
 
 private:
-    // void checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk);
-    // void checkForCollisionsWithCheckpoint(LocalSortArray *chunk);
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
     // void removePairsForCollider(Collider *collider);
@@ -87,7 +81,7 @@ private:
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
     std::unordered_set<ColliderPair, ColliderPair::HashFunction> candidateCollisions;
-    std::unordered_map<ColliderPair, PairState, ColliderPair::HashFunction> pairStates;
+    std::list<ColliderPair> pairsToRemove;
 
     friend class SegmentedIntervalList;
 };

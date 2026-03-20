@@ -1,7 +1,7 @@
 #include "gamemanager.h"
 #include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     initializeMainCamera();
@@ -11,11 +11,12 @@ GameManager::~GameManager()
 {
     for (std::list<GameObject *>::iterator it = gameObjects.begin(); it != gameObjects.end(); ++it)
     {
-        deleteGameObject(*it);
+        startDeletingGameObject(*it);
     }
     gameObjects.clear();
 
     freeAllTextures();
+    deleteMarkedGameObjects();
 
     delete physicsManager;
     delete window;
@@ -50,16 +51,17 @@ void GameManager::removeGameObject(GameObject *gameObject)
 {
     gameObjects.remove(gameObject);
 
-    deleteGameObject(gameObject);
+    startDeletingGameObject(gameObject);
 }
 
-void GameManager::deleteGameObject(GameObject *gameObject)
+void GameManager::startDeletingGameObject(GameObject *gameObject)
 {
     notifyComponentRemoved(gameObject->getComponent(ComponentType::COLLIDER));
     notifyComponentRemoved(gameObject->getComponent(ComponentType::RIGID_BODY));
     notifyComponentRemoved(gameObject->getComponent(ComponentType::SPRITE));
 
-    delete gameObject;
+    gameObject->setIsMarkedForDeletion(true);
+    gameObjectsToDelete.push_back(gameObject);
 }
 
 bool GameManager::removeGameObject(std::string name)
@@ -70,7 +72,7 @@ bool GameManager::removeGameObject(std::string name)
         {
             GameObject *gameObject = *it;
             gameObjects.erase(it);
-            deleteGameObject(gameObject);
+            startDeletingGameObject(gameObject);
             return true;
         }
     }
@@ -137,6 +139,7 @@ void GameManager::loop()
         physicsManager->checkForCollisions();
         physicsManager->resolveCollisions();
         window->render();
+        deleteMarkedGameObjects();
         delay();
     }
 }
@@ -271,4 +274,13 @@ void GameManager::notifyWindowOfComponentRemoved(Component *component)
     {
         window->removeSpriteComponent((Sprite *)component);
     }
+}
+
+void GameManager::deleteMarkedGameObjects()
+{
+    for (std::list<GameObject *>::iterator it = gameObjectsToDelete.begin(); it != gameObjectsToDelete.end(); ++it)
+    {
+        delete *it;
+    }
+    gameObjectsToDelete.clear();
 }

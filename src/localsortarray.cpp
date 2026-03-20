@@ -182,12 +182,23 @@ void LocalSortArray::clear()
 
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
+    if (checkpointCache.find(collider) != checkpointCache.end())
+    {
+        checkpointCache.erase(collider);
+        return;
+    }
+
     checkpoints.insert(collider);
 }
 
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
-    checkpoints.erase(collider);
+    size_t numberOfErasedMembers = checkpoints.erase(collider);
+
+    if (numberOfErasedMembers == 0)
+    {
+        checkpointCache.insert(collider);
+    }
 }
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)

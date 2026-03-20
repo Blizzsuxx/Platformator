@@ -79,8 +79,11 @@ public:
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
 
-    int getLayer() const;
-    void setLayer(const int layer);
+    uint32_t getCollisionGroup() const;
+    void setCollisionGroup(const uint32_t collisionGroup);
+
+    uint32_t getCollisionMask() const;
+    void setCollisionMask(const uint32_t collisionMask);
 
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
@@ -89,13 +92,16 @@ public:
     void setIsDirty(const bool isDirty);
 
 protected:
-    int layer;
+    uint32_t collisionGroup;
+    uint32_t collisionMask;
+
     bool isTrigger;
     bool isDirty;
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;
 
+    void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);
     virtual void updateCollider() = 0;
 };
 

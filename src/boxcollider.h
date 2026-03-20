@@ -6,7 +6,6 @@
 class BoxCollider : public Collider
 {
 public:
-    BoxCollider(GameObject *gameObject);
     BoxCollider(GameObject *gameObject, const float width, const float height);
     ~BoxCollider();
 

@@ -23,24 +23,8 @@ void AABB::remove(Collider *element)
 {
     intervalListX.remove(element->getXProjections());
     intervalListY.remove(element->getYProjections());
+    // removePairsForCollider(element);
 }
-
-// void AABB::updateCandidateList()
-// {
-//     candidateCollisions.clear();
-
-//     for (LocalSortArray *chunk : *intervalListX.getChunks())
-//     {
-//         checkForPotentialCollisionsInsideChunk(chunk);
-//         checkForCollisionsWithCheckpoint(chunk);
-//     }
-
-//     // for (LocalSortArray *chunk : *intervalListY.getChunks())
-//     // {
-//     //     checkForPotentialCollisionsInsideChunk(chunk);
-//     //     checkForCollisionsWithCheckpoint(chunk);
-//     // }
-// }
 
 SegmentedIntervalList *AABB::getIntervalListX()
 {
@@ -60,6 +44,10 @@ const std::unordered_set<ColliderPair, ColliderPair::HashFunction> *AABB::getCan
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
 {
     if (colliderA->getGameObject()->getActive() == false || colliderB->getGameObject()->getActive() == false)
+    {
+        return;
+    }
+    if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
     {
         return;
     }
@@ -107,4 +95,24 @@ void AABB::sort()
     // TODO: parallelize this
     intervalListX.sort();
     intervalListY.sort();
+    // pruneInactivePairs();
 }
+
+// void AABB::removePairsForCollider(Collider *collider)
+// {
+//     for (auto iterator = pairStates.begin(); iterator != pairStates.end();)
+//     {
+//         if (iterator->first.objectA == collider || iterator->first.objectB == collider)
+//         {
+//             if (iterator->second.isInCandidateSet)
+//             {
+//                 candidateCollisions.erase(iterator->first);
+//             }
+//             iterator = pairStates.erase(iterator);
+//         }
+//         else
+//         {
+//             ++iterator;
+//         }
+//     }
+// }

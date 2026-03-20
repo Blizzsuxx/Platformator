@@ -60,6 +60,8 @@ private:
     // Needed even in an event driven model (let's say (Amin, Bmax), (Cmin, Dmax), (Cmax, Amax),
     // and we want to add Emin and Emax at Cmin Dmax place, we need to check checkpoints for A (and we cannot see it with events))
     std::unordered_set<Collider *> checkpoints;
+    std::unordered_set<Collider *> checkpointCache;
+
     bool isDirty;
     LocalSortArray *leftChunk;
     LocalSortArray *rightChunk;

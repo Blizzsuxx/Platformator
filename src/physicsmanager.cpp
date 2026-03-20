@@ -62,6 +62,11 @@ void PhysicsManager::narrowPhase()
 
     for (const ColliderPair &pair : *aabb.getCandidatePairSet())
     {
+        if (!pair.objectA->getGameObject()->getActive() || !pair.objectB->getGameObject()->getActive())
+        {
+            continue;
+        }
+
         createCollision(pair);
     }
 }
@@ -152,19 +157,15 @@ void PhysicsManager::resolveCollisions()
         Collider *referenceCollider = (Collider *)collision.getReferenceObject()->getComponent(ComponentType::COLLIDER);
         Collider *incidentCollider = (Collider *)collision.getIncidentObject()->getComponent(ComponentType::COLLIDER);
 
-        if (referenceRigidbody == nullptr || incidentRigidbody == nullptr || referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getIsTrigger() || incidentCollider->getIsTrigger())
+        if (referenceCollider != nullptr)
         {
-            if (referenceCollider != nullptr)
-            {
-
-                referenceCollider->triggerCollisionEnter(incidentCollider);
-            }
-            if (incidentCollider != nullptr)
-            {
-                incidentCollider->triggerCollisionEnter(referenceCollider);
-            }
+            referenceCollider->triggerCollisionEnter(incidentCollider);
         }
-        else
+        if (incidentCollider != nullptr)
+        {
+            incidentCollider->triggerCollisionEnter(referenceCollider);
+        }
+        if (referenceRigidbody != nullptr && incidentRigidbody != nullptr && referenceCollider != nullptr && incidentCollider != nullptr && !referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {
             resolveCollision(&collision);
         }

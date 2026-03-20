@@ -36,23 +36,23 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
 {
     BoundingRadiusProjection *lowerProjection = axis->getMin();
     BoundingRadiusProjection *upperProjection = axis->getMax();
+    LocalSortArray *currentChunk = lowerProjection->getChunk();
+    LocalSortArray *upperChunk = upperProjection->getChunk();
+    Collider *collider = lowerProjection->getCollider();
 
     size_t indexInsideChunkWhereItWillBeRemoved = lowerProjection->getChunk()->find(lowerProjection);
     size_t indexInsideChunkWhereItWillBeRemoved2 = upperProjection->getChunk()->find(upperProjection);
 
     removeCollisionsForRemovedProjection(lowerProjection, indexInsideChunkWhereItWillBeRemoved, upperProjection, indexInsideChunkWhereItWillBeRemoved2);
 
-    auto [chunkWhereItWasRemoved, indexInsideChunkWhereItWasRemoved] = remove(lowerProjection);
-    auto [chunkWhereItWasRemoved2, indexInsideChunkWhereItWasRemoved2] = remove(upperProjection);
-
-    LocalSortArray *currentChunk = chunkWhereItWasRemoved;
-    Collider *collider = lowerProjection->getCollider();
-
-    while (currentChunk != chunkWhereItWasRemoved2)
+    while (currentChunk != upperChunk)
     {
         currentChunk->removeCheckpoint(collider);
         currentChunk = currentChunk->getRightChunk();
     }
+
+    remove(lowerProjection);
+    remove(upperProjection);
 }
 
 void SegmentedIntervalList::clear()
@@ -256,9 +256,13 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(BoundingRadius
     LocalSortArray *array = element->getChunk();
     size_t index = array->remove(element);
 
+    if (index == SIZE_MAX)
+    {
+        return {nullptr, SIZE_MAX};
+    }
+
     if (array->getSize() == 0 && chunks.size() > 1)
     {
-        // if the array is empty and it's not the only one, remove it
         LocalSortArray *leftChunk = array->getLeftChunk();
         LocalSortArray *rightChunk = array->getRightChunk();
 
@@ -271,19 +275,15 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(BoundingRadius
             rightChunk->setLeftChunk(leftChunk);
         }
 
-        size_t chunkIndex = binarySearch(array);
-        delete chunks[chunkIndex];
-        chunks.erase(chunks.begin() + chunkIndex);
+        chunks.erase(std::remove(chunks.begin(), chunks.end(), array), chunks.end());
+        dirtyChunks.erase(std::remove(dirtyChunks.begin(), dirtyChunks.end(), array), dirtyChunks.end());
+
+        delete array;
+
+        return {rightChunk != nullptr ? rightChunk : leftChunk, index};
     }
 
-    if (index != SIZE_MAX)
-    {
-        return {array, index};
-    }
-    else
-    {
-        return {nullptr, SIZE_MAX};
-    }
+    return {array, index};
 }
 
 void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjection *rightRadiusProjection, size_t rightRadiusProjectionIndex)
@@ -353,7 +353,10 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
 
 void SegmentedIntervalList::addDirtyChunk(LocalSortArray *chunk)
 {
-    dirtyChunks.push_back(chunk);
+    if (chunk != nullptr)
+    {
+        dirtyChunks.push_back(chunk);
+    }
 }
 
 // void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
@@ -472,7 +475,7 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
         for (int i = currentIndex; i < currentChunk->getSize(); i++)
         {
             BoundingRadiusProjection *projection = projections[i];
-            if (projection->getCollider() != collider)
+            if (projection->getCollider() != collider && projection->getIsMaxima())
             {
                 owner->axisOverlapEnd(collider, projection->getCollider(), axis);
             }

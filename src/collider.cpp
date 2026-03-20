@@ -2,7 +2,7 @@
 #include "localsortarray.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), layer(0), isTrigger(false), isDirty(true), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), isDirty(true), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
 {
 }
 
@@ -20,16 +20,6 @@ BoundingRadiusProjectionAxis *Collider::getYProjections()
     return &yProjections;
 }
 
-int Collider::getLayer() const
-{
-    return layer;
-}
-
-void Collider::setLayer(const int layer)
-{
-    this->layer = layer;
-}
-
 bool Collider::getIsTrigger() const
 {
     return isTrigger;
@@ -45,14 +35,22 @@ bool Collider::getIsDirty() const
     return isDirty;
 }
 
+void Collider::setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty)
+{
+    if (chunk != nullptr)
+    {
+        chunk->setIsDirty(isDirty);
+    }
+}
+
 void Collider::setIsDirty(const bool isDirty)
 {
     this->isDirty = isDirty;
-    this->getXProjections()->getMax()->getChunk()->setIsDirty(isDirty);
-    this->getXProjections()->getMin()->getChunk()->setIsDirty(isDirty);
 
-    this->getYProjections()->getMax()->getChunk()->setIsDirty(isDirty);
-    this->getYProjections()->getMin()->getChunk()->setIsDirty(isDirty);
+    setChunkDirtyIfNotNull(this->getXProjections()->getMax()->getChunk(), isDirty);
+    setChunkDirtyIfNotNull(this->getXProjections()->getMin()->getChunk(), isDirty);
+    setChunkDirtyIfNotNull(this->getYProjections()->getMax()->getChunk(), isDirty);
+    setChunkDirtyIfNotNull(this->getYProjections()->getMin()->getChunk(), isDirty);
 }
 
 void Collider::triggerCollisionEnter(const Collider *other) const
@@ -65,4 +63,24 @@ void Collider::triggerCollisionExit(const Collider *other) const
 {
     // Placeholder for collision exit event handling
     // In a full implementation, this would notify the game object or other systems of the collision event
+}
+
+void Collider::setCollisionGroup(const uint32_t collisionGroup)
+{
+    this->collisionGroup = collisionGroup;
+}
+
+uint32_t Collider::getCollisionGroup() const
+{
+    return collisionGroup;
+}
+
+void Collider::setCollisionMask(const uint32_t collisionMask)
+{
+    this->collisionMask = collisionMask;
+}
+
+uint32_t Collider::getCollisionMask() const
+{
+    return collisionMask;
 }

@@ -82,6 +82,7 @@ private:
     // void checkForCollisionsWithCheckpoint(LocalSortArray *chunk);
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
+    // void removePairsForCollider(Collider *collider);
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;

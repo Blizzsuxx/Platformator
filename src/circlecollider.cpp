@@ -1,9 +1,5 @@
 #include "circlecollider.h"
 
-CircleCollider::CircleCollider(GameObject *gameObject) : Collider(gameObject, ComponentType::COLLIDER), radius(0.0f)
-{
-}
-
 CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER), radius(radius)
 {
 }

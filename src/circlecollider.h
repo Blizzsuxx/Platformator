@@ -5,7 +5,6 @@
 class CircleCollider : public Collider
 {
 public:
-    CircleCollider(GameObject *gameObject);
     CircleCollider(GameObject *gameObject, const float radius);
     ~CircleCollider();
 

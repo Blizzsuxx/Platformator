@@ -103,6 +103,8 @@ private:
     Component *components[COMPONENT_TYPE_COUNT];
     std::list<GameObject *> children;
     bool markedForDeletion;
+    bool isRegisteredInGameManager;
+    std::list<GameObject *>::iterator gameManagerIterator;
 
     void updateCollider();
     void addComponentInternal(Component *component);

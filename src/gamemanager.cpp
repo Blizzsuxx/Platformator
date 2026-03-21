@@ -39,6 +39,8 @@ void GameManager::initializeMainCamera()
 GameObject *GameManager::addGameObject(GameObject *gameObject)
 {
     gameObjects.push_back(gameObject);
+    gameObject->gameManagerIterator = std::prev(gameObjects.end());
+    gameObject->isRegisteredInGameManager = true;
 
     notifyComponentAdded(gameObject->getComponent(ComponentType::COLLIDER));
     notifyComponentAdded(gameObject->getComponent(ComponentType::RIGID_BODY));
@@ -49,18 +51,30 @@ GameObject *GameManager::addGameObject(GameObject *gameObject)
 
 void GameManager::removeGameObject(GameObject *gameObject)
 {
-    gameObjects.remove(gameObject);
+    if (gameObject == nullptr || !gameObject->isRegisteredInGameManager)
+    {
+        return;
+    }
+
+    gameObjects.erase(gameObject->gameManagerIterator);
+    gameObject->isRegisteredInGameManager = false;
 
     startDeletingGameObject(gameObject);
 }
 
 void GameManager::startDeletingGameObject(GameObject *gameObject)
 {
+    if (gameObject == nullptr || gameObject->getIsMarkedForDeletion())
+    {
+        return;
+    }
+
     notifyComponentRemoved(gameObject->getComponent(ComponentType::COLLIDER));
     notifyComponentRemoved(gameObject->getComponent(ComponentType::RIGID_BODY));
     notifyComponentRemoved(gameObject->getComponent(ComponentType::SPRITE));
 
     gameObject->setIsMarkedForDeletion(true);
+    gameObject->isRegisteredInGameManager = false;
     gameObjectsToDelete.push_back(gameObject);
 }
 
@@ -70,9 +84,7 @@ bool GameManager::removeGameObject(std::string name)
     {
         if ((*it)->getName() == name)
         {
-            GameObject *gameObject = *it;
-            gameObjects.erase(it);
-            startDeletingGameObject(gameObject);
+            removeGameObject(*it);
             return true;
         }
     }
@@ -278,9 +290,9 @@ void GameManager::notifyWindowOfComponentRemoved(Component *component)
 
 void GameManager::deleteMarkedGameObjects()
 {
-    for (std::list<GameObject *>::iterator it = gameObjectsToDelete.begin(); it != gameObjectsToDelete.end(); ++it)
+    for (GameObject *gameObject : gameObjectsToDelete)
     {
-        delete *it;
+        delete gameObject;
     }
     gameObjectsToDelete.clear();
 }

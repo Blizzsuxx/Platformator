@@ -2,6 +2,7 @@
 
 #include "sdlwindow.h"
 #include "physicsmanager.h"
+#include <vector>
 
 class GameManager
 {
@@ -40,7 +41,7 @@ private:
     SDLWindow *window;
     std::list<GameObject *> gameObjects;
     std::unordered_map<std::string, TextureWrapper> textureCache;
-    std::list<GameObject *> gameObjectsToDelete;
+    std::vector<GameObject *> gameObjectsToDelete;
 
     PhysicsManager *physicsManager;
 

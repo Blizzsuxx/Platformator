@@ -28,6 +28,13 @@ void PhysicsManager::checkForCollisions()
 
 void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 {
+    if (rigidBodyComponent == nullptr || rigidBodyComponent->getIsRegisteredInPhysicsManager() || !rigidBodyComponent->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    rigidBodyComponent->setPhysicsManagerIndex(rigidBodyComponents.size());
+    rigidBodyComponent->setIsRegisteredInPhysicsManager(true);
     rigidBodyComponents.push_back(rigidBodyComponent);
 }
 
@@ -49,6 +56,12 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
         return;
     }
 
+    if (!colliderComponent->getGameObject()->getActive())
+    {
+        removeColliderComponent(colliderComponent);
+        return;
+    }
+
     if (colliderComponent->getIsRegisteredInBroadPhase())
     {
         aabb.remove(colliderComponent);
@@ -61,7 +74,24 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 {
-    rigidBodyComponents.erase(std::remove(rigidBodyComponents.begin(), rigidBodyComponents.end(), rigidBodyComponent), rigidBodyComponents.end());
+    if (rigidBodyComponent == nullptr || !rigidBodyComponent->getIsRegisteredInPhysicsManager())
+    {
+        return;
+    }
+
+    size_t removeIndex = rigidBodyComponent->getPhysicsManagerIndex();
+    size_t lastIndex = rigidBodyComponents.size() - 1;
+
+    if (removeIndex != lastIndex)
+    {
+        Rigidbody *movedRigidBody = rigidBodyComponents[lastIndex];
+        rigidBodyComponents[removeIndex] = movedRigidBody;
+        movedRigidBody->setPhysicsManagerIndex(removeIndex);
+    }
+
+    rigidBodyComponents.pop_back();
+    rigidBodyComponent->setPhysicsManagerIndex(SIZE_MAX);
+    rigidBodyComponent->setIsRegisteredInPhysicsManager(false);
 }
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)

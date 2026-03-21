@@ -22,7 +22,7 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip) 
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height)
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (filePath != nullptr)
     {
@@ -32,7 +32,7 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
     }
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(textureWrapper), flip(flip), width(width), height(height)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(textureWrapper), flip(flip), width(width), height(height), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (textureWrapper != nullptr && width == 0 && height == 0)
     {
@@ -106,4 +106,24 @@ void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)
     {
         this->textureWrapper->addReference(this);
     }
+}
+
+bool Sprite::getIsRegisteredInWindow() const
+{
+    return isRegisteredInWindow;
+}
+
+void Sprite::setIsRegisteredInWindow(bool isRegisteredInWindow)
+{
+    this->isRegisteredInWindow = isRegisteredInWindow;
+}
+
+size_t Sprite::getWindowIndex() const
+{
+    return windowIndex;
+}
+
+void Sprite::setWindowIndex(size_t windowIndex)
+{
+    this->windowIndex = windowIndex;
 }

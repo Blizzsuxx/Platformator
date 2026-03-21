@@ -5,6 +5,7 @@
 #include "collision.h"
 #include "segmentedintervallist.h"
 #include <chrono>
+#include <vector>
 #include "aabb.h"
 #include "helpers.h"
 
@@ -35,7 +36,7 @@ private:
     bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider);
     void resolveCollision(const Collision *collision);
 
-    std::list<Rigidbody *> rigidBodyComponents;
+    std::vector<Rigidbody *> rigidBodyComponents;
     std::list<Collision> collisions;
     AABB aabb;
 

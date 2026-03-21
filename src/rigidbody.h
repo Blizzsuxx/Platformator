@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <Eigen/Dense>
 #include "gameobject.h"
 
@@ -59,6 +60,11 @@ public:
 
     void addImpulse(const Eigen::Vector2f &impulse);
 
+    bool getIsRegisteredInPhysicsManager() const;
+    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
+    size_t getPhysicsManagerIndex() const;
+    void setPhysicsManagerIndex(size_t physicsManagerIndex);
+
 private:
     Eigen::Vector2f velocity;
     Eigen::Vector2f force;
@@ -77,6 +83,8 @@ private:
 
     BodyType bodyType;
     bool gravity;
+    bool isRegisteredInPhysicsManager;
+    size_t physicsManagerIndex;
 };
 
 template <>

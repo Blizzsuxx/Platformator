@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <SDL3/SDL.h>
 #include "gameobject.h"
 
@@ -30,11 +31,18 @@ public:
     void setWidth(float width);
     void setHeight(float height);
 
+    bool getIsRegisteredInWindow() const;
+    void setIsRegisteredInWindow(bool isRegisteredInWindow);
+    size_t getWindowIndex() const;
+    void setWindowIndex(size_t windowIndex);
+
 private:
     TextureWrapper *textureWrapper;
     SDL_FlipMode flip;
     float width;
     float height;
+    bool isRegisteredInWindow;
+    size_t windowIndex;
 
     void freeTexture();
 };

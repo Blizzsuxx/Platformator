@@ -121,18 +121,24 @@ GameObject *GameObject::setActive(const bool active)
 
     this->isActive = active;
     GameManager *gameManager = &GameManager::getInstance();
+    ComponentType managedComponents[] = {ComponentType::COLLIDER, ComponentType::RIGID_BODY, ComponentType::SPRITE};
 
-    if (active)
+    for (ComponentType componentType : managedComponents)
     {
-        gameManager->notifyComponentAdded(components[ComponentType::COLLIDER]);
-        gameManager->notifyComponentAdded(components[ComponentType::RIGID_BODY]);
-        gameManager->notifyComponentAdded(components[ComponentType::SPRITE]);
-    }
-    else
-    {
-        gameManager->notifyComponentRemoved(components[ComponentType::COLLIDER]);
-        gameManager->notifyComponentRemoved(components[ComponentType::RIGID_BODY]);
-        gameManager->notifyComponentRemoved(components[ComponentType::SPRITE]);
+        Component *component = components[componentType];
+        if (component == nullptr)
+        {
+            continue;
+        }
+
+        if (active)
+        {
+            gameManager->notifyComponentAdded(component);
+        }
+        else
+        {
+            gameManager->notifyComponentRemoved(component);
+        }
     }
 
     return this;

@@ -171,12 +171,36 @@ bool SDLWindow::isRunning() const
 
 void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
 {
+    if (spriteComponent == nullptr || spriteComponent->getIsRegisteredInWindow() || !spriteComponent->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    spriteComponent->setWindowIndex(spriteComponents.size());
+    spriteComponent->setIsRegisteredInWindow(true);
     spriteComponents.push_back(spriteComponent);
 }
 
 void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
 {
-    spriteComponents.remove(spriteComponent);
+    if (spriteComponent == nullptr || !spriteComponent->getIsRegisteredInWindow())
+    {
+        return;
+    }
+
+    size_t removeIndex = spriteComponent->getWindowIndex();
+    size_t lastIndex = spriteComponents.size() - 1;
+
+    if (removeIndex != lastIndex)
+    {
+        Sprite *movedSprite = spriteComponents[lastIndex];
+        spriteComponents[removeIndex] = movedSprite;
+        movedSprite->setWindowIndex(removeIndex);
+    }
+
+    spriteComponents.pop_back();
+    spriteComponent->setWindowIndex(SIZE_MAX);
+    spriteComponent->setIsRegisteredInWindow(false);
 }
 
 void SDLWindow::setMainCamera(Camera *mainCamera)

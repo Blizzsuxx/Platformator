@@ -5,6 +5,7 @@
 #include <SDL3_mixer/SDL_mixer.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <functional>
+#include <vector>
 #include "camera.h"
 #include "debugdraw.h"
 
@@ -37,7 +38,7 @@ private:
     const char *rendererName;
     bool quit;
 
-    std::list<Sprite *> spriteComponents;
+    std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event)>> listeners;
 
     bool init();

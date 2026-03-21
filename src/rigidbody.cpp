@@ -1,10 +1,10 @@
 #include "rigidbody.h"
 
-Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true)
+Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
 {
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
 {
 }
 
@@ -176,4 +176,24 @@ void Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
     }
 
     this->setVelocity(this->getVelocity() + impulse * this->getInverseMass());
+}
+
+bool Rigidbody::getIsRegisteredInPhysicsManager() const
+{
+    return isRegisteredInPhysicsManager;
+}
+
+void Rigidbody::setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
+{
+    this->isRegisteredInPhysicsManager = isRegisteredInPhysicsManager;
+}
+
+size_t Rigidbody::getPhysicsManagerIndex() const
+{
+    return physicsManagerIndex;
+}
+
+void Rigidbody::setPhysicsManagerIndex(size_t physicsManagerIndex)
+{
+    this->physicsManagerIndex = physicsManagerIndex;
 }

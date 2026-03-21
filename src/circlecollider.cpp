@@ -16,13 +16,14 @@ ColliderType CircleCollider::getColliderType() const
 // Getters
 float CircleCollider::getRadius() const
 {
-    return radius;
+    return radius * std::max(getGameObject()->getScale().x(), getGameObject()->getScale().y());
 }
 
 // Setters
 void CircleCollider::setRadius(const float radius)
 {
     this->radius = radius;
+    updateCollider();
 }
 
 std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) const
@@ -38,19 +39,21 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) c
 Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis) const
 {
     float value = axis.dot(getGameObject()->getPosition());
+    float scaledRadius = getRadius();
 
-    return Eigen::Vector2f(value - radius, value + radius);
+    return Eigen::Vector2f(value - scaledRadius, value + scaledRadius);
 }
 
 void CircleCollider::generateProjections()
 {
     float x = getGameObject()->getPosition().x();
     float y = getGameObject()->getPosition().y();
+    float scaledRadius = getRadius();
 
-    xProjections.getMin()->setProjectedPosition(x - radius);
-    xProjections.getMax()->setProjectedPosition(x + radius);
-    yProjections.getMin()->setProjectedPosition(y - radius);
-    yProjections.getMax()->setProjectedPosition(y + radius);
+    xProjections.getMin()->setProjectedPosition(x - scaledRadius);
+    xProjections.getMax()->setProjectedPosition(x + scaledRadius);
+    yProjections.getMin()->setProjectedPosition(y - scaledRadius);
+    yProjections.getMax()->setProjectedPosition(y + scaledRadius);
 
     // TODO:
     // maybe check if the projections actually changed before setting dirty to true

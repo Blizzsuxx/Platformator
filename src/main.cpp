@@ -21,8 +21,8 @@ int main(int argc, char *args[])
         ->getComponent<Rigidbody>()
         ->setVelocity(Eigen::Vector2f(200.0f, 150.0f))
         ->setMass(10.0f)
-        ->setFriction(0.0f)
-        ->setRestitution(0.1f);
+        ->setFriction(1.0f)
+        ->setRestitution(0.0f);
 
     // South wall (bottom)
     GameObject *wallSouth = gameManager

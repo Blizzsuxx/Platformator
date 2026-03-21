@@ -1,6 +1,6 @@
 #include "colliderpair.h"
 
-ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(0), objectBStateVersion(0)
+ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1)
 {
     if (a < b)
     {
@@ -50,6 +50,7 @@ void ColliderPair::clearCollision() const
         delete collision;
         collision = nullptr;
     }
+    updateCachedCollisionVersions();
 }
 
 void ColliderPair::triggerCollisionEnter() const
@@ -100,13 +101,13 @@ void ColliderPair::triggerCollisionExit() const
 void ColliderPair::setObjectA(Collider *colliderA)
 {
     objectA = colliderA;
-    objectAStateVersion = colliderA ? colliderA->getStateVersion() : 0;
+    objectAStateVersion = colliderA ? colliderA->getStateVersion() : -1;
 }
 
 void ColliderPair::setObjectB(Collider *colliderB)
 {
     objectB = colliderB;
-    objectBStateVersion = colliderB ? colliderB->getStateVersion() : 0;
+    objectBStateVersion = colliderB ? colliderB->getStateVersion() : -1;
 }
 
 Collider *ColliderPair::getObjectA() const
@@ -121,16 +122,16 @@ Collider *ColliderPair::getObjectB() const
 
 bool ColliderPair::shouldUpdate() const
 {
-    uint64_t currentObjectAVersion = objectA ? objectA->getStateVersion() : 0;
-    uint64_t currentObjectBVersion = objectB ? objectB->getStateVersion() : 0;
+    uint64_t currentObjectAVersion = objectA ? objectA->getStateVersion() : -1;
+    uint64_t currentObjectBVersion = objectB ? objectB->getStateVersion() : -1;
 
     return currentObjectAVersion != objectAStateVersion || currentObjectBVersion != objectBStateVersion;
 }
 
 void ColliderPair::updateCachedCollisionVersions() const
 {
-    objectAStateVersion = objectA ? objectA->getStateVersion() : 0;
-    objectBStateVersion = objectB ? objectB->getStateVersion() : 0;
+    objectAStateVersion = objectA ? objectA->getStateVersion() : -1;
+    objectBStateVersion = objectB ? objectB->getStateVersion() : -1;
 }
 
 bool ColliderPair::operator==(const ColliderPair &other) const

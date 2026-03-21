@@ -42,10 +42,13 @@ void BoxCollider::generateProjections()
 
 void BoxCollider::generateVertices()
 {
-    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() - height / 2);
-    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() - height / 2);
-    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - width / 2, getGameObject()->getPosition().y() + height / 2);
-    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + width / 2, getGameObject()->getPosition().y() + height / 2);
+    float scaledWidth = getWidth();
+    float scaledHeight = getHeight();
+
+    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
 
     // Rotate the extreme points
     float xOrigin = getGameObject()->getPosition().x();
@@ -92,23 +95,25 @@ Eigen::Vector2f BoxCollider::projectOntoAxis(const Eigen::Vector2f &axis) const
 // Getters
 float BoxCollider::getWidth() const
 {
-    return width;
+    return width * getGameObject()->getScale().x();
 }
 
 float BoxCollider::getHeight() const
 {
-    return height;
+    return height * getGameObject()->getScale().y();
 }
 
 // Setters
 void BoxCollider::setWidth(const float width)
 {
     this->width = width;
+    updateCollider();
 }
 
 void BoxCollider::setHeight(const float height)
 {
     this->height = height;
+    updateCollider();
 }
 
 void BoxCollider::updateCollider()

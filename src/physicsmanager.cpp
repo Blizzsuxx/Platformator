@@ -140,6 +140,7 @@ void PhysicsManager::narrowPhase()
         if (pair.getCollision() != nullptr)
         {
             activeCollisions.push_back(pair.getCollision());
+            DebugDraw::getInstance().addCollisionDebugObject(*pair.getCollision());
         }
     }
 }
@@ -217,8 +218,6 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
     float incidentHalfExtent = (incidentProjection.y() - incidentProjection.x()) / 2.0f;
     collision->setContactPoint(
         realIncidentCollider->getGameObject()->getPosition() - minNormal * (incidentHalfExtent - minOverlap / 2.0f));
-
-    DebugDraw::getInstance().addCollisionDebugObject(*collision);
 }
 
 void PhysicsManager::resolveCollisions()

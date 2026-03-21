@@ -18,8 +18,8 @@ public:
     Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity);
     ~Rigidbody();
 
-    void move(double timeDelta);
-    void applyGravity(const Eigen::Vector2f &gravityVector);
+    Rigidbody *move(double timeDelta);
+    Rigidbody *applyGravity(const Eigen::Vector2f &gravityVector);
 
     // Getters
     const Eigen::Vector2f &getVelocity() const;
@@ -38,32 +38,32 @@ public:
     bool getGravity() const;
 
     // Setters
-    void setVelocity(const Eigen::Vector2f &velocity);
-    void setForce(const Eigen::Vector2f &force);
-    void addForce(const Eigen::Vector2f &force);
-    void resetForce();
+    Rigidbody *setVelocity(const Eigen::Vector2f &velocity);
+    Rigidbody *setForce(const Eigen::Vector2f &force);
+    Rigidbody *addForce(const Eigen::Vector2f &force);
+    Rigidbody *resetForce();
 
-    void setMass(const float mass);
+    Rigidbody *setMass(const float mass);
 
-    void setAngularVelocity(const float angularVelocity);
-    void setTorque(const float torque);
+    Rigidbody *setAngularVelocity(const float angularVelocity);
+    Rigidbody *setTorque(const float torque);
 
-    void setMomentOfInertia(const float momentOfInertia);
-    void setFriction(const float friction);
-    void setRestitution(const float restitution);
+    Rigidbody *setMomentOfInertia(const float momentOfInertia);
+    Rigidbody *setFriction(const float friction);
+    Rigidbody *setRestitution(const float restitution);
 
-    void setBodyType(const BodyType bodyType);
-    void setGravity(const bool gravity);
+    Rigidbody *setBodyType(const BodyType bodyType);
+    Rigidbody *setGravity(const bool gravity);
 
     float getInverseMass() const;
     float getInverseMomentOfInertia() const;
 
-    void addImpulse(const Eigen::Vector2f &impulse);
+    Rigidbody *addImpulse(const Eigen::Vector2f &impulse);
 
     bool getIsRegisteredInPhysicsManager() const;
-    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
+    Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
     size_t getPhysicsManagerIndex() const;
-    void setPhysicsManagerIndex(size_t physicsManagerIndex);
+    Rigidbody *setPhysicsManagerIndex(size_t physicsManagerIndex);
 
 private:
     Eigen::Vector2f velocity;

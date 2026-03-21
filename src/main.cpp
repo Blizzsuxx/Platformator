@@ -19,7 +19,10 @@ int main(int argc, char *args[])
                            ->setPosition(Eigen::Vector2f(SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f));
     ball
         ->getComponent<Rigidbody>()
-        ->setVelocity(Eigen::Vector2f(200.0f, 150.0f));
+        ->setVelocity(Eigen::Vector2f(200.0f, 150.0f))
+        ->setMass(10.0f)
+        ->setFriction(0.0f)
+        ->setRestitution(0.1f);
 
     // South wall (bottom)
     GameObject *wallSouth = gameManager

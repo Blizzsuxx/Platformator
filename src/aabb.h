@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <unordered_map>
+#include <unordered_set>
 #include "segmentedintervallist.h"
 #include "collider.h"
 #include "collision.h"
@@ -70,18 +72,17 @@ public:
     const std::unordered_set<ColliderPair, ColliderPair::HashFunction> *getCandidatePairSet() const;
     // sort the array with insertion sort, sort from lowest to highest
     void sort();
-    void markPairForRemoval(const ColliderPair &pair);
-    void removeMarkedPairs();
 
 private:
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
-    // void removePairsForCollider(Collider *collider);
+    void removePair(const ColliderPair &pair);
+    void removePairsForCollider(Collider *collider);
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
     std::unordered_set<ColliderPair, ColliderPair::HashFunction> candidateCollisions;
-    std::list<ColliderPair> pairsToRemove;
+    std::unordered_map<Collider *, std::unordered_set<Collider *>> pairAdjacency;
 
     friend class SegmentedIntervalList;
 };

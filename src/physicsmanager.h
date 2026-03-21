@@ -21,6 +21,7 @@ public:
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
+    void refreshColliderComponent(Collider *colliderComponent);
 
     void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void removeColliderComponent(Collider *colliderComponent);

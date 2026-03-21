@@ -33,7 +33,30 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
+    if (colliderComponent == nullptr || colliderComponent->getIsRegisteredInBroadPhase() || !colliderComponent->getGameObject()->getActive())
+    {
+        return;
+    }
+
     aabb.add(colliderComponent);
+    colliderComponent->setIsRegisteredInBroadPhase(true);
+}
+
+void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
+{
+    if (colliderComponent == nullptr)
+    {
+        return;
+    }
+
+    if (colliderComponent->getIsRegisteredInBroadPhase())
+    {
+        aabb.remove(colliderComponent);
+        colliderComponent->setIsRegisteredInBroadPhase(false);
+    }
+
+    aabb.add(colliderComponent);
+    colliderComponent->setIsRegisteredInBroadPhase(true);
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -43,7 +66,13 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
+    if (colliderComponent == nullptr || !colliderComponent->getIsRegisteredInBroadPhase())
+    {
+        return;
+    }
+
     aabb.remove(colliderComponent);
+    colliderComponent->setIsRegisteredInBroadPhase(false);
 }
 
 void PhysicsManager::broadPhase()
@@ -54,13 +83,11 @@ void PhysicsManager::broadPhase()
 void PhysicsManager::narrowPhase()
 {
     collisions.clear();
-    const std::unordered_set<ColliderPair, ColliderPair::HashFunction> *candidatePairs = aabb.getCandidatePairSet();
 
-    for (const ColliderPair &pair : *candidatePairs)
+    for (const ColliderPair &pair : *aabb.getCandidatePairSet())
     {
         if (pair.objectA == nullptr || pair.objectB == nullptr || pair.objectA->getGameObject()->getIsMarkedForDeletion() || pair.objectB->getGameObject()->getIsMarkedForDeletion())
         {
-            aabb.markPairForRemoval(pair);
             continue;
         }
         if (!pair.objectA->getGameObject()->getActive() || !pair.objectB->getGameObject()->getActive())
@@ -70,8 +97,6 @@ void PhysicsManager::narrowPhase()
 
         createCollision(pair);
     }
-
-    aabb.removeMarkedPairs();
 }
 
 bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider)

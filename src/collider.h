@@ -85,6 +85,9 @@ public:
     uint32_t getCollisionMask() const;
     void setCollisionMask(const uint32_t collisionMask);
 
+    bool getIsRegisteredInBroadPhase() const;
+    void setIsRegisteredInBroadPhase(bool isRegisteredInBroadPhase);
+
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
 
@@ -95,6 +98,7 @@ protected:
     uint32_t collisionGroup;
     uint32_t collisionMask;
 
+    bool isRegisteredInBroadPhase;
     bool isTrigger;
     bool isDirty;
 

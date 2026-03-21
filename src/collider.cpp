@@ -1,8 +1,9 @@
 #include "collider.h"
+#include "gamemanager.h"
 #include "localsortarray.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), isDirty(true), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isRegisteredInBroadPhase(false), isTrigger(false), isDirty(true), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
 {
 }
 
@@ -67,7 +68,18 @@ void Collider::triggerCollisionExit(const Collider *other) const
 
 void Collider::setCollisionGroup(const uint32_t collisionGroup)
 {
+    if (this->collisionGroup == collisionGroup)
+    {
+        return;
+    }
+
     this->collisionGroup = collisionGroup;
+
+    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    if (physicsManager != nullptr)
+    {
+        physicsManager->refreshColliderComponent(this);
+    }
 }
 
 uint32_t Collider::getCollisionGroup() const
@@ -77,10 +89,31 @@ uint32_t Collider::getCollisionGroup() const
 
 void Collider::setCollisionMask(const uint32_t collisionMask)
 {
+    if (this->collisionMask == collisionMask)
+    {
+        return;
+    }
+
     this->collisionMask = collisionMask;
+
+    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    if (physicsManager != nullptr)
+    {
+        physicsManager->refreshColliderComponent(this);
+    }
 }
 
 uint32_t Collider::getCollisionMask() const
 {
     return collisionMask;
+}
+
+bool Collider::getIsRegisteredInBroadPhase() const
+{
+    return isRegisteredInBroadPhase;
+}
+
+void Collider::setIsRegisteredInBroadPhase(bool isRegisteredInBroadPhase)
+{
+    this->isRegisteredInBroadPhase = isRegisteredInBroadPhase;
 }

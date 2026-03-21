@@ -114,7 +114,27 @@ GameObject *GameObject::setRotation(const float rotation)
 
 GameObject *GameObject::setActive(const bool active)
 {
+    if (this->isActive == active)
+    {
+        return this;
+    }
+
     this->isActive = active;
+    GameManager *gameManager = &GameManager::getInstance();
+
+    if (active)
+    {
+        gameManager->notifyComponentAdded(components[ComponentType::COLLIDER]);
+        gameManager->notifyComponentAdded(components[ComponentType::RIGID_BODY]);
+        gameManager->notifyComponentAdded(components[ComponentType::SPRITE]);
+    }
+    else
+    {
+        gameManager->notifyComponentRemoved(components[ComponentType::COLLIDER]);
+        gameManager->notifyComponentRemoved(components[ComponentType::RIGID_BODY]);
+        gameManager->notifyComponentRemoved(components[ComponentType::SPRITE]);
+    }
+
     return this;
 }
 

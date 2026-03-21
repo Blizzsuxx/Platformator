@@ -5,13 +5,12 @@ AABB::AABB()
     : intervalListX(this, Axis::X),
       intervalListY(this, Axis::Y),
       candidateCollisions(),
-      pairsToRemove()
+      pairAdjacency()
 {
 }
 
 AABB::~AABB()
 {
-    removeMarkedPairs();
 }
 
 void AABB::add(Collider *element)
@@ -22,6 +21,7 @@ void AABB::add(Collider *element)
 
 void AABB::remove(Collider *element)
 {
+    removePairsForCollider(element);
     intervalListX.remove(element->getXProjections());
     intervalListY.remove(element->getYProjections());
 }
@@ -77,12 +77,19 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
         return;
     }
 
-    candidateCollisions.emplace(colliderA, colliderB);
+    auto [iterator, inserted] = candidateCollisions.emplace(colliderA, colliderB);
+    if (!inserted)
+    {
+        return;
+    }
+
+    pairAdjacency[iterator->objectA].insert(iterator->objectB);
+    pairAdjacency[iterator->objectB].insert(iterator->objectA);
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    candidateCollisions.erase(ColliderPair(colliderA, colliderB));
+    removePair(ColliderPair(colliderA, colliderB));
 }
 
 void AABB::sort()
@@ -92,16 +99,51 @@ void AABB::sort()
     intervalListY.sort();
 }
 
-void AABB::markPairForRemoval(const ColliderPair &pair)
+void AABB::removePair(const ColliderPair &pair)
 {
-    pairsToRemove.push_back(pair);
+    auto iterator = candidateCollisions.find(pair);
+    if (iterator == candidateCollisions.end())
+    {
+        return;
+    }
+
+    Collider *objectA = iterator->objectA;
+    Collider *objectB = iterator->objectB;
+
+    candidateCollisions.erase(iterator);
+
+    auto adjacencyA = pairAdjacency.find(objectA);
+    if (adjacencyA != pairAdjacency.end())
+    {
+        adjacencyA->second.erase(objectB);
+        if (adjacencyA->second.empty())
+        {
+            pairAdjacency.erase(adjacencyA);
+        }
+    }
+
+    auto adjacencyB = pairAdjacency.find(objectB);
+    if (adjacencyB != pairAdjacency.end())
+    {
+        adjacencyB->second.erase(objectA);
+        if (adjacencyB->second.empty())
+        {
+            pairAdjacency.erase(adjacencyB);
+        }
+    }
 }
 
-void AABB::removeMarkedPairs()
+void AABB::removePairsForCollider(Collider *collider)
 {
-    for (const ColliderPair &pair : pairsToRemove)
+    auto adjacencyIterator = pairAdjacency.find(collider);
+    if (adjacencyIterator == pairAdjacency.end())
     {
-        candidateCollisions.erase(pair);
+        return;
     }
-    pairsToRemove.clear();
+
+    std::vector<Collider *> touchingColliders(adjacencyIterator->second.begin(), adjacencyIterator->second.end());
+    for (Collider *otherCollider : touchingColliders)
+    {
+        removePair(ColliderPair(collider, otherCollider));
+    }
 }

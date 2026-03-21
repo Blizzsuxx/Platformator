@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), collisions(), aabb(), gravityVector(0.0f, 9.81f)
+    : rigidBodyComponents(), activeCollisions(), aabb(), gravityVector(0.0f, 9.81f)
 {
 }
 
@@ -112,20 +112,35 @@ void PhysicsManager::broadPhase()
 
 void PhysicsManager::narrowPhase()
 {
-    collisions.clear();
+    activeCollisions.clear();
 
     for (const ColliderPair &pair : *aabb.getCandidatePairSet())
     {
-        if (pair.objectA == nullptr || pair.objectB == nullptr || pair.objectA->getGameObject()->getIsMarkedForDeletion() || pair.objectB->getGameObject()->getIsMarkedForDeletion())
+        Collider *objectA = pair.getObjectA();
+        Collider *objectB = pair.getObjectB();
+
+        if (objectA == nullptr || objectB == nullptr || objectA->getGameObject()->getIsMarkedForDeletion() || objectB->getGameObject()->getIsMarkedForDeletion())
         {
             continue;
         }
-        if (!pair.objectA->getGameObject()->getActive() || !pair.objectB->getGameObject()->getActive())
+        if (!objectA->getGameObject()->getActive() || !objectB->getGameObject()->getActive())
         {
             continue;
         }
 
-        createCollision(pair);
+        if (!pair.shouldUpdate())
+        {
+            pair.triggerCollisionStay();
+        }
+        else
+        {
+            satCreateCollision(pair);
+        }
+
+        if (pair.getCollision() != nullptr)
+        {
+            activeCollisions.push_back(pair.getCollision());
+        }
     }
 }
 
@@ -157,10 +172,10 @@ bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normal
     return true;
 }
 
-void PhysicsManager::createCollision(const ColliderPair &pair)
+void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 {
-    const Collider *referenceCollider = pair.objectA;
-    const Collider *incidentCollider = pair.objectB;
+    const Collider *referenceCollider = pair.getObjectA();
+    const Collider *incidentCollider = pair.getObjectB();
 
     float minOverlap = std::numeric_limits<float>::max();
     Eigen::Vector2f minNormal;
@@ -170,6 +185,7 @@ void PhysicsManager::createCollision(const ColliderPair &pair)
     std::vector<Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
     if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
     {
+        pair.clearCollision();
         return;
     }
 
@@ -177,59 +193,50 @@ void PhysicsManager::createCollision(const ColliderPair &pair)
 
     if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
     {
+        pair.clearCollision();
         return;
     }
 
-    const Collision &collision = collisions.emplace_back();
+    Collision *collision = pair.getOrCreateCollision();
 
-    collision.setIncidentObject(realIncidentCollider);
-    collision.setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
+    collision->setIncidentObject(realIncidentCollider);
+    collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
 
     // Ensure the normal points from reference toward incident
-    auto directionVector = collision.getIncidentObject()->getGameObject()->getPosition() - collision.getReferenceObject()->getGameObject()->getPosition();
+    auto directionVector = collision->getIncidentObject()->getGameObject()->getPosition() - collision->getReferenceObject()->getGameObject()->getPosition();
     if (minNormal.dot(directionVector) < 0)
     {
         minNormal *= -1.0f;
     }
 
     // Store the corrected normal
-    collision.setNormal(minNormal);
-    collision.setPenetration(minOverlap);
+    collision->setNormal(minNormal);
+    collision->setPenetration(minOverlap);
 
     // Contact point: incident's near surface, offset halfway into the overlap
     float incidentHalfExtent = (incidentProjection.y() - incidentProjection.x()) / 2.0f;
-    collision.setContactPoint(
+    collision->setContactPoint(
         realIncidentCollider->getGameObject()->getPosition() - minNormal * (incidentHalfExtent - minOverlap / 2.0f));
 
-    DebugDraw::getInstance().addCollisionDebugObject(collision);
+    DebugDraw::getInstance().addCollisionDebugObject(*collision);
 }
 
 void PhysicsManager::resolveCollisions()
 {
-    auto it = collisions.begin();
-
-    while (it != collisions.end())
+    for (Collision *collision : activeCollisions)
     {
-        const Collision &collision = *it;
-
-        const Collider *referenceCollider = collision.getReferenceObject();
-        const Collider *incidentCollider = collision.getIncidentObject();
+        const Collider *referenceCollider = collision->getReferenceObject();
+        const Collider *incidentCollider = collision->getIncidentObject();
 
         if (referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getGameObject()->getIsMarkedForDeletion() || incidentCollider->getGameObject()->getIsMarkedForDeletion())
         {
-            it = collisions.erase(it);
             continue;
         }
 
-        referenceCollider->triggerCollisionEnter(incidentCollider);
-        incidentCollider->triggerCollisionEnter(referenceCollider);
-
         if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {
-            resolveCollision(&collision);
+            resolveCollision(collision);
         }
-
-        ++it;
     }
 }
 

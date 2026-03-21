@@ -31,13 +31,13 @@ private:
     void broadPhase();
     void narrowPhase();
 
-    void createCollision(const ColliderPair &pair);
+    void satCreateCollision(const ColliderPair &pair);
 
     bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider);
     void resolveCollision(const Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;
-    std::list<Collision> collisions;
+    std::vector<Collision *> activeCollisions;
     AABB aabb;
 
     Eigen::Vector2f gravityVector;

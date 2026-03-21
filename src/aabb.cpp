@@ -83,8 +83,11 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
         return;
     }
 
-    pairAdjacency[iterator->objectA].insert(iterator->objectB);
-    pairAdjacency[iterator->objectB].insert(iterator->objectA);
+    Collider *objectA = iterator->getObjectA();
+    Collider *objectB = iterator->getObjectB();
+
+    pairAdjacency[objectA].insert(objectB);
+    pairAdjacency[objectB].insert(objectA);
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
@@ -107,8 +110,8 @@ void AABB::removePair(const ColliderPair &pair)
         return;
     }
 
-    Collider *objectA = iterator->objectA;
-    Collider *objectB = iterator->objectB;
+    Collider *objectA = iterator->getObjectA();
+    Collider *objectB = iterator->getObjectB();
 
     candidateCollisions.erase(iterator);
 

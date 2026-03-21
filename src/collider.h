@@ -75,15 +75,16 @@ public:
 
     void triggerCollisionEnter(const Collider *other) const;
     void triggerCollisionExit(const Collider *other) const;
+    void triggerCollisionStay(const Collider *other) const;
 
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
 
-    uint32_t getCollisionGroup() const;
-    void setCollisionGroup(const uint32_t collisionGroup);
+    uint64_t getCollisionGroup() const;
+    void setCollisionGroup(const uint64_t collisionGroup);
 
-    uint32_t getCollisionMask() const;
-    void setCollisionMask(const uint32_t collisionMask);
+    uint64_t getCollisionMask() const;
+    void setCollisionMask(const uint64_t collisionMask);
 
     bool getIsRegisteredInBroadPhase() const;
     void setIsRegisteredInBroadPhase(bool isRegisteredInBroadPhase);
@@ -91,16 +92,16 @@ public:
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
 
-    bool getIsDirty() const;
-    void setIsDirty(const bool isDirty);
+    void updateStateVersion();
+    uint64_t getStateVersion() const;
 
 protected:
-    uint32_t collisionGroup;
-    uint32_t collisionMask;
+    uint64_t collisionGroup;
+    uint64_t collisionMask;
 
     bool isRegisteredInBroadPhase;
     bool isTrigger;
-    bool isDirty;
+    uint64_t stateVersion;
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;

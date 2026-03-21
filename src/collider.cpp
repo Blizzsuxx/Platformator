@@ -3,7 +3,7 @@
 #include "localsortarray.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isRegisteredInBroadPhase(false), isTrigger(false), isDirty(true), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isRegisteredInBroadPhase(false), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
 {
 }
 
@@ -31,11 +31,6 @@ void Collider::setIsTrigger(const bool isTrigger)
     this->isTrigger = isTrigger;
 }
 
-bool Collider::getIsDirty() const
-{
-    return isDirty;
-}
-
 void Collider::setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty)
 {
     if (chunk != nullptr)
@@ -44,14 +39,14 @@ void Collider::setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty)
     }
 }
 
-void Collider::setIsDirty(const bool isDirty)
+void Collider::updateStateVersion()
 {
-    this->isDirty = isDirty;
+    stateVersion++;
 
-    setChunkDirtyIfNotNull(this->getXProjections()->getMax()->getChunk(), isDirty);
-    setChunkDirtyIfNotNull(this->getXProjections()->getMin()->getChunk(), isDirty);
-    setChunkDirtyIfNotNull(this->getYProjections()->getMax()->getChunk(), isDirty);
-    setChunkDirtyIfNotNull(this->getYProjections()->getMin()->getChunk(), isDirty);
+    setChunkDirtyIfNotNull(this->getXProjections()->getMax()->getChunk(), true);
+    setChunkDirtyIfNotNull(this->getXProjections()->getMin()->getChunk(), true);
+    setChunkDirtyIfNotNull(this->getYProjections()->getMax()->getChunk(), true);
+    setChunkDirtyIfNotNull(this->getYProjections()->getMin()->getChunk(), true);
 }
 
 void Collider::triggerCollisionEnter(const Collider *other) const
@@ -66,7 +61,13 @@ void Collider::triggerCollisionExit(const Collider *other) const
     // In a full implementation, this would notify the game object or other systems of the collision event
 }
 
-void Collider::setCollisionGroup(const uint32_t collisionGroup)
+void Collider::triggerCollisionStay(const Collider *other) const
+{
+    // Placeholder for collision stay event handling
+    // In a full implementation, this would notify the game object or other systems of the collision event
+}
+
+void Collider::setCollisionGroup(const uint64_t collisionGroup)
 {
     if (this->collisionGroup == collisionGroup)
     {
@@ -82,12 +83,12 @@ void Collider::setCollisionGroup(const uint32_t collisionGroup)
     }
 }
 
-uint32_t Collider::getCollisionGroup() const
+uint64_t Collider::getCollisionGroup() const
 {
     return collisionGroup;
 }
 
-void Collider::setCollisionMask(const uint32_t collisionMask)
+void Collider::setCollisionMask(const uint64_t collisionMask)
 {
     if (this->collisionMask == collisionMask)
     {
@@ -103,9 +104,14 @@ void Collider::setCollisionMask(const uint32_t collisionMask)
     }
 }
 
-uint32_t Collider::getCollisionMask() const
+uint64_t Collider::getCollisionMask() const
 {
     return collisionMask;
+}
+
+uint64_t Collider::getStateVersion() const
+{
+    return stateVersion;
 }
 
 bool Collider::getIsRegisteredInBroadPhase() const

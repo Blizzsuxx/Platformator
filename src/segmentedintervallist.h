@@ -21,6 +21,14 @@ public:
     void addDirtyChunk(LocalSortArray *chunk);
 
 private:
+    template <typename EmitFn>
+    void processProjectionCollisions(
+        BoundingRadiusProjection *lowerProjection,
+        size_t lowerIndexInsideChunk,
+        BoundingRadiusProjection *upperProjection,
+        size_t upperIndexInsideChunk,
+        EmitFn &&emit);
+
     size_t binarySearch(BoundingRadiusProjection *element);
     size_t binarySearch(LocalSortArray *array);
 
@@ -33,6 +41,8 @@ private:
     void addCollisionsForNewlyAddedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
     void removeCollisionsForRemovedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
 
+    void emitCollision(Collider *colliderA, Collider *colliderB);
+    void removeCollision(Collider *colliderA, Collider *colliderB);
     void swap(BoundingRadiusProjection *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjection *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
 
     std::vector<LocalSortArray *> chunks;

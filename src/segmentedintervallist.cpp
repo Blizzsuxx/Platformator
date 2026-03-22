@@ -1,6 +1,89 @@
 #include "segmentedintervallist.h"
 #include "aabb.h"
 
+template <typename EmitFn>
+void SegmentedIntervalList::processProjectionCollisions(
+    BoundingRadiusProjection *lowerProjection,
+    size_t lowerIndexInsideChunk,
+    BoundingRadiusProjection *upperProjection,
+    size_t upperIndexInsideChunk,
+    EmitFn &&emit)
+{
+    LocalSortArray *lowerChunk = lowerProjection->getChunk();
+    LocalSortArray *upperChunk = upperProjection->getChunk();
+    Collider *collider = lowerProjection->getCollider();
+
+    std::unordered_set<Collider *> minimaSeenAfterUpper;
+    bool hasReachedUpper = (lowerChunk != upperChunk);
+
+    if (lowerChunk == upperChunk)
+    {
+        for (size_t i = upperIndexInsideChunk + 1; i < lowerChunk->getSize(); i++)
+        {
+            BoundingRadiusProjection *projection = lowerChunk->get(i);
+            if (projection->getCollider() != collider && !projection->getIsMaxima())
+            {
+                minimaSeenAfterUpper.insert(projection->getCollider());
+            }
+        }
+    }
+
+    for (Collider *checkpoint : *lowerChunk->getCheckpoints())
+    {
+        if (lowerChunk != upperChunk || !minimaSeenAfterUpper.contains(checkpoint))
+        {
+            emit(collider, checkpoint);
+        }
+    }
+
+    for (size_t i = lowerIndexInsideChunk + 1; i < lowerChunk->getSize(); i++)
+    {
+        BoundingRadiusProjection *projection = lowerChunk->get(i);
+
+        if (projection->getCollider() == collider)
+        {
+            hasReachedUpper = true;
+            continue;
+        }
+
+        if (!hasReachedUpper)
+        {
+            if (projection->getIsMaxima())
+            {
+                emit(collider, projection->getCollider());
+            }
+        }
+        else if (projection->getIsMaxima() && !minimaSeenAfterUpper.contains(projection->getCollider()))
+        {
+            emit(collider, projection->getCollider());
+        }
+    }
+
+    for (LocalSortArray *currentChunk = lowerChunk->getRightChunk(); currentChunk != nullptr && currentChunk != upperChunk; currentChunk = currentChunk->getRightChunk())
+    {
+        for (size_t i = 0; i < currentChunk->getSize(); i++)
+        {
+            BoundingRadiusProjection *projection = currentChunk->get(i);
+            if (projection->getCollider() != collider && !projection->getIsMaxima())
+            {
+                emit(collider, projection->getCollider());
+            }
+        }
+    }
+
+    if (upperChunk != lowerChunk)
+    {
+        for (size_t i = 0; i < upperIndexInsideChunk; i++)
+        {
+            BoundingRadiusProjection *projection = upperChunk->get(i);
+            if (projection->getCollider() != collider && !projection->getIsMaxima())
+            {
+                emit(collider, projection->getCollider());
+            }
+        }
+    }
+}
+
 SegmentedIntervalList::SegmentedIntervalList(AABB *owner, Axis axis)
     : chunks(), dirtyChunks(), owner(owner), axis(axis)
 {
@@ -291,7 +374,7 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
     // minimum of left crossing maximum of right means that the two projections are now no longer overlapping
     // maximum of left crossing minimum of right means that the two projections are now overlapping
     // if both projections are from the same collider, then don't add collision (it's probably either a very fast object or a really small object)
-    // TODO: add the buffer for checkpoints (for fast moving objects)
+    // TODO: add the buffer for checkpoints (for fast moving objects) - done
     // we also need to check if it's a cross chunk swap (need to update checkpoints)
     // cross chunk:
     // right is minimum - add to checkpoint (left chunk) - minimum crossing left into a chunk
@@ -353,148 +436,44 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
 
 void SegmentedIntervalList::addDirtyChunk(LocalSortArray *chunk)
 {
-    if (chunk != nullptr)
+    if (chunk != nullptr && !chunk->getIsDirty())
     {
         dirtyChunks.push_back(chunk);
     }
 }
 
-// void AABB::checkForPotentialCollisionsInsideChunk(LocalSortArray *chunk)
-// {
-//     for (size_t i = 0; i < chunk->getSize(); i++)
-//     {
-//         BoundingRadiusProjection *projection = chunk->get(i);
-//         Collider *collider = projection->getCollider();
+void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB)
+{
+    owner->axisOverlapBegin(colliderA, colliderB, axis);
+}
 
-//         if (collider->getGameObject()->getActive() == false || collider->getIsDirty() == false)
-//         {
-//             continue;
-//         }
-
-//         if (projection->getIsEnd())
-//         {
-//             for (size_t j = i - 1; j != static_cast<size_t>(-1); j--)
-//             {
-
-//                 Collider *previousProjection = chunk->get(j)->getCollider();
-//                 if (previousProjection == collider)
-//                 {
-//                     break;
-//                 }
-
-//                 if (!chunk->get(j)->getIsEnd())
-//                 {
-//                     continue;
-//                 }
-//                 addCandidateCollision(collider, previousProjection);
-//             }
-//         }
-//     }
-// }
-
-// void AABB::checkForCollisionsWithCheckpoint(LocalSortArray *chunk)
-// {
-//     for (Collider *checkpoint : *(chunk->getCheckpoint()))
-//     {
-//         if (checkpoint->getGameObject()->getActive() == false || checkpoint->getIsDirty() == false)
-//         {
-//             continue;
-//         }
-
-//         for (size_t i = chunk->getSize() - 1; i != static_cast<size_t>(-1); i--)
-//         {
-//             Collider *previousProjection = chunk->get(i)->getCollider();
-//             if (previousProjection == checkpoint)
-//             {
-//                 break;
-//             }
-
-//             if (!chunk->get(i)->getIsEnd())
-//             {
-//                 continue;
-//             }
-
-//             addCandidateCollision(checkpoint, previousProjection);
-//         }
-//     }
-// }
+void SegmentedIntervalList::removeCollision(Collider *colliderA, Collider *colliderB)
+{
+    owner->axisOverlapEnd(colliderA, colliderB, axis);
+}
 
 void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted)
 {
-    LocalSortArray *currentChunk = lowerProjection->getChunk();
-    LocalSortArray *upperChunk = upperProjection->getChunk();
-    LocalSortArray *targetChunk = upperChunk->getRightChunk();
-
-    Collider *collider = lowerProjection->getCollider();
-    size_t currentIndex = lowerIndexInsideChunkWhereItWasInserted;
-
-    while (currentChunk != targetChunk)
-    {
-        BoundingRadiusProjection **projections = currentChunk->getArray();
-
-        for (int i = currentIndex; i < currentChunk->getSize(); i++)
+    this->processProjectionCollisions(
+        lowerProjection,
+        lowerIndexInsideChunkWhereItWasInserted,
+        upperProjection,
+        upperIndexInsideChunkWhereItWasInserted,
+        [this](Collider *colliderA, Collider *colliderB)
         {
-            BoundingRadiusProjection *projection = projections[i];
-            if (projection->getCollider() != collider && projection->getIsMaxima())
-            {
-                owner->axisOverlapBegin(collider, projection->getCollider(), axis);
-            }
-
-            if (projection == upperProjection)
-            {
-                break;
-            }
-        }
-
-        currentChunk = currentChunk->getRightChunk();
-        currentIndex = 0;
-    }
-
-    for (Collider *checkpoint : *upperProjection->getChunk()->getCheckpoints())
-    {
-        if (checkpoint != collider)
-        {
-            owner->axisOverlapBegin(collider, checkpoint, axis);
-        }
-    }
+            emitCollision(colliderA, colliderB);
+        });
 }
 
 void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved)
 {
-    LocalSortArray *currentChunk = lowerProjection->getChunk();
-    LocalSortArray *upperChunk = upperProjection->getChunk();
-    LocalSortArray *targetChunk = upperChunk->getRightChunk();
-
-    Collider *collider = lowerProjection->getCollider();
-    size_t currentIndex = lowerIndexInsideChunkWhereItWasRemoved;
-
-    while (currentChunk != targetChunk)
-    {
-        BoundingRadiusProjection **projections = currentChunk->getArray();
-
-        for (int i = currentIndex; i < currentChunk->getSize(); i++)
+    this->processProjectionCollisions(
+        lowerProjection,
+        lowerIndexInsideChunkWhereItWasRemoved,
+        upperProjection,
+        upperIndexInsideChunkWhereItWasRemoved,
+        [this](Collider *colliderA, Collider *colliderB)
         {
-            BoundingRadiusProjection *projection = projections[i];
-            if (projection->getCollider() != collider && projection->getIsMaxima())
-            {
-                owner->axisOverlapEnd(collider, projection->getCollider(), axis);
-            }
-
-            if (projection == upperProjection)
-            {
-                break;
-            }
-        }
-
-        currentChunk = currentChunk->getRightChunk();
-        currentIndex = 0;
-    }
-
-    for (Collider *checkpoint : *upperProjection->getChunk()->getCheckpoints())
-    {
-        if (checkpoint != collider)
-        {
-            owner->axisOverlapEnd(collider, checkpoint, axis);
-        }
-    }
+            removeCollision(colliderA, colliderB);
+        });
 }

@@ -184,6 +184,7 @@ GameObject *GameObject::setTag(const std::string &tag)
 void GameObject::addComponent(Component *component)
 {
     addComponentInternal(component);
+
     GameManager::getInstance().notifyComponentAdded(component);
 }
 
@@ -201,6 +202,11 @@ void GameObject::addComponentInternal(Component *component)
     }
 
     components[type] = component;
+
+    if (component->getType() == ComponentType::COLLIDER)
+    {
+        static_cast<Collider *>(component)->updateCollider();
+    }
 }
 
 bool GameObject::removeComponent(const ComponentType &componentType)

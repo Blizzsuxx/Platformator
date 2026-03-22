@@ -31,7 +31,15 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) c
     std::vector<Eigen::Vector2f> normals(1);
 
     normals[0] = other->getGameObject()->getPosition() - getGameObject()->getPosition();
-    normals[0].normalize();
+
+    if (normals[0].squaredNorm() <= 1e-12f)
+    {
+        normals[0] = Eigen::Vector2f(1.0f, 0.0f);
+    }
+    else
+    {
+        normals[0].normalize();
+    }
 
     return normals;
 }

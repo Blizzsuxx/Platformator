@@ -63,6 +63,10 @@ public:
     bool getIsSleeping() const;
     Rigidbody *setIsSleeping(bool sleeping);
     Rigidbody *wakeUp();
+    bool getIsSupportedThisFrame() const;
+    Rigidbody *setIsSupportedThisFrame(bool isSupportedThisFrame);
+    double getSleepTimer() const;
+    Rigidbody *setSleepTimer(double sleepTimer);
 
     bool getIsRegisteredInPhysicsManager() const;
     Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
@@ -88,6 +92,8 @@ private:
     BodyType bodyType;
     bool gravity;
     bool sleeping;
+    bool supportedThisFrame;
+    double sleepTimer;
     bool isRegisteredInPhysicsManager;
     size_t physicsManagerIndex;
 };

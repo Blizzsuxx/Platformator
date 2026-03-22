@@ -15,6 +15,7 @@ void PhysicsManager::applyPhysics(double timeDelta)
     // TODO: parallelize this loop
     for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
     {
+        rigidBodyComponent->setIsSupportedThisFrame(false);
         rigidBodyComponent->applyGravity(gravityVector);
         rigidBodyComponent->move(timeDelta);
     }
@@ -234,12 +235,14 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 
         if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {
-            resolveCollision(collision, timeDelta);
+            resolveCollision(collision);
         }
     }
+
+    updateSleepingStates(timeDelta);
 }
 
-void PhysicsManager::resolveCollision(const Collision *collision, double timeDelta)
+void PhysicsManager::resolveCollision(const Collision *collision)
 {
     // sequential impulses with angular velocity
     Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
@@ -374,10 +377,50 @@ void PhysicsManager::markSupportContact(Rigidbody *rigidBody, const Eigen::Vecto
 
     if (normalizedContactDirection.dot(supportDirection) >= SUPPORT_NORMAL_THRESHOLD)
     {
-        rigidBody->setIsSleeping(true);
+        rigidBody->setIsSupportedThisFrame(true);
     }
-    else
+}
+
+void PhysicsManager::updateSleepingStates(double timeDelta)
+{
+    float linearSleepThresholdSquared = LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD;
+
+    for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
     {
-        rigidBody->setIsSleeping(false);
+        if (rigidBodyComponent == nullptr || rigidBodyComponent->getBodyType() != BodyType::DYNAMIC || !rigidBodyComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
+
+        if (rigidBodyComponent->getIsSleeping())
+        {
+            if (!rigidBodyComponent->getIsSupportedThisFrame())
+            {
+                rigidBodyComponent->wakeUp();
+            }
+            continue;
+        }
+
+        if (!rigidBodyComponent->getIsSupportedThisFrame())
+        {
+            rigidBodyComponent->setSleepTimer(0.0);
+            continue;
+        }
+
+        if (rigidBodyComponent->getVelocity().squaredNorm() > linearSleepThresholdSquared || std::abs(rigidBodyComponent->getAngularVelocity()) > ANGULAR_SLEEP_THRESHOLD)
+        {
+            rigidBodyComponent->setSleepTimer(0.0);
+            continue;
+        }
+
+        double sleepTimer = rigidBodyComponent->getSleepTimer() + timeDelta;
+        if (sleepTimer >= SLEEP_DELAY)
+        {
+            rigidBodyComponent->setIsSleeping(true);
+        }
+        else
+        {
+            rigidBodyComponent->setSleepTimer(sleepTimer);
+        }
     }
 }

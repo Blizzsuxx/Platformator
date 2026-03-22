@@ -60,6 +60,10 @@ public:
 
     Rigidbody *addImpulse(const Eigen::Vector2f &impulse);
 
+    bool getIsSleeping() const;
+    Rigidbody *setIsSleeping(bool sleeping);
+    Rigidbody *wakeUp();
+
     bool getIsRegisteredInPhysicsManager() const;
     Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
     size_t getPhysicsManagerIndex() const;
@@ -83,6 +87,7 @@ private:
 
     BodyType bodyType;
     bool gravity;
+    bool sleeping;
     bool isRegisteredInPhysicsManager;
     size_t physicsManagerIndex;
 };

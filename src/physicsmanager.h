@@ -18,7 +18,7 @@ public:
     void applyPhysics(double timeDelta);
 
     void checkForCollisions();
-    void resolveCollisions();
+    void resolveCollisions(double timeDelta);
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
@@ -28,13 +28,14 @@ public:
     void removeColliderComponent(Collider *colliderComponent);
 
 private:
+    void markSupportContact(Rigidbody *rigidBody, const Eigen::Vector2f &contactDirection);
     void broadPhase();
     void narrowPhase();
 
     void satCreateCollision(const ColliderPair &pair);
 
     bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider);
-    void resolveCollision(const Collision *collision);
+    void resolveCollision(const Collision *collision, double timeDelta);
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collision *> activeCollisions;

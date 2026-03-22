@@ -149,7 +149,7 @@ void GameManager::loop()
         window->handleEvents();
         physicsManager->applyPhysics(deltaTime);
         physicsManager->checkForCollisions();
-        physicsManager->resolveCollisions();
+        physicsManager->resolveCollisions(deltaTime);
         window->render();
         deleteMarkedGameObjects();
         delay();

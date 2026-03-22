@@ -220,7 +220,7 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
         realIncidentCollider->getGameObject()->getPosition() - minNormal * (incidentHalfExtent - minOverlap / 2.0f));
 }
 
-void PhysicsManager::resolveCollisions()
+void PhysicsManager::resolveCollisions(double timeDelta)
 {
     for (Collision *collision : activeCollisions)
     {
@@ -234,12 +234,12 @@ void PhysicsManager::resolveCollisions()
 
         if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {
-            resolveCollision(collision);
+            resolveCollision(collision, timeDelta);
         }
     }
 }
 
-void PhysicsManager::resolveCollision(const Collision *collision)
+void PhysicsManager::resolveCollision(const Collision *collision, double timeDelta)
 {
     // sequential impulses with angular velocity
     Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
@@ -349,5 +349,35 @@ void PhysicsManager::resolveCollision(const Collision *collision)
     {
         rbB->getGameObject()->setPosition(
             rbB->getGameObject()->getPosition() + correction * invMassB);
+    }
+
+    markSupportContact(rbA, -normal);
+    markSupportContact(rbB, normal);
+}
+
+void PhysicsManager::markSupportContact(Rigidbody *rigidBody, const Eigen::Vector2f &contactDirection)
+{
+    if (rigidBody == nullptr || rigidBody->getBodyType() != BodyType::DYNAMIC)
+    {
+        return;
+    }
+
+    float gravityNorm = gravityVector.norm();
+    float contactNorm = contactDirection.norm();
+    if (gravityNorm <= 0.0f || contactNorm <= 0.0f)
+    {
+        return;
+    }
+
+    Eigen::Vector2f supportDirection = -gravityVector / gravityNorm;
+    Eigen::Vector2f normalizedContactDirection = contactDirection / contactNorm;
+
+    if (normalizedContactDirection.dot(supportDirection) >= SUPPORT_NORMAL_THRESHOLD)
+    {
+        rigidBody->setIsSleeping(true);
+    }
+    else
+    {
+        rigidBody->setIsSleeping(false);
     }
 }

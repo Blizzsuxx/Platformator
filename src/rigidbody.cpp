@@ -1,10 +1,11 @@
 #include "rigidbody.h"
+#include "constants.h"
 
-Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
+Rigidbody::Rigidbody(GameObject *gameObject) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(DYNAMIC), gravity(true), sleeping(false), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
 {
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(0.5f), restitution(0.2f), bodyType(bodyType), gravity(gravity), sleeping(false), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
 {
 }
 
@@ -66,18 +67,33 @@ bool Rigidbody::getGravity() const
 // Setters
 Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 {
+    if (getIsSleeping() && velocity.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
+    {
+        wakeUp();
+    }
+
     this->velocity = velocity;
     return this;
 }
 
 Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 {
+    if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
+    {
+        wakeUp();
+    }
+
     this->force = force;
     return this;
 }
 
 Rigidbody *Rigidbody::addForce(const Eigen::Vector2f &force)
 {
+    if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
+    {
+        wakeUp();
+    }
+
     this->force += force;
     return this;
 }
@@ -97,12 +113,22 @@ Rigidbody *Rigidbody::setMass(const float mass)
 
 Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
 {
+    if (getIsSleeping() && std::abs(angularVelocity) > WAKE_ANGULAR_EPSILON)
+    {
+        wakeUp();
+    }
+
     this->angularVelocity = angularVelocity;
     return this;
 }
 
 Rigidbody *Rigidbody::setTorque(const float torque)
 {
+    if (getIsSleeping() && std::abs(torque) > WAKE_ANGULAR_EPSILON)
+    {
+        wakeUp();
+    }
+
     this->torque = torque;
     return this;
 }
@@ -129,6 +155,10 @@ Rigidbody *Rigidbody::setRestitution(const float restitution)
 Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
 {
     this->bodyType = bodyType;
+    if (bodyType != BodyType::DYNAMIC)
+    {
+        setIsSleeping(false);
+    }
     return this;
 }
 
@@ -140,7 +170,7 @@ Rigidbody *Rigidbody::setGravity(const bool gravity)
 
 Rigidbody *Rigidbody::move(double timeDelta)
 {
-    if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false)
+    if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false || this->getIsSleeping())
     {
         this->resetForce();
         return this;
@@ -157,7 +187,7 @@ Rigidbody *Rigidbody::move(double timeDelta)
 
 Rigidbody *Rigidbody::applyGravity(const Eigen::Vector2f &gravityVector)
 {
-    if (this->getGravity() == true && this->getBodyType() == BodyType::DYNAMIC)
+    if (this->getGravity() == true && this->getBodyType() == BodyType::DYNAMIC && !this->getIsSleeping())
     {
         this->addForce(gravityVector * this->getMass());
     }
@@ -189,8 +219,43 @@ Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
         return this;
     }
 
+    if (getIsSleeping() && impulse.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
+    {
+        wakeUp();
+    }
+
     this->setVelocity(this->getVelocity() + impulse * this->getInverseMass());
     return this;
+}
+
+bool Rigidbody::getIsSleeping() const
+{
+    return sleeping;
+}
+
+Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
+{
+    if (sleeping == true && std::abs(this->getAngularVelocity()) <= WAKE_ANGULAR_EPSILON && this->getVelocity().squaredNorm() <= WAKE_LINEAR_EPSILON_SQUARED)
+    {
+        printf("Rigidbody put to sleep of name %s\n", this->getGameObject()->getName().c_str());
+        this->sleeping = true;
+        velocity = Eigen::Vector2f::Zero();
+        force = Eigen::Vector2f::Zero();
+        angularVelocity = 0.0f;
+        torque = 0.0f;
+    }
+    else
+    {
+        printf("Rigidbody woke up of name %s\n", this->getGameObject()->getName().c_str());
+        this->sleeping = false;
+    }
+
+    return this;
+}
+
+Rigidbody *Rigidbody::wakeUp()
+{
+    return setIsSleeping(false);
 }
 
 bool Rigidbody::getIsRegisteredInPhysicsManager() const

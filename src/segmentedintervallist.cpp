@@ -245,33 +245,23 @@ size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
     }
 
     size_t low = 0;
-    size_t high = chunks.size() - 1;
-    size_t mid = 0;
+    size_t high = chunks.size();
     BoundingRadiusProjection value = *element;
 
-    while (low <= high)
+    while (low < high)
     {
-        mid = (low + high) / 2;
-
-        if (high == 0)
-        {
-            return 0;
-        }
-        if (value <= *chunks[mid]->getMax() && value >= *chunks[mid]->getMin())
-        {
-            return mid;
-        }
-        else if (value >= *chunks[mid]->getMax())
+        size_t mid = low + (high - low) / 2;
+        if (*chunks[mid]->getMax() < value)
         {
             low = mid + 1;
         }
-        else if (value < *chunks[mid]->getMax())
+        else
         {
-            high = mid - 1;
+            high = mid;
         }
     }
 
-    return mid;
+    return low < chunks.size() ? low : chunks.size() - 1;
 }
 
 size_t SegmentedIntervalList::binarySearch(LocalSortArray *array)
@@ -282,12 +272,11 @@ size_t SegmentedIntervalList::binarySearch(LocalSortArray *array)
     }
 
     size_t low = 0;
-    size_t high = chunks.size() - 1;
-    size_t mid = 0;
+    size_t high = chunks.size();
 
-    while (low <= high)
+    while (low < high)
     {
-        mid = (low + high) / 2;
+        size_t mid = low + (high - low) / 2;
 
         if (chunks[mid] == array)
         {
@@ -297,13 +286,13 @@ size_t SegmentedIntervalList::binarySearch(LocalSortArray *array)
         {
             low = mid + 1;
         }
-        else if (*chunks[mid]->getMin() > *array->getMax())
+        else
         {
-            high = mid - 1;
+            high = mid;
         }
     }
 
-    return mid;
+    return low < chunks.size() ? low : chunks.size() - 1;
 }
 
 std::pair<LocalSortArray *, size_t> SegmentedIntervalList::add(BoundingRadiusProjection *element)

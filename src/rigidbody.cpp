@@ -106,8 +106,8 @@ Rigidbody *Rigidbody::resetForce()
 
 Rigidbody *Rigidbody::setMass(const float mass)
 {
-    this->mass = mass;
-    this->inverseMass = (mass != 0.0f) ? 1.0f / mass : 0.0f;
+    this->mass = mass > 0.0f ? mass : 0.0f;
+    this->inverseMass = this->mass > 0.0f ? 1.0f / this->mass : 0.0f;
     return this;
 }
 
@@ -135,8 +135,8 @@ Rigidbody *Rigidbody::setTorque(const float torque)
 
 Rigidbody *Rigidbody::setMomentOfInertia(const float momentOfInertia)
 {
-    this->momentOfInertia = momentOfInertia;
-    this->inverseMomentOfInertia = (momentOfInertia != 0.0f) ? 1.0f / momentOfInertia : 0.0f;
+    this->momentOfInertia = momentOfInertia > 0.0f ? momentOfInertia : 0.0f;
+    this->inverseMomentOfInertia = this->momentOfInertia > 0.0f ? 1.0f / this->momentOfInertia : 0.0f;
     return this;
 }
 
@@ -176,7 +176,7 @@ Rigidbody *Rigidbody::move(double timeDelta)
         return this;
     }
 
-    this->setAngularVelocity(this->getAngularVelocity() + this->getTorque() * timeDelta / this->getMomentOfInertia());
+    this->setAngularVelocity(this->getAngularVelocity() + this->getTorque() * timeDelta * this->getInverseMomentOfInertia());
     this->getGameObject()->setRotation(this->getGameObject()->getRotation() + this->getAngularVelocity() * timeDelta);
 
     this->setVelocity(this->getVelocity() + this->getForce() * timeDelta * this->getInverseMass());

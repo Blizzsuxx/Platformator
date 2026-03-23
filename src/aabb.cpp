@@ -2,8 +2,8 @@
 #include <iostream>
 
 AABB::AABB()
-    : intervalListX(this, Axis::X),
-      intervalListY(this, Axis::Y),
+    : intervalListX(this, Axis::X, true),
+      intervalListY(this, Axis::Y, false),
       candidateCollisions(),
       pairAdjacency()
 {

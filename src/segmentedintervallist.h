@@ -11,7 +11,7 @@ enum Axis : uint8_t;
 class SegmentedIntervalList : public SwapCallback
 {
 public:
-    SegmentedIntervalList(AABB *owner, Axis axis);
+    SegmentedIntervalList(AABB *owner, Axis axis, bool isPrimary);
     ~SegmentedIntervalList();
 
     void clear();
@@ -49,4 +49,7 @@ private:
     std::vector<LocalSortArray *> dirtyChunks;
     AABB *owner;
     Axis axis;
+
+    // we only need to check for collisions in one of the axes when inserting or removing an interval, so we can use this to know if we should emit a collision or not
+    bool isPrimary;
 };

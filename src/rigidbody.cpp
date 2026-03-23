@@ -179,7 +179,7 @@ Rigidbody *Rigidbody::move(double timeDelta)
     this->setAngularVelocity(this->getAngularVelocity() + this->getTorque() * timeDelta / this->getMomentOfInertia());
     this->getGameObject()->setRotation(this->getGameObject()->getRotation() + this->getAngularVelocity() * timeDelta);
 
-    this->setVelocity(this->getVelocity() + this->getForce() * timeDelta / this->getMass());
+    this->setVelocity(this->getVelocity() + this->getForce() * timeDelta * this->getInverseMass());
     this->getGameObject()->setPosition(this->getGameObject()->getPosition() + this->getVelocity() * timeDelta);
     this->resetForce();
     return this;

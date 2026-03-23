@@ -100,8 +100,14 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
     BoundingRadiusProjection *lowerProjection = axis->getMin();
     BoundingRadiusProjection *upperProjection = axis->getMax();
 
-    auto [chunkWhereItWasInserted, indexInsideChunkWhereItWasInserted] = add(lowerProjection);
-    auto [chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted2] = add(upperProjection);
+    add(lowerProjection);
+    add(upperProjection);
+
+    // doing it this way because of chunk splitting
+    LocalSortArray *chunkWhereItWasInserted = lowerProjection->getChunk();
+    LocalSortArray *chunkWhereItWasInserted2 = upperProjection->getChunk();
+    size_t indexInsideChunkWhereItWasInserted = lowerProjection->getChunk()->find(lowerProjection);
+    size_t indexInsideChunkWhereItWasInserted2 = upperProjection->getChunk()->find(upperProjection);
 
     LocalSortArray *currentChunk = chunkWhereItWasInserted;
     Collider *collider = lowerProjection->getCollider();
@@ -247,9 +253,9 @@ size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjection *element)
     {
         mid = (low + high) / 2;
 
-        if (mid == 0)
+        if (high == 0)
         {
-            return mid;
+            return 0;
         }
         if (value <= *chunks[mid]->getMax() && value >= *chunks[mid]->getMin())
         {

@@ -8,7 +8,7 @@ LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoints(other->checkpoints), isDirty(false), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
+    : size(0), array(), checkpoints(other->owner->getIsPrimary() ? other->checkpoints : std::unordered_set<Collider *>()), isDirty(false), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
 {
     const size_t oldSize = other->size;
     const size_t movedCount = oldSize / 2;
@@ -28,6 +28,11 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
     for (size_t i = 0; i < size; i++)
     {
         array[i]->setChunk(this);
+
+        if (!owner->getIsPrimary())
+        {
+            continue;
+        }
 
         if (array[i]->getIsMaxima())
         {

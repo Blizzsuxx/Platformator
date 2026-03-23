@@ -20,6 +20,8 @@ public:
     void remove(BoundingRadiusProjectionAxis *axis);
     void addDirtyChunk(LocalSortArray *chunk);
 
+    bool getIsPrimary() const;
+
 private:
     template <typename EmitFn>
     void processProjectionCollisions(

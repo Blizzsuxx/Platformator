@@ -325,10 +325,16 @@ void SegmentedIntervalList::swap(BoundingRadiusProjection *leftRadiusProjection,
     }
 
     // cross chunk swap - update checkpoints
-    if (isPrimary && leftChunk != rightChunk)
+    if (leftChunk != rightChunk)
     {
         leftRadiusProjection->setChunk(rightChunk);
         rightRadiusProjection->setChunk(leftChunk);
+
+        if (!isPrimary)
+        {
+            return;
+        }
+
         // left is minimum - remove from checkpoint (left chunk) - minimum crossing right out of a chunk
         if (!leftRadiusProjection->getIsMaxima())
         {
@@ -480,4 +486,9 @@ void SegmentedIntervalList::processProjectionCollisions(
             }
         }
     }
+}
+
+bool SegmentedIntervalList::getIsPrimary() const
+{
+    return isPrimary;
 }

@@ -41,36 +41,23 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || colliderComponent->getIsRegisteredInBroadPhase() || !colliderComponent->getGameObject()->getActive())
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
     {
         return;
     }
 
     aabb.add(colliderComponent);
-    colliderComponent->setIsRegisteredInBroadPhase(true);
 }
 
 void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr)
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
     {
         return;
     }
 
-    if (!colliderComponent->getGameObject()->getActive())
-    {
-        removeColliderComponent(colliderComponent);
-        return;
-    }
-
-    if (colliderComponent->getIsRegisteredInBroadPhase())
-    {
-        aabb.remove(colliderComponent);
-        colliderComponent->setIsRegisteredInBroadPhase(false);
-    }
-
+    aabb.remove(colliderComponent);
     aabb.add(colliderComponent);
-    colliderComponent->setIsRegisteredInBroadPhase(true);
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -97,13 +84,12 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getIsRegisteredInBroadPhase())
+    if (colliderComponent == nullptr)
     {
         return;
     }
 
     aabb.remove(colliderComponent);
-    colliderComponent->setIsRegisteredInBroadPhase(false);
 }
 
 void PhysicsManager::broadPhase()

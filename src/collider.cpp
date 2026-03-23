@@ -3,7 +3,7 @@
 #include "localsortarray.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isRegisteredInBroadPhase(false), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
 {
 }
 
@@ -112,14 +112,4 @@ uint64_t Collider::getCollisionMask() const
 uint64_t Collider::getStateVersion() const
 {
     return stateVersion;
-}
-
-bool Collider::getIsRegisteredInBroadPhase() const
-{
-    return isRegisteredInBroadPhase;
-}
-
-void Collider::setIsRegisteredInBroadPhase(bool isRegisteredInBroadPhase)
-{
-    this->isRegisteredInBroadPhase = isRegisteredInBroadPhase;
 }

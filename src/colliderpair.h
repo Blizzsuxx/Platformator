@@ -16,6 +16,15 @@ public:
     bool shouldUpdate() const;
     void clearCollision() const;
 
+    bool getIsQueuedForNarrowPhase() const;
+    void setIsQueuedForNarrowPhase(bool queued) const;
+    size_t getNarrowPhaseQueueIndex() const;
+    void setNarrowPhaseQueueIndex(size_t index) const;
+    size_t getAdjacencyIndexA() const;
+    void setAdjacencyIndexA(size_t index) const;
+    size_t getAdjacencyIndexB() const;
+    void setAdjacencyIndexB(size_t index) const;
+
     void triggerCollisionEnter() const;
     void triggerCollisionStay() const;
     void triggerCollisionExit() const;
@@ -55,4 +64,8 @@ private:
     mutable Collision *collision;
     mutable uint64_t objectAStateVersion;
     mutable uint64_t objectBStateVersion;
+    mutable bool isQueuedForNarrowPhase;
+    mutable size_t narrowPhaseQueueIndex;
+    mutable size_t adjacencyIndexA;
+    mutable size_t adjacencyIndexB;
 };

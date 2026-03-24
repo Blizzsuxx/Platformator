@@ -60,6 +60,16 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
     aabb.add(colliderComponent);
 }
 
+void PhysicsManager::notifyColliderUpdated(Collider *colliderComponent)
+{
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    aabb.queuePairsForCollider(colliderComponent);
+}
+
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 {
     if (rigidBodyComponent == nullptr || !rigidBodyComponent->getIsRegisteredInPhysicsManager())
@@ -101,10 +111,18 @@ void PhysicsManager::narrowPhase()
 {
     activeCollisions.clear();
 
-    for (const ColliderPair &pair : *aabb.getCandidatePairSet())
+    for (const ColliderPair *pair : *aabb.getPendingNarrowPhasePairs())
     {
-        Collider *objectA = pair.getObjectA();
-        Collider *objectB = pair.getObjectB();
+        if (pair == nullptr)
+        {
+            continue;
+        }
+
+        pair->setIsQueuedForNarrowPhase(false);
+        pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+
+        Collider *objectA = pair->getObjectA();
+        Collider *objectB = pair->getObjectB();
 
         if (objectA == nullptr || objectB == nullptr || objectA->getGameObject()->getIsMarkedForDeletion() || objectB->getGameObject()->getIsMarkedForDeletion())
         {
@@ -115,21 +133,23 @@ void PhysicsManager::narrowPhase()
             continue;
         }
 
-        if (!pair.shouldUpdate())
+        if (!pair->shouldUpdate())
         {
-            pair.triggerCollisionStay();
+            pair->triggerCollisionStay();
         }
         else
         {
-            satCreateCollision(pair);
+            satCreateCollision(*pair);
         }
 
-        if (pair.getCollision() != nullptr)
+        if (pair->getCollision() != nullptr)
         {
-            activeCollisions.push_back(pair.getCollision());
-            DebugDraw::getInstance().addCollisionDebugObject(*pair.getCollision());
+            activeCollisions.push_back(pair->getCollision());
+            DebugDraw::getInstance().addCollisionDebugObject(*pair->getCollision());
         }
     }
+
+    aabb.clearPendingNarrowPhasePairs();
 }
 
 bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider)

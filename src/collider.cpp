@@ -47,6 +47,12 @@ void Collider::updateStateVersion()
     setChunkDirtyIfNotNull(this->getXProjections()->getMin()->getChunk(), true);
     setChunkDirtyIfNotNull(this->getYProjections()->getMax()->getChunk(), true);
     setChunkDirtyIfNotNull(this->getYProjections()->getMin()->getChunk(), true);
+
+    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    if (physicsManager != nullptr)
+    {
+        physicsManager->notifyColliderUpdated(this);
+    }
 }
 
 void Collider::triggerCollisionEnter(const Collider *other) const

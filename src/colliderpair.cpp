@@ -1,6 +1,6 @@
 #include "colliderpair.h"
 
-ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1)
+ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX)
 {
     if (a < b)
     {
@@ -51,6 +51,46 @@ void ColliderPair::clearCollision() const
         collision = nullptr;
     }
     updateCachedCollisionVersions();
+}
+
+bool ColliderPair::getIsQueuedForNarrowPhase() const
+{
+    return isQueuedForNarrowPhase;
+}
+
+void ColliderPair::setIsQueuedForNarrowPhase(bool queued) const
+{
+    isQueuedForNarrowPhase = queued;
+}
+
+size_t ColliderPair::getNarrowPhaseQueueIndex() const
+{
+    return narrowPhaseQueueIndex;
+}
+
+void ColliderPair::setNarrowPhaseQueueIndex(size_t index) const
+{
+    narrowPhaseQueueIndex = index;
+}
+
+size_t ColliderPair::getAdjacencyIndexA() const
+{
+    return adjacencyIndexA;
+}
+
+void ColliderPair::setAdjacencyIndexA(size_t index) const
+{
+    adjacencyIndexA = index;
+}
+
+size_t ColliderPair::getAdjacencyIndexB() const
+{
+    return adjacencyIndexB;
+}
+
+void ColliderPair::setAdjacencyIndexB(size_t index) const
+{
+    adjacencyIndexB = index;
 }
 
 void ColliderPair::triggerCollisionEnter() const

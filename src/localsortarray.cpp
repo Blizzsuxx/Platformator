@@ -183,6 +183,7 @@ void LocalSortArray::clear()
 {
     size = 0;
     checkpoints.clear();
+    checkpointCache.clear();
 }
 
 void LocalSortArray::addCheckpoint(Collider *collider)

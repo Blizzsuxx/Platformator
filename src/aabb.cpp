@@ -6,7 +6,6 @@ AABB::AABB()
       intervalListY(this, Axis::Y, false),
       candidateCollisions(),
       pendingNarrowPhasePairs(),
-      pendingOverlapEndEvents(),
       pairAdjacency()
 {
 }
@@ -54,8 +53,6 @@ void AABB::removePair(const ColliderPair &pair)
     const ColliderPair *storedPair = &(*iterator);
     Collider *objectA = storedPair->getObjectA();
     Collider *objectB = storedPair->getObjectB();
-
-    pendingOverlapEndEvents.emplace_back(*storedPair);
 
     dequeuePairFromNarrowPhase(storedPair);
     storedPair->clearCollision();
@@ -183,11 +180,6 @@ const std::vector<const ColliderPair *> *AABB::getPendingNarrowPhasePairs() cons
     return &pendingNarrowPhasePairs;
 }
 
-const std::vector<ColliderPairEvent> *AABB::getPendingOverlapEndEvents() const
-{
-    return &pendingOverlapEndEvents;
-}
-
 const std::vector<const ColliderPair *> *AABB::getTouchingPairs(Collider *collider) const
 {
     auto iterator = pairAdjacency.find(collider);
@@ -202,11 +194,6 @@ const std::vector<const ColliderPair *> *AABB::getTouchingPairs(Collider *collid
 void AABB::clearPendingNarrowPhasePairs()
 {
     pendingNarrowPhasePairs.clear();
-}
-
-void AABB::clearPendingOverlapEndEvents()
-{
-    pendingOverlapEndEvents.clear();
 }
 
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
@@ -273,8 +260,6 @@ void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 
 void AABB::sort()
 {
-    clearPendingOverlapEndEvents();
-
     // TODO: parallelize this
     intervalListX.sort();
     intervalListY.sort();

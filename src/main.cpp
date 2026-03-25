@@ -5,6 +5,7 @@
 int main(int argc, char *args[])
 {
     GameManager &gameManager = GameManager::getInstance();
+    SDLWindow *window = gameManager.getWindow();
 
     const float wallThickness = 50.0f;
     const float wallWidth = SCREEN_WIDTH;
@@ -17,6 +18,30 @@ int main(int argc, char *args[])
                            ->addComponent<CircleCollider>(25.0f)
                            ->addComponent<Sprite>("assets/ball.png", SDL_FLIP_NONE, 50, 50)
                            ->setPosition(Eigen::Vector2f(SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f));
+
+    window->addSdlListener([ball](SDL_Event event)
+                           {
+        if (event.type == SDL_EVENT_KEY_DOWN)
+        {
+            switch (event.key.key)
+            {
+            case SDLK_UP:
+                ball->getComponent<Rigidbody>()->setVelocity(Eigen::Vector2f(0.0f, -200.0f));
+                break;
+            case SDLK_DOWN:
+                ball->getComponent<Rigidbody>()->setVelocity(Eigen::Vector2f(0.0f, 200.0f));
+                break;
+            case SDLK_LEFT:
+                ball->getComponent<Rigidbody>()->setVelocity(Eigen::Vector2f(-200.0f, 0.0f));
+                break;
+            case SDLK_RIGHT:
+                ball->getComponent<Rigidbody>()->setVelocity(Eigen::Vector2f(200.0f, 0.0f));
+                break;
+            default:
+                break;
+            }
+        } });
+
     ball
         ->getComponent<Rigidbody>()
         ->setVelocity(Eigen::Vector2f(200.0f, 150.0f))

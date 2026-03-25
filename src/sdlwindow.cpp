@@ -207,3 +207,8 @@ void SDLWindow::setMainCamera(Camera *mainCamera)
 {
     this->mainCamera = mainCamera;
 }
+
+void SDLWindow::addSdlListener(const std::function<void(SDL_Event)> &listener)
+{
+    listeners.push_back(listener);
+}

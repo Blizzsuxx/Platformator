@@ -27,7 +27,7 @@ public:
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);
 
-    void addSdlListener(std::function<void(SDL_Event)> listener);
+    void addSdlListener(const std::function<void(SDL_Event)> &listener);
 
 private:
     SDL_Window *window;

@@ -23,6 +23,15 @@ std::tuple<int, int, int, int> Grid::getGridCellRange(Collider *collider)
     return std::move(std::make_tuple(minX, maxX, minY, maxY));
 }
 
+void Grid::addColliderToGridCell(GridCell *cell, Collider *collider)
+{
+    if (cell != nullptr)
+    {
+        cell->addCollider(collider);
+        collider->addToGridCell(cell);
+    }
+}
+
 void Grid::addColliderInternal(Collider *collider)
 {
     int minX, maxX, minY, maxY;
@@ -39,8 +48,7 @@ void Grid::addColliderInternal(Collider *collider)
                 auto [newIterator, inserted] = cells.emplace(key, GridCell(key, this));
                 iterator = newIterator;
             }
-            iterator->second.addCollider(collider);
-            collider->addToGridCell(&iterator->second);
+            addColliderToGridCell(&iterator->second, collider);
         }
     }
 }
@@ -49,25 +57,18 @@ void Grid::removeColliderInternal(Collider *collider)
 {
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
-
-    for (int x = minX; x <= maxX; ++x)
+    std::vector<GridCell *> &gridCells = collider->getGridCells();
+    for (int i = 0; i < gridCells.size(); i++)
     {
-        for (int y = minY; y <= maxY; ++y)
+        GridCell *cell = gridCells[i];
+        cell->removeCollider(collider);
+        if (cell->getAABB()->getIsEmpty())
         {
-            GridCellKey key(x, y);
-            auto iterator = cells.find(key);
-            if (iterator != cells.end())
-            {
-                iterator->second.removeCollider(collider);
-                collider->removeFromGridCell(&iterator->second);
-
-                if (iterator->second.getAABB()->getIsEmpty())
-                {
-                    cells.erase(iterator);
-                }
-            }
+            cells.erase(cell->getCellKey());
+            i--;
         }
     }
+    collider->clearGridCells();
 }
 
 void Grid::addCollider(Collider *collider)
@@ -89,67 +90,68 @@ void Grid::removePair(const ColliderPair &pair)
     }
 
     const ColliderPair *storedPair = &(*iterator);
-    Collider *objectA = storedPair->getObjectA();
-    Collider *objectB = storedPair->getObjectB();
-
-    dequeuePairFromNarrowPhase(storedPair);
-    storedPair->clearCollision();
-
-    auto adjacencyA = pairAdjacency.find(objectA);
-    if (adjacencyA != pairAdjacency.end())
-    {
-        std::vector<const ColliderPair *> &pairsA = adjacencyA->second;
-        size_t removeIndexA = storedPair->getAdjacencyIndexA();
-        size_t lastIndexA = pairsA.size() - 1;
-        if (removeIndexA != lastIndexA)
-        {
-            const ColliderPair *movedPair = pairsA[lastIndexA];
-            pairsA[removeIndexA] = movedPair;
-            if (movedPair->getObjectA() == objectA)
-            {
-                movedPair->setAdjacencyIndexA(removeIndexA);
-            }
-            else
-            {
-                movedPair->setAdjacencyIndexB(removeIndexA);
-            }
-        }
-        pairsA.pop_back();
-        if (pairsA.empty())
-        {
-            pairAdjacency.erase(adjacencyA);
-        }
-    }
-
-    auto adjacencyB = pairAdjacency.find(objectB);
-    if (adjacencyB != pairAdjacency.end())
-    {
-        std::vector<const ColliderPair *> &pairsB = adjacencyB->second;
-        size_t removeIndexB = storedPair->getAdjacencyIndexB();
-        size_t lastIndexB = pairsB.size() - 1;
-        if (removeIndexB != lastIndexB)
-        {
-            const ColliderPair *movedPair = pairsB[lastIndexB];
-            pairsB[removeIndexB] = movedPair;
-            if (movedPair->getObjectA() == objectB)
-            {
-                movedPair->setAdjacencyIndexA(removeIndexB);
-            }
-            else
-            {
-                movedPair->setAdjacencyIndexB(removeIndexB);
-            }
-        }
-        pairsB.pop_back();
-        if (pairsB.empty())
-        {
-            pairAdjacency.erase(adjacencyB);
-        }
-    }
 
     storedPair->decrementWitnessCount();
     if (storedPair->getWitnessCount() == 0)
     {
+
+        Collider *objectA = storedPair->getObjectA();
+        Collider *objectB = storedPair->getObjectB();
+
+        dequeuePairFromNarrowPhase(storedPair);
+        storedPair->clearCollision();
+
+        auto adjacencyA = pairAdjacency.find(objectA);
+        if (adjacencyA != pairAdjacency.end())
+        {
+            std::vector<const ColliderPair *> &pairsA = adjacencyA->second;
+            size_t removeIndexA = storedPair->getAdjacencyIndexA();
+            size_t lastIndexA = pairsA.size() - 1;
+            if (removeIndexA != lastIndexA)
+            {
+                const ColliderPair *movedPair = pairsA[lastIndexA];
+                pairsA[removeIndexA] = movedPair;
+                if (movedPair->getObjectA() == objectA)
+                {
+                    movedPair->setAdjacencyIndexA(removeIndexA);
+                }
+                else
+                {
+                    movedPair->setAdjacencyIndexB(removeIndexA);
+                }
+            }
+            pairsA.pop_back();
+            if (pairsA.empty())
+            {
+                pairAdjacency.erase(adjacencyA);
+            }
+        }
+
+        auto adjacencyB = pairAdjacency.find(objectB);
+        if (adjacencyB != pairAdjacency.end())
+        {
+            std::vector<const ColliderPair *> &pairsB = adjacencyB->second;
+            size_t removeIndexB = storedPair->getAdjacencyIndexB();
+            size_t lastIndexB = pairsB.size() - 1;
+            if (removeIndexB != lastIndexB)
+            {
+                const ColliderPair *movedPair = pairsB[lastIndexB];
+                pairsB[removeIndexB] = movedPair;
+                if (movedPair->getObjectA() == objectB)
+                {
+                    movedPair->setAdjacencyIndexA(removeIndexB);
+                }
+                else
+                {
+                    movedPair->setAdjacencyIndexB(removeIndexB);
+                }
+            }
+            pairsB.pop_back();
+            if (pairsB.empty())
+            {
+                pairAdjacency.erase(adjacencyB);
+            }
+        }
         candidateCollisions.erase(iterator);
     }
 }
@@ -239,18 +241,22 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
     }
     pair->incrementWitnessCount();
 
-    Collider *objectA = pair->getObjectA();
-    Collider *objectB = pair->getObjectB();
+    if (pair->getWitnessCount() == 1)
+    {
 
-    std::vector<const ColliderPair *> &adjacencyA = pairAdjacency[objectA];
-    pair->setAdjacencyIndexA(adjacencyA.size());
-    adjacencyA.push_back(pair);
+        Collider *objectA = pair->getObjectA();
+        Collider *objectB = pair->getObjectB();
 
-    std::vector<const ColliderPair *> &adjacencyB = pairAdjacency[objectB];
-    pair->setAdjacencyIndexB(adjacencyB.size());
-    adjacencyB.push_back(pair);
+        std::vector<const ColliderPair *> &adjacencyA = pairAdjacency[objectA];
+        pair->setAdjacencyIndexA(adjacencyA.size());
+        adjacencyA.push_back(pair);
 
-    queuePairForNarrowPhase(pair);
+        std::vector<const ColliderPair *> &adjacencyB = pairAdjacency[objectB];
+        pair->setAdjacencyIndexB(adjacencyB.size());
+        adjacencyB.push_back(pair);
+
+        queuePairForNarrowPhase(pair);
+    }
 }
 
 void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
@@ -285,6 +291,11 @@ void Grid::syncColliderWithGrid(Collider *collider)
                 iterator->second.removeCollider(collider);
             }
             gridCellsColliderBelongsTo.erase(gridCellsColliderBelongsTo.begin() + i);
+
+            if (iterator != cells.end() && iterator->second.getAABB()->getIsEmpty())
+            {
+                cells.erase(iterator);
+            }
             --i;
         }
     }
@@ -299,8 +310,7 @@ void Grid::syncColliderWithGrid(Collider *collider)
             if (cellIterator == gridCellsColliderBelongsTo.end())
             {
                 auto [newIterator, inserted] = cells.emplace(key, GridCell(key, this));
-                newIterator->second.addCollider(collider);
-                gridCellsColliderBelongsTo.push_back(&newIterator->second);
+                addColliderToGridCell(&newIterator->second, collider);
             }
         }
     }

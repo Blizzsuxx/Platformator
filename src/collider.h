@@ -96,6 +96,7 @@ public:
     void addToGridCell(GridCell *cell);
     void removeFromGridCell(GridCell *cell);
     std::vector<GridCell *> &getGridCells();
+    void clearGridCells();
 
 protected:
     uint64_t collisionGroup;

@@ -28,6 +28,7 @@ private:
     void queuePairForNarrowPhase(const ColliderPair *pair);
     void queuePairsForCollider(Collider *collider);
     void syncColliderWithGrid(Collider *collider);
+    void addColliderToGridCell(GridCell *cell, Collider *collider);
     const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
 
     std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash> cells;

@@ -145,3 +145,8 @@ std::vector<GridCell *> &Collider::getGridCells()
 {
     return cells;
 }
+
+void Collider::clearGridCells()
+{
+    cells.clear();
+}

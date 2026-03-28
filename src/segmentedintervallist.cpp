@@ -492,3 +492,8 @@ bool SegmentedIntervalList::getIsPrimary() const
 {
     return isPrimary;
 }
+
+bool SegmentedIntervalList::getIsEmpty() const
+{
+    return chunks.size() == 1 && chunks[0]->getSize() == 0;
+}

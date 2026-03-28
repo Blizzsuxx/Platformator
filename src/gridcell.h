@@ -2,6 +2,8 @@
 
 #include "aabb.h"
 
+class Grid;
+
 struct GridCellKey
 {
     int x;

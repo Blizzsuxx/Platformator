@@ -17,6 +17,8 @@ public:
     void clearPendingNarrowPhasePairs();
     const std::vector<const ColliderPair *> *getPendingNarrowPhasePairs() const;
 
+    void sort();
+
 private:
     void addColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);

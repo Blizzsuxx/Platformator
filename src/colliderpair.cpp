@@ -1,6 +1,6 @@
 #include "colliderpair.h"
 
-ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX)
+ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCount(0)
 {
     if (a < b)
     {
@@ -177,4 +177,27 @@ void ColliderPair::updateCachedCollisionVersions() const
 bool ColliderPair::operator==(const ColliderPair &other) const
 {
     return (objectA == other.objectA && objectB == other.objectB) || (objectA == other.objectB && objectB == other.objectA);
+}
+
+size_t ColliderPair::getWitnessCount() const
+{
+    return witnessCount;
+}
+
+void ColliderPair::setWitnessCount(size_t count) const
+{
+    witnessCount = count;
+}
+
+void ColliderPair::incrementWitnessCount() const
+{
+    witnessCount++;
+}
+
+void ColliderPair::decrementWitnessCount() const
+{
+    if (witnessCount > 0)
+    {
+        witnessCount--;
+    }
 }

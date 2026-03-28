@@ -21,6 +21,7 @@ public:
     void addDirtyChunk(LocalSortArray *chunk);
 
     bool getIsPrimary() const;
+    bool getIsEmpty() const;
 
 private:
     template <typename EmitFn>

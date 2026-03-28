@@ -6,6 +6,7 @@
 
 class Collider;
 class LocalSortArray;
+class GridCell;
 
 class BoundingRadiusProjection
 {

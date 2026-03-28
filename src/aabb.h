@@ -29,6 +29,7 @@ public:
     SegmentedIntervalList *getIntervalListY();
     // sort the array with insertion sort, sort from lowest to highest
     void sort();
+    bool getIsEmpty() const;
 
 private:
     const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;

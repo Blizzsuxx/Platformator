@@ -33,7 +33,14 @@ void Grid::addColliderInternal(Collider *collider)
         for (int y = minY; y <= maxY; ++y)
         {
             GridCellKey key(x, y);
-            cells[key].addCollider(collider);
+            auto iterator = cells.find(key);
+            if (iterator == cells.end())
+            {
+                auto [newIterator, inserted] = cells.emplace(key, GridCell(key, this));
+                iterator = newIterator;
+            }
+            iterator->second.addCollider(collider);
+            collider->addToGridCell(&iterator->second);
         }
     }
 }
@@ -48,7 +55,17 @@ void Grid::removeColliderInternal(Collider *collider)
         for (int y = minY; y <= maxY; ++y)
         {
             GridCellKey key(x, y);
-            cells[key].removeCollider(collider);
+            auto iterator = cells.find(key);
+            if (iterator != cells.end())
+            {
+                iterator->second.removeCollider(collider);
+                collider->removeFromGridCell(&iterator->second);
+
+                if (iterator->second.getAABB()->getIsEmpty())
+                {
+                    cells.erase(iterator);
+                }
+            }
         }
     }
 }
@@ -130,7 +147,11 @@ void Grid::removePair(const ColliderPair &pair)
         }
     }
 
-    candidateCollisions.erase(iterator);
+    storedPair->decrementWitnessCount();
+    if (storedPair->getWitnessCount() == 0)
+    {
+        candidateCollisions.erase(iterator);
+    }
 }
 
 void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
@@ -204,13 +225,20 @@ void Grid::clearPendingNarrowPhasePairs()
 
 void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
 {
-    auto [iterator, inserted] = candidateCollisions.emplace(colliderA, colliderB);
-    if (!inserted)
-    {
-        return;
-    }
+    const ColliderPair *pair;
 
-    const ColliderPair *pair = &(*iterator);
+    auto iteratorPair = candidateCollisions.find(ColliderPair(colliderA, colliderB));
+    if (iteratorPair == candidateCollisions.end())
+    {
+        auto [it, in] = candidateCollisions.emplace(colliderA, colliderB);
+        pair = &(*it);
+    }
+    else
+    {
+        pair = &(*iteratorPair);
+    }
+    pair->incrementWitnessCount();
+
     Collider *objectA = pair->getObjectA();
     Collider *objectB = pair->getObjectB();
 
@@ -239,7 +267,7 @@ void Grid::queueColliderForUpdate(Collider *collider)
 
 void Grid::syncColliderWithGrid(Collider *collider)
 {
-    std::vector<GridCell *> gridCellsColliderBelongsTo = collider->getGridCells();
+    std::vector<GridCell *> &gridCellsColliderBelongsTo = collider->getGridCells();
 
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
@@ -251,7 +279,11 @@ void Grid::syncColliderWithGrid(Collider *collider)
 
         if (key.x < minX || key.x > maxX || key.y < minY || key.y > maxY)
         {
-            cells[key].removeCollider(collider);
+            auto iterator = cells.find(key);
+            if (iterator != cells.end())
+            {
+                iterator->second.removeCollider(collider);
+            }
             gridCellsColliderBelongsTo.erase(gridCellsColliderBelongsTo.begin() + i);
             --i;
         }
@@ -266,9 +298,19 @@ void Grid::syncColliderWithGrid(Collider *collider)
                                              { return gridCell->getCellKey() == key; });
             if (cellIterator == gridCellsColliderBelongsTo.end())
             {
-                cells[key].addCollider(collider);
-                gridCellsColliderBelongsTo.push_back(&cells[key]);
+                auto [newIterator, inserted] = cells.emplace(key, GridCell(key, this));
+                newIterator->second.addCollider(collider);
+                gridCellsColliderBelongsTo.push_back(&newIterator->second);
             }
         }
+    }
+}
+
+void Grid::sort()
+{
+    // TODO: sort
+    for (auto &cellEntry : cells)
+    {
+        cellEntry.second.getAABB()->sort();
     }
 }

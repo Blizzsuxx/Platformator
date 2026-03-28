@@ -6,8 +6,8 @@
 #include "segmentedintervallist.h"
 #include <chrono>
 #include <vector>
-#include "aabb.h"
 #include "helpers.h"
+#include "grid.h"
 
 class PhysicsManager
 {
@@ -41,7 +41,7 @@ private:
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collision *> activeCollisions;
-    AABB aabb;
+    Grid grid;
 
     Eigen::Vector2f gravityVector;
 };

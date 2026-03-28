@@ -85,3 +85,9 @@ void AABB::sort()
     intervalListX.sort();
     intervalListY.sort();
 }
+
+bool AABB::getIsEmpty() const
+{
+    // checking just one is enough because if one is empty, the other one has to be empty as well
+    return intervalListX.getIsEmpty();
+}

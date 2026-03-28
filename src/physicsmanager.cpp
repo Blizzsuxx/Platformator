@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), activeCollisions(), aabb(), gravityVector(0.0f, 9.81f)
+    : rigidBodyComponents(), activeCollisions(), grid(), gravityVector(0.0f, 9.81f)
 {
 }
 
@@ -46,7 +46,7 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
         return;
     }
 
-    aabb.add(colliderComponent);
+    grid.addCollider(colliderComponent);
 }
 
 void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
@@ -56,8 +56,8 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
         return;
     }
 
-    aabb.remove(colliderComponent);
-    aabb.add(colliderComponent);
+    grid.removeCollider(colliderComponent);
+    grid.addCollider(colliderComponent);
 }
 
 void PhysicsManager::notifyColliderUpdated(Collider *colliderComponent)
@@ -67,7 +67,7 @@ void PhysicsManager::notifyColliderUpdated(Collider *colliderComponent)
         return;
     }
 
-    aabb.queuePairsForCollider(colliderComponent);
+    grid.queueColliderForUpdate(colliderComponent);
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -99,19 +99,19 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
         return;
     }
 
-    aabb.remove(colliderComponent);
+    grid.removeCollider(colliderComponent);
 }
 
 void PhysicsManager::broadPhase()
 {
-    aabb.sort();
+    grid.sort();
 }
 
 void PhysicsManager::narrowPhase()
 {
     activeCollisions.clear();
 
-    for (const ColliderPair *pair : *aabb.getPendingNarrowPhasePairs())
+    for (const ColliderPair *pair : *grid.getPendingNarrowPhasePairs())
     {
         if (pair == nullptr)
         {
@@ -149,7 +149,7 @@ void PhysicsManager::narrowPhase()
         }
     }
 
-    aabb.clearPendingNarrowPhasePairs();
+    grid.clearPendingNarrowPhasePairs();
 }
 
 bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider)

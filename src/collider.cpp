@@ -125,7 +125,6 @@ void Collider::addToGridCell(GridCell *cell)
 {
     if (cell != nullptr)
     {
-        cell->addCollider(this);
         cells.push_back(cell);
     }
 }
@@ -134,8 +133,6 @@ void Collider::removeFromGridCell(GridCell *cell)
 {
     if (cell != nullptr)
     {
-        cell->removeCollider(this);
-
         auto it = std::find(cells.begin(), cells.end(), cell);
         if (it != cells.end())
         {

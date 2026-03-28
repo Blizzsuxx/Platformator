@@ -35,6 +35,11 @@ public:
     Collider *getObjectA() const;
     Collider *getObjectB() const;
 
+    size_t getWitnessCount() const;
+    void setWitnessCount(size_t count) const;
+    void incrementWitnessCount() const;
+    void decrementWitnessCount() const;
+
     bool operator==(const ColliderPair &other) const;
 
     class HashFunction
@@ -68,4 +73,5 @@ private:
     mutable size_t narrowPhaseQueueIndex;
     mutable size_t adjacencyIndexA;
     mutable size_t adjacencyIndexB;
+    mutable size_t witnessCount;
 };

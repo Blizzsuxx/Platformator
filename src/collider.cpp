@@ -1,9 +1,10 @@
 #include "collider.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
+#include "gridcell.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells()
 {
 }
 
@@ -118,4 +119,32 @@ uint64_t Collider::getCollisionMask() const
 uint64_t Collider::getStateVersion() const
 {
     return stateVersion;
+}
+
+void Collider::addToGridCell(GridCell *cell)
+{
+    if (cell != nullptr)
+    {
+        cell->addCollider(this);
+        cells.push_back(cell);
+    }
+}
+
+void Collider::removeFromGridCell(GridCell *cell)
+{
+    if (cell != nullptr)
+    {
+        cell->removeCollider(this);
+
+        auto it = std::find(cells.begin(), cells.end(), cell);
+        if (it != cells.end())
+        {
+            cells.erase(it);
+        }
+    }
+}
+
+std::vector<GridCell *> &Collider::getGridCells()
+{
+    return cells;
 }

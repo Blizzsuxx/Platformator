@@ -92,6 +92,10 @@ public:
     void updateStateVersion();
     uint64_t getStateVersion() const;
 
+    void addToGridCell(GridCell *cell);
+    void removeFromGridCell(GridCell *cell);
+    std::vector<GridCell *> &getGridCells();
+
 protected:
     uint64_t collisionGroup;
     uint64_t collisionMask;
@@ -101,6 +105,8 @@ protected:
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;
+
+    std::vector<GridCell *> cells;
 
     void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);
     virtual void updateCollider() = 0;

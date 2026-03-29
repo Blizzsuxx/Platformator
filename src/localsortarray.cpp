@@ -49,7 +49,7 @@ LocalSortArray::~LocalSortArray()
 {
 }
 
-size_t LocalSortArray::add(BoundingRadiusProjection *element)
+size_t LocalSortArray::add(BoundingRadiusProjectionProxy *element)
 {
     // find the index where the element should be inserted using binary search
     if (size == MAX_SIZE)
@@ -73,19 +73,19 @@ size_t LocalSortArray::add(BoundingRadiusProjection *element)
     }
 }
 
-BoundingRadiusProjection *LocalSortArray::pop()
+BoundingRadiusProjectionProxy *LocalSortArray::pop()
 {
     return remove(size - 1);
 }
 
-BoundingRadiusProjection *LocalSortArray::remove(size_t index)
+BoundingRadiusProjectionProxy *LocalSortArray::remove(size_t index)
 {
     if (index >= size)
     {
         return nullptr;
     }
     // remove the element at the specified index
-    BoundingRadiusProjection *removed = array[index];
+    BoundingRadiusProjectionProxy *removed = array[index];
     removed->setChunk(nullptr);
 
     for (size_t i = index; i < size - 1; i++)
@@ -97,7 +97,7 @@ BoundingRadiusProjection *LocalSortArray::remove(size_t index)
     return removed;
 }
 
-size_t LocalSortArray::remove(BoundingRadiusProjection *element)
+size_t LocalSortArray::remove(BoundingRadiusProjectionProxy *element)
 {
     // find the index of the element using binary search
     size_t index = find(element);
@@ -149,22 +149,22 @@ void LocalSortArray::sortFromIndex(size_t arrayIndex, SwapCallback *callback)
     }
 }
 
-BoundingRadiusProjection *LocalSortArray::get(size_t index)
+BoundingRadiusProjectionProxy *LocalSortArray::get(size_t index)
 {
     return array[index];
 }
 
-BoundingRadiusProjection *LocalSortArray::operator[](size_t index)
+BoundingRadiusProjectionProxy *LocalSortArray::operator[](size_t index)
 {
     return array[index];
 }
 
-BoundingRadiusProjection *LocalSortArray::getMax()
+BoundingRadiusProjectionProxy *LocalSortArray::getMax()
 {
     return array[size - 1];
 }
 
-BoundingRadiusProjection *LocalSortArray::getMin()
+BoundingRadiusProjectionProxy *LocalSortArray::getMin()
 {
     return array[0];
 }
@@ -174,7 +174,7 @@ size_t LocalSortArray::getSize() const
     return size;
 }
 
-BoundingRadiusProjection **LocalSortArray::getArray()
+BoundingRadiusProjectionProxy **LocalSortArray::getArray()
 {
     return array;
 }
@@ -207,7 +207,7 @@ void LocalSortArray::removeCheckpoint(Collider *collider)
     }
 }
 
-size_t LocalSortArray::binarySearch(BoundingRadiusProjection *element)
+size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
 {
     size_t low = 0;
     size_t high = size;
@@ -238,7 +238,7 @@ std::unordered_set<Collider *> *LocalSortArray::getCheckpoints()
     return &checkpoints;
 }
 
-size_t LocalSortArray::find(BoundingRadiusProjection *element)
+size_t LocalSortArray::find(BoundingRadiusProjectionProxy *element)
 {
     size_t low = 0;
     size_t high = size;
@@ -268,7 +268,7 @@ size_t LocalSortArray::find(BoundingRadiusProjection *element)
     return low;
 }
 
-size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjection *element)
+size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjectionProxy *element)
 {
     // Search left
     for (size_t i = index; i != static_cast<size_t>(-1); i--)
@@ -331,4 +331,14 @@ void LocalSortArray::setLeftChunk(LocalSortArray *leftChunk)
 void LocalSortArray::setRightChunk(LocalSortArray *rightChunk)
 {
     this->rightChunk = rightChunk;
+}
+
+SegmentedIntervalList *LocalSortArray::getOwner() const
+{
+    return owner;
+}
+
+void LocalSortArray::setOwner(SegmentedIntervalList *owner)
+{
+    this->owner = owner;
 }

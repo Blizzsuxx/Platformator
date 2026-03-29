@@ -4,12 +4,17 @@
 #include "gridcell.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells()
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), projectionProxies()
 {
 }
 
 Collider::~Collider()
 {
+    for (BoundingRadiusProjectionAxisProxy *proxy : projectionProxies)
+    {
+        delete proxy;
+    }
+    projectionProxies.clear();
 }
 
 BoundingRadiusProjectionAxis *Collider::getXProjections()
@@ -44,10 +49,11 @@ void Collider::updateStateVersion()
 {
     stateVersion++;
 
-    setChunkDirtyIfNotNull(this->getXProjections()->getMax()->getChunk(), true);
-    setChunkDirtyIfNotNull(this->getXProjections()->getMin()->getChunk(), true);
-    setChunkDirtyIfNotNull(this->getYProjections()->getMax()->getChunk(), true);
-    setChunkDirtyIfNotNull(this->getYProjections()->getMin()->getChunk(), true);
+    for (BoundingRadiusProjectionAxisProxy *proxy : projectionProxies)
+    {
+        setChunkDirtyIfNotNull(proxy->minProxy.getChunk(), true);
+        setChunkDirtyIfNotNull(proxy->maxProxy.getChunk(), true);
+    }
 
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
     if (physicsManager != nullptr)
@@ -149,4 +155,40 @@ std::vector<GridCell *> &Collider::getGridCells()
 void Collider::clearGridCells()
 {
     cells.clear();
+}
+
+BoundingRadiusProjectionAxisProxy *Collider::addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, LocalSortArray *chunk)
+{
+    BoundingRadiusProjectionAxisProxy *proxy = new BoundingRadiusProjectionAxisProxy{BoundingRadiusProjectionProxy(minProjection, chunk), BoundingRadiusProjectionProxy(maxProjection, chunk)};
+    projectionProxies.push_back(proxy);
+    return proxy;
+}
+
+void Collider::removeProjectionProxy(BoundingRadiusProjectionAxisProxy *proxy)
+{
+    if (proxy != nullptr)
+    {
+        auto it = std::find(projectionProxies.begin(), projectionProxies.end(), proxy);
+        if (it != projectionProxies.end())
+        {
+            projectionProxies.erase(it);
+            delete proxy;
+        }
+    }
+}
+
+BoundingRadiusProjectionAxisProxy *Collider::getProjectionProxiesForList(SegmentedIntervalList *list)
+{
+    BoundingRadiusProjectionAxisProxy *proxyResult = nullptr;
+    for (BoundingRadiusProjectionAxisProxy *proxy : projectionProxies)
+    {
+        LocalSortArray *chunk = proxy->minProxy.getChunk();
+        if (chunk != nullptr && chunk->getOwner() == list)
+        {
+            proxyResult = proxy;
+            break;
+        }
+    }
+
+    return proxyResult;
 }

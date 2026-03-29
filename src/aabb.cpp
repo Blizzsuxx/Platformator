@@ -46,37 +46,26 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
         return;
     }
 
-    BoundingRadiusProjection *minA;
-    BoundingRadiusProjection *maxA;
-    BoundingRadiusProjection *minB;
-    BoundingRadiusProjection *maxB;
+    BoundingRadiusProjection *minXA = colliderA->getXProjections()->getMin();
+    BoundingRadiusProjection *maxXA = colliderA->getXProjections()->getMax();
+    BoundingRadiusProjection *minXB = colliderB->getXProjections()->getMin();
+    BoundingRadiusProjection *maxXB = colliderB->getXProjections()->getMax();
+    BoundingRadiusProjection *minYA = colliderA->getYProjections()->getMin();
+    BoundingRadiusProjection *maxYA = colliderA->getYProjections()->getMax();
+    BoundingRadiusProjection *minYB = colliderB->getYProjections()->getMin();
+    BoundingRadiusProjection *maxYB = colliderB->getYProjections()->getMax();
 
-    if (axis == Axis::X)
-    {
-        minA = colliderA->getYProjections()->getMin();
-        maxA = colliderA->getYProjections()->getMax();
-        minB = colliderB->getYProjections()->getMin();
-        maxB = colliderB->getYProjections()->getMax();
-    }
-    else
-    {
-        minA = colliderA->getXProjections()->getMin();
-        maxA = colliderA->getXProjections()->getMax();
-        minB = colliderB->getXProjections()->getMin();
-        maxB = colliderB->getXProjections()->getMax();
-    }
-
-    if (*minA > *maxB || *minB > *maxA)
+    if (*minXA > *maxXB || *minXB > *maxXA || *minYA > *maxYB || *minYB > *maxYA)
     {
         return;
     }
 
-    owner->createCollisionPair(colliderA, colliderB);
+    owner->createCollisionPair(colliderA, colliderB, axis);
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    owner->removeCollisionPair(colliderA, colliderB);
+    owner->removeCollisionPair(colliderA, colliderB, axis);
 }
 
 void AABB::sort()

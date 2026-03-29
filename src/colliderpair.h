@@ -35,10 +35,10 @@ public:
     Collider *getObjectA() const;
     Collider *getObjectB() const;
 
-    size_t getWitnessCount() const;
-    void setWitnessCount(size_t count) const;
-    void incrementWitnessCount() const;
-    void decrementWitnessCount() const;
+    void incrementWitnessCount(Axis axis) const;
+    void decrementWitnessCount(Axis axis) const;
+    size_t getWitnessCountMin() const;
+    size_t getWitnessCountMax() const;
 
     bool operator==(const ColliderPair &other) const;
 
@@ -73,5 +73,6 @@ private:
     mutable size_t narrowPhaseQueueIndex;
     mutable size_t adjacencyIndexA;
     mutable size_t adjacencyIndexB;
-    mutable size_t witnessCount;
+    mutable size_t witnessCountX;
+    mutable size_t witnessCountY;
 };

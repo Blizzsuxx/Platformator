@@ -35,8 +35,6 @@ private:
     const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
-    void removePair(const ColliderPair &pair);
-    void removePairsForCollider(Collider *collider);
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;

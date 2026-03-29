@@ -26,27 +26,27 @@ public:
 private:
     template <typename EmitFn>
     void processProjectionCollisions(
-        BoundingRadiusProjection *lowerProjection,
+        BoundingRadiusProjectionProxy *lowerProjection,
         size_t lowerIndexInsideChunk,
-        BoundingRadiusProjection *upperProjection,
+        BoundingRadiusProjectionProxy *upperProjection,
         size_t upperIndexInsideChunk,
         EmitFn &&emit);
 
-    size_t binarySearch(BoundingRadiusProjection *element);
+    size_t binarySearch(BoundingRadiusProjectionProxy *element);
     size_t binarySearch(LocalSortArray *array);
 
-    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjection *element);
-    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjection *element, size_t chunkIndex);
-    std::pair<LocalSortArray *, size_t> remove(BoundingRadiusProjection *element);
+    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element);
+    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element, size_t chunkIndex);
+    std::pair<LocalSortArray *, size_t> remove(BoundingRadiusProjectionProxy *element);
 
     void swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk);
     void sortChunkFromIndex(LocalSortArray *chunk, size_t arrayIndex);
-    void addCollisionsForNewlyAddedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
-    void removeCollisionsForRemovedProjection(BoundingRadiusProjection *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjection *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
+    void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
+    void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
 
-    void emitCollision(Collider *colliderA, Collider *colliderB);
-    void removeCollision(Collider *colliderA, Collider *colliderB);
-    void swap(BoundingRadiusProjection *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjection *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
+    void emitCollision(Collider *colliderA, Collider *colliderB, Axis axis);
+    void removeCollision(Collider *colliderA, Collider *colliderB, Axis axis);
+    void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
 
     std::vector<LocalSortArray *> chunks;
     std::vector<LocalSortArray *> dirtyChunks;

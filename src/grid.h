@@ -10,8 +10,8 @@ public:
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
-    void createCollisionPair(Collider *colliderA, Collider *colliderB);
-    void removeCollisionPair(Collider *colliderA, Collider *colliderB);
+    void createCollisionPair(Collider *colliderA, Collider *colliderB, Axis axis);
+    void removeCollisionPair(Collider *colliderA, Collider *colliderB, Axis axis);
     void queueColliderForUpdate(Collider *collider);
 
     void clearPendingNarrowPhasePairs();
@@ -23,7 +23,7 @@ private:
     void addColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     std::tuple<int, int, int, int> getGridCellRange(Collider *collider);
-    void removePair(const ColliderPair &pair);
+    void removePair(const ColliderPair &pair, Axis axis);
     void dequeuePairFromNarrowPhase(const ColliderPair *pair);
     void queuePairForNarrowPhase(const ColliderPair *pair);
     void queuePairsForCollider(Collider *collider);

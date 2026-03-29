@@ -17,25 +17,25 @@ public:
     LocalSortArray(LocalSortArray *other);
     ~LocalSortArray();
 
-    size_t add(BoundingRadiusProjection *element);
-    BoundingRadiusProjection *pop();
-    BoundingRadiusProjection *remove(size_t index);
-    size_t remove(BoundingRadiusProjection *element);
+    size_t add(BoundingRadiusProjectionProxy *element);
+    BoundingRadiusProjectionProxy *pop();
+    BoundingRadiusProjectionProxy *remove(size_t index);
+    size_t remove(BoundingRadiusProjectionProxy *element);
     void sort(SwapCallback *callback);
     void sortFromIndex(size_t index, SwapCallback *callback);
 
-    BoundingRadiusProjection *get(size_t index);
-    BoundingRadiusProjection *operator[](size_t index);
-    BoundingRadiusProjection *getMax();
-    BoundingRadiusProjection *getMin();
+    BoundingRadiusProjectionProxy *get(size_t index);
+    BoundingRadiusProjectionProxy *operator[](size_t index);
+    BoundingRadiusProjectionProxy *getMax();
+    BoundingRadiusProjectionProxy *getMin();
     size_t getSize() const;
-    BoundingRadiusProjection **getArray();
+    BoundingRadiusProjectionProxy **getArray();
     void clear();
     void addCheckpoint(Collider *element);
     void removeCheckpoint(Collider *element);
     std::unordered_set<Collider *> *getCheckpoints();
 
-    size_t find(BoundingRadiusProjection *element);
+    size_t find(BoundingRadiusProjectionProxy *element);
 
     void setIsDirty(bool dirty);
     bool getIsDirty() const;
@@ -45,12 +45,15 @@ public:
     void setLeftChunk(LocalSortArray *leftChunk);
     void setRightChunk(LocalSortArray *rightChunk);
 
+    SegmentedIntervalList *getOwner() const;
+    void setOwner(SegmentedIntervalList *owner);
+
 private:
-    size_t binarySearch(BoundingRadiusProjection *element);
-    size_t searchAround(size_t index, BoundingRadiusProjection *element);
+    size_t binarySearch(BoundingRadiusProjectionProxy *element);
+    size_t searchAround(size_t index, BoundingRadiusProjectionProxy *element);
 
     size_t size;
-    BoundingRadiusProjection *array[MAX_SIZE];
+    BoundingRadiusProjectionProxy *array[MAX_SIZE];
 
     // The ‘checkpoints’ set contains the set of object id’s which
     // overlap with the ‘trailing edge’ of the chunk (AABBs whose min-

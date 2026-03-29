@@ -7,23 +7,22 @@
 class Collider;
 class LocalSortArray;
 class GridCell;
+class SegmentedIntervalList;
 
 class BoundingRadiusProjection
 {
 public:
     BoundingRadiusProjection();
-    BoundingRadiusProjection(Collider *, float projectedPosition, bool isEnd, LocalSortArray *chunk);
+    BoundingRadiusProjection(Collider *, float projectedPosition, bool isEnd);
     ~BoundingRadiusProjection();
 
     Collider *getCollider();
     float getProjectedPosition() const;
     bool getIsMaxima() const;
-    LocalSortArray *getChunk() const;
 
     void setCollider(Collider *collider);
     void setProjectedPosition(float projectedPosition);
     void setIsMaxima(bool isMaxima);
-    void setChunk(LocalSortArray *chunk);
 
     bool operator==(const BoundingRadiusProjection &other) const;
     bool operator!=(const BoundingRadiusProjection &other) const;
@@ -36,6 +35,33 @@ private:
     Collider *collider;
     float projectedPosition;
     bool isMaxima;
+};
+
+class BoundingRadiusProjectionProxy
+{
+public:
+    BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk);
+    ~BoundingRadiusProjectionProxy();
+
+    BoundingRadiusProjection *getProjection() const;
+    LocalSortArray *getChunk() const;
+
+    void setBoundingProjection(BoundingRadiusProjection *projection);
+    void setChunk(LocalSortArray *chunk);
+
+    Collider *getCollider();
+    float getProjectedPosition() const;
+    bool getIsMaxima() const;
+
+    bool operator==(const BoundingRadiusProjectionProxy &other) const;
+    bool operator!=(const BoundingRadiusProjectionProxy &other) const;
+    bool operator<(const BoundingRadiusProjectionProxy &other) const;
+    bool operator>(const BoundingRadiusProjectionProxy &other) const;
+    bool operator<=(const BoundingRadiusProjectionProxy &other) const;
+    bool operator>=(const BoundingRadiusProjectionProxy &other) const;
+
+private:
+    BoundingRadiusProjection *projection;
     LocalSortArray *chunk;
 };
 
@@ -54,6 +80,12 @@ public:
 private:
     BoundingRadiusProjection min;
     BoundingRadiusProjection max;
+};
+
+struct BoundingRadiusProjectionAxisProxy
+{
+    BoundingRadiusProjectionProxy minProxy;
+    BoundingRadiusProjectionProxy maxProxy;
 };
 
 enum class ColliderType
@@ -98,6 +130,11 @@ public:
     std::vector<GridCell *> &getGridCells();
     void clearGridCells();
 
+    BoundingRadiusProjectionAxisProxy *addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, LocalSortArray *chunk);
+    void removeProjectionProxy(BoundingRadiusProjectionAxisProxy *proxy);
+
+    BoundingRadiusProjectionAxisProxy *getProjectionProxiesForList(SegmentedIntervalList *list);
+
 protected:
     uint64_t collisionGroup;
     uint64_t collisionMask;
@@ -109,6 +146,7 @@ protected:
     BoundingRadiusProjectionAxis yProjections;
 
     std::vector<GridCell *> cells;
+    std::vector<BoundingRadiusProjectionAxisProxy *> projectionProxies;
 
     void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);
     virtual void updateCollider() = 0;

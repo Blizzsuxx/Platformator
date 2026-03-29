@@ -58,6 +58,7 @@ void Grid::removeColliderInternal(Collider *collider)
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
     std::vector<GridCell *> &gridCells = collider->getGridCells();
+
     for (int i = 0; i < gridCells.size(); i++)
     {
         GridCell *cell = gridCells[i];
@@ -65,7 +66,6 @@ void Grid::removeColliderInternal(Collider *collider)
         if (cell->getAABB()->getIsEmpty())
         {
             cells.erase(cell->getCellKey());
-            i--;
         }
     }
     collider->clearGridCells();
@@ -81,7 +81,7 @@ void Grid::removeCollider(Collider *collider)
     removeColliderInternal(collider);
 }
 
-void Grid::removePair(const ColliderPair &pair)
+void Grid::removePair(const ColliderPair &pair, Axis axis)
 {
     auto iterator = candidateCollisions.find(pair);
     if (iterator == candidateCollisions.end())
@@ -91,9 +91,10 @@ void Grid::removePair(const ColliderPair &pair)
 
     const ColliderPair *storedPair = &(*iterator);
 
-    storedPair->decrementWitnessCount();
-    if (storedPair->getWitnessCount() == 0)
+    storedPair->decrementWitnessCount(axis);
+    if (storedPair->getWitnessCountMin() == 0)
     {
+        // if no collisions on any axis, remove the pair
 
         Collider *objectA = storedPair->getObjectA();
         Collider *objectB = storedPair->getObjectB();
@@ -225,7 +226,7 @@ void Grid::clearPendingNarrowPhasePairs()
     pendingNarrowPhasePairs.clear();
 }
 
-void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
+void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB, Axis axis)
 {
     const ColliderPair *pair;
 
@@ -239,9 +240,9 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
     {
         pair = &(*iteratorPair);
     }
-    pair->incrementWitnessCount();
 
-    if (pair->getWitnessCount() == 1)
+    pair->incrementWitnessCount(axis);
+    if (pair->getWitnessCountMax() == 1)
     {
 
         Collider *objectA = pair->getObjectA();
@@ -259,10 +260,10 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
     }
 }
 
-void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
+void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB, Axis axis)
 {
     ColliderPair pair(colliderA, colliderB);
-    removePair(pair);
+    removePair(pair, axis);
 }
 
 void Grid::queueColliderForUpdate(Collider *collider)

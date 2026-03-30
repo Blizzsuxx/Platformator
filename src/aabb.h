@@ -1,8 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <unordered_map>
-#include <unordered_set>
 #include "segmentedintervallist.h"
 #include "collider.h"
 #include "collision.h"
@@ -72,13 +70,14 @@ public:
     bool getIsEmpty() const;
 
 private:
+    size_t findPairIndex(Collider *colliderA, Collider *colliderB) const;
     const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
-    std::unordered_set<AABBPair, AABBPair::HashFunction> pairsWithAtLeastOneAxisOverlapping;
+    std::vector<AABBPair> pairsWithAtLeastOneAxisOverlapping;
     Grid *owner;
 
     friend class SegmentedIntervalList;

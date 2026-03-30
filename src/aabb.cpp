@@ -1,10 +1,10 @@
 #include "aabb.h"
-#include <iostream>
 #include "grid.h"
 
 AABB::AABB(Grid *owner)
     : intervalListX(this, Axis::X, true),
       intervalListY(this, Axis::Y, false),
+      pairsWithAtLeastOneAxisOverlapping(),
       owner(owner)
 {
 }
@@ -37,35 +37,55 @@ SegmentedIntervalList *AABB::getIntervalListY()
 
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    if (colliderA->getGameObject()->getActive() == false || colliderB->getGameObject()->getActive() == false)
+    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
+    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
     {
-        return;
-    }
-    if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
-    {
-        return;
+        auto result = pairsWithAtLeastOneAxisOverlapping.insert(AABBPair(colliderA, colliderB));
+        iterator = result.first;
     }
 
-    BoundingRadiusProjection *minXA = colliderA->getXProjections()->getMin();
-    BoundingRadiusProjection *maxXA = colliderA->getXProjections()->getMax();
-    BoundingRadiusProjection *minXB = colliderB->getXProjections()->getMin();
-    BoundingRadiusProjection *maxXB = colliderB->getXProjections()->getMax();
-    BoundingRadiusProjection *minYA = colliderA->getYProjections()->getMin();
-    BoundingRadiusProjection *maxYA = colliderA->getYProjections()->getMax();
-    BoundingRadiusProjection *minYB = colliderB->getYProjections()->getMin();
-    BoundingRadiusProjection *maxYB = colliderB->getYProjections()->getMax();
+    uint8_t previousAxisOverlap = iterator->axisOverlap;
+    AABBPair &pair = const_cast<AABBPair &>(*iterator);
+    pair.axisOverlap |= axis;
 
-    if (*minXA > *maxXB || *minXB > *maxXA || *minYA > *maxYB || *minYB > *maxYA)
+    if (pair.axisOverlap == Axis::ALL_AXES && previousAxisOverlap != Axis::ALL_AXES)
     {
-        return;
-    }
+        if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
+        {
+            return;
+        }
+        if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
+        {
+            return;
+        }
 
-    owner->createCollisionPair(colliderA, colliderB, axis);
+        // Both axes are now overlapping in this cell, so this cell contributes one witness.
+        owner->createCollisionPair(colliderA, colliderB);
+    }
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    owner->removeCollisionPair(colliderA, colliderB, axis);
+    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
+    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
+    {
+        return;
+    }
+
+    uint8_t previousAxisOverlap = iterator->axisOverlap;
+    AABBPair &pair = const_cast<AABBPair &>(*iterator);
+    pair.axisOverlap &= ~axis;
+
+    if (pair.axisOverlap == 0)
+    {
+        // no axes are overlapping anymore, we can remove the collision
+        pairsWithAtLeastOneAxisOverlapping.erase(iterator);
+    }
+
+    if (previousAxisOverlap == Axis::ALL_AXES && pair.axisOverlap != Axis::ALL_AXES)
+    {
+        owner->removeCollisionPair(colliderA, colliderB);
+    }
 }
 
 void AABB::sort()

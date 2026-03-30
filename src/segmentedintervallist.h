@@ -44,8 +44,8 @@ private:
     void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
     void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
 
-    void emitCollision(Collider *colliderA, Collider *colliderB, Axis axis);
-    void removeCollision(Collider *colliderA, Collider *colliderB, Axis axis);
+    void emitCollision(Collider *colliderA, Collider *colliderB);
+    void removeCollision(Collider *colliderA, Collider *colliderB);
     void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
 
     std::vector<LocalSortArray *> chunks;

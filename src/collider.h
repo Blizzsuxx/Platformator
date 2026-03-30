@@ -86,6 +86,8 @@ struct BoundingRadiusProjectionAxisProxy
 {
     BoundingRadiusProjectionProxy minProxy;
     BoundingRadiusProjectionProxy maxProxy;
+    SegmentedIntervalList *ownerList;
+    size_t colliderProxyIndex;
 };
 
 enum class ColliderType
@@ -130,7 +132,7 @@ public:
     std::vector<GridCell *> &getGridCells();
     void clearGridCells();
 
-    BoundingRadiusProjectionAxisProxy *addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, LocalSortArray *chunk);
+    BoundingRadiusProjectionAxisProxy *addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, SegmentedIntervalList *ownerList, LocalSortArray *chunk);
     void removeProjectionProxy(BoundingRadiusProjectionAxisProxy *proxy);
 
     BoundingRadiusProjectionAxisProxy *getProjectionProxiesForList(SegmentedIntervalList *list);

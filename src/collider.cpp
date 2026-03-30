@@ -6,6 +6,8 @@
 Collider::Collider(GameObject *gameObject, ComponentType type)
     : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), projectionProxies()
 {
+    cells.reserve(4);
+    projectionProxies.reserve(8);
 }
 
 Collider::~Collider()
@@ -157,9 +159,9 @@ void Collider::clearGridCells()
     cells.clear();
 }
 
-BoundingRadiusProjectionAxisProxy *Collider::addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, LocalSortArray *chunk)
+BoundingRadiusProjectionAxisProxy *Collider::addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, SegmentedIntervalList *ownerList, LocalSortArray *chunk)
 {
-    BoundingRadiusProjectionAxisProxy *proxy = new BoundingRadiusProjectionAxisProxy{BoundingRadiusProjectionProxy(minProjection, chunk), BoundingRadiusProjectionProxy(maxProjection, chunk)};
+    BoundingRadiusProjectionAxisProxy *proxy = new BoundingRadiusProjectionAxisProxy{BoundingRadiusProjectionProxy(minProjection, chunk), BoundingRadiusProjectionProxy(maxProjection, chunk), ownerList, projectionProxies.size()};
     projectionProxies.push_back(proxy);
     return proxy;
 }
@@ -168,11 +170,24 @@ void Collider::removeProjectionProxy(BoundingRadiusProjectionAxisProxy *proxy)
 {
     if (proxy != nullptr)
     {
-        auto it = std::find(projectionProxies.begin(), projectionProxies.end(), proxy);
-        if (it != projectionProxies.end())
+        size_t removeIndex = proxy->colliderProxyIndex;
+        size_t lastIndex = projectionProxies.size() - 1;
+
+        if (removeIndex < projectionProxies.size() && projectionProxies[removeIndex] == proxy)
         {
-            projectionProxies.erase(it);
+            if (removeIndex != lastIndex)
+            {
+                BoundingRadiusProjectionAxisProxy *movedProxy = projectionProxies[lastIndex];
+                projectionProxies[removeIndex] = movedProxy;
+                movedProxy->colliderProxyIndex = removeIndex;
+            }
+
+            projectionProxies.pop_back();
             delete proxy;
+        }
+        else
+        {
+            printf("Error: trying to remove a projection proxy that is not in the collider's list\n");
         }
     }
 }
@@ -182,8 +197,7 @@ BoundingRadiusProjectionAxisProxy *Collider::getProjectionProxiesForList(Segment
     BoundingRadiusProjectionAxisProxy *proxyResult = nullptr;
     for (BoundingRadiusProjectionAxisProxy *proxy : projectionProxies)
     {
-        LocalSortArray *chunk = proxy->minProxy.getChunk();
-        if (chunk != nullptr && chunk->getOwner() == list)
+        if (proxy->ownerList == list)
         {
             proxyResult = proxy;
             break;

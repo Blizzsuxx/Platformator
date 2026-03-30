@@ -18,18 +18,23 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
     BoundingRadiusProjection *upperProjection = axis->getMax();
     Collider *collider = lowerProjection->getCollider();
 
-    BoundingRadiusProjectionAxisProxy *axisProxy = collider->addProjectionProxyAxis(lowerProjection, upperProjection, nullptr);
+    BoundingRadiusProjectionAxisProxy *axisProxy = collider->addProjectionProxyAxis(lowerProjection, upperProjection, this, nullptr);
 
     BoundingRadiusProjectionProxy *lowerProxy = &axisProxy->minProxy;
     BoundingRadiusProjectionProxy *upperProxy = &axisProxy->maxProxy;
-    add(lowerProxy);
-    add(upperProxy);
+    auto [chunkWhereItWasInserted, indexInsideChunkWhereItWasInserted] = add(lowerProxy);
+    auto [chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted2] = add(upperProxy);
 
-    // doing it this way because of chunk splitting
-    LocalSortArray *chunkWhereItWasInserted = lowerProxy->getChunk();
-    LocalSortArray *chunkWhereItWasInserted2 = upperProxy->getChunk();
-    size_t indexInsideChunkWhereItWasInserted = chunkWhereItWasInserted->find(lowerProxy);
-    size_t indexInsideChunkWhereItWasInserted2 = chunkWhereItWasInserted2->find(upperProxy);
+    if (chunkWhereItWasInserted != lowerProxy->getChunk())
+    {
+        chunkWhereItWasInserted = lowerProxy->getChunk();
+        indexInsideChunkWhereItWasInserted = chunkWhereItWasInserted->find(lowerProxy);
+    }
+    if (chunkWhereItWasInserted2 != upperProxy->getChunk())
+    {
+        chunkWhereItWasInserted2 = upperProxy->getChunk();
+        indexInsideChunkWhereItWasInserted2 = chunkWhereItWasInserted2->find(upperProxy);
+    }
 
     LocalSortArray *currentChunk = chunkWhereItWasInserted;
 
@@ -40,8 +45,9 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
             currentChunk->addCheckpoint(collider);
             currentChunk = currentChunk->getRightChunk();
         }
-        addCollisionsForNewlyAddedProjection(lowerProxy, indexInsideChunkWhereItWasInserted, upperProxy, indexInsideChunkWhereItWasInserted2);
     }
+
+    addCollisionsForNewlyAddedProjection(lowerProxy, indexInsideChunkWhereItWasInserted, upperProxy, indexInsideChunkWhereItWasInserted2);
 }
 
 void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
@@ -64,9 +70,10 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
     size_t indexInsideChunkWhereItWillBeRemoved = lowerProxy->getChunk()->find(lowerProxy);
     size_t indexInsideChunkWhereItWillBeRemoved2 = upperProxy->getChunk()->find(upperProxy);
 
+    removeCollisionsForRemovedProjection(lowerProxy, indexInsideChunkWhereItWillBeRemoved, upperProxy, indexInsideChunkWhereItWillBeRemoved2);
+
     if (isPrimary)
     {
-        removeCollisionsForRemovedProjection(lowerProxy, indexInsideChunkWhereItWillBeRemoved, upperProxy, indexInsideChunkWhereItWillBeRemoved2);
         while (currentChunk != upperChunk)
         {
             currentChunk->removeCheckpoint(collider);
@@ -328,12 +335,12 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
         if (!leftRadiusProjection->getIsMaxima() && rightRadiusProjection->getIsMaxima())
         {
             // remove collision
-            removeCollision(colliderA, colliderB, axis);
+            removeCollision(colliderA, colliderB);
         }
         else if (leftRadiusProjection->getIsMaxima() && !rightRadiusProjection->getIsMaxima())
         {
             // add collision
-            emitCollision(colliderA, colliderB, axis);
+            emitCollision(colliderA, colliderB);
         }
     }
 
@@ -379,12 +386,12 @@ void SegmentedIntervalList::addDirtyChunk(LocalSortArray *chunk)
     }
 }
 
-void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB, Axis axis)
+void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB)
 {
     owner->axisOverlapBegin(colliderA, colliderB, axis);
 }
 
-void SegmentedIntervalList::removeCollision(Collider *colliderA, Collider *colliderB, Axis axis)
+void SegmentedIntervalList::removeCollision(Collider *colliderA, Collider *colliderB)
 {
     owner->axisOverlapEnd(colliderA, colliderB, axis);
 }
@@ -398,7 +405,7 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
         upperIndexInsideChunkWhereItWasInserted,
         [this](Collider *colliderA, Collider *colliderB)
         {
-            emitCollision(colliderA, colliderB, Axis::ALL_AXES);
+            emitCollision(colliderA, colliderB);
         });
 }
 
@@ -411,7 +418,7 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
         upperIndexInsideChunkWhereItWasRemoved,
         [this](Collider *colliderA, Collider *colliderB)
         {
-            removeCollision(colliderA, colliderB, Axis::ALL_AXES);
+            removeCollision(colliderA, colliderB);
         });
 }
 

@@ -20,7 +20,7 @@ std::tuple<int, int, int, int> Grid::getGridCellRange(Collider *collider)
     int minY = static_cast<int>(std::floor(yProjections->getMin()->getProjectedPosition() / GRID_CELL_SIZE));
     int maxY = static_cast<int>(std::floor(yProjections->getMax()->getProjectedPosition() / GRID_CELL_SIZE));
 
-    return std::move(std::make_tuple(minX, maxX, minY, maxY));
+    return std::make_tuple(minX, maxX, minY, maxY);
 }
 
 void Grid::addColliderToGridCell(GridCell *cell, Collider *collider)
@@ -55,20 +55,19 @@ void Grid::addColliderInternal(Collider *collider)
 
 void Grid::removeColliderInternal(Collider *collider)
 {
-    int minX, maxX, minY, maxY;
-    std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
     std::vector<GridCell *> &gridCells = collider->getGridCells();
 
-    for (int i = 0; i < gridCells.size(); i++)
+    while (!gridCells.empty())
     {
-        GridCell *cell = gridCells[i];
+        GridCell *cell = gridCells.back();
+        gridCells.pop_back();
+
         cell->removeCollider(collider);
         if (cell->getAABB()->getIsEmpty())
         {
             cells.erase(cell->getCellKey());
         }
     }
-    collider->clearGridCells();
 }
 
 void Grid::addCollider(Collider *collider)
@@ -81,7 +80,7 @@ void Grid::removeCollider(Collider *collider)
     removeColliderInternal(collider);
 }
 
-void Grid::removePair(const ColliderPair &pair, Axis axis)
+void Grid::removePair(const ColliderPair &pair)
 {
     auto iterator = candidateCollisions.find(pair);
     if (iterator == candidateCollisions.end())
@@ -91,11 +90,9 @@ void Grid::removePair(const ColliderPair &pair, Axis axis)
 
     const ColliderPair *storedPair = &(*iterator);
 
-    storedPair->decrementWitnessCount(axis);
-    if (storedPair->getWitnessCountMin() == 0)
+    storedPair->decrementWitnessCount();
+    if (storedPair->getWitnessCount() == 0)
     {
-        // if no collisions on any axis, remove the pair
-
         Collider *objectA = storedPair->getObjectA();
         Collider *objectB = storedPair->getObjectB();
 
@@ -226,7 +223,7 @@ void Grid::clearPendingNarrowPhasePairs()
     pendingNarrowPhasePairs.clear();
 }
 
-void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB, Axis axis)
+void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
 {
     const ColliderPair *pair;
 
@@ -241,8 +238,8 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB, Axis ax
         pair = &(*iteratorPair);
     }
 
-    pair->incrementWitnessCount(axis);
-    if (pair->getWitnessCountMax() == 1)
+    pair->incrementWitnessCount();
+    if (pair->getWitnessCount() == 1)
     {
 
         Collider *objectA = pair->getObjectA();
@@ -260,10 +257,10 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB, Axis ax
     }
 }
 
-void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB, Axis axis)
+void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
 {
     ColliderPair pair(colliderA, colliderB);
-    removePair(pair, axis);
+    removePair(pair);
 }
 
 void Grid::queueColliderForUpdate(Collider *collider)
@@ -279,7 +276,7 @@ void Grid::syncColliderWithGrid(Collider *collider)
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
 
-    for (int i = 0; i < gridCellsColliderBelongsTo.size(); ++i)
+    for (size_t i = 0; i < gridCellsColliderBelongsTo.size();)
     {
         GridCell *aabb = gridCellsColliderBelongsTo[i];
         const GridCellKey &key = aabb->getCellKey();
@@ -291,14 +288,17 @@ void Grid::syncColliderWithGrid(Collider *collider)
             {
                 iterator->second.removeCollider(collider);
             }
-            gridCellsColliderBelongsTo.erase(gridCellsColliderBelongsTo.begin() + i);
+            gridCellsColliderBelongsTo[i] = gridCellsColliderBelongsTo.back();
+            gridCellsColliderBelongsTo.pop_back();
 
             if (iterator != cells.end() && iterator->second.getAABB()->getIsEmpty())
             {
                 cells.erase(iterator);
             }
-            --i;
+            continue;
         }
+
+        ++i;
     }
 
     for (int x = minX; x <= maxX; ++x)

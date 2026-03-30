@@ -1,7 +1,7 @@
 #include "colliderpair.h"
 #include "aabb.h"
 
-ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCountX(0), witnessCountY(0)
+ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCount(0)
 {
     if (a < b)
     {
@@ -180,42 +180,20 @@ bool ColliderPair::operator==(const ColliderPair &other) const
     return (objectA == other.objectA && objectB == other.objectB) || (objectA == other.objectB && objectB == other.objectA);
 }
 
-void ColliderPair::incrementWitnessCount(Axis axis) const
+void ColliderPair::incrementWitnessCount() const
 {
-    if (axis == Axis::X)
+    witnessCount++;
+}
+
+void ColliderPair::decrementWitnessCount() const
+{
+    if (witnessCount > 0)
     {
-        witnessCountX++;
-    }
-    else if (axis == Axis::Y)
-    {
-        witnessCountY++;
+        witnessCount--;
     }
 }
 
-void ColliderPair::decrementWitnessCount(Axis axis) const
+size_t ColliderPair::getWitnessCount() const
 {
-    if (axis == Axis::X)
-    {
-        if (witnessCountX > 0)
-        {
-            witnessCountX--;
-        }
-    }
-    else if (axis == Axis::Y)
-    {
-        if (witnessCountY > 0)
-        {
-            witnessCountY--;
-        }
-    }
-}
-
-size_t ColliderPair::getWitnessCountMin() const
-{
-    return std::min(witnessCountX, witnessCountY);
-}
-
-size_t ColliderPair::getWitnessCountMax() const
-{
-    return witnessCountX + witnessCountY;
+    return witnessCount;
 }

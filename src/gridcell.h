@@ -38,8 +38,11 @@ public:
     void removeCollider(Collider *collider);
     AABB *getAABB();
     const GridCellKey &getCellKey() const;
+    bool getIsDirty() const;
+    void setIsDirty(bool newIsDirty);
 
 private:
     AABB aabb;
     GridCellKey key;
+    bool isDirty;
 };

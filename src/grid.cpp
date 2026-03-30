@@ -2,7 +2,7 @@
 #include "constants.h"
 
 Grid::Grid()
-    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency()
+    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), dirtyCells(), pairAdjacency()
 {
 }
 
@@ -30,6 +30,30 @@ void Grid::addColliderToGridCell(GridCell *cell, Collider *collider)
         cell->addCollider(collider);
         collider->addToGridCell(cell);
     }
+}
+
+void Grid::markGridCellDirty(GridCell *cell)
+{
+    if (cell != nullptr && !cell->getIsDirty())
+    {
+        cell->setIsDirty(true);
+        dirtyCells.push_back(cell);
+    }
+}
+
+void Grid::removeGridCellIfEmpty(GridCell *cell)
+{
+    if (cell == nullptr || !cell->getAABB()->getIsEmpty())
+    {
+        return;
+    }
+
+    if (cell->getIsDirty())
+    {
+        return;
+    }
+
+    cells.erase(cell->getCellKey());
 }
 
 void Grid::addColliderInternal(Collider *collider)
@@ -63,10 +87,7 @@ void Grid::removeColliderInternal(Collider *collider)
         gridCells.pop_back();
 
         cell->removeCollider(collider);
-        if (cell->getAABB()->getIsEmpty())
-        {
-            cells.erase(cell->getCellKey());
-        }
+        removeGridCellIfEmpty(cell);
     }
 }
 
@@ -265,6 +286,14 @@ void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
 
 void Grid::queueColliderForUpdate(Collider *collider)
 {
+    for (GridCell *cell : collider->getGridCells())
+    {
+        if (cell != nullptr)
+        {
+            markGridCellDirty(cell);
+        }
+    }
+
     queuePairsForCollider(collider);
     syncColliderWithGrid(collider);
 }
@@ -287,14 +316,10 @@ void Grid::syncColliderWithGrid(Collider *collider)
             if (iterator != cells.end())
             {
                 iterator->second.removeCollider(collider);
+                removeGridCellIfEmpty(&iterator->second);
             }
             gridCellsColliderBelongsTo[i] = gridCellsColliderBelongsTo.back();
             gridCellsColliderBelongsTo.pop_back();
-
-            if (iterator != cells.end() && iterator->second.getAABB()->getIsEmpty())
-            {
-                cells.erase(iterator);
-            }
             continue;
         }
 
@@ -319,9 +344,31 @@ void Grid::syncColliderWithGrid(Collider *collider)
 
 void Grid::sort()
 {
-    // TODO: sort
-    for (auto &cellEntry : cells)
+    std::vector<GridCellKey> emptyDirtyCells;
+    emptyDirtyCells.reserve(dirtyCells.size());
+
+    for (GridCell *cell : dirtyCells)
     {
-        cellEntry.second.getAABB()->sort();
+        if (cell == nullptr)
+        {
+            continue;
+        }
+
+        cell->setIsDirty(false);
+
+        if (cell->getAABB()->getIsEmpty())
+        {
+            emptyDirtyCells.push_back(cell->getCellKey());
+            continue;
+        }
+
+        cell->getAABB()->sort();
+    }
+
+    dirtyCells.clear();
+
+    for (const GridCellKey &key : emptyDirtyCells)
+    {
+        cells.erase(key);
     }
 }

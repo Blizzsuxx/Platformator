@@ -70,14 +70,12 @@ public:
     bool getIsEmpty() const;
 
 private:
-    size_t findPairIndex(Collider *colliderA, Collider *colliderB) const;
-    const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
-    std::vector<AABBPair> pairsWithAtLeastOneAxisOverlapping;
+    std::unordered_set<AABBPair, AABBPair::HashFunction> pairsWithAtLeastOneAxisOverlapping;
     Grid *owner;
 
     friend class SegmentedIntervalList;

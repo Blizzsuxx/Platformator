@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 #include "localsortarray.h"
@@ -34,10 +35,12 @@ private:
 
     size_t binarySearch(BoundingRadiusProjectionProxy *element);
     size_t binarySearch(LocalSortArray *array);
+    std::pair<LocalSortArray *, size_t> find(BoundingRadiusProjectionProxy *element);
 
     std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element);
     std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element, size_t chunkIndex);
     std::pair<LocalSortArray *, size_t> remove(BoundingRadiusProjectionProxy *element);
+    std::pair<LocalSortArray *, size_t> remove(LocalSortArray *array, size_t index);
 
     void swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk);
     void sortChunkFromIndex(LocalSortArray *chunk, size_t arrayIndex);

@@ -1,7 +1,7 @@
 #include "gridcell.h"
 
 GridCell::GridCell(GridCellKey key, Grid *owner)
-    : aabb(owner), key(key)
+    : aabb(owner), key(key), isDirty(false)
 {
 }
 
@@ -27,4 +27,14 @@ AABB *GridCell::getAABB()
 const GridCellKey &GridCell::getCellKey() const
 {
     return key;
+}
+
+bool GridCell::getIsDirty() const
+{
+    return isDirty;
+}
+
+void GridCell::setIsDirty(bool newIsDirty)
+{
+    isDirty = newIsDirty;
 }

@@ -65,6 +65,14 @@ private:
     LocalSortArray *chunk;
 };
 
+struct BoundingRadiusProjectionAxisProxy
+{
+    BoundingRadiusProjectionProxy minProxy;
+    BoundingRadiusProjectionProxy maxProxy;
+    SegmentedIntervalList *ownerList;
+    size_t colliderProxyIndex;
+};
+
 class BoundingRadiusProjectionAxis
 {
 public:
@@ -74,20 +82,19 @@ public:
     BoundingRadiusProjection *getMin();
     BoundingRadiusProjection *getMax();
 
+    BoundingRadiusProjectionAxisProxy *createProxyForList(SegmentedIntervalList *list);
+    BoundingRadiusProjectionAxisProxy *getProxyForList(SegmentedIntervalList *list);
+    std::vector<BoundingRadiusProjectionAxisProxy *> &getProxies();
+    void removeProxy(SegmentedIntervalList *list);
+    void removeProxy(BoundingRadiusProjectionAxisProxy *proxy);
+
     bool operator==(const BoundingRadiusProjectionAxis &other) const;
     bool operator!=(const BoundingRadiusProjectionAxis &other) const;
 
 private:
     BoundingRadiusProjection min;
     BoundingRadiusProjection max;
-};
-
-struct BoundingRadiusProjectionAxisProxy
-{
-    BoundingRadiusProjectionProxy minProxy;
-    BoundingRadiusProjectionProxy maxProxy;
-    SegmentedIntervalList *ownerList;
-    size_t colliderProxyIndex;
+    std::vector<BoundingRadiusProjectionAxisProxy *> proxies;
 };
 
 enum class ColliderType
@@ -132,11 +139,6 @@ public:
     std::vector<GridCell *> &getGridCells();
     void clearGridCells();
 
-    BoundingRadiusProjectionAxisProxy *addProjectionProxyAxis(BoundingRadiusProjection *minProjection, BoundingRadiusProjection *maxProjection, SegmentedIntervalList *ownerList, LocalSortArray *chunk);
-    void removeProjectionProxy(BoundingRadiusProjectionAxisProxy *proxy);
-
-    BoundingRadiusProjectionAxisProxy *getProjectionProxiesForList(SegmentedIntervalList *list);
-
 protected:
     uint64_t collisionGroup;
     uint64_t collisionMask;
@@ -148,7 +150,6 @@ protected:
     BoundingRadiusProjectionAxis yProjections;
 
     std::vector<GridCell *> cells;
-    std::vector<BoundingRadiusProjectionAxisProxy *> projectionProxies;
 
     void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);
     virtual void updateCollider() = 0;

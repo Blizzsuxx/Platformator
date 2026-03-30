@@ -36,31 +36,17 @@ SegmentedIntervalList *AABB::getIntervalListY()
     return &intervalListY;
 }
 
-size_t AABB::findPairIndex(Collider *colliderA, Collider *colliderB) const
-{
-    for (size_t i = 0; i < pairsWithAtLeastOneAxisOverlapping.size(); ++i)
-    {
-        const AABBPair &pair = pairsWithAtLeastOneAxisOverlapping[i];
-        if ((pair.a == colliderA && pair.b == colliderB) || (pair.a == colliderB && pair.b == colliderA))
-        {
-            return i;
-        }
-    }
-
-    return SIZE_MAX;
-}
-
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    size_t pairIndex = findPairIndex(colliderA, colliderB);
-    if (pairIndex == SIZE_MAX)
+    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
+    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
     {
-        pairIndex = pairsWithAtLeastOneAxisOverlapping.size();
-        pairsWithAtLeastOneAxisOverlapping.emplace_back(colliderA, colliderB);
+        auto result = pairsWithAtLeastOneAxisOverlapping.insert(AABBPair(colliderA, colliderB));
+        iterator = result.first;
     }
 
-    AABBPair &pair = pairsWithAtLeastOneAxisOverlapping[pairIndex];
-    uint8_t previousAxisOverlap = pair.axisOverlap;
+    uint8_t previousAxisOverlap = iterator->axisOverlap;
+    const AABBPair &pair = (*iterator);
     pair.axisOverlap |= axis;
 
     if (pair.axisOverlap == Axis::ALL_AXES && previousAxisOverlap != Axis::ALL_AXES)
@@ -81,24 +67,20 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    size_t pairIndex = findPairIndex(colliderA, colliderB);
-    if (pairIndex == SIZE_MAX)
+    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
+    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
     {
         return;
     }
 
-    AABBPair &pair = pairsWithAtLeastOneAxisOverlapping[pairIndex];
-    uint8_t previousAxisOverlap = pair.axisOverlap;
+    uint8_t previousAxisOverlap = iterator->axisOverlap;
+    const AABBPair &pair = (*iterator);
     pair.axisOverlap &= ~axis;
 
     if (pair.axisOverlap == 0)
     {
-        size_t lastIndex = pairsWithAtLeastOneAxisOverlapping.size() - 1;
-        if (pairIndex != lastIndex)
-        {
-            pairsWithAtLeastOneAxisOverlapping[pairIndex] = pairsWithAtLeastOneAxisOverlapping[lastIndex];
-        }
-        pairsWithAtLeastOneAxisOverlapping.pop_back();
+        // no axes are overlapping anymore, we can remove the collision
+        pairsWithAtLeastOneAxisOverlapping.erase(iterator);
     }
 
     if (previousAxisOverlap == Axis::ALL_AXES && pair.axisOverlap != Axis::ALL_AXES)

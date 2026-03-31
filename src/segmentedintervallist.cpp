@@ -36,6 +36,12 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
         indexInsideChunkWhereItWasInserted2 = chunkWhereItWasInserted2->find(upperProxy);
     }
 
+    if (chunkWhereItWasInserted == nullptr || chunkWhereItWasInserted2 == nullptr || indexInsideChunkWhereItWasInserted == SIZE_MAX || indexInsideChunkWhereItWasInserted2 == SIZE_MAX)
+    {
+        printf("Error: trying to add a projection axis with stale proxy state, chunkWhereItWasInserted: %p, chunkWhereItWasInserted2: %p, indexInsideChunkWhereItWasInserted: %zu, indexInsideChunkWhereItWasInserted2: %zu\n", chunkWhereItWasInserted, chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted, indexInsideChunkWhereItWasInserted2);
+        return;
+    }
+
     LocalSortArray *currentChunk = chunkWhereItWasInserted;
 
     if (isPrimary)
@@ -70,6 +76,7 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
     if (currentChunk == nullptr || upperChunk == nullptr || indexInsideChunkWhereItWillBeRemoved == SIZE_MAX || indexInsideChunkWhereItWillBeRemoved2 == SIZE_MAX)
     {
         printf("Error: trying to remove a projection axis with stale proxy state, currentChunk: %p, upperChunk: %p, indexInsideChunkWhereItWillBeRemoved: %zu, indexInsideChunkWhereItWillBeRemoved2: %zu\n", currentChunk, upperChunk, indexInsideChunkWhereItWillBeRemoved, indexInsideChunkWhereItWillBeRemoved2);
+        return;
     }
 
     removeCollisionsForRemovedProjection(lowerProxy, indexInsideChunkWhereItWillBeRemoved, upperProxy, indexInsideChunkWhereItWillBeRemoved2);
@@ -346,6 +353,10 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::find(BoundingRadiusPr
         {
             return {chunk, index};
         }
+        else
+        {
+            printf("Error: trying to find an element that is not in the chunk it should be in, chunk: %p, element: %p\n", chunk, element);
+        }
     }
 
     return {nullptr, SIZE_MAX};
@@ -449,7 +460,7 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
         upperIndexInsideChunkWhereItWasInserted,
         [this](Collider *colliderA, Collider *colliderB)
         {
-            emitCollision(colliderA, colliderB);
+            owner->overlapBeginCheckpoint(colliderA, colliderB);
         });
 }
 
@@ -462,7 +473,7 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
         upperIndexInsideChunkWhereItWasRemoved,
         [this](Collider *colliderA, Collider *colliderB)
         {
-            removeCollision(colliderA, colliderB);
+            owner->overlapEndCheckpoint(colliderA, colliderB);
         });
 }
 

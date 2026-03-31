@@ -51,6 +51,8 @@ public:
 private:
     size_t binarySearch(BoundingRadiusProjectionProxy *element);
     size_t searchAround(size_t index, BoundingRadiusProjectionProxy *element);
+    void addCheckpointInternal(Collider *element);
+    std::size_t removeCheckpointInternal(Collider *element);
 
     size_t size;
     BoundingRadiusProjectionProxy *array[MAX_SIZE];

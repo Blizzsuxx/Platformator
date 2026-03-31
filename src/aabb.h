@@ -10,6 +10,7 @@ class Grid;
 
 enum Axis : uint8_t
 {
+    NONE = 0,
     X = 1,
     Y = 2,
     ALL_AXES = 3
@@ -72,6 +73,9 @@ public:
 private:
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
+    void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);
+    void overlapEndCheckpoint(Collider *colliderA, Collider *colliderB);
+    uint8_t checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const;
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;

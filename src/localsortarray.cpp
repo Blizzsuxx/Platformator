@@ -25,7 +25,17 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
         rightChunk->leftChunk = this;
     }
 
-    for (size_t i = 0; i < size; i++)
+    // When a chunk must be split due to insertion into a full chunk, a
+    // new chunk is allocated and placed next in the list. Approximately
+    // half the elements from the end of the full chunk are copied into the
+    // new chunk, and the new chunk inherits the old chunk’s checkpoints
+    // set. The checkpoints set for the old chunk is computed by starting
+    //  with the original set and modifying this set while traversing the new
+    // chunk. Beginning with the end and traversing backwards, when a
+    // maxima is encountered, its object id is added to the checkpoints.
+    // When a minima is encountered, its object id is removed.
+
+    for (size_t i = size - 1; i != SIZE_MAX; i--)
     {
         array[i]->setChunk(this);
 
@@ -36,11 +46,11 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
 
         if (array[i]->getIsMaxima())
         {
-            other->addCheckpoint(array[i]->getCollider());
+            other->addCheckpointInternal(array[i]->getCollider());
         }
         else
         {
-            other->removeCheckpoint(array[i]->getCollider());
+            other->removeCheckpointInternal(array[i]->getCollider());
         }
     }
 }
@@ -194,17 +204,27 @@ void LocalSortArray::addCheckpoint(Collider *collider)
         return;
     }
 
+    addCheckpointInternal(collider);
+}
+
+void LocalSortArray::addCheckpointInternal(Collider *collider)
+{
     checkpoints.insert(collider);
 }
 
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
-    size_t numberOfErasedMembers = checkpoints.erase(collider);
+    size_t numberOfErasedMembers = removeCheckpointInternal(collider);
 
     if (numberOfErasedMembers == 0)
     {
         checkpointCache.insert(collider);
     }
+}
+
+size_t LocalSortArray::removeCheckpointInternal(Collider *collider)
+{
+    return checkpoints.erase(collider);
 }
 
 size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
@@ -265,7 +285,7 @@ size_t LocalSortArray::find(BoundingRadiusProjectionProxy *element)
         }
     }
 
-    return low;
+    return SIZE_MAX;
 }
 
 size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjectionProxy *element)
@@ -296,7 +316,7 @@ size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjectionProxy 
         }
     }
 
-    return static_cast<size_t>(-1);
+    return SIZE_MAX;
 }
 
 void LocalSortArray::setIsDirty(bool dirty)

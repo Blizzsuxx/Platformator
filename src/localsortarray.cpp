@@ -3,12 +3,12 @@
 #include "segmentedintervallist.h"
 
 LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
-    : size(0), array(), checkpoints(), isDirty(false), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
+    : size(0), array(), checkpoints(), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoints(other->owner->getIsPrimary() ? other->checkpoints : std::unordered_set<Collider *>()), isDirty(false), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
+    : size(0), array(), checkpoints(other->owner->getIsPrimary() ? other->checkpoints : std::unordered_set<Collider *>()), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
 {
     const size_t oldSize = other->size;
     const size_t movedCount = oldSize / 2;
@@ -38,6 +38,7 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
     for (size_t i = size - 1; i != SIZE_MAX; i--)
     {
         array[i]->setChunk(this);
+        array[i]->setChunkIndex(i);
 
         if (!owner->getIsPrimary())
         {
@@ -75,8 +76,10 @@ size_t LocalSortArray::add(BoundingRadiusProjectionProxy *element)
         for (size_t i = size; i > index; i--)
         {
             array[i] = array[i - 1];
+            array[i]->setChunkIndex(i);
         }
         array[index] = element;
+        element->setChunkIndex(index);
         size++;
 
         return index;
@@ -101,6 +104,7 @@ BoundingRadiusProjectionProxy *LocalSortArray::remove(size_t index)
     for (size_t i = index; i < size - 1; i++)
     {
         array[i] = array[i + 1];
+        array[i]->setChunkIndex(i);
     }
     size--;
 
@@ -135,8 +139,6 @@ void LocalSortArray::sort(SwapCallback *callback)
             j--;
         }
     }
-
-    this->setIsDirty(false);
 }
 
 void LocalSortArray::sortFromIndex(size_t arrayIndex, SwapCallback *callback)
@@ -260,77 +262,15 @@ std::unordered_set<Collider *> *LocalSortArray::getCheckpoints()
 
 size_t LocalSortArray::find(BoundingRadiusProjectionProxy *element)
 {
-    size_t low = 0;
-    size_t high = size;
-
-    while (low < high)
+    size_t cachedIndex = element->getChunkIndex();
+    if (cachedIndex < size && array[cachedIndex] == element)
     {
-        size_t mid = (low + high) / 2;
-
-        if (array[mid] == element)
-        {
-            return mid;
-        }
-        else if (*array[mid] == *element)
-        {
-            return searchAround(mid, element);
-        }
-        else if (*array[mid] < *element)
-        {
-            low = mid + 1;
-        }
-        else
-        {
-            high = mid;
-        }
+        return cachedIndex;
     }
+
+    printf("Warning: element's cached index is invalid for some reason\n");
 
     return SIZE_MAX;
-}
-
-size_t LocalSortArray::searchAround(size_t index, BoundingRadiusProjectionProxy *element)
-{
-    // Search left
-    for (size_t i = index; i != static_cast<size_t>(-1); i--)
-    {
-        if (array[i] == element)
-        {
-            return i;
-        }
-        if (*array[i] != *element)
-        {
-            break;
-        }
-    }
-
-    // Search right
-    for (size_t i = index + 1; i < size; i++)
-    {
-        if (array[i] == element)
-        {
-            return i;
-        }
-        if (*array[i] != *element)
-        {
-            break;
-        }
-    }
-
-    return SIZE_MAX;
-}
-
-void LocalSortArray::setIsDirty(bool dirty)
-{
-    if (this->isDirty == false && dirty == true)
-    {
-        owner->addDirtyChunk(this);
-    }
-    isDirty = dirty;
-}
-
-bool LocalSortArray::getIsDirty() const
-{
-    return isDirty;
 }
 
 LocalSortArray *LocalSortArray::getLeftChunk() const

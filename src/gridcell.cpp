@@ -19,6 +19,11 @@ void GridCell::removeCollider(Collider *collider)
     aabb.remove(collider);
 }
 
+void GridCell::sort()
+{
+    aabb.sort();
+}
+
 AABB *GridCell::getAABB()
 {
     return &aabb;

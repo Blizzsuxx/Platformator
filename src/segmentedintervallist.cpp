@@ -2,7 +2,7 @@
 #include "aabb.h"
 
 SegmentedIntervalList::SegmentedIntervalList(AABB *owner, Axis axis, bool isPrimary)
-    : chunks(), dirtyChunks(), owner(owner), axis(axis), isPrimary(isPrimary)
+    : chunks(), owner(owner), axis(axis), isPrimary(isPrimary)
 {
     chunks.push_back(new LocalSortArray(this));
 }
@@ -109,6 +109,8 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
         remove(upperChunk, indexInsideChunkWhereItWillBeRemoved2);
     }
 
+    removeDirtyProjection(lowerProxy);
+    removeDirtyProjection(upperProxy);
     axis->removeProxy(axisProxy);
 }
 
@@ -119,47 +121,91 @@ void SegmentedIntervalList::clear()
         delete chunks[i];
     }
     chunks.clear();
-    dirtyChunks.clear();
+    dirtyProjections.clear();
 }
 
 void SegmentedIntervalList::sort()
 {
-    // from lowest to highest
-    // TODO: parallelize this
-    for (LocalSortArray *chunk : dirtyChunks)
+    for (BoundingRadiusProjectionProxy *projection : dirtyProjections)
     {
-        chunk->sort(this);
-    }
-    for (LocalSortArray *chunk : dirtyChunks)
-    {
-        LocalSortArray *currentChunk = chunk;
-        LocalSortArray *leftChunk = currentChunk->getLeftChunk();
-        LocalSortArray *rightChunk = currentChunk->getRightChunk();
-
-        // check if the chunks are sorted between each other, if not, sort them
-        while (leftChunk != nullptr && *leftChunk->getMax() > *currentChunk->getMin())
+        if (projection == nullptr)
         {
-            swapBoundaries(leftChunk, currentChunk);
-            leftChunk->sortFromIndex(leftChunk->getSize() - 1, this);
-            currentChunk->sortFromIndex(0, this);
-
-            currentChunk = leftChunk;
-            leftChunk = leftChunk->getLeftChunk();
+            continue;
         }
 
-        currentChunk = chunk;
-        while (rightChunk != nullptr && *rightChunk->getMin() < *currentChunk->getMax())
-        {
-            swapBoundaries(currentChunk, rightChunk);
-            currentChunk->sortFromIndex(currentChunk->getSize() - 1, this);
-            rightChunk->sortFromIndex(0, this);
+        projection->setIsDirty(false);
 
-            currentChunk = rightChunk;
-            rightChunk = rightChunk->getRightChunk();
+        LocalSortArray *chunk = projection->getChunk();
+        if (chunk == nullptr)
+        {
+            continue;
         }
+
+        size_t index = projection->getChunkIndex();
+        if (index >= chunk->getSize() || chunk->get(index) != projection)
+        {
+            printf("Error: trying to sort a projection that is not in the chunk it should be in, chunk: %p, projection: %p\n", chunk, projection);
+            continue;
+        }
+
+        repairProjectionFromIndex(chunk, index);
     }
 
-    dirtyChunks.clear();
+    dirtyProjections.clear();
+}
+
+std::pair<LocalSortArray *, size_t> SegmentedIntervalList::getPreviousIndex(LocalSortArray *chunk, size_t index) const
+{
+    if (chunk == nullptr)
+    {
+        return {nullptr, SIZE_MAX};
+    }
+
+    if (index > 0)
+    {
+        return {chunk, index - 1};
+    }
+
+    LocalSortArray *leftChunk = chunk->getLeftChunk();
+    while (leftChunk != nullptr)
+    {
+        if (leftChunk->getSize() > 0)
+        {
+            return {leftChunk, leftChunk->getSize() - 1};
+        }
+
+        printf("Warning: found an empty chunk while looking for the previous index, leftChunk: %p\n", leftChunk);
+        leftChunk = leftChunk->getLeftChunk();
+    }
+
+    return {nullptr, SIZE_MAX};
+}
+
+std::pair<LocalSortArray *, size_t> SegmentedIntervalList::getNextIndex(LocalSortArray *chunk, size_t index) const
+{
+    if (chunk == nullptr)
+    {
+        return {nullptr, SIZE_MAX};
+    }
+
+    if (index + 1 < chunk->getSize())
+    {
+        return {chunk, index + 1};
+    }
+
+    LocalSortArray *rightChunk = chunk->getRightChunk();
+    while (rightChunk != nullptr)
+    {
+        if (rightChunk->getSize() > 0)
+        {
+            return {rightChunk, 0};
+        }
+
+        printf("Warning: found an empty chunk while looking for the next index, rightChunk: %p\n", rightChunk);
+        rightChunk = rightChunk->getRightChunk();
+    }
+
+    return {nullptr, SIZE_MAX};
 }
 
 void SegmentedIntervalList::swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk)
@@ -167,41 +213,59 @@ void SegmentedIntervalList::swapBoundaries(LocalSortArray *leftChunk, LocalSortA
     swap(leftChunk->getMax(), leftChunk->getSize() - 1, rightChunk->getMin(), 0);
 }
 
-void SegmentedIntervalList::sortChunkFromIndex(LocalSortArray *chunk, size_t arrayIndex)
+void SegmentedIntervalList::repairProjectionFromIndex(LocalSortArray *chunk, size_t arrayIndex)
 {
-    // cross swap from left to right
-    // swap to right until biggest
-    if (arrayIndex == 0)
+    if (chunk == nullptr || arrayIndex >= chunk->getSize())
     {
-        for (size_t i = 1; i < chunk->getSize(); i++)
-        {
-            if (*chunk->get(arrayIndex) > *chunk->get(i))
-            {
-                swap(chunk->get(arrayIndex), arrayIndex, chunk->get(i), i);
-                arrayIndex = i;
-            }
-            else
-            {
-                return;
-            }
-        }
+        return;
     }
-    // cross swap from right to left
-    // swap to left until smallest
-    else
+
+    BoundingRadiusProjectionProxy *projection = chunk->get(arrayIndex);
+    if (projection == nullptr)
     {
-        for (size_t i = arrayIndex - 1; i != static_cast<size_t>(-1); i--)
+        return;
+    }
+
+    while (true)
+    {
+        chunk = projection->getChunk();
+        arrayIndex = projection->getChunkIndex();
+
+        auto [previousChunk, previousIndex] = getPreviousIndex(chunk, arrayIndex);
+        if (previousChunk == nullptr)
         {
-            if (*chunk->get(arrayIndex) < *chunk->get(i))
-            {
-                swap(chunk->get(arrayIndex), arrayIndex, chunk->get(i), i);
-                arrayIndex = i;
-            }
-            else
-            {
-                return;
-            }
+            break;
         }
+
+        BoundingRadiusProjectionProxy *previousProjection = previousChunk->get(previousIndex);
+        if (*previousProjection > *projection)
+        {
+            swap(previousProjection, previousIndex, projection, arrayIndex);
+            continue;
+        }
+
+        break;
+    }
+
+    while (true)
+    {
+        chunk = projection->getChunk();
+        arrayIndex = projection->getChunkIndex();
+
+        auto [nextChunk, nextIndex] = getNextIndex(chunk, arrayIndex);
+        if (nextChunk == nullptr)
+        {
+            break;
+        }
+
+        BoundingRadiusProjectionProxy *nextProjection = nextChunk->get(nextIndex);
+        if (*projection > *nextProjection)
+        {
+            swap(projection, arrayIndex, nextProjection, nextIndex);
+            continue;
+        }
+
+        break;
     }
 }
 
@@ -311,12 +375,12 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(BoundingRadius
 
 std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(LocalSortArray *array, size_t index)
 {
-    array->remove(index);
-
-    if (index == SIZE_MAX)
+    if (array == nullptr || index == SIZE_MAX || index >= array->getSize())
     {
         return {nullptr, SIZE_MAX};
     }
+
+    array->remove(index);
 
     if (array->getSize() == 0 && chunks.size() > 1)
     {
@@ -333,7 +397,6 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(LocalSortArray
         }
 
         chunks.erase(std::remove(chunks.begin(), chunks.end(), array), chunks.end());
-        dirtyChunks.erase(std::remove(dirtyChunks.begin(), dirtyChunks.end(), array), dirtyChunks.end());
 
         delete array;
 
@@ -383,6 +446,8 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
 
     leftChunk->getArray()[leftRadiusProjectionIndex] = rightRadiusProjection;
     rightChunk->getArray()[rightRadiusProjectionIndex] = leftRadiusProjection;
+    rightRadiusProjection->setChunkIndex(leftRadiusProjectionIndex);
+    leftRadiusProjection->setChunkIndex(rightRadiusProjectionIndex);
 
     // first emit collision events for the two colliders if they are now overlapping
     if (colliderA != colliderB)
@@ -433,12 +498,32 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
     }
 }
 
-void SegmentedIntervalList::addDirtyChunk(LocalSortArray *chunk)
+void SegmentedIntervalList::addDirtyProjection(BoundingRadiusProjectionProxy *projection)
 {
-    if (chunk != nullptr && !chunk->getIsDirty())
+    if (projection == nullptr || projection->getIsDirty())
     {
-        dirtyChunks.push_back(chunk);
+        return;
     }
+
+    LocalSortArray *chunk = projection->getChunk();
+    if (chunk == nullptr)
+    {
+        return;
+    }
+
+    projection->setIsDirty(true);
+    dirtyProjections.push_back(projection);
+}
+
+void SegmentedIntervalList::removeDirtyProjection(BoundingRadiusProjectionProxy *projection)
+{
+    if (projection == nullptr || !projection->getIsDirty())
+    {
+        return;
+    }
+
+    projection->setIsDirty(false);
+    dirtyProjections.erase(std::remove(dirtyProjections.begin(), dirtyProjections.end(), projection), dirtyProjections.end());
 }
 
 void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB)

@@ -45,9 +45,13 @@ public:
 
     BoundingRadiusProjection *getProjection() const;
     LocalSortArray *getChunk() const;
+    size_t getChunkIndex() const;
+    bool getIsDirty() const;
 
     void setBoundingProjection(BoundingRadiusProjection *projection);
     void setChunk(LocalSortArray *chunk);
+    void setChunkIndex(size_t chunkIndex);
+    void setIsDirty(bool dirty);
 
     Collider *getCollider();
     float getProjectedPosition() const;
@@ -63,6 +67,8 @@ public:
 private:
     BoundingRadiusProjection *projection;
     LocalSortArray *chunk;
+    size_t chunkIndex;
+    bool isDirty;
 };
 
 struct BoundingRadiusProjectionAxisProxy
@@ -167,7 +173,7 @@ protected:
     int cachedGridCellMaxY;
     bool isRegisteredInGrid;
 
-    void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);
+    void setProjectionDirtyIfNotNull(BoundingRadiusProjectionAxisProxy *proxy);
     virtual void updateCollider() = 0;
 };
 

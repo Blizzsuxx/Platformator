@@ -37,9 +37,6 @@ public:
 
     size_t find(BoundingRadiusProjectionProxy *element);
 
-    void setIsDirty(bool dirty);
-    bool getIsDirty() const;
-
     LocalSortArray *getLeftChunk() const;
     LocalSortArray *getRightChunk() const;
     void setLeftChunk(LocalSortArray *leftChunk);
@@ -50,7 +47,6 @@ public:
 
 private:
     size_t binarySearch(BoundingRadiusProjectionProxy *element);
-    size_t searchAround(size_t index, BoundingRadiusProjectionProxy *element);
     void addCheckpointInternal(Collider *element);
     std::size_t removeCheckpointInternal(Collider *element);
 
@@ -67,7 +63,6 @@ private:
     std::unordered_set<Collider *> checkpoints;
     std::unordered_set<Collider *> checkpointCache;
 
-    bool isDirty;
     LocalSortArray *leftChunk;
     LocalSortArray *rightChunk;
     SegmentedIntervalList *owner;

@@ -392,7 +392,7 @@ void Grid::sort()
             continue;
         }
 
-        cell->getAABB()->sort();
+        cell->sort();
     }
 
     dirtyCells.clear();

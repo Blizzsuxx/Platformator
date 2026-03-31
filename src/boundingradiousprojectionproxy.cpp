@@ -1,6 +1,7 @@
 #include "collider.h"
+#include <cstddef>
 
-BoundingRadiusProjectionProxy::BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk) : projection(projection), chunk(chunk)
+BoundingRadiusProjectionProxy::BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk) : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX), isDirty(false)
 {
 }
 
@@ -18,6 +19,16 @@ LocalSortArray *BoundingRadiusProjectionProxy::getChunk() const
     return chunk;
 }
 
+size_t BoundingRadiusProjectionProxy::getChunkIndex() const
+{
+    return chunkIndex;
+}
+
+bool BoundingRadiusProjectionProxy::getIsDirty() const
+{
+    return isDirty;
+}
+
 void BoundingRadiusProjectionProxy::setBoundingProjection(BoundingRadiusProjection *projection)
 {
     this->projection = projection;
@@ -26,6 +37,20 @@ void BoundingRadiusProjectionProxy::setBoundingProjection(BoundingRadiusProjecti
 void BoundingRadiusProjectionProxy::setChunk(LocalSortArray *chunk)
 {
     this->chunk = chunk;
+    if (chunk == nullptr)
+    {
+        chunkIndex = SIZE_MAX;
+    }
+}
+
+void BoundingRadiusProjectionProxy::setChunkIndex(size_t chunkIndex)
+{
+    this->chunkIndex = chunkIndex;
+}
+
+void BoundingRadiusProjectionProxy::setIsDirty(bool dirty)
+{
+    isDirty = dirty;
 }
 
 bool BoundingRadiusProjectionProxy::operator==(const BoundingRadiusProjectionProxy &other) const

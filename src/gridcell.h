@@ -40,6 +40,7 @@ public:
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
+    void sort();
     AABB *getAABB();
     const GridCellKey &getCellKey() const;
     bool getIsDirty() const;

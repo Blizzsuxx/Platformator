@@ -2,6 +2,7 @@
 #include "gamemanager.h"
 #include "localsortarray.h"
 #include "gridcell.h"
+#include "segmentedintervallist.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
     : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), hasGridCellRangeCache(false), cachedGridCellMinX(0), cachedGridCellMaxX(0), cachedGridCellMinY(0), cachedGridCellMaxY(0), isRegisteredInGrid(false)
@@ -33,11 +34,12 @@ void Collider::setIsTrigger(const bool isTrigger)
     this->isTrigger = isTrigger;
 }
 
-void Collider::setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty)
+void Collider::setProjectionDirtyIfNotNull(BoundingRadiusProjectionAxisProxy *proxy)
 {
-    if (chunk != nullptr)
+    if (proxy != nullptr && proxy->ownerList != nullptr)
     {
-        chunk->setIsDirty(isDirty);
+        proxy->ownerList->addDirtyProjection(&proxy->minProxy);
+        proxy->ownerList->addDirtyProjection(&proxy->maxProxy);
     }
 }
 
@@ -55,14 +57,12 @@ void Collider::updateStateVersion()
 
     for (BoundingRadiusProjectionAxisProxy *proxy : xProxies)
     {
-        setChunkDirtyIfNotNull(proxy->minProxy.getChunk(), true);
-        setChunkDirtyIfNotNull(proxy->maxProxy.getChunk(), true);
+        setProjectionDirtyIfNotNull(proxy);
     }
 
     for (BoundingRadiusProjectionAxisProxy *proxy : yProxies)
     {
-        setChunkDirtyIfNotNull(proxy->minProxy.getChunk(), true);
-        setChunkDirtyIfNotNull(proxy->maxProxy.getChunk(), true);
+        setProjectionDirtyIfNotNull(proxy);
     }
 
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();

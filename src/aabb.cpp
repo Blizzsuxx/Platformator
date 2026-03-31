@@ -76,14 +76,15 @@ void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
     uint8_t previousAxisOverlap = iterator->axisOverlap;
     const AABBPair &pair = (*iterator);
     pair.axisOverlap &= ~axis;
+    uint8_t currentAxisOverlap = pair.axisOverlap;
 
-    if (pair.axisOverlap == 0)
+    if (currentAxisOverlap == 0)
     {
         // no axes are overlapping anymore, we can remove the collision
         pairsWithAtLeastOneAxisOverlapping.erase(iterator);
     }
 
-    if (previousAxisOverlap == Axis::ALL_AXES && pair.axisOverlap != Axis::ALL_AXES)
+    if (previousAxisOverlap == Axis::ALL_AXES && currentAxisOverlap != Axis::ALL_AXES)
     {
         owner->removeCollisionPair(colliderA, colliderB);
     }

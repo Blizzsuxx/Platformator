@@ -70,8 +70,6 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
     if (currentChunk == nullptr || upperChunk == nullptr || indexInsideChunkWhereItWillBeRemoved == SIZE_MAX || indexInsideChunkWhereItWillBeRemoved2 == SIZE_MAX)
     {
         printf("Error: trying to remove a projection axis with stale proxy state\n");
-        axis->removeProxy(axisProxy);
-        return;
     }
 
     removeCollisionsForRemovedProjection(lowerProxy, indexInsideChunkWhereItWillBeRemoved, upperProxy, indexInsideChunkWhereItWillBeRemoved2);

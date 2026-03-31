@@ -33,6 +33,10 @@ class GridCell
 public:
     GridCell(GridCellKey key, Grid *owner);
     ~GridCell();
+    GridCell(const GridCell &) = delete;
+    GridCell &operator=(const GridCell &) = delete;
+    GridCell(GridCell &&) = delete;
+    GridCell &operator=(GridCell &&) = delete;
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);

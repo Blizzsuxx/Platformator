@@ -4,7 +4,7 @@
 #include "gridcell.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells()
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), isRegisteredInGrid(false)
 {
     cells.reserve(4);
 }
@@ -43,6 +43,11 @@ void Collider::setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty)
 
 void Collider::updateStateVersion()
 {
+    if (!isRegisteredInGrid)
+    {
+        return;
+    }
+
     stateVersion++;
 
     std::vector<BoundingRadiusProjectionAxisProxy *> &xProxies = xProjections.getProxies();
@@ -160,4 +165,14 @@ std::vector<GridCell *> &Collider::getGridCells()
 void Collider::clearGridCells()
 {
     cells.clear();
+}
+
+void Collider::setIsRegisteredInGrid(bool isRegistered)
+{
+    isRegisteredInGrid = isRegistered;
+}
+
+bool Collider::getIsRegisteredInGrid() const
+{
+    return isRegisteredInGrid;
 }

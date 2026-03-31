@@ -47,6 +47,7 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     }
 
     grid.addCollider(colliderComponent);
+    colliderComponent->setIsRegisteredInGrid(true);
 }
 
 void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
@@ -57,12 +58,14 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
     }
 
     grid.removeCollider(colliderComponent);
+    colliderComponent->setIsRegisteredInGrid(false);
     grid.addCollider(colliderComponent);
+    colliderComponent->setIsRegisteredInGrid(true);
 }
 
 void PhysicsManager::notifyColliderUpdated(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
     {
         return;
     }
@@ -100,6 +103,7 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
     }
 
     grid.removeCollider(colliderComponent);
+    colliderComponent->setIsRegisteredInGrid(false);
 }
 
 void PhysicsManager::broadPhase()

@@ -2,7 +2,7 @@
     "makefile.launchConfigurations": [
         {
             "cwd": "/home/user/Projects/Platformator",
-            "binaryPath": "/home/user/Projects/Platformator/main",
+            "binaryPath": "/home/user/Projects/Platformator/bin/main",
             "binaryArgs": []
         }
     ],

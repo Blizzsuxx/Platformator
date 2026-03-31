@@ -25,10 +25,11 @@ std::tuple<int, int, int, int> Grid::getGridCellRange(Collider *collider)
 
 void Grid::addColliderToGridCell(GridCell *cell, Collider *collider)
 {
+    printf("Adding collider %s to cell (%d, %d)\n", collider->getGameObject()->getName().c_str(), cell->getCellKey().x, cell->getCellKey().y);
     if (cell != nullptr)
     {
-        cell->addCollider(collider);
         collider->addToGridCell(cell);
+        cell->addCollider(collider);
     }
 }
 
@@ -61,6 +62,8 @@ void Grid::addColliderInternal(Collider *collider)
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
 
+    printf("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+
     for (int x = minX; x <= maxX; ++x)
     {
         for (int y = minY; y <= maxY; ++y)
@@ -69,7 +72,7 @@ void Grid::addColliderInternal(Collider *collider)
             auto iterator = cells.find(key);
             if (iterator == cells.end())
             {
-                auto [newIterator, inserted] = cells.emplace(key, GridCell(key, this));
+                auto [newIterator, inserted] = cells.try_emplace(key, key, this);
                 iterator = newIterator;
             }
             addColliderToGridCell(&iterator->second, collider);
@@ -305,6 +308,8 @@ void Grid::syncColliderWithGrid(Collider *collider)
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
 
+    printf("Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+
     for (size_t i = 0; i < gridCellsColliderBelongsTo.size();)
     {
         GridCell *aabb = gridCellsColliderBelongsTo[i];
@@ -335,7 +340,7 @@ void Grid::syncColliderWithGrid(Collider *collider)
                                              { return gridCell->getCellKey() == key; });
             if (cellIterator == gridCellsColliderBelongsTo.end())
             {
-                auto [newIterator, inserted] = cells.emplace(key, GridCell(key, this));
+                auto [newIterator, inserted] = cells.try_emplace(key, key, this);
                 addColliderToGridCell(&newIterator->second, collider);
             }
         }

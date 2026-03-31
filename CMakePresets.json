@@ -14,6 +14,22 @@
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "relwithdebinfo",
+            "displayName": "RelWithDebInfo",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
         }
     ],
     "buildPresets": [
@@ -21,6 +37,16 @@
             "name": "default",
             "displayName": "Default",
             "configurePreset": "default"
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "configurePreset": "debug"
+        },
+        {
+            "name": "relwithdebinfo",
+            "displayName": "RelWithDebInfo",
+            "configurePreset": "relwithdebinfo"
         }
     ]
 }

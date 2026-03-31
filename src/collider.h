@@ -139,6 +139,9 @@ public:
     std::vector<GridCell *> &getGridCells();
     void clearGridCells();
 
+    void setIsRegisteredInGrid(bool isRegistered);
+    bool getIsRegisteredInGrid() const;
+
 protected:
     uint64_t collisionGroup;
     uint64_t collisionMask;
@@ -150,6 +153,7 @@ protected:
     BoundingRadiusProjectionAxis yProjections;
 
     std::vector<GridCell *> cells;
+    bool isRegisteredInGrid;
 
     void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);
     virtual void updateCollider() = 0;

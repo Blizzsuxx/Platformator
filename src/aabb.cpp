@@ -136,7 +136,6 @@ void AABB::overlapEndCheckpoint(Collider *colliderA, Collider *colliderB)
 
     // no axes are overlapping anymore, we can remove the collision
     pairsWithAtLeastOneAxisOverlapping.erase(iterator);
-    owner->removeCollisionPair(colliderA, colliderB);
 
     if (previousAxisOverlap == Axis::ALL_AXES && currentAxisOverlap != Axis::ALL_AXES)
     {

@@ -4,6 +4,7 @@
 #include "collider.h"
 #include "collision.h"
 #include "segmentedintervallist.h"
+#include <algorithm>
 #include <chrono>
 #include <vector>
 #include "helpers.h"
@@ -29,6 +30,7 @@ public:
     void removeColliderComponent(Collider *colliderComponent);
 
 private:
+    void flushPendingColliderComponents();
     void markSupportContact(Rigidbody *rigidBody, const Eigen::Vector2f &contactDirection);
     void updateSleepingStates(double timeDelta);
     void broadPhase();
@@ -40,6 +42,7 @@ private:
     void resolveCollision(const Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;
+    std::vector<Collider *> pendingColliderComponents;
     std::vector<Collision *> activeCollisions;
     Grid grid;
 

@@ -4,7 +4,7 @@
 #include "gridcell.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), isRegisteredInGrid(false)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), hasGridCellRangeCache(false), cachedGridCellMinX(0), cachedGridCellMaxX(0), cachedGridCellMinY(0), cachedGridCellMaxY(0), isRegisteredInGrid(false)
 {
     cells.reserve(4);
 }
@@ -165,6 +165,45 @@ std::vector<GridCell *> &Collider::getGridCells()
 void Collider::clearGridCells()
 {
     cells.clear();
+}
+
+void Collider::setCachedGridCellRange(int minX, int maxX, int minY, int maxY)
+{
+    hasGridCellRangeCache = true;
+    cachedGridCellMinX = minX;
+    cachedGridCellMaxX = maxX;
+    cachedGridCellMinY = minY;
+    cachedGridCellMaxY = maxY;
+}
+
+bool Collider::hasCachedGridCellRange() const
+{
+    return hasGridCellRangeCache;
+}
+
+int Collider::getCachedGridCellMinX() const
+{
+    return cachedGridCellMinX;
+}
+
+int Collider::getCachedGridCellMaxX() const
+{
+    return cachedGridCellMaxX;
+}
+
+int Collider::getCachedGridCellMinY() const
+{
+    return cachedGridCellMinY;
+}
+
+int Collider::getCachedGridCellMaxY() const
+{
+    return cachedGridCellMaxY;
+}
+
+void Collider::clearCachedGridCellRange()
+{
+    hasGridCellRangeCache = false;
 }
 
 void Collider::setIsRegisteredInGrid(bool isRegistered)

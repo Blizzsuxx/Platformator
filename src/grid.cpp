@@ -1,5 +1,6 @@
 #include "grid.h"
 #include "constants.h"
+#include <cstdio>
 
 Grid::Grid()
     : cells(), candidateCollisions(), pendingNarrowPhasePairs(), dirtyCells(), pairAdjacency()
@@ -25,7 +26,10 @@ std::tuple<int, int, int, int> Grid::getGridCellRange(Collider *collider)
 
 void Grid::addColliderToGridCell(GridCell *cell, Collider *collider)
 {
-    printf("Adding collider %s to cell (%d, %d)\n", collider->getGameObject()->getName().c_str(), cell->getCellKey().x, cell->getCellKey().y);
+    if constexpr (ENABLE_LOGGING)
+    {
+        printf("Adding collider %s to cell (%d, %d)\n", collider->getGameObject()->getName().c_str(), cell->getCellKey().x, cell->getCellKey().y);
+    }
     if (cell != nullptr)
     {
         collider->addToGridCell(cell);
@@ -62,7 +66,10 @@ void Grid::addColliderInternal(Collider *collider)
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
 
-    printf("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+    if constexpr (ENABLE_LOGGING)
+    {
+        printf("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+    }
 
     for (int x = minX; x <= maxX; ++x)
     {
@@ -78,6 +85,8 @@ void Grid::addColliderInternal(Collider *collider)
             addColliderToGridCell(&iterator->second, collider);
         }
     }
+
+    collider->setCachedGridCellRange(minX, maxX, minY, maxY);
 }
 
 void Grid::removeColliderInternal(Collider *collider)
@@ -92,6 +101,8 @@ void Grid::removeColliderInternal(Collider *collider)
         cell->removeCollider(collider);
         removeGridCellIfEmpty(cell);
     }
+
+    collider->clearCachedGridCellRange();
 }
 
 void Grid::addCollider(Collider *collider)
@@ -308,7 +319,19 @@ void Grid::syncColliderWithGrid(Collider *collider)
     int minX, maxX, minY, maxY;
     std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
 
-    printf("Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+    if (collider->hasCachedGridCellRange() &&
+        collider->getCachedGridCellMinX() == minX &&
+        collider->getCachedGridCellMaxX() == maxX &&
+        collider->getCachedGridCellMinY() == minY &&
+        collider->getCachedGridCellMaxY() == maxY)
+    {
+        return;
+    }
+
+    if constexpr (ENABLE_LOGGING)
+    {
+        printf("Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+    }
 
     for (size_t i = 0; i < gridCellsColliderBelongsTo.size();)
     {
@@ -345,6 +368,8 @@ void Grid::syncColliderWithGrid(Collider *collider)
             }
         }
     }
+
+    collider->setCachedGridCellRange(minX, maxX, minY, maxY);
 }
 
 void Grid::sort()

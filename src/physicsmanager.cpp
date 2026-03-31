@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), activeCollisions(), grid(), gravityVector(0.0f, 9.81f)
+    : rigidBodyComponents(), pendingColliderComponents(), activeCollisions(), grid(), gravityVector(0.0f, 9.81f)
 {
 }
 
@@ -41,19 +41,27 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || colliderComponent->getIsRegisteredInGrid())
     {
         return;
     }
 
-    grid.addCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(true);
+    if (std::find(pendingColliderComponents.begin(), pendingColliderComponents.end(), colliderComponent) == pendingColliderComponents.end())
+    {
+        pendingColliderComponents.push_back(colliderComponent);
+    }
 }
 
 void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
 {
     if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
     {
+        return;
+    }
+
+    if (!colliderComponent->getIsRegisteredInGrid())
+    {
+        addColliderComponent(colliderComponent);
         return;
     }
 
@@ -102,12 +110,45 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
         return;
     }
 
+    auto pendingIterator = std::find(pendingColliderComponents.begin(), pendingColliderComponents.end(), colliderComponent);
+    if (pendingIterator != pendingColliderComponents.end())
+    {
+        pendingColliderComponents.erase(pendingIterator);
+    }
+
+    if (!colliderComponent->getIsRegisteredInGrid())
+    {
+        return;
+    }
+
     grid.removeCollider(colliderComponent);
     colliderComponent->setIsRegisteredInGrid(false);
 }
 
+void PhysicsManager::flushPendingColliderComponents()
+{
+    if (pendingColliderComponents.empty())
+    {
+        return;
+    }
+
+    for (Collider *colliderComponent : pendingColliderComponents)
+    {
+        if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || colliderComponent->getIsRegisteredInGrid())
+        {
+            continue;
+        }
+
+        grid.addCollider(colliderComponent);
+        colliderComponent->setIsRegisteredInGrid(true);
+    }
+
+    pendingColliderComponents.clear();
+}
+
 void PhysicsManager::broadPhase()
 {
+    flushPendingColliderComponents();
     grid.sort();
 }
 

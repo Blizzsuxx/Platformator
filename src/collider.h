@@ -138,6 +138,13 @@ public:
     void removeFromGridCell(GridCell *cell);
     std::vector<GridCell *> &getGridCells();
     void clearGridCells();
+    void setCachedGridCellRange(int minX, int maxX, int minY, int maxY);
+    bool hasCachedGridCellRange() const;
+    int getCachedGridCellMinX() const;
+    int getCachedGridCellMaxX() const;
+    int getCachedGridCellMinY() const;
+    int getCachedGridCellMaxY() const;
+    void clearCachedGridCellRange();
 
     void setIsRegisteredInGrid(bool isRegistered);
     bool getIsRegisteredInGrid() const;
@@ -153,6 +160,11 @@ protected:
     BoundingRadiusProjectionAxis yProjections;
 
     std::vector<GridCell *> cells;
+    bool hasGridCellRangeCache;
+    int cachedGridCellMinX;
+    int cachedGridCellMaxX;
+    int cachedGridCellMinY;
+    int cachedGridCellMaxY;
     bool isRegisteredInGrid;
 
     void setChunkDirtyIfNotNull(LocalSortArray *chunk, const bool isDirty);

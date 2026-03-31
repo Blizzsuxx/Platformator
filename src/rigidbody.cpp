@@ -243,6 +243,10 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
     this->sleeping = sleeping;
     if (sleeping)
     {
+        if constexpr (ENABLE_LOGGING)
+        {
+            printf("Rigidbody on GameObject '%s' is now sleeping.\n", getGameObject()->getName().c_str());
+        }
         velocity = Eigen::Vector2f::Zero();
         force = Eigen::Vector2f::Zero();
         angularVelocity = 0.0f;
@@ -251,6 +255,10 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
     }
     else
     {
+        if constexpr (ENABLE_LOGGING)
+        {
+            printf("Rigidbody on GameObject '%s' woke up.\n", getGameObject()->getName().c_str());
+        }
         sleepTimer = 0.0;
     }
 

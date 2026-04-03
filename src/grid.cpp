@@ -24,53 +24,35 @@ void Grid::removeGridCellIfEmpty(GridCell *cell)
 void Grid::addColliderInternal(Collider *collider)
 {
     const GridCellRange &cachedRange = collider->getGridCellRange();
-    int minX = cachedRange.minX;
-    int maxX = cachedRange.maxX;
-    int minY = cachedRange.minY;
-    int maxY = cachedRange.maxY;
 
     if constexpr (ENABLE_LOGGING)
     {
-        printf("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+        printf("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), cachedRange.minX, cachedRange.minY, cachedRange.maxX, cachedRange.maxY);
     }
 
-    for (int x = minX; x <= maxX; ++x)
-    {
-        for (int y = minY; y <= maxY; ++y)
+    cachedRange.forEachCell([&](const GridCellKey &key)
+                            {
+        auto iterator = cells.find(key);
+        if (iterator == cells.end())
         {
-            GridCellKey key(x, y);
-            auto iterator = cells.find(key);
-            if (iterator == cells.end())
-            {
-                auto [newIterator, inserted] = cells.try_emplace(key, key, this);
-                iterator = newIterator;
-            }
-            iterator->second.addCollider(collider);
+            auto [newIterator, inserted] = cells.try_emplace(key, key, this);
+            iterator = newIterator;
         }
-    }
+        iterator->second.addCollider(collider); });
 }
 
 void Grid::removeColliderInternal(Collider *collider)
 {
     const GridCellRange &range = collider->getGridCellRange();
-    int minX = range.minX;
-    int maxX = range.maxX;
-    int minY = range.minY;
-    int maxY = range.maxY;
 
-    for (int x = minX; x <= maxX; ++x)
-    {
-        for (int y = minY; y <= maxY; ++y)
+    range.forEachCell([&](const GridCellKey &key)
+                      {
+        auto iterator = cells.find(key);
+        if (iterator != cells.end())
         {
-            GridCellKey key(x, y);
-            auto iterator = cells.find(key);
-            if (iterator != cells.end())
-            {
-                iterator->second.removeCollider(collider);
-                removeGridCellIfEmpty(&iterator->second);
-            }
-        }
-    }
+            iterator->second.removeCollider(collider);
+            removeGridCellIfEmpty(&iterator->second);
+        } });
 }
 
 void Grid::addCollider(Collider *collider)
@@ -273,71 +255,40 @@ const std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &Grid::getCel
 
 void Grid::syncCollider(Collider *collider)
 {
-    if (collider == nullptr || !collider->getGridCellRange().getIsValid())
-    {
-        return;
-    }
-
-    const GridCellRange &oldGridCellRange = collider->getGridCellRange();
-
-    int minX = oldGridCellRange.minX;
-    int maxX = oldGridCellRange.maxX;
-    int minY = oldGridCellRange.minY;
-    int maxY = oldGridCellRange.maxY;
+    GridCellRange oldGridCellRange = collider->getGridCellRange();
 
     collider->applyPendingSync();
 
     const GridCellRange &newGridCellRange = collider->getGridCellRange();
-
     if constexpr (ENABLE_LOGGING)
     {
-        printf("Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), minX, minY, maxX, maxY);
+        printf(
+            "Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n",
+            collider->getGameObject()->getName().c_str(),
+            newGridCellRange.minX,
+            newGridCellRange.minY,
+            newGridCellRange.maxX,
+            newGridCellRange.maxY);
     }
 
-    for (size_t i = 0; i < gridCellsColliderBelongsTo.size();)
-    {
-        GridCell *aabb = gridCellsColliderBelongsTo[i];
-        const GridCellKey &key = aabb->getCellKey();
-
-        if (key.x < minX || key.x > maxX || key.y < minY || key.y > maxY)
+    oldGridCellRange.forEachDifference(newGridCellRange, [&](const GridCellKey &key)
+                                       {
+        auto iterator = cells.find(key);
+        if (iterator != cells.end())
         {
-            auto iterator = cells.find(key);
-            if (iterator != cells.end())
-            {
-                iterator->second.removeCollider(collider);
-                removeGridCellIfEmpty(&iterator->second);
-            }
-            gridCellsColliderBelongsTo[i] = gridCellsColliderBelongsTo.back();
-            gridCellsColliderBelongsTo.pop_back();
-            continue;
-        }
+            iterator->second.removeCollider(collider);
+            removeGridCellIfEmpty(&iterator->second);
+        } });
 
-        ++i;
-    }
-
-    collider->applyPendingSync();
-
-    if (projectionsChanged)
-    {
-        collider->repairRegisteredProjections();
-    }
-
-    for (int x = minX; x <= maxX; ++x)
-    {
-        for (int y = minY; y <= maxY; ++y)
+    newGridCellRange.forEachDifference(oldGridCellRange, [&](const GridCellKey &key)
+                                       {
+        auto iterator = cells.find(key);
+        if (iterator == cells.end())
         {
-            GridCellKey key(x, y);
-            auto cellIterator = std::find_if(gridCellsColliderBelongsTo.begin(), gridCellsColliderBelongsTo.end(), [&](GridCell *gridCell)
-                                             { return gridCell->getCellKey() == key; });
-            if (cellIterator == gridCellsColliderBelongsTo.end())
-            {
-                auto [newIterator, inserted] = cells.try_emplace(key, key, this);
-                addColliderToGridCell(&newIterator->second, collider);
-            }
+            auto [newIterator, inserted] = cells.try_emplace(key, key, this);
+            iterator = newIterator;
         }
-    }
-
-    collider->setCachedGridCellRange(minX, maxX, minY, maxY);
+        iterator->second.addCollider(collider); });
 
     queuePairsForCollider(collider);
 }

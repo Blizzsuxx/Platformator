@@ -131,10 +131,10 @@ void PhysicsManager::flushPendingColliderSyncs()
 
     for (Collider *colliderComponent : pendingColliderSyncs)
     {
-        colliderComponent->applyPendingSync();
-
-        grid.syncCollider(colliderComponent, colliderComponent->getPendingProjectionState());
+        grid.syncCollider(colliderComponent);
     }
+
+    pendingColliderSyncs.clear();
 }
 
 void PhysicsManager::flushPendingColliderComponents()

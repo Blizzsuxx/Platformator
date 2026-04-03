@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gameobject.h"
+#include "gridtypes.h"
 #include <memory>
 #include <span>
 

@@ -3,47 +3,12 @@
 #include <cstdio>
 
 Grid::Grid()
-    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), dirtyCells(), pairAdjacency()
+    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency()
 {
 }
 
 Grid::~Grid()
 {
-}
-
-std::tuple<int, int, int, int> Grid::getGridCellRange(Collider *collider)
-{
-    BoundingRadiusProjectionAxis *xProjections = collider->getXProjections();
-    BoundingRadiusProjectionAxis *yProjections = collider->getYProjections();
-
-    int minX = static_cast<int>(std::floor(xProjections->getMin()->getProjectedPosition() / GRID_CELL_SIZE));
-    int maxX = static_cast<int>(std::floor(xProjections->getMax()->getProjectedPosition() / GRID_CELL_SIZE));
-    int minY = static_cast<int>(std::floor(yProjections->getMin()->getProjectedPosition() / GRID_CELL_SIZE));
-    int maxY = static_cast<int>(std::floor(yProjections->getMax()->getProjectedPosition() / GRID_CELL_SIZE));
-
-    return std::make_tuple(minX, maxX, minY, maxY);
-}
-
-void Grid::addColliderToGridCell(GridCell *cell, Collider *collider)
-{
-    if constexpr (ENABLE_LOGGING)
-    {
-        printf("Adding collider %s to cell (%d, %d)\n", collider->getGameObject()->getName().c_str(), cell->getCellKey().x, cell->getCellKey().y);
-    }
-    if (cell != nullptr)
-    {
-        collider->addToGridCell(cell);
-        cell->addCollider(collider);
-    }
-}
-
-void Grid::markGridCellDirty(GridCell *cell)
-{
-    if (cell != nullptr && !cell->getIsDirty())
-    {
-        cell->setIsDirty(true);
-        dirtyCells.push_back(cell);
-    }
 }
 
 void Grid::removeGridCellIfEmpty(GridCell *cell)
@@ -53,18 +18,16 @@ void Grid::removeGridCellIfEmpty(GridCell *cell)
         return;
     }
 
-    if (cell->getIsDirty())
-    {
-        return;
-    }
-
     cells.erase(cell->getCellKey());
 }
 
 void Grid::addColliderInternal(Collider *collider)
 {
-    int minX, maxX, minY, maxY;
-    std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
+    const GridCellRange &cachedRange = collider->getGridCellRange();
+    int minX = cachedRange.minX;
+    int maxX = cachedRange.maxX;
+    int minY = cachedRange.minY;
+    int maxY = cachedRange.maxY;
 
     if constexpr (ENABLE_LOGGING)
     {
@@ -82,27 +45,32 @@ void Grid::addColliderInternal(Collider *collider)
                 auto [newIterator, inserted] = cells.try_emplace(key, key, this);
                 iterator = newIterator;
             }
-            addColliderToGridCell(&iterator->second, collider);
+            iterator->second.addCollider(collider);
         }
     }
-
-    collider->setCachedGridCellRange(minX, maxX, minY, maxY);
 }
 
 void Grid::removeColliderInternal(Collider *collider)
 {
-    std::vector<GridCell *> &gridCells = collider->getGridCells();
+    const GridCellRange &range = collider->getGridCellRange();
+    int minX = range.minX;
+    int maxX = range.maxX;
+    int minY = range.minY;
+    int maxY = range.maxY;
 
-    while (!gridCells.empty())
+    for (int x = minX; x <= maxX; ++x)
     {
-        GridCell *cell = gridCells.back();
-        gridCells.pop_back();
-
-        cell->removeCollider(collider);
-        removeGridCellIfEmpty(cell);
+        for (int y = minY; y <= maxY; ++y)
+        {
+            GridCellKey key(x, y);
+            auto iterator = cells.find(key);
+            if (iterator != cells.end())
+            {
+                iterator->second.removeCollider(collider);
+                removeGridCellIfEmpty(&iterator->second);
+            }
+        }
     }
-
-    collider->clearCachedGridCellRange();
 }
 
 void Grid::addCollider(Collider *collider)
@@ -298,35 +266,28 @@ void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
     removePair(pair);
 }
 
-void Grid::queueColliderForUpdate(Collider *collider)
+const std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &Grid::getCells() const
 {
-    for (GridCell *cell : collider->getGridCells())
-    {
-        if (cell != nullptr)
-        {
-            markGridCellDirty(cell);
-        }
-    }
-
-    queuePairsForCollider(collider);
-    syncColliderWithGrid(collider);
+    return cells;
 }
 
-void Grid::syncColliderWithGrid(Collider *collider)
+void Grid::syncCollider(Collider *collider)
 {
-    std::vector<GridCell *> &gridCellsColliderBelongsTo = collider->getGridCells();
-
-    int minX, maxX, minY, maxY;
-    std::tie(minX, maxX, minY, maxY) = getGridCellRange(collider);
-
-    if (collider->hasCachedGridCellRange() &&
-        collider->getCachedGridCellMinX() == minX &&
-        collider->getCachedGridCellMaxX() == maxX &&
-        collider->getCachedGridCellMinY() == minY &&
-        collider->getCachedGridCellMaxY() == maxY)
+    if (collider == nullptr || !collider->getGridCellRange().getIsValid())
     {
         return;
     }
+
+    const GridCellRange &oldGridCellRange = collider->getGridCellRange();
+
+    int minX = oldGridCellRange.minX;
+    int maxX = oldGridCellRange.maxX;
+    int minY = oldGridCellRange.minY;
+    int maxY = oldGridCellRange.maxY;
+
+    collider->applyPendingSync();
+
+    const GridCellRange &newGridCellRange = collider->getGridCellRange();
 
     if constexpr (ENABLE_LOGGING)
     {
@@ -354,6 +315,13 @@ void Grid::syncColliderWithGrid(Collider *collider)
         ++i;
     }
 
+    collider->applyPendingSync();
+
+    if (projectionsChanged)
+    {
+        collider->repairRegisteredProjections();
+    }
+
     for (int x = minX; x <= maxX; ++x)
     {
         for (int y = minY; y <= maxY; ++y)
@@ -370,35 +338,6 @@ void Grid::syncColliderWithGrid(Collider *collider)
     }
 
     collider->setCachedGridCellRange(minX, maxX, minY, maxY);
-}
 
-void Grid::sort()
-{
-    std::vector<GridCellKey> emptyDirtyCells;
-    emptyDirtyCells.reserve(dirtyCells.size());
-
-    for (GridCell *cell : dirtyCells)
-    {
-        if (cell == nullptr)
-        {
-            continue;
-        }
-
-        cell->setIsDirty(false);
-
-        if (cell->getAABB()->getIsEmpty())
-        {
-            emptyDirtyCells.push_back(cell->getCellKey());
-            continue;
-        }
-
-        cell->sort();
-    }
-
-    dirtyCells.clear();
-
-    for (const GridCellKey &key : emptyDirtyCells)
-    {
-        cells.erase(key);
-    }
+    queuePairsForCollider(collider);
 }

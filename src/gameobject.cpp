@@ -157,7 +157,7 @@ void GameObject::updateCollider()
     Component *colliderComponent = components[ComponentType::COLLIDER];
     if (colliderComponent != nullptr)
     {
-        static_cast<Collider *>(colliderComponent)->updateCollider();
+        static_cast<Collider *>(colliderComponent)->scheduleSync();
     }
 }
 
@@ -205,7 +205,7 @@ void GameObject::addComponentInternal(Component *component)
 
     if (component->getType() == ComponentType::COLLIDER)
     {
-        static_cast<Collider *>(component)->updateCollider();
+        static_cast<Collider *>(component)->scheduleSync();
     }
 }
 

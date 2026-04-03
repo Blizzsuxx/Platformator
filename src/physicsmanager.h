@@ -20,16 +20,18 @@ public:
 
     void checkForCollisions();
     void resolveCollisions(double timeDelta);
+    const Grid &getGrid() const;
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
     void refreshColliderComponent(Collider *colliderComponent);
-    void notifyColliderUpdated(Collider *colliderComponent);
+    void queueColliderSync(Collider *colliderComponent);
 
     void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void removeColliderComponent(Collider *colliderComponent);
 
 private:
+    void flushPendingColliderSyncs();
     void flushPendingColliderComponents();
     void markSupportContact(Rigidbody *rigidBody, const Eigen::Vector2f &contactDirection);
     void updateSleepingStates(double timeDelta);
@@ -43,6 +45,7 @@ private:
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collider *> pendingColliderComponents;
+    std::vector<Collider *> pendingColliderSyncs;
     std::vector<Collision *> activeCollisions;
     Grid grid;
 

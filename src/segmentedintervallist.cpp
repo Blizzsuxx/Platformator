@@ -22,19 +22,14 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
 
     BoundingRadiusProjectionProxy *lowerProxy = &axisProxy->minProxy;
     BoundingRadiusProjectionProxy *upperProxy = &axisProxy->maxProxy;
-    auto [chunkWhereItWasInserted, indexInsideChunkWhereItWasInserted] = add(lowerProxy);
-    auto [chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted2] = add(upperProxy);
 
-    if (chunkWhereItWasInserted != lowerProxy->getChunk())
-    {
-        chunkWhereItWasInserted = lowerProxy->getChunk();
-        indexInsideChunkWhereItWasInserted = chunkWhereItWasInserted->find(lowerProxy);
-    }
-    if (chunkWhereItWasInserted2 != upperProxy->getChunk())
-    {
-        chunkWhereItWasInserted2 = upperProxy->getChunk();
-        indexInsideChunkWhereItWasInserted2 = chunkWhereItWasInserted2->find(upperProxy);
-    }
+    add(lowerProxy);
+    add(upperProxy);
+
+    // have to find the proxies again to get their current chunk and index, since adding them might have caused them to move
+    // also, this is cheap now because we index everything
+    auto [chunkWhereItWasInserted, indexInsideChunkWhereItWasInserted] = find(lowerProxy);
+    auto [chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted2] = find(upperProxy);
 
     if (chunkWhereItWasInserted == nullptr || chunkWhereItWasInserted2 == nullptr || indexInsideChunkWhereItWasInserted == SIZE_MAX || indexInsideChunkWhereItWasInserted2 == SIZE_MAX)
     {
@@ -90,27 +85,9 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
         }
     }
 
-    if (currentChunk == upperChunk)
-    {
-        if (indexInsideChunkWhereItWillBeRemoved > indexInsideChunkWhereItWillBeRemoved2)
-        {
-            remove(currentChunk, indexInsideChunkWhereItWillBeRemoved);
-            remove(upperChunk, indexInsideChunkWhereItWillBeRemoved2);
-        }
-        else
-        {
-            remove(upperChunk, indexInsideChunkWhereItWillBeRemoved2);
-            remove(currentChunk, indexInsideChunkWhereItWillBeRemoved);
-        }
-    }
-    else
-    {
-        remove(currentChunk, indexInsideChunkWhereItWillBeRemoved);
-        remove(upperChunk, indexInsideChunkWhereItWillBeRemoved2);
-    }
+    remove(lowerProxy);
+    remove(upperProxy);
 
-    removeDirtyProjection(lowerProxy);
-    removeDirtyProjection(upperProxy);
     axis->removeProxy(axisProxy);
 }
 
@@ -121,37 +98,31 @@ void SegmentedIntervalList::clear()
         delete chunks[i];
     }
     chunks.clear();
-    dirtyProjections.clear();
 }
 
-void SegmentedIntervalList::sort()
+void SegmentedIntervalList::repairProjection(BoundingRadiusProjectionProxy *projection)
 {
-    for (BoundingRadiusProjectionProxy *projection : dirtyProjections)
+    if (projection == nullptr)
     {
-        if (projection == nullptr)
-        {
-            continue;
-        }
-
-        projection->setIsDirty(false);
-
-        LocalSortArray *chunk = projection->getChunk();
-        if (chunk == nullptr)
-        {
-            continue;
-        }
-
-        size_t index = projection->getChunkIndex();
-        if (index >= chunk->getSize() || chunk->get(index) != projection)
-        {
-            printf("Error: trying to sort a projection that is not in the chunk it should be in, chunk: %p, projection: %p\n", chunk, projection);
-            continue;
-        }
-
-        repairProjectionFromIndex(chunk, index);
+        printf("Error: trying to repair a null projection\n");
+        return;
     }
 
-    dirtyProjections.clear();
+    LocalSortArray *chunk = projection->getChunk();
+    if (chunk == nullptr)
+    {
+        printf("Error: trying to repair a projection that is not in any chunk, projection: %p\n", projection);
+        return;
+    }
+
+    size_t index = projection->getChunkIndex();
+    if (index >= chunk->getSize() || chunk->get(index) != projection)
+    {
+        printf("Error: trying to repair a projection that is in the chunk but has an invalid index, projection: %p, chunk: %p, index: %zu\n", projection, chunk, index);
+        return;
+    }
+
+    repairProjectionFromIndexInternal(projection, chunk, index);
 }
 
 std::pair<LocalSortArray *, size_t> SegmentedIntervalList::getPreviousIndex(LocalSortArray *chunk, size_t index) const
@@ -208,24 +179,8 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::getNextIndex(LocalSor
     return {nullptr, SIZE_MAX};
 }
 
-void SegmentedIntervalList::swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk)
+void SegmentedIntervalList::repairProjectionFromIndexInternal(BoundingRadiusProjectionProxy *projection, LocalSortArray *chunk, size_t arrayIndex)
 {
-    swap(leftChunk->getMax(), leftChunk->getSize() - 1, rightChunk->getMin(), 0);
-}
-
-void SegmentedIntervalList::repairProjectionFromIndex(LocalSortArray *chunk, size_t arrayIndex)
-{
-    if (chunk == nullptr || arrayIndex >= chunk->getSize())
-    {
-        return;
-    }
-
-    BoundingRadiusProjectionProxy *projection = chunk->get(arrayIndex);
-    if (projection == nullptr)
-    {
-        return;
-    }
-
     while (true)
     {
         chunk = projection->getChunk();
@@ -496,34 +451,6 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
             leftChunk->removeCheckpoint(colliderB);
         }
     }
-}
-
-void SegmentedIntervalList::addDirtyProjection(BoundingRadiusProjectionProxy *projection)
-{
-    if (projection == nullptr || projection->getIsDirty())
-    {
-        return;
-    }
-
-    LocalSortArray *chunk = projection->getChunk();
-    if (chunk == nullptr)
-    {
-        return;
-    }
-
-    projection->setIsDirty(true);
-    dirtyProjections.push_back(projection);
-}
-
-void SegmentedIntervalList::removeDirtyProjection(BoundingRadiusProjectionProxy *projection)
-{
-    if (projection == nullptr || !projection->getIsDirty())
-    {
-        return;
-    }
-
-    projection->setIsDirty(false);
-    dirtyProjections.erase(std::remove(dirtyProjections.begin(), dirtyProjections.end(), projection), dirtyProjections.end());
 }
 
 void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB)

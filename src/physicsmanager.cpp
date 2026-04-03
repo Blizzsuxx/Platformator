@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), pendingColliderComponents(), activeCollisions(), grid(), gravityVector(0.0f, 9.81f)
+    : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y)
 {
 }
 
@@ -27,6 +27,11 @@ void PhysicsManager::checkForCollisions()
     narrowPhase();
 }
 
+const Grid &PhysicsManager::getGrid() const
+{
+    return grid;
+}
+
 void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 {
     if (rigidBodyComponent == nullptr || rigidBodyComponent->getIsRegisteredInPhysicsManager() || !rigidBodyComponent->getGameObject()->getActive())
@@ -41,7 +46,7 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || colliderComponent->getIsRegisteredInGrid())
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
     {
         return;
     }
@@ -59,26 +64,18 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
         return;
     }
 
-    if (!colliderComponent->getIsRegisteredInGrid())
-    {
-        addColliderComponent(colliderComponent);
-        return;
-    }
-
     grid.removeCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(false);
     grid.addCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(true);
 }
 
-void PhysicsManager::notifyColliderUpdated(Collider *colliderComponent)
+void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
+    if (colliderComponent == nullptr || colliderComponent->getIsQueuedForSync())
     {
         return;
     }
 
-    grid.queueColliderForUpdate(colliderComponent);
+    pendingColliderSyncs.push_back(colliderComponent);
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -116,13 +113,28 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
         pendingColliderComponents.erase(pendingIterator);
     }
 
-    if (!colliderComponent->getIsRegisteredInGrid())
+    auto syncIterator = std::find(pendingColliderSyncs.begin(), pendingColliderSyncs.end(), colliderComponent);
+    if (syncIterator != pendingColliderSyncs.end())
+    {
+        pendingColliderSyncs.erase(syncIterator);
+    }
+
+    grid.removeCollider(colliderComponent);
+}
+
+void PhysicsManager::flushPendingColliderSyncs()
+{
+    if (pendingColliderSyncs.empty())
     {
         return;
     }
 
-    grid.removeCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(false);
+    for (Collider *colliderComponent : pendingColliderSyncs)
+    {
+        colliderComponent->applyPendingSync();
+
+        grid.syncCollider(colliderComponent, colliderComponent->getPendingProjectionState());
+    }
 }
 
 void PhysicsManager::flushPendingColliderComponents()
@@ -134,13 +146,7 @@ void PhysicsManager::flushPendingColliderComponents()
 
     for (Collider *colliderComponent : pendingColliderComponents)
     {
-        if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || colliderComponent->getIsRegisteredInGrid())
-        {
-            continue;
-        }
-
         grid.addCollider(colliderComponent);
-        colliderComponent->setIsRegisteredInGrid(true);
     }
 
     pendingColliderComponents.clear();
@@ -148,8 +154,8 @@ void PhysicsManager::flushPendingColliderComponents()
 
 void PhysicsManager::broadPhase()
 {
+    flushPendingColliderSyncs();
     flushPendingColliderComponents();
-    grid.sort();
 }
 
 void PhysicsManager::narrowPhase()
@@ -169,7 +175,7 @@ void PhysicsManager::narrowPhase()
         Collider *objectA = pair->getObjectA();
         Collider *objectB = pair->getObjectB();
 
-        if (objectA == nullptr || objectB == nullptr || objectA->getGameObject()->getIsMarkedForDeletion() || objectB->getGameObject()->getIsMarkedForDeletion())
+        if (objectA->getGameObject()->getIsMarkedForDeletion() || objectB->getGameObject()->getIsMarkedForDeletion())
         {
             continue;
         }

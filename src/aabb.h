@@ -67,7 +67,6 @@ public:
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
     // sort the array with insertion sort, sort from lowest to highest
-    void sort();
     bool getIsEmpty() const;
 
 private:

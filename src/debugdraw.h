@@ -7,6 +7,8 @@
 #include "collision.h"
 #include "camera.h"
 
+struct GridCellKey;
+
 class DebugObject
 {
 public:
@@ -37,6 +39,7 @@ public:
 
     void addBoxColliderDebugObject(const BoxCollider &collider);
     void addCircleColliderDebugObject(const CircleCollider &collider);
+    void addGridCellDebugObject(const GridCellKey &cellKey);
     void addCollisionDebugObject(const Collision &collision);
 
     void clearDebugObjects();
@@ -44,6 +47,7 @@ public:
     void toggleShowColliders();
     void toggleShowCollisionPoints();
     void toggleShowCollisionNormals();
+    void toggleShowGridCells();
 
 private:
     DebugDraw();
@@ -64,6 +68,7 @@ private:
     bool showColliders;
     bool showCollisionPoints;
     bool showCollisionNormals;
+    bool showGridCells;
 
     friend class SDLWindow;
 };

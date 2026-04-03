@@ -5,9 +5,8 @@
 #include "segmentedintervallist.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), cells(), hasGridCellRangeCache(false), cachedGridCellMinX(0), cachedGridCellMaxX(0), cachedGridCellMinY(0), cachedGridCellMaxY(0), isRegisteredInGrid(false)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), scheduledForSync(false)
 {
-    cells.reserve(4);
 }
 
 Collider::~Collider()
@@ -34,42 +33,49 @@ void Collider::setIsTrigger(const bool isTrigger)
     this->isTrigger = isTrigger;
 }
 
-void Collider::setProjectionDirtyIfNotNull(BoundingRadiusProjectionAxisProxy *proxy)
+void Collider::repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
 {
-    if (proxy != nullptr && proxy->ownerList != nullptr)
+    for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
     {
-        proxy->ownerList->addDirtyProjection(&proxy->minProxy);
-        proxy->ownerList->addDirtyProjection(&proxy->maxProxy);
+        if (proxy->minProxy.getProjection() == projection)
+        {
+            proxy->ownerList->repairProjection(&proxy->minProxy);
+        }
     }
 }
 
-void Collider::updateStateVersion()
+void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
 {
-    if (!isRegisteredInGrid)
+    for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
+    {
+        if (proxy->maxProxy.getProjection() == projection)
+        {
+            proxy->ownerList->repairProjection(&proxy->maxProxy);
+        }
+    }
+}
+
+void Collider::scheduleSync()
+{
+    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    if (physicsManager != nullptr && !scheduledForSync)
+    {
+        physicsManager->queueColliderSync(this);
+        scheduledForSync = true;
+    }
+}
+
+void Collider::applyPendingSync()
+{
+    if (!scheduledForSync)
     {
         return;
     }
 
+    updateCollider();
+    updateGridCellRange();
     stateVersion++;
-
-    std::vector<BoundingRadiusProjectionAxisProxy *> &xProxies = xProjections.getProxies();
-    std::vector<BoundingRadiusProjectionAxisProxy *> &yProxies = yProjections.getProxies();
-
-    for (BoundingRadiusProjectionAxisProxy *proxy : xProxies)
-    {
-        setProjectionDirtyIfNotNull(proxy);
-    }
-
-    for (BoundingRadiusProjectionAxisProxy *proxy : yProxies)
-    {
-        setProjectionDirtyIfNotNull(proxy);
-    }
-
-    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
-    if (physicsManager != nullptr)
-    {
-        physicsManager->notifyColliderUpdated(this);
-    }
+    scheduledForSync = false;
 }
 
 void Collider::triggerCollisionEnter(const Collider *other) const
@@ -137,81 +143,32 @@ uint64_t Collider::getStateVersion() const
     return stateVersion;
 }
 
-void Collider::addToGridCell(GridCell *cell)
+void Collider::updateGridCellRange()
 {
-    if (cell != nullptr)
-    {
-        cells.push_back(cell);
-    }
+    gridCellRange = calculateGridCellRange();
 }
 
-void Collider::removeFromGridCell(GridCell *cell)
+const GridCellRange &Collider::getGridCellRange() const
 {
-    if (cell != nullptr)
-    {
-        auto it = std::find(cells.begin(), cells.end(), cell);
-        if (it != cells.end())
-        {
-            cells.erase(it);
-        }
-    }
+    return gridCellRange;
 }
 
-std::vector<GridCell *> &Collider::getGridCells()
+void Collider::setGridCellRange(const GridCellRange &range)
 {
-    return cells;
+    gridCellRange = range;
 }
 
-void Collider::clearGridCells()
+GridCellRange Collider::calculateGridCellRange()
 {
-    cells.clear();
+    int minX = static_cast<int>(std::floor(xProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
+    int maxX = static_cast<int>(std::floor(xProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
+    int minY = static_cast<int>(std::floor(yProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
+    int maxY = static_cast<int>(std::floor(yProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
+
+    return GridCellRange(minX, maxX, minY, maxY);
 }
 
-void Collider::setCachedGridCellRange(int minX, int maxX, int minY, int maxY)
+bool Collider::getIsQueuedForSync() const
 {
-    hasGridCellRangeCache = true;
-    cachedGridCellMinX = minX;
-    cachedGridCellMaxX = maxX;
-    cachedGridCellMinY = minY;
-    cachedGridCellMaxY = maxY;
-}
-
-bool Collider::hasCachedGridCellRange() const
-{
-    return hasGridCellRangeCache;
-}
-
-int Collider::getCachedGridCellMinX() const
-{
-    return cachedGridCellMinX;
-}
-
-int Collider::getCachedGridCellMaxX() const
-{
-    return cachedGridCellMaxX;
-}
-
-int Collider::getCachedGridCellMinY() const
-{
-    return cachedGridCellMinY;
-}
-
-int Collider::getCachedGridCellMaxY() const
-{
-    return cachedGridCellMaxY;
-}
-
-void Collider::clearCachedGridCellRange()
-{
-    hasGridCellRangeCache = false;
-}
-
-void Collider::setIsRegisteredInGrid(bool isRegistered)
-{
-    isRegisteredInGrid = isRegistered;
-}
-
-bool Collider::getIsRegisteredInGrid() const
-{
-    return isRegisteredInGrid;
+    return scheduledForSync;
 }

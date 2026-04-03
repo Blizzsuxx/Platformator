@@ -14,56 +14,6 @@ ColliderType BoxCollider::getColliderType() const
     return ColliderType::BoxCollider;
 }
 
-void BoxCollider::generateNormals()
-{
-    float c = getGameObject()->getCosRotation();
-    float s = getGameObject()->getSinRotation();
-
-    normals[0] = Eigen::Vector2f(c, s);
-    normals[1] = Eigen::Vector2f(-s, c);
-}
-
-void BoxCollider::generateProjections()
-{
-    Eigen::Vector2f xAxis = projectOntoAxis(X_AXIS);
-    Eigen::Vector2f yAxis = projectOntoAxis(Y_AXIS);
-
-    xProjections.getMin()->setProjectedPosition(xAxis.x());
-    xProjections.getMax()->setProjectedPosition(xAxis.y());
-
-    yProjections.getMin()->setProjectedPosition(yAxis.x());
-    yProjections.getMax()->setProjectedPosition(yAxis.y());
-
-    // TODO:
-    // maybe check if the projections actually changed before setting dirty to true
-    // this is only called when the position, the width or the height changes, so it is not that bad if we set dirty to true even if the projections did not change
-    this->updateStateVersion();
-}
-
-void BoxCollider::generateVertices()
-{
-    float scaledWidth = getWidth();
-    float scaledHeight = getHeight();
-
-    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
-    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
-
-    // Rotate the extreme points
-    float xOrigin = getGameObject()->getPosition().x();
-    float yOrigin = getGameObject()->getPosition().y();
-
-    for (size_t i = 0; i < vertices.size(); i++)
-    {
-        float xMinusXOrigin = (vertices)[i].x() - xOrigin;
-        float yMinusYOrigin = (vertices)[i].y() - yOrigin;
-
-        (vertices)[i].x() = xMinusXOrigin * this->getGameObject()->getCosRotation() - yMinusYOrigin * this->getGameObject()->getSinRotation() + xOrigin;
-        (vertices)[i].y() = xMinusXOrigin * this->getGameObject()->getSinRotation() + yMinusYOrigin * this->getGameObject()->getCosRotation() + yOrigin;
-    }
-}
-
 const std::array<Eigen::Vector2f, 4> &BoxCollider::getVertices() const
 {
     return vertices;
@@ -107,13 +57,70 @@ float BoxCollider::getHeight() const
 void BoxCollider::setWidth(const float width)
 {
     this->width = width;
-    updateCollider();
+    scheduleSync();
 }
 
 void BoxCollider::setHeight(const float height)
 {
     this->height = height;
-    updateCollider();
+    scheduleSync();
+}
+
+std::vector<Eigen::Vector2f> BoxCollider::getNormals(const Collider *other) const
+{
+    return normals;
+}
+
+void BoxCollider::generateNormals()
+{
+    float c = getGameObject()->getCosRotation();
+    float s = getGameObject()->getSinRotation();
+
+    normals[0] = Eigen::Vector2f(c, s);
+    normals[1] = Eigen::Vector2f(-s, c);
+}
+
+void BoxCollider::generateProjections()
+{
+    Eigen::Vector2f xAxis = projectOntoAxis(X_AXIS);
+
+    xProjections.getMin()->setProjectedPosition(xAxis.x());
+    repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
+
+    xProjections.getMax()->setProjectedPosition(xAxis.y());
+    repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
+
+    Eigen::Vector2f yAxis = projectOntoAxis(Y_AXIS);
+
+    yProjections.getMin()->setProjectedPosition(yAxis.x());
+    repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
+
+    yProjections.getMax()->setProjectedPosition(yAxis.y());
+    repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
+}
+
+void BoxCollider::generateVertices()
+{
+    float scaledWidth = getWidth();
+    float scaledHeight = getHeight();
+
+    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+
+    // Rotate the extreme points
+    float xOrigin = getGameObject()->getPosition().x();
+    float yOrigin = getGameObject()->getPosition().y();
+
+    for (size_t i = 0; i < vertices.size(); i++)
+    {
+        float xMinusXOrigin = (vertices)[i].x() - xOrigin;
+        float yMinusYOrigin = (vertices)[i].y() - yOrigin;
+
+        (vertices)[i].x() = xMinusXOrigin * this->getGameObject()->getCosRotation() - yMinusYOrigin * this->getGameObject()->getSinRotation() + xOrigin;
+        (vertices)[i].y() = xMinusXOrigin * this->getGameObject()->getSinRotation() + yMinusYOrigin * this->getGameObject()->getCosRotation() + yOrigin;
+    }
 }
 
 void BoxCollider::updateCollider()
@@ -121,9 +128,4 @@ void BoxCollider::updateCollider()
     generateVertices();
     generateNormals();
     generateProjections();
-}
-
-std::vector<Eigen::Vector2f> BoxCollider::getNormals(const Collider *other) const
-{
-    return normals;
 }

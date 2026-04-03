@@ -30,6 +30,7 @@ private:
     float height;
     std::array<Eigen::Vector2f, 4> vertices;
     std::vector<Eigen::Vector2f> normals;
+
     void generateNormals();
     void generateProjections();
     void generateVertices();

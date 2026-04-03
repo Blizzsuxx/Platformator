@@ -23,7 +23,6 @@ private:
     float radius;
 
     void generateProjections();
-
     void updateCollider() override;
 };
 

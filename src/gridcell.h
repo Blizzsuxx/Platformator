@@ -28,6 +28,45 @@ struct GridCellKey
     };
 };
 
+struct GridCellRange
+{
+    GridCellRange(int minX, int maxX, int minY, int maxY) : minX(minX), maxX(maxX), minY(minY), maxY(maxY) {}
+    GridCellRange() : minX(INT_MAX), maxX(INT_MIN), minY(INT_MAX), maxY(INT_MIN) {}
+
+    int minX;
+    int maxX;
+    int minY;
+    int maxY;
+
+    bool getIsValid() const
+    {
+        return minX != INT_MAX && maxX != INT_MIN && minY != INT_MAX && maxY != INT_MIN;
+    }
+
+    bool operator==(const GridCellRange &other) const
+    {
+        return minX == other.minX && maxX == other.maxX && minY == other.minY && maxY == other.maxY;
+    }
+
+    std::vector<GridCellKey> difference(const GridCellRange &other) const
+    {
+        std::vector<GridCellKey> differences;
+
+        for (int x = minX; x <= maxX; ++x)
+        {
+            for (int y = minY; y <= maxY; ++y)
+            {
+                if (x < other.minX || x > other.maxX || y < other.minY || y > other.maxY)
+                {
+                    differences.emplace_back(x, y);
+                }
+            }
+        }
+
+        return differences;
+    }
+};
+
 class GridCell
 {
 public:
@@ -40,14 +79,10 @@ public:
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
-    void sort();
     AABB *getAABB();
     const GridCellKey &getCellKey() const;
-    bool getIsDirty() const;
-    void setIsDirty(bool newIsDirty);
 
 private:
     AABB aabb;
     GridCellKey key;
-    bool isDirty;
 };

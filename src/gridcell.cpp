@@ -1,7 +1,7 @@
 #include "gridcell.h"
 
 GridCell::GridCell(GridCellKey key, Grid *owner)
-    : aabb(owner), key(key), isDirty(false)
+    : aabb(owner), key(key)
 {
 }
 
@@ -19,11 +19,6 @@ void GridCell::removeCollider(Collider *collider)
     aabb.remove(collider);
 }
 
-void GridCell::sort()
-{
-    aabb.sort();
-}
-
 AABB *GridCell::getAABB()
 {
     return &aabb;
@@ -32,14 +27,4 @@ AABB *GridCell::getAABB()
 const GridCellKey &GridCell::getCellKey() const
 {
     return key;
-}
-
-bool GridCell::getIsDirty() const
-{
-    return isDirty;
-}
-
-void GridCell::setIsDirty(bool newIsDirty)
-{
-    isDirty = newIsDirty;
 }

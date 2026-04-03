@@ -137,23 +137,15 @@ public:
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
 
-    void updateStateVersion();
+    void scheduleSync();
+    bool getIsQueuedForSync() const;
+
+    void applyPendingSync();
     uint64_t getStateVersion() const;
 
-    void addToGridCell(GridCell *cell);
-    void removeFromGridCell(GridCell *cell);
-    std::vector<GridCell *> &getGridCells();
-    void clearGridCells();
-    void setCachedGridCellRange(int minX, int maxX, int minY, int maxY);
-    bool hasCachedGridCellRange() const;
-    int getCachedGridCellMinX() const;
-    int getCachedGridCellMaxX() const;
-    int getCachedGridCellMinY() const;
-    int getCachedGridCellMaxY() const;
-    void clearCachedGridCellRange();
-
-    void setIsRegisteredInGrid(bool isRegistered);
-    bool getIsRegisteredInGrid() const;
+    const GridCellRange &getGridCellRange() const;
+    GridCellRange calculateGridCellRange();
+    void setGridCellRange(const GridCellRange &range);
 
 protected:
     uint64_t collisionGroup;
@@ -165,15 +157,12 @@ protected:
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;
 
-    std::vector<GridCell *> cells;
-    bool hasGridCellRangeCache;
-    int cachedGridCellMinX;
-    int cachedGridCellMaxX;
-    int cachedGridCellMinY;
-    int cachedGridCellMaxY;
-    bool isRegisteredInGrid;
+    GridCellRange gridCellRange;
+    bool scheduledForSync;
 
-    void setProjectionDirtyIfNotNull(BoundingRadiusProjectionAxisProxy *proxy);
+    void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
+    void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
+    void updateGridCellRange();
     virtual void updateCollider() = 0;
 };
 

@@ -1,8 +1,10 @@
 #include "debugdraw.h"
+#include "constants.h"
+#include "gridcell.h"
 #include <cmath>
 
 DebugDraw::DebugDraw()
-    : debugObjectsBuffer(), showColliders(true), showCollisionPoints(true), showCollisionNormals(true)
+    : debugObjectsBuffer(), showColliders(true), showCollisionPoints(true), showCollisionNormals(true), showGridCells(true)
 {
 }
 
@@ -236,6 +238,27 @@ void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
     addDebugObject({center, edge}, 0x00, 0xCC, 0x00, 0xCC, false);
 }
 
+void DebugDraw::addGridCellDebugObject(const GridCellKey &cellKey)
+{
+    if (!showGridCells)
+    {
+        return;
+    }
+
+    float minX = static_cast<float>(cellKey.x) * GRID_CELL_SIZE;
+    float minY = static_cast<float>(cellKey.y) * GRID_CELL_SIZE;
+    float maxX = minX + GRID_CELL_SIZE;
+    float maxY = minY + GRID_CELL_SIZE;
+
+    std::vector<Eigen::Vector2f> vertices = {
+        Eigen::Vector2f(minX, minY),
+        Eigen::Vector2f(maxX, minY),
+        Eigen::Vector2f(maxX, maxY),
+        Eigen::Vector2f(minX, maxY)};
+
+    addDebugObject(std::move(vertices), 0x30, 0x90, 0xFF, 0x55, true);
+}
+
 void DebugDraw::addCollisionDebugObject(const Collision &collision)
 {
     if (!showCollisionNormals && !showCollisionPoints)
@@ -310,6 +333,11 @@ void DebugDraw::toggleShowCollisionPoints()
 void DebugDraw::toggleShowCollisionNormals()
 {
     showCollisionNormals = !showCollisionNormals;
+}
+
+void DebugDraw::toggleShowGridCells()
+{
+    showGridCells = !showGridCells;
 }
 
 ////////////

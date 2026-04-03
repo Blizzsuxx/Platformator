@@ -16,10 +16,9 @@ public:
     ~SegmentedIntervalList();
 
     void clear();
-    void sort();
     void add(BoundingRadiusProjectionAxis *axis);
     void remove(BoundingRadiusProjectionAxis *axis);
-    void addDirtyProjection(BoundingRadiusProjectionProxy *projection);
+    void repairProjection(BoundingRadiusProjectionProxy *projection);
 
     bool getIsPrimary() const;
     bool getIsEmpty() const;
@@ -44,18 +43,15 @@ private:
     std::pair<LocalSortArray *, size_t> getPreviousIndex(LocalSortArray *chunk, size_t index) const;
     std::pair<LocalSortArray *, size_t> getNextIndex(LocalSortArray *chunk, size_t index) const;
 
-    void swapBoundaries(LocalSortArray *leftChunk, LocalSortArray *rightChunk);
-    void repairProjectionFromIndex(LocalSortArray *chunk, size_t arrayIndex);
+    void repairProjectionFromIndexInternal(BoundingRadiusProjectionProxy *projection, LocalSortArray *chunk, size_t arrayIndex);
     void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
     void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
 
     void emitCollision(Collider *colliderA, Collider *colliderB);
     void removeCollision(Collider *colliderA, Collider *colliderB);
-    void removeDirtyProjection(BoundingRadiusProjectionProxy *projection);
     void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
 
     std::vector<LocalSortArray *> chunks;
-    std::vector<BoundingRadiusProjectionProxy *> dirtyProjections;
     AABB *owner;
     Axis axis;
 

@@ -23,7 +23,7 @@ float CircleCollider::getRadius() const
 void CircleCollider::setRadius(const float radius)
 {
     this->radius = radius;
-    updateCollider();
+    scheduleSync();
 }
 
 std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) const
@@ -59,14 +59,16 @@ void CircleCollider::generateProjections()
     float scaledRadius = getRadius();
 
     xProjections.getMin()->setProjectedPosition(x - scaledRadius);
-    xProjections.getMax()->setProjectedPosition(x + scaledRadius);
-    yProjections.getMin()->setProjectedPosition(y - scaledRadius);
-    yProjections.getMax()->setProjectedPosition(y + scaledRadius);
+    repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
 
-    // TODO:
-    // maybe check if the projections actually changed before setting dirty to true
-    // this is only called when the position or the radius changes, so it is not that bad if we set dirty to true even if the projections did not change
-    this->updateStateVersion();
+    xProjections.getMax()->setProjectedPosition(x + scaledRadius);
+    repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
+
+    yProjections.getMin()->setProjectedPosition(y - scaledRadius);
+    repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
+
+    yProjections.getMax()->setProjectedPosition(y + scaledRadius);
+    repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
 }
 
 void CircleCollider::updateCollider()

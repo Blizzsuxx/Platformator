@@ -1,4 +1,5 @@
 #include "sdlwindow.h"
+#include "gamemanager.h"
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
@@ -23,6 +24,9 @@ SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
                 break;
             case SDLK_F3:
                 debugDraw.toggleShowCollisionNormals();
+                break;
+            case SDLK_F4:
+                debugDraw.toggleShowGridCells();
                 break;
             default:
                 break;
@@ -117,6 +121,15 @@ void SDLWindow::render()
 {
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(renderer);
+
+    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    if (physicsManager != nullptr)
+    {
+        for (const auto &cellEntry : physicsManager->getGrid().getCells())
+        {
+            debugDraw.addGridCellDebugObject(cellEntry.first);
+        }
+    }
 
     for (Sprite *spriteComponent : spriteComponents)
     {

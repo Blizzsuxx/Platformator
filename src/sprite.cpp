@@ -53,7 +53,9 @@ void Sprite::freeTexture()
 {
     if (textureWrapper != nullptr)
     {
-        textureWrapper->removeReferenceAndFreeIfNoReferences(this);
+        TextureWrapper *currentTextureWrapper = textureWrapper;
+        textureWrapper = nullptr;
+        currentTextureWrapper->removeReferenceAndFreeIfNoReferences(this);
     }
 }
 

@@ -15,8 +15,8 @@ GameManager::~GameManager()
     }
     gameObjects.clear();
 
-    freeAllTextures();
     deleteMarkedGameObjects();
+    freeAllTextures();
 
     delete physicsManager;
     delete window;

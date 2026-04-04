@@ -64,17 +64,14 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
         return;
     }
 
+    colliderComponent->markForRefresh();
     grid.removeCollider(colliderComponent);
+    colliderComponent->clearRefreshMark();
     grid.addCollider(colliderComponent);
 }
 
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || colliderComponent->getIsQueuedForSync())
-    {
-        return;
-    }
-
     pendingColliderSyncs.push_back(colliderComponent);
 }
 
@@ -102,23 +99,7 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr)
-    {
-        return;
-    }
-
-    auto pendingIterator = std::find(pendingColliderComponents.begin(), pendingColliderComponents.end(), colliderComponent);
-    if (pendingIterator != pendingColliderComponents.end())
-    {
-        pendingColliderComponents.erase(pendingIterator);
-    }
-
-    auto syncIterator = std::find(pendingColliderSyncs.begin(), pendingColliderSyncs.end(), colliderComponent);
-    if (syncIterator != pendingColliderSyncs.end())
-    {
-        pendingColliderSyncs.erase(syncIterator);
-    }
-
+    colliderComponent->removeSync();
     grid.removeCollider(colliderComponent);
 }
 
@@ -131,6 +112,10 @@ void PhysicsManager::flushPendingColliderSyncs()
 
     for (Collider *colliderComponent : pendingColliderSyncs)
     {
+        if (colliderComponent->getGameObject()->getIsMarkedForDeletion() || colliderComponent->getIsMarkedForRefresh() || !colliderComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
         grid.syncCollider(colliderComponent);
     }
 
@@ -146,6 +131,11 @@ void PhysicsManager::flushPendingColliderComponents()
 
     for (Collider *colliderComponent : pendingColliderComponents)
     {
+        if (colliderComponent->getGameObject()->getIsMarkedForDeletion() || !colliderComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
+
         grid.addCollider(colliderComponent);
     }
 
@@ -164,11 +154,6 @@ void PhysicsManager::narrowPhase()
 
     for (const ColliderPair *pair : *grid.getPendingNarrowPhasePairs())
     {
-        if (pair == nullptr)
-        {
-            continue;
-        }
-
         pair->setIsQueuedForNarrowPhase(false);
         pair->setNarrowPhaseQueueIndex(SIZE_MAX);
 
@@ -284,11 +269,6 @@ void PhysicsManager::resolveCollisions(double timeDelta)
     {
         const Collider *referenceCollider = collision->getReferenceObject();
         const Collider *incidentCollider = collision->getIncidentObject();
-
-        if (referenceCollider == nullptr || incidentCollider == nullptr || referenceCollider->getGameObject()->getIsMarkedForDeletion() || incidentCollider->getGameObject()->getIsMarkedForDeletion())
-        {
-            continue;
-        }
 
         if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {

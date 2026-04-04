@@ -110,6 +110,13 @@ enum class ColliderType
     BoxCollider
 };
 
+enum ColliderFlags : uint8_t
+{
+    IS_TRIGGER = 1 << 0,
+    IS_QUEUED_FOR_SYNC = 1 << 1,
+    IS_MARKED_FOR_REFRESH = 1 << 2
+};
+
 class Collider : public Component
 {
     friend class GameObject;
@@ -140,26 +147,31 @@ public:
 
     void scheduleSync();
     bool getIsQueuedForSync() const;
+    void removeSync();
 
-    void applyPendingSync();
+    void applySync();
     uint64_t getStateVersion() const;
 
     const GridCellRange &getGridCellRange() const;
     GridCellRange calculateGridCellRange();
     void setGridCellRange(const GridCellRange &range);
+    bool hasValidGridCellRange() const;
+
+    bool getIsMarkedForRefresh() const;
+    void clearRefreshMark();
+    void markForRefresh();
 
 protected:
     uint64_t collisionGroup;
     uint64_t collisionMask;
 
-    bool isTrigger;
     uint64_t stateVersion;
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;
 
     GridCellRange gridCellRange;
-    bool scheduledForSync;
+    ColliderFlags flags;
 
     void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
     void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);

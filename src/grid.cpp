@@ -23,6 +23,7 @@ void Grid::removeGridCellIfEmpty(GridCell *cell)
 
 void Grid::addColliderInternal(Collider *collider)
 {
+    collider->applySync();
     const GridCellRange &cachedRange = collider->getGridCellRange();
 
     if constexpr (ENABLE_LOGGING)
@@ -257,7 +258,7 @@ void Grid::syncCollider(Collider *collider)
 {
     GridCellRange oldGridCellRange = collider->getGridCellRange();
 
-    collider->applyPendingSync();
+    collider->applySync();
 
     const GridCellRange &newGridCellRange = collider->getGridCellRange();
     if constexpr (ENABLE_LOGGING)

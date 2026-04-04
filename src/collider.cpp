@@ -5,7 +5,7 @@
 #include "segmentedintervallist.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), isTrigger(false), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), scheduledForSync(false)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0))
 {
 }
 
@@ -25,12 +25,19 @@ BoundingRadiusProjectionAxis *Collider::getYProjections()
 
 bool Collider::getIsTrigger() const
 {
-    return isTrigger;
+    return (flags & IS_TRIGGER) != 0;
 }
 
 void Collider::setIsTrigger(const bool isTrigger)
 {
-    this->isTrigger = isTrigger;
+    if (isTrigger)
+    {
+        flags = static_cast<ColliderFlags>(flags | IS_TRIGGER);
+    }
+    else
+    {
+        flags = static_cast<ColliderFlags>(flags & ~IS_TRIGGER);
+    }
 }
 
 void Collider::repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
@@ -58,24 +65,19 @@ void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection 
 void Collider::scheduleSync()
 {
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
-    if (physicsManager != nullptr && !scheduledForSync)
+    if (physicsManager != nullptr && !(flags & IS_QUEUED_FOR_SYNC) && hasValidGridCellRange())
     {
         physicsManager->queueColliderSync(this);
-        scheduledForSync = true;
+        flags = static_cast<ColliderFlags>(flags | IS_QUEUED_FOR_SYNC);
     }
 }
 
-void Collider::applyPendingSync()
+void Collider::applySync()
 {
-    if (!scheduledForSync)
-    {
-        return;
-    }
-
     updateCollider();
     updateGridCellRange();
     stateVersion++;
-    scheduledForSync = false;
+    flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
 }
 
 void Collider::triggerCollisionEnter(const Collider *other) const
@@ -133,6 +135,11 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
     }
 }
 
+void Collider::removeSync()
+{
+    flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
+}
+
 uint64_t Collider::getCollisionMask() const
 {
     return collisionMask;
@@ -170,5 +177,25 @@ GridCellRange Collider::calculateGridCellRange()
 
 bool Collider::getIsQueuedForSync() const
 {
-    return scheduledForSync;
+    return (flags & IS_QUEUED_FOR_SYNC) != 0;
+}
+
+bool Collider::hasValidGridCellRange() const
+{
+    return gridCellRange.getIsValid();
+}
+
+bool Collider::getIsMarkedForRefresh() const
+{
+    return (flags & IS_MARKED_FOR_REFRESH) != 0;
+}
+
+void Collider::markForRefresh()
+{
+    flags = static_cast<ColliderFlags>(flags | IS_MARKED_FOR_REFRESH);
+}
+
+void Collider::clearRefreshMark()
+{
+    flags = static_cast<ColliderFlags>(flags & ~IS_MARKED_FOR_REFRESH);
 }

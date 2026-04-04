@@ -12,13 +12,14 @@ struct GridCellKey;
 class DebugObject
 {
 public:
-    DebugObject(std::vector<Eigen::Vector2f> vertices);
-    DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed = true);
+    DebugObject(std::vector<Eigen::Vector2f> vertices, bool closed = true, std::string name = "");
+    DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed = true, std::string name = "");
     ~DebugObject();
 
     std::vector<Eigen::Vector2f> vertices;
     Uint8 r, g, b, a;
     bool closed;
+    std::string name;
 };
 
 class DebugDraw
@@ -33,9 +34,9 @@ public:
     DebugDraw(DebugDraw &) = delete;
     DebugDraw &operator=(const DebugDraw &) = delete;
 
-    void addDebugObject(const std::vector<Eigen::Vector2f> &vertices);
-    void addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed = true);
-    void addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed);
+    void addDebugObject(const std::vector<Eigen::Vector2f> &vertices, std::string name = "");
+    void addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed = true, std::string name = "");
+    void addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed, std::string name = "");
 
     void addBoxColliderDebugObject(const BoxCollider &collider);
     void addCircleColliderDebugObject(const CircleCollider &collider);

@@ -5,8 +5,8 @@
 inline const Eigen::Vector2f X_AXIS(1.0f, 0.0f);
 inline const Eigen::Vector2f Y_AXIS(0.0f, 1.0f);
 
-constexpr float SCREEN_WIDTH = 1920.0f;
-constexpr float SCREEN_HEIGHT = 1080.0f;
+constexpr float SCREEN_WIDTH = 640.0f;
+constexpr float SCREEN_HEIGHT = 480.0f;
 constexpr int TARGET_FPS = 120;
 constexpr const double FRAME_TIME = 1.0 / static_cast<double>(TARGET_FPS);
 

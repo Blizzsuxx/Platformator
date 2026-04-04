@@ -40,6 +40,21 @@ void Collider::setIsTrigger(const bool isTrigger)
     }
 }
 
+bool Collider::getIsQueuedForAdd() const
+{
+    return (flags & IS_QUEUED_FOR_ADD) != 0;
+}
+
+void Collider::markQueuedForAdd()
+{
+    flags = static_cast<ColliderFlags>(flags | IS_QUEUED_FOR_ADD);
+}
+
+void Collider::clearQueuedForAdd()
+{
+    flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_ADD);
+}
+
 void Collider::repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
 {
     for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
@@ -185,17 +200,19 @@ bool Collider::hasValidGridCellRange() const
     return gridCellRange.getIsValid();
 }
 
-bool Collider::getIsMarkedForRefresh() const
+bool Collider::getIsRegisteredInGrid() const
 {
-    return (flags & IS_MARKED_FOR_REFRESH) != 0;
+    return (flags & IS_REGISTERED_IN_GRID) != 0;
 }
 
-void Collider::markForRefresh()
+void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
 {
-    flags = static_cast<ColliderFlags>(flags | IS_MARKED_FOR_REFRESH);
-}
-
-void Collider::clearRefreshMark()
-{
-    flags = static_cast<ColliderFlags>(flags & ~IS_MARKED_FOR_REFRESH);
+    if (isRegisteredInGrid)
+    {
+        flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_GRID);
+    }
+    else
+    {
+        flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
+    }
 }

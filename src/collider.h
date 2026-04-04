@@ -113,8 +113,9 @@ enum class ColliderType
 enum ColliderFlags : uint8_t
 {
     IS_TRIGGER = 1 << 0,
-    IS_QUEUED_FOR_SYNC = 1 << 1,
-    IS_MARKED_FOR_REFRESH = 1 << 2
+    IS_QUEUED_FOR_ADD = 1 << 1,
+    IS_QUEUED_FOR_SYNC = 1 << 2,
+    IS_REGISTERED_IN_GRID = 1 << 3
 };
 
 class Collider : public Component
@@ -145,6 +146,10 @@ public:
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
 
+    bool getIsQueuedForAdd() const;
+    void markQueuedForAdd();
+    void clearQueuedForAdd();
+
     void scheduleSync();
     bool getIsQueuedForSync() const;
     void removeSync();
@@ -157,9 +162,8 @@ public:
     void setGridCellRange(const GridCellRange &range);
     bool hasValidGridCellRange() const;
 
-    bool getIsMarkedForRefresh() const;
-    void clearRefreshMark();
-    void markForRefresh();
+    bool getIsRegisteredInGrid() const;
+    void setIsRegisteredInGrid(bool isRegisteredInGrid);
 
 protected:
     uint64_t collisionGroup;

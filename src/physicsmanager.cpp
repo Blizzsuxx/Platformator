@@ -46,28 +46,26 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || colliderComponent->getIsQueuedForAdd() || colliderComponent->getIsRegisteredInGrid())
     {
         return;
     }
 
-    if (std::find(pendingColliderComponents.begin(), pendingColliderComponents.end(), colliderComponent) == pendingColliderComponents.end())
-    {
-        pendingColliderComponents.push_back(colliderComponent);
-    }
+    colliderComponent->markQueuedForAdd();
+    pendingColliderComponents.push_back(colliderComponent);
 }
 
 void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive())
+    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
     {
         return;
     }
 
-    colliderComponent->markForRefresh();
     grid.removeCollider(colliderComponent);
-    colliderComponent->clearRefreshMark();
+    colliderComponent->setIsRegisteredInGrid(false);
     grid.addCollider(colliderComponent);
+    colliderComponent->setIsRegisteredInGrid(true);
 }
 
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
@@ -99,8 +97,16 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
+    colliderComponent->clearQueuedForAdd();
     colliderComponent->removeSync();
+
+    if (!colliderComponent->getIsRegisteredInGrid())
+    {
+        return;
+    }
+
     grid.removeCollider(colliderComponent);
+    colliderComponent->setIsRegisteredInGrid(false);
 }
 
 void PhysicsManager::flushPendingColliderSyncs()
@@ -112,10 +118,11 @@ void PhysicsManager::flushPendingColliderSyncs()
 
     for (Collider *colliderComponent : pendingColliderSyncs)
     {
-        if (colliderComponent->getGameObject()->getIsMarkedForDeletion() || colliderComponent->getIsMarkedForRefresh() || !colliderComponent->getGameObject()->getActive())
+        if (!colliderComponent->getIsQueuedForSync())
         {
             continue;
         }
+
         grid.syncCollider(colliderComponent);
     }
 
@@ -131,12 +138,14 @@ void PhysicsManager::flushPendingColliderComponents()
 
     for (Collider *colliderComponent : pendingColliderComponents)
     {
-        if (colliderComponent->getGameObject()->getIsMarkedForDeletion() || !colliderComponent->getGameObject()->getActive())
+        if (!colliderComponent->getIsQueuedForAdd())
         {
             continue;
         }
 
+        colliderComponent->clearQueuedForAdd();
         grid.addCollider(colliderComponent);
+        colliderComponent->setIsRegisteredInGrid(true);
     }
 
     pendingColliderComponents.clear();

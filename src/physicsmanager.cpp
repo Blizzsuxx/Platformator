@@ -275,11 +275,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     const Eigen::Vector2f &normal = collision->getNormal();
 
     const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
-    DebugDraw::getInstance().addEdgeDebugObject(referenceEdge.v1, referenceEdge.v2, 255, 255, 255, 255, "Reference Edge");
-    printf("Reference Edge: v1=(%f, %f), v2=(%f, %f)\n", referenceEdge.v1.x(), referenceEdge.v1.y(), referenceEdge.v2.x(), referenceEdge.v2.y());
     const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
-    DebugDraw::getInstance().addEdgeDebugObject(incidentEdge.v1, incidentEdge.v2, 0, 255, 0, 255, "Incident Edge");
-    printf("Incident Edge: v1=(%f, %f), v2=(%f, %f)\n", incidentEdge.v1.x(), incidentEdge.v1.y(), incidentEdge.v2.x(), incidentEdge.v2.y());
 
     // bool flipped = false;
     // float dotBetweenReferenceAndNormal = abs(referenceEdge.direction.dot(normal));

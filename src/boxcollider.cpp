@@ -1,4 +1,5 @@
 #include "boxcollider.h"
+#include "helpers.h"
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
     : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height), vertices(), normals(2)
@@ -104,10 +105,11 @@ void BoxCollider::generateVertices()
     float scaledWidth = getWidth();
     float scaledHeight = getHeight();
 
-    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
-    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    // bottom left, bottom right, top right, top left
+    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
 
     // Rotate the extreme points
     float xOrigin = getGameObject()->getPosition().x();
@@ -128,4 +130,39 @@ void BoxCollider::updateCollider()
     generateVertices();
     generateNormals();
     generateProjections();
+}
+
+Edge BoxCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
+{
+    // Find the edge whose normal is closest to the given normal
+    float maxDot = -std::numeric_limits<float>::infinity();
+    size_t bestEdgeIndex = 0;
+
+    for (size_t i = 0; i < vertices.size(); i++)
+    {
+        float dot = vertices[i].dot(normal);
+        if (dot > maxDot)
+        {
+            maxDot = dot;
+            bestEdgeIndex = i;
+        }
+    }
+
+    size_t nextVertexIndex = (bestEdgeIndex + 1) % vertices.size();
+    size_t previousVertexIndex = (bestEdgeIndex + vertices.size() - 1) % vertices.size();
+
+    Eigen::Vector2f left = vertices[bestEdgeIndex] - vertices[previousVertexIndex];
+    Eigen::Vector2f right = vertices[bestEdgeIndex] - vertices[nextVertexIndex];
+
+    left.normalize();
+    right.normalize();
+
+    if (right.dot(normal) <= left.dot(normal))
+    {
+        return Edge(vertices[bestEdgeIndex], vertices[previousVertexIndex], vertices[bestEdgeIndex]);
+    }
+    else
+    {
+        return Edge(vertices[bestEdgeIndex], vertices[bestEdgeIndex], vertices[nextVertexIndex]);
+    }
 }

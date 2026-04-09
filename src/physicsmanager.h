@@ -40,8 +40,9 @@ private:
 
     void satCreateCollision(const ColliderPair &pair);
 
-    bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider);
+    bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, const Collider *&realIncidentCollider);
     void resolveCollision(const Collision *collision);
+    void calculateContactPoint(Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collider *> pendingColliderComponents;

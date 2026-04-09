@@ -205,8 +205,7 @@ void DebugDraw::addBoxColliderDebugObject(const BoxCollider &collider)
     }
 
     const auto &v = collider.getVertices();
-    // Vertex order: 0=TL, 1=TR, 2=BL, 3=BR → draw as TL→TR→BR→BL (clockwise)
-    std::vector<Eigen::Vector2f> ordered = {v[0], v[1], v[3], v[2]};
+    std::vector<Eigen::Vector2f> ordered = {v[0], v[1], v[2], v[3]};
     addDebugObject(std::move(ordered), 0x00, 0xFF, 0x00, 0xCC, true, collider.getGameObject()->getName());
 }
 

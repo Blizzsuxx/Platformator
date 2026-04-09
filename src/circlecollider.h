@@ -19,6 +19,8 @@ public:
     // Setters
     void setRadius(const float radius);
 
+    Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const override;
+
 private:
     float radius;
 

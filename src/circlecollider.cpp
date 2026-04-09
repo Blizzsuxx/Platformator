@@ -1,4 +1,5 @@
 #include "circlecollider.h"
+#include "helpers.h"
 
 CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER), radius(radius)
 {
@@ -74,4 +75,20 @@ void CircleCollider::generateProjections()
 void CircleCollider::updateCollider()
 {
     generateProjections();
+}
+
+Edge CircleCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
+{
+    Eigen::Vector2f direction = normal;
+    if (direction.squaredNorm() <= 1e-12f)
+    {
+        direction = Eigen::Vector2f(1.0f, 0.0f);
+    }
+    else
+    {
+        direction.normalize();
+    }
+
+    Eigen::Vector2f supportPoint = getGameObject()->getPosition() + direction * getRadius();
+    return Edge(supportPoint, supportPoint, supportPoint);
 }

@@ -197,7 +197,7 @@ void PhysicsManager::narrowPhase()
     grid.clearPendingNarrowPhasePairs();
 }
 
-bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, Eigen::Vector2f &incidentProjection, const Collider *&realIncidentCollider)
+bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, const Collider *&realIncidentCollider)
 {
     for (long unsigned int i = 0; i < normals.size(); i++)
     {
@@ -216,7 +216,6 @@ bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normal
             {
                 minOverlap = overlap;
                 minNormal = normal;
-                incidentProjection = projections2;
                 realIncidentCollider = incidentCollider;
             }
         }
@@ -232,11 +231,10 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 
     float minOverlap = std::numeric_limits<float>::max();
     Eigen::Vector2f minNormal;
-    Eigen::Vector2f incidentProjection;
     const Collider *realIncidentCollider = incidentCollider;
 
     std::vector<Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
-    if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
+    if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, realIncidentCollider) == false)
     {
         pair.clearCollision();
         return;
@@ -244,7 +242,7 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 
     normals = incidentCollider->getNormals(referenceCollider);
 
-    if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, incidentProjection, realIncidentCollider) == false)
+    if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, realIncidentCollider) == false)
     {
         pair.clearCollision();
         return;
@@ -259,17 +257,94 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
     auto directionVector = collision->getIncidentObject()->getGameObject()->getPosition() - collision->getReferenceObject()->getGameObject()->getPosition();
     if (minNormal.dot(directionVector) < 0)
     {
-        minNormal *= -1.0f;
+        minNormal = -minNormal;
     }
 
     // Store the corrected normal
     collision->setNormal(minNormal);
     collision->setPenetration(minOverlap);
 
-    // Contact point: incident's near surface, offset halfway into the overlap
-    float incidentHalfExtent = (incidentProjection.y() - incidentProjection.x()) / 2.0f;
-    collision->setContactPoint(
-        realIncidentCollider->getGameObject()->getPosition() - minNormal * (incidentHalfExtent - minOverlap / 2.0f));
+    calculateContactPoint(collision);
+}
+
+void PhysicsManager::calculateContactPoint(Collision *collision)
+{
+    // Approximate contact point as the midpoint of the incident projection on the collision normal
+    const Collider *referenceCollider = collision->getReferenceObject();
+    const Collider *incidentCollider = collision->getIncidentObject();
+    const Eigen::Vector2f &normal = collision->getNormal();
+
+    const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
+    const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
+
+    // bool flipped = false;
+    // float dotBetweenReferenceAndNormal = abs(referenceEdge.direction.dot(normal));
+    // float dotBetweenIncidentAndNormal = abs(incidentEdge.direction.dot(normal));
+
+    // // not sure if this is even needed
+    // if (dotBetweenIncidentAndNormal < dotBetweenReferenceAndNormal)
+    // {
+    //     std::swap(referenceEdge, incidentEdge);
+    //     flipped = true;
+    //     printf("Flipped edges for contact point calculation\n");
+    // }
+
+    // the edge vector
+    Eigen::Vector2f referenceEdgeVector = referenceEdge.getEdgeVector();
+    referenceEdgeVector.normalize();
+
+    double o1 = referenceEdgeVector.dot(referenceEdge.v1);
+    // clip the incident edge by the first
+    // vertex of the reference edge
+    ClipPoints cp = clip(incidentEdge.v1, incidentEdge.v2, referenceEdgeVector, o1);
+    // if we dont have 2 points left then fail
+    if (cp.count < 2)
+    {
+        printf("Clipping failed at first reference vertex\n");
+        return;
+    }
+
+    // clip whats left of the incident edge by the
+    // second vertex of the reference edge
+    // but we need to clip in the opposite direction
+    // so we flip the direction and offset
+    double o2 = (referenceEdgeVector.dot(referenceEdge.v2));
+    cp = clip(cp.points[0], cp.points[1], -referenceEdgeVector, -o2);
+    // if we dont have 2 points left then fail
+    if (cp.count < 2)
+    {
+        printf("Clipping failed at second reference vertex\n");
+        return;
+    }
+
+    // get the reference edge normal
+    // Vector2 refNorm = ref.cross(-1.0);
+    // if we had to flip the incident and reference edges
+    // then we need to flip the reference edge normal to
+    // clip properly
+    // get the largest depth
+    double max = normal.dot(referenceEdge.max);
+    // make sure the final points are not past this maximum
+
+    size_t indexForRemoval = 0;
+    if (normal.dot(cp.points[indexForRemoval]) - max < 0.0)
+    {
+        cp.remove(indexForRemoval);
+        indexForRemoval--;
+    }
+    indexForRemoval++;
+    if (normal.dot(cp.points[indexForRemoval]) - max < 0.0)
+    {
+        cp.remove(indexForRemoval);
+    }
+
+    Eigen::Vector2f contactPoint(0.0f, 0.0f);
+    for (size_t i = 0; i < cp.count; ++i)
+    {
+        contactPoint += cp.points[i];
+    }
+    contactPoint /= static_cast<float>(cp.count);
+    collision->setContactPoint(contactPoint);
 }
 
 void PhysicsManager::resolveCollisions(double timeDelta)

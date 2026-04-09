@@ -9,6 +9,7 @@ class Collider;
 class LocalSortArray;
 class GridCell;
 class SegmentedIntervalList;
+class Edge;
 
 class BoundingRadiusProjection
 {
@@ -164,6 +165,8 @@ public:
 
     bool getIsRegisteredInGrid() const;
     void setIsRegisteredInGrid(bool isRegisteredInGrid);
+
+    virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
 protected:
     uint64_t collisionGroup;

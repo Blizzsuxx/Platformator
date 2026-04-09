@@ -105,11 +105,11 @@ void BoxCollider::generateVertices()
     float scaledWidth = getWidth();
     float scaledHeight = getHeight();
 
-    // bottom left, bottom right, top right, top left
-    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
-    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
-    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    // top left, top right, bottom right, bottom left
+    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
+    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
 
     // Rotate the extreme points
     float xOrigin = getGameObject()->getPosition().x();
@@ -151,8 +151,8 @@ Edge BoxCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
     size_t nextVertexIndex = (bestEdgeIndex + 1) % vertices.size();
     size_t previousVertexIndex = (bestEdgeIndex + vertices.size() - 1) % vertices.size();
 
-    Eigen::Vector2f left = vertices[bestEdgeIndex] - vertices[previousVertexIndex];
-    Eigen::Vector2f right = vertices[bestEdgeIndex] - vertices[nextVertexIndex];
+    Eigen::Vector2f left = vertices[bestEdgeIndex] - vertices[nextVertexIndex];
+    Eigen::Vector2f right = vertices[bestEdgeIndex] - vertices[previousVertexIndex];
 
     left.normalize();
     right.normalize();

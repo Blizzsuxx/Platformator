@@ -3,7 +3,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), spriteComponents(), listeners()
+                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners()
 {
     if (!init())
     {
@@ -27,6 +27,18 @@ SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
                 break;
             case SDLK_F4:
                 debugDraw.toggleShowGridCells();
+                break;
+            case SDLK_F5:
+                frameAdvanceMode = !frameAdvanceMode;
+                advanceFrameRequested = false;
+                printf("Frame advance mode: %s\n", frameAdvanceMode ? "enabled" : "disabled");
+                break;
+            case SDLK_F6:
+                if (frameAdvanceMode)
+                {
+                    advanceFrameRequested = true;
+                    printf("Advancing one frame\n");
+                }
                 break;
             default:
                 break;
@@ -123,7 +135,7 @@ void SDLWindow::render()
     SDL_RenderClear(renderer);
 
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
-    if (physicsManager != nullptr)
+    if (shouldSimulateFrame())
     {
         for (const auto &cellEntry : physicsManager->getGrid().getCells())
         {
@@ -148,7 +160,7 @@ void SDLWindow::render()
             SDL_RenderTextureRotated(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
 
             Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
-            if (collider)
+            if (collider != nullptr && shouldSimulateFrame())
             {
                 if (collider->getColliderType() == ColliderType::BoxCollider)
                 {
@@ -167,6 +179,11 @@ void SDLWindow::render()
     SDL_RenderPresent(renderer);
 }
 
+void SDLWindow::clearDebugObjects()
+{
+    debugDraw.clearDebugObjects();
+}
+
 SDL_Window *SDLWindow::getWindow() const
 {
     return window;
@@ -180,6 +197,22 @@ SDL_Renderer *SDLWindow::getRenderer() const
 bool SDLWindow::isRunning() const
 {
     return !quit;
+}
+
+bool SDLWindow::getIsFrameAdvanceMode() const
+{
+    return frameAdvanceMode;
+}
+
+bool SDLWindow::shouldSimulateFrame() const
+{
+    bool value = !frameAdvanceMode || advanceFrameRequested;
+    return value;
+}
+
+void SDLWindow::clearAdvanceFrameRequest()
+{
+    advanceFrameRequested = false;
 }
 
 void SDLWindow::addSpriteComponent(Sprite *spriteComponent)

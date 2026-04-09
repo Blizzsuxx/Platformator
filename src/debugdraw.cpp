@@ -62,7 +62,7 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
     }
 
     SDL_SetRenderDrawBlendMode(renderer, prevBlend);
-    clearDebugObjects();
+    // clearDebugObjects();
 }
 
 void DebugDraw::drawBoxCollider(SDL_Renderer *renderer, Camera *camera, const BoxCollider *collider)
@@ -363,6 +363,26 @@ void DebugDraw::toggleShowCollisionNormals()
 void DebugDraw::toggleShowGridCells()
 {
     showGridCells = !showGridCells;
+}
+
+void DebugDraw::addPointDebugObject(const Eigen::Vector2f &point, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool showLabel, std::string name)
+{
+    float size = 4.0f;
+    addDebugObject(
+        std::vector<Eigen::Vector2f>{point + Eigen::Vector2f(-size, -size), point + Eigen::Vector2f(size, size),
+                                     point + Eigen::Vector2f(-size, size), point + Eigen::Vector2f(size, -size)},
+        r, g, b, a, false, name);
+
+    if (showLabel && !name.empty())
+    {
+        // Optionally add a label (not implemented here since it requires text rendering)
+        // This is a placeholder for where you would integrate with a text rendering system
+    }
+}
+
+void DebugDraw::addEdgeDebugObject(const Eigen::Vector2f &start, const Eigen::Vector2f &end, Uint8 r, Uint8 g, Uint8 b, Uint8 a, std::string name)
+{
+    addDebugObject(std::vector<Eigen::Vector2f>{start, end}, r, g, b, a, false, name);
 }
 
 ////////////

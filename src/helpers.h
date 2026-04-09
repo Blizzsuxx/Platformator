@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdio>
 #include <Eigen/Dense>
 #include <array>
 #include <cstddef>
@@ -67,6 +68,8 @@ struct ClipPoints
             --count;
         }
     }
+
+    void averagePoints();
 };
 
 // clips the line segment points v1, v2

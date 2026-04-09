@@ -42,6 +42,8 @@ public:
     void addCircleColliderDebugObject(const CircleCollider &collider);
     void addGridCellDebugObject(const GridCellKey &cellKey);
     void addCollisionDebugObject(const Collision &collision);
+    void addPointDebugObject(const Eigen::Vector2f &point, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool showLabel = false, std::string name = "");
+    void addEdgeDebugObject(const Eigen::Vector2f &start, const Eigen::Vector2f &end, Uint8 r, Uint8 g, Uint8 b, Uint8 a, std::string name = "");
 
     void clearDebugObjects();
 

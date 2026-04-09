@@ -28,6 +28,10 @@ public:
     void removeSpriteComponent(Sprite *spriteComponent);
 
     void addSdlListener(const std::function<void(SDL_Event)> &listener);
+    bool shouldSimulateFrame() const;
+    void clearAdvanceFrameRequest();
+    bool getIsFrameAdvanceMode() const;
+    void clearDebugObjects();
 
 private:
     SDL_Window *window;
@@ -37,6 +41,8 @@ private:
     DebugDraw &debugDraw;
     const char *rendererName;
     bool quit;
+    bool frameAdvanceMode;
+    bool advanceFrameRequested;
 
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event)>> listeners;

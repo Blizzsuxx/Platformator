@@ -147,10 +147,22 @@ void GameManager::loop()
     {
         updateDeltaTime();
         window->handleEvents();
-        physicsManager->applyPhysics(deltaTime);
-        physicsManager->checkForCollisions();
-        physicsManager->resolveCollisions(deltaTime);
+
+        if (window->shouldSimulateFrame())
+        {
+            window->clearDebugObjects();
+            if (window->getIsFrameAdvanceMode())
+            {
+                deltaTime = FRAME_TIME;
+            }
+
+            physicsManager->applyPhysics(deltaTime);
+            physicsManager->checkForCollisions();
+            physicsManager->resolveCollisions(deltaTime);
+        }
+
         window->render();
+        window->clearAdvanceFrameRequest();
         deleteMarkedGameObjects();
         delay();
     }

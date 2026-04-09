@@ -37,7 +37,7 @@ struct Edge
 
 struct ClipPoints
 {
-    std::array<Eigen::Vector2f, 6> points;
+    std::array<Eigen::Vector2f, 3> points;
     size_t count;
 
     ClipPoints() : points(), count(0)
@@ -49,6 +49,10 @@ struct ClipPoints
         if (count < points.size())
         {
             points[count++] = point;
+        }
+        else
+        {
+            printf("Warning: ClipPoints overflow, point not added\n");
         }
     }
 

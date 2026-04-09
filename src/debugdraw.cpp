@@ -110,22 +110,41 @@ void DebugDraw::drawCircleCollider(SDL_Renderer *renderer, Camera *camera, const
 
 void DebugDraw::drawContactPoint(SDL_Renderer *renderer, Camera *camera, const Collision *collision)
 {
-    // Red cross at contact point
+    const ClipPoints &contactPoints = collision->getContactPoints();
+    if (contactPoints.count == 0)
+    {
+        return;
+    }
+
     SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF);
 
-    int cx = static_cast<int>(collision->getContactPoint().x()) - camera->getCamera().x;
-    int cy = static_cast<int>(collision->getContactPoint().y()) - camera->getCamera().y;
-
-    drawCross(renderer, cx, cy, 5);
+    for (size_t i = 0; i < contactPoints.count; ++i)
+    {
+        int cx = static_cast<int>(contactPoints.points[i].x()) - camera->getCamera().x;
+        int cy = static_cast<int>(contactPoints.points[i].y()) - camera->getCamera().y;
+        drawCross(renderer, cx, cy, 5);
+    }
 }
 
 void DebugDraw::drawNormal(SDL_Renderer *renderer, Camera *camera, const Collision *collision)
 {
-    // Yellow line from contact point along normal, length = penetration * 5 (scaled for visibility)
+    const ClipPoints &contactPoints = collision->getContactPoints();
+    if (contactPoints.count == 0)
+    {
+        return;
+    }
+
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF);
 
-    int cx = static_cast<int>(collision->getContactPoint().x()) - camera->getCamera().x;
-    int cy = static_cast<int>(collision->getContactPoint().y()) - camera->getCamera().y;
+    Eigen::Vector2f anchor = Eigen::Vector2f::Zero();
+    for (size_t i = 0; i < contactPoints.count; ++i)
+    {
+        anchor += contactPoints.points[i];
+    }
+    anchor /= static_cast<float>(contactPoints.count);
+
+    int cx = static_cast<int>(anchor.x()) - camera->getCamera().x;
+    int cy = static_cast<int>(anchor.y()) - camera->getCamera().y;
 
     float normalLength = std::max(collision->getPenetration() * 5.0f, 15.0f);
     int nx = cx + static_cast<int>(collision->getNormal().x() * normalLength);
@@ -262,51 +281,61 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
         return;
     }
 
-    auto contactPoint = collision.getContactPoint();
+    const ClipPoints &contactPoints = collision.getContactPoints();
+    if (contactPoints.count == 0)
+    {
+        return;
+    }
+
     auto normal = collision.getNormal();
     float penetration = collision.getPenetration();
 
     if (showCollisionPoints)
     {
-        // Filled-looking cross at contact point (two separate line segments)
         float size = 6.0f;
-        addDebugObject(
-            {contactPoint + Eigen::Vector2f(-size, -size), contactPoint + Eigen::Vector2f(size, size),
-             contactPoint + Eigen::Vector2f(-size, size), contactPoint + Eigen::Vector2f(size, -size)},
-            0xFF, 0x20, 0x20, 0xFF, false);
+        for (size_t i = 0; i < contactPoints.count; ++i)
+        {
+            const Eigen::Vector2f &contactPoint = contactPoints.points[i];
+            addDebugObject(
+                std::vector<Eigen::Vector2f>{contactPoint + Eigen::Vector2f(-size, -size), contactPoint + Eigen::Vector2f(size, size),
+                                             contactPoint + Eigen::Vector2f(-size, size), contactPoint + Eigen::Vector2f(size, -size)},
+                0xFF, 0x20, 0x20, 0xFF, false);
 
-        // Small diamond around the point for extra visibility
-        addDebugObject(
-            {contactPoint + Eigen::Vector2f(0, -size), contactPoint + Eigen::Vector2f(size, 0),
-             contactPoint + Eigen::Vector2f(0, size), contactPoint + Eigen::Vector2f(-size, 0)},
-            0xFF, 0x60, 0x60, 0xFF, true);
+            addDebugObject(
+                std::vector<Eigen::Vector2f>{contactPoint + Eigen::Vector2f(0, -size), contactPoint + Eigen::Vector2f(size, 0),
+                                             contactPoint + Eigen::Vector2f(0, size), contactPoint + Eigen::Vector2f(-size, 0)},
+                0xFF, 0x60, 0x60, 0xFF, true);
+        }
     }
 
     if (showCollisionNormals)
     {
-        // Normal arrow with minimum visible length
+        Eigen::Vector2f contactPoint = Eigen::Vector2f::Zero();
+        for (size_t i = 0; i < contactPoints.count; ++i)
+        {
+            contactPoint += contactPoints.points[i];
+        }
+        contactPoint /= static_cast<float>(contactPoints.count);
+
         float normalLength = std::max(penetration * 5.0f, 20.0f);
         Eigen::Vector2f tip = contactPoint + normal * normalLength;
 
-        // Main shaft
-        addDebugObject({contactPoint, tip}, 0xFF, 0xFF, 0x00, 0xFF, false);
+        addDebugObject(std::vector<Eigen::Vector2f>{contactPoint, tip}, 0xFF, 0xFF, 0x00, 0xFF, false);
 
-        // Arrowhead
         Eigen::Vector2f perp(-normal.y(), normal.x());
         float arrowSize = 6.0f;
         Eigen::Vector2f arrowBase = tip - normal * arrowSize;
         addDebugObject(
-            {tip, arrowBase + perp * arrowSize * 0.5f,
-             tip, arrowBase - perp * arrowSize * 0.5f},
+            std::vector<Eigen::Vector2f>{tip, arrowBase + perp * arrowSize * 0.5f,
+                                         tip, arrowBase - perp * arrowSize * 0.5f},
             0xFF, 0xFF, 0x00, 0xFF, false);
 
-        // Penetration depth text-free indicator: small bar at penetration distance
         if (penetration > 2.0f)
         {
             Eigen::Vector2f penTip = contactPoint + normal * penetration;
             Eigen::Vector2f barLeft = penTip + perp * 4.0f;
             Eigen::Vector2f barRight = penTip - perp * 4.0f;
-            addDebugObject({barLeft, barRight}, 0xFF, 0xAA, 0x00, 0xFF, false);
+            addDebugObject(std::vector<Eigen::Vector2f>{barLeft, barRight}, 0xFF, 0xAA, 0x00, 0xFF, false);
         }
     }
 }

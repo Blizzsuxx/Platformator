@@ -1,19 +1,20 @@
 #pragma once
 
 #include "collider.h"
+#include "helpers.h"
 
 class Collision
 {
 public:
     Collision();
     Collision(Collider *colliderA, Collider *colliderB);
-    Collision(const Eigen::Vector2f &normal, float penetration, const Eigen::Vector2f &contactPoint, Collider *colliderA, Collider *colliderB);
+    Collision(const Eigen::Vector2f &normal, float penetration, const ClipPoints &contactPoints, Collider *colliderA, Collider *colliderB);
     ~Collision();
 
     // Getters
     const Eigen::Vector2f &getNormal() const;
     float getPenetration() const;
-    const Eigen::Vector2f &getContactPoint() const;
+    const ClipPoints &getContactPoints() const;
 
     const Collider *getReferenceObject() const;
     const Collider *getIncidentObject() const;
@@ -21,7 +22,7 @@ public:
     // Setters
     void setNormal(const Eigen::Vector2f &normal) const;
     void setPenetration(const float penetration) const;
-    void setContactPoint(const Eigen::Vector2f &contactPoint) const;
+    void setContactPoints(const ClipPoints &contactPoints) const;
     void setReferenceObject(const Collider *colliderA) const;
     void setIncidentObject(const Collider *colliderB) const;
 
@@ -51,7 +52,7 @@ public:
 private:
     mutable Eigen::Vector2f normal;
     mutable float penetration;
-    mutable Eigen::Vector2f contactPoint;
+    mutable ClipPoints contactPoints;
     mutable const Collider *referenceObject;
     mutable const Collider *incidentObject;
 };

@@ -1,16 +1,17 @@
 #include "collision.h"
+#include "helpers.h"
 
-Collision::Collision() : normal(), penetration(0.0f), contactPoint(), referenceObject(nullptr), incidentObject(nullptr)
+Collision::Collision() : normal(), penetration(0.0f), contactPoints(), referenceObject(nullptr), incidentObject(nullptr)
 {
 }
 
 Collision::Collision(Collider *colliderA, Collider *colliderB)
-    : normal(), penetration(0.0f), contactPoint(), referenceObject(colliderA), incidentObject(colliderB)
+    : normal(), penetration(0.0f), contactPoints(), referenceObject(colliderA), incidentObject(colliderB)
 {
 }
 
-Collision::Collision(const Eigen::Vector2f &normal, float penetration, const Eigen::Vector2f &contactPoint, Collider *colliderA, Collider *colliderB)
-    : normal(normal), penetration(penetration), contactPoint(contactPoint), referenceObject(colliderA), incidentObject(colliderB)
+Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPoints &contactPoints, Collider *colliderA, Collider *colliderB)
+    : normal(normal), penetration(penetration), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB)
 {
 }
 
@@ -29,9 +30,9 @@ float Collision::getPenetration() const
     return penetration;
 }
 
-const Eigen::Vector2f &Collision::getContactPoint() const
+const ClipPoints &Collision::getContactPoints() const
 {
-    return contactPoint;
+    return contactPoints;
 }
 
 const Collider *Collision::getReferenceObject() const
@@ -56,9 +57,9 @@ void Collision::setPenetration(const float penetration) const
     this->penetration = penetration;
 }
 
-void Collision::setContactPoint(const Eigen::Vector2f &contactPoint) const
+void Collision::setContactPoints(const ClipPoints &contactPoints) const
 {
-    this->contactPoint = contactPoint;
+    this->contactPoints = contactPoints;
 }
 
 void Collision::setReferenceObject(const Collider *colliderA) const

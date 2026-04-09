@@ -338,13 +338,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
         cp.remove(indexForRemoval);
     }
 
-    Eigen::Vector2f contactPoint(0.0f, 0.0f);
-    for (size_t i = 0; i < cp.count; ++i)
-    {
-        contactPoint += cp.points[i];
-    }
-    contactPoint /= static_cast<float>(cp.count);
-    collision->setContactPoint(contactPoint);
+    collision->setContactPoints(cp);
 }
 
 void PhysicsManager::resolveCollisions(double timeDelta)
@@ -385,11 +379,15 @@ void PhysicsManager::resolveCollision(const Collision *collision)
     }
 
     Eigen::Vector2f normal = collision->getNormal();
-    Eigen::Vector2f contactPoint = collision->getContactPoint();
+    ClipPoints contactPoints = collision->getContactPoints();
+    if (contactPoints.count == 0)
+    {
+        return;
+    }
 
     // Lever arms from center of mass to contact point
-    Eigen::Vector2f rA = contactPoint - rbA->getGameObject()->getPosition();
-    Eigen::Vector2f rB = contactPoint - rbB->getGameObject()->getPosition();
+    Eigen::Vector2f rA = contactPoints.points[0] - rbA->getGameObject()->getPosition();
+    Eigen::Vector2f rB = contactPoints.points[0] - rbB->getGameObject()->getPosition();
 
     // Relative velocity at contact point (includes angular contribution)
     Eigen::Vector2f vA = rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA);

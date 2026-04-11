@@ -156,9 +156,10 @@ void GameManager::loop()
                 deltaTime = FRAME_TIME;
             }
 
-            physicsManager->applyPhysics(deltaTime);
             physicsManager->checkForCollisions();
+            physicsManager->applyPhysics(deltaTime);
             physicsManager->resolveCollisions(deltaTime);
+            physicsManager->applyMovement(deltaTime);
         }
 
         window->render();

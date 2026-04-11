@@ -68,8 +68,48 @@ struct ClipPoints
             --count;
         }
     }
+};
 
-    void averagePoints();
+struct ClipPointsWithData
+{
+    std::array<ClipPointWithData, 2> points;
+    size_t count;
+
+    ClipPointsWithData() : points(), count(0)
+    {
+    }
+
+    size_t findIndex(const Eigen::Vector2f &point) const
+    {
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            if (points[i].point == point)
+            {
+                return i;
+            }
+        }
+        return -1; // Not found
+    }
+};
+
+struct ClipPointWithData
+{
+    Eigen::Vector2f point;
+    float separation;
+    float accumulatedNormalImpulse;
+    float accumulatedTangentImpulse;
+    float accumulatedNormalImpulseBias;
+    float massNormal;
+    float massTangent;
+    float bias;
+
+    ClipPointWithData() : point(Eigen::Vector2f::Zero()), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), accumulatedNormalImpulseBias(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
+    {
+    }
+
+    ClipPointWithData(const Eigen::Vector2f &point) : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), accumulatedNormalImpulseBias(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
+    {
+    }
 };
 
 // clips the line segment points v1, v2

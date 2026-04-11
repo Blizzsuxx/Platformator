@@ -8,13 +8,14 @@ class Collision
 public:
     Collision();
     Collision(Collider *colliderA, Collider *colliderB);
-    Collision(const Eigen::Vector2f &normal, float penetration, const ClipPoints &contactPoints, Collider *colliderA, Collider *colliderB);
+    Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints, Collider *colliderA, Collider *colliderB);
     ~Collision();
 
     // Getters
     const Eigen::Vector2f &getNormal() const;
     float getPenetration() const;
-    const ClipPoints &getContactPoints() const;
+    ClipPointsWithData &getContactPoints() const;
+    float getFriction() const;
 
     const Collider *getReferenceObject() const;
     const Collider *getIncidentObject() const;
@@ -52,7 +53,7 @@ public:
 private:
     mutable Eigen::Vector2f normal;
     mutable float penetration;
-    mutable ClipPoints contactPoints;
+    mutable ClipPointsWithData contactPoints;
     mutable const Collider *referenceObject;
     mutable const Collider *incidentObject;
 };

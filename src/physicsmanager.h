@@ -17,6 +17,7 @@ public:
     ~PhysicsManager();
 
     void applyPhysics(double timeDelta);
+    void applyMovement(double timeDelta);
 
     void checkForCollisions();
     void resolveCollisions(double timeDelta);
@@ -41,7 +42,9 @@ private:
     void satCreateCollision(const ColliderPair &pair);
 
     bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, const Collider *&realIncidentCollider);
+    void preStepCollision(Collision *collision, float inverseTimeDelta);
     void resolveCollision(const Collision *collision);
+    void correctCollisionPosition(const Collision *collision);
     void calculateContactPoint(Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;

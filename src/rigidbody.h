@@ -19,7 +19,7 @@ public:
     ~Rigidbody();
 
     Rigidbody *move(double timeDelta);
-    Rigidbody *applyGravity(const Eigen::Vector2f &gravityVector);
+    Rigidbody *applyForces(double timeDelta, const Eigen::Vector2f &gravityVector);
 
     // Getters
     const Eigen::Vector2f &getVelocity() const;
@@ -41,7 +41,6 @@ public:
     Rigidbody *setVelocity(const Eigen::Vector2f &velocity);
     Rigidbody *setForce(const Eigen::Vector2f &force);
     Rigidbody *addForce(const Eigen::Vector2f &force);
-    Rigidbody *resetForce();
 
     Rigidbody *setMass(const float mass);
 

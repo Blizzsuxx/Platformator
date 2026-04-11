@@ -24,3 +24,9 @@ constexpr bool ENABLE_LOGGING = false;
 constexpr float GRID_CELL_SIZE = 200.0f;
 constexpr float GRAVITY_VECTOR_X = 0.0f;
 constexpr float GRAVITY_VECTOR_Y = 98.10f;
+
+constexpr size_t COLLISION_SOLVER_ITERATIONS = 10;
+constexpr float COLLISION_ALLOWED_PENETRATION = 0.01f;
+constexpr float COLLISION_BIAS_FACTOR = 0.2f;
+constexpr float COLLISION_POSITION_CORRECTION_PERCENT = 0.2f;
+constexpr float COLLISION_WARM_START_DISTANCE_SQUARED = 4.0f;

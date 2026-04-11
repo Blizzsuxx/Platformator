@@ -72,6 +72,11 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
         wakeUp();
     }
 
+    if (bodyType == BodyType::STATIC)
+    {
+        return this;
+    }
+
     this->velocity = velocity;
     return this;
 }
@@ -110,6 +115,11 @@ Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
     if (getIsSleeping() && std::abs(angularVelocity) > WAKE_ANGULAR_EPSILON)
     {
         wakeUp();
+    }
+
+    if (bodyType == BodyType::STATIC)
+    {
+        return this;
     }
 
     this->angularVelocity = angularVelocity;

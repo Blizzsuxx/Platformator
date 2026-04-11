@@ -20,6 +20,8 @@ public:
     const Collider *getReferenceObject() const;
     const Collider *getIncidentObject() const;
 
+    bool shouldResolve() const;
+
     // Setters
     void setNormal(const Eigen::Vector2f &normal) const;
     void setPenetration(const float penetration) const;

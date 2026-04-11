@@ -116,3 +116,31 @@ float Collision::getFriction() const
 
     return sqrt(frictionA * frictionB); // Using geometric mean for friction
 }
+
+bool Collision::shouldResolve() const
+{
+    if (referenceObject == nullptr || incidentObject == nullptr)
+    {
+        return false;
+    }
+
+    if (referenceObject->getIsTrigger() || incidentObject->getIsTrigger())
+    {
+        return false; // Don't resolve collisions involving triggers
+    }
+
+    Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbB = (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+
+    if (rbA == nullptr || rbB == nullptr)
+    {
+        return false; // Don't resolve collisions if either object doesn't have a Rigidbody
+    }
+
+    if (rbA->getBodyType() == BodyType::STATIC && rbB->getBodyType() == BodyType::STATIC)
+    {
+        return false; // Don't resolve collisions between two static objects
+    }
+
+    return true;
+}

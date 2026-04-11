@@ -347,6 +347,11 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     }
 
     collision->setContactPoints(cp);
+
+    for (size_t i = 0; i < cp.count; i++)
+    {
+        collision->getContactPoints().points[i].separation = normal.dot(cp.points[i]) - max;
+    }
 }
 
 void PhysicsManager::resolveCollisions(double timeDelta)
@@ -358,7 +363,7 @@ void PhysicsManager::resolveCollisions(double timeDelta)
         const Collider *referenceCollider = collision->getReferenceObject();
         const Collider *incidentCollider = collision->getIncidentObject();
 
-        if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
+        if (collision->shouldResolve())
         {
             preStepCollision(collision, inverseTimeDelta);
         }
@@ -371,7 +376,7 @@ void PhysicsManager::resolveCollisions(double timeDelta)
             const Collider *referenceCollider = collision->getReferenceObject();
             const Collider *incidentCollider = collision->getIncidentObject();
 
-            if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
+            if (collision->shouldResolve())
             {
                 resolveCollision(collision);
             }
@@ -484,6 +489,12 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         contactPoints.points[i].accumulatedNormalImpulse = maxNormalImpulse;
         normalImpulse = maxNormalImpulse - accumulatedNormalImpulse;
 
+        if (normalImpulse < 0.0f)
+        {
+            printf("Normal impulse is non-positive: %f\n", normalImpulse);
+            continue;
+        }
+
         Eigen::Vector2f impulse = normalImpulse * normal;
 
         rbA->setVelocity(rbA->getVelocity() - impulse * invMassA);
@@ -499,6 +510,7 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         float frictionImpulse = collision->getFriction() * normalImpulse;
 
         float oldTangentImpulse = contactPoints.points[i].accumulatedTangentImpulse;
+
         float maxTangentImpulse = std::clamp(oldTangentImpulse + tangentImpulse, -frictionImpulse, frictionImpulse);
         contactPoints.points[i].accumulatedTangentImpulse = maxTangentImpulse;
         tangentImpulse = maxTangentImpulse - oldTangentImpulse;

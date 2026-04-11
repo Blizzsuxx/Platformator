@@ -385,8 +385,6 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 
         if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
         {
-            correctCollisionPosition(collision);
-
             Rigidbody *rbA = (Rigidbody *)referenceCollider->getGameObject()->getComponent(ComponentType::RIGID_BODY);
             Rigidbody *rbB = (Rigidbody *)incidentCollider->getGameObject()->getComponent(ComponentType::RIGID_BODY);
             Eigen::Vector2f normal = collision->getNormal();
@@ -511,39 +509,6 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         rbB->setVelocity(rbB->getVelocity() + contactImpulse * invMassB);
         rbA->setAngularVelocity(rbA->getAngularVelocity() - invInertiaA * cross2D(rA, contactImpulse));
         rbB->setAngularVelocity(rbB->getAngularVelocity() + invInertiaB * cross2D(rB, contactImpulse));
-    }
-}
-
-void PhysicsManager::correctCollisionPosition(const Collision *collision)
-{
-    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-    Rigidbody *rbB = (Rigidbody *)collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-
-    if (rbA == nullptr || rbB == nullptr)
-    {
-        return;
-    }
-
-    float invMassA = rbA->getInverseMass();
-    float invMassB = rbB->getInverseMass();
-    if (invMassA + invMassB == 0.0f)
-    {
-        return;
-    }
-
-    Eigen::Vector2f normal = collision->getNormal();
-    float penetration = collision->getPenetration();
-
-    Eigen::Vector2f correction = std::max(penetration - COLLISION_ALLOWED_PENETRATION, 0.0f) / (invMassA + invMassB) * COLLISION_POSITION_CORRECTION_PERCENT * normal;
-    if (rbA->getBodyType() != BodyType::STATIC)
-    {
-        rbA->getGameObject()->setPosition(
-            rbA->getGameObject()->getPosition() - correction * invMassA);
-    }
-    if (rbB->getBodyType() != BodyType::STATIC)
-    {
-        rbB->getGameObject()->setPosition(
-            rbB->getGameObject()->getPosition() + correction * invMassB);
     }
 }
 

@@ -70,28 +70,6 @@ struct ClipPoints
     }
 };
 
-struct ClipPointsWithData
-{
-    std::array<ClipPointWithData, 2> points;
-    size_t count;
-
-    ClipPointsWithData() : points(), count(0)
-    {
-    }
-
-    size_t findIndex(const Eigen::Vector2f &point) const
-    {
-        for (size_t i = 0; i < points.size(); ++i)
-        {
-            if (points[i].point == point)
-            {
-                return i;
-            }
-        }
-        return -1; // Not found
-    }
-};
-
 struct ClipPointWithData
 {
     Eigen::Vector2f point;
@@ -109,6 +87,28 @@ struct ClipPointWithData
 
     ClipPointWithData(const Eigen::Vector2f &point) : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), accumulatedNormalImpulseBias(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
     {
+    }
+};
+
+struct ClipPointsWithData
+{
+    std::array<ClipPointWithData, 2> points;
+    size_t count;
+
+    ClipPointsWithData() : points(), count(0)
+    {
+    }
+
+    size_t findIndex(const Eigen::Vector2f &point) const
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            if (points[i].point == point)
+            {
+                return i;
+            }
+        }
+        return SIZE_MAX;
     }
 };
 

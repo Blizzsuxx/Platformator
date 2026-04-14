@@ -13,6 +13,19 @@ Rigidbody::~Rigidbody()
 {
 }
 
+void Rigidbody::initialize()
+{
+    if (bodyType == BodyType::STATIC)
+    {
+        // infinite mass
+        mass = float(std::numeric_limits<float>::max());
+        inverseMass = 0.0f;
+        // infinite moment of inertia
+        momentOfInertia = float(std::numeric_limits<float>::max());
+        inverseMomentOfInertia = 0.0f;
+    }
+}
+
 // Getters
 const Eigen::Vector2f &Rigidbody::getVelocity() const
 {
@@ -163,6 +176,7 @@ Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
     {
         setIsSleeping(false);
     }
+    initialize();
     return this;
 }
 

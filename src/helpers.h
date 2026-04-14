@@ -145,3 +145,18 @@ inline ClipPoints clip(const Eigen::Vector2f &v1, const Eigen::Vector2f &v2, con
     }
     return cp;
 }
+
+inline float Min(float a, float b)
+{
+    return a < b ? a : b;
+}
+
+inline float Max(float a, float b)
+{
+    return a > b ? a : b;
+}
+
+inline float Clamp(float a, float low, float high)
+{
+    return Max(low, Min(a, high));
+}

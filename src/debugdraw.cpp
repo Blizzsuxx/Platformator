@@ -146,7 +146,7 @@ void DebugDraw::drawNormal(SDL_Renderer *renderer, Camera *camera, const Collisi
     int cx = static_cast<int>(anchor.x()) - camera->getCamera().x;
     int cy = static_cast<int>(anchor.y()) - camera->getCamera().y;
 
-    float normalLength = std::max(collision->getPenetration() * 5.0f, 15.0f);
+    float normalLength = 20.0f; // Fixed length for visibility
     int nx = cx + static_cast<int>(collision->getNormal().x() * normalLength);
     int ny = cy + static_cast<int>(collision->getNormal().y() * normalLength);
 
@@ -288,7 +288,6 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
     }
 
     auto normal = collision.getNormal();
-    float penetration = collision.getPenetration();
 
     if (showCollisionPoints)
     {
@@ -317,7 +316,7 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
         }
         contactPoint /= static_cast<float>(contactPoints.count);
 
-        float normalLength = std::max(penetration * 5.0f, 20.0f);
+        float normalLength = 20.0f; // Fixed length for visibility
         Eigen::Vector2f tip = contactPoint + normal * normalLength;
 
         addDebugObject(std::vector<Eigen::Vector2f>{contactPoint, tip}, 0xFF, 0xFF, 0x00, 0xFF, false);
@@ -330,13 +329,10 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
                                          tip, arrowBase - perp * arrowSize * 0.5f},
             0xFF, 0xFF, 0x00, 0xFF, false);
 
-        if (penetration > 2.0f)
-        {
-            Eigen::Vector2f penTip = contactPoint + normal * penetration;
-            Eigen::Vector2f barLeft = penTip + perp * 4.0f;
-            Eigen::Vector2f barRight = penTip - perp * 4.0f;
-            addDebugObject(std::vector<Eigen::Vector2f>{barLeft, barRight}, 0xFF, 0xAA, 0x00, 0xFF, false);
-        }
+        Eigen::Vector2f penTip = contactPoint + normal * 20.0f;
+        Eigen::Vector2f barLeft = penTip + perp * 4.0f;
+        Eigen::Vector2f barRight = penTip - perp * 4.0f;
+        addDebugObject(std::vector<Eigen::Vector2f>{barLeft, barRight}, 0xFF, 0xAA, 0x00, 0xFF, false);
     }
 }
 

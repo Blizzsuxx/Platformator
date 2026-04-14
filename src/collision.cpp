@@ -2,17 +2,17 @@
 #include "helpers.h"
 #include "rigidbody.h"
 
-Collision::Collision() : normal(), penetration(0.0f), contactPoints(), referenceObject(nullptr), incidentObject(nullptr)
+Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr)
 {
 }
 
 Collision::Collision(Collider *colliderA, Collider *colliderB)
-    : normal(), penetration(0.0f), contactPoints(), referenceObject(colliderA), incidentObject(colliderB)
+    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB)
 {
 }
 
 Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints, Collider *colliderA, Collider *colliderB)
-    : normal(normal), penetration(penetration), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB)
+    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB)
 {
 }
 
@@ -24,11 +24,6 @@ Collision::~Collision()
 const Eigen::Vector2f &Collision::getNormal() const
 {
     return normal;
-}
-
-float Collision::getPenetration() const
-{
-    return penetration;
 }
 
 ClipPointsWithData &Collision::getContactPoints() const
@@ -51,11 +46,6 @@ const Collider *Collision::getIncidentObject() const
 void Collision::setNormal(const Eigen::Vector2f &normal) const
 {
     this->normal = normal;
-}
-
-void Collision::setPenetration(const float penetration) const
-{
-    this->penetration = penetration;
 }
 
 void Collision::setContactPoints(const ClipPoints &newContactPoints) const

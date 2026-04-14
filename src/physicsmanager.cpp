@@ -270,7 +270,6 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 
     // Store the corrected normal
     collision->setNormal(minNormal);
-    collision->setPenetration(minOverlap);
 
     calculateContactPoint(collision);
 }
@@ -348,9 +347,10 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
 
     collision->setContactPoints(cp);
 
-    for (size_t i = 0; i < cp.count; i++)
+    ClipPointsWithData &contactPoints = collision->getContactPoints();
+    for (size_t i = 0; i < contactPoints.count; i++)
     {
-        collision->getContactPoints().points[i].separation = normal.dot(cp.points[i]) - max;
+        contactPoints.points[i].separation = normal.dot(contactPoints.points[i].point) - max;
     }
 }
 
@@ -489,12 +489,6 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         contactPoints.points[i].accumulatedNormalImpulse = maxNormalImpulse;
         normalImpulse = maxNormalImpulse - accumulatedNormalImpulse;
 
-        if (normalImpulse < 0.0f)
-        {
-            printf("Normal impulse is non-positive: %f\n", normalImpulse);
-            continue;
-        }
-
         Eigen::Vector2f impulse = normalImpulse * normal;
 
         rbA->setVelocity(rbA->getVelocity() - impulse * invMassA);
@@ -511,7 +505,7 @@ void PhysicsManager::resolveCollision(const Collision *collision)
 
         float oldTangentImpulse = contactPoints.points[i].accumulatedTangentImpulse;
 
-        float maxTangentImpulse = std::clamp(oldTangentImpulse + tangentImpulse, -frictionImpulse, frictionImpulse);
+        float maxTangentImpulse = Clamp(oldTangentImpulse + tangentImpulse, -frictionImpulse, frictionImpulse);
         contactPoints.points[i].accumulatedTangentImpulse = maxTangentImpulse;
         tangentImpulse = maxTangentImpulse - oldTangentImpulse;
 

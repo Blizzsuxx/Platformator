@@ -13,7 +13,6 @@ public:
 
     // Getters
     const Eigen::Vector2f &getNormal() const;
-    float getPenetration() const;
     ClipPointsWithData &getContactPoints() const;
     float getFriction() const;
 
@@ -24,7 +23,6 @@ public:
 
     // Setters
     void setNormal(const Eigen::Vector2f &normal) const;
-    void setPenetration(const float penetration) const;
     void setContactPoints(const ClipPoints &contactPoints) const;
     void setReferenceObject(const Collider *colliderA) const;
     void setIncidentObject(const Collider *colliderB) const;
@@ -54,7 +52,6 @@ public:
 
 private:
     mutable Eigen::Vector2f normal;
-    mutable float penetration;
     mutable ClipPointsWithData contactPoints;
     mutable const Collider *referenceObject;
     mutable const Collider *incidentObject;

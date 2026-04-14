@@ -95,6 +95,8 @@ private:
     double sleepTimer;
     bool isRegisteredInPhysicsManager;
     size_t physicsManagerIndex;
+
+    void initialize();
 };
 
 template <>

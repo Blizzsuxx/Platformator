@@ -43,7 +43,6 @@ private:
     bool checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, const Collider *&realIncidentCollider);
     void preStepCollision(Collision *collision, float inverseTimeDelta);
     void resolveCollision(const Collision *collision);
-    bool shouldResolveKinematicCollision(const Collision *collision) const;
     void resolveKinematicCollision(const Collision *collision);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal, float correctionDistance);
     void calculateContactPoint(Collision *collision);

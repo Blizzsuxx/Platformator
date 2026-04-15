@@ -286,6 +286,44 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
     const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
 
+    ColliderType referenceType = referenceCollider->getColliderType();
+    ColliderType incidentType = incidentCollider->getColliderType();
+
+    if (incidentType == ColliderType::CircleCollider)
+    {
+        ClipPoints cp;
+        cp.points[0] = incidentEdge.max;
+        cp.count = 1;
+        collision->setContactPoints(cp);
+        float max = normal.dot(referenceEdge.max);
+        float separation = normal.dot(incidentEdge.max) - max;
+        collision->getContactPoints().points[0].separation = separation;
+        return;
+    }
+    else if (referenceType == ColliderType::CircleCollider)
+    {
+        ClipPoints cp;
+        const Eigen::Vector2f circleCenter = referenceCollider->getGameObject()->getPosition();
+        const Eigen::Vector2f edgeVector = incidentEdge.getEdgeVector();
+        const float edgeLengthSquared = edgeVector.squaredNorm();
+
+        float t = 0.0f;
+        if (edgeLengthSquared > 1e-12f)
+        {
+            t = std::clamp((circleCenter - incidentEdge.v1).dot(edgeVector) / edgeLengthSquared, 0.0f, 1.0f);
+        }
+
+        const Eigen::Vector2f closestPoint = incidentEdge.v1 + t * edgeVector;
+        cp.points[0] = closestPoint;
+        cp.count = 1;
+        collision->setContactPoints(cp);
+
+        const float max = normal.dot(referenceEdge.max);
+        const float separation = normal.dot(closestPoint) - max;
+        collision->getContactPoints().points[0].separation = separation;
+        return;
+    }
+
     // bool flipped = false;
     // float dotBetweenReferenceAndNormal = abs(referenceEdge.direction.dot(normal));
     // float dotBetweenIncidentAndNormal = abs(incidentEdge.direction.dot(normal));

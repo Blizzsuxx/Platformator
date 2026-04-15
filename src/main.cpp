@@ -16,7 +16,7 @@ int main(int argc, char *args[])
                            ->setName("Ball")
                            ->addComponent<Rigidbody>()
                            ->setPosition(Eigen::Vector2f(SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f))
-                           ->addComponent<BoxCollider>(50.0f, 50.0f)
+                           ->addComponent<CircleCollider>(25.0f)
                            ->addComponent<Sprite>("assets/ball.png", SDL_FLIP_NONE, 50, 50);
 
     window->addSdlListener([ball](SDL_Event event)

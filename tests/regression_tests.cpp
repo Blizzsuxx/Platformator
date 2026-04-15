@@ -13,6 +13,7 @@
 #include "circlecollider.h"
 #include "constants.h"
 #include "gamemanager.h"
+#include "localsortarray.h"
 #include "physicsmanager.h"
 #include "rigidbody.h"
 
@@ -204,6 +205,29 @@ namespace
                 "Broad-phase regression expected pair removal after separation.");
     }
 
+        void testCheckpointIdempotence()
+        {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *box = createStaticBox(gameManager, "Checkpoint Box", 120.0f, 120.0f, 40.0f, 40.0f);
+        sceneScope.add(box);
+
+        Collider *collider = box->getComponent<Collider>();
+        require(collider != nullptr, "Checkpoint regression lost the collider.");
+
+        LocalSortArray chunk(static_cast<SegmentedIntervalList *>(nullptr));
+        chunk.removeCheckpoint(collider);
+        chunk.addCheckpoint(collider);
+
+        require(chunk.getCheckpoints()->contains(collider),
+            "Checkpoint regression lost a valid checkpoint after a remove-then-add sequence.");
+
+        chunk.removeCheckpoint(collider);
+        require(!chunk.getCheckpoints()->contains(collider),
+            "Checkpoint regression failed to remove a checkpoint cleanly.");
+        }
+
     void testRestitutionBounce()
     {
         GameManager &gameManager = GameManager::getInstance();
@@ -306,6 +330,7 @@ int main()
         {"circle_collision_stability", testCircleCollisionStability},
         {"sleeping_on_support", testSleepingOnSupport},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
+        {"checkpoint_idempotence", testCheckpointIdempotence},
         {"restitution_bounce", testRestitutionBounce},
         {"kinematic_body_semantics", testKinematicBodySemantics},
     };

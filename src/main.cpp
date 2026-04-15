@@ -44,7 +44,7 @@ int main(int argc, char *args[])
 
     ball
         ->getComponent<Rigidbody>()
-        ->setBodyType(KINEMATIC)
+        // ->setBodyType(KINEMATIC)
         ->setVelocity(Eigen::Vector2f(200.0f, 150.0f))
         ->setMass(10.0f)
         ->setFriction(1.0f)

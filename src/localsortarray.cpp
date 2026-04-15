@@ -141,26 +141,6 @@ void LocalSortArray::sort(SwapCallback *callback)
     }
 }
 
-void LocalSortArray::sortFromIndex(size_t arrayIndex, SwapCallback *callback)
-{
-    if (arrayIndex == 0)
-    {
-        while (arrayIndex + 1 < getSize() && *array[arrayIndex] > *array[arrayIndex + 1])
-        {
-            callback->swap(array[arrayIndex], arrayIndex, array[arrayIndex + 1], arrayIndex + 1);
-            arrayIndex++;
-        }
-    }
-    else
-    {
-        while (arrayIndex > 0 && *array[arrayIndex - 1] > *array[arrayIndex])
-        {
-            callback->swap(array[arrayIndex - 1], arrayIndex - 1, array[arrayIndex], arrayIndex);
-            arrayIndex--;
-        }
-    }
-}
-
 BoundingRadiusProjectionProxy *LocalSortArray::get(size_t index)
 {
     return array[index];

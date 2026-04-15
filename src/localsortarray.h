@@ -22,7 +22,6 @@ public:
     BoundingRadiusProjectionProxy *remove(size_t index);
     size_t remove(BoundingRadiusProjectionProxy *element);
     void sort(SwapCallback *callback);
-    void sortFromIndex(size_t index, SwapCallback *callback);
 
     BoundingRadiusProjectionProxy *get(size_t index);
     BoundingRadiusProjectionProxy *operator[](size_t index);

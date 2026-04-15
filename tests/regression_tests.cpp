@@ -129,6 +129,16 @@ namespace
         return object;
     }
 
+    GameObject *createKinematicBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height, bool gravity)
+    {
+        return gameManager
+            .createGameObject()
+            ->setName(name)
+            ->addComponent<Rigidbody>(KINEMATIC, gravity)
+            ->addComponent<BoxCollider>(width, height)
+            ->setPosition(Eigen::Vector2f(x, y));
+    }
+
     void testCircleCollisionStability()
     {
         GameManager &gameManager = GameManager::getInstance();
@@ -233,6 +243,54 @@ namespace
         require(observedBounce, "Restitution regression never produced an upward post-impact velocity.");
     }
 
+    void testKinematicBodySemantics()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        {
+            SceneScope sceneScope(gameManager);
+            GameObject *kinematicMover = createKinematicBox(gameManager, "Kinematic Mover", 100.0f, 100.0f, 80.0f, 20.0f, true);
+            GameObject *staticWall = createStaticBox(gameManager, "Kinematic Wall", 200.0f, 100.0f, 20.0f, 220.0f);
+            sceneScope.add(kinematicMover);
+            sceneScope.add(staticWall);
+
+            Rigidbody *kinematicBody = kinematicMover->getComponent<Rigidbody>();
+            require(kinematicBody != nullptr, "Kinematic regression lost the mover rigidbody.");
+
+            kinematicBody->setVelocity(Eigen::Vector2f(120.0f, 0.0f));
+            kinematicBody->setForce(Eigen::Vector2f(5000.0f, 5000.0f));
+
+            simulateFrames(gameManager, 180);
+
+            require(kinematicBody->getInverseMass() == 0.0f, "Kinematic bodies must have zero inverse mass in the solver.");
+            require(kinematicBody->getInverseMomentOfInertia() == 0.0f, "Kinematic bodies must have zero inverse inertia in the solver.");
+            require(kinematicMover->getPosition().x() <= 151.0f,
+                    "Kinematic body passed through a static wall instead of being blocked.");
+            require(std::abs(kinematicMover->getPosition().y() - 100.0f) <= 1.0f,
+                    "Kinematic body should ignore gravity and force-based integration.");
+            require(std::abs(kinematicBody->getVelocity().x()) <= 1.0f,
+                    "Kinematic body should have its wall-normal velocity cancelled on contact.");
+        }
+
+        {
+            SceneScope sceneScope(gameManager);
+            GameObject *kinematicFloor = createKinematicBox(gameManager, "Kinematic Floor", 260.0f, 340.0f, 360.0f, 40.0f, true);
+            GameObject *dynamicBox = createDynamicBox(gameManager, "Dynamic On Kinematic", 260.0f, 180.0f, 40.0f, 40.0f);
+            sceneScope.add(kinematicFloor);
+            sceneScope.add(dynamicBox);
+
+            simulateFrames(gameManager, 720);
+
+            Rigidbody *dynamicBody = dynamicBox->getComponent<Rigidbody>();
+            require(dynamicBody != nullptr, "Kinematic floor regression lost the dynamic rigidbody.");
+            require(std::abs(kinematicFloor->getPosition().y() - 340.0f) <= 0.5f,
+                    "Kinematic floor should not be displaced by gravity or solver impulses.");
+            require(dynamicBody->hasSupportContact(), "Dynamic body failed to register support from a kinematic floor.");
+            require(std::abs(dynamicBox->getPosition().y() - 300.0f) <= 6.0f,
+                    "Dynamic body failed to settle on the kinematic floor.");
+        }
+    }
+
     struct TestCase
     {
         const char *name;
@@ -249,6 +307,7 @@ int main()
         {"sleeping_on_support", testSleepingOnSupport},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"restitution_bounce", testRestitutionBounce},
+        {"kinematic_body_semantics", testKinematicBodySemantics},
     };
 
     GameManager::getInstance();

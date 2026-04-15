@@ -400,29 +400,37 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
 void PhysicsManager::resolveCollisions(double timeDelta)
 {
     float inverseTimeDelta = timeDelta > 0.0 ? static_cast<float>(1.0 / timeDelta) : 0.0f;
+    std::vector<Collision *> dynamicCollisions;
 
     for (Collision *collision : activeCollisions)
     {
         const Collider *referenceCollider = collision->getReferenceObject();
         const Collider *incidentCollider = collision->getIncidentObject();
 
-        if (collision->shouldResolve())
+        Collision::CollisionType resolutionType = collision->getResolutionType();
+
+        switch (resolutionType)
         {
+        case Collision::CollisionType::DYNAMIC:
             preStepCollision(collision, inverseTimeDelta);
+            dynamicCollisions.push_back(collision);
+            break;
+        case Collision::CollisionType::KINEMATIC:
+            resolveKinematicCollision(collision);
+            break;
+        case Collision::CollisionType::TRIGGER:
+            /* code */
+            break;
+        default:
+            break;
         }
     }
 
     for (int iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; iteration++)
     {
-        for (Collision *collision : activeCollisions)
+        for (Collision *collision : dynamicCollisions)
         {
-            const Collider *referenceCollider = collision->getReferenceObject();
-            const Collider *incidentCollider = collision->getIncidentObject();
-
-            if (collision->shouldResolve())
-            {
-                resolveCollision(collision);
-            }
+            resolveCollision(collision);
         }
     }
 
@@ -552,6 +560,55 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         rbB->setVelocity(rbB->getVelocity() + contactImpulse * invMassB);
         rbA->setAngularVelocity(rbA->getAngularVelocity() - invInertiaA * cross2D(rA, contactImpulse));
         rbB->setAngularVelocity(rbB->getAngularVelocity() + invInertiaB * cross2D(rB, contactImpulse));
+    }
+}
+
+void PhysicsManager::resolveKinematicCollision(const Collision *collision)
+{
+    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbB = (Rigidbody *)collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+
+    const bool referenceIsKinematic = rbA->getBodyType() == BodyType::KINEMATIC;
+    const bool incidentIsKinematic = rbB->getBodyType() == BodyType::KINEMATIC;
+
+    float maxPenetrationDepth = 0.0f;
+    const ClipPointsWithData &contactPoints = collision->getContactPoints();
+    for (size_t i = 0; i < contactPoints.count; ++i)
+    {
+        maxPenetrationDepth = std::max(maxPenetrationDepth, -contactPoints.points[i].separation);
+    }
+
+    float correctionDistance = std::max(0.0f, maxPenetrationDepth - COLLISION_ALLOWED_PENETRATION);
+    float perBodyCorrection = correctionDistance;
+    if (referenceIsKinematic && incidentIsKinematic)
+    {
+        perBodyCorrection *= 0.5f;
+    }
+
+    const Eigen::Vector2f &normal = collision->getNormal();
+    if (referenceIsKinematic)
+    {
+        resolveKinematicBodyAgainstNormal(rbA, normal, perBodyCorrection);
+    }
+    if (incidentIsKinematic)
+    {
+        resolveKinematicBodyAgainstNormal(rbB, -normal, perBodyCorrection);
+    }
+}
+
+void PhysicsManager::resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal, float correctionDistance)
+{
+    Eigen::Vector2f velocity = rigidBody->getVelocity();
+    float normalSpeed = velocity.dot(approachNormal);
+    if (normalSpeed > 0.0f)
+    {
+        rigidBody->setVelocity(velocity - normalSpeed * approachNormal);
+    }
+
+    if (correctionDistance > 0.0f)
+    {
+        GameObject *gameObject = rigidBody->getGameObject();
+        gameObject->setPosition(gameObject->getPosition() - correctionDistance * approachNormal);
     }
 }
 

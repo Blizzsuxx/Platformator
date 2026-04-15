@@ -6,6 +6,14 @@
 class Collision
 {
 public:
+    enum CollisionType
+    {
+        DYNAMIC,
+        KINEMATIC,
+        TRIGGER,
+        NONE_COLLISIONS
+    };
+
     Collision();
     Collision(Collider *colliderA, Collider *colliderB);
     Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints, Collider *colliderA, Collider *colliderB);
@@ -20,7 +28,7 @@ public:
     const Collider *getReferenceObject() const;
     const Collider *getIncidentObject() const;
 
-    bool shouldResolve() const;
+    CollisionType getResolutionType() const;
     void updateSupportState(const Eigen::Vector2f &gravityVector) const;
     void clearSupportState() const;
 
@@ -53,11 +61,23 @@ public:
         }
     };
 
+    enum SupportState : uint8_t
+    {
+        NONE_SUPPORT = 0,
+        SUPPORTS_REFERENCE = 1 << 0,
+        SUPPORTS_INCIDENT = 1 << 1,
+        SUPPORTS_BOTH = SUPPORTS_REFERENCE | SUPPORTS_INCIDENT
+    };
+
 private:
     mutable Eigen::Vector2f normal;
     mutable ClipPointsWithData contactPoints;
     mutable const Collider *referenceObject;
     mutable const Collider *incidentObject;
-    mutable bool supportsReferenceBody;
-    mutable bool supportsIncidentBody;
+    mutable uint8_t supportState;
+
+    bool getSupportsReferenceBody() const;
+    bool getSupportsIncidentBody() const;
+    void setSupportsReferenceBody(bool supports) const;
+    void setSupportsIncidentBody(bool supports) const;
 };

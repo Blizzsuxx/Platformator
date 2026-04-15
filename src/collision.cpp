@@ -3,17 +3,17 @@
 #include "helpers.h"
 #include "rigidbody.h"
 
-Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr), supportsReferenceBody(false), supportsIncidentBody(false)
+Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr), supportState(SupportState::NONE_SUPPORT)
 {
 }
 
 Collision::Collision(Collider *colliderA, Collider *colliderB)
-    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB), supportsReferenceBody(false), supportsIncidentBody(false)
+    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB), supportState(SupportState::NONE_SUPPORT)
 {
 }
 
 Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints, Collider *colliderA, Collider *colliderB)
-    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB), supportsReferenceBody(false), supportsIncidentBody(false)
+    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB), supportState(SupportState::NONE_SUPPORT)
 {
 }
 
@@ -122,16 +122,16 @@ float Collision::getRestitution() const
     return std::max(rbA->getRestitution(), rbB->getRestitution());
 }
 
-bool Collision::shouldResolve() const
+Collision::CollisionType Collision::getResolutionType() const
 {
     if (referenceObject == nullptr || incidentObject == nullptr)
     {
-        return false;
+        return CollisionType::NONE_COLLISIONS;
     }
 
     if (referenceObject->getIsTrigger() || incidentObject->getIsTrigger())
     {
-        return false; // Don't resolve collisions involving triggers
+        return CollisionType::TRIGGER; // Don't resolve collisions involving triggers
     }
 
     Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
@@ -139,15 +139,19 @@ bool Collision::shouldResolve() const
 
     if (rbA == nullptr || rbB == nullptr)
     {
-        return false; // Don't resolve collisions if either object doesn't have a Rigidbody
+        return CollisionType::NONE_COLLISIONS; // Don't resolve collisions if either object doesn't have a Rigidbody
     }
 
-    if (rbA->getBodyType() == BodyType::STATIC && rbB->getBodyType() == BodyType::STATIC)
+    if (rbA->getBodyType() == BodyType::DYNAMIC || rbB->getBodyType() == BodyType::DYNAMIC)
     {
-        return false; // Don't resolve collisions between two static objects
+        return CollisionType::DYNAMIC;
+    }
+    else if (rbA->getBodyType() == BodyType::KINEMATIC || rbB->getBodyType() == BodyType::KINEMATIC)
+    {
+        return CollisionType::KINEMATIC;
     }
 
-    return true;
+    return CollisionType::NONE_COLLISIONS;
 }
 
 void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalized) const
@@ -163,6 +167,9 @@ void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalize
     bool newSupportsReferenceBody = rbA->qualifiesAsSupportContact(-normal, gravityVectorNormalized);
     bool newSupportsIncidentBody = rbB->qualifiesAsSupportContact(normal, gravityVectorNormalized);
 
+    bool supportsReferenceBody = getSupportsReferenceBody();
+    bool supportsIncidentBody = getSupportsIncidentBody();
+
     if (supportsReferenceBody != newSupportsReferenceBody)
     {
         if (rbA != nullptr)
@@ -176,7 +183,7 @@ void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalize
                 rbA->removeSupportContact();
             }
         }
-        supportsReferenceBody = newSupportsReferenceBody;
+        setSupportsReferenceBody(newSupportsReferenceBody);
     }
 
     if (supportsIncidentBody != newSupportsIncidentBody)
@@ -192,12 +199,15 @@ void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalize
                 rbB->removeSupportContact();
             }
         }
-        supportsIncidentBody = newSupportsIncidentBody;
+        setSupportsIncidentBody(newSupportsIncidentBody);
     }
 }
 
 void Collision::clearSupportState() const
 {
+    bool supportsReferenceBody = getSupportsReferenceBody();
+    bool supportsIncidentBody = getSupportsIncidentBody();
+
     if (supportsReferenceBody && referenceObject != nullptr)
     {
         Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
@@ -205,7 +215,7 @@ void Collision::clearSupportState() const
         {
             rbA->removeSupportContact();
         }
-        supportsReferenceBody = false;
+        setSupportsReferenceBody(false);
     }
 
     if (supportsIncidentBody && incidentObject != nullptr)
@@ -215,6 +225,40 @@ void Collision::clearSupportState() const
         {
             rbB->removeSupportContact();
         }
-        supportsIncidentBody = false;
+        setSupportsIncidentBody(false);
+    }
+}
+
+bool Collision::getSupportsReferenceBody() const
+{
+    return supportState & SUPPORTS_REFERENCE;
+}
+
+bool Collision::getSupportsIncidentBody() const
+{
+    return supportState & SUPPORTS_INCIDENT;
+}
+
+void Collision::setSupportsReferenceBody(bool supports) const
+{
+    if (supports)
+    {
+        supportState |= SUPPORTS_REFERENCE;
+    }
+    else
+    {
+        supportState &= ~SUPPORTS_REFERENCE;
+    }
+}
+
+void Collision::setSupportsIncidentBody(bool supports) const
+{
+    if (supports)
+    {
+        supportState |= SUPPORTS_INCIDENT;
+    }
+    else
+    {
+        supportState &= ~SUPPORTS_INCIDENT;
     }
 }

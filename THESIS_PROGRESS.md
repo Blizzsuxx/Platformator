@@ -31,7 +31,7 @@ The paper PDF tracked by this repository is `paper/Efficient_Large-Scale_Sweep_a
 | Collision filtering by group and mask | Done in broad phase | `src/aabb.cpp`, `src/collider.cpp` | Group and mask checks already gate pair creation. |
 | Trigger non-resolution | Done | `src/collision.cpp` | Trigger pairs can still be detected but are skipped by the solver. |
 | Restitution / bounce response | Done | `src/rigidbody.cpp`, `src/collision.cpp`, `src/physicsmanager.cpp` | Restitution is combined per collision and injected into the normal solver bias when the closing velocity crosses a bounce threshold. |
-| Kinematic body semantics | Partial | `src/rigidbody.cpp` | `KINEMATIC` exists as an enum but still follows most dynamic behavior paths. |
+| Kinematic body semantics | Done | `src/rigidbody.cpp`, `src/collision.cpp` | Kinematic bodies now move through scripted velocity, ignore force and gravity integration, contribute zero inverse mass/inertia to the solver, and still block dynamic bodies. |
 
 ## Engine Scope Outside The Paper
 

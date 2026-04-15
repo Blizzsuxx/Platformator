@@ -18,19 +18,19 @@ Rigidbody::~Rigidbody()
 
 void Rigidbody::initialize()
 {
-    if (bodyType == BodyType::STATIC)
+    refreshMomentOfInertiaCache();
+
+    if (bodyType != BodyType::DYNAMIC)
     {
-        // infinite mass
-        mass = float(std::numeric_limits<float>::max());
-        inverseMass = 0.0f;
-        // infinite moment of inertia
-        momentOfInertia = float(std::numeric_limits<float>::max());
-        inverseMomentOfInertia = 0.0f;
-        return;
-    }
-    else
-    {
-        refreshMomentOfInertiaCache();
+        force = Eigen::Vector2f::Zero();
+        torque = 0.0f;
+        sleepTimer = 0.0;
+
+        if (bodyType == BodyType::STATIC)
+        {
+            velocity = Eigen::Vector2f::Zero();
+            angularVelocity = 0.0f;
+        }
     }
 }
 
@@ -69,17 +69,8 @@ float Rigidbody::calculateAutomaticMomentOfInertia() const
 
 Rigidbody *Rigidbody::refreshMomentOfInertiaCache()
 {
-    if (bodyType == BodyType::STATIC)
-    {
-        momentOfInertia = float(std::numeric_limits<float>::max());
-        inverseMomentOfInertia = 0.0f;
-        return this;
-    }
-    else
-    {
-        momentOfInertia = calculateAutomaticMomentOfInertia();
-        inverseMomentOfInertia = momentOfInertia > 0.0f ? 1.0f / momentOfInertia : 0.0f;
-    }
+    momentOfInertia = calculateAutomaticMomentOfInertia();
+    inverseMomentOfInertia = momentOfInertia > 0.0f ? 1.0f / momentOfInertia : 0.0f;
 
     return this;
 }
@@ -239,7 +230,7 @@ Rigidbody *Rigidbody::setGravity(const bool gravity)
 
 Rigidbody *Rigidbody::applyForces(double timeDelta, const Eigen::Vector2f &gravityVector)
 {
-    if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false || this->getIsSleeping())
+    if (this->getBodyType() != BodyType::DYNAMIC || this->getGameObject()->getActive() == false || this->getIsSleeping())
     {
         return this;
     }
@@ -276,7 +267,7 @@ Rigidbody *Rigidbody::move(double timeDelta)
 
 float Rigidbody::getInverseMass() const
 {
-    if (bodyType == BodyType::STATIC)
+    if (bodyType != BodyType::DYNAMIC)
     {
         return 0.0f;
     }
@@ -285,7 +276,7 @@ float Rigidbody::getInverseMass() const
 
 float Rigidbody::getInverseMomentOfInertia() const
 {
-    if (bodyType == BodyType::STATIC)
+    if (bodyType != BodyType::DYNAMIC)
     {
         return 0.0f;
     }
@@ -295,7 +286,7 @@ float Rigidbody::getInverseMomentOfInertia() const
 
 Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
 {
-    if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false)
+    if (this->getBodyType() != BodyType::DYNAMIC || this->getGameObject()->getActive() == false)
     {
         return this;
     }

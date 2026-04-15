@@ -29,16 +29,35 @@ file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
-add_executable(main ${PLATFORMATOR_SOURCES})
+set(PLATFORMATOR_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}")
 
-target_include_directories(main PRIVATE
+add_library(platformator_engine STATIC ${PLATFORMATOR_SOURCES})
+
+target_include_directories(platformator_engine PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-target_link_libraries(main PRIVATE
+target_link_libraries(platformator_engine PUBLIC
     SDL3::SDL3
     SDL3_mixer::SDL3_mixer
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     Eigen3::Eigen
+)
+
+add_executable(main "${PLATFORMATOR_MAIN_SOURCE}")
+target_link_libraries(main PRIVATE platformator_engine)
+
+enable_testing()
+
+add_executable(platformator_regression_tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/regression_tests.cpp"
+)
+
+target_link_libraries(platformator_regression_tests PRIVATE platformator_engine)
+
+add_test(
+    NAME platformator_regression_tests
+    COMMAND platformator_regression_tests
 )

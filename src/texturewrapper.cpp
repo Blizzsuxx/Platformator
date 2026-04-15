@@ -1,6 +1,7 @@
 #include "texturewrapper.h"
-#include "gamemanager.h"
 #include "sprite.h"
+#include <algorithm>
+#include "gamemanager.h"
 
 TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath) : texture(texture), filePath(filePath), referencingSprites()
 {
@@ -8,12 +9,17 @@ TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath
 
 TextureWrapper::~TextureWrapper()
 {
-    freeTextureIfNoReferences();
+    destroyTexture();
 }
 
 SDL_Texture *TextureWrapper::getTexture() const
 {
     return texture;
+}
+
+const std::string &TextureWrapper::getFilePath() const
+{
+    return filePath;
 }
 
 void TextureWrapper::addReference(Sprite *sprite)
@@ -30,11 +36,7 @@ bool TextureWrapper::freeTextureIfNoReferences()
 {
     if (referencingSprites.empty())
     {
-        if (texture != nullptr)
-        {
-            GameManager::getInstance().freeTexture(filePath);
-            texture = nullptr;
-        }
+        GameManager::getInstance().freeTexture(filePath);
         return true;
     }
     return false;
@@ -44,4 +46,13 @@ bool TextureWrapper::removeReferenceAndFreeIfNoReferences(Sprite *sprite)
 {
     removeReference(sprite);
     return freeTextureIfNoReferences();
+}
+
+void TextureWrapper::destroyTexture()
+{
+    if (texture != nullptr)
+    {
+        SDL_DestroyTexture(texture);
+        texture = nullptr;
+    }
 }

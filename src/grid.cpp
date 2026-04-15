@@ -254,6 +254,11 @@ const std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &Grid::getCel
     return cells;
 }
 
+size_t Grid::getCandidatePairCount() const
+{
+    return candidateCollisions.size();
+}
+
 void Grid::syncCollider(Collider *collider)
 {
     GridCellRange oldGridCellRange = collider->getGridCellRange();

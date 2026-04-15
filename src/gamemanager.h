@@ -18,6 +18,7 @@ public:
 
     GameObject *getGameObject(std::string name);
     GameObject *createGameObject();
+    void destroyGameObject(GameObject *gameObject);
 
     std::list<GameObject *> &getGameObjects();
 

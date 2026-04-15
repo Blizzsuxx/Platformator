@@ -197,17 +197,12 @@ void GameManager::freeTexture(const std::string &filePath)
     auto it = textureCache.find(filePath);
     if (it != textureCache.end())
     {
-        SDL_DestroyTexture(it->second.getTexture());
         textureCache.erase(it);
     }
 }
 
 void GameManager::freeAllTextures()
 {
-    for (auto &pair : textureCache)
-    {
-        SDL_DestroyTexture(pair.second.getTexture());
-    }
     textureCache.clear();
 }
 
@@ -217,6 +212,11 @@ GameObject *GameManager::createGameObject()
 
     addGameObject(gameObject);
     return gameObject;
+}
+
+void GameManager::destroyGameObject(GameObject *gameObject)
+{
+    removeGameObject(gameObject);
 }
 
 void GameManager::notifyComponentAdded(Component *component)

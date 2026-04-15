@@ -14,6 +14,7 @@ public:
     ~TextureWrapper();
 
     SDL_Texture *getTexture() const;
+    const std::string &getFilePath() const;
     void addReference(Sprite *sprite);
     void removeReference(Sprite *sprite);
     bool removeReferenceAndFreeIfNoReferences(Sprite *sprite);
@@ -24,4 +25,6 @@ private:
     SDL_Texture *texture;
     std::string filePath;
     std::vector<Sprite *> referencingSprites;
+
+    void destroyTexture();
 };

@@ -15,6 +15,7 @@ public:
     void createCollisionPair(Collider *colliderA, Collider *colliderB);
     void removeCollisionPair(Collider *colliderA, Collider *colliderB);
     const std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &getCells() const;
+    size_t getCandidatePairCount() const;
 
     void clearPendingNarrowPhasePairs();
     const std::vector<const ColliderPair *> *getPendingNarrowPhasePairs() const;

@@ -122,7 +122,7 @@ GameObject *GameObject::setActive(const bool active)
 
     this->isActive = active;
     GameManager *gameManager = &GameManager::getInstance();
-    ComponentType managedComponents[] = {ComponentType::COLLIDER, ComponentType::RIGID_BODY, ComponentType::SPRITE};
+    ComponentType managedComponents[] = {ComponentType::COLLIDER, ComponentType::RIGID_BODY, ComponentType::SPRITE, ComponentType::CAMERA};
 
     for (ComponentType componentType : managedComponents)
     {
@@ -279,5 +279,25 @@ bool GameObject::getIsMarkedForDeletion() const
 GameObject *GameObject::setIsMarkedForDeletion(const bool markedForDeletion)
 {
     this->markedForDeletion = markedForDeletion;
+    return this;
+}
+
+GameObject *GameObject::setIsRegisteredInGameManager(const bool isRegisteredInGameManager)
+{
+    this->isRegisteredInGameManager = isRegisteredInGameManager;
+
+    GameManager &gameManager = GameManager::getInstance();
+
+    gameManager.notifyComponentAdded(getComponent(ComponentType::COLLIDER));
+    gameManager.notifyComponentAdded(getComponent(ComponentType::RIGID_BODY));
+    gameManager.notifyComponentAdded(getComponent(ComponentType::SPRITE));
+    gameManager.notifyComponentAdded(getComponent(ComponentType::CAMERA));
+
+    return this;
+}
+
+GameObject *GameObject::setGameManagerIterator(const std::list<GameObject *>::iterator &it)
+{
+    this->gameManagerIterator = it;
     return this;
 }

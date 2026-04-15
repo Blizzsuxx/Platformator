@@ -36,6 +36,23 @@
             "request": "attach",
             "program": "${workspaceFolder}/bin/main",
             "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Debug Platformator Regression Tests",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/platformator_regression_tests",
+            "args": [],
+            "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [
                 {
@@ -43,8 +60,10 @@
                     "value": "${workspaceFolder}/bin:${env:LD_LIBRARY_PATH}"
                 }
             ],
+            "externalConsole": false,
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
+            "preLaunchTask": "Build Platformator Debug",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",

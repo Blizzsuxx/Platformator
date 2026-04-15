@@ -1,0 +1,141 @@
+object {
+    name "Main Camera"
+    camera {
+        viewport 0 0 640 480
+    }
+}
+
+object {
+    name "Ball"
+    position 320 240
+    rigidbody {
+        bodyType dynamic
+        gravity true
+        mass 10
+        velocity 200 150
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    circleCollider {
+        radius 25
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "../ball.png"
+        flip none
+        size 50 50
+    }
+}
+
+object {
+    name "Wall South"
+    position 320 455
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 640 50
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "../wall.png"
+        flip none
+        size 640 50
+    }
+}
+
+object {
+    name "Wall North"
+    position 320 25
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 640 50
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "../wall.png"
+        flip none
+        size 640 50
+    }
+}
+
+object {
+    name "Wall West"
+    position 25 240
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 50 480
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "../wall.png"
+        flip none
+        size 50 480
+    }
+}
+
+object {
+    name "Wall East"
+    position 615 240
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 50 480
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "../wall.png"
+        flip none
+        size 50 480
+    }
+}

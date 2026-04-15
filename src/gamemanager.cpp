@@ -43,6 +43,11 @@ void GameManager::loadScene(Scene &scene)
     createMainCameraIfNoMainCameraExists();
 }
 
+void GameManager::saveScene(const Scene &scene)
+{
+    scene.saveScene(gameObjects);
+}
+
 void GameManager::createMainCameraIfNoMainCameraExists()
 {
     if (window->getMainCamera() != nullptr)
@@ -62,13 +67,8 @@ void GameManager::createMainCameraIfNoMainCameraExists()
 GameObject *GameManager::addGameObject(GameObject *gameObject)
 {
     gameObjects.push_back(gameObject);
-    gameObject->gameManagerIterator = std::prev(gameObjects.end());
-    gameObject->isRegisteredInGameManager = true;
-
-    notifyComponentAdded(gameObject->getComponent(ComponentType::COLLIDER));
-    notifyComponentAdded(gameObject->getComponent(ComponentType::RIGID_BODY));
-    notifyComponentAdded(gameObject->getComponent(ComponentType::SPRITE));
-    notifyComponentAdded(gameObject->getComponent(ComponentType::CAMERA));
+    gameObject->setGameManagerIterator(std::prev(gameObjects.end()));
+    gameObject->setIsRegisteredInGameManager(true);
 
     return gameObject;
 }
@@ -96,6 +96,7 @@ void GameManager::startDeletingGameObject(GameObject *gameObject)
     notifyComponentRemoved(gameObject->getComponent(ComponentType::COLLIDER));
     notifyComponentRemoved(gameObject->getComponent(ComponentType::RIGID_BODY));
     notifyComponentRemoved(gameObject->getComponent(ComponentType::SPRITE));
+    notifyComponentRemoved(gameObject->getComponent(ComponentType::CAMERA));
 
     gameObject->setIsMarkedForDeletion(true);
     gameObject->isRegisteredInGameManager = false;
@@ -327,6 +328,11 @@ void GameManager::notifyWindowOfComponentRemoved(Component *component)
     if (component->getType() == ComponentType::SPRITE)
     {
         window->removeSpriteComponent((Sprite *)component);
+    }
+
+    if (component->getType() == ComponentType::CAMERA && window->getMainCamera() == (Camera *)component)
+    {
+        window->setMainCamera(nullptr);
     }
 }
 

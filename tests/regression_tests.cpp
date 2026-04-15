@@ -3,8 +3,11 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -53,6 +56,15 @@ namespace
         }
     }
 
+    void drainPhysicsQueuesAndDeleteMarkedObjects(GameManager &gameManager)
+    {
+        PhysicsManager *physicsManager = gameManager.getPhysicsManager();
+        require(physicsManager != nullptr, "PhysicsManager must be available during regression cleanup.");
+
+        physicsManager->checkForCollisions();
+        gameManager.deleteMarkedGameObjects();
+    }
+
     void destroyObjects(GameManager &gameManager, const std::vector<GameObject *> &objects)
     {
         for (GameObject *object : objects)
@@ -63,7 +75,7 @@ namespace
             }
         }
 
-        gameManager.deleteMarkedGameObjects();
+        drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
     }
 
     class SceneScope
@@ -291,6 +303,329 @@ namespace
                 "Fast-motion regression expected the probe pair to be removed after the fast bridge moved away.");
     }
 
+    std::filesystem::path findRegressionAsset(const std::string &fileName)
+    {
+        std::filesystem::path searchDirectory = std::filesystem::current_path();
+
+        while (true)
+        {
+            std::filesystem::path candidate = searchDirectory / "assets" / fileName;
+            if (std::filesystem::exists(candidate))
+            {
+                return candidate.lexically_normal();
+            }
+
+            std::filesystem::path parentDirectory = searchDirectory.parent_path();
+            if (parentDirectory == searchDirectory)
+            {
+                break;
+            }
+
+            searchDirectory = parentDirectory;
+        }
+
+        throw std::runtime_error("Regression tests could not locate asset '" + fileName + "'.");
+    }
+
+    std::string makeSceneRelativeResourcePath(const std::filesystem::path &resourcePath, const std::filesystem::path &scenePath)
+    {
+        std::error_code errorCode;
+        std::filesystem::path relativePath = std::filesystem::relative(resourcePath, scenePath.parent_path(), errorCode);
+        if (!errorCode && !relativePath.empty())
+        {
+            return relativePath.generic_string();
+        }
+
+        return resourcePath.generic_string();
+    }
+
+    void destroyNamedObject(GameManager &gameManager, SDLWindow *window, const std::string &name)
+    {
+        GameObject *gameObject = gameManager.getGameObject(name);
+        if (gameObject == nullptr)
+        {
+            return;
+        }
+
+        Camera *camera = gameObject->getComponent<Camera>();
+        if (camera != nullptr && window != nullptr && window->getMainCamera() == camera)
+        {
+            window->setMainCamera(nullptr);
+        }
+
+        gameManager.destroyGameObject(gameObject);
+    }
+
+    void testSceneLoading()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        SDLWindow *window = gameManager.getWindow();
+        require(window != nullptr, "Scene loading regression requires an SDLWindow.");
+
+        std::filesystem::path scenePath = std::filesystem::current_path() / "scene_loading_regression.scene";
+        std::filesystem::path wallTexturePath = findRegressionAsset("wall.png");
+        std::string sceneSpritePath = makeSceneRelativeResourcePath(wallTexturePath, scenePath);
+
+        auto cleanup = [&]()
+        {
+            destroyNamedObject(gameManager, window, "Loaded Ball");
+            destroyNamedObject(gameManager, window, "Loaded Camera");
+
+            drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
+
+            std::error_code errorCode;
+            std::filesystem::remove(scenePath, errorCode);
+        };
+
+        cleanup();
+
+        try
+        {
+            std::ofstream sceneFile(scenePath);
+            require(sceneFile.is_open(), "Scene loading regression failed to create the temporary scene file.");
+
+            sceneFile << "object {\n";
+            sceneFile << "    name \"Loaded Ball\"\n";
+            sceneFile << "    tag \"Player\"\n";
+            sceneFile << "    active true\n";
+            sceneFile << "    position 123 234\n";
+            sceneFile << "    rotation 0.5\n";
+            sceneFile << "    scale 2 1.5\n";
+            sceneFile << "    rigidbody {\n";
+            sceneFile << "        bodyType dynamic\n";
+            sceneFile << "        gravity false\n";
+            sceneFile << "        mass 7\n";
+            sceneFile << "        velocity 10 -20\n";
+            sceneFile << "        force 1 2\n";
+            sceneFile << "        angularVelocity 0.25\n";
+            sceneFile << "        torque 0.75\n";
+            sceneFile << "        friction 0.4\n";
+            sceneFile << "        restitution 0.6\n";
+            sceneFile << "    }\n";
+            sceneFile << "    circleCollider {\n";
+            sceneFile << "        radius 12\n";
+            sceneFile << "        trigger false\n";
+            sceneFile << "        collisionGroup 3\n";
+            sceneFile << "        collisionMask 5\n";
+            sceneFile << "    }\n";
+            sceneFile << "    sprite {\n";
+            sceneFile << "        path \"" << sceneSpritePath << "\"\n";
+            sceneFile << "        flip horizontal\n";
+            sceneFile << "        size 32 48\n";
+            sceneFile << "    }\n";
+            sceneFile << "}\n\n";
+            sceneFile << "object {\n";
+            sceneFile << "    name \"Loaded Camera\"\n";
+            sceneFile << "    camera {\n";
+            sceneFile << "        viewport 5 10 320 240\n";
+            sceneFile << "    }\n";
+            sceneFile << "}\n";
+            sceneFile.close();
+
+            Scene scene(scenePath.string());
+            gameManager.loadScene(scene);
+
+            GameObject *loadedBall = gameManager.getGameObject("Loaded Ball");
+            require(loadedBall != nullptr, "Scene loading regression failed to create the ball object.");
+            require(loadedBall->getTag() == "Player", "Scene loading regression failed to load the object tag.");
+            require(std::abs(loadedBall->getPosition().x() - 123.0f) <= 1e-5f && std::abs(loadedBall->getPosition().y() - 234.0f) <= 1e-5f,
+                    "Scene loading regression failed to load the object position.");
+            require(std::abs(loadedBall->getRotation() - 0.5f) <= 1e-5f,
+                    "Scene loading regression failed to load the object rotation.");
+            require(std::abs(loadedBall->getScale().x() - 2.0f) <= 1e-5f && std::abs(loadedBall->getScale().y() - 1.5f) <= 1e-5f,
+                    "Scene loading regression failed to load the object scale.");
+
+            Rigidbody *rigidbody = loadedBall->getComponent<Rigidbody>();
+            require(rigidbody != nullptr, "Scene loading regression failed to load the rigidbody component.");
+            require(rigidbody->getBodyType() == BodyType::DYNAMIC && !rigidbody->getGravity(),
+                    "Scene loading regression failed to load rigidbody type or gravity.");
+            require(std::abs(rigidbody->getMass() - 7.0f) <= 1e-5f,
+                    "Scene loading regression failed to load rigidbody mass.");
+            require(std::abs(rigidbody->getVelocity().x() - 10.0f) <= 1e-5f && std::abs(rigidbody->getVelocity().y() + 20.0f) <= 1e-5f,
+                    "Scene loading regression failed to load rigidbody velocity.");
+            require(std::abs(rigidbody->getForce().x() - 1.0f) <= 1e-5f && std::abs(rigidbody->getForce().y() - 2.0f) <= 1e-5f,
+                    "Scene loading regression failed to load rigidbody force.");
+            require(std::abs(rigidbody->getAngularVelocity() - 0.25f) <= 1e-5f && std::abs(rigidbody->getTorque() - 0.75f) <= 1e-5f,
+                    "Scene loading regression failed to load angular rigidbody values.");
+            require(std::abs(rigidbody->getFriction() - 0.4f) <= 1e-5f && std::abs(rigidbody->getRestitution() - 0.6f) <= 1e-5f,
+                    "Scene loading regression failed to load rigidbody material properties.");
+
+            CircleCollider *circleCollider = loadedBall->getComponent<CircleCollider>();
+            require(circleCollider != nullptr, "Scene loading regression failed to load the circle collider.");
+            require(std::abs(circleCollider->getRadius() - 24.0f) <= 1e-5f,
+                    "Scene loading regression failed to load the circle collider radius.");
+            require(circleCollider->getCollisionGroup() == 3 && circleCollider->getCollisionMask() == 5 && !circleCollider->getIsTrigger(),
+                    "Scene loading regression failed to load the circle collider filter settings.");
+
+            Sprite *sprite = loadedBall->getComponent<Sprite>();
+            require(sprite != nullptr, "Scene loading regression failed to load the sprite component.");
+            require(sprite->getTexture() != nullptr, "Scene loading regression failed to load the sprite texture.");
+            require(sprite->getFlip() == SDL_FLIP_HORIZONTAL,
+                    "Scene loading regression failed to load the sprite flip mode.");
+            require(std::abs(sprite->getWidth() - 32.0f) <= 1e-5f && std::abs(sprite->getHeight() - 48.0f) <= 1e-5f,
+                    "Scene loading regression failed to load the sprite size.");
+
+            GameObject *loadedCameraObject = gameManager.getGameObject("Loaded Camera");
+            require(loadedCameraObject != nullptr, "Scene loading regression failed to create the camera object.");
+
+            Camera *camera = loadedCameraObject->getComponent<Camera>();
+            require(camera != nullptr, "Scene loading regression failed to load the camera component.");
+            require(window->getMainCamera() == camera,
+                    "Scene loading regression failed to register the loaded camera as the main camera.");
+            const SDL_FRect &cameraRect = camera->getCamera();
+            require(std::abs(cameraRect.x - 5.0f) <= 1e-5f && std::abs(cameraRect.y - 10.0f) <= 1e-5f &&
+                        std::abs(cameraRect.w - 320.0f) <= 1e-5f && std::abs(cameraRect.h - 240.0f) <= 1e-5f,
+                    "Scene loading regression failed to load the camera viewport.");
+
+            cleanup();
+        }
+        catch (const std::exception &)
+        {
+            cleanup();
+            throw;
+        }
+    }
+
+    void testSceneSavingRoundTrip()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        SDLWindow *window = gameManager.getWindow();
+        require(window != nullptr, "Scene round-trip regression requires an SDLWindow.");
+
+        std::filesystem::path scenePath = std::filesystem::current_path() / "scene_roundtrip_regression.scene";
+        std::filesystem::path wallTexturePath = findRegressionAsset("wall.png");
+        std::string expectedSavedSpritePath = makeSceneRelativeResourcePath(wallTexturePath, scenePath);
+        std::string wallTexturePathString = wallTexturePath.string();
+
+        auto cleanup = [&]()
+        {
+            destroyNamedObject(gameManager, window, "Roundtrip Ball");
+            destroyNamedObject(gameManager, window, "Roundtrip Camera");
+
+            drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
+
+            std::error_code errorCode;
+            std::filesystem::remove(scenePath, errorCode);
+        };
+
+        cleanup();
+
+        try
+        {
+            GameObject *roundtripBall = gameManager
+                                            .createGameObject()
+                                            ->setName("Roundtrip Ball")
+                                            ->setTag("Roundtrip")
+                                            ->setPosition(Eigen::Vector2f(210.0f, 220.0f))
+                                            ->setRotation(0.25f)
+                                            ->setScale(Eigen::Vector2f(2.0f, 1.5f))
+                                            ->addComponent<Rigidbody>(KINEMATIC, false)
+                                            ->addComponent<CircleCollider>(12.0f)
+                                            ->addComponent<Sprite>(wallTexturePathString.c_str(), SDL_FLIP_VERTICAL, 32.0f, 48.0f);
+
+            Sprite *sourceSprite = roundtripBall->getComponent<Sprite>();
+            require(sourceSprite != nullptr && sourceSprite->getTexture() != nullptr,
+                    "Scene round-trip regression failed to create the source sprite texture.");
+
+            Rigidbody *rigidbody = roundtripBall->getComponent<Rigidbody>();
+            require(rigidbody != nullptr, "Scene round-trip regression failed to create the source rigidbody.");
+            rigidbody->setMass(9.0f)
+                ->setVelocity(Eigen::Vector2f(30.0f, -40.0f))
+                ->setForce(Eigen::Vector2f(4.0f, 5.0f))
+                ->setAngularVelocity(0.6f)
+                ->setTorque(1.2f)
+                ->setFriction(0.3f)
+                ->setRestitution(0.7f);
+
+            CircleCollider *circleCollider = roundtripBall->getComponent<CircleCollider>();
+            require(circleCollider != nullptr, "Scene round-trip regression failed to create the source circle collider.");
+            circleCollider->setIsTrigger(true);
+            circleCollider->setCollisionGroup(7);
+            circleCollider->setCollisionMask(11);
+
+            GameObject *roundtripCamera = gameManager
+                                              .createGameObject()
+                                              ->setName("Roundtrip Camera")
+                                              ->addComponent<Camera>(3.0f, 4.0f, 300.0f, 200.0f);
+
+            Scene scene(scenePath.string());
+            gameManager.saveScene(scene);
+
+            require(std::filesystem::exists(scenePath), "Scene round-trip regression failed to create the saved scene file.");
+
+            std::ifstream savedSceneFile(scenePath);
+            require(savedSceneFile.is_open(), "Scene round-trip regression failed to reopen the saved scene file.");
+            std::stringstream savedSceneContents;
+            savedSceneContents << savedSceneFile.rdbuf();
+            require(savedSceneContents.str().find("path \"" + expectedSavedSpritePath + "\"") != std::string::npos,
+                    "Scene round-trip regression failed to save sprite paths relative to the scene file.");
+
+            destroyNamedObject(gameManager, window, "Roundtrip Ball");
+            destroyNamedObject(gameManager, window, "Roundtrip Camera");
+            drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
+
+            gameManager.loadScene(scene);
+
+            GameObject *loadedBall = gameManager.getGameObject("Roundtrip Ball");
+            require(loadedBall != nullptr, "Scene round-trip regression failed to recreate the saved ball.");
+            require(loadedBall->getTag() == "Roundtrip", "Scene round-trip regression failed to preserve the object tag.");
+            require(std::abs(loadedBall->getPosition().x() - 210.0f) <= 1e-5f && std::abs(loadedBall->getPosition().y() - 220.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the object position.");
+            require(std::abs(loadedBall->getRotation() - 0.25f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the object rotation.");
+            require(std::abs(loadedBall->getScale().x() - 2.0f) <= 1e-5f && std::abs(loadedBall->getScale().y() - 1.5f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the object scale.");
+
+            Rigidbody *loadedRigidbody = loadedBall->getComponent<Rigidbody>();
+            require(loadedRigidbody != nullptr, "Scene round-trip regression failed to reload the rigidbody.");
+            require(loadedRigidbody->getBodyType() == BodyType::KINEMATIC && !loadedRigidbody->getGravity(),
+                    "Scene round-trip regression failed to preserve rigidbody bodyType or gravity.");
+            require(std::abs(loadedRigidbody->getMass() - 9.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve rigidbody mass.");
+            require(std::abs(loadedRigidbody->getVelocity().x() - 30.0f) <= 1e-5f && std::abs(loadedRigidbody->getVelocity().y() + 40.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve rigidbody velocity.");
+            require(std::abs(loadedRigidbody->getForce().x() - 4.0f) <= 1e-5f && std::abs(loadedRigidbody->getForce().y() - 5.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve rigidbody force.");
+            require(std::abs(loadedRigidbody->getAngularVelocity() - 0.6f) <= 1e-5f && std::abs(loadedRigidbody->getTorque() - 1.2f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve angular rigidbody values.");
+            require(std::abs(loadedRigidbody->getFriction() - 0.3f) <= 1e-5f && std::abs(loadedRigidbody->getRestitution() - 0.7f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve rigidbody material properties.");
+
+            CircleCollider *loadedCircleCollider = loadedBall->getComponent<CircleCollider>();
+            require(loadedCircleCollider != nullptr, "Scene round-trip regression failed to reload the circle collider.");
+            require(std::abs(loadedCircleCollider->getRadius() - 24.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the circle collider radius.");
+            require(loadedCircleCollider->getIsTrigger() && loadedCircleCollider->getCollisionGroup() == 7 && loadedCircleCollider->getCollisionMask() == 11,
+                    "Scene round-trip regression failed to preserve the circle collider filter settings.");
+
+            Sprite *loadedSprite = loadedBall->getComponent<Sprite>();
+            require(loadedSprite != nullptr, "Scene round-trip regression failed to reload the sprite.");
+            require(loadedSprite->getTexture() != nullptr, "Scene round-trip regression failed to reload the sprite texture.");
+            require(loadedSprite->getFlip() == SDL_FLIP_VERTICAL,
+                    "Scene round-trip regression failed to preserve the sprite flip mode.");
+            require(std::abs(loadedSprite->getWidth() - 32.0f) <= 1e-5f && std::abs(loadedSprite->getHeight() - 48.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the sprite size.");
+
+            GameObject *loadedCameraObject = gameManager.getGameObject("Roundtrip Camera");
+            require(loadedCameraObject != nullptr, "Scene round-trip regression failed to recreate the saved camera.");
+            Camera *loadedCamera = loadedCameraObject->getComponent<Camera>();
+            require(loadedCamera != nullptr, "Scene round-trip regression failed to reload the camera component.");
+            require(window->getMainCamera() == loadedCamera,
+                    "Scene round-trip regression failed to register the reloaded camera as the main camera.");
+            const SDL_FRect &loadedCameraRect = loadedCamera->getCamera();
+            require(std::abs(loadedCameraRect.x - 3.0f) <= 1e-5f && std::abs(loadedCameraRect.y - 4.0f) <= 1e-5f &&
+                        std::abs(loadedCameraRect.w - 300.0f) <= 1e-5f && std::abs(loadedCameraRect.h - 200.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the camera viewport.");
+
+            cleanup();
+        }
+        catch (const std::exception &)
+        {
+            cleanup();
+            throw;
+        }
+    }
+
     void testRestitutionBounce()
     {
         GameManager &gameManager = GameManager::getInstance();
@@ -395,6 +730,8 @@ int main()
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
         {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},
+        {"scene_loading", testSceneLoading},
+        {"scene_saving_round_trip", testSceneSavingRoundTrip},
         {"restitution_bounce", testRestitutionBounce},
         {"kinematic_body_semantics", testKinematicBodySemantics},
     };

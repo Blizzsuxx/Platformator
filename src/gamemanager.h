@@ -7,6 +7,11 @@
 
 class GameManager
 {
+    friend class GameObject;
+    friend class Component;
+    friend class Collider;
+    friend class Rigidbody;
+
 public:
     static GameManager &getInstance()
     {
@@ -23,20 +28,15 @@ public:
 
     std::list<GameObject *> &getGameObjects();
 
-    void setPhysicsManager(PhysicsManager *physicsManager);
-    PhysicsManager *getPhysicsManager() const;
-
     SDLWindow *getWindow() const;
 
     void loop();
     TextureWrapper *loadTexture(const std::string &filePath);
     void freeTexture(const std::string &filePath);
     void freeAllTextures();
-    void notifyComponentAdded(Component *component);
-    void notifyComponentRemoved(Component *component);
-    void deleteMarkedGameObjects();
 
     void loadScene(Scene &scene);
+    void saveScene(const Scene &scene);
     std::vector<Scene> &getScenes();
     void addScene(const Scene &scene);
 
@@ -69,4 +69,11 @@ private:
 
     void notifyPhysicsManagerOfComponentRemoved(Component *component);
     void notifyWindowOfComponentRemoved(Component *component);
+
+    void notifyComponentAdded(Component *component);
+    void notifyComponentRemoved(Component *component);
+    void deleteMarkedGameObjects();
+
+    void setPhysicsManager(PhysicsManager *physicsManager);
+    PhysicsManager *getPhysicsManager() const;
 };

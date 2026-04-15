@@ -76,7 +76,6 @@ public:
     GameObject *setScale(const Eigen::Vector2f &scale);
     GameObject *setName(const std::string &name);
     GameObject *setTag(const std::string &tag);
-    GameObject *setIsMarkedForDeletion(const bool markedForDeletion);
 
     void addComponent(Component *component);
     bool removeComponent(const ComponentType &componentType);
@@ -109,6 +108,9 @@ private:
 
     void updateCollider();
     void addComponentInternal(Component *component);
+    GameObject *setIsMarkedForDeletion(const bool markedForDeletion);
+    GameObject *setIsRegisteredInGameManager(const bool isRegisteredInGameManager);
+    GameObject *setGameManagerIterator(const std::list<GameObject *>::iterator &it);
 };
 
 template <typename T>

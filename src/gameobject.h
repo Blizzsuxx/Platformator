@@ -39,6 +39,7 @@ private:
 class GameObject
 {
     friend class GameManager;
+    friend class Scene;
 
 public:
     GameObject(GameObject &) = delete;

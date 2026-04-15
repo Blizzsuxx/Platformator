@@ -289,3 +289,8 @@ void SDLWindow::addSdlListener(const std::function<void(SDL_Event)> &listener)
 {
     listeners.push_back(listener);
 }
+
+Camera *SDLWindow::getMainCamera() const
+{
+    return mainCamera;
+}

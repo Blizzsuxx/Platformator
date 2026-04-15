@@ -1,10 +1,10 @@
 #include "gamemanager.h"
 #include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
-    initializeMainCamera();
+    // initializeMainCamera();
 }
 
 GameManager::~GameManager()
@@ -22,12 +22,35 @@ GameManager::~GameManager()
     delete window;
 }
 
-void GameManager::initializeMainCamera()
+void GameManager::addScene(const Scene &scene)
 {
-    GameObject *mainCameraGameObject = new GameObject();
-    mainCameraGameObject->setName("MainCamera");
-    mainCameraGameObject->setTag("MainCamera");
+    scenes.push_back(scene);
+}
 
+std::vector<Scene> &GameManager::getScenes()
+{
+    return scenes;
+}
+
+void GameManager::loadScene(Scene &scene)
+{
+    std::vector<GameObject *> loadedObjects = scene.loadScene();
+
+    for (GameObject *gameObject : loadedObjects)
+    {
+        addGameObject(gameObject);
+    }
+    createMainCameraIfNoMainCameraExists();
+}
+
+void GameManager::createMainCameraIfNoMainCameraExists()
+{
+    if (window->getMainCamera() != nullptr)
+    {
+        return;
+    }
+
+    GameObject *mainCameraGameObject = new GameObject();
     Camera *mainCameraComponent = new Camera(mainCameraGameObject);
     mainCameraGameObject->addComponentInternal(mainCameraComponent);
 
@@ -45,6 +68,7 @@ GameObject *GameManager::addGameObject(GameObject *gameObject)
     notifyComponentAdded(gameObject->getComponent(ComponentType::COLLIDER));
     notifyComponentAdded(gameObject->getComponent(ComponentType::RIGID_BODY));
     notifyComponentAdded(gameObject->getComponent(ComponentType::SPRITE));
+    notifyComponentAdded(gameObject->getComponent(ComponentType::CAMERA));
 
     return gameObject;
 }
@@ -268,6 +292,11 @@ void GameManager::notifyWindowOfComponentAdded(Component *component)
     if (component->getType() == ComponentType::SPRITE)
     {
         window->addSpriteComponent((Sprite *)component);
+    }
+
+    if (component->getType() == ComponentType::CAMERA)
+    {
+        window->setMainCamera((Camera *)component);
     }
 }
 

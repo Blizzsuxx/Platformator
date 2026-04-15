@@ -32,6 +32,7 @@ public:
     void clearAdvanceFrameRequest();
     bool getIsFrameAdvanceMode() const;
     void clearDebugObjects();
+    Camera *getMainCamera() const;
 
 private:
     SDL_Window *window;

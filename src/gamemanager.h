@@ -3,6 +3,7 @@
 #include "sdlwindow.h"
 #include "physicsmanager.h"
 #include <vector>
+#include "scene.h"
 
 class GameManager
 {
@@ -35,6 +36,10 @@ public:
     void notifyComponentRemoved(Component *component);
     void deleteMarkedGameObjects();
 
+    void loadScene(Scene &scene);
+    std::vector<Scene> &getScenes();
+    void addScene(const Scene &scene);
+
 private:
     GameManager();
     ~GameManager();
@@ -43,13 +48,14 @@ private:
     std::list<GameObject *> gameObjects;
     std::unordered_map<std::string, TextureWrapper> textureCache;
     std::vector<GameObject *> gameObjectsToDelete;
+    std::vector<Scene> scenes;
 
     PhysicsManager *physicsManager;
 
     double deltaTime;
     double lastUpdateTime;
 
-    void initializeMainCamera();
+    void createMainCameraIfNoMainCameraExists();
     void startDeletingGameObject(GameObject *gameObject);
     void updateDeltaTime();
     void delay();

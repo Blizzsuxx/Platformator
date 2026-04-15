@@ -12,6 +12,8 @@
 #include "boxcollider.h"
 #include "circlecollider.h"
 #include "constants.h"
+#include "grid.h"
+#include "aabb.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
 #include "physicsmanager.h"
@@ -140,6 +142,13 @@ namespace
             ->setPosition(Eigen::Vector2f(x, y));
     }
 
+    void addColliderToLocalAabb(AABB &aabb, Collider *collider)
+    {
+        require(collider != nullptr, "Local AABB regression received a null collider.");
+        collider->applySync();
+        aabb.add(collider);
+    }
+
     void testCircleCollisionStability()
     {
         GameManager &gameManager = GameManager::getInstance();
@@ -205,8 +214,8 @@ namespace
                 "Broad-phase regression expected pair removal after separation.");
     }
 
-        void testCheckpointIdempotence()
-        {
+    void testCheckpointFastMotionCancellation()
+    {
         GameManager &gameManager = GameManager::getInstance();
 
         SceneScope sceneScope(gameManager);
@@ -217,16 +226,70 @@ namespace
         require(collider != nullptr, "Checkpoint regression lost the collider.");
 
         LocalSortArray chunk(static_cast<SegmentedIntervalList *>(nullptr));
-        chunk.removeCheckpoint(collider);
-        chunk.addCheckpoint(collider);
-
-        require(chunk.getCheckpoints()->contains(collider),
-            "Checkpoint regression lost a valid checkpoint after a remove-then-add sequence.");
 
         chunk.removeCheckpoint(collider);
         require(!chunk.getCheckpoints()->contains(collider),
-            "Checkpoint regression failed to remove a checkpoint cleanly.");
+                "Checkpoint regression unexpectedly created a checkpoint during the pending-remove phase.");
+
+        chunk.addCheckpoint(collider);
+        require(!chunk.getCheckpoints()->contains(collider),
+                "Checkpoint regression failed to cancel a pending fast-motion remove-then-add sequence.");
+
+        chunk.addCheckpoint(collider);
+        require(chunk.getCheckpoints()->contains(collider),
+                "Checkpoint regression failed to add a real checkpoint after the fast-motion cancellation state was cleared.");
+
+        chunk.removeCheckpoint(collider);
+        require(!chunk.getCheckpoints()->contains(collider),
+                "Checkpoint regression failed to remove an existing checkpoint cleanly.");
+    }
+
+    void testSegmentedIntervalListFastMotionAcrossChunks()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        Grid localGrid;
+        AABB localAabb(&localGrid);
+
+        for (int index = 0; index < 17; ++index)
+        {
+            GameObject *filler = createStaticBox(
+                gameManager,
+                "Chunk Filler " + std::to_string(index),
+                10.0f + static_cast<float>(index) * 20.0f,
+                0.0f,
+                2.0f,
+                2.0f);
+            sceneScope.add(filler);
+            addColliderToLocalAabb(localAabb, filler->getComponent<Collider>());
         }
+
+        GameObject *bridge = createStaticBox(gameManager, "Fast Bridge", 110.0f, 100.0f, 80.0f, 20.0f);
+        sceneScope.add(bridge);
+        Collider *bridgeCollider = bridge->getComponent<Collider>();
+        addColliderToLocalAabb(localAabb, bridgeCollider);
+
+        require(localGrid.getCandidatePairCount() == 0,
+                "Fast-motion regression expected no broad-phase pairs before adding the probe collider.");
+
+        bridge->setPosition(Eigen::Vector2f(170.0f, 100.0f));
+        bridgeCollider->applySync();
+
+        GameObject *probe = createStaticBox(gameManager, "Checkpoint Probe", 145.0f, 100.0f, 2.0f, 20.0f);
+        sceneScope.add(probe);
+        Collider *probeCollider = probe->getComponent<Collider>();
+        addColliderToLocalAabb(localAabb, probeCollider);
+
+        require(localGrid.getCandidatePairCount() == 1,
+                "Fast-motion regression expected the probe to overlap the fast bridge through real chunk checkpoint handling.");
+
+        bridge->setPosition(Eigen::Vector2f(250.0f, 100.0f));
+        bridgeCollider->applySync();
+
+        require(localGrid.getCandidatePairCount() == 0,
+                "Fast-motion regression expected the probe pair to be removed after the fast bridge moved away.");
+    }
 
     void testRestitutionBounce()
     {
@@ -330,7 +393,8 @@ int main()
         {"circle_collision_stability", testCircleCollisionStability},
         {"sleeping_on_support", testSleepingOnSupport},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
-        {"checkpoint_idempotence", testCheckpointIdempotence},
+        {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
+        {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},
         {"restitution_bounce", testRestitutionBounce},
         {"kinematic_body_semantics", testKinematicBodySemantics},
     };

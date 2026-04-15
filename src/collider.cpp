@@ -5,7 +5,7 @@
 #include "segmentedintervallist.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0))
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), collisionEnterCallbacks(), collisionExitCallbacks(), collisionStayCallbacks()
 {
 }
 
@@ -97,20 +97,26 @@ void Collider::applySync()
 
 void Collider::triggerCollisionEnter(const Collider *other) const
 {
-    // Placeholder for collision enter event handling
-    // In a full implementation, this would notify the game object or other systems of the collision event
+    for (const auto &callback : collisionEnterCallbacks)
+    {
+        callback(const_cast<Collider *>(other));
+    }
 }
 
 void Collider::triggerCollisionExit(const Collider *other) const
 {
-    // Placeholder for collision exit event handling
-    // In a full implementation, this would notify the game object or other systems of the collision event
+    for (const auto &callback : collisionExitCallbacks)
+    {
+        callback(const_cast<Collider *>(other));
+    }
 }
 
 void Collider::triggerCollisionStay(const Collider *other) const
 {
-    // Placeholder for collision stay event handling
-    // In a full implementation, this would notify the game object or other systems of the collision event
+    for (const auto &callback : collisionStayCallbacks)
+    {
+        callback(const_cast<Collider *>(other));
+    }
 }
 
 void Collider::setCollisionGroup(const uint64_t collisionGroup)
@@ -215,4 +221,19 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     {
         flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
     }
+}
+
+void Collider::addCollisionEnterCallback(const std::function<void(Collider *)> &callback)
+{
+    collisionEnterCallbacks.push_back(callback);
+}
+
+void Collider::addCollisionExitCallback(const std::function<void(Collider *)> &callback)
+{
+    collisionExitCallbacks.push_back(callback);
+}
+
+void Collider::addCollisionStayCallback(const std::function<void(Collider *)> &callback)
+{
+    collisionStayCallbacks.push_back(callback);
 }

@@ -166,6 +166,10 @@ public:
     bool getIsRegisteredInGrid() const;
     void setIsRegisteredInGrid(bool isRegisteredInGrid);
 
+    void addCollisionEnterCallback(const std::function<void(Collider *)> &callback);
+    void addCollisionExitCallback(const std::function<void(Collider *)> &callback);
+    void addCollisionStayCallback(const std::function<void(Collider *)> &callback);
+
     virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
 protected:
@@ -179,6 +183,10 @@ protected:
 
     GridCellRange gridCellRange;
     ColliderFlags flags;
+
+    std::vector<std::function<void(Collider *)>> collisionEnterCallbacks;
+    std::vector<std::function<void(Collider *)>> collisionExitCallbacks;
+    std::vector<std::function<void(Collider *)>> collisionStayCallbacks;
 
     void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
     void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);

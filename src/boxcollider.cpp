@@ -1,5 +1,6 @@
 #include "boxcollider.h"
 #include "helpers.h"
+#include "rigidbody.h"
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
     : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height), vertices(), normals(2)
@@ -58,12 +59,26 @@ float BoxCollider::getHeight() const
 void BoxCollider::setWidth(const float width)
 {
     this->width = width;
+
+    Rigidbody *rigidbodyComponent = getGameObject()->getComponent<Rigidbody>();
+    if (rigidbodyComponent != nullptr)
+    {
+        rigidbodyComponent->refreshMomentOfInertiaCache();
+    }
+
     scheduleSync();
 }
 
 void BoxCollider::setHeight(const float height)
 {
     this->height = height;
+
+    Rigidbody *rigidbodyComponent = getGameObject()->getComponent<Rigidbody>();
+    if (rigidbodyComponent != nullptr)
+    {
+        rigidbodyComponent->refreshMomentOfInertiaCache();
+    }
+
     scheduleSync();
 }
 
@@ -134,7 +149,6 @@ void BoxCollider::updateCollider()
 
 Edge BoxCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
 {
-    // Find the edge whose normal is closest to the given normal
     float maxDot = -std::numeric_limits<float>::infinity();
     size_t bestEdgeIndex = 0;
 

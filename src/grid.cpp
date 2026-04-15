@@ -263,13 +263,13 @@ void Grid::syncCollider(Collider *collider)
     const GridCellRange &newGridCellRange = collider->getGridCellRange();
     if constexpr (ENABLE_LOGGING)
     {
-        printf(
-            "Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n",
-            collider->getGameObject()->getName().c_str(),
-            newGridCellRange.minX,
-            newGridCellRange.minY,
-            newGridCellRange.maxX,
-            newGridCellRange.maxY);
+        // printf(
+        //     "Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n",
+        //     collider->getGameObject()->getName().c_str(),
+        //     newGridCellRange.minX,
+        //     newGridCellRange.minY,
+        //     newGridCellRange.maxX,
+        //     newGridCellRange.maxY);
     }
 
     oldGridCellRange.forEachDifference(newGridCellRange, [&](const GridCellKey &key)

@@ -1,5 +1,6 @@
 #include "circlecollider.h"
 #include "helpers.h"
+#include "rigidbody.h"
 
 CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER), radius(radius)
 {
@@ -24,6 +25,13 @@ float CircleCollider::getRadius() const
 void CircleCollider::setRadius(const float radius)
 {
     this->radius = radius;
+
+    Rigidbody *rigidbodyComponent = getGameObject()->getComponent<Rigidbody>();
+    if (rigidbodyComponent != nullptr)
+    {
+        rigidbodyComponent->refreshMomentOfInertiaCache();
+    }
+
     scheduleSync();
 }
 

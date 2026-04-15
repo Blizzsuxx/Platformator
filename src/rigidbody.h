@@ -47,7 +47,6 @@ public:
     Rigidbody *setAngularVelocity(const float angularVelocity);
     Rigidbody *setTorque(const float torque);
 
-    Rigidbody *setMomentOfInertia(const float momentOfInertia);
     Rigidbody *setFriction(const float friction);
     Rigidbody *setRestitution(const float restitution);
 
@@ -62,8 +61,10 @@ public:
     bool getIsSleeping() const;
     Rigidbody *setIsSleeping(bool sleeping);
     Rigidbody *wakeUp();
-    bool getIsSupportedThisFrame() const;
-    Rigidbody *setIsSupportedThisFrame(bool isSupportedThisFrame);
+    bool hasSupportContact() const;
+    size_t getSupportContactCount() const;
+    Rigidbody *addSupportContact();
+    Rigidbody *removeSupportContact();
     double getSleepTimer() const;
     Rigidbody *setSleepTimer(double sleepTimer);
 
@@ -71,6 +72,9 @@ public:
     Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
     size_t getPhysicsManagerIndex() const;
     Rigidbody *setPhysicsManagerIndex(size_t physicsManagerIndex);
+
+    Rigidbody *refreshMomentOfInertiaCache();
+    bool qualifiesAsSupportContact(const Eigen::Vector2f &contactDirection, const Eigen::Vector2f &gravityVectorNormalized) const;
 
 private:
     Eigen::Vector2f velocity;
@@ -91,12 +95,13 @@ private:
     BodyType bodyType;
     bool gravity;
     bool sleeping;
-    bool supportedThisFrame;
+    size_t supportContactCount;
     double sleepTimer;
     bool isRegisteredInPhysicsManager;
     size_t physicsManagerIndex;
 
     void initialize();
+    float calculateAutomaticMomentOfInertia() const;
 };
 
 template <>

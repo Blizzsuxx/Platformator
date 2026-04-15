@@ -34,7 +34,6 @@ public:
 private:
     void flushPendingColliderSyncs();
     void flushPendingColliderComponents();
-    void markSupportContact(Rigidbody *rigidBody, const Eigen::Vector2f &contactDirection);
     void updateSleepingStates(double timeDelta);
     void broadPhase();
     void narrowPhase();
@@ -53,4 +52,5 @@ private:
     Grid grid;
 
     Eigen::Vector2f gravityVector;
+    Eigen::Vector2f gravityVectorNormalized;
 };

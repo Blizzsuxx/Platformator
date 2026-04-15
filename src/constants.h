@@ -19,7 +19,7 @@ constexpr float WAKE_LINEAR_EPSILON = 1e-3f;
 constexpr float WAKE_LINEAR_EPSILON_SQUARED = WAKE_LINEAR_EPSILON * WAKE_LINEAR_EPSILON;
 constexpr float WAKE_ANGULAR_EPSILON = 1e-4f;
 
-constexpr bool ENABLE_LOGGING = false;
+constexpr bool ENABLE_LOGGING = true;
 
 constexpr float GRID_CELL_SIZE = 200.0f;
 constexpr float GRAVITY_VECTOR_X = 0.0f;

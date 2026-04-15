@@ -2,7 +2,7 @@
 #include "debugdraw.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y)
+    : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
 }
 
@@ -15,7 +15,6 @@ void PhysicsManager::applyPhysics(double timeDelta)
     // TODO: parallelize this loop
     for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
     {
-        rigidBodyComponent->setIsSupportedThisFrame(false);
         rigidBodyComponent->applyForces(timeDelta, gravityVector);
     }
 }
@@ -258,6 +257,8 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 
     Collision *collision = pair.getOrCreateCollision();
 
+    collision->clearSupportState();
+
     collision->setIncidentObject(realIncidentCollider);
     collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
 
@@ -272,6 +273,7 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
     collision->setNormal(minNormal);
 
     calculateContactPoint(collision);
+    collision->updateSupportState(gravityVectorNormalized);
 }
 
 void PhysicsManager::calculateContactPoint(Collision *collision)
@@ -307,6 +309,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     // if we dont have 2 points left then fail
     if (cp.count < 2)
     {
+        collision->setContactPoints(ClipPoints());
         printf("Clipping failed at first reference vertex\n");
         return;
     }
@@ -320,6 +323,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     // if we dont have 2 points left then fail
     if (cp.count < 2)
     {
+        collision->setContactPoints(ClipPoints());
         printf("Clipping failed at second reference vertex\n");
         return;
     }
@@ -350,7 +354,8 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     ClipPointsWithData &contactPoints = collision->getContactPoints();
     for (size_t i = 0; i < contactPoints.count; i++)
     {
-        contactPoints.points[i].separation = normal.dot(contactPoints.points[i].point) - max;
+        float separation = normal.dot(cp.points[i]) - max;
+        contactPoints.points[i].separation = separation;
     }
 }
 
@@ -380,21 +385,6 @@ void PhysicsManager::resolveCollisions(double timeDelta)
             {
                 resolveCollision(collision);
             }
-        }
-    }
-
-    for (Collision *collision : activeCollisions)
-    {
-        const Collider *referenceCollider = collision->getReferenceObject();
-        const Collider *incidentCollider = collision->getIncidentObject();
-
-        if (!referenceCollider->getIsTrigger() && !incidentCollider->getIsTrigger())
-        {
-            Rigidbody *rbA = (Rigidbody *)referenceCollider->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-            Rigidbody *rbB = (Rigidbody *)incidentCollider->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-            Eigen::Vector2f normal = collision->getNormal();
-            markSupportContact(rbA, -normal);
-            markSupportContact(rbB, normal);
         }
     }
 
@@ -501,13 +491,12 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         float vt = relativeVelocity.dot(tangent);
         float tangentImpulse = contactPoints.points[i].massTangent * (-vt);
 
-        float frictionImpulse = collision->getFriction() * normalImpulse;
-
         float oldTangentImpulse = contactPoints.points[i].accumulatedTangentImpulse;
 
-        float maxTangentImpulse = Clamp(oldTangentImpulse + tangentImpulse, -frictionImpulse, frictionImpulse);
-        contactPoints.points[i].accumulatedTangentImpulse = maxTangentImpulse;
-        tangentImpulse = maxTangentImpulse - oldTangentImpulse;
+        float maxTangentImpulse = collision->getFriction() * contactPoints.points[i].accumulatedNormalImpulse;
+        float newTangentImpulse = Clamp(oldTangentImpulse + tangentImpulse, -maxTangentImpulse, maxTangentImpulse);
+        contactPoints.points[i].accumulatedTangentImpulse = newTangentImpulse;
+        tangentImpulse = newTangentImpulse - oldTangentImpulse;
 
         Eigen::Vector2f contactImpulse = tangentImpulse * tangent;
 
@@ -515,29 +504,6 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         rbB->setVelocity(rbB->getVelocity() + contactImpulse * invMassB);
         rbA->setAngularVelocity(rbA->getAngularVelocity() - invInertiaA * cross2D(rA, contactImpulse));
         rbB->setAngularVelocity(rbB->getAngularVelocity() + invInertiaB * cross2D(rB, contactImpulse));
-    }
-}
-
-void PhysicsManager::markSupportContact(Rigidbody *rigidBody, const Eigen::Vector2f &contactDirection)
-{
-    if (rigidBody == nullptr || rigidBody->getBodyType() != BodyType::DYNAMIC)
-    {
-        return;
-    }
-
-    float gravityNorm = gravityVector.norm();
-    float contactNorm = contactDirection.norm();
-    if (gravityNorm <= 0.0f || contactNorm <= 0.0f)
-    {
-        return;
-    }
-
-    Eigen::Vector2f supportDirection = -gravityVector / gravityNorm;
-    Eigen::Vector2f normalizedContactDirection = contactDirection / contactNorm;
-
-    if (normalizedContactDirection.dot(supportDirection) >= SUPPORT_NORMAL_THRESHOLD)
-    {
-        rigidBody->setIsSupportedThisFrame(true);
     }
 }
 
@@ -554,14 +520,14 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
 
         if (rigidBodyComponent->getIsSleeping())
         {
-            if (!rigidBodyComponent->getIsSupportedThisFrame())
+            if (!rigidBodyComponent->hasSupportContact())
             {
                 rigidBodyComponent->wakeUp();
             }
             continue;
         }
 
-        if (!rigidBodyComponent->getIsSupportedThisFrame())
+        if (!rigidBodyComponent->hasSupportContact())
         {
             rigidBodyComponent->setSleepTimer(0.0);
             continue;

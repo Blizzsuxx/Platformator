@@ -20,6 +20,8 @@ public:
     const Collider *getIncidentObject() const;
 
     bool shouldResolve() const;
+    void updateSupportState(const Eigen::Vector2f &gravityVector) const;
+    void clearSupportState() const;
 
     // Setters
     void setNormal(const Eigen::Vector2f &normal) const;
@@ -55,4 +57,6 @@ private:
     mutable ClipPointsWithData contactPoints;
     mutable const Collider *referenceObject;
     mutable const Collider *incidentObject;
+    mutable bool supportsReferenceBody;
+    mutable bool supportsIncidentBody;
 };

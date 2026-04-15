@@ -1,6 +1,7 @@
 #include "gameobject.h"
 #include "collider.h"
 #include "gamemanager.h"
+#include "rigidbody.h"
 
 GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), isActive(true), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), markedForDeletion(false), isRegisteredInGameManager(false), gameManagerIterator()
 {
@@ -165,6 +166,12 @@ GameObject *GameObject::setScale(const Eigen::Vector2f &scale)
 {
     this->scale = scale;
 
+    Rigidbody *rigidbodyComponent = getComponent<Rigidbody>();
+    if (rigidbodyComponent != nullptr)
+    {
+        rigidbodyComponent->refreshMomentOfInertiaCache();
+    }
+
     updateCollider();
     return this;
 }
@@ -203,6 +210,15 @@ void GameObject::addComponentInternal(Component *component)
 
     components[type] = component;
 
+    if (type == ComponentType::COLLIDER || type == ComponentType::RIGID_BODY)
+    {
+        Rigidbody *rigidbodyComponent = getComponent<Rigidbody>();
+        if (rigidbodyComponent != nullptr)
+        {
+            rigidbodyComponent->refreshMomentOfInertiaCache();
+        }
+    }
+
     if (component->getType() == ComponentType::COLLIDER)
     {
         static_cast<Collider *>(component)->scheduleSync();
@@ -219,6 +235,15 @@ bool GameObject::removeComponent(const ComponentType &componentType)
     GameManager::getInstance().notifyComponentRemoved(components[componentType]);
     delete components[componentType];
     components[componentType] = nullptr;
+
+    if (componentType == ComponentType::COLLIDER)
+    {
+        Rigidbody *rigidbodyComponent = getComponent<Rigidbody>();
+        if (rigidbodyComponent != nullptr)
+        {
+            rigidbodyComponent->refreshMomentOfInertiaCache();
+        }
+    }
 
     return true;
 }

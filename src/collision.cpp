@@ -1,23 +1,25 @@
 #include "collision.h"
+#include "constants.h"
 #include "helpers.h"
 #include "rigidbody.h"
 
-Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr)
+Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr), supportsReferenceBody(false), supportsIncidentBody(false)
 {
 }
 
 Collision::Collision(Collider *colliderA, Collider *colliderB)
-    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB)
+    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB), supportsReferenceBody(false), supportsIncidentBody(false)
 {
 }
 
 Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints, Collider *colliderA, Collider *colliderB)
-    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB)
+    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB), supportsReferenceBody(false), supportsIncidentBody(false)
 {
 }
 
 Collision::~Collision()
 {
+    clearSupportState();
 }
 
 // Getters
@@ -133,4 +135,68 @@ bool Collision::shouldResolve() const
     }
 
     return true;
+}
+
+void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalized) const
+{
+    Rigidbody *rbA = referenceObject ? (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY) : nullptr;
+    Rigidbody *rbB = incidentObject ? (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY) : nullptr;
+
+    bool newSupportsReferenceBody = rbA->qualifiesAsSupportContact(-normal, gravityVectorNormalized);
+    bool newSupportsIncidentBody = rbB->qualifiesAsSupportContact(normal, gravityVectorNormalized);
+
+    if (supportsReferenceBody != newSupportsReferenceBody)
+    {
+        if (rbA != nullptr)
+        {
+            if (newSupportsReferenceBody)
+            {
+                rbA->addSupportContact();
+            }
+            else
+            {
+                rbA->removeSupportContact();
+            }
+        }
+        supportsReferenceBody = newSupportsReferenceBody;
+    }
+
+    if (supportsIncidentBody != newSupportsIncidentBody)
+    {
+        if (rbB != nullptr)
+        {
+            if (newSupportsIncidentBody)
+            {
+                rbB->addSupportContact();
+            }
+            else
+            {
+                rbB->removeSupportContact();
+            }
+        }
+        supportsIncidentBody = newSupportsIncidentBody;
+    }
+}
+
+void Collision::clearSupportState() const
+{
+    if (supportsReferenceBody && referenceObject != nullptr)
+    {
+        Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+        if (rbA != nullptr)
+        {
+            rbA->removeSupportContact();
+        }
+        supportsReferenceBody = false;
+    }
+
+    if (supportsIncidentBody && incidentObject != nullptr)
+    {
+        Rigidbody *rbB = (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+        if (rbB != nullptr)
+        {
+            rbB->removeSupportContact();
+        }
+        supportsIncidentBody = false;
+    }
 }

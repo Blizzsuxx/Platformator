@@ -1,12 +1,15 @@
 #include "rigidbody.h"
+#include "boxcollider.h"
+#include "circlecollider.h"
 #include "constants.h"
 
 Rigidbody::Rigidbody(GameObject *gameObject) : Rigidbody(gameObject, BodyType::DYNAMIC, true)
 {
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(1.0f), restitution(1.0f), bodyType(bodyType), gravity(gravity), sleeping(false), supportedThisFrame(false), sleepTimer(0.0), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(1.0f), restitution(1.0f), bodyType(bodyType), gravity(gravity), sleeping(false), supportContactCount(0), sleepTimer(0.0), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
 {
+    initialize();
 }
 
 Rigidbody::~Rigidbody()
@@ -23,7 +26,62 @@ void Rigidbody::initialize()
         // infinite moment of inertia
         momentOfInertia = float(std::numeric_limits<float>::max());
         inverseMomentOfInertia = 0.0f;
+        return;
     }
+    else
+    {
+        refreshMomentOfInertiaCache();
+    }
+}
+
+float Rigidbody::calculateAutomaticMomentOfInertia() const
+{
+    if (mass <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    Collider *collider = (Collider *)getGameObject()->getComponent(ComponentType::COLLIDER);
+    if (collider == nullptr)
+    {
+        return 1.0f;
+    }
+
+    switch (collider->getColliderType())
+    {
+    case ColliderType::BoxCollider:
+    {
+        const BoxCollider *boxCollider = (const BoxCollider *)collider;
+        float width = boxCollider->getWidth();
+        float height = boxCollider->getHeight();
+        return mass * (width * width + height * height) / 12.0f;
+    }
+    case ColliderType::CircleCollider:
+    {
+        const CircleCollider *circleCollider = (const CircleCollider *)collider;
+        float radius = circleCollider->getRadius();
+        return 0.5f * mass * radius * radius;
+    }
+    default:
+        return momentOfInertia;
+    }
+}
+
+Rigidbody *Rigidbody::refreshMomentOfInertiaCache()
+{
+    if (bodyType == BodyType::STATIC)
+    {
+        momentOfInertia = float(std::numeric_limits<float>::max());
+        inverseMomentOfInertia = 0.0f;
+        return this;
+    }
+    else
+    {
+        momentOfInertia = calculateAutomaticMomentOfInertia();
+        inverseMomentOfInertia = momentOfInertia > 0.0f ? 1.0f / momentOfInertia : 0.0f;
+    }
+
+    return this;
 }
 
 // Getters
@@ -120,7 +178,7 @@ Rigidbody *Rigidbody::setMass(const float mass)
 {
     this->mass = mass > 0.0f ? mass : 0.0f;
     this->inverseMass = this->mass > 0.0f ? 1.0f / this->mass : 0.0f;
-    return this;
+    return refreshMomentOfInertiaCache();
 }
 
 Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
@@ -147,13 +205,6 @@ Rigidbody *Rigidbody::setTorque(const float torque)
     }
 
     this->torque = torque;
-    return this;
-}
-
-Rigidbody *Rigidbody::setMomentOfInertia(const float momentOfInertia)
-{
-    this->momentOfInertia = momentOfInertia > 0.0f ? momentOfInertia : 0.0f;
-    this->inverseMomentOfInertia = this->momentOfInertia > 0.0f ? 1.0f / this->momentOfInertia : 0.0f;
     return this;
 }
 
@@ -238,6 +289,7 @@ float Rigidbody::getInverseMomentOfInertia() const
     {
         return 0.0f;
     }
+
     return inverseMomentOfInertia;
 }
 
@@ -299,14 +351,28 @@ Rigidbody *Rigidbody::wakeUp()
     return setIsSleeping(false);
 }
 
-bool Rigidbody::getIsSupportedThisFrame() const
+bool Rigidbody::hasSupportContact() const
 {
-    return supportedThisFrame;
+    return supportContactCount > 0;
 }
 
-Rigidbody *Rigidbody::setIsSupportedThisFrame(bool isSupportedThisFrame)
+size_t Rigidbody::getSupportContactCount() const
 {
-    supportedThisFrame = isSupportedThisFrame;
+    return supportContactCount;
+}
+
+Rigidbody *Rigidbody::addSupportContact()
+{
+    supportContactCount++;
+    return this;
+}
+
+Rigidbody *Rigidbody::removeSupportContact()
+{
+    if (supportContactCount > 0)
+    {
+        supportContactCount--;
+    }
     return this;
 }
 
@@ -341,4 +407,14 @@ Rigidbody *Rigidbody::setPhysicsManagerIndex(size_t physicsManagerIndex)
 {
     this->physicsManagerIndex = physicsManagerIndex;
     return this;
+}
+
+bool Rigidbody::qualifiesAsSupportContact(const Eigen::Vector2f &contactDirectionNormal, const Eigen::Vector2f &gravityVectorNormal) const
+{
+    if (bodyType != BodyType::DYNAMIC)
+    {
+        return false;
+    }
+
+    return contactDirectionNormal.dot(-gravityVectorNormal) >= SUPPORT_NORMAL_THRESHOLD;
 }

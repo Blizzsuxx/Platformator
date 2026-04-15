@@ -194,6 +194,21 @@ void GameManager::loop()
     }
 }
 
+void GameManager::simulateFrame(double timeDelta)
+{
+    if (physicsManager == nullptr)
+    {
+        deleteMarkedGameObjects();
+        return;
+    }
+
+    physicsManager->checkForCollisions();
+    physicsManager->applyPhysics(timeDelta);
+    physicsManager->resolveCollisions(timeDelta);
+    physicsManager->applyMovement(timeDelta);
+    deleteMarkedGameObjects();
+}
+
 TextureWrapper *GameManager::loadTexture(const std::string &filePath)
 {
     auto it = textureCache.find(filePath);

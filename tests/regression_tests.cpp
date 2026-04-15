@@ -43,26 +43,15 @@ namespace
 
     void simulateFrames(GameManager &gameManager, int frameCount)
     {
-        PhysicsManager *physicsManager = gameManager.getPhysicsManager();
-        require(physicsManager != nullptr, "PhysicsManager must be available during regression tests.");
-
         for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
         {
-            physicsManager->checkForCollisions();
-            physicsManager->applyPhysics(kTimeStep);
-            physicsManager->resolveCollisions(kTimeStep);
-            physicsManager->applyMovement(kTimeStep);
-            gameManager.deleteMarkedGameObjects();
+            gameManager.simulateFrame(kTimeStep);
         }
     }
 
     void drainPhysicsQueuesAndDeleteMarkedObjects(GameManager &gameManager)
     {
-        PhysicsManager *physicsManager = gameManager.getPhysicsManager();
-        require(physicsManager != nullptr, "PhysicsManager must be available during regression cleanup.");
-
-        physicsManager->checkForCollisions();
-        gameManager.deleteMarkedGameObjects();
+        gameManager.simulateFrame(kTimeStep);
     }
 
     void destroyObjects(GameManager &gameManager, const std::vector<GameObject *> &objects)
@@ -202,8 +191,6 @@ namespace
     void testBroadPhasePairTracking()
     {
         GameManager &gameManager = GameManager::getInstance();
-        PhysicsManager *physicsManager = gameManager.getPhysicsManager();
-        require(physicsManager != nullptr, "PhysicsManager must be available for pair tracking regression.");
 
         SceneScope sceneScope(gameManager);
         GameObject *boxA = createStaticBox(gameManager, "Pair A", 120.0f, 120.0f, 40.0f, 40.0f);
@@ -211,19 +198,35 @@ namespace
         sceneScope.add(boxA);
         sceneScope.add(boxB);
 
-        physicsManager->checkForCollisions();
-        require(physicsManager->getGrid().getCandidatePairCount() == 0,
-                "Broad-phase regression expected zero candidate pairs before overlap.");
+        Collider *colliderA = boxA->getComponent<Collider>();
+        require(colliderA != nullptr, "Broad-phase regression lost the first collider.");
+
+        size_t collisionEnterCount = 0;
+        size_t collisionStayCount = 0;
+        size_t collisionExitCount = 0;
+
+        colliderA->addCollisionEnterCallback([&](Collider *)
+                                             { collisionEnterCount++; });
+        colliderA->addCollisionStayCallback([&](Collider *)
+                                            { collisionStayCount++; });
+        colliderA->addCollisionExitCallback([&](Collider *)
+                                            { collisionExitCount++; });
+
+        gameManager.simulateFrame(kTimeStep);
+        require(collisionEnterCount == 0 && collisionStayCount == 0 && collisionExitCount == 0,
+                "Broad-phase regression unexpectedly reported a collision before overlap.");
 
         boxB->setPosition(Eigen::Vector2f(135.0f, 120.0f));
-        physicsManager->checkForCollisions();
-        require(physicsManager->getGrid().getCandidatePairCount() == 1,
-                "Broad-phase regression expected one candidate pair after overlap.");
+        gameManager.simulateFrame(kTimeStep);
+        require(collisionEnterCount == 1,
+                "Broad-phase regression expected a collision enter callback after overlap.");
+        require(collisionExitCount == 0,
+                "Broad-phase regression unexpectedly reported a collision exit while overlap persisted.");
 
         boxB->setPosition(Eigen::Vector2f(360.0f, 120.0f));
-        physicsManager->checkForCollisions();
-        require(physicsManager->getGrid().getCandidatePairCount() == 0,
-                "Broad-phase regression expected pair removal after separation.");
+        gameManager.simulateFrame(kTimeStep);
+        require(collisionExitCount == 1,
+                "Broad-phase regression expected a collision exit callback after separation.");
     }
 
     void testCheckpointFastMotionCancellation()
@@ -644,16 +647,9 @@ namespace
         const float expectedContactHeight = 320.0f - 20.0f - 20.0f;
         bool observedBounce = false;
 
-        PhysicsManager *physicsManager = gameManager.getPhysicsManager();
-        require(physicsManager != nullptr, "PhysicsManager must be available during restitution regression.");
-
         for (int frameIndex = 0; frameIndex < 360; ++frameIndex)
         {
-            physicsManager->checkForCollisions();
-            physicsManager->applyPhysics(kTimeStep);
-            physicsManager->resolveCollisions(kTimeStep);
-            physicsManager->applyMovement(kTimeStep);
-            gameManager.deleteMarkedGameObjects();
+            gameManager.simulateFrame(kTimeStep);
 
             if (ball->getPosition().y() >= expectedContactHeight - 2.0f && rigidbody->getVelocity().y() < -5.0f)
             {

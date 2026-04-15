@@ -11,6 +11,7 @@ class GameManager
     friend class Component;
     friend class Collider;
     friend class Rigidbody;
+    friend class SDLWindow;
 
 public:
     static GameManager &getInstance()
@@ -31,6 +32,7 @@ public:
     SDLWindow *getWindow() const;
 
     void loop();
+    void simulateFrame(double timeDelta);
     TextureWrapper *loadTexture(const std::string &filePath);
     void freeTexture(const std::string &filePath);
     void freeAllTextures();

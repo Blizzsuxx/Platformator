@@ -63,6 +63,28 @@ namespace
         gameManager.deleteMarkedGameObjects();
     }
 
+    class SceneScope
+    {
+    public:
+        explicit SceneScope(GameManager &gameManager) : gameManager(gameManager), objects()
+        {
+        }
+
+        ~SceneScope()
+        {
+            destroyObjects(gameManager, objects);
+        }
+
+        void add(GameObject *object)
+        {
+            objects.push_back(object);
+        }
+
+    private:
+        GameManager &gameManager;
+        std::vector<GameObject *> objects;
+    };
+
     GameObject *createStaticBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height)
     {
         return gameManager
@@ -111,11 +133,11 @@ namespace
     {
         GameManager &gameManager = GameManager::getInstance();
 
-        std::vector<GameObject *> objects;
+        SceneScope sceneScope(gameManager);
         GameObject *floor = createStaticBox(gameManager, "Regression Floor", 200.0f, 300.0f, 400.0f, 40.0f);
         GameObject *ball = createDynamicCircle(gameManager, "Regression Ball", 200.0f, 140.0f, 20.0f);
-        objects.push_back(floor);
-        objects.push_back(ball);
+        sceneScope.add(floor);
+        sceneScope.add(ball);
 
         simulateFrames(gameManager, 720);
 
@@ -125,19 +147,17 @@ namespace
         require(std::isfinite(actualRestY), "Circle stability regression produced a non-finite position.");
         require(std::abs(actualRestY - expectedRestY) <= 6.0f,
                 "Circle stability regression drifted too far from the expected resting height.");
-
-        destroyObjects(gameManager, objects);
     }
 
     void testSleepingOnSupport()
     {
         GameManager &gameManager = GameManager::getInstance();
 
-        std::vector<GameObject *> objects;
+        SceneScope sceneScope(gameManager);
         GameObject *floor = createStaticBox(gameManager, "Sleep Floor", 320.0f, 340.0f, 420.0f, 40.0f);
         GameObject *box = createDynamicBox(gameManager, "Sleep Box", 320.0f, 180.0f, 40.0f, 40.0f);
-        objects.push_back(floor);
-        objects.push_back(box);
+        sceneScope.add(floor);
+        sceneScope.add(box);
 
         simulateFrames(gameManager, 720);
 
@@ -145,8 +165,6 @@ namespace
         require(rigidbody != nullptr, "Sleeping regression lost the box rigidbody.");
         require(rigidbody->hasSupportContact(), "Sleeping regression ended without a support contact.");
         require(rigidbody->getIsSleeping(), "Supported dynamic body failed to enter sleep state.");
-
-        destroyObjects(gameManager, objects);
     }
 
     void testBroadPhasePairTracking()
@@ -155,11 +173,11 @@ namespace
         PhysicsManager *physicsManager = gameManager.getPhysicsManager();
         require(physicsManager != nullptr, "PhysicsManager must be available for pair tracking regression.");
 
-        std::vector<GameObject *> objects;
+        SceneScope sceneScope(gameManager);
         GameObject *boxA = createStaticBox(gameManager, "Pair A", 120.0f, 120.0f, 40.0f, 40.0f);
         GameObject *boxB = createStaticBox(gameManager, "Pair B", 320.0f, 120.0f, 40.0f, 40.0f);
-        objects.push_back(boxA);
-        objects.push_back(boxB);
+        sceneScope.add(boxA);
+        sceneScope.add(boxB);
 
         physicsManager->checkForCollisions();
         require(physicsManager->getGrid().getCandidatePairCount() == 0,
@@ -174,8 +192,45 @@ namespace
         physicsManager->checkForCollisions();
         require(physicsManager->getGrid().getCandidatePairCount() == 0,
                 "Broad-phase regression expected pair removal after separation.");
+    }
 
-        destroyObjects(gameManager, objects);
+    void testRestitutionBounce()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *floor = createStaticBox(gameManager, "Bounce Floor", 220.0f, 320.0f, 400.0f, 40.0f);
+        GameObject *ball = createDynamicCircle(gameManager, "Bounce Ball", 220.0f, 120.0f, 20.0f);
+        sceneScope.add(floor);
+        sceneScope.add(ball);
+
+        Rigidbody *rigidbody = ball->getComponent<Rigidbody>();
+        require(rigidbody != nullptr, "Restitution regression lost the circle rigidbody.");
+        rigidbody->setRestitution(0.8f);
+        rigidbody->setFriction(0.0f);
+
+        const float expectedContactHeight = 320.0f - 20.0f - 20.0f;
+        bool observedBounce = false;
+
+        PhysicsManager *physicsManager = gameManager.getPhysicsManager();
+        require(physicsManager != nullptr, "PhysicsManager must be available during restitution regression.");
+
+        for (int frameIndex = 0; frameIndex < 360; ++frameIndex)
+        {
+            physicsManager->checkForCollisions();
+            physicsManager->applyPhysics(kTimeStep);
+            physicsManager->resolveCollisions(kTimeStep);
+            physicsManager->applyMovement(kTimeStep);
+            gameManager.deleteMarkedGameObjects();
+
+            if (ball->getPosition().y() >= expectedContactHeight - 2.0f && rigidbody->getVelocity().y() < -5.0f)
+            {
+                observedBounce = true;
+                break;
+            }
+        }
+
+        require(observedBounce, "Restitution regression never produced an upward post-impact velocity.");
     }
 
     struct TestCase
@@ -193,6 +248,7 @@ int main()
         {"circle_collision_stability", testCircleCollisionStability},
         {"sleeping_on_support", testSleepingOnSupport},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
+        {"restitution_bounce", testRestitutionBounce},
     };
 
     GameManager::getInstance();

@@ -65,6 +65,7 @@ bool SDLWindow::init()
     if (!MIX_Init())
     {
         printf("SDL_mixer could not initialize! SDL_mixer Error: %s", SDL_GetError());
+        close();
         return false;
     }
 
@@ -77,6 +78,7 @@ bool SDLWindow::init()
     if (TTF_Init() == -1)
     {
         printf("SDL_ttf could not initialize! SDL_ttf Error: %s", SDL_GetError());
+        close();
         return false;
     }
 
@@ -85,6 +87,7 @@ bool SDLWindow::init()
     if (window == nullptr)
     {
         printf("Window could not be created! SDL_Error: %s", SDL_GetError());
+        close();
         return false;
     }
 
@@ -94,10 +97,16 @@ bool SDLWindow::init()
     if (renderer == nullptr)
     {
         printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
+        close();
         return false;
     }
 
     rendererName = SDL_GetRendererName(renderer);
+    if (rendererName == nullptr)
+    {
+        rendererName = "Unknown Renderer";
+    }
+
     printf("Renderer Used: %s\n", rendererName);
 
     SDL_SetWindowTitle(window, ("Platformator: " + std::string(rendererName)).c_str());
@@ -107,12 +116,21 @@ bool SDLWindow::init()
 
 void SDLWindow::close()
 {
+    if (renderer != nullptr)
+    {
+        SDL_DestroyRenderer(renderer);
+        renderer = nullptr;
+    }
+
+    if (window != nullptr)
+    {
+        SDL_DestroyWindow(window);
+        window = nullptr;
+    }
+
     // Destroy window
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    window = nullptr;
-    renderer = nullptr;
     mainCamera = nullptr;
+    rendererName = nullptr;
 
     // Quit SDL subsystems
     // IMG_Quit();
@@ -139,6 +157,11 @@ void SDLWindow::handleEvents()
 
 void SDLWindow::render()
 {
+    if (renderer == nullptr || mainCamera == nullptr)
+    {
+        return;
+    }
+
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(renderer);
 

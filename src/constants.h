@@ -28,3 +28,4 @@ constexpr float GRAVITY_VECTOR_Y = 98.10f;
 constexpr size_t COLLISION_SOLVER_ITERATIONS = 10;
 constexpr float COLLISION_ALLOWED_PENETRATION = 0.01f;
 constexpr float COLLISION_BIAS_FACTOR = 0.2f;
+constexpr float RESTITUTION_VELOCITY_THRESHOLD = 1.0f;

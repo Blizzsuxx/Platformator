@@ -30,7 +30,7 @@ The paper PDF tracked by this repository is `paper/Efficient_Large-Scale_Sweep_a
 | Sleeping and support contacts | Done | `src/rigidbody.cpp`, `src/collision.cpp` | Support contacts are persistent and drive sleep state. |
 | Collision filtering by group and mask | Done in broad phase | `src/aabb.cpp`, `src/collider.cpp` | Group and mask checks already gate pair creation. |
 | Trigger non-resolution | Done | `src/collision.cpp` | Trigger pairs can still be detected but are skipped by the solver. |
-| Restitution / bounce response | Missing | `src/rigidbody.cpp`, `src/physicsmanager.cpp` | Restitution is stored on rigidbodies but is not used in the contact solver yet. |
+| Restitution / bounce response | Done | `src/rigidbody.cpp`, `src/collision.cpp`, `src/physicsmanager.cpp` | Restitution is combined per collision and injected into the normal solver bias when the closing velocity crosses a bounce threshold. |
 | Kinematic body semantics | Partial | `src/rigidbody.cpp` | `KINEMATIC` exists as an enum but still follows most dynamic behavior paths. |
 
 ## Engine Scope Outside The Paper

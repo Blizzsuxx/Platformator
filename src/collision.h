@@ -15,6 +15,7 @@ public:
     const Eigen::Vector2f &getNormal() const;
     ClipPointsWithData &getContactPoints() const;
     float getFriction() const;
+    float getRestitution() const;
 
     const Collider *getReferenceObject() const;
     const Collider *getIncidentObject() const;

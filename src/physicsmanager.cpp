@@ -466,7 +466,17 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
         float kTangent = inverseMassSum + invInertiaA * (rA.dot(rA) - rtA * rtA) + invInertiaB * (rB.dot(rB) - rtB * rtB);
         contactPoints.points[i].massTangent = 1.0f / kTangent;
 
-        contactPoints.points[i].bias = -COLLISION_BIAS_FACTOR * inverseTimeDelta * std::min(0.0f, contactPoints.points[i].separation + COLLISION_ALLOWED_PENETRATION);
+        float baumgarteBias = -COLLISION_BIAS_FACTOR * inverseTimeDelta * std::min(0.0f, contactPoints.points[i].separation + COLLISION_ALLOWED_PENETRATION);
+
+        Eigen::Vector2f relativeVelocity = (rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB)) - (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA));
+        float vn = relativeVelocity.dot(normal);
+        float restitutionBias = 0.0f;
+        if (vn < -RESTITUTION_VELOCITY_THRESHOLD)
+        {
+            restitutionBias = -collision->getRestitution() * vn;
+        }
+
+        contactPoints.points[i].bias = baumgarteBias + restitutionBias;
 
         Eigen::Vector2f accumulatedImpulse = contactPoints.points[i].accumulatedNormalImpulse * normal + contactPoints.points[i].accumulatedTangentImpulse * tangent;
         rbA->setVelocity(rbA->getVelocity() - accumulatedImpulse * invMassA);

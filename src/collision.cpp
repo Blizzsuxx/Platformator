@@ -109,6 +109,19 @@ float Collision::getFriction() const
     return sqrt(frictionA * frictionB); // Using geometric mean for friction
 }
 
+float Collision::getRestitution() const
+{
+    Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbB = (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+
+    if (rbA == nullptr || rbB == nullptr)
+    {
+        return 0.0f;
+    }
+
+    return std::max(rbA->getRestitution(), rbB->getRestitution());
+}
+
 bool Collision::shouldResolve() const
 {
     if (referenceObject == nullptr || incidentObject == nullptr)

@@ -8,6 +8,8 @@ SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
     if (!init())
     {
         printf("Failed to initialize SDLWindow!");
+        quit = true;
+        return;
     }
 
     listeners.push_back([this](SDL_Event event)
@@ -88,6 +90,12 @@ bool SDLWindow::init()
 
     // Get window surface
     renderer = SDL_CreateRenderer(window, nullptr);
+
+    if (renderer == nullptr)
+    {
+        printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
+        return false;
+    }
 
     rendererName = SDL_GetRendererName(renderer);
     printf("Renderer Used: %s\n", rendererName);

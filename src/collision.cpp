@@ -139,8 +139,13 @@ bool Collision::shouldResolve() const
 
 void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalized) const
 {
-    Rigidbody *rbA = referenceObject ? (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY) : nullptr;
-    Rigidbody *rbB = incidentObject ? (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY) : nullptr;
+    Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbB = (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+
+    if (rbA == nullptr || rbB == nullptr)
+    {
+        return; // No support state to update if either object doesn't have a Rigidbody
+    }
 
     bool newSupportsReferenceBody = rbA->qualifiesAsSupportContact(-normal, gravityVectorNormalized);
     bool newSupportsIncidentBody = rbB->qualifiesAsSupportContact(normal, gravityVectorNormalized);

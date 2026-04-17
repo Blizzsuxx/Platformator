@@ -261,6 +261,11 @@ size_t Grid::getCandidatePairCount() const
 
 void Grid::syncCollider(Collider *collider)
 {
+    if (collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+    {
+        return;
+    }
+
     GridCellRange oldGridCellRange = collider->getGridCellRange();
 
     collider->applySync();

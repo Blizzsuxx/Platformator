@@ -857,7 +857,7 @@ std::vector<GameObject *> Scene::loadScene()
     return objects;
 }
 
-void Scene::saveScene(const std::list<GameObject *> &gameObjects) const
+void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
 {
     std::filesystem::path scenePath(filePath);
     std::filesystem::path sceneDirectory = scenePath.parent_path();

@@ -49,7 +49,7 @@ private:
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collider *> pendingColliderComponents;
-    std::vector<Collider *> pendingColliderSyncs;
+    tbb::concurrent_vector<Collider *> pendingColliderSyncs;
     std::vector<Collision *> activeCollisions;
     Grid grid;
 

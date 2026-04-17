@@ -3,12 +3,12 @@
 #include "gamemanager.h"
 #include "rigidbody.h"
 
-GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), isActive(true), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), markedForDeletion(false), isRegisteredInGameManager(false), gameManagerIterator()
+GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(IS_ACTIVE))
 {
 }
 
 GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), isActive(active), position(position), scale(scale), name(name), tag(tag), components(), children(), markedForDeletion(false), isRegisteredInGameManager(false), gameManagerIterator()
+    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : NONE))
 {
 }
 
@@ -44,7 +44,7 @@ float GameObject::getRotationInDegrees() const
 
 bool GameObject::getActive() const
 {
-    return isActive;
+    return flags & IS_ACTIVE;
 }
 
 const Eigen::Vector2f &GameObject::getPosition() const
@@ -87,7 +87,7 @@ Component **GameObject::getComponents()
     return components;
 }
 
-const std::list<GameObject *> &GameObject::getChildren() const
+const std::vector<GameObject *> &GameObject::getChildren() const
 {
     return children;
 }
@@ -115,31 +115,30 @@ GameObject *GameObject::setRotation(const float rotation)
 
 GameObject *GameObject::setActive(const bool active)
 {
-    if (this->isActive == active)
+    if (this->getActive() == active)
     {
         return this;
     }
 
-    this->isActive = active;
+    if (active)
+    {
+        flags |= IS_ACTIVE;
+    }
+    else
+    {
+        flags &= ~IS_ACTIVE;
+    }
+
     GameManager *gameManager = &GameManager::getInstance();
     ComponentType managedComponents[] = {ComponentType::COLLIDER, ComponentType::RIGID_BODY, ComponentType::SPRITE, ComponentType::CAMERA};
 
-    for (ComponentType componentType : managedComponents)
+    if (active)
     {
-        Component *component = components[componentType];
-        if (component == nullptr)
-        {
-            continue;
-        }
-
-        if (active)
-        {
-            gameManager->notifyComponentAdded(component);
-        }
-        else
-        {
-            gameManager->notifyComponentRemoved(component);
-        }
+        addComponentsToGameManager();
+    }
+    else
+    {
+        removeComponentsFromGameManager();
     }
 
     return this;
@@ -265,39 +264,77 @@ bool GameObject::removeChild(GameObject *child)
         throw std::invalid_argument("Child cannot be null");
     }
 
-    children.remove(child);
-    delete child;
+    auto it = std::find(children.begin(), children.end(), child);
+    if (it != children.end())
+    {
+        children.erase(it);
+        return true;
+    }
 
-    return true;
+    return false;
 }
 
 bool GameObject::getIsMarkedForDeletion() const
 {
-    return markedForDeletion;
+    return flags & IS_MARKED_FOR_DELETION;
 }
 
 GameObject *GameObject::setIsMarkedForDeletion(const bool markedForDeletion)
 {
-    this->markedForDeletion = markedForDeletion;
+    if (markedForDeletion)
+    {
+        flags |= IS_MARKED_FOR_DELETION;
+    }
+    else
+    {
+        flags &= ~IS_MARKED_FOR_DELETION;
+    }
     return this;
 }
 
 GameObject *GameObject::setIsRegisteredInGameManager(const bool isRegisteredInGameManager)
 {
-    this->isRegisteredInGameManager = isRegisteredInGameManager;
-
-    GameManager &gameManager = GameManager::getInstance();
-
-    gameManager.notifyComponentAdded(getComponent(ComponentType::COLLIDER));
-    gameManager.notifyComponentAdded(getComponent(ComponentType::RIGID_BODY));
-    gameManager.notifyComponentAdded(getComponent(ComponentType::SPRITE));
-    gameManager.notifyComponentAdded(getComponent(ComponentType::CAMERA));
+    if (isRegisteredInGameManager)
+    {
+        flags |= IS_REGISTERED_IN_GAME_MANAGER;
+    }
+    else
+    {
+        flags &= ~IS_REGISTERED_IN_GAME_MANAGER;
+    }
 
     return this;
 }
 
-GameObject *GameObject::setGameManagerIterator(const std::list<GameObject *>::iterator &it)
+GameObject *GameObject::setGameManagerIteratorIndex(const size_t index)
 {
-    this->gameManagerIterator = it;
+    gameManagerIteratorIndex = index;
     return this;
+}
+
+bool GameObject::getIsRegisteredInGameManager() const
+{
+    return flags & IS_REGISTERED_IN_GAME_MANAGER;
+}
+
+void GameObject::addComponentsToGameManager()
+{
+    for (Component *component : components)
+    {
+        if (component != nullptr)
+        {
+            GameManager::getInstance().notifyComponentAdded(component);
+        }
+    }
+}
+
+void GameObject::removeComponentsFromGameManager()
+{
+    for (Component *component : components)
+    {
+        if (component != nullptr)
+        {
+            GameManager::getInstance().notifyComponentRemoved(component);
+        }
+    }
 }

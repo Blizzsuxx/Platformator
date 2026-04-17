@@ -25,5 +25,5 @@ public:
 
     // Saves the current GameObjects back into the same block-based scene format
     // supported by loadScene().
-    void saveScene(const std::list<GameObject *> &gameObjects) const;
+    void saveScene(const std::vector<GameObject *> &gameObjects) const;
 };

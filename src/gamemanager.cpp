@@ -9,9 +9,9 @@ GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCach
 
 GameManager::~GameManager()
 {
-    for (std::list<GameObject *>::iterator it = gameObjects.begin(); it != gameObjects.end(); ++it)
+    for (GameObject *gameObject : gameObjects)
     {
-        startDeletingGameObject(*it);
+        startDeletingGameObject(gameObject);
     }
     gameObjects.clear();
 
@@ -66,71 +66,69 @@ void GameManager::createMainCameraIfNoMainCameraExists()
 
 GameObject *GameManager::addGameObject(GameObject *gameObject)
 {
+    gameObject->setGameManagerIteratorIndex(gameObjects.size());
     gameObjects.push_back(gameObject);
-    gameObject->setGameManagerIterator(std::prev(gameObjects.end()));
     gameObject->setIsRegisteredInGameManager(true);
+    gameObject->addComponentsToGameManager();
 
     return gameObject;
 }
 
 void GameManager::removeGameObject(GameObject *gameObject)
 {
-    if (gameObject == nullptr || !gameObject->isRegisteredInGameManager)
+    if (gameObject->getIsMarkedForDeletion() || !gameObject->getIsRegisteredInGameManager())
     {
         return;
     }
 
-    gameObjects.erase(gameObject->gameManagerIterator);
-    gameObject->isRegisteredInGameManager = false;
+    size_t lastIndex = gameObjects.size() - 1;
+    size_t removeIndex = gameObject->gameManagerIteratorIndex;
+    if (removeIndex != lastIndex)
+    {
+        GameObject *movedGameObject = gameObjects.back();
+        gameObjects[removeIndex] = movedGameObject;
+        movedGameObject->setGameManagerIteratorIndex(removeIndex);
+    }
+    gameObjects.pop_back();
 
     startDeletingGameObject(gameObject);
 }
 
 void GameManager::startDeletingGameObject(GameObject *gameObject)
 {
-    if (gameObject == nullptr || gameObject->getIsMarkedForDeletion())
-    {
-        return;
-    }
-
-    notifyComponentRemoved(gameObject->getComponent(ComponentType::COLLIDER));
-    notifyComponentRemoved(gameObject->getComponent(ComponentType::RIGID_BODY));
-    notifyComponentRemoved(gameObject->getComponent(ComponentType::SPRITE));
-    notifyComponentRemoved(gameObject->getComponent(ComponentType::CAMERA));
-
+    gameObject->removeComponentsFromGameManager();
     gameObject->setIsMarkedForDeletion(true);
-    gameObject->isRegisteredInGameManager = false;
+    gameObject->setIsRegisteredInGameManager(false);
     gameObjectsToDelete.push_back(gameObject);
 }
 
 bool GameManager::removeGameObject(std::string name)
 {
-    for (std::list<GameObject *>::iterator it = gameObjects.begin(); it != gameObjects.end(); ++it)
+    for (GameObject *gameObject : gameObjects)
     {
-        if ((*it)->getName() == name)
+        if (gameObject->getName() == name)
         {
-            removeGameObject(*it);
+            removeGameObject(gameObject);
             return true;
         }
     }
-
     return false;
 }
 
 GameObject *GameManager::getGameObject(std::string name)
 {
-    for (std::list<GameObject *>::iterator it = gameObjects.begin(); it != gameObjects.end(); ++it)
+    for (GameObject *gameObject : gameObjects)
     {
-        if ((*it)->getName() == name)
+        if (gameObject->getName() == name)
         {
-            return *it;
+            return gameObject;
         }
     }
 
     return nullptr;
 }
 
-std::list<GameObject *> &GameManager::getGameObjects()
+std::vector<GameObject *> &GameManager::getGameObjects()
 {
     return gameObjects;
 }

@@ -20,6 +20,14 @@ enum ComponentType
     COMPONENT_TYPE_COUNT // must be last
 };
 
+enum GameObjectFlags : uint8_t
+{
+    NONE = 0,
+    IS_MARKED_FOR_DELETION = 1 << 0,
+    IS_REGISTERED_IN_GAME_MANAGER = 1 << 1,
+    IS_ACTIVE = 1 << 2
+};
+
 class Component
 {
     friend class GameManager;
@@ -67,7 +75,7 @@ public:
     template <typename T, typename... Args>
     GameObject *addComponent(Args &&...args);
 
-    const std::list<GameObject *> &getChildren() const;
+    const std::vector<GameObject *> &getChildren() const;
 
     // Setters
     GameObject *setRotation(const float rotation);
@@ -94,23 +102,24 @@ private:
     float sinRotation;
     float cosRotation;
 
-    bool isActive;
     Eigen::Vector2f position;
     Eigen::Vector2f scale;
     std::string name;
     std::string tag;
 
     Component *components[COMPONENT_TYPE_COUNT];
-    std::list<GameObject *> children;
-    bool markedForDeletion;
-    bool isRegisteredInGameManager;
-    std::list<GameObject *>::iterator gameManagerIterator;
+    std::vector<GameObject *> children;
+    size_t gameManagerIteratorIndex;
+    uint8_t flags;
 
     void updateCollider();
     void addComponentInternal(Component *component);
     GameObject *setIsMarkedForDeletion(const bool markedForDeletion);
     GameObject *setIsRegisteredInGameManager(const bool isRegisteredInGameManager);
-    GameObject *setGameManagerIterator(const std::list<GameObject *>::iterator &it);
+    GameObject *setGameManagerIteratorIndex(const size_t index);
+    bool getIsRegisteredInGameManager() const;
+    void addComponentsToGameManager();
+    void removeComponentsFromGameManager();
 };
 
 template <typename T>

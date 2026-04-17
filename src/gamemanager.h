@@ -27,7 +27,7 @@ public:
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
 
-    std::list<GameObject *> &getGameObjects();
+    std::vector<GameObject *> &getGameObjects();
 
     SDLWindow *getWindow() const;
 
@@ -47,7 +47,7 @@ private:
     ~GameManager();
 
     SDLWindow *window;
-    std::list<GameObject *> gameObjects;
+    std::vector<GameObject *> gameObjects;
     std::unordered_map<std::string, TextureWrapper> textureCache;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<Scene> scenes;

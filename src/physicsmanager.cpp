@@ -1,5 +1,6 @@
 #include "physicsmanager.h"
 #include "debugdraw.h"
+#include "oneapi/tbb.h"
 
 PhysicsManager::PhysicsManager()
     : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
@@ -12,20 +13,14 @@ PhysicsManager::~PhysicsManager()
 
 void PhysicsManager::applyPhysics(double timeDelta)
 {
-    // TODO: parallelize this loop
-    for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
-    {
-        rigidBodyComponent->applyForces(timeDelta, gravityVector);
-    }
+    tbb::parallel_for(size_t(0), rigidBodyComponents.size(), [&](size_t i)
+                      { rigidBodyComponents[i]->applyForces(timeDelta, gravityVector); });
 }
 
 void PhysicsManager::applyMovement(double timeDelta)
 {
-    // TODO: parallelize this loop
-    for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
-    {
-        rigidBodyComponent->move(timeDelta);
-    }
+    tbb::parallel_for(size_t(0), rigidBodyComponents.size(), [&](size_t i)
+                      { rigidBodyComponents[i]->move(timeDelta); });
 }
 
 void PhysicsManager::checkForCollisions()
@@ -520,6 +515,7 @@ void PhysicsManager::resolveCollision(const Collision *collision)
     ClipPointsWithData &contactPoints = collision->getContactPoints();
 
     // TODO: paralelize this
+    // or not
     for (size_t i = 0; i < contactPoints.count; i++)
     {
         Eigen::Vector2f rA = contactPoints.points[i].point - positionA;

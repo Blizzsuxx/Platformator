@@ -385,7 +385,6 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
     // minimum of left crossing maximum of right means that the two projections are now no longer overlapping
     // maximum of left crossing minimum of right means that the two projections are now overlapping
     // if both projections are from the same collider, then don't add collision (it's probably either a very fast object or a really small object)
-    // TODO: add the buffer for checkpoints (for fast moving objects) - done
     // we also need to check if it's a cross chunk swap (need to update checkpoints)
     // cross chunk:
     // right is minimum - add to checkpoint (left chunk) - minimum crossing left into a chunk

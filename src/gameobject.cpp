@@ -8,7 +8,7 @@ GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f),
 }
 
 GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : NONE))
+    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : GAME_OBJECT_NONE))
 {
 }
 

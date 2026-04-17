@@ -19,8 +19,9 @@ object {
         friction 1
         restitution 0
     }
-    circleCollider {
-        radius 25
+    boxCollider {
+        height 50
+        width 50
         trigger false
         collisionGroup 1
         collisionMask 1

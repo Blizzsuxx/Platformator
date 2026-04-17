@@ -6,6 +6,7 @@
 #include "segmentedintervallist.h"
 #include <algorithm>
 #include <chrono>
+#include <oneapi/tbb/concurrent_vector.h>
 #include <vector>
 #include "helpers.h"
 #include "grid.h"

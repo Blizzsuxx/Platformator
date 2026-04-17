@@ -22,7 +22,7 @@ enum ComponentType
 
 enum GameObjectFlags : uint8_t
 {
-    NONE = 0,
+    GAME_OBJECT_NONE = 0,
     IS_MARKED_FOR_DELETION = 1 << 0,
     IS_REGISTERED_IN_GAME_MANAGER = 1 << 1,
     IS_ACTIVE = 1 << 2

@@ -709,6 +709,49 @@ namespace
         }
     }
 
+    void testRotatedBoxSupportEdgeSelection()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *boxObject = createStaticBox(gameManager, "Rotated Support Box", 240.0f, 180.0f, 80.0f, 40.0f);
+        sceneScope.add(boxObject);
+
+        boxObject->setRotation(0.6f);
+
+        BoxCollider *boxCollider = boxObject->getComponent<BoxCollider>();
+        require(boxCollider != nullptr, "Rotated support-edge regression lost the box collider.");
+
+        boxCollider->applySync();
+
+        const auto &vertices = boxCollider->getVertices();
+
+        auto verifySupportEdge = [&](const Eigen::Vector2f &normal, const char *label)
+        {
+            Edge edge = boxCollider->getEdgeWithNormal(normal);
+
+            float maxProjection = -std::numeric_limits<float>::infinity();
+            for (const Eigen::Vector2f &vertex : vertices)
+            {
+                maxProjection = std::max(maxProjection, vertex.dot(normal));
+            }
+
+            constexpr float kProjectionTolerance = 1e-3f;
+            require(std::abs(edge.v1.dot(normal) - maxProjection) <= kProjectionTolerance,
+                    std::string("Rotated support-edge regression chose a non-support first vertex for ") + label + ".");
+            require(std::abs(edge.v2.dot(normal) - maxProjection) <= kProjectionTolerance,
+                    std::string("Rotated support-edge regression chose a non-support second vertex for ") + label + ".");
+        };
+
+        const std::vector<Eigen::Vector2f> normals = boxCollider->getNormals(boxCollider);
+        require(normals.size() == 2, "Rotated support-edge regression expected two box normals.");
+
+        verifySupportEdge(normals[0], "+x face normal");
+        verifySupportEdge(-normals[0], "-x face normal");
+        verifySupportEdge(normals[1], "+y face normal");
+        verifySupportEdge(-normals[1], "-y face normal");
+    }
+
     struct TestCase
     {
         const char *name;
@@ -730,6 +773,7 @@ int main()
         {"scene_saving_round_trip", testSceneSavingRoundTrip},
         {"restitution_bounce", testRestitutionBounce},
         {"kinematic_body_semantics", testKinematicBodySemantics},
+        {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
     };
 
     GameManager::getInstance();

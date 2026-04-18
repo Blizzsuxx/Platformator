@@ -28,6 +28,8 @@ public:
     void removeSpriteComponent(Sprite *spriteComponent);
 
     void addSdlListener(const std::function<void(SDL_Event)> &listener);
+    void addFrameListener(const std::function<void(double)> &listener);
+    void dispatchFrameListeners(double timeDelta);
     bool shouldSimulateFrame() const;
     void clearAdvanceFrameRequest();
     bool getIsFrameAdvanceMode() const;
@@ -47,6 +49,7 @@ private:
 
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event)>> listeners;
+    std::vector<std::function<void(double)>> frameListeners;
 
     bool init();
     void close();

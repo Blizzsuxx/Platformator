@@ -1,0 +1,538 @@
+object {
+    name "Main Camera"
+    camera {
+        viewport 0 0 640 480
+    }
+}
+
+object {
+    name "Player"
+    tag "player"
+    position 120 408
+    rigidbody {
+        bodyType kinematic
+        gravity false
+        mass 3
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0.6
+        restitution 0
+    }
+    boxCollider {
+        size 28 32
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/player/mario_idle.png"
+        flip none
+        size 32 32
+    }
+}
+
+object {
+    name "Ground A"
+    tag "solid"
+    position 160 456
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 320 48
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/ground.png"
+        flip none
+        size 320 48
+    }
+}
+
+object {
+    name "Ground B"
+    tag "solid"
+    position 480 456
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 320 48
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/ground.png"
+        flip none
+        size 320 48
+    }
+}
+
+object {
+    name "Ground C"
+    tag "solid"
+    position 920 456
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 560 48
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/ground.png"
+        flip none
+        size 560 48
+    }
+}
+
+object {
+    name "Ground D"
+    tag "solid"
+    position 1520 456
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 640 48
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/ground.png"
+        flip none
+        size 640 48
+    }
+}
+
+object {
+    name "Platform A"
+    tag "solid"
+    position 520 360
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 128 24
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/platform.png"
+        flip none
+        size 128 24
+    }
+}
+
+object {
+    name "Platform B"
+    tag "solid"
+    position 820 304
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 160 24
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/platform.png"
+        flip none
+        size 160 24
+    }
+}
+
+object {
+    name "Platform C"
+    tag "solid"
+    position 1110 248
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 128 24
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/platform.png"
+        flip none
+        size 128 24
+    }
+}
+
+object {
+    name "Pipe"
+    tag "solid"
+    position 1340 408
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 72 96
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/pipe.png"
+        flip none
+        size 72 96
+    }
+}
+
+object {
+    name "Brick Row Left"
+    tag "solid"
+    position 700 248
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 96 32
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/brick.png"
+        flip none
+        size 96 32
+    }
+}
+
+object {
+    name "Brick Row Right"
+    tag "solid"
+    position 1088 184
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 1
+        restitution 0
+    }
+    boxCollider {
+        size 128 32
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/tiles/brick.png"
+        flip none
+        size 128 32
+    }
+}
+
+object {
+    name "Coin A"
+    tag "coin"
+    position 520 316
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    circleCollider {
+        radius 10
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/items/coin.png"
+        flip none
+        size 22 22
+    }
+}
+
+object {
+    name "Coin B"
+    tag "coin"
+    position 820 260
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    circleCollider {
+        radius 10
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/items/coin.png"
+        flip none
+        size 22 22
+    }
+}
+
+object {
+    name "Coin C"
+    tag "coin"
+    position 1110 204
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    circleCollider {
+        radius 10
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/items/coin.png"
+        flip none
+        size 22 22
+    }
+}
+
+object {
+    name "Coin D"
+    tag "coin"
+    position 1490 396
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    circleCollider {
+        radius 10
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/items/coin.png"
+        flip none
+        size 22 22
+    }
+}
+
+object {
+    name "Coin E"
+    tag "coin"
+    position 1750 396
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    circleCollider {
+        radius 10
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/items/coin.png"
+        flip none
+        size 22 22
+    }
+}
+
+object {
+    name "Goomba A"
+    tag "enemy"
+    position 640 418
+    rigidbody {
+        bodyType kinematic
+        gravity false
+        mass 1
+        velocity -55 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0.8
+        restitution 0
+    }
+    boxCollider {
+        size 28 28
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/enemies/goomba.png"
+        flip none
+        size 32 32
+    }
+}
+
+object {
+    name "Goomba B"
+    tag "enemy"
+    position 1560 418
+    rigidbody {
+        bodyType kinematic
+        gravity false
+        mass 1
+        velocity 55 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0.8
+        restitution 0
+    }
+    boxCollider {
+        size 28 28
+        trigger false
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/enemies/goomba.png"
+        flip none
+        size 32 32
+    }
+}
+
+object {
+    name "Goal Flag"
+    tag "goal"
+    position 2120 336
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    boxCollider {
+        size 32 192
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+    sprite {
+        path "assets/items/flag.png"
+        flip none
+        size 32 192
+    }
+}

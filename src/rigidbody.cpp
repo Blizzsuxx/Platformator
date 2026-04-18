@@ -402,7 +402,7 @@ Rigidbody *Rigidbody::setPhysicsManagerIndex(size_t physicsManagerIndex)
 
 bool Rigidbody::qualifiesAsSupportContact(const Eigen::Vector2f &contactDirectionNormal, const Eigen::Vector2f &gravityVectorNormal) const
 {
-    if (bodyType != BodyType::DYNAMIC)
+    if (bodyType == BodyType::STATIC)
     {
         return false;
     }

@@ -50,6 +50,11 @@ target_link_libraries(platformator_engine PUBLIC
 add_executable(main "${PLATFORMATOR_MAIN_SOURCE}")
 target_link_libraries(main PRIVATE platformator_engine)
 
+add_executable(mario_example
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/main.cpp"
+)
+target_link_libraries(mario_example PRIVATE platformator_engine)
+
 enable_testing()
 
 add_executable(platformator_regression_tests

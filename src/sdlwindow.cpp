@@ -3,7 +3,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners()
+                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners(), frameListeners()
 {
     if (!init())
     {
@@ -288,6 +288,19 @@ void SDLWindow::setMainCamera(Camera *mainCamera)
 void SDLWindow::addSdlListener(const std::function<void(SDL_Event)> &listener)
 {
     listeners.push_back(listener);
+}
+
+void SDLWindow::addFrameListener(const std::function<void(double)> &listener)
+{
+    frameListeners.push_back(listener);
+}
+
+void SDLWindow::dispatchFrameListeners(double timeDelta)
+{
+    for (const auto &listener : frameListeners)
+    {
+        listener(timeDelta);
+    }
 }
 
 Camera *SDLWindow::getMainCamera() const

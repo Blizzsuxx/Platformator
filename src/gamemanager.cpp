@@ -183,6 +183,7 @@ void GameManager::loop()
             physicsManager->applyPhysics(deltaTime);
             physicsManager->resolveCollisions(deltaTime);
             physicsManager->applyMovement(deltaTime);
+            window->dispatchFrameListeners(deltaTime);
         }
 
         window->render();
@@ -204,6 +205,7 @@ void GameManager::simulateFrame(double timeDelta)
     physicsManager->applyPhysics(timeDelta);
     physicsManager->resolveCollisions(timeDelta);
     physicsManager->applyMovement(timeDelta);
+    window->dispatchFrameListeners(timeDelta);
     deleteMarkedGameObjects();
 }
 

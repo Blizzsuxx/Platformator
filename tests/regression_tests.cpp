@@ -707,6 +707,21 @@ namespace
             require(std::abs(dynamicBox->getPosition().y() - 300.0f) <= 6.0f,
                     "Dynamic body failed to settle on the kinematic floor.");
         }
+
+        {
+            SceneScope sceneScope(gameManager);
+            GameObject *staticFloor = createStaticBox(gameManager, "Static Floor For Kinematic", 260.0f, 340.0f, 360.0f, 40.0f);
+            GameObject *kinematicBox = createKinematicBox(gameManager, "Kinematic Supported Box", 260.0f, 300.0f, 40.0f, 40.0f, false);
+            sceneScope.add(staticFloor);
+            sceneScope.add(kinematicBox);
+
+            gameManager.simulateFrame(kTimeStep);
+
+            Rigidbody *kinematicBody = kinematicBox->getComponent<Rigidbody>();
+            require(kinematicBody != nullptr, "Kinematic support regression lost the rigidbody.");
+            require(kinematicBody->hasSupportContact(),
+                    "Kinematic body failed to register support contact while resting on a static floor.");
+        }
     }
 
     void testRotatedBoxSupportEdgeSelection()

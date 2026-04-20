@@ -28,9 +28,9 @@ public:
     size_t getAdjacencyIndexB() const;
     void setAdjacencyIndexB(size_t index) const;
 
-    void triggerCollisionEnter() const;
-    void triggerCollisionStay() const;
-    void triggerCollisionExit() const;
+    void queueTriggerCollisionEnter() const;
+    void queueTriggerCollisionStay() const;
+    void queueTriggerCollisionExit() const;
 
     void setObjectA(Collider *colliderA);
     void setObjectB(Collider *colliderB);

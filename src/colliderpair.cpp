@@ -1,5 +1,6 @@
 #include "colliderpair.h"
 #include "aabb.h"
+#include "gamemanager.h"
 
 ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCount(0)
 {
@@ -31,11 +32,11 @@ Collision *ColliderPair::getOrCreateCollision() const
     if (collision == nullptr)
     {
         collision = new Collision(objectA, objectB);
-        triggerCollisionEnter();
+        queueTriggerCollisionEnter();
     }
     else
     {
-        triggerCollisionStay();
+        queueTriggerCollisionStay();
     }
 
     updateCachedCollisionVersions();
@@ -47,7 +48,7 @@ void ColliderPair::clearCollision() const
 {
     if (collision != nullptr)
     {
-        triggerCollisionExit();
+        queueTriggerCollisionExit();
         delete collision;
         collision = nullptr;
     }
@@ -94,49 +95,19 @@ void ColliderPair::setAdjacencyIndexB(size_t index) const
     adjacencyIndexB = index;
 }
 
-void ColliderPair::triggerCollisionEnter() const
+void ColliderPair::queueTriggerCollisionEnter() const
 {
-    if (collision != nullptr)
-    {
-        if (objectA != nullptr)
-        {
-            objectA->triggerCollisionEnter(objectB);
-        }
-        if (objectB != nullptr)
-        {
-            objectB->triggerCollisionEnter(objectA);
-        }
-    }
+    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectA, objectB});
 }
 
-void ColliderPair::triggerCollisionStay() const
+void ColliderPair::queueTriggerCollisionStay() const
 {
-    if (collision != nullptr)
-    {
-        if (objectA != nullptr)
-        {
-            objectA->triggerCollisionStay(objectB);
-        }
-        if (objectB != nullptr)
-        {
-            objectB->triggerCollisionStay(objectA);
-        }
-    }
+    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectA, objectB});
 }
 
-void ColliderPair::triggerCollisionExit() const
+void ColliderPair::queueTriggerCollisionExit() const
 {
-    if (collision != nullptr)
-    {
-        if (objectA != nullptr)
-        {
-            objectA->triggerCollisionExit(objectB);
-        }
-        if (objectB != nullptr)
-        {
-            objectB->triggerCollisionExit(objectA);
-        }
-    }
+    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)

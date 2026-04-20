@@ -15,7 +15,7 @@ public:
     SDLWindow();
     ~SDLWindow();
 
-    void handleEvents();
+    void handleSDLEvents(double deltaTime);
     void render();
     bool isRunning() const;
 
@@ -27,9 +27,7 @@ public:
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);
 
-    void addSdlListener(const std::function<void(SDL_Event)> &listener);
-    void addFrameListener(const std::function<void(double)> &listener);
-    void dispatchFrameListeners(double timeDelta);
+    void addSdlListener(const std::function<void(SDL_Event, double)> &listener);
     bool shouldSimulateFrame() const;
     void clearAdvanceFrameRequest();
     bool getIsFrameAdvanceMode() const;
@@ -48,8 +46,7 @@ private:
     bool advanceFrameRequested;
 
     std::vector<Sprite *> spriteComponents;
-    std::vector<std::function<void(SDL_Event)>> listeners;
-    std::vector<std::function<void(double)>> frameListeners;
+    std::vector<std::function<void(SDL_Event, double)>> listeners;
 
     bool init();
     void close();

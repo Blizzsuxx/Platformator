@@ -3,7 +3,7 @@
 #include "oneapi/tbb.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
+    : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), pendingPhysicsEvents(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
 }
 
@@ -182,7 +182,7 @@ void PhysicsManager::narrowPhase()
 
         if (!pair->shouldUpdate())
         {
-            pair->triggerCollisionStay();
+            pair->queueTriggerCollisionStay();
         }
         else
         {
@@ -650,4 +650,43 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
             rigidBodyComponent->setSleepTimer(sleepTimer);
         }
     }
+}
+
+void PhysicsManager::addPendingPhysicsEvent(const PhysicsEvent &event)
+{
+    pendingPhysicsEvents.push_back(event);
+}
+
+const std::vector<PhysicsEvent> &PhysicsManager::getPendingPhysicsEvents() const
+{
+    return pendingPhysicsEvents;
+}
+
+void PhysicsManager::clearPendingPhysicsEvents()
+{
+    pendingPhysicsEvents.clear();
+}
+
+void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
+{
+    for (const PhysicsEvent &event : pendingPhysicsEvents)
+    {
+        if (event.type == PhysicsEvent::COLLISION_ENTER)
+        {
+            event.colliderA->triggerCollisionEnter(event.colliderB, timeDelta);
+            event.colliderB->triggerCollisionEnter(event.colliderA, timeDelta);
+        }
+        else if (event.type == PhysicsEvent::COLLISION_STAY)
+        {
+            event.colliderA->triggerCollisionStay(event.colliderB, timeDelta);
+            event.colliderB->triggerCollisionStay(event.colliderA, timeDelta);
+        }
+        else if (event.type == PhysicsEvent::COLLISION_EXIT)
+        {
+            event.colliderA->triggerCollisionExit(event.colliderB, timeDelta);
+            event.colliderB->triggerCollisionExit(event.colliderA, timeDelta);
+        }
+    }
+
+    clearPendingPhysicsEvents();
 }

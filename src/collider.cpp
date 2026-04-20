@@ -95,27 +95,27 @@ void Collider::applySync()
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
 }
 
-void Collider::triggerCollisionEnter(const Collider *other) const
+void Collider::triggerCollisionEnter(const Collider *other, double timeDelta) const
 {
     for (const auto &callback : collisionEnterCallbacks)
     {
-        callback(const_cast<Collider *>(other));
+        callback(const_cast<Collider *>(other), timeDelta);
     }
 }
 
-void Collider::triggerCollisionExit(const Collider *other) const
+void Collider::triggerCollisionExit(const Collider *other, double timeDelta) const
 {
     for (const auto &callback : collisionExitCallbacks)
     {
-        callback(const_cast<Collider *>(other));
+        callback(const_cast<Collider *>(other), timeDelta);
     }
 }
 
-void Collider::triggerCollisionStay(const Collider *other) const
+void Collider::triggerCollisionStay(const Collider *other, double timeDelta) const
 {
     for (const auto &callback : collisionStayCallbacks)
     {
-        callback(const_cast<Collider *>(other));
+        callback(const_cast<Collider *>(other), timeDelta);
     }
 }
 
@@ -223,17 +223,17 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     }
 }
 
-void Collider::addCollisionEnterCallback(const std::function<void(Collider *)> &callback)
+void Collider::addCollisionEnterCallback(const std::function<void(Collider *, double)> &callback)
 {
     collisionEnterCallbacks.push_back(callback);
 }
 
-void Collider::addCollisionExitCallback(const std::function<void(Collider *)> &callback)
+void Collider::addCollisionExitCallback(const std::function<void(Collider *, double)> &callback)
 {
     collisionExitCallbacks.push_back(callback);
 }
 
-void Collider::addCollisionStayCallback(const std::function<void(Collider *)> &callback)
+void Collider::addCollisionStayCallback(const std::function<void(Collider *, double)> &callback)
 {
     collisionStayCallbacks.push_back(callback);
 }

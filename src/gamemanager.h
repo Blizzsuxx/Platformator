@@ -12,6 +12,7 @@ class GameManager
     friend class Collider;
     friend class Rigidbody;
     friend class SDLWindow;
+    friend class ColliderPair;
 
 public:
     static GameManager &getInstance()
@@ -42,6 +43,9 @@ public:
     std::vector<Scene> &getScenes();
     void addScene(const Scene &scene);
 
+    void addUserScriptListeners(const std::function<void(double)> &event);
+    void handleUserScriptListeners(double timeDelta);
+
 private:
     GameManager();
     ~GameManager();
@@ -51,6 +55,7 @@ private:
     std::unordered_map<std::string, TextureWrapper> textureCache;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<Scene> scenes;
+    std::vector<std::function<void(double)>> userScriptListeners;
 
     PhysicsManager *physicsManager;
 

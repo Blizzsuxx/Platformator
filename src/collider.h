@@ -131,9 +131,9 @@ public:
     virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
     virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
-    void triggerCollisionEnter(const Collider *other) const;
-    void triggerCollisionExit(const Collider *other) const;
-    void triggerCollisionStay(const Collider *other) const;
+    void triggerCollisionEnter(const Collider *other, double timeDelta) const;
+    void triggerCollisionExit(const Collider *other, double timeDelta) const;
+    void triggerCollisionStay(const Collider *other, double timeDelta) const;
 
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
@@ -166,9 +166,9 @@ public:
     bool getIsRegisteredInGrid() const;
     void setIsRegisteredInGrid(bool isRegisteredInGrid);
 
-    void addCollisionEnterCallback(const std::function<void(Collider *)> &callback);
-    void addCollisionExitCallback(const std::function<void(Collider *)> &callback);
-    void addCollisionStayCallback(const std::function<void(Collider *)> &callback);
+    void addCollisionEnterCallback(const std::function<void(Collider *, double)> &callback);
+    void addCollisionExitCallback(const std::function<void(Collider *, double)> &callback);
+    void addCollisionStayCallback(const std::function<void(Collider *, double)> &callback);
 
     virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
@@ -184,9 +184,9 @@ protected:
     GridCellRange gridCellRange;
     ColliderFlags flags;
 
-    std::vector<std::function<void(Collider *)>> collisionEnterCallbacks;
-    std::vector<std::function<void(Collider *)>> collisionExitCallbacks;
-    std::vector<std::function<void(Collider *)>> collisionStayCallbacks;
+    std::vector<std::function<void(Collider *, double)>> collisionEnterCallbacks;
+    std::vector<std::function<void(Collider *, double)>> collisionExitCallbacks;
+    std::vector<std::function<void(Collider *, double)>> collisionStayCallbacks;
 
     void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
     void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);

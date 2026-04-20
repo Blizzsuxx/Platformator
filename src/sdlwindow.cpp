@@ -3,7 +3,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners(), frameListeners()
+                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners()
 {
     if (!init())
     {
@@ -12,7 +12,7 @@ SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
         return;
     }
 
-    listeners.push_back([this](SDL_Event event)
+    listeners.push_back([this](SDL_Event event, double deltaTime)
                         {
         if (event.type == SDL_EVENT_KEY_DOWN)
         {
@@ -139,7 +139,7 @@ void SDLWindow::close()
     SDL_Quit();
 }
 
-void SDLWindow::handleEvents()
+void SDLWindow::handleSDLEvents(double deltaTime)
 {
     // Handle events on queue
     while (SDL_PollEvent(&sdlEvent) != 0)
@@ -150,7 +150,7 @@ void SDLWindow::handleEvents()
         }
         for (const auto &listener : listeners)
         {
-            listener(sdlEvent);
+            listener(sdlEvent, deltaTime);
         }
     }
 }
@@ -285,22 +285,9 @@ void SDLWindow::setMainCamera(Camera *mainCamera)
     this->mainCamera = mainCamera;
 }
 
-void SDLWindow::addSdlListener(const std::function<void(SDL_Event)> &listener)
+void SDLWindow::addSdlListener(const std::function<void(SDL_Event, double)> &listener)
 {
     listeners.push_back(listener);
-}
-
-void SDLWindow::addFrameListener(const std::function<void(double)> &listener)
-{
-    frameListeners.push_back(listener);
-}
-
-void SDLWindow::dispatchFrameListeners(double timeDelta)
-{
-    for (const auto &listener : frameListeners)
-    {
-        listener(timeDelta);
-    }
 }
 
 Camera *SDLWindow::getMainCamera() const

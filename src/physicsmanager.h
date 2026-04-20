@@ -11,6 +11,21 @@
 #include "helpers.h"
 #include "grid.h"
 
+struct PhysicsEvent
+{
+    enum EventType
+    {
+        COLLISION_ENTER,
+        COLLISION_EXIT,
+        COLLISION_STAY
+    };
+
+    EventType type;
+    Collision *collision;
+    Collider *colliderA;
+    Collider *colliderB;
+};
+
 class PhysicsManager
 {
 public:
@@ -32,6 +47,11 @@ public:
     void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void removeColliderComponent(Collider *colliderComponent);
 
+    void addPendingPhysicsEvent(const PhysicsEvent &event);
+    const std::vector<PhysicsEvent> &getPendingPhysicsEvents() const;
+    void clearPendingPhysicsEvents();
+    void handlePendingPhysicsEvents(double timeDelta);
+
 private:
     void flushPendingColliderSyncs();
     void flushPendingColliderComponents();
@@ -52,6 +72,7 @@ private:
     std::vector<Collider *> pendingColliderComponents;
     tbb::concurrent_vector<Collider *> pendingColliderSyncs;
     std::vector<Collision *> activeCollisions;
+    std::vector<PhysicsEvent> pendingPhysicsEvents;
     Grid grid;
 
     Eigen::Vector2f gravityVector;

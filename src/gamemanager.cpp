@@ -1,7 +1,7 @@
 #include "gamemanager.h"
 #include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), gameObjectsToDelete(), scenes(), userScriptListeners(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -169,7 +169,7 @@ void GameManager::loop()
     while (window->isRunning())
     {
         updateDeltaTime();
-        window->handleEvents();
+        window->handleSDLEvents(deltaTime);
 
         if (window->shouldSimulateFrame())
         {
@@ -183,7 +183,8 @@ void GameManager::loop()
             physicsManager->applyPhysics(deltaTime);
             physicsManager->resolveCollisions(deltaTime);
             physicsManager->applyMovement(deltaTime);
-            window->dispatchFrameListeners(deltaTime);
+            physicsManager->handlePendingPhysicsEvents(deltaTime);
+            handleUserScriptListeners(deltaTime);
         }
 
         window->render();
@@ -205,7 +206,8 @@ void GameManager::simulateFrame(double timeDelta)
     physicsManager->applyPhysics(timeDelta);
     physicsManager->resolveCollisions(timeDelta);
     physicsManager->applyMovement(timeDelta);
-    window->dispatchFrameListeners(timeDelta);
+    physicsManager->handlePendingPhysicsEvents(timeDelta);
+    handleUserScriptListeners(timeDelta);
     deleteMarkedGameObjects();
 }
 
@@ -358,4 +360,17 @@ void GameManager::deleteMarkedGameObjects()
         delete gameObject;
     }
     gameObjectsToDelete.clear();
+}
+
+void GameManager::addUserScriptListeners(const std::function<void(double)> &event)
+{
+    userScriptListeners.push_back(event);
+}
+
+void GameManager::handleUserScriptListeners(double timeDelta)
+{
+    for (const std::function<void(double)> &event : userScriptListeners)
+    {
+        event(timeDelta);
+    }
 }

@@ -14,7 +14,6 @@ enum ComponentType
     AUDIO,
     CAMERA,
     COLLIDER,
-    LIGHT,
     RIGID_BODY,
     SPRITE,
     COMPONENT_TYPE_COUNT // must be last

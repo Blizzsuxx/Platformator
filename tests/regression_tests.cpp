@@ -205,11 +205,11 @@ namespace
         size_t collisionStayCount = 0;
         size_t collisionExitCount = 0;
 
-        colliderA->addCollisionEnterCallback([&](Collider *)
+        colliderA->addCollisionEnterCallback([&](Collider *, double)
                                              { collisionEnterCount++; });
-        colliderA->addCollisionStayCallback([&](Collider *)
+        colliderA->addCollisionStayCallback([&](Collider *, double)
                                             { collisionStayCount++; });
-        colliderA->addCollisionExitCallback([&](Collider *)
+        colliderA->addCollisionExitCallback([&](Collider *, double)
                                             { collisionExitCount++; });
 
         gameManager.simulateFrame(kTimeStep);

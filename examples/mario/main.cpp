@@ -149,7 +149,7 @@ namespace
 
         void registerEventHooks()
         {
-            window->addSdlListener([this](SDL_Event event)
+            window->addSdlListener([this](SDL_Event event, double)
                                    {
             if (event.type != SDL_EVENT_KEY_DOWN)
             {
@@ -175,8 +175,8 @@ namespace
                 respawnPlayer();
             } });
 
-            window->addFrameListener([this](double timeDelta)
-                                     {
+            gameManager.addUserScriptListeners([this](double timeDelta)
+                                               {
             updatePlayerInput(timeDelta);
             updateEnemies();
             collectCoins();

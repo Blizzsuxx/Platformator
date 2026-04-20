@@ -44,7 +44,6 @@ public:
     void addScene(const Scene &scene);
 
     void addUserScriptListeners(const std::function<void(double)> &event);
-    void handleUserScriptListeners(double timeDelta);
 
 private:
     GameManager();
@@ -83,4 +82,5 @@ private:
 
     void setPhysicsManager(PhysicsManager *physicsManager);
     PhysicsManager *getPhysicsManager() const;
+    void handleUserScriptListeners(double timeDelta);
 };

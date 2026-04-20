@@ -19,7 +19,7 @@ int main(int argc, char *args[])
 
         GameObject *ball = gameManager.getGameObject("Ball");
 
-        window->addSdlListener([&gameManager, &loadedScene, ball](SDL_Event event)
+        window->addSdlListener([&gameManager, &loadedScene, ball](SDL_Event event, double)
                                {
             if (event.type != SDL_EVENT_KEY_DOWN)
             {

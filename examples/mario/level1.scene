@@ -467,7 +467,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/items/coin.png"
+        path "assets/items/coin_0.png"
         flip none
         size 22 22
     }
@@ -479,7 +479,10 @@ object {
             fps 10
             loop true
             size 22 22
-            frame "assets/items/coin.png"
+            frame "assets/items/coin_0.png"
+            frame "assets/items/coin_1.png"
+            frame "assets/items/coin_2.png"
+            frame "assets/items/coin_3.png"
         }
     }
 }
@@ -506,7 +509,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/items/coin.png"
+        path "assets/items/coin_0.png"
         flip none
         size 22 22
     }
@@ -518,7 +521,10 @@ object {
             fps 10
             loop true
             size 22 22
-            frame "assets/items/coin.png"
+            frame "assets/items/coin_0.png"
+            frame "assets/items/coin_1.png"
+            frame "assets/items/coin_2.png"
+            frame "assets/items/coin_3.png"
         }
     }
 }
@@ -545,7 +551,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/items/coin.png"
+        path "assets/items/coin_0.png"
         flip none
         size 22 22
     }
@@ -557,7 +563,10 @@ object {
             fps 10
             loop true
             size 22 22
-            frame "assets/items/coin.png"
+            frame "assets/items/coin_0.png"
+            frame "assets/items/coin_1.png"
+            frame "assets/items/coin_2.png"
+            frame "assets/items/coin_3.png"
         }
     }
 }
@@ -584,7 +593,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/items/coin.png"
+        path "assets/items/coin_0.png"
         flip none
         size 22 22
     }
@@ -596,7 +605,10 @@ object {
             fps 10
             loop true
             size 22 22
-            frame "assets/items/coin.png"
+            frame "assets/items/coin_0.png"
+            frame "assets/items/coin_1.png"
+            frame "assets/items/coin_2.png"
+            frame "assets/items/coin_3.png"
         }
     }
 }
@@ -623,7 +635,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/items/coin.png"
+        path "assets/items/coin_0.png"
         flip none
         size 22 22
     }
@@ -635,7 +647,10 @@ object {
             fps 10
             loop true
             size 22 22
-            frame "assets/items/coin.png"
+            frame "assets/items/coin_0.png"
+            frame "assets/items/coin_1.png"
+            frame "assets/items/coin_2.png"
+            frame "assets/items/coin_3.png"
         }
     }
 }

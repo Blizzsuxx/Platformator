@@ -17,6 +17,13 @@ struct AnimationFrame
 
     AnimationFrame(TextureWrapper *textureWrapper, float duration);
     AnimationFrame(TextureWrapper *textureWrapper, const SDL_FRect &sourceRect, float duration);
+    AnimationFrame(const AnimationFrame &other);
+    AnimationFrame(AnimationFrame &&other) noexcept;
+    ~AnimationFrame();
+
+private:
+    void retainTexture() const;
+    void releaseTexture();
 };
 
 struct AnimationClip

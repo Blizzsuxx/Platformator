@@ -93,7 +93,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/player/mario_idle.png"
+        path "assets/player/idle_0.png"
         flip none
         size 32 32
     }
@@ -105,35 +105,39 @@ object {
             fps 4
             loop true
             size 32 32
-            frame "assets/player/mario_idle.png"
+            frame "assets/player/idle_0.png"
+            frame "assets/player/idle_1.png"
         }
         clip {
             name "run"
-            fps 10
+            fps 12
             loop true
             size 32 32
-            frame "assets/player/mario_idle.png"
+            frame "assets/player/run_0.png"
+            frame "assets/player/run_1.png"
+            frame "assets/player/run_2.png"
         }
         clip {
             name "jump"
             fps 1
             loop false
             size 32 32
-            frame "assets/player/mario_idle.png"
+            frame "assets/player/jump.png"
         }
         clip {
             name "fall"
             fps 1
             loop false
             size 32 32
-            frame "assets/player/mario_idle.png"
+            frame "assets/player/fall.png"
         }
         clip {
             name "win"
-            fps 6
-            loop false
+            fps 4
+            loop true
             size 32 32
-            frame "assets/player/mario_idle.png"
+            frame "assets/player/idle_0.png"
+            frame "assets/player/idle_1.png"
         }
     }
 }
@@ -658,7 +662,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/enemies/goomba.png"
+        path "assets/enemies/walk_0.png"
         flip none
         size 32 32
     }
@@ -670,14 +674,15 @@ object {
             fps 6
             loop true
             size 32 32
-            frame "assets/enemies/goomba.png"
+            frame "assets/enemies/walk_0.png"
+            frame "assets/enemies/walk_1.png"
         }
         clip {
             name "squash"
             fps 1
             loop false
             size 32 32
-            frame "assets/enemies/goomba.png"
+            frame "assets/enemies/squash.png"
         }
     }
 }
@@ -704,7 +709,7 @@ object {
         collisionMask 1
     }
     sprite {
-        path "assets/enemies/goomba.png"
+        path "assets/enemies/walk_0.png"
         flip none
         size 32 32
     }
@@ -716,14 +721,15 @@ object {
             fps 6
             loop true
             size 32 32
-            frame "assets/enemies/goomba.png"
+            frame "assets/enemies/walk_0.png"
+            frame "assets/enemies/walk_1.png"
         }
         clip {
             name "squash"
             fps 1
             loop false
             size 32 32
-            frame "assets/enemies/goomba.png"
+            frame "assets/enemies/squash.png"
         }
     }
 }

@@ -2,7 +2,6 @@
 
 #include <SDL3/SDL_render.h>
 #include <string>
-#include <vector>
 
 class Sprite;
 
@@ -15,16 +14,13 @@ public:
 
     SDL_Texture *getTexture() const;
     const std::string &getFilePath() const;
-    void addReference(Sprite *sprite);
-    void removeReference(Sprite *sprite);
-    bool removeReferenceAndFreeIfNoReferences(Sprite *sprite);
-
-    bool freeTextureIfNoReferences();
+    void addReference();
+    bool removeReferenceAndFreeIfNoReferences();
 
 private:
     SDL_Texture *texture;
     std::string filePath;
-    std::vector<Sprite *> referencingSprites;
+    size_t referenceCount;
 
     void destroyTexture();
 };

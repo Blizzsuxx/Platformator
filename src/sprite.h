@@ -24,12 +24,16 @@ public:
     SDL_FlipMode getFlip() const;
     float getWidth() const;
     float getHeight() const;
+    bool hasSourceRect() const;
+    const SDL_FRect *getSourceRect() const;
 
     // Setters
     void setTextureWrapper(TextureWrapper *textureWrapper);
     void setFlip(SDL_FlipMode flip);
     void setWidth(float width);
     void setHeight(float height);
+    void setSourceRect(const SDL_FRect &sourceRect);
+    void clearSourceRect();
 
     bool getIsRegisteredInWindow() const;
     void setIsRegisteredInWindow(bool isRegisteredInWindow);
@@ -41,6 +45,8 @@ private:
     SDL_FlipMode flip;
     float width;
     float height;
+    SDL_FRect sourceRect;
+    bool sourceRectEnabled;
     bool isRegisteredInWindow;
     size_t windowIndex;
 

@@ -1,7 +1,12 @@
 #include "gamemanager.h"
+
+#include <algorithm>
+
+#include "animator.h"
+#include "audio.h"
 #include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), textureCache(), gameObjectsToDelete(), scenes(), userScriptListeners(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), textureCache(), gameObjectsToDelete(), scenes(), userScriptListeners(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -185,6 +190,7 @@ void GameManager::loop()
             physicsManager->applyMovement(deltaTime);
             physicsManager->handlePendingPhysicsEvents(deltaTime);
             handleUserScriptListeners(deltaTime);
+            updateAnimatorComponents(deltaTime);
         }
 
         window->render();
@@ -208,6 +214,7 @@ void GameManager::simulateFrame(double timeDelta)
     physicsManager->applyMovement(timeDelta);
     physicsManager->handlePendingPhysicsEvents(timeDelta);
     handleUserScriptListeners(timeDelta);
+    updateAnimatorComponents(timeDelta);
     deleteMarkedGameObjects();
 }
 
@@ -234,9 +241,9 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath)
     return &insertedIt->second;
 }
 
-void GameManager::freeTexture(const std::string &filePath)
+void GameManager::freeTexture(TextureWrapper *textureWrapper)
 {
-    auto it = textureCache.find(filePath);
+    auto it = textureCache.find(textureWrapper->getFilePath());
     if (it != textureCache.end())
     {
         textureCache.erase(it);
@@ -270,6 +277,7 @@ void GameManager::notifyComponentAdded(Component *component)
 
     notifyPhysicsManagerOfComponentAdded(component);
     notifyWindowOfComponentAdded(component);
+    notifyRuntimeOfComponentAdded(component);
 }
 
 void GameManager::notifyComponentRemoved(Component *component)
@@ -281,6 +289,47 @@ void GameManager::notifyComponentRemoved(Component *component)
 
     notifyPhysicsManagerOfComponentRemoved(component);
     notifyWindowOfComponentRemoved(component);
+    notifyRuntimeOfComponentRemoved(component);
+}
+
+void GameManager::notifyRuntimeOfComponentAdded(Component *component)
+{
+    if (component == nullptr || !component->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    if (component->getType() == ComponentType::ANIMATOR)
+    {
+        Animator *animator = static_cast<Animator *>(component);
+        animatorComponents.push_back(animator);
+    }
+    // else if (component->getType() == ComponentType::AUDIO)
+    // {
+    //     Audio *audio = static_cast<Audio *>(component);
+    //     if (audio->getAutoPlay())
+    //     {
+    //         audio->play();
+    //     }
+    // }
+}
+
+void GameManager::notifyRuntimeOfComponentRemoved(Component *component)
+{
+    if (component == nullptr)
+    {
+        return;
+    }
+
+    if (component->getType() == ComponentType::ANIMATOR)
+    {
+        Animator *animator = static_cast<Animator *>(component);
+        animatorComponents.erase(std::remove(animatorComponents.begin(), animatorComponents.end(), animator), animatorComponents.end());
+    }
+    else if (component->getType() == ComponentType::AUDIO)
+    {
+        static_cast<Audio *>(component)->stop();
+    }
 }
 
 void GameManager::notifyPhysicsManagerOfComponentAdded(Component *component)
@@ -373,4 +422,54 @@ void GameManager::handleUserScriptListeners(double timeDelta)
     {
         event(timeDelta);
     }
+}
+
+void GameManager::updateAnimatorComponents(double timeDelta)
+{
+    for (Animator *animator : animatorComponents)
+    {
+        if (animator == nullptr || !animator->getGameObject()->getActive())
+        {
+            continue;
+        }
+
+        animator->update(timeDelta);
+    }
+}
+
+AudioWrapper *GameManager::loadAudio(const std::string &filePath)
+{
+    auto it = audioCache.find(filePath);
+    if (it != audioCache.end())
+    {
+        return &it->second;
+    }
+
+    MIX_Audio *audio = MIX_LoadAudio(window->getMixer(), filePath.c_str(), true);
+    if (!audio)
+    {
+        printf("Failed to load %s: %s\n", filePath.c_str(), SDL_GetError());
+    }
+
+    // need this so that AudioWrapper is made in-place (so it doesn't destroy the audio)
+    auto [insertedIt, inserted] = audioCache.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(filePath),
+        std::forward_as_tuple(audio, filePath)); // uses the AudioWrapper constructor that takes an MIX_Audio* and a file path
+
+    return &insertedIt->second;
+}
+
+void GameManager::freeAudio(AudioWrapper *audioWrapper)
+{
+    auto it = audioCache.find(audioWrapper->getFilePath());
+    if (it != audioCache.end())
+    {
+        audioCache.erase(it);
+    }
+}
+
+void GameManager::freeAllAudio()
+{
+    audioCache.clear();
 }

@@ -4,6 +4,9 @@
 #include "physicsmanager.h"
 #include <vector>
 #include "scene.h"
+#include "audiowrapper.h"
+
+class Animator;
 
 class GameManager
 {
@@ -35,8 +38,11 @@ public:
     void loop();
     void simulateFrame(double timeDelta);
     TextureWrapper *loadTexture(const std::string &filePath);
-    void freeTexture(const std::string &filePath);
+    void freeTexture(TextureWrapper *textureWrapper);
     void freeAllTextures();
+    AudioWrapper *loadAudio(const std::string &filePath);
+    void freeAudio(AudioWrapper *audioWrapper);
+    void freeAllAudio();
 
     void loadScene(Scene &scene);
     void saveScene(const Scene &scene);
@@ -51,7 +57,9 @@ private:
 
     SDLWindow *window;
     std::vector<GameObject *> gameObjects;
+    std::vector<Animator *> animatorComponents;
     std::unordered_map<std::string, TextureWrapper> textureCache;
+    std::unordered_map<std::string, AudioWrapper> audioCache;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<Scene> scenes;
     std::vector<std::function<void(double)>> userScriptListeners;
@@ -76,6 +84,8 @@ private:
     void notifyPhysicsManagerOfComponentRemoved(Component *component);
     void notifyWindowOfComponentRemoved(Component *component);
 
+    void notifyRuntimeOfComponentAdded(Component *component);
+    void notifyRuntimeOfComponentRemoved(Component *component);
     void notifyComponentAdded(Component *component);
     void notifyComponentRemoved(Component *component);
     void deleteMarkedGameObjects();
@@ -83,4 +93,5 @@ private:
     void setPhysicsManager(PhysicsManager *physicsManager);
     PhysicsManager *getPhysicsManager() const;
     void handleUserScriptListeners(double timeDelta);
+    void updateAnimatorComponents(double timeDelta);
 };

@@ -3,7 +3,7 @@
 #include <iostream>
 
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners()
+                         mixer(nullptr), mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners()
 {
     if (!init())
     {
@@ -69,6 +69,14 @@ bool SDLWindow::init()
         return false;
     }
 
+    mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
+    if (mixer == nullptr)
+    {
+        printf("SDL_mixer could not create a mixer device! SDL_mixer Error: %s", SDL_GetError());
+        close();
+        return false;
+    }
+
     // if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
     // {
     //     printf("SDL_image could not initialize! SDL_image Error: %s", IMG_GetError());
@@ -116,6 +124,12 @@ bool SDLWindow::init()
 
 void SDLWindow::close()
 {
+    if (mixer != nullptr)
+    {
+        MIX_DestroyMixer(mixer);
+        mixer = nullptr;
+    }
+
     if (renderer != nullptr)
     {
         SDL_DestroyRenderer(renderer);
@@ -188,7 +202,7 @@ void SDLWindow::render()
             renderY -= renderH / 2;
 
             SDL_FRect renderQuad = {renderX, renderY, renderW, renderH};
-            SDL_RenderTextureRotated(renderer, spriteComponent->getTexture(), nullptr, &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
+            SDL_RenderTextureRotated(renderer, spriteComponent->getTexture(), spriteComponent->getSourceRect(), &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
 
             Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
             if (collider != nullptr && shouldSimulateFrame())
@@ -223,6 +237,11 @@ SDL_Window *SDLWindow::getWindow() const
 SDL_Renderer *SDLWindow::getRenderer() const
 {
     return renderer;
+}
+
+MIX_Mixer *SDLWindow::getMixer() const
+{
+    return mixer;
 }
 
 bool SDLWindow::isRunning() const

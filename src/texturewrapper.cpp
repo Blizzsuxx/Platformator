@@ -3,7 +3,7 @@
 #include <algorithm>
 #include "gamemanager.h"
 
-TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath) : texture(texture), filePath(filePath), referencingSprites()
+TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath) : texture(texture), filePath(filePath), referenceCount(0)
 {
 }
 
@@ -22,30 +22,23 @@ const std::string &TextureWrapper::getFilePath() const
     return filePath;
 }
 
-void TextureWrapper::addReference(Sprite *sprite)
+void TextureWrapper::addReference()
 {
-    referencingSprites.push_back(sprite);
+    referenceCount++;
 }
 
-void TextureWrapper::removeReference(Sprite *sprite)
+bool TextureWrapper::removeReferenceAndFreeIfNoReferences()
 {
-    referencingSprites.erase(std::remove(referencingSprites.begin(), referencingSprites.end(), sprite), referencingSprites.end());
-}
-
-bool TextureWrapper::freeTextureIfNoReferences()
-{
-    if (referencingSprites.empty())
+    if (referenceCount > 0)
     {
-        GameManager::getInstance().freeTexture(filePath);
+        referenceCount--;
+    }
+    if (referenceCount == 0)
+    {
+        GameManager::getInstance().freeTexture(this);
         return true;
     }
     return false;
-}
-
-bool TextureWrapper::removeReferenceAndFreeIfNoReferences(Sprite *sprite)
-{
-    removeReference(sprite);
-    return freeTextureIfNoReferences();
 }
 
 void TextureWrapper::destroyTexture()

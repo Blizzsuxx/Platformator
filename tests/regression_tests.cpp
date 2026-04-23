@@ -12,15 +12,19 @@
 #include <string>
 #include <vector>
 
+#include "animator.h"
 #include "boxcollider.h"
 #include "circlecollider.h"
 #include "constants.h"
 #include "grid.h"
 #include "aabb.h"
+#include "audio.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
 #include "physicsmanager.h"
 #include "rigidbody.h"
+#include "sprite.h"
+#include "texturewrapper.h"
 
 namespace
 {
@@ -141,6 +145,51 @@ namespace
             ->addComponent<Rigidbody>(KINEMATIC, gravity)
             ->addComponent<BoxCollider>(width, height)
             ->setPosition(Eigen::Vector2f(x, y));
+    }
+
+    std::filesystem::path createTemporaryBmpAsset(const std::string &fileName, Uint8 red, Uint8 green, Uint8 blue)
+    {
+        std::filesystem::path filePath = (std::filesystem::current_path() / fileName).lexically_normal();
+
+        std::error_code errorCode;
+        std::filesystem::remove(filePath, errorCode);
+
+        SDL_Surface *surface = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA32);
+        require(surface != nullptr, "Animator regression failed to create a temporary SDL surface.");
+
+        Uint32 color = SDL_MapSurfaceRGBA(surface, red, green, blue, 255);
+        bool filled = SDL_FillSurfaceRect(surface, nullptr, color);
+        bool saved = SDL_SaveBMP(surface, filePath.string().c_str());
+        SDL_DestroySurface(surface);
+
+        require(filled, "Animator regression failed to fill the temporary surface.");
+        require(saved, "Animator regression failed to save the temporary BMP asset.");
+        return filePath;
+    }
+
+    std::filesystem::path createTemporaryStripBmpAsset(const std::string &fileName)
+    {
+        std::filesystem::path filePath = (std::filesystem::current_path() / fileName).lexically_normal();
+
+        std::error_code errorCode;
+        std::filesystem::remove(filePath, errorCode);
+
+        SDL_Surface *surface = SDL_CreateSurface(8, 4, SDL_PIXELFORMAT_RGBA32);
+        require(surface != nullptr, "Advanced animator regression failed to create a temporary strip surface.");
+
+        const Uint32 red = SDL_MapSurfaceRGBA(surface, 255, 0, 0, 255);
+        const Uint32 green = SDL_MapSurfaceRGBA(surface, 0, 255, 0, 255);
+        const SDL_Rect leftHalf{0, 0, 4, 4};
+        const SDL_Rect rightHalf{4, 0, 4, 4};
+
+        const bool filledLeft = SDL_FillSurfaceRect(surface, &leftHalf, red);
+        const bool filledRight = SDL_FillSurfaceRect(surface, &rightHalf, green);
+        const bool saved = SDL_SaveBMP(surface, filePath.string().c_str());
+        SDL_DestroySurface(surface);
+
+        require(filledLeft && filledRight, "Advanced animator regression failed to fill the temporary strip surface.");
+        require(saved, "Advanced animator regression failed to save the temporary strip BMP asset.");
+        return filePath;
     }
 
     void addColliderToLocalAabb(AABB &aabb, Collider *collider)
@@ -724,6 +773,162 @@ namespace
         }
     }
 
+    void testAnimatorComponentPlayback()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        const std::filesystem::path frameAPath = createTemporaryBmpAsset("animator_frame_a_regression.bmp", 255, 0, 0);
+        const std::filesystem::path frameBPath = createTemporaryBmpAsset("animator_frame_b_regression.bmp", 0, 255, 0);
+
+        auto cleanupFiles = [&]()
+        {
+            std::error_code errorCode;
+            std::filesystem::remove(frameAPath, errorCode);
+            std::filesystem::remove(frameBPath, errorCode);
+        };
+
+        try
+        {
+            SceneScope sceneScope(gameManager);
+            GameObject *animatedObject = gameManager
+                                             .createGameObject()
+                                             ->setName("Animated Sprite")
+                                             ->addComponent<Sprite>(frameAPath.string().c_str(), SDL_FLIP_NONE, 8.0f, 8.0f)
+                                             ->addComponent<Animator>();
+            sceneScope.add(animatedObject);
+
+            Animator *animator = animatedObject->getComponent<Animator>();
+            Sprite *sprite = animatedObject->getComponent<Sprite>();
+            require(animator != nullptr, "Animator regression failed to create the animator component.");
+            require(sprite != nullptr, "Animator regression failed to create the sprite component.");
+
+            require(animator->addClip("blink", {frameAPath.string(), frameBPath.string()}, 20.0f, true, 8.0f, 8.0f),
+                    "Animator regression failed to add the test clip.");
+            require(animator->play("blink", true), "Animator regression failed to start the test clip.");
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+                    "Animator regression failed to apply the initial clip frame.");
+
+            simulateFrames(gameManager, 7);
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameBPath.string(),
+                    "Animator regression failed to advance to the second frame.");
+
+            simulateFrames(gameManager, 7);
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+                    "Animator regression failed to loop back to the first frame.");
+
+            cleanupFiles();
+        }
+        catch (const std::exception &)
+        {
+            cleanupFiles();
+            throw;
+        }
+    }
+
+    void testAnimatorAdvancedPlayback()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        const std::filesystem::path frameAPath = createTemporaryBmpAsset("animator_advanced_idle_regression.bmp", 255, 0, 0);
+        const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animator_advanced_sheet_regression.bmp");
+
+        auto cleanupFiles = [&]()
+        {
+            std::error_code errorCode;
+            std::filesystem::remove(frameAPath, errorCode);
+            std::filesystem::remove(sheetPath, errorCode);
+        };
+
+        try
+        {
+            SceneScope sceneScope(gameManager);
+            GameObject *animatedObject = gameManager
+                                             .createGameObject()
+                                             ->setName("Advanced Animated Sprite")
+                                             ->addComponent<Sprite>(frameAPath.string().c_str(), SDL_FLIP_NONE, 4.0f, 4.0f)
+                                             ->addComponent<Animator>();
+            sceneScope.add(animatedObject);
+
+            Animator *animator = animatedObject->getComponent<Animator>();
+            Sprite *sprite = animatedObject->getComponent<Sprite>();
+            require(animator != nullptr, "Advanced animator regression failed to create the animator component.");
+            require(sprite != nullptr, "Advanced animator regression failed to create the sprite component.");
+
+            const std::vector<AnimationFrame> stripFrames = {
+                AnimationFrame(sheetPath.string(), SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
+                AnimationFrame(sheetPath.string(), SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+
+            require(animator->addClip("idle", {frameAPath.string()}, 1.0f, true, 4.0f, 4.0f),
+                    "Advanced animator regression failed to add the idle clip.");
+            require(animator->addClip("strip", stripFrames, 20.0f, true, 4.0f, 4.0f),
+                    "Advanced animator regression failed to add the strip clip.");
+            require(animator->playOnce("strip", "idle"), "Advanced animator regression failed to start one-shot playback.");
+
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
+                    "Advanced animator regression failed to apply the strip texture.");
+            require(sprite->getSourceRect() != nullptr && std::abs(sprite->getSourceRect()->x - 0.0f) <= 1e-5f,
+                    "Advanced animator regression failed to apply the first strip source rectangle.");
+
+            simulateFrames(gameManager, 7);
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
+                    "Advanced animator regression unexpectedly changed the strip texture mid-clip.");
+            require(sprite->getSourceRect() != nullptr && std::abs(sprite->getSourceRect()->x - 4.0f) <= 1e-5f,
+                    "Advanced animator regression failed to advance to the second strip frame.");
+
+            simulateFrames(gameManager, 7);
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+                    "Advanced animator regression failed to return to the queued idle clip.");
+            require(sprite->getSourceRect() == nullptr,
+                    "Advanced animator regression failed to clear the sprite source rectangle when returning to a full-frame clip.");
+
+            cleanupFiles();
+        }
+        catch (const std::exception &)
+        {
+            cleanupFiles();
+            throw;
+        }
+    }
+
+    void testAudioComponentControls()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        SDLWindow *window = gameManager.getWindow();
+        require(window != nullptr, "Audio regression requires an SDLWindow.");
+        require(window->getMixer() != nullptr, "Audio regression requires an active mixer device.");
+
+        SceneScope sceneScope(gameManager);
+        GameObject *audioObject = gameManager
+                                      .createGameObject()
+                                      ->setName("Audio Object")
+                                      ->addComponent<Audio>();
+        sceneScope.add(audioObject);
+
+        Audio *audio = audioObject->getComponent<Audio>();
+        require(audio != nullptr, "Audio regression failed to create the audio component.");
+
+        MIX_Audio *sineWave = MIX_CreateSineWaveAudio(window->getMixer(), 440, 0.2f, 500);
+        require(sineWave != nullptr, "Audio regression failed to create a temporary sine wave.");
+
+        audio->setAudio(sineWave);
+        audio->setGain(0.5f);
+        require(std::abs(audio->getGain() - 0.5f) <= 1e-5f,
+                "Audio regression failed to apply the configured gain.");
+
+        require(audio->play(), "Audio regression failed to start playback.");
+        require(audio->isPlaying(), "Audio regression expected the track to be playing after play().");
+
+        require(audio->pause(), "Audio regression failed to pause playback.");
+        require(audio->isPaused(), "Audio regression expected the track to be paused after pause().");
+
+        require(audio->resume(), "Audio regression failed to resume playback.");
+        require(audio->isPlaying(), "Audio regression expected the track to be playing after resume().");
+
+        require(audio->stop(), "Audio regression failed to stop playback.");
+        require(!audio->isPlaying() && !audio->isPaused(),
+                "Audio regression expected the track to be idle after stop().");
+    }
+
     void testRotatedBoxSupportEdgeSelection()
     {
         GameManager &gameManager = GameManager::getInstance();
@@ -788,6 +993,9 @@ int main()
         {"scene_saving_round_trip", testSceneSavingRoundTrip},
         {"restitution_bounce", testRestitutionBounce},
         {"kinematic_body_semantics", testKinematicBodySemantics},
+        {"animator_component_playback", testAnimatorComponentPlayback},
+        {"animator_advanced_playback", testAnimatorAdvancedPlayback},
+        {"audio_component_controls", testAudioComponentControls},
         {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
     };
 

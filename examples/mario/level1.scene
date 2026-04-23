@@ -6,6 +6,78 @@ object {
 }
 
 object {
+    name "BGM"
+    tag "audio"
+    audio {
+        path "assets/audio/music.wav"
+        predecode false
+        autoplay true
+        loops -1
+        gain 0.5
+    }
+}
+
+object {
+    name "SFX Jump"
+    tag "audio"
+    audio {
+        path "assets/audio/jump.wav"
+        predecode true
+        autoplay false
+        loops 0
+        gain 0.9
+    }
+}
+
+object {
+    name "SFX Coin"
+    tag "audio"
+    audio {
+        path "assets/audio/coin.wav"
+        predecode true
+        autoplay false
+        loops 0
+        gain 0.85
+    }
+}
+
+object {
+    name "SFX Stomp"
+    tag "audio"
+    audio {
+        path "assets/audio/stomp.wav"
+        predecode true
+        autoplay false
+        loops 0
+        gain 0.9
+    }
+}
+
+object {
+    name "SFX Hurt"
+    tag "audio"
+    audio {
+        path "assets/audio/hurt.wav"
+        predecode true
+        autoplay false
+        loops 0
+        gain 0.9
+    }
+}
+
+object {
+    name "SFX Win"
+    tag "audio"
+    audio {
+        path "assets/audio/win.wav"
+        predecode true
+        autoplay false
+        loops 0
+        gain 0.95
+    }
+}
+
+object {
     name "Player"
     tag "player"
     position 120 408
@@ -30,6 +102,45 @@ object {
         path "assets/player/mario_idle.png"
         flip none
         size 32 32
+    }
+    animator {
+        play "idle"
+        playbackSpeed 1
+        clip {
+            name "idle"
+            fps 4
+            loop true
+            size 32 32
+            frame "assets/player/mario_idle.png"
+        }
+        clip {
+            name "run"
+            fps 10
+            loop true
+            size 32 32
+            frame "assets/player/mario_idle.png"
+        }
+        clip {
+            name "jump"
+            fps 1
+            loop false
+            size 32 32
+            frame "assets/player/mario_idle.png"
+        }
+        clip {
+            name "fall"
+            fps 1
+            loop false
+            size 32 32
+            frame "assets/player/mario_idle.png"
+        }
+        clip {
+            name "win"
+            fps 6
+            loop false
+            size 32 32
+            frame "assets/player/mario_idle.png"
+        }
     }
 }
 
@@ -314,6 +425,29 @@ object {
 }
 
 object {
+    name "Death Zone"
+    tag "death"
+    position 1120 776
+    rigidbody {
+        bodyType static
+        gravity false
+        mass 1
+        velocity 0 0
+        force 0 0
+        angularVelocity 0
+        torque 0
+        friction 0
+        restitution 0
+    }
+    boxCollider {
+        size 2600 160
+        trigger true
+        collisionGroup 1
+        collisionMask 1
+    }
+}
+
+object {
     name "Coin A"
     tag "coin"
     position 520 316
@@ -338,6 +472,17 @@ object {
         path "assets/items/coin.png"
         flip none
         size 22 22
+    }
+    animator {
+        play "spin"
+        playbackSpeed 1
+        clip {
+            name "spin"
+            fps 10
+            loop true
+            size 22 22
+            frame "assets/items/coin.png"
+        }
     }
 }
 
@@ -367,6 +512,17 @@ object {
         flip none
         size 22 22
     }
+    animator {
+        play "spin"
+        playbackSpeed 1
+        clip {
+            name "spin"
+            fps 10
+            loop true
+            size 22 22
+            frame "assets/items/coin.png"
+        }
+    }
 }
 
 object {
@@ -394,6 +550,17 @@ object {
         path "assets/items/coin.png"
         flip none
         size 22 22
+    }
+    animator {
+        play "spin"
+        playbackSpeed 1
+        clip {
+            name "spin"
+            fps 10
+            loop true
+            size 22 22
+            frame "assets/items/coin.png"
+        }
     }
 }
 
@@ -423,6 +590,17 @@ object {
         flip none
         size 22 22
     }
+    animator {
+        play "spin"
+        playbackSpeed 1
+        clip {
+            name "spin"
+            fps 10
+            loop true
+            size 22 22
+            frame "assets/items/coin.png"
+        }
+    }
 }
 
 object {
@@ -450,6 +628,17 @@ object {
         path "assets/items/coin.png"
         flip none
         size 22 22
+    }
+    animator {
+        play "spin"
+        playbackSpeed 1
+        clip {
+            name "spin"
+            fps 10
+            loop true
+            size 22 22
+            frame "assets/items/coin.png"
+        }
     }
 }
 
@@ -479,6 +668,24 @@ object {
         flip none
         size 32 32
     }
+    animator {
+        play "walk"
+        playbackSpeed 1
+        clip {
+            name "walk"
+            fps 6
+            loop true
+            size 32 32
+            frame "assets/enemies/goomba.png"
+        }
+        clip {
+            name "squash"
+            fps 1
+            loop false
+            size 32 32
+            frame "assets/enemies/goomba.png"
+        }
+    }
 }
 
 object {
@@ -507,6 +714,24 @@ object {
         flip none
         size 32 32
     }
+    animator {
+        play "walk"
+        playbackSpeed 1
+        clip {
+            name "walk"
+            fps 6
+            loop true
+            size 32 32
+            frame "assets/enemies/goomba.png"
+        }
+        clip {
+            name "squash"
+            fps 1
+            loop false
+            size 32 32
+            frame "assets/enemies/goomba.png"
+        }
+    }
 }
 
 object {
@@ -534,5 +759,16 @@ object {
         path "assets/items/flag.png"
         flip none
         size 32 192
+    }
+    animator {
+        play "wave"
+        playbackSpeed 1
+        clip {
+            name "wave"
+            fps 5
+            loop true
+            size 32 192
+            frame "assets/items/flag.png"
+        }
     }
 }

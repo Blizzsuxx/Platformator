@@ -23,6 +23,7 @@ public:
 
     SDL_Window *getWindow() const;
     SDL_Renderer *getRenderer() const;
+    MIX_Mixer *getMixer() const;
 
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);
@@ -37,6 +38,7 @@ public:
 private:
     SDL_Window *window;
     SDL_Renderer *renderer;
+    MIX_Mixer *mixer;
     Camera *mainCamera;
     SDL_Event sdlEvent;
     DebugDraw &debugDraw;

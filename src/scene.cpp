@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "animator.h"
+#include "audio.h"
 #include "boxcollider.h"
 #include "camera.h"
 #include "circlecollider.h"
@@ -72,6 +74,42 @@ namespace
         float height = SCREEN_HEIGHT;
     };
 
+    struct AudioConfig
+    {
+        bool enabled = false;
+        std::string path;
+        bool predecode = false;
+        bool autoplay = false;
+        int loops = 0;
+        float gain = 1.0f;
+    };
+
+    struct AnimationClipConfig
+    {
+        struct FrameConfig
+        {
+            std::string path;
+            float duration = 0.0f;
+            SDL_FRect sourceRect = SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f};
+            bool hasSourceRect = false;
+        };
+
+        std::string name;
+        float fps = 12.0f;
+        bool loop = true;
+        float width = 0.0f;
+        float height = 0.0f;
+        std::vector<FrameConfig> frames;
+    };
+
+    struct AnimatorConfig
+    {
+        bool enabled = false;
+        std::string play;
+        float playbackSpeed = 1.0f;
+        std::vector<AnimationClipConfig> clips;
+    };
+
     struct ObjectConfig
     {
         std::string name;
@@ -85,6 +123,8 @@ namespace
         CircleColliderConfig circleCollider;
         SpriteConfig sprite;
         CameraConfig camera;
+        AudioConfig audio;
+        AnimatorConfig animator;
     };
 
     class TokenStream
@@ -268,6 +308,18 @@ namespace
         catch (const std::exception &)
         {
             throw std::runtime_error("Invalid unsigned integer value '" + token + "'.");
+        }
+    }
+
+    int parseIntToken(const std::string &token)
+    {
+        try
+        {
+            return std::stoi(token);
+        }
+        catch (const std::exception &)
+        {
+            throw std::runtime_error("Invalid integer value '" + token + "'.");
         }
     }
 
@@ -662,6 +714,170 @@ namespace
         }
     }
 
+    void parseAudioBlock(TokenStream &tokens, AudioConfig &config)
+    {
+        config.enabled = true;
+        tokens.expect("{");
+
+        while (true)
+        {
+            if (tokens.match("}"))
+            {
+                return;
+            }
+
+            std::string key = toLower(tokens.consume());
+            if (key == "path")
+            {
+                config.path = tokens.consume();
+            }
+            else if (key == "predecode")
+            {
+                config.predecode = parseBoolToken(tokens.consume());
+            }
+            else if (key == "autoplay")
+            {
+                config.autoplay = parseBoolToken(tokens.consume());
+            }
+            else if (key == "loops")
+            {
+                config.loops = parseIntToken(tokens.consume());
+            }
+            else if (key == "gain")
+            {
+                config.gain = parseFloatToken(tokens.consume());
+            }
+            else
+            {
+                throw std::runtime_error("Unknown audio property '" + key + "'.");
+            }
+        }
+    }
+
+    AnimationClipConfig parseAnimatorClipBlock(TokenStream &tokens)
+    {
+        tokens.expect("{");
+
+        AnimationClipConfig config;
+        while (true)
+        {
+            if (tokens.match("}"))
+            {
+                return config;
+            }
+
+            std::string key = toLower(tokens.consume());
+            if (key == "name")
+            {
+                config.name = tokens.consume();
+            }
+            else if (key == "fps")
+            {
+                config.fps = parseFloatToken(tokens.consume());
+            }
+            else if (key == "loop")
+            {
+                config.loop = parseBoolToken(tokens.consume());
+            }
+            else if (key == "size")
+            {
+                config.width = parseFloatToken(tokens.consume());
+                config.height = parseFloatToken(tokens.consume());
+            }
+            else if (key == "width")
+            {
+                config.width = parseFloatToken(tokens.consume());
+            }
+            else if (key == "height")
+            {
+                config.height = parseFloatToken(tokens.consume());
+            }
+            else if (key == "frame")
+            {
+                AnimationClipConfig::FrameConfig frameConfig;
+                if (tokens.match("{"))
+                {
+                    while (true)
+                    {
+                        if (tokens.match("}"))
+                        {
+                            break;
+                        }
+
+                        std::string frameKey = toLower(tokens.consume());
+                        if (frameKey == "path")
+                        {
+                            frameConfig.path = tokens.consume();
+                        }
+                        else if (frameKey == "duration")
+                        {
+                            frameConfig.duration = parseFloatToken(tokens.consume());
+                        }
+                        else if (frameKey == "rect" || frameKey == "sourcerect")
+                        {
+                            frameConfig.sourceRect.x = parseFloatToken(tokens.consume());
+                            frameConfig.sourceRect.y = parseFloatToken(tokens.consume());
+                            frameConfig.sourceRect.w = parseFloatToken(tokens.consume());
+                            frameConfig.sourceRect.h = parseFloatToken(tokens.consume());
+                            frameConfig.hasSourceRect = true;
+                        }
+                        else
+                        {
+                            throw std::runtime_error("Unknown animator frame property '" + frameKey + "'.");
+                        }
+                    }
+                }
+                else
+                {
+                    frameConfig.path = tokens.consume();
+                }
+
+                if (frameConfig.path.empty())
+                {
+                    throw std::runtime_error("Animator frame requires a path.");
+                }
+
+                config.frames.push_back(frameConfig);
+            }
+            else
+            {
+                throw std::runtime_error("Unknown animator clip property '" + key + "'.");
+            }
+        }
+    }
+
+    void parseAnimatorBlock(TokenStream &tokens, AnimatorConfig &config)
+    {
+        config.enabled = true;
+        tokens.expect("{");
+
+        while (true)
+        {
+            if (tokens.match("}"))
+            {
+                return;
+            }
+
+            std::string key = toLower(tokens.consume());
+            if (key == "play")
+            {
+                config.play = tokens.consume();
+            }
+            else if (key == "playbackspeed" || key == "speed")
+            {
+                config.playbackSpeed = parseFloatToken(tokens.consume());
+            }
+            else if (key == "clip")
+            {
+                config.clips.push_back(parseAnimatorClipBlock(tokens));
+            }
+            else
+            {
+                throw std::runtime_error("Unknown animator property '" + key + "'.");
+            }
+        }
+    }
+
     ObjectConfig parseObject(TokenStream &tokens)
     {
         std::string objectKeyword = toLower(tokens.consume());
@@ -724,6 +940,14 @@ namespace
             else if (key == "camera")
             {
                 parseCameraBlock(tokens, config.camera);
+            }
+            else if (key == "audio")
+            {
+                parseAudioBlock(tokens, config.audio);
+            }
+            else if (key == "animator")
+            {
+                parseAnimatorBlock(tokens, config.animator);
             }
             else
             {
@@ -835,6 +1059,55 @@ std::vector<GameObject *> Scene::loadScene()
                     gameObject->addComponentInternal(sprite);
                 }
 
+                if (config.animator.enabled)
+                {
+                    Animator *animator = new Animator(gameObject);
+                    animator->setPlaybackSpeed(config.animator.playbackSpeed);
+
+                    for (const AnimationClipConfig &clipConfig : config.animator.clips)
+                    {
+                        std::vector<AnimationFrame> resolvedFrames;
+                        resolvedFrames.reserve(clipConfig.frames.size());
+                        for (const AnimationClipConfig::FrameConfig &frameConfig : clipConfig.frames)
+                        {
+                            std::string resolvedPath = resolveSceneRelativePath(filePath, frameConfig.path);
+                            if (frameConfig.hasSourceRect)
+                            {
+                                resolvedFrames.emplace_back(resolvedPath, frameConfig.sourceRect, frameConfig.duration);
+                            }
+                            else
+                            {
+                                resolvedFrames.emplace_back(resolvedPath, frameConfig.duration);
+                            }
+                        }
+
+                        animator->addClip(clipConfig.name, resolvedFrames, clipConfig.fps, clipConfig.loop, clipConfig.width, clipConfig.height);
+                    }
+
+                    if (!config.animator.play.empty() && !animator->play(config.animator.play, true))
+                    {
+                        delete animator;
+                        throw std::runtime_error("Animator requested unknown clip '" + config.animator.play + "'.");
+                    }
+
+                    gameObject->addComponentInternal(animator);
+                }
+
+                if (config.audio.enabled)
+                {
+                    Audio *audio = new Audio(gameObject);
+                    audio->setPredecode(config.audio.predecode);
+                    audio->setAutoPlay(config.audio.autoplay);
+                    audio->setLoopCount(config.audio.loops);
+                    audio->setGain(config.audio.gain);
+                    if (!config.audio.path.empty())
+                    {
+                        audio->load(resolveSceneRelativePath(filePath, config.audio.path), config.audio.predecode);
+                    }
+
+                    gameObject->addComponentInternal(audio);
+                }
+
                 objects.push_back(gameObject);
             }
             catch (const std::exception &)
@@ -884,6 +1157,8 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
         Collider *collider = static_cast<Collider *>(gameObject->getComponent(ComponentType::COLLIDER));
         Sprite *sprite = gameObject->getComponent<Sprite>();
         Camera *camera = gameObject->getComponent<Camera>();
+        Audio *audio = gameObject->getComponent<Audio>();
+        Animator *animator = gameObject->getComponent<Animator>();
 
         if (wroteAnyObjects)
         {
@@ -969,6 +1244,69 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
             }
             writeKeyValueLine(sceneFile, 2, "flip", flipModeToToken(sprite->getFlip()));
             sceneFile << indent(2) << "size " << formatFloat(sprite->getWidth()) << ' ' << formatFloat(sprite->getHeight()) << '\n';
+            sceneFile << indent(1) << "}\n";
+        }
+
+        if (audio != nullptr)
+        {
+            sceneFile << indent(1) << "audio {\n";
+            if (!audio->getFilePath().empty())
+            {
+                writeStringLine(sceneFile, 2, "path", makeSceneResourcePath(filePath, audio->getFilePath()));
+            }
+            writeKeyValueLine(sceneFile, 2, "predecode", boolToToken(audio->getPredecode()));
+            writeKeyValueLine(sceneFile, 2, "autoplay", boolToToken(audio->getAutoPlay()));
+            writeKeyValueLine(sceneFile, 2, "loops", std::to_string(audio->getLoopCount()));
+            writeKeyValueLine(sceneFile, 2, "gain", formatFloat(audio->getGain()));
+            sceneFile << indent(1) << "}\n";
+        }
+
+        if (animator != nullptr)
+        {
+            sceneFile << indent(1) << "animator {\n";
+            if (!animator->getCurrentClipName().empty())
+            {
+                writeStringLine(sceneFile, 2, "play", animator->getCurrentClipName());
+            }
+            writeKeyValueLine(sceneFile, 2, "playbackSpeed", formatFloat(animator->getPlaybackSpeed()));
+
+            for (const AnimationClipEntry &clipEntry : animator->getClips())
+            {
+                sceneFile << indent(2) << "clip {\n";
+                writeStringLine(sceneFile, 3, "name", clipEntry.name);
+                writeKeyValueLine(sceneFile, 3, "fps", formatFloat(clipEntry.clip.framesPerSecond));
+                writeKeyValueLine(sceneFile, 3, "loop", boolToToken(clipEntry.clip.loop));
+
+                if (clipEntry.clip.width > 0.0f || clipEntry.clip.height > 0.0f)
+                {
+                    sceneFile << indent(3) << "size " << formatFloat(clipEntry.clip.width) << ' ' << formatFloat(clipEntry.clip.height) << '\n';
+                }
+
+                for (const AnimationFrame &frame : clipEntry.clip.frames)
+                {
+                    if (frame.duration > 0.0f || frame.hasSourceRect)
+                    {
+                        sceneFile << indent(3) << "frame {\n";
+                        writeStringLine(sceneFile, 4, "path", makeSceneResourcePath(filePath, frame.texturePath));
+                        if (frame.duration > 0.0f)
+                        {
+                            writeKeyValueLine(sceneFile, 4, "duration", formatFloat(frame.duration));
+                        }
+                        if (frame.hasSourceRect)
+                        {
+                            sceneFile << indent(4) << "rect " << formatFloat(frame.sourceRect.x) << ' ' << formatFloat(frame.sourceRect.y) << ' ' << formatFloat(frame.sourceRect.w) << ' ' << formatFloat(frame.sourceRect.h) << '\n';
+                        }
+                        sceneFile << indent(3) << "}\n";
+                    }
+                    else
+                    {
+                        writeStringLine(sceneFile, 3, "frame", makeSceneResourcePath(filePath, frame.texturePath));
+                    }
+                }
+
+                sceneFile << indent(2) << "}\n";
+            }
+
             sceneFile << indent(1) << "}\n";
         }
 

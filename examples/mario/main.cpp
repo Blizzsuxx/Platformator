@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "animator.h"
+#include "audio.h"
 #include "boxcollider.h"
 #include "camera.h"
 #include "circlecollider.h"
@@ -23,10 +25,10 @@ namespace
     constexpr float PLAYER_GRAVITY = GRAVITY_VECTOR_Y * 3.65f;
     constexpr float PLAYER_MAX_FALL_SPEED = 460.0f;
     constexpr float ENEMY_WALK_SPEED = 55.0f;
-    constexpr float PLAYER_RESPAWN_Y = 680.0f;
     constexpr float STOMP_TOLERANCE = 14.0f;
     constexpr float CAMERA_LEAD = 90.0f;
     constexpr float LEVEL_WIDTH = 2240.0f;
+    constexpr double ENEMY_SQUASH_DURATION = 0.28;
 
     struct PatrolEnemy
     {
@@ -34,6 +36,8 @@ namespace
         float minX;
         float maxX;
         float direction;
+        bool defeated;
+        double defeatedTimer;
     };
 
     struct Bounds
@@ -60,28 +64,16 @@ namespace
         return Bounds{gameObject->getPosition(), Eigen::Vector2f::Constant(circleCollider->getRadius())};
     }
 
-    bool overlaps(const GameObject *objectA, const GameObject *objectB)
+    std::filesystem::path getExampleRootPath()
     {
-        if (objectA == nullptr || objectB == nullptr || !objectA->getActive() || !objectB->getActive())
-        {
-            return false;
-        }
-
-        const Bounds boundsA = getBounds(objectA);
-        const Bounds boundsB = getBounds(objectB);
-
-        const float deltaX = std::abs(boundsA.center.x() - boundsB.center.x());
-        const float deltaY = std::abs(boundsA.center.y() - boundsB.center.y());
-
-        return deltaX <= (boundsA.halfExtents.x() + boundsB.halfExtents.x()) &&
-               deltaY <= (boundsA.halfExtents.y() + boundsB.halfExtents.y());
+        return std::filesystem::absolute(std::filesystem::path(__FILE__)).parent_path();
     }
 
     class MarioExample
     {
     public:
         MarioExample(GameManager &gameManager, SDLWindow *window, Scene &scene)
-            : gameManager(gameManager), window(window), scene(scene), player(nullptr), playerBody(nullptr), camera(nullptr), playerSpawn(Eigen::Vector2f::Zero()), enemies(), coins(), goal(nullptr), collectedCoins(0), jumpWasPressed(false), gameWon(false), titleDirty(true)
+            : gameManager(gameManager), window(window), scene(scene), player(nullptr), playerBody(nullptr), playerCollider(nullptr), camera(nullptr), jumpAudio(nullptr), coinAudio(nullptr), stompAudio(nullptr), hurtAudio(nullptr), winAudio(nullptr), playerSpawn(Eigen::Vector2f::Zero()), playerPositionBeforePhysics(Eigen::Vector2f::Zero()), playerVelocityBeforePhysics(Eigen::Vector2f::Zero()), enemies(), coins(), goal(nullptr), collectedCoins(0), jumpWasPressed(false), gameWon(false), titleDirty(true)
         {
             cacheSceneObjects();
             registerEventHooks();
@@ -95,8 +87,16 @@ namespace
 
         GameObject *player;
         Rigidbody *playerBody;
+        Collider *playerCollider;
         Camera *camera;
+        Audio *jumpAudio;
+        Audio *coinAudio;
+        Audio *stompAudio;
+        Audio *hurtAudio;
+        Audio *winAudio;
         Eigen::Vector2f playerSpawn;
+        Eigen::Vector2f playerPositionBeforePhysics;
+        Eigen::Vector2f playerVelocityBeforePhysics;
         std::vector<PatrolEnemy> enemies;
         std::vector<GameObject *> coins;
         GameObject *goal;
@@ -109,8 +109,16 @@ namespace
         {
             player = gameManager.getGameObject("Player");
             playerBody = player != nullptr ? player->getComponent<Rigidbody>() : nullptr;
+            playerCollider = player != nullptr ? static_cast<Collider *>(player->getComponent(ComponentType::COLLIDER)) : nullptr;
             camera = window->getMainCamera();
+            jumpAudio = getAudioEmitter("SFX Jump");
+            coinAudio = getAudioEmitter("SFX Coin");
+            stompAudio = getAudioEmitter("SFX Stomp");
+            hurtAudio = getAudioEmitter("SFX Hurt");
+            winAudio = getAudioEmitter("SFX Win");
             playerSpawn = player != nullptr ? player->getPosition() : Eigen::Vector2f::Zero();
+            playerPositionBeforePhysics = playerSpawn;
+            playerVelocityBeforePhysics = playerBody != nullptr ? playerBody->getVelocity() : Eigen::Vector2f::Zero();
 
             enemies.clear();
             coins.clear();
@@ -129,7 +137,7 @@ namespace
                 {
                     const float spawnX = gameObject->getX();
                     const float patrolHalfRange = enemyIndex == 0 ? 90.0f : 110.0f;
-                    enemies.push_back(PatrolEnemy{gameObject, spawnX - patrolHalfRange, spawnX + patrolHalfRange, enemyIndex % 2 == 0 ? -1.0f : 1.0f});
+                    enemies.push_back(PatrolEnemy{gameObject, spawnX - patrolHalfRange, spawnX + patrolHalfRange, enemyIndex % 2 == 0 ? -1.0f : 1.0f, false, 0.0});
                     enemyIndex++;
                     continue;
                 }
@@ -147,16 +155,77 @@ namespace
             }
         }
 
-        void registerEventHooks()
+        Audio *getAudioEmitter(const std::string &name)
         {
-            window->addSdlListener([this](SDL_Event event, double)
-                                   {
-            if (event.type != SDL_EVENT_KEY_DOWN)
+            GameObject *audioObject = gameManager.getGameObject(name);
+            return audioObject != nullptr ? audioObject->getComponent<Audio>() : nullptr;
+        }
+
+        void replayAudio(Audio *audio)
+        {
+            if (audio == nullptr)
             {
                 return;
             }
 
-            if (event.key.key == SDLK_F7)
+            audio->stop();
+            audio->play();
+        }
+
+        PatrolEnemy *findEnemy(GameObject *gameObject)
+        {
+            for (PatrolEnemy &enemy : enemies)
+            {
+                if (enemy.gameObject == gameObject)
+                {
+                    return &enemy;
+                }
+            }
+
+            return nullptr;
+        }
+
+        void handlePlayerCollisionEnter(Collider *other)
+        {
+            if (other == nullptr || player == nullptr || playerBody == nullptr || !player->getActive())
+            {
+                return;
+            }
+
+            GameObject *otherObject = other->getGameObject();
+            if (otherObject == nullptr || !otherObject->getActive())
+            {
+                return;
+            }
+
+            const std::string &tag = otherObject->getTag();
+            if (tag == "coin")
+            {
+                collectCoin(otherObject);
+                return;
+            }
+
+            if (tag == "goal")
+            {
+                reachGoal();
+                return;
+            }
+
+            if (tag == "enemy")
+            {
+                handleEnemyContact(otherObject);
+                return;
+            }
+
+            if (tag == "death")
+            {
+                defeatPlayer();
+            }
+        }
+
+        void handleSdlKeyDown(SDL_Keycode key)
+        {
+            if (key == SDLK_F7)
             {
                 try
                 {
@@ -170,19 +239,45 @@ namespace
                 return;
             }
 
-            if (event.key.key == SDLK_R)
+            if (key == SDLK_R)
             {
                 respawnPlayer();
-            } });
+            }
+        }
+
+        void defeatPlayer()
+        {
+            if (gameWon || player == nullptr || !player->getActive())
+            {
+                return;
+            }
+
+            replayAudio(hurtAudio);
+            respawnPlayer();
+        }
+
+        void registerEventHooks()
+        {
+            if (playerCollider != nullptr)
+            {
+                playerCollider->addCollisionEnterCallback([this](Collider *other, double)
+                                                          { handlePlayerCollisionEnter(other); });
+            }
+
+            window->addSdlListener([this](SDL_Event event, double)
+                                   {
+            if (event.type != SDL_EVENT_KEY_DOWN)
+            {
+                return;
+            }
+
+            handleSdlKeyDown(event.key.key); });
 
             gameManager.addUserScriptListeners([this](double timeDelta)
                                                {
             updatePlayerInput(timeDelta);
-            updateEnemies();
-            collectCoins();
-            handleEnemyInteractions();
-            handleGoal();
-            handleFallOut();
+            updateEnemies(timeDelta);
+            updatePlayerAnimation();
             updateCamera();
 
             if (titleDirty)
@@ -242,13 +337,16 @@ namespace
             if (jumpPressed && !jumpWasPressed && isGrounded)
             {
                 velocity.y() = -PLAYER_JUMP_SPEED;
+                replayAudio(jumpAudio);
             }
 
             playerBody->setVelocity(velocity);
+            playerPositionBeforePhysics = player->getPosition();
+            playerVelocityBeforePhysics = velocity;
             jumpWasPressed = jumpPressed;
         }
 
-        void updateEnemies()
+        void updateEnemies(double timeDelta)
         {
             for (PatrolEnemy &enemy : enemies)
             {
@@ -260,6 +358,16 @@ namespace
                 Rigidbody *enemyBody = enemy.gameObject->getComponent<Rigidbody>();
                 if (enemyBody == nullptr)
                 {
+                    continue;
+                }
+
+                if (enemy.defeated)
+                {
+                    enemy.defeatedTimer -= timeDelta;
+                    if (enemy.defeatedTimer <= 0.0)
+                    {
+                        enemy.gameObject->setActive(false);
+                    }
                     continue;
                 }
 
@@ -281,73 +389,136 @@ namespace
                 {
                     sprite->setFlip(enemy.direction < 0.0f ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
                 }
-            }
-        }
 
-        void collectCoins()
-        {
-            if (player == nullptr || !player->getActive())
-            {
-                return;
-            }
-
-            for (GameObject *coin : coins)
-            {
-                if (coin == nullptr || !coin->getActive() || !overlaps(player, coin))
+                Animator *animator = enemy.gameObject->getComponent<Animator>();
+                if (animator != nullptr && animator->hasClip("walk"))
                 {
-                    continue;
+                    animator->play("walk");
                 }
-
-                coin->setActive(false);
-                collectedCoins++;
-                titleDirty = true;
             }
         }
 
-        void handleEnemyInteractions()
+        void updatePlayerAnimation()
         {
             if (player == nullptr || playerBody == nullptr || !player->getActive())
             {
                 return;
             }
 
-            const Bounds playerBounds = getBounds(player);
-            const float playerBottom = playerBounds.center.y() + playerBounds.halfExtents.y();
-
-            for (PatrolEnemy &enemy : enemies)
+            Animator *animator = player->getComponent<Animator>();
+            if (animator == nullptr)
             {
-                if (enemy.gameObject == nullptr || !enemy.gameObject->getActive() || !overlaps(player, enemy.gameObject))
-                {
-                    continue;
-                }
-
-                const Bounds enemyBounds = getBounds(enemy.gameObject);
-                const float enemyTop = enemyBounds.center.y() - enemyBounds.halfExtents.y();
-                const bool stomped = playerBody->getVelocity().y() > 10.0f && playerBottom <= enemyTop + STOMP_TOLERANCE;
-
-                if (stomped)
-                {
-                    enemy.gameObject->setActive(false);
-                    Eigen::Vector2f velocity = playerBody->getVelocity();
-                    velocity.y() = -PLAYER_JUMP_SPEED * 0.65f;
-                    playerBody->setVelocity(velocity);
-                    titleDirty = true;
-                    continue;
-                }
-
-                respawnPlayer();
                 return;
+            }
+
+            if (gameWon)
+            {
+                if (animator->hasClip("win") && animator->getCurrentClipName() != "win")
+                {
+                    animator->playOnce("win");
+                }
+                return;
+            }
+
+            const Eigen::Vector2f velocity = playerBody->getVelocity();
+            if (!playerBody->hasSupportContact())
+            {
+                if (velocity.y() < -5.0f && animator->hasClip("jump"))
+                {
+                    animator->play("jump");
+                }
+                else if (animator->hasClip("fall"))
+                {
+                    animator->play("fall");
+                }
+                return;
+            }
+
+            if (std::abs(velocity.x()) > 5.0f && animator->hasClip("run"))
+            {
+                animator->play("run");
+            }
+            else if (animator->hasClip("idle"))
+            {
+                animator->play("idle");
             }
         }
 
-        void handleGoal()
+        void collectCoin(GameObject *coin)
         {
-            if (gameWon || player == nullptr || goal == nullptr || !goal->getActive())
+            if (coin == nullptr || !coin->getActive())
             {
                 return;
             }
 
-            if (!overlaps(player, goal))
+            coin->setActive(false);
+            collectedCoins++;
+            titleDirty = true;
+            replayAudio(coinAudio);
+        }
+
+        void handleEnemyContact(GameObject *enemyObject)
+        {
+            if (gameWon || enemyObject == nullptr)
+            {
+                return;
+            }
+
+            PatrolEnemy *enemy = findEnemy(enemyObject);
+            if (enemy == nullptr || enemy->defeated || !enemy->gameObject->getActive())
+            {
+                return;
+            }
+
+            const Bounds playerBounds = getBounds(player);
+            const Bounds enemyBounds = getBounds(enemyObject);
+            const float previousPlayerBottom = playerPositionBeforePhysics.y() + playerBounds.halfExtents.y();
+            const float enemyTop = enemyBounds.center.y() - enemyBounds.halfExtents.y();
+            const bool stomped = playerVelocityBeforePhysics.y() > 10.0f && previousPlayerBottom <= enemyTop + STOMP_TOLERANCE;
+
+            if (stomped)
+            {
+                enemy->defeated = true;
+                enemy->defeatedTimer = ENEMY_SQUASH_DURATION;
+
+                Collider *enemyCollider = static_cast<Collider *>(enemyObject->getComponent(ComponentType::COLLIDER));
+                if (enemyCollider != nullptr)
+                {
+                    enemyCollider->setCollisionMask(0);
+                }
+
+                Rigidbody *enemyBody = enemyObject->getComponent<Rigidbody>();
+                if (enemyBody != nullptr)
+                {
+                    enemyBody->setVelocity(Eigen::Vector2f::Zero());
+                }
+
+                Animator *animator = enemyObject->getComponent<Animator>();
+                if (animator != nullptr && animator->hasClip("squash"))
+                {
+                    animator->playOnce("squash");
+                }
+                else
+                {
+                    enemyObject->setActive(false);
+                    enemy->defeatedTimer = 0.0;
+                }
+
+                Eigen::Vector2f velocity = playerBody->getVelocity();
+                velocity.y() = -PLAYER_JUMP_SPEED * 0.65f;
+                playerBody->setVelocity(velocity);
+                playerVelocityBeforePhysics = velocity;
+                titleDirty = true;
+                replayAudio(stompAudio);
+                return;
+            }
+
+            defeatPlayer();
+        }
+
+        void reachGoal()
+        {
+            if (gameWon || player == nullptr || goal == nullptr || !goal->getActive())
             {
                 return;
             }
@@ -356,22 +527,11 @@ namespace
             if (playerBody != nullptr)
             {
                 playerBody->setVelocity(Eigen::Vector2f::Zero());
+                playerVelocityBeforePhysics = Eigen::Vector2f::Zero();
             }
             titleDirty = true;
+            replayAudio(winAudio);
             std::cout << "Level clear. Coins collected: " << collectedCoins << '/' << coins.size() << '\n';
-        }
-
-        void handleFallOut()
-        {
-            if (player == nullptr || !player->getActive())
-            {
-                return;
-            }
-
-            if (player->getY() > PLAYER_RESPAWN_Y)
-            {
-                respawnPlayer();
-            }
         }
 
         void respawnPlayer()
@@ -388,6 +548,9 @@ namespace
             playerBody->setForce(Eigen::Vector2f::Zero());
             playerBody->setTorque(0.0f);
             playerBody->wakeUp();
+            playerPositionBeforePhysics = playerSpawn;
+            playerVelocityBeforePhysics = Eigen::Vector2f::Zero();
+            jumpWasPressed = false;
             titleDirty = true;
         }
 
@@ -430,7 +593,7 @@ namespace
 
     std::filesystem::path getDefaultScenePath()
     {
-        return std::filesystem::absolute(std::filesystem::path(__FILE__)).parent_path() / "level1.scene";
+        return getExampleRootPath() / "level1.scene";
     }
 } // namespace
 

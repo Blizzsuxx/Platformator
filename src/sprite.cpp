@@ -22,7 +22,7 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip) 
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (filePath != nullptr)
     {
@@ -32,16 +32,13 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
     }
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(textureWrapper), flip(flip), width(width), height(height), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(textureWrapper), flip(flip), width(width), height(height), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (textureWrapper != nullptr && width == 0 && height == 0)
     {
         SDL_GetTextureSize(textureWrapper->getTexture(), &this->width, &this->height);
     }
-    if (textureWrapper != nullptr)
-    {
-        textureWrapper->addReference(this);
-    }
+    setTextureWrapper(textureWrapper);
 }
 
 Sprite::~Sprite()
@@ -55,7 +52,7 @@ void Sprite::freeTexture()
     {
         TextureWrapper *currentTextureWrapper = textureWrapper;
         textureWrapper = nullptr;
-        currentTextureWrapper->removeReferenceAndFreeIfNoReferences(this);
+        currentTextureWrapper->removeReferenceAndFreeIfNoReferences();
     }
 }
 
@@ -79,6 +76,16 @@ float Sprite::getHeight() const
     return height;
 }
 
+bool Sprite::hasSourceRect() const
+{
+    return sourceRectEnabled;
+}
+
+const SDL_FRect *Sprite::getSourceRect() const
+{
+    return sourceRectEnabled ? &sourceRect : nullptr;
+}
+
 TextureWrapper *Sprite::getTextureWrapper() const
 {
     return textureWrapper;
@@ -99,14 +106,31 @@ void Sprite::setHeight(float height)
     this->height = height;
 }
 
+void Sprite::setSourceRect(const SDL_FRect &sourceRect)
+{
+    this->sourceRect = sourceRect;
+    sourceRectEnabled = true;
+}
+
+void Sprite::clearSourceRect()
+{
+    sourceRect = SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f};
+    sourceRectEnabled = false;
+}
+
 void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)
 {
+    if (this->textureWrapper == textureWrapper)
+    {
+        return;
+    }
+
     freeTexture();
 
     this->textureWrapper = textureWrapper;
     if (this->textureWrapper != nullptr)
     {
-        this->textureWrapper->addReference(this);
+        this->textureWrapper->addReference();
     }
 }
 

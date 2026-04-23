@@ -4,6 +4,7 @@
 
 #include <SDL3_mixer/SDL_mixer.h>
 #include "gameobject.h"
+#include "audiowrapper.h"
 
 class Audio : public Component
 {
@@ -15,6 +16,10 @@ public:
 
     MIX_Audio *getAudio() const;
     MIX_Track *getTrack() const;
+    AudioWrapper *getAudioWrapper() const;
+    const std::string &getFilePath() const;
+    bool getAutoPlay() const;
+
     float getGain() const;
     bool isPlaying() const;
     bool isPaused() const;
@@ -34,6 +39,7 @@ private:
     MIX_Track *track;
     float gain;
     int loopCount;
+    bool autoPlay;
 
     void freeAudio();
 };

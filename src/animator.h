@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 #include <string>
 #include <vector>
+#include "texturewrapper.h"
 
 #include "gameobject.h"
 

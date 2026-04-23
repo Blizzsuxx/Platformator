@@ -10,7 +10,6 @@ object {
     tag "audio"
     audio {
         path "assets/audio/music.wav"
-        predecode false
         autoplay true
         loops -1
         gain 0.5
@@ -22,7 +21,6 @@ object {
     tag "audio"
     audio {
         path "assets/audio/jump.wav"
-        predecode true
         autoplay false
         loops 0
         gain 0.9
@@ -34,7 +32,6 @@ object {
     tag "audio"
     audio {
         path "assets/audio/coin.wav"
-        predecode true
         autoplay false
         loops 0
         gain 0.85
@@ -46,7 +43,6 @@ object {
     tag "audio"
     audio {
         path "assets/audio/stomp.wav"
-        predecode true
         autoplay false
         loops 0
         gain 0.9
@@ -58,7 +54,6 @@ object {
     tag "audio"
     audio {
         path "assets/audio/hurt.wav"
-        predecode true
         autoplay false
         loops 0
         gain 0.9
@@ -70,7 +65,6 @@ object {
     tag "audio"
     audio {
         path "assets/audio/win.wav"
-        predecode true
         autoplay false
         loops 0
         gain 0.95

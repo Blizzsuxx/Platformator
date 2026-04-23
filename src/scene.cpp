@@ -17,6 +17,7 @@
 #include "boxcollider.h"
 #include "camera.h"
 #include "circlecollider.h"
+#include "gamemanager.h"
 #include "rigidbody.h"
 #include "sprite.h"
 #include "texturewrapper.h"
@@ -78,7 +79,6 @@ namespace
     {
         bool enabled = false;
         std::string path;
-        bool predecode = false;
         bool autoplay = false;
         int loops = 0;
         float gain = 1.0f;
@@ -731,10 +731,6 @@ namespace
             {
                 config.path = tokens.consume();
             }
-            else if (key == "predecode")
-            {
-                config.predecode = parseBoolToken(tokens.consume());
-            }
             else if (key == "autoplay")
             {
                 config.autoplay = parseBoolToken(tokens.consume());
@@ -1061,6 +1057,7 @@ std::vector<GameObject *> Scene::loadScene()
 
                 if (config.animator.enabled)
                 {
+                    GameManager &gameManager = GameManager::getInstance();
                     Animator *animator = new Animator(gameObject);
                     animator->setPlaybackSpeed(config.animator.playbackSpeed);
 
@@ -1071,20 +1068,21 @@ std::vector<GameObject *> Scene::loadScene()
                         for (const AnimationClipConfig::FrameConfig &frameConfig : clipConfig.frames)
                         {
                             std::string resolvedPath = resolveSceneRelativePath(filePath, frameConfig.path);
+                            TextureWrapper *textureWrapper = gameManager.loadTexture(resolvedPath);
                             if (frameConfig.hasSourceRect)
                             {
-                                resolvedFrames.emplace_back(resolvedPath, frameConfig.sourceRect, frameConfig.duration);
+                                resolvedFrames.emplace_back(textureWrapper, frameConfig.sourceRect, frameConfig.duration);
                             }
                             else
                             {
-                                resolvedFrames.emplace_back(resolvedPath, frameConfig.duration);
+                                resolvedFrames.emplace_back(textureWrapper, frameConfig.duration);
                             }
                         }
 
-                        animator->addClip(clipConfig.name, resolvedFrames, clipConfig.fps, clipConfig.loop, clipConfig.width, clipConfig.height);
+                        animator->addClip(AnimationClip(resolvedFrames, clipConfig.fps, clipConfig.loop, clipConfig.width, clipConfig.height, clipConfig.name, !clipConfig.loop));
                     }
 
-                    if (!config.animator.play.empty() && !animator->play(config.animator.play, true))
+                    if (!config.animator.play.empty() && !animator->play(config.animator.play))
                     {
                         delete animator;
                         throw std::runtime_error("Animator requested unknown clip '" + config.animator.play + "'.");
@@ -1095,14 +1093,17 @@ std::vector<GameObject *> Scene::loadScene()
 
                 if (config.audio.enabled)
                 {
-                    Audio *audio = new Audio(gameObject);
-                    audio->setPredecode(config.audio.predecode);
-                    audio->setAutoPlay(config.audio.autoplay);
-                    audio->setLoopCount(config.audio.loops);
-                    audio->setGain(config.audio.gain);
+                    Audio *audio = nullptr;
                     if (!config.audio.path.empty())
                     {
-                        audio->load(resolveSceneRelativePath(filePath, config.audio.path), config.audio.predecode);
+                        std::string resolvedPath = resolveSceneRelativePath(filePath, config.audio.path);
+                        audio = new Audio(gameObject, resolvedPath.c_str(), config.audio.gain, config.audio.autoplay, config.audio.loops);
+                    }
+                    else
+                    {
+                        audio = new Audio(gameObject);
+                        audio->setGain(config.audio.gain);
+                        audio->setLoopCount(config.audio.loops);
                     }
 
                     gameObject->addComponentInternal(audio);
@@ -1254,7 +1255,6 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
             {
                 writeStringLine(sceneFile, 2, "path", makeSceneResourcePath(filePath, audio->getFilePath()));
             }
-            writeKeyValueLine(sceneFile, 2, "predecode", boolToToken(audio->getPredecode()));
             writeKeyValueLine(sceneFile, 2, "autoplay", boolToToken(audio->getAutoPlay()));
             writeKeyValueLine(sceneFile, 2, "loops", std::to_string(audio->getLoopCount()));
             writeKeyValueLine(sceneFile, 2, "gain", formatFloat(audio->getGain()));
@@ -1270,24 +1270,30 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
             }
             writeKeyValueLine(sceneFile, 2, "playbackSpeed", formatFloat(animator->getPlaybackSpeed()));
 
-            for (const AnimationClipEntry &clipEntry : animator->getClips())
+            for (const AnimationClip &clip : animator->getClips())
             {
                 sceneFile << indent(2) << "clip {\n";
-                writeStringLine(sceneFile, 3, "name", clipEntry.name);
-                writeKeyValueLine(sceneFile, 3, "fps", formatFloat(clipEntry.clip.framesPerSecond));
-                writeKeyValueLine(sceneFile, 3, "loop", boolToToken(clipEntry.clip.loop));
+                writeStringLine(sceneFile, 3, "name", clip.name);
+                writeKeyValueLine(sceneFile, 3, "fps", formatFloat(clip.framesPerSecond));
+                writeKeyValueLine(sceneFile, 3, "loop", boolToToken(clip.loop));
 
-                if (clipEntry.clip.width > 0.0f || clipEntry.clip.height > 0.0f)
+                if (clip.width > 0.0f || clip.height > 0.0f)
                 {
-                    sceneFile << indent(3) << "size " << formatFloat(clipEntry.clip.width) << ' ' << formatFloat(clipEntry.clip.height) << '\n';
+                    sceneFile << indent(3) << "size " << formatFloat(clip.width) << ' ' << formatFloat(clip.height) << '\n';
                 }
 
-                for (const AnimationFrame &frame : clipEntry.clip.frames)
+                for (const AnimationFrame &frame : clip.frames)
                 {
+                    if (frame.textureWrapper == nullptr)
+                    {
+                        continue;
+                    }
+
+                    const std::string &framePath = frame.textureWrapper->getFilePath();
                     if (frame.duration > 0.0f || frame.hasSourceRect)
                     {
                         sceneFile << indent(3) << "frame {\n";
-                        writeStringLine(sceneFile, 4, "path", makeSceneResourcePath(filePath, frame.texturePath));
+                        writeStringLine(sceneFile, 4, "path", makeSceneResourcePath(filePath, framePath));
                         if (frame.duration > 0.0f)
                         {
                             writeKeyValueLine(sceneFile, 4, "duration", formatFloat(frame.duration));
@@ -1300,7 +1306,7 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
                     }
                     else
                     {
-                        writeStringLine(sceneFile, 3, "frame", makeSceneResourcePath(filePath, frame.texturePath));
+                        writeStringLine(sceneFile, 3, "frame", makeSceneResourcePath(filePath, framePath));
                     }
                 }
 

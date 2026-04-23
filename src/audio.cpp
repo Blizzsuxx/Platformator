@@ -33,7 +33,7 @@ Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool auto
 }
 
 Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, float loopCount)
-    : Component(gameObject, ComponentType::AUDIO), audioWrapper(audioWrapper), track(nullptr), gain(gain), loopCount(loopCount)
+    : Component(gameObject, ComponentType::AUDIO), audioWrapper(audioWrapper), track(nullptr), gain(gain), loopCount(loopCount), autoPlay(autoPlay)
 {
     if (audioWrapper != nullptr)
     {
@@ -69,6 +69,11 @@ void Audio::freeAudio()
 MIX_Track *Audio::getTrack() const
 {
     return track;
+}
+
+AudioWrapper *Audio::getAudioWrapper() const
+{
+    return audioWrapper;
 }
 
 float Audio::getGain() const
@@ -184,4 +189,15 @@ void Audio::setLoopCount(float loopCount)
 float Audio::getLoopCount() const
 {
     return loopCount;
+}
+
+const std::string &Audio::getFilePath() const
+{
+    static const std::string emptyString;
+    return audioWrapper != nullptr ? audioWrapper->getFilePath() : emptyString;
+}
+
+bool Audio::getAutoPlay() const
+{
+    return autoPlay;
 }

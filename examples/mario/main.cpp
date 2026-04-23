@@ -172,6 +172,16 @@ namespace
             audio->play();
         }
 
+        void playClipIfChanged(Animator *animator, const std::string &name)
+        {
+            if (animator == nullptr || animator->getCurrentClipName() == name)
+            {
+                return;
+            }
+
+            animator->play(name);
+        }
+
         PatrolEnemy *findEnemy(GameObject *gameObject)
         {
             for (PatrolEnemy &enemy : enemies)
@@ -391,10 +401,7 @@ namespace
                 }
 
                 Animator *animator = enemy.gameObject->getComponent<Animator>();
-                if (animator != nullptr && animator->hasClip("walk"))
-                {
-                    animator->play("walk");
-                }
+                playClipIfChanged(animator, "walk");
             }
         }
 
@@ -413,34 +420,31 @@ namespace
 
             if (gameWon)
             {
-                if (animator->hasClip("win") && animator->getCurrentClipName() != "win")
-                {
-                    animator->playOnce("win");
-                }
+                playClipIfChanged(animator, "win");
                 return;
             }
 
             const Eigen::Vector2f velocity = playerBody->getVelocity();
             if (!playerBody->hasSupportContact())
             {
-                if (velocity.y() < -5.0f && animator->hasClip("jump"))
+                if (velocity.y() < -5.0f)
                 {
-                    animator->play("jump");
+                    playClipIfChanged(animator, "jump");
                 }
-                else if (animator->hasClip("fall"))
+                else
                 {
-                    animator->play("fall");
+                    playClipIfChanged(animator, "fall");
                 }
                 return;
             }
 
-            if (std::abs(velocity.x()) > 5.0f && animator->hasClip("run"))
+            if (std::abs(velocity.x()) > 5.0f)
             {
-                animator->play("run");
+                playClipIfChanged(animator, "run");
             }
-            else if (animator->hasClip("idle"))
+            else
             {
-                animator->play("idle");
+                playClipIfChanged(animator, "idle");
             }
         }
 
@@ -494,9 +498,9 @@ namespace
                 }
 
                 Animator *animator = enemyObject->getComponent<Animator>();
-                if (animator != nullptr && animator->hasClip("squash"))
+                if (animator != nullptr)
                 {
-                    animator->playOnce("squash");
+                    playClipIfChanged(animator, "squash");
                 }
                 else
                 {

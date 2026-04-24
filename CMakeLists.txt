@@ -52,6 +52,13 @@ target_link_libraries(main PRIVATE platformator_engine)
 
 add_executable(mario_example
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_camera_rig.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_coin.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_game.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_goal_flag.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_helpers.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_patrol_enemy.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_player.cpp"
 )
 target_link_libraries(mario_example PRIVATE platformator_engine)
 

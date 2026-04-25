@@ -1,7 +1,6 @@
 #include "mario_patrol_enemy.h"
 
 #include "animator.h"
-#include "behaviorfactoryregistry.h"
 #include "collider.h"
 #include "mario_constants.h"
 #include "mario_game.h"
@@ -32,28 +31,6 @@ namespace mario
     std::string MarioPatrolEnemy::getTypeName() const
     {
         return "MarioPatrolEnemy";
-    }
-
-    void MarioPatrolEnemy::deserialize(const ScriptDescriptor &descriptor)
-    {
-        minX = descriptor.getFloat("minx", minX);
-        maxX = descriptor.getFloat("maxx", maxX);
-        direction = descriptor.getFloat("direction", direction);
-        walkSpeed = descriptor.getFloat("walkspeed", walkSpeed);
-        stompMinSpeed = descriptor.getFloat("stompminspeed", stompMinSpeed);
-        stompTolerance = descriptor.getFloat("stomptolerance", stompTolerance);
-        squashDuration = descriptor.getFloat("squashduration", squashDuration);
-    }
-
-    void MarioPatrolEnemy::serialize(ScriptDescriptor &descriptor) const
-    {
-        descriptor.setFloatProperty("minx", minX);
-        descriptor.setFloatProperty("maxx", maxX);
-        descriptor.setFloatProperty("direction", direction);
-        descriptor.setFloatProperty("walkspeed", walkSpeed);
-        descriptor.setFloatProperty("stompminspeed", stompMinSpeed);
-        descriptor.setFloatProperty("stomptolerance", stompTolerance);
-        descriptor.setFloatProperty("squashduration", squashDuration);
     }
 
     void MarioPatrolEnemy::start()
@@ -155,6 +132,4 @@ namespace mario
         player.bounceAfterStomp();
         game.playStompSound();
     }
-
-    REGISTER_BEHAVIOR(MarioPatrolEnemy);
 } // namespace mario

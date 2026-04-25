@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "behaviorfactoryregistry.h"
 #include "mario_entity.h"
 
 class Animator;
@@ -17,8 +18,13 @@ namespace mario
         MarioPlayer();
 
         std::string getTypeName() const override;
-        void deserialize(const ScriptDescriptor &descriptor) override;
-        void serialize(ScriptDescriptor &descriptor) const override;
+        BEHAVIOR_FIELDS(
+            MarioPlayer,
+            BEHAVIOR_FIELD(walkSpeed),
+            BEHAVIOR_FIELD(jumpSpeed),
+            BEHAVIOR_FIELD(gravity),
+            BEHAVIOR_FIELD(maxFallSpeed),
+            BEHAVIOR_FIELD(stompBounceFactor));
 
         void start() override;
         void fixedUpdate(double timeDelta) override;
@@ -52,4 +58,6 @@ namespace mario
         void updateInput(double timeDelta);
         void updateAnimation();
     };
+
+    REGISTER_BEHAVIOR(MarioPlayer);
 } // namespace mario

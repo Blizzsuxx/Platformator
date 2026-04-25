@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
@@ -20,11 +21,51 @@ namespace
         return toLower(name);
     }
 
-    std::string formatFloatPropertyValue(float value)
+    template <typename Numeric>
+    std::string formatFloatingPropertyValue(Numeric value, int precision)
     {
         std::ostringstream stream;
-        stream << std::setprecision(6) << value;
+        stream << std::setprecision(precision) << value;
         return stream.str();
+    }
+
+    Eigen::Vector2f parseVector2fValue(const std::string &name, const std::string &value)
+    {
+        const size_t separatorIndex = value.find(',');
+        if (separatorIndex == std::string::npos || value.find(',', separatorIndex + 1) != std::string::npos)
+        {
+            throw std::runtime_error("Script property '" + name + "' expected a Vector2f in the form x,y but found '" + value + "'.");
+        }
+
+        const std::string xToken = value.substr(0, separatorIndex);
+        const std::string yToken = value.substr(separatorIndex + 1);
+        if (xToken.empty() || yToken.empty())
+        {
+            throw std::runtime_error("Script property '" + name + "' expected a Vector2f in the form x,y but found '" + value + "'.");
+        }
+
+        try
+        {
+            size_t parsedLength = 0;
+            const float x = std::stof(xToken, &parsedLength);
+            if (parsedLength != xToken.size())
+            {
+                throw std::runtime_error("");
+            }
+
+            parsedLength = 0;
+            const float y = std::stof(yToken, &parsedLength);
+            if (parsedLength != yToken.size())
+            {
+                throw std::runtime_error("");
+            }
+
+            return Eigen::Vector2f(x, y);
+        }
+        catch (const std::exception &)
+        {
+            throw std::runtime_error("Script property '" + name + "' expected a Vector2f in the form x,y but found '" + value + "'.");
+        }
     }
 }
 
@@ -77,6 +118,30 @@ float ScriptDescriptor::getFloat(const std::string &name, float fallback) const
     }
 }
 
+double ScriptDescriptor::getDouble(const std::string &name, double fallback) const
+{
+    const std::string *value = findProperty(name);
+    if (value == nullptr)
+    {
+        return fallback;
+    }
+
+    try
+    {
+        size_t parsedLength = 0;
+        const double parsedValue = std::stod(*value, &parsedLength);
+        if (parsedLength != value->size())
+        {
+            throw std::runtime_error("");
+        }
+        return parsedValue;
+    }
+    catch (const std::exception &)
+    {
+        throw std::runtime_error("Script property '" + name + "' expected a double but found '" + *value + "'.");
+    }
+}
+
 int ScriptDescriptor::getInt(const std::string &name, int fallback) const
 {
     const std::string *value = findProperty(name);
@@ -123,6 +188,17 @@ bool ScriptDescriptor::getBool(const std::string &name, bool fallback) const
     throw std::runtime_error("Script property '" + name + "' expected a bool but found '" + *value + "'.");
 }
 
+Eigen::Vector2f ScriptDescriptor::getVector2f(const std::string &name, const Eigen::Vector2f &fallback) const
+{
+    const std::string *value = findProperty(name);
+    if (value == nullptr)
+    {
+        return fallback;
+    }
+
+    return parseVector2fValue(name, *value);
+}
+
 void ScriptDescriptor::setProperty(const std::string &name, std::string value, ScriptPropertyValueKind valueKind)
 {
     const std::string normalizedName = normalizePropertyName(name);
@@ -146,7 +222,12 @@ void ScriptDescriptor::setStringProperty(const std::string &name, std::string va
 
 void ScriptDescriptor::setFloatProperty(const std::string &name, float value)
 {
-    setProperty(name, formatFloatPropertyValue(value), ScriptPropertyValueKind::Raw);
+    setProperty(name, formatFloatingPropertyValue(value, 6), ScriptPropertyValueKind::Raw);
+}
+
+void ScriptDescriptor::setDoubleProperty(const std::string &name, double value)
+{
+    setProperty(name, formatFloatingPropertyValue(value, std::numeric_limits<double>::digits10), ScriptPropertyValueKind::Raw);
 }
 
 void ScriptDescriptor::setIntProperty(const std::string &name, int value)
@@ -157,4 +238,11 @@ void ScriptDescriptor::setIntProperty(const std::string &name, int value)
 void ScriptDescriptor::setBoolProperty(const std::string &name, bool value)
 {
     setProperty(name, value ? "true" : "false", ScriptPropertyValueKind::Raw);
+}
+
+void ScriptDescriptor::setVector2fProperty(const std::string &name, const Eigen::Vector2f &value)
+{
+    setProperty(name,
+                formatFloatingPropertyValue(value.x(), 6) + "," + formatFloatingPropertyValue(value.y(), 6),
+                ScriptPropertyValueKind::Raw);
 }

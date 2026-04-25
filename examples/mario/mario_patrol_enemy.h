@@ -1,5 +1,6 @@
 #pragma once
 
+#include "behaviorfactoryregistry.h"
 #include "mario_entity.h"
 
 class Animator;
@@ -17,8 +18,15 @@ namespace mario
         MarioPatrolEnemy();
 
         std::string getTypeName() const override;
-        void deserialize(const ScriptDescriptor &descriptor) override;
-        void serialize(ScriptDescriptor &descriptor) const override;
+        BEHAVIOR_FIELDS(
+            MarioPatrolEnemy,
+            BEHAVIOR_FIELD(minX),
+            BEHAVIOR_FIELD(maxX),
+            BEHAVIOR_FIELD(direction),
+            BEHAVIOR_FIELD(walkSpeed),
+            BEHAVIOR_FIELD(stompMinSpeed),
+            BEHAVIOR_FIELD(stompTolerance),
+            BEHAVIOR_FIELD(squashDuration));
 
         void start() override;
         void fixedUpdate(double timeDelta) override;
@@ -39,4 +47,6 @@ namespace mario
         bool defeated;
         double defeatedTimer;
     };
+
+    REGISTER_BEHAVIOR(MarioPatrolEnemy);
 } // namespace mario

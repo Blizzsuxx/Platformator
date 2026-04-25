@@ -1,5 +1,6 @@
 #pragma once
 
+#include "behaviorfactoryregistry.h"
 #include "mario_entity.h"
 
 namespace mario
@@ -10,9 +11,9 @@ namespace mario
         MarioGoalFlag();
 
         std::string getTypeName() const override;
-        void deserialize(const ScriptDescriptor &descriptor) override;
-        void serialize(ScriptDescriptor &descriptor) const override;
 
         bool reach();
     };
+
+    REGISTER_BEHAVIOR(MarioGoalFlag);
 } // namespace mario

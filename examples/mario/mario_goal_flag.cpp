@@ -1,6 +1,5 @@
 #include "mario_goal_flag.h"
 
-#include "behaviorfactoryregistry.h"
 #include "mario_game.h"
 
 namespace mario
@@ -14,14 +13,6 @@ namespace mario
         return "MarioGoalFlag";
     }
 
-    void MarioGoalFlag::deserialize(const ScriptDescriptor &)
-    {
-    }
-
-    void MarioGoalFlag::serialize(ScriptDescriptor &) const
-    {
-    }
-
     bool MarioGoalFlag::reach()
     {
         if (!isActive())
@@ -32,6 +23,4 @@ namespace mario
         MarioGame::getInstance().winLevel();
         return true;
     }
-
-    REGISTER_BEHAVIOR(MarioGoalFlag);
 } // namespace mario

@@ -40,18 +40,23 @@ private:
     std::unordered_map<std::string, Factory> factories;
 };
 
+namespace platformator_behavior_registry_detail
+{
+    template <typename T>
+    inline bool registerBehaviorType(const std::string &type)
+    {
+        BehaviorFactoryRegistry::getInstance().registerBehavior<T>(type);
+        return true;
+    }
+}
+
 #define PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT_IMPL(left, right) left##right
 #define PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(left, right) PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT_IMPL(left, right)
 
-// The translation unit using this macro must be linked into the final binary.
-#define REGISTER_BEHAVIOR_NAMED(TYPE, TYPE_NAME)                                                                   \
-    namespace                                                                                                      \
-    {                                                                                                              \
-        [[maybe_unused]] const bool PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(registeredBehavior_, __COUNTER__) = []() \
-        {                                                                                                          \
-            BehaviorFactoryRegistry::getInstance().registerBehavior<TYPE>(TYPE_NAME);                              \
-            return true;                                                                                           \
-        }();                                                                                                       \
-    }
+// Header-safe self-registration macro. Place it after the behavior class definition,
+// typically in the same header and namespace as the class.
+#define REGISTER_BEHAVIOR_NAMED(TYPE, TYPE_NAME)                                                                      \
+    [[maybe_unused]] inline const bool PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(platformatorRegisteredBehavior_, TYPE) = \
+        ::platformator_behavior_registry_detail::registerBehaviorType<TYPE>(TYPE_NAME)
 
 #define REGISTER_BEHAVIOR(TYPE) REGISTER_BEHAVIOR_NAMED(TYPE, #TYPE)

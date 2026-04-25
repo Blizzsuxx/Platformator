@@ -1,6 +1,5 @@
 #include "mario_coin.h"
 
-#include "behaviorfactoryregistry.h"
 #include "mario_game.h"
 
 namespace mario
@@ -14,14 +13,6 @@ namespace mario
         return "MarioCoin";
     }
 
-    void MarioCoin::deserialize(const ScriptDescriptor &)
-    {
-    }
-
-    void MarioCoin::serialize(ScriptDescriptor &) const
-    {
-    }
-
     bool MarioCoin::collect()
     {
         if (!isActive())
@@ -33,6 +24,4 @@ namespace mario
         MarioGame::getInstance().onCoinCollected();
         return true;
     }
-
-    REGISTER_BEHAVIOR(MarioCoin);
 } // namespace mario

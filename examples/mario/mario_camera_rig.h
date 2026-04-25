@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "behaviorfactoryregistry.h"
 #include "mario_entity.h"
 
 class Camera;
@@ -16,16 +17,21 @@ namespace mario
         MarioCameraRig();
 
         std::string getTypeName() const override;
-        void deserialize(const ScriptDescriptor &descriptor) override;
-        void serialize(ScriptDescriptor &descriptor) const override;
+        BEHAVIOR_FIELDS(
+            MarioCameraRig,
+            BEHAVIOR_FIELD(target),
+            BEHAVIOR_FIELD(cameraLead),
+            BEHAVIOR_FIELD(levelWidth));
         void start() override;
         void lateUpdate(double timeDelta) override;
 
     private:
         Camera *camera;
         MarioPlayer *player;
-        std::string target;
+        platformator_behavior_detail::NamedGameObjectReference target;
         float cameraLead;
         float levelWidth;
     };
+
+    REGISTER_BEHAVIOR(MarioCameraRig);
 } // namespace mario

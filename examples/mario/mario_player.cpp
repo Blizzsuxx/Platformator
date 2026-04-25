@@ -4,7 +4,6 @@
 #include <cmath>
 
 #include "animator.h"
-#include "behaviorfactoryregistry.h"
 #include "collider.h"
 #include "mario_coin.h"
 #include "mario_constants.h"
@@ -37,24 +36,6 @@ namespace mario
     std::string MarioPlayer::getTypeName() const
     {
         return "MarioPlayer";
-    }
-
-    void MarioPlayer::deserialize(const ScriptDescriptor &descriptor)
-    {
-        walkSpeed = descriptor.getFloat("walkspeed", walkSpeed);
-        jumpSpeed = descriptor.getFloat("jumpspeed", jumpSpeed);
-        gravity = descriptor.getFloat("gravity", gravity);
-        maxFallSpeed = descriptor.getFloat("maxfallspeed", maxFallSpeed);
-        stompBounceFactor = descriptor.getFloat("stompbouncefactor", stompBounceFactor);
-    }
-
-    void MarioPlayer::serialize(ScriptDescriptor &descriptor) const
-    {
-        descriptor.setFloatProperty("walkspeed", walkSpeed);
-        descriptor.setFloatProperty("jumpspeed", jumpSpeed);
-        descriptor.setFloatProperty("gravity", gravity);
-        descriptor.setFloatProperty("maxfallspeed", maxFallSpeed);
-        descriptor.setFloatProperty("stompbouncefactor", stompBounceFactor);
     }
 
     void MarioPlayer::start()
@@ -272,6 +253,4 @@ namespace mario
             playClipIfChanged(animator, "idle");
         }
     }
-
-    REGISTER_BEHAVIOR(MarioPlayer);
 } // namespace mario

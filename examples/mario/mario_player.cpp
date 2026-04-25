@@ -56,11 +56,11 @@ namespace mario
         descriptor.setFloatProperty("stompbouncefactor", stompBounceFactor);
     }
 
-    void MarioPlayer::awake()
+    void MarioPlayer::start()
     {
-        body = getComponent<Rigidbody>();
-        animator = getComponent<Animator>();
-        sprite = getComponent<Sprite>();
+        body = getGameObject()->getComponent<Rigidbody>();
+        animator = getGameObject()->getComponent<Animator>();
+        sprite = getGameObject()->getComponent<Sprite>();
         spawn = getGameObject()->getPosition();
         positionBeforePhysics = spawn;
         velocityBeforePhysics = body->getVelocity();
@@ -144,40 +144,30 @@ namespace mario
             return;
         }
 
+        if (other->getIsTrigger())
+        {
+            if (MarioCoin *coin = getBehavior<MarioCoin>(otherObject))
+            {
+                coin->collect();
+                return;
+            }
+
+            if (MarioGoalFlag *goal = getBehavior<MarioGoalFlag>(otherObject))
+            {
+                goal->reach();
+                return;
+            }
+
+            if (otherObject->getTag() == "death")
+            {
+                defeat();
+            }
+            return;
+        }
+
         if (MarioPatrolEnemy *enemy = getBehavior<MarioPatrolEnemy>(otherObject))
         {
             enemy->handlePlayerContact(*this);
-        }
-    }
-
-    void MarioPlayer::onTriggerEnter(Collider *other, double)
-    {
-        if (!isActive())
-        {
-            return;
-        }
-
-        GameObject *otherObject = other->getGameObject();
-        if (!otherObject->getActive())
-        {
-            return;
-        }
-
-        if (MarioCoin *coin = getBehavior<MarioCoin>(otherObject))
-        {
-            coin->collect();
-            return;
-        }
-
-        if (MarioGoalFlag *goal = getBehavior<MarioGoalFlag>(otherObject))
-        {
-            goal->reach();
-            return;
-        }
-
-        if (otherObject->getTag() == "death")
-        {
-            defeat();
         }
     }
 

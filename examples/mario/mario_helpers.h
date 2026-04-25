@@ -22,6 +22,19 @@ namespace mario
     T *getBehavior(GameObject *gameObject)
     {
         ScriptComponent *scriptComponent = gameObject != nullptr ? gameObject->getComponent<ScriptComponent>() : nullptr;
-        return scriptComponent != nullptr ? scriptComponent->getBehavior<T>() : nullptr;
+        if (scriptComponent == nullptr)
+        {
+            return nullptr;
+        }
+
+        for (Behavior *behavior : scriptComponent->getBehaviors())
+        {
+            if (T *typedBehavior = dynamic_cast<T *>(behavior))
+            {
+                return typedBehavior;
+            }
+        }
+
+        return nullptr;
     }
 } // namespace mario

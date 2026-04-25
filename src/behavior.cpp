@@ -66,3 +66,13 @@ void Behavior::onCollisionExit(Collider *, double)
 void Behavior::onCollisionStay(Collider *, double)
 {
 }
+
+void Behavior::setGameObject(GameObject *gameObject)
+{
+    this->gameObject = gameObject;
+}
+
+GameObject *Behavior::getGameObject()
+{
+    return gameObject;
+}

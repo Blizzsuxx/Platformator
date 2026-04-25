@@ -326,22 +326,46 @@ void GameManager::notifyRuntimeOfComponentRemoved(Component *component)
     if (component->getType() == ComponentType::ANIMATOR)
     {
         Animator *animator = static_cast<Animator *>(component);
-        size_t index = animator->getGameManagerIndex();
-        Animator *lastAnimator = animatorComponents.back();
-        animatorComponents[index] = lastAnimator;
-        lastAnimator->setGameManagerIndex(index);
-        animator->setGameManagerIndex(SIZE_MAX);
+        size_t removeIndex = animator->getGameManagerIndex();
+
+        if (removeIndex == SIZE_MAX)
+        {
+            return;
+        }
+
+        size_t lastIndex = animatorComponents.size() - 1;
+
+        if (removeIndex != lastIndex)
+        {
+            Animator *movedAnimator = animatorComponents.back();
+            animatorComponents[removeIndex] = movedAnimator;
+            movedAnimator->setGameManagerIndex(removeIndex);
+        }
+
         animatorComponents.pop_back();
+        animator->setGameManagerIndex(SIZE_MAX);
     }
     else if (component->getType() == ComponentType::SCRIPT)
     {
         ScriptComponent *scriptComponent = static_cast<ScriptComponent *>(component);
-        size_t index = scriptComponent->getGameManagerIndex();
-        ScriptComponent *lastScriptComponent = scriptComponents.back();
-        scriptComponents[index] = lastScriptComponent;
-        lastScriptComponent->setGameManagerIndex(index);
-        scriptComponent->setGameManagerIndex(SIZE_MAX);
+        size_t removeIndex = scriptComponent->getGameManagerIndex();
+
+        if (removeIndex == SIZE_MAX)
+        {
+            return;
+        }
+
+        size_t lastIndex = scriptComponents.size() - 1;
+
+        if (removeIndex != lastIndex)
+        {
+            ScriptComponent *movedScriptComponent = scriptComponents.back();
+            scriptComponents[removeIndex] = movedScriptComponent;
+            movedScriptComponent->setGameManagerIndex(removeIndex);
+        }
+
         scriptComponents.pop_back();
+        scriptComponent->setGameManagerIndex(SIZE_MAX);
     }
     else if (component->getType() == ComponentType::AUDIO)
     {

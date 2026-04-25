@@ -31,6 +31,9 @@ public:
     virtual void onCollisionExit(Collider *other, double timeDelta);
     virtual void onCollisionStay(Collider *other, double timeDelta);
 
+    void setGameObject(GameObject *gameObject);
+    GameObject *getGameObject();
+
 private:
     GameObject *gameObject;
     bool enabled;

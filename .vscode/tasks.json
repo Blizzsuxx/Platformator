@@ -38,6 +38,29 @@
                 "isDefault": true
             },
             "detail": "Configure and build the Platformator Debug preset into bin/."
+        },
+        {
+            "type": "shell",
+            "label": "Build Mario Example Debug",
+            "command": "/usr/bin/cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "debug",
+                "--target",
+                "mario_example"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "Configure Platformator Debug"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Configure and build only the Mario example target into bin/."
         }
     ]
 }

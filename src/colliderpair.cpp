@@ -32,11 +32,11 @@ Collision *ColliderPair::getOrCreateCollision() const
     if (collision == nullptr)
     {
         collision = new Collision(objectA, objectB);
-        queueTriggerCollisionEnter();
+        queueCollisionEnter();
     }
     else
     {
-        queueTriggerCollisionStay();
+        queueCollisionStay();
     }
 
     updateCachedCollisionVersions();
@@ -48,7 +48,7 @@ void ColliderPair::clearCollision() const
 {
     if (collision != nullptr)
     {
-        queueTriggerCollisionExit();
+        queueCollisionExit();
         delete collision;
         collision = nullptr;
     }
@@ -95,17 +95,17 @@ void ColliderPair::setAdjacencyIndexB(size_t index) const
     adjacencyIndexB = index;
 }
 
-void ColliderPair::queueTriggerCollisionEnter() const
+void ColliderPair::queueCollisionEnter() const
 {
     GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectA, objectB});
 }
 
-void ColliderPair::queueTriggerCollisionStay() const
+void ColliderPair::queueCollisionStay() const
 {
     GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectA, objectB});
 }
 
-void ColliderPair::queueTriggerCollisionExit() const
+void ColliderPair::queueCollisionExit() const
 {
     GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
 }

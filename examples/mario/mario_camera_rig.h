@@ -18,6 +18,7 @@ namespace mario
         std::string getTypeName() const override;
         void deserialize(const ScriptDescriptor &descriptor) override;
         void serialize(ScriptDescriptor &descriptor) const override;
+        void start() override;
         void lateUpdate(double timeDelta) override;
 
     private:
@@ -26,7 +27,5 @@ namespace mario
         std::string target;
         float cameraLead;
         float levelWidth;
-
-        void awake() override;
     };
 } // namespace mario

@@ -34,9 +34,9 @@ namespace mario
         descriptor.setFloatProperty("levelwidth", levelWidth);
     }
 
-    void MarioCameraRig::awake()
+    void MarioCameraRig::start()
     {
-        camera = getComponent<Camera>();
+        camera = getGameObject()->getComponent<Camera>();
         player = nullptr;
     }
 

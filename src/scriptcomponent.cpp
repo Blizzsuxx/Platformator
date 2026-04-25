@@ -21,6 +21,7 @@ const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
 Behavior *ScriptComponent::addBehavior(Behavior *behavior)
 {
     behaviors.push_back(behavior);
+    behavior->setGameObject(getGameObject());
     GameManager::getInstance().addStartedBehavior(behavior);
 
     return behavior;

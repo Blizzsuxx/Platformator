@@ -182,7 +182,7 @@ void PhysicsManager::narrowPhase()
 
         if (!pair->shouldUpdate())
         {
-            pair->queueTriggerCollisionStay();
+            pair->queueCollisionStay();
         }
         else
         {

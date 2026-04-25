@@ -20,6 +20,7 @@ namespace mario
         void deserialize(const ScriptDescriptor &descriptor) override;
         void serialize(ScriptDescriptor &descriptor) const override;
 
+        void start() override;
         void fixedUpdate(double timeDelta) override;
         void handlePlayerContact(MarioPlayer &player);
 
@@ -37,7 +38,5 @@ namespace mario
         float squashDuration;
         bool defeated;
         double defeatedTimer;
-
-        void awake() override;
     };
 } // namespace mario

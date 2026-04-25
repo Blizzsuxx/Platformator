@@ -20,10 +20,10 @@ namespace mario
         void deserialize(const ScriptDescriptor &descriptor) override;
         void serialize(ScriptDescriptor &descriptor) const override;
 
+        void start() override;
         void fixedUpdate(double timeDelta) override;
         void update(double timeDelta) override;
         void onCollisionEnter(Collider *other, double timeDelta) override;
-        void onTriggerEnter(Collider *other, double timeDelta) override;
 
         void defeat();
         void bounceAfterStomp();
@@ -48,7 +48,6 @@ namespace mario
         bool jumpWasPressed;
         bool respawnWasPressed;
 
-        void awake() override;
         void respawn();
         void updateInput(double timeDelta);
         void updateAnimation();

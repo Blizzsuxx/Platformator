@@ -55,12 +55,12 @@ namespace mario
         descriptor.setFloatProperty("squashduration", squashDuration);
     }
 
-    void MarioPatrolEnemy::awake()
+    void MarioPatrolEnemy::start()
     {
-        body = getComponent<Rigidbody>();
-        collider = getComponent<Collider>();
-        animator = getComponent<Animator>();
-        sprite = getComponent<Sprite>();
+        body = getGameObject()->getComponent<Rigidbody>();
+        collider = getGameObject()->getComponent<Collider>();
+        animator = getGameObject()->getComponent<Animator>();
+        sprite = getGameObject()->getComponent<Sprite>();
 
         if (maxX <= minX)
         {

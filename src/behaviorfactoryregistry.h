@@ -39,3 +39,19 @@ private:
 
     std::unordered_map<std::string, Factory> factories;
 };
+
+#define PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT_IMPL(left, right) left##right
+#define PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(left, right) PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT_IMPL(left, right)
+
+// The translation unit using this macro must be linked into the final binary.
+#define REGISTER_BEHAVIOR_NAMED(TYPE, TYPE_NAME)                                                                   \
+    namespace                                                                                                      \
+    {                                                                                                              \
+        [[maybe_unused]] const bool PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(registeredBehavior_, __COUNTER__) = []() \
+        {                                                                                                          \
+            BehaviorFactoryRegistry::getInstance().registerBehavior<TYPE>(TYPE_NAME);                              \
+            return true;                                                                                           \
+        }();                                                                                                       \
+    }
+
+#define REGISTER_BEHAVIOR(TYPE) REGISTER_BEHAVIOR_NAMED(TYPE, #TYPE)

@@ -1,5 +1,6 @@
 #include "mario_goal_flag.h"
 
+#include "behaviorfactoryregistry.h"
 #include "mario_game.h"
 
 namespace mario
@@ -31,4 +32,6 @@ namespace mario
         MarioGame::getInstance().winLevel();
         return true;
     }
+
+    REGISTER_BEHAVIOR(MarioGoalFlag);
 } // namespace mario

@@ -14,7 +14,6 @@ public:
     Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain = 1.0f, bool autoPlay = false, float loopCount = 0);
     ~Audio() override;
 
-    MIX_Audio *getAudio() const;
     MIX_Track *getTrack() const;
     AudioWrapper *getAudioWrapper() const;
     const std::string &getFilePath() const;

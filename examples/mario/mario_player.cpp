@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "animator.h"
+#include "behaviorfactoryregistry.h"
 #include "collider.h"
 #include "mario_coin.h"
 #include "mario_constants.h"
@@ -271,4 +272,6 @@ namespace mario
             playClipIfChanged(animator, "idle");
         }
     }
+
+    REGISTER_BEHAVIOR(MarioPlayer);
 } // namespace mario

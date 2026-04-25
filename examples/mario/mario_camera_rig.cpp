@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "behaviorfactoryregistry.h"
 #include "camera.h"
 #include "gamemanager.h"
 #include "mario_constants.h"
@@ -69,4 +70,6 @@ namespace mario
         cameraRect.y = 0.0f;
         camera->setCamera(cameraRect);
     }
+
+    REGISTER_BEHAVIOR(MarioCameraRig);
 } // namespace mario

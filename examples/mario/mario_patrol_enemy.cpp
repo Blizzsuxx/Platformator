@@ -1,6 +1,7 @@
 #include "mario_patrol_enemy.h"
 
 #include "animator.h"
+#include "behaviorfactoryregistry.h"
 #include "collider.h"
 #include "mario_constants.h"
 #include "mario_game.h"
@@ -154,4 +155,6 @@ namespace mario
         player.bounceAfterStomp();
         game.playStompSound();
     }
+
+    REGISTER_BEHAVIOR(MarioPatrolEnemy);
 } // namespace mario

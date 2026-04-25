@@ -19,6 +19,8 @@ public:
     Behavior *addBehavior(Behavior *behavior);
 
     const std::vector<Behavior *> &getBehaviors() const;
+    template <typename T>
+    T *getBehavior() const;
 
     void fixedUpdate(double timeDelta);
     void update(double timeDelta);

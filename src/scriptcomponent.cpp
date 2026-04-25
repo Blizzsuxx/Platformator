@@ -18,6 +18,19 @@ const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
     return behaviors;
 }
 
+template <typename T>
+T *ScriptComponent::getBehavior() const
+{
+    for (Behavior *behavior : behaviors)
+    {
+        if (T *castedBehavior = dynamic_cast<T *>(behavior))
+        {
+            return castedBehavior;
+        }
+    }
+    return nullptr;
+}
+
 Behavior *ScriptComponent::addBehavior(Behavior *behavior)
 {
     behaviors.push_back(behavior);

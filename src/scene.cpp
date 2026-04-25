@@ -23,6 +23,7 @@
 #include "scriptdescriptor.h"
 #include "sprite.h"
 #include "texturewrapper.h"
+#include "behaviorfactoryregistry.h"
 
 namespace
 {
@@ -1382,7 +1383,7 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
 
         if (scriptComponent != nullptr)
         {
-            for (const std::unique_ptr<Behavior> &behavior : scriptComponent->getBehaviors())
+            for (const Behavior *behavior : scriptComponent->getBehaviors())
             {
                 ScriptDescriptor descriptor;
                 descriptor.type = behavior->getTypeName();

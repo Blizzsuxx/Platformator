@@ -27,8 +27,8 @@ public:
         static_assert(std::is_base_of_v<Behavior, T>, "registerBehavior<T> requires T to derive from Behavior");
         static_assert(std::is_default_constructible_v<T>, "registerBehavior<T> requires T to be default constructible");
 
-        registerFactory(type, []()
-                        { return std::make_unique<T>(); });
+        registerFactory(type, []() -> Behavior *
+                        { return new T(); });
     }
 
     void registerFactory(const std::string &type, Factory factory);

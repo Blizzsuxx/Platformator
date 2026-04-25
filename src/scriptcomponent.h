@@ -20,8 +20,6 @@ public:
 
     const std::vector<Behavior *> &getBehaviors() const;
 
-    void onRuntimeAdded();
-    void onRuntimeRemoved();
     void fixedUpdate(double timeDelta);
     void update(double timeDelta);
     void lateUpdate(double timeDelta);

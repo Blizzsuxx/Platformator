@@ -3,18 +3,13 @@
 #include "scriptcomponent.h"
 
 Behavior::Behavior()
-    : scriptComponent(nullptr), gameObject(nullptr), enabled(true)
+    : gameObject(nullptr), enabled(true)
 {
 }
 
 GameObject *Behavior::getGameObject() const
 {
     return gameObject;
-}
-
-ScriptComponent *Behavior::getScriptComponent() const
-{
-    return scriptComponent;
 }
 
 bool Behavior::getEnabled() const
@@ -45,6 +40,14 @@ void Behavior::start()
 }
 
 void Behavior::update(double)
+{
+}
+
+void Behavior::fixedUpdate(double)
+{
+}
+
+void Behavior::lateUpdate(double)
 {
 }
 

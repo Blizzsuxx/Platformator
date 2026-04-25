@@ -16,7 +16,6 @@ public:
     virtual ~Behavior() = default;
 
     GameObject *getGameObject() const;
-    ScriptComponent *getScriptComponent() const;
     bool getEnabled() const;
     void setEnabled(bool enabled);
     virtual std::string getTypeName() const;
@@ -25,13 +24,14 @@ public:
 
     virtual void start();
     virtual void update(double timeDelta);
+    virtual void fixedUpdate(double timeDelta);
+    virtual void lateUpdate(double timeDelta);
     virtual void onDestroy();
     virtual void onCollisionEnter(Collider *other, double timeDelta);
     virtual void onCollisionExit(Collider *other, double timeDelta);
     virtual void onCollisionStay(Collider *other, double timeDelta);
 
 private:
-    ScriptComponent *scriptComponent;
     GameObject *gameObject;
     bool enabled;
 };

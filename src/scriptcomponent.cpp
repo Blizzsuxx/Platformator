@@ -10,7 +10,6 @@ ScriptComponent::ScriptComponent(GameObject *gameObject)
 
 ScriptComponent::~ScriptComponent()
 {
-    onRuntimeRemoved();
     destroyBehaviors();
 }
 
@@ -39,6 +38,36 @@ void ScriptComponent::update(double timeDelta)
         }
 
         behavior->update(timeDelta);
+    }
+}
+
+void ScriptComponent::fixedUpdate(double timeDelta)
+{
+    const size_t behaviorCount = behaviors.size();
+    for (size_t index = 0; index < behaviorCount; ++index)
+    {
+        Behavior *behavior = behaviors[index];
+        if (!behavior->getEnabled())
+        {
+            continue;
+        }
+
+        behavior->fixedUpdate(timeDelta);
+    }
+}
+
+void ScriptComponent::lateUpdate(double timeDelta)
+{
+    const size_t behaviorCount = behaviors.size();
+    for (size_t index = 0; index < behaviorCount; ++index)
+    {
+        Behavior *behavior = behaviors[index];
+        if (!behavior->getEnabled())
+        {
+            continue;
+        }
+
+        behavior->lateUpdate(timeDelta);
     }
 }
 

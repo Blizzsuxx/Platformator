@@ -185,6 +185,7 @@ void GameManager::loop()
                 deltaTime = FRAME_TIME;
             }
 
+            triggerStartedBehaviors();
             fixedUpdateScriptComponents(deltaTime);
             physicsManager->checkForCollisions();
             physicsManager->applyPhysics(deltaTime);
@@ -205,6 +206,7 @@ void GameManager::loop()
 
 void GameManager::simulateFrame(double timeDelta)
 {
+    triggerStartedBehaviors();
     fixedUpdateScriptComponents(timeDelta);
     physicsManager->checkForCollisions();
     physicsManager->applyPhysics(timeDelta);
@@ -311,7 +313,6 @@ void GameManager::notifyRuntimeOfComponentAdded(Component *component)
         size_t index = scriptComponents.size();
         scriptComponent->setGameManagerIndex(index);
         scriptComponents.push_back(scriptComponent);
-        scriptComponent->onRuntimeAdded();
     }
 }
 
@@ -341,7 +342,6 @@ void GameManager::notifyRuntimeOfComponentRemoved(Component *component)
         lastScriptComponent->setGameManagerIndex(index);
         scriptComponent->setGameManagerIndex(SIZE_MAX);
         scriptComponents.pop_back();
-        scriptComponent->onRuntimeRemoved();
     }
     else if (component->getType() == ComponentType::AUDIO)
     {

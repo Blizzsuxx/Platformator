@@ -4,13 +4,15 @@
 
 namespace mario
 {
-    class MarioGame;
-
     class MarioGoalFlag : public MarioEntity
     {
     public:
-        explicit MarioGoalFlag(GameObject *gameObject);
+        MarioGoalFlag();
 
-        bool reach(MarioGame &game);
+        std::string getTypeName() const override;
+        void deserialize(const ScriptDescriptor &descriptor) override;
+        void serialize(ScriptDescriptor &descriptor) const override;
+
+        bool reach();
     };
 } // namespace mario

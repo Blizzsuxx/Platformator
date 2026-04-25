@@ -53,7 +53,7 @@ void AnimationFrame::releaseTexture()
     }
 }
 
-AnimationClip::AnimationClip() : frames(), framesPerSecond(12.0f), loop(true), width(0.0f), height(0.0f)
+AnimationClip::AnimationClip() : frames(), framesPerSecond(12.0f), loop(true), width(0.0f), height(0.0f), name(""), stopAtEnd(false)
 {
 }
 
@@ -73,7 +73,7 @@ AnimationClip::AnimationClip(const std::vector<AnimationFrame> &frames, double f
 }
 
 Animator::Animator(GameObject *gameObject)
-    : Component(gameObject, ComponentType::ANIMATOR), clips(), currentClipIndex(SIZE_MAX), currentFrameIndex(0), accumulatedTime(0.0), playbackSpeed(1.0f), playing(false)
+    : Component(gameObject, ComponentType::ANIMATOR), clips(), currentClipIndex(SIZE_MAX), currentFrameIndex(0), accumulatedTime(0.0), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX)
 {
 }
 
@@ -343,4 +343,14 @@ const std::string &Animator::getCurrentClipName() const
     }
 
     return clips[currentClipIndex].name;
+}
+
+size_t Animator::getGameManagerIndex() const
+{
+    return gameManagerIndex;
+}
+
+void Animator::setGameManagerIndex(size_t index)
+{
+    gameManagerIndex = index;
 }

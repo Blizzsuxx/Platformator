@@ -33,7 +33,7 @@ Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool auto
 }
 
 Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, float loopCount)
-    : Component(gameObject, ComponentType::AUDIO), audioWrapper(audioWrapper), track(nullptr), gain(gain), loopCount(loopCount), autoPlay(autoPlay)
+    : Component(gameObject, ComponentType::AUDIO), audioWrapper(audioWrapper), track(nullptr), gain(gain), loopCount(loopCount), autoPlay(autoPlay), gameManagerIndex(SIZE_MAX)
 {
     if (audioWrapper != nullptr)
     {
@@ -200,4 +200,14 @@ const std::string &Audio::getFilePath() const
 bool Audio::getAutoPlay() const
 {
     return autoPlay;
+}
+
+size_t Audio::getGameManagerIndex() const
+{
+    return gameManagerIndex;
+}
+
+void Audio::setGameManagerIndex(size_t index)
+{
+    gameManagerIndex = index;
 }

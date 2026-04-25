@@ -9,16 +9,19 @@ class Sprite;
 
 namespace mario
 {
-    class MarioGame;
     class MarioPlayer;
 
     class MarioPatrolEnemy : public MarioEntity
     {
     public:
-        MarioPatrolEnemy(GameObject *gameObject, float minX, float maxX, float direction);
+        MarioPatrolEnemy();
 
-        void update(double timeDelta) override;
-        void handlePlayerContact(MarioGame &game, MarioPlayer &player);
+        std::string getTypeName() const override;
+        void deserialize(const ScriptDescriptor &descriptor) override;
+        void serialize(ScriptDescriptor &descriptor) const override;
+
+        void fixedUpdate(double timeDelta) override;
+        void handlePlayerContact(MarioPlayer &player);
 
     private:
         Rigidbody *body;
@@ -28,7 +31,13 @@ namespace mario
         float minX;
         float maxX;
         float direction;
+        float walkSpeed;
+        float stompMinSpeed;
+        float stompTolerance;
+        float squashDuration;
         bool defeated;
         double defeatedTimer;
+
+        void awake() override;
     };
 } // namespace mario

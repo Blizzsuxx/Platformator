@@ -1,33 +1,15 @@
 #pragma once
 
-#include "gameobject.h"
+#include "behavior.h"
 
 namespace mario
 {
-    class MarioEntity
+    class MarioEntity : public Behavior
     {
     public:
-        explicit MarioEntity(GameObject *gameObject) : gameObject(gameObject)
-        {
-        }
-
-        virtual ~MarioEntity() = default;
-
-        virtual void update(double)
-        {
-        }
-
-        GameObject *getGameObject() const
-        {
-            return gameObject;
-        }
-
         bool isActive() const
         {
-            return gameObject != nullptr && gameObject->getActive();
+            return getGameObject()->getActive();
         }
-
-    protected:
-        GameObject *gameObject;
     };
 } // namespace mario

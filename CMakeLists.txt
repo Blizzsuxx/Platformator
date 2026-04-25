@@ -52,6 +52,7 @@ target_link_libraries(main PRIVATE platformator_engine)
 
 add_executable(mario_example
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_behavior_registry.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_camera_rig.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_coin.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_game.cpp"
@@ -70,7 +71,18 @@ add_executable(platformator_regression_tests
 
 target_link_libraries(platformator_regression_tests PRIVATE platformator_engine)
 
+add_executable(platformator_scene_script_roundtrip_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/scene_script_roundtrip_test.cpp"
+)
+
+target_link_libraries(platformator_scene_script_roundtrip_test PRIVATE platformator_engine)
+
 add_test(
     NAME platformator_regression_tests
     COMMAND platformator_regression_tests
+)
+
+add_test(
+    NAME platformator_scene_script_roundtrip_test
+    COMMAND platformator_scene_script_roundtrip_test
 )

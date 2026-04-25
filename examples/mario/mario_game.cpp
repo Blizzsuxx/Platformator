@@ -2,54 +2,69 @@
 
 #include <iostream>
 
+#include "mario_coin.h"
+#include "mario_helpers.h"
+#include "mario_player.h"
+
 namespace mario
 {
+    MarioGame *MarioGame::instance = nullptr;
+
     MarioGame::MarioGame(GameManager &gameManager, SDLWindow &window, Scene &scene)
         : gameManager(gameManager),
           window(window),
           scene(scene),
-          player(),
-          cameraRig(),
-          enemies(),
-          coins(),
-          goal(),
-          enemiesByObject(),
-          coinsByObject(),
+          player(nullptr),
           jumpAudio(nullptr),
           coinAudio(nullptr),
           stompAudio(nullptr),
           hurtAudio(nullptr),
           winAudio(nullptr),
+          totalCoins(0),
           collectedCoins(0),
-          gameWon(false),
-          titleDirty(true)
+          gameWon(false)
     {
-        cacheSceneObjects();
+        instance = this;
         registerEventHooks();
-        updateWindowTitle();
     }
 
-    void MarioGame::update(double timeDelta)
+    MarioGame::~MarioGame()
     {
-        if (player != nullptr)
+        if (instance == this)
         {
-            player->update(*this, timeDelta);
+            instance = nullptr;
+        }
+    }
+
+    MarioGame &MarioGame::getInstance()
+    {
+        return *instance;
+    }
+
+    void MarioGame::initializeScene()
+    {
+        jumpAudio = getAudioEmitter("SFX Jump");
+        coinAudio = getAudioEmitter("SFX Coin");
+        stompAudio = getAudioEmitter("SFX Stomp");
+        hurtAudio = getAudioEmitter("SFX Hurt");
+        winAudio = getAudioEmitter("SFX Win");
+
+        player = nullptr;
+        totalCoins = 0;
+        for (GameObject *gameObject : gameManager.getGameObjects())
+        {
+            if (player == nullptr)
+            {
+                player = getBehavior<MarioPlayer>(gameObject);
+            }
+
+            if (getBehavior<MarioCoin>(gameObject) != nullptr)
+            {
+                totalCoins++;
+            }
         }
 
-        for (const std::unique_ptr<MarioPatrolEnemy> &enemy : enemies)
-        {
-            enemy->update(timeDelta);
-        }
-
-        if (cameraRig != nullptr)
-        {
-            cameraRig->update();
-        }
-
-        if (titleDirty)
-        {
-            updateWindowTitle();
-        }
+        updateWindowTitle();
     }
 
     bool MarioGame::isGameWon() const
@@ -59,7 +74,7 @@ namespace mario
 
     size_t MarioGame::getCoinCount() const
     {
-        return coins.size();
+        return totalCoins;
     }
 
     size_t MarioGame::getCollectedCoinCount() const
@@ -67,33 +82,16 @@ namespace mario
         return collectedCoins;
     }
 
-    MarioPatrolEnemy *MarioGame::findEnemy(GameObject *gameObject) const
+    MarioPlayer *MarioGame::getPlayer() const
     {
-        auto it = enemiesByObject.find(gameObject);
-        return it != enemiesByObject.end() ? it->second : nullptr;
-    }
-
-    MarioCoin *MarioGame::findCoin(GameObject *gameObject) const
-    {
-        auto it = coinsByObject.find(gameObject);
-        return it != coinsByObject.end() ? it->second : nullptr;
-    }
-
-    MarioGoalFlag *MarioGame::findGoal(GameObject *gameObject) const
-    {
-        if (goal == nullptr || goal->getGameObject() != gameObject)
-        {
-            return nullptr;
-        }
-
-        return goal.get();
+        return player;
     }
 
     void MarioGame::onCoinCollected()
     {
         collectedCoins++;
-        titleDirty = true;
         playCoinSound();
+        updateWindowTitle();
     }
 
     void MarioGame::winLevel()
@@ -109,9 +107,9 @@ namespace mario
             player->stopForWin();
         }
 
-        titleDirty = true;
         playWinSound();
-        std::cout << "Level clear. Coins collected: " << collectedCoins << '/' << coins.size() << '\n';
+        std::cout << "Level clear. Coins collected: " << collectedCoins << '/' << totalCoins << '\n';
+        updateWindowTitle();
     }
 
     void MarioGame::playJumpSound()
@@ -139,74 +137,16 @@ namespace mario
         replayAudio(winAudio);
     }
 
-    void MarioGame::cacheSceneObjects()
-    {
-        jumpAudio = getAudioEmitter("SFX Jump");
-        coinAudio = getAudioEmitter("SFX Coin");
-        stompAudio = getAudioEmitter("SFX Stomp");
-        hurtAudio = getAudioEmitter("SFX Hurt");
-        winAudio = getAudioEmitter("SFX Win");
-
-        if (GameObject *playerObject = gameManager.getGameObject("Player"))
-        {
-            player = std::make_unique<MarioPlayer>(playerObject);
-        }
-
-        size_t enemyIndex = 0;
-        for (GameObject *gameObject : gameManager.getGameObjects())
-        {
-            if (gameObject == nullptr)
-            {
-                continue;
-            }
-
-            const std::string &tag = gameObject->getTag();
-            if (tag == "enemy")
-            {
-                const float spawnX = gameObject->getX();
-                const float patrolHalfRange = enemyIndex == 0 ? 90.0f : 110.0f;
-                auto enemy = std::make_unique<MarioPatrolEnemy>(gameObject, spawnX - patrolHalfRange, spawnX + patrolHalfRange, enemyIndex % 2 == 0 ? -1.0f : 1.0f);
-                enemiesByObject[gameObject] = enemy.get();
-                enemies.push_back(std::move(enemy));
-                enemyIndex++;
-                continue;
-            }
-
-            if (tag == "coin")
-            {
-                auto coin = std::make_unique<MarioCoin>(gameObject);
-                coinsByObject[gameObject] = coin.get();
-                coins.push_back(std::move(coin));
-                continue;
-            }
-
-            if (tag == "goal")
-            {
-                goal = std::make_unique<MarioGoalFlag>(gameObject);
-            }
-        }
-
-        cameraRig = std::make_unique<MarioCameraRig>(window.getMainCamera(), player.get());
-    }
-
     void MarioGame::registerEventHooks()
     {
-        if (player != nullptr)
-        {
-            player->registerCallbacks(*this);
-        }
-
         window.addSdlListener([this](SDL_Event event, double)
                               {
-        if (event.type != SDL_EVENT_KEY_DOWN)
-        {
-            return;
-        }
+            if (event.type != SDL_EVENT_KEY_DOWN)
+            {
+                return;
+            }
 
-        handleSdlKeyDown(event.key.key); });
-
-        gameManager.addUserScriptListeners([this](double timeDelta)
-                                           { update(timeDelta); });
+            handleSdlKeyDown(event.key.key); });
     }
 
     void MarioGame::handleSdlKeyDown(SDL_Keycode key)
@@ -221,13 +161,6 @@ namespace mario
             {
                 std::cout << "Failed to save Mario example scene: " << exception.what() << '\n';
             }
-            return;
-        }
-
-        if (player != nullptr)
-        {
-            player->handleKeyDown(key);
-            titleDirty = true;
         }
     }
 
@@ -239,34 +172,22 @@ namespace mario
 
     void MarioGame::updateWindowTitle()
     {
-        if (window.getWindow() == nullptr)
-        {
-            return;
-        }
-
-        std::string title = "Platformator Mario Example - Coins " + std::to_string(collectedCoins) + "/" + std::to_string(coins.size());
+        std::string title = "Platformator Mario Example - Coins " + std::to_string(collectedCoins) + "/" + std::to_string(totalCoins);
         if (gameWon)
         {
             title += " - Level Clear";
         }
 
         SDL_SetWindowTitle(window.getWindow(), title.c_str());
-        titleDirty = false;
     }
 
     Audio *MarioGame::getAudioEmitter(const std::string &name) const
     {
-        GameObject *audioObject = gameManager.getGameObject(name);
-        return audioObject != nullptr ? audioObject->getComponent<Audio>() : nullptr;
+        return gameManager.getGameObject(name)->getComponent<Audio>();
     }
 
     void MarioGame::replayAudio(Audio *audio) const
     {
-        if (audio == nullptr)
-        {
-            return;
-        }
-
         audio->stop();
         audio->play();
     }

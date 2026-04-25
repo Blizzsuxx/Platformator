@@ -11,18 +11,21 @@ class Sprite;
 
 namespace mario
 {
-    class MarioGame;
-
     class MarioPlayer : public MarioEntity
     {
     public:
-        explicit MarioPlayer(GameObject *gameObject);
+        MarioPlayer();
 
-        void registerCallbacks(MarioGame &game);
-        void update(MarioGame &game, double timeDelta);
-        void handleKeyDown(SDL_Keycode key);
-        void respawn();
-        void defeat(MarioGame &game);
+        std::string getTypeName() const override;
+        void deserialize(const ScriptDescriptor &descriptor) override;
+        void serialize(ScriptDescriptor &descriptor) const override;
+
+        void fixedUpdate(double timeDelta) override;
+        void update(double timeDelta) override;
+        void onCollisionEnter(Collider *other, double timeDelta) override;
+        void onTriggerEnter(Collider *other, double timeDelta) override;
+
+        void defeat();
         void bounceAfterStomp();
         void stopForWin();
 
@@ -32,16 +35,22 @@ namespace mario
 
     private:
         Rigidbody *body;
-        Collider *collider;
         Animator *animator;
         Sprite *sprite;
+        float walkSpeed;
+        float jumpSpeed;
+        float gravity;
+        float maxFallSpeed;
+        float stompBounceFactor;
         Eigen::Vector2f spawn;
         Eigen::Vector2f positionBeforePhysics;
         Eigen::Vector2f velocityBeforePhysics;
         bool jumpWasPressed;
+        bool respawnWasPressed;
 
-        void handleCollisionEnter(MarioGame &game, Collider *other);
-        void updateInput(MarioGame &game, double timeDelta);
-        void updateAnimation(const MarioGame &game);
+        void awake() override;
+        void respawn();
+        void updateInput(double timeDelta);
+        void updateAnimation();
     };
 } // namespace mario

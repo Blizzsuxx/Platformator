@@ -66,6 +66,9 @@ public:
     void update(double timeDelta);
     const std::string &getCurrentClipName() const;
 
+    size_t getGameManagerIndex() const;
+    void setGameManagerIndex(size_t index);
+
 private:
     std::vector<AnimationClip> clips;
     size_t currentClipIndex;
@@ -73,6 +76,7 @@ private:
     double accumulatedTime;
     float playbackSpeed;
     bool playing;
+    size_t gameManagerIndex;
 
     size_t findClipIndex(const std::string &name) const;
     double getCurrentFrameDuration() const;

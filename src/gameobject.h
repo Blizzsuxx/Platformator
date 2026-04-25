@@ -15,6 +15,7 @@ enum ComponentType
     CAMERA,
     COLLIDER,
     RIGID_BODY,
+    SCRIPT,
     SPRITE,
     COMPONENT_TYPE_COUNT // must be last
 };

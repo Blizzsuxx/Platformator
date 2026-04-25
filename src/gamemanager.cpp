@@ -4,9 +4,10 @@
 
 #include "animator.h"
 #include "audio.h"
+#include "scriptcomponent.h"
 #include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), textureCache(), gameObjectsToDelete(), scenes(), userScriptListeners(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -184,13 +185,15 @@ void GameManager::loop()
                 deltaTime = FRAME_TIME;
             }
 
+            fixedUpdateScriptComponents(deltaTime);
             physicsManager->checkForCollisions();
             physicsManager->applyPhysics(deltaTime);
             physicsManager->resolveCollisions(deltaTime);
             physicsManager->applyMovement(deltaTime);
             physicsManager->handlePendingPhysicsEvents(deltaTime);
-            handleUserScriptListeners(deltaTime);
+            updateScriptComponents(deltaTime);
             updateAnimatorComponents(deltaTime);
+            lateUpdateScriptComponents(deltaTime);
         }
 
         window->render();
@@ -202,19 +205,15 @@ void GameManager::loop()
 
 void GameManager::simulateFrame(double timeDelta)
 {
-    if (physicsManager == nullptr)
-    {
-        deleteMarkedGameObjects();
-        return;
-    }
-
+    fixedUpdateScriptComponents(timeDelta);
     physicsManager->checkForCollisions();
     physicsManager->applyPhysics(timeDelta);
     physicsManager->resolveCollisions(timeDelta);
     physicsManager->applyMovement(timeDelta);
     physicsManager->handlePendingPhysicsEvents(timeDelta);
-    handleUserScriptListeners(timeDelta);
+    updateScriptComponents(timeDelta);
     updateAnimatorComponents(timeDelta);
+    lateUpdateScriptComponents(timeDelta);
     deleteMarkedGameObjects();
 }
 
@@ -302,16 +301,18 @@ void GameManager::notifyRuntimeOfComponentAdded(Component *component)
     if (component->getType() == ComponentType::ANIMATOR)
     {
         Animator *animator = static_cast<Animator *>(component);
+        size_t index = animatorComponents.size();
+        animator->setGameManagerIndex(index);
         animatorComponents.push_back(animator);
     }
-    // else if (component->getType() == ComponentType::AUDIO)
-    // {
-    //     Audio *audio = static_cast<Audio *>(component);
-    //     if (audio->getAutoPlay())
-    //     {
-    //         audio->play();
-    //     }
-    // }
+    else if (component->getType() == ComponentType::SCRIPT)
+    {
+        ScriptComponent *scriptComponent = static_cast<ScriptComponent *>(component);
+        size_t index = scriptComponents.size();
+        scriptComponent->setGameManagerIndex(index);
+        scriptComponents.push_back(scriptComponent);
+        scriptComponent->onRuntimeAdded();
+    }
 }
 
 void GameManager::notifyRuntimeOfComponentRemoved(Component *component)
@@ -324,7 +325,23 @@ void GameManager::notifyRuntimeOfComponentRemoved(Component *component)
     if (component->getType() == ComponentType::ANIMATOR)
     {
         Animator *animator = static_cast<Animator *>(component);
-        animatorComponents.erase(std::remove(animatorComponents.begin(), animatorComponents.end(), animator), animatorComponents.end());
+        size_t index = animator->getGameManagerIndex();
+        Animator *lastAnimator = animatorComponents.back();
+        animatorComponents[index] = lastAnimator;
+        lastAnimator->setGameManagerIndex(index);
+        animator->setGameManagerIndex(SIZE_MAX);
+        animatorComponents.pop_back();
+    }
+    else if (component->getType() == ComponentType::SCRIPT)
+    {
+        ScriptComponent *scriptComponent = static_cast<ScriptComponent *>(component);
+        size_t index = scriptComponent->getGameManagerIndex();
+        ScriptComponent *lastScriptComponent = scriptComponents.back();
+        scriptComponents[index] = lastScriptComponent;
+        lastScriptComponent->setGameManagerIndex(index);
+        scriptComponent->setGameManagerIndex(SIZE_MAX);
+        scriptComponents.pop_back();
+        scriptComponent->onRuntimeRemoved();
     }
     else if (component->getType() == ComponentType::AUDIO)
     {
@@ -411,16 +428,42 @@ void GameManager::deleteMarkedGameObjects()
     gameObjectsToDelete.clear();
 }
 
-void GameManager::addUserScriptListeners(const std::function<void(double)> &event)
+void GameManager::fixedUpdateScriptComponents(double timeDelta)
 {
-    userScriptListeners.push_back(event);
+    for (ScriptComponent *scriptComponent : scriptComponents)
+    {
+        if (!scriptComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
+
+        scriptComponent->fixedUpdate(timeDelta);
+    }
 }
 
-void GameManager::handleUserScriptListeners(double timeDelta)
+void GameManager::updateScriptComponents(double timeDelta)
 {
-    for (const std::function<void(double)> &event : userScriptListeners)
+    for (ScriptComponent *scriptComponent : scriptComponents)
     {
-        event(timeDelta);
+        if (!scriptComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
+
+        scriptComponent->update(timeDelta);
+    }
+}
+
+void GameManager::lateUpdateScriptComponents(double timeDelta)
+{
+    for (ScriptComponent *scriptComponent : scriptComponents)
+    {
+        if (!scriptComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
+
+        scriptComponent->lateUpdate(timeDelta);
     }
 }
 
@@ -428,7 +471,7 @@ void GameManager::updateAnimatorComponents(double timeDelta)
 {
     for (Animator *animator : animatorComponents)
     {
-        if (animator == nullptr || !animator->getGameObject()->getActive())
+        if (!animator->getGameObject()->getActive())
         {
             continue;
         }
@@ -472,4 +515,18 @@ void GameManager::freeAudio(AudioWrapper *audioWrapper)
 void GameManager::freeAllAudio()
 {
     audioCache.clear();
+}
+
+void GameManager::addStartedBehavior(Behavior *behavior)
+{
+    startedBehaviors.push_back(behavior);
+}
+
+void GameManager::triggerStartedBehaviors()
+{
+    for (Behavior *behavior : startedBehaviors)
+    {
+        behavior->start();
+    }
+    startedBehaviors.clear();
 }

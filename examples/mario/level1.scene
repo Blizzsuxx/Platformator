@@ -3,6 +3,12 @@ object {
     camera {
         viewport 0 0 640 480
     }
+    script {
+        type "MarioCameraRig"
+        target "Player"
+        cameralead 90
+        levelwidth 2240
+    }
 }
 
 object {
@@ -139,6 +145,14 @@ object {
             frame "assets/player/idle_0.png"
             frame "assets/player/idle_1.png"
         }
+    }
+    script {
+        type "MarioPlayer"
+        walkspeed 180
+        jumpspeed 250
+        gravity 358.065
+        maxfallspeed 460
+        stompbouncefactor 0.65
     }
 }
 
@@ -485,6 +499,9 @@ object {
             frame "assets/items/coin_3.png"
         }
     }
+    script {
+        type "MarioCoin"
+    }
 }
 
 object {
@@ -526,6 +543,9 @@ object {
             frame "assets/items/coin_2.png"
             frame "assets/items/coin_3.png"
         }
+    }
+    script {
+        type "MarioCoin"
     }
 }
 
@@ -569,6 +589,9 @@ object {
             frame "assets/items/coin_3.png"
         }
     }
+    script {
+        type "MarioCoin"
+    }
 }
 
 object {
@@ -611,6 +634,9 @@ object {
             frame "assets/items/coin_3.png"
         }
     }
+    script {
+        type "MarioCoin"
+    }
 }
 
 object {
@@ -652,6 +678,9 @@ object {
             frame "assets/items/coin_2.png"
             frame "assets/items/coin_3.png"
         }
+    }
+    script {
+        type "MarioCoin"
     }
 }
 
@@ -700,6 +729,16 @@ object {
             frame "assets/enemies/squash.png"
         }
     }
+    script {
+        type "MarioPatrolEnemy"
+        minx 550
+        maxx 730
+        direction -1
+        walkspeed 55
+        stompminspeed 10
+        stomptolerance 14
+        squashduration 0.28
+    }
 }
 
 object {
@@ -747,6 +786,16 @@ object {
             frame "assets/enemies/squash.png"
         }
     }
+    script {
+        type "MarioPatrolEnemy"
+        minx 1450
+        maxx 1670
+        direction 1
+        walkspeed 55
+        stompminspeed 10
+        stomptolerance 14
+        squashduration 0.28
+    }
 }
 
 object {
@@ -785,5 +834,8 @@ object {
             size 32 192
             frame "assets/items/flag.png"
         }
+    }
+    script {
+        type "MarioGoalFlag"
     }
 }

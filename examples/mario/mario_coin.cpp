@@ -4,19 +4,32 @@
 
 namespace mario
 {
-    MarioCoin::MarioCoin(GameObject *gameObject) : MarioEntity(gameObject)
+    MarioCoin::MarioCoin()
     {
     }
 
-    bool MarioCoin::collect(MarioGame &game)
+    std::string MarioCoin::getTypeName() const
+    {
+        return "MarioCoin";
+    }
+
+    void MarioCoin::deserialize(const ScriptDescriptor &)
+    {
+    }
+
+    void MarioCoin::serialize(ScriptDescriptor &) const
+    {
+    }
+
+    bool MarioCoin::collect()
     {
         if (!isActive())
         {
             return false;
         }
 
-        gameObject->setActive(false);
-        game.onCoinCollected();
+        getGameObject()->setActive(false);
+        MarioGame::getInstance().onCoinCollected();
         return true;
     }
 } // namespace mario

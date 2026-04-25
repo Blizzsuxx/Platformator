@@ -34,12 +34,16 @@ public:
     void setGain(float gain);
     void setLoopCount(float loopCount);
 
+    size_t getGameManagerIndex() const;
+    void setGameManagerIndex(size_t index);
+
 private:
     AudioWrapper *audioWrapper;
     MIX_Track *track;
     float gain;
     int loopCount;
     bool autoPlay;
+    size_t gameManagerIndex;
 
     void freeAudio();
 };

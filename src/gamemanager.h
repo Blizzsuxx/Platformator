@@ -7,6 +7,8 @@
 #include "audiowrapper.h"
 
 class Animator;
+class ScriptComponent;
+class Behavior;
 
 class GameManager
 {
@@ -16,6 +18,7 @@ class GameManager
     friend class Rigidbody;
     friend class SDLWindow;
     friend class ColliderPair;
+    friend class ScriptComponent;
 
 public:
     static GameManager &getInstance()
@@ -49,8 +52,6 @@ public:
     std::vector<Scene> &getScenes();
     void addScene(const Scene &scene);
 
-    void addUserScriptListeners(const std::function<void(double)> &event);
-
 private:
     GameManager();
     ~GameManager();
@@ -58,11 +59,12 @@ private:
     SDLWindow *window;
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
+    std::vector<ScriptComponent *> scriptComponents;
     std::unordered_map<std::string, TextureWrapper> textureCache;
     std::unordered_map<std::string, AudioWrapper> audioCache;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<Scene> scenes;
-    std::vector<std::function<void(double)>> userScriptListeners;
+    std::vector<Behavior *> startedBehaviors;
 
     PhysicsManager *physicsManager;
 
@@ -92,6 +94,11 @@ private:
 
     void setPhysicsManager(PhysicsManager *physicsManager);
     PhysicsManager *getPhysicsManager() const;
-    void handleUserScriptListeners(double timeDelta);
+    void fixedUpdateScriptComponents(double timeDelta);
+    void updateScriptComponents(double timeDelta);
+    void lateUpdateScriptComponents(double timeDelta);
     void updateAnimatorComponents(double timeDelta);
+    void triggerStartedBehaviors();
+
+    void addStartedBehavior(Behavior *behavior);
 };

@@ -3,9 +3,10 @@
 #include "localsortarray.h"
 #include "gridcell.h"
 #include "segmentedintervallist.h"
+#include "scriptcomponent.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), collisionEnterCallbacks(), collisionExitCallbacks(), collisionStayCallbacks()
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0))
 {
 }
 
@@ -97,25 +98,28 @@ void Collider::applySync()
 
 void Collider::triggerCollisionEnter(const Collider *other, double timeDelta) const
 {
-    for (const auto &callback : collisionEnterCallbacks)
+    ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
+    if (scriptComponent != nullptr)
     {
-        callback(const_cast<Collider *>(other), timeDelta);
+        scriptComponent->dispatchCollisionEnter(const_cast<Collider *>(other), timeDelta);
     }
 }
 
 void Collider::triggerCollisionExit(const Collider *other, double timeDelta) const
 {
-    for (const auto &callback : collisionExitCallbacks)
+    ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
+    if (scriptComponent != nullptr)
     {
-        callback(const_cast<Collider *>(other), timeDelta);
+        scriptComponent->dispatchCollisionExit(const_cast<Collider *>(other), timeDelta);
     }
 }
 
 void Collider::triggerCollisionStay(const Collider *other, double timeDelta) const
 {
-    for (const auto &callback : collisionStayCallbacks)
+    ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
+    if (scriptComponent != nullptr)
     {
-        callback(const_cast<Collider *>(other), timeDelta);
+        scriptComponent->dispatchCollisionStay(const_cast<Collider *>(other), timeDelta);
     }
 }
 
@@ -221,19 +225,4 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     {
         flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
     }
-}
-
-void Collider::addCollisionEnterCallback(const std::function<void(Collider *, double)> &callback)
-{
-    collisionEnterCallbacks.push_back(callback);
-}
-
-void Collider::addCollisionExitCallback(const std::function<void(Collider *, double)> &callback)
-{
-    collisionExitCallbacks.push_back(callback);
-}
-
-void Collider::addCollisionStayCallback(const std::function<void(Collider *, double)> &callback)
-{
-    collisionStayCallbacks.push_back(callback);
 }

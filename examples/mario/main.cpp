@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <iostream>
 #include "gamemanager.h"
+#include "mario_behavior_registry.h"
 #include "mario_game.h"
 #include "scene.h"
 
@@ -27,9 +28,11 @@ int main(int argc, char *args[])
     {
         gameManager.addScene(Scene(scenePath.string()));
         Scene &loadedScene = gameManager.getScenes().back();
-        gameManager.loadScene(loadedScene);
 
         mario::MarioGame marioGame(gameManager, *window, loadedScene);
+        mario::registerMarioBehaviorFactories();
+        gameManager.loadScene(loadedScene);
+        marioGame.initializeScene();
         gameManager.loop();
     }
     catch (const std::exception &exception)

@@ -4,18 +4,31 @@
 
 namespace mario
 {
-    MarioGoalFlag::MarioGoalFlag(GameObject *gameObject) : MarioEntity(gameObject)
+    MarioGoalFlag::MarioGoalFlag()
     {
     }
 
-    bool MarioGoalFlag::reach(MarioGame &game)
+    std::string MarioGoalFlag::getTypeName() const
+    {
+        return "MarioGoalFlag";
+    }
+
+    void MarioGoalFlag::deserialize(const ScriptDescriptor &)
+    {
+    }
+
+    void MarioGoalFlag::serialize(ScriptDescriptor &) const
+    {
+    }
+
+    bool MarioGoalFlag::reach()
     {
         if (!isActive())
         {
             return false;
         }
 
-        game.winLevel();
+        MarioGame::getInstance().winLevel();
         return true;
     }
 } // namespace mario

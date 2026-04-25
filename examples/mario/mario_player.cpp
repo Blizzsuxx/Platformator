@@ -16,53 +16,70 @@
 
 namespace mario
 {
-    MarioPlayer::MarioPlayer(GameObject *gameObject)
-        : MarioEntity(gameObject),
-          body(gameObject != nullptr ? gameObject->getComponent<Rigidbody>() : nullptr),
-          collider(gameObject != nullptr ? static_cast<Collider *>(gameObject->getComponent(ComponentType::COLLIDER)) : nullptr),
-          animator(gameObject != nullptr ? gameObject->getComponent<Animator>() : nullptr),
-          sprite(gameObject != nullptr ? gameObject->getComponent<Sprite>() : nullptr),
-          spawn(gameObject != nullptr ? gameObject->getPosition() : Eigen::Vector2f::Zero()),
-          positionBeforePhysics(spawn),
-          velocityBeforePhysics(body != nullptr ? body->getVelocity() : Eigen::Vector2f::Zero()),
-          jumpWasPressed(false)
+    MarioPlayer::MarioPlayer()
+        : body(nullptr),
+          animator(nullptr),
+          sprite(nullptr),
+          walkSpeed(PLAYER_WALK_SPEED),
+          jumpSpeed(PLAYER_JUMP_SPEED),
+          gravity(PLAYER_GRAVITY),
+          maxFallSpeed(PLAYER_MAX_FALL_SPEED),
+          stompBounceFactor(0.65f),
+          spawn(Eigen::Vector2f::Zero()),
+          positionBeforePhysics(Eigen::Vector2f::Zero()),
+          velocityBeforePhysics(Eigen::Vector2f::Zero()),
+          jumpWasPressed(false),
+          respawnWasPressed(false)
     {
     }
 
-    void MarioPlayer::registerCallbacks(MarioGame &game)
+    std::string MarioPlayer::getTypeName() const
     {
-        if (collider == nullptr)
-        {
-            return;
-        }
-
-        collider->addCollisionEnterCallback([this, &game](Collider *other, double)
-                                            { handleCollisionEnter(game, other); });
+        return "MarioPlayer";
     }
 
-    void MarioPlayer::update(MarioGame &game, double timeDelta)
+    void MarioPlayer::deserialize(const ScriptDescriptor &descriptor)
     {
-        updateInput(game, timeDelta);
-        updateAnimation(game);
+        walkSpeed = descriptor.getFloat("walkspeed", walkSpeed);
+        jumpSpeed = descriptor.getFloat("jumpspeed", jumpSpeed);
+        gravity = descriptor.getFloat("gravity", gravity);
+        maxFallSpeed = descriptor.getFloat("maxfallspeed", maxFallSpeed);
+        stompBounceFactor = descriptor.getFloat("stompbouncefactor", stompBounceFactor);
     }
 
-    void MarioPlayer::handleKeyDown(SDL_Keycode key)
+    void MarioPlayer::serialize(ScriptDescriptor &descriptor) const
     {
-        if (key == SDLK_R)
-        {
-            respawn();
-        }
+        descriptor.setFloatProperty("walkspeed", walkSpeed);
+        descriptor.setFloatProperty("jumpspeed", jumpSpeed);
+        descriptor.setFloatProperty("gravity", gravity);
+        descriptor.setFloatProperty("maxfallspeed", maxFallSpeed);
+        descriptor.setFloatProperty("stompbouncefactor", stompBounceFactor);
+    }
+
+    void MarioPlayer::awake()
+    {
+        body = getComponent<Rigidbody>();
+        animator = getComponent<Animator>();
+        sprite = getComponent<Sprite>();
+        spawn = getGameObject()->getPosition();
+        positionBeforePhysics = spawn;
+        velocityBeforePhysics = body->getVelocity();
+    }
+
+    void MarioPlayer::fixedUpdate(double timeDelta)
+    {
+        updateInput(timeDelta);
+    }
+
+    void MarioPlayer::update(double)
+    {
+        updateAnimation();
     }
 
     void MarioPlayer::respawn()
     {
-        if (gameObject == nullptr || body == nullptr)
-        {
-            return;
-        }
-
-        gameObject->setPosition(spawn);
-        gameObject->setRotation(0.0f);
+        getGameObject()->setPosition(spawn);
+        getGameObject()->setRotation(0.0f);
         body->setVelocity(Eigen::Vector2f::Zero());
         body->setAngularVelocity(0.0f);
         body->setForce(Eigen::Vector2f::Zero());
@@ -73,8 +90,9 @@ namespace mario
         jumpWasPressed = false;
     }
 
-    void MarioPlayer::defeat(MarioGame &game)
+    void MarioPlayer::defeat()
     {
+        MarioGame &game = MarioGame::getInstance();
         if (game.isGameWon() || !isActive())
         {
             return;
@@ -86,24 +104,14 @@ namespace mario
 
     void MarioPlayer::bounceAfterStomp()
     {
-        if (body == nullptr)
-        {
-            return;
-        }
-
         Eigen::Vector2f velocity = body->getVelocity();
-        velocity.y() = -PLAYER_JUMP_SPEED * 0.65f;
+        velocity.y() = -jumpSpeed * stompBounceFactor;
         body->setVelocity(velocity);
         velocityBeforePhysics = velocity;
     }
 
     void MarioPlayer::stopForWin()
     {
-        if (body == nullptr)
-        {
-            return;
-        }
-
         body->setVelocity(Eigen::Vector2f::Zero());
         velocityBeforePhysics = Eigen::Vector2f::Zero();
     }
@@ -123,46 +131,67 @@ namespace mario
         return velocityBeforePhysics;
     }
 
-    void MarioPlayer::handleCollisionEnter(MarioGame &game, Collider *other)
+    void MarioPlayer::onCollisionEnter(Collider *other, double)
     {
-        if (other == nullptr || body == nullptr || !isActive())
+        if (!isActive())
         {
             return;
         }
 
         GameObject *otherObject = other->getGameObject();
-        if (otherObject == nullptr || !otherObject->getActive())
+        if (!otherObject->getActive())
         {
             return;
         }
 
-        if (MarioCoin *coin = game.findCoin(otherObject))
+        if (MarioPatrolEnemy *enemy = getBehavior<MarioPatrolEnemy>(otherObject))
         {
-            coin->collect(game);
+            enemy->handlePlayerContact(*this);
+        }
+    }
+
+    void MarioPlayer::onTriggerEnter(Collider *other, double)
+    {
+        if (!isActive())
+        {
             return;
         }
 
-        if (MarioGoalFlag *goal = game.findGoal(otherObject))
+        GameObject *otherObject = other->getGameObject();
+        if (!otherObject->getActive())
         {
-            goal->reach(game);
             return;
         }
 
-        if (MarioPatrolEnemy *enemy = game.findEnemy(otherObject))
+        if (MarioCoin *coin = getBehavior<MarioCoin>(otherObject))
         {
-            enemy->handlePlayerContact(game, *this);
+            coin->collect();
+            return;
+        }
+
+        if (MarioGoalFlag *goal = getBehavior<MarioGoalFlag>(otherObject))
+        {
+            goal->reach();
             return;
         }
 
         if (otherObject->getTag() == "death")
         {
-            defeat(game);
+            defeat();
         }
     }
 
-    void MarioPlayer::updateInput(MarioGame &game, double timeDelta)
+    void MarioPlayer::updateInput(double timeDelta)
     {
-        if (!isActive() || body == nullptr || game.isGameWon())
+        MarioGame &game = MarioGame::getInstance();
+        const bool respawnPressed = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_R];
+        if (respawnPressed && !respawnWasPressed)
+        {
+            respawn();
+        }
+        respawnWasPressed = respawnPressed;
+
+        if (!isActive() || game.isGameWon())
         {
             return;
         }
@@ -175,7 +204,7 @@ namespace mario
         float horizontalVelocity = 0.0f;
         if (moveLeft != moveRight)
         {
-            horizontalVelocity = moveLeft ? -PLAYER_WALK_SPEED : PLAYER_WALK_SPEED;
+            horizontalVelocity = moveLeft ? -walkSpeed : walkSpeed;
         }
 
         const bool isGrounded = body->hasSupportContact();
@@ -188,7 +217,7 @@ namespace mario
         }
         else
         {
-            velocity.y() = std::min(velocity.y() + PLAYER_GRAVITY * static_cast<float>(timeDelta), PLAYER_MAX_FALL_SPEED);
+            velocity.y() = std::min(velocity.y() + gravity * static_cast<float>(timeDelta), maxFallSpeed);
         }
 
         if (sprite != nullptr)
@@ -205,19 +234,20 @@ namespace mario
 
         if (jumpPressed && !jumpWasPressed && isGrounded)
         {
-            velocity.y() = -PLAYER_JUMP_SPEED;
+            velocity.y() = -jumpSpeed;
             game.playJumpSound();
         }
 
         body->setVelocity(velocity);
-        positionBeforePhysics = gameObject->getPosition();
+        positionBeforePhysics = getGameObject()->getPosition();
         velocityBeforePhysics = velocity;
         jumpWasPressed = jumpPressed;
     }
 
-    void MarioPlayer::updateAnimation(const MarioGame &game)
+    void MarioPlayer::updateAnimation()
     {
-        if (!isActive() || body == nullptr || animator == nullptr)
+        MarioGame &game = MarioGame::getInstance();
+        if (!isActive() || animator == nullptr)
         {
             return;
         }

@@ -11,23 +11,68 @@
 
 namespace mario
 {
-    MarioPatrolEnemy::MarioPatrolEnemy(GameObject *gameObject, float minX, float maxX, float direction)
-        : MarioEntity(gameObject),
-          body(gameObject != nullptr ? gameObject->getComponent<Rigidbody>() : nullptr),
-          collider(gameObject != nullptr ? static_cast<Collider *>(gameObject->getComponent(ComponentType::COLLIDER)) : nullptr),
-          animator(gameObject != nullptr ? gameObject->getComponent<Animator>() : nullptr),
-          sprite(gameObject != nullptr ? gameObject->getComponent<Sprite>() : nullptr),
-          minX(minX),
-          maxX(maxX),
-          direction(direction),
+    MarioPatrolEnemy::MarioPatrolEnemy()
+        : body(nullptr),
+          collider(nullptr),
+          animator(nullptr),
+          sprite(nullptr),
+          minX(0.0f),
+          maxX(0.0f),
+          direction(-1.0f),
+          walkSpeed(ENEMY_WALK_SPEED),
+          stompMinSpeed(10.0f),
+          stompTolerance(STOMP_TOLERANCE),
+          squashDuration(static_cast<float>(ENEMY_SQUASH_DURATION)),
           defeated(false),
           defeatedTimer(0.0)
     {
     }
 
-    void MarioPatrolEnemy::update(double timeDelta)
+    std::string MarioPatrolEnemy::getTypeName() const
     {
-        if (!isActive() || body == nullptr)
+        return "MarioPatrolEnemy";
+    }
+
+    void MarioPatrolEnemy::deserialize(const ScriptDescriptor &descriptor)
+    {
+        minX = descriptor.getFloat("minx", minX);
+        maxX = descriptor.getFloat("maxx", maxX);
+        direction = descriptor.getFloat("direction", direction);
+        walkSpeed = descriptor.getFloat("walkspeed", walkSpeed);
+        stompMinSpeed = descriptor.getFloat("stompminspeed", stompMinSpeed);
+        stompTolerance = descriptor.getFloat("stomptolerance", stompTolerance);
+        squashDuration = descriptor.getFloat("squashduration", squashDuration);
+    }
+
+    void MarioPatrolEnemy::serialize(ScriptDescriptor &descriptor) const
+    {
+        descriptor.setFloatProperty("minx", minX);
+        descriptor.setFloatProperty("maxx", maxX);
+        descriptor.setFloatProperty("direction", direction);
+        descriptor.setFloatProperty("walkspeed", walkSpeed);
+        descriptor.setFloatProperty("stompminspeed", stompMinSpeed);
+        descriptor.setFloatProperty("stomptolerance", stompTolerance);
+        descriptor.setFloatProperty("squashduration", squashDuration);
+    }
+
+    void MarioPatrolEnemy::awake()
+    {
+        body = getComponent<Rigidbody>();
+        collider = getComponent<Collider>();
+        animator = getComponent<Animator>();
+        sprite = getComponent<Sprite>();
+
+        if (maxX <= minX)
+        {
+            float spawnX = getGameObject()->getX();
+            minX = spawnX - 90.0f;
+            maxX = spawnX + 90.0f;
+        }
+    }
+
+    void MarioPatrolEnemy::fixedUpdate(double timeDelta)
+    {
+        if (!isActive())
         {
             return;
         }
@@ -37,22 +82,22 @@ namespace mario
             defeatedTimer -= timeDelta;
             if (defeatedTimer <= 0.0)
             {
-                gameObject->setActive(false);
+                getGameObject()->setActive(false);
             }
             return;
         }
 
-        if (gameObject->getX() <= minX)
+        if (getGameObject()->getX() <= minX)
         {
             direction = 1.0f;
         }
-        else if (gameObject->getX() >= maxX)
+        else if (getGameObject()->getX() >= maxX)
         {
             direction = -1.0f;
         }
 
         Eigen::Vector2f velocity = body->getVelocity();
-        velocity.x() = direction * ENEMY_WALK_SPEED;
+        velocity.x() = direction * walkSpeed;
         body->setVelocity(velocity);
 
         if (sprite != nullptr)
@@ -63,27 +108,28 @@ namespace mario
         playClipIfChanged(animator, "walk");
     }
 
-    void MarioPatrolEnemy::handlePlayerContact(MarioGame &game, MarioPlayer &player)
+    void MarioPatrolEnemy::handlePlayerContact(MarioPlayer &player)
     {
+        MarioGame &game = MarioGame::getInstance();
         if (game.isGameWon() || !isActive() || defeated)
         {
             return;
         }
 
         const Bounds playerBounds = getBounds(player.getGameObject());
-        const Bounds enemyBounds = getBounds(gameObject);
+        const Bounds enemyBounds = getBounds(getGameObject());
         const float previousPlayerBottom = player.getPositionBeforePhysics().y() + playerBounds.halfExtents.y();
         const float enemyTop = enemyBounds.center.y() - enemyBounds.halfExtents.y();
-        const bool stomped = player.getVelocityBeforePhysics().y() > 10.0f && previousPlayerBottom <= enemyTop + STOMP_TOLERANCE;
+        const bool stomped = player.getVelocityBeforePhysics().y() > stompMinSpeed && previousPlayerBottom <= enemyTop + stompTolerance;
 
         if (!stomped)
         {
-            player.defeat(game);
+            player.defeat();
             return;
         }
 
         defeated = true;
-        defeatedTimer = ENEMY_SQUASH_DURATION;
+        defeatedTimer = squashDuration;
 
         if (collider != nullptr)
         {
@@ -101,7 +147,7 @@ namespace mario
         }
         else
         {
-            gameObject->setActive(false);
+            getGameObject()->setActive(false);
             defeatedTimer = 0.0;
         }
 

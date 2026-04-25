@@ -4,13 +4,15 @@
 
 namespace mario
 {
-    class MarioGame;
-
     class MarioCoin : public MarioEntity
     {
     public:
-        explicit MarioCoin(GameObject *gameObject);
+        MarioCoin();
 
-        bool collect(MarioGame &game);
+        std::string getTypeName() const override;
+        void deserialize(const ScriptDescriptor &descriptor) override;
+        void serialize(ScriptDescriptor &descriptor) const override;
+
+        bool collect();
     };
 } // namespace mario

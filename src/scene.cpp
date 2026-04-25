@@ -19,6 +19,8 @@
 #include "circlecollider.h"
 #include "gamemanager.h"
 #include "rigidbody.h"
+#include "scriptcomponent.h"
+#include "scriptdescriptor.h"
 #include "sprite.h"
 #include "texturewrapper.h"
 
@@ -125,12 +127,19 @@ namespace
         CameraConfig camera;
         AudioConfig audio;
         AnimatorConfig animator;
+        std::vector<ScriptDescriptor> scripts;
+    };
+
+    struct SceneToken
+    {
+        std::string value;
+        bool isString = false;
     };
 
     class TokenStream
     {
     public:
-        explicit TokenStream(std::vector<std::string> tokens) : tokens(std::move(tokens)), index(0)
+        explicit TokenStream(std::vector<SceneToken> tokens) : tokens(std::move(tokens)), index(0)
         {
         }
 
@@ -140,6 +149,11 @@ namespace
         }
 
         std::string consume()
+        {
+            return consumeToken().value;
+        }
+
+        SceneToken consumeToken()
         {
             if (empty())
             {
@@ -151,7 +165,7 @@ namespace
 
         bool match(const std::string &expected)
         {
-            if (!empty() && tokens[index] == expected)
+            if (!empty() && tokens[index].value == expected)
             {
                 index++;
                 return true;
@@ -162,15 +176,15 @@ namespace
 
         void expect(const std::string &expected)
         {
-            std::string token = consume();
-            if (token != expected)
+            SceneToken token = consumeToken();
+            if (token.value != expected)
             {
-                throw std::runtime_error("Expected '" + expected + "' but found '" + token + "'.");
+                throw std::runtime_error("Expected '" + expected + "' but found '" + token.value + "'.");
             }
         }
 
     private:
-        std::vector<std::string> tokens;
+        std::vector<SceneToken> tokens;
         size_t index;
     };
 
@@ -181,9 +195,9 @@ namespace
         return value;
     }
 
-    std::vector<std::string> tokenize(const std::string &contents)
+    std::vector<SceneToken> tokenize(const std::string &contents)
     {
-        std::vector<std::string> tokens;
+        std::vector<SceneToken> tokens;
         size_t index = 0;
 
         while (index < contents.size())
@@ -217,7 +231,7 @@ namespace
 
             if (currentCharacter == '{' || currentCharacter == '}')
             {
-                tokens.emplace_back(1, currentCharacter);
+                tokens.push_back(SceneToken{std::string(1, currentCharacter), false});
                 index++;
                 continue;
             }
@@ -244,7 +258,7 @@ namespace
                     token.push_back(stringCharacter);
                 }
 
-                tokens.push_back(token);
+                tokens.push_back(SceneToken{token, true});
                 continue;
             }
 
@@ -265,7 +279,7 @@ namespace
                 index++;
             }
 
-            tokens.push_back(contents.substr(start, index - start));
+            tokens.push_back(SceneToken{contents.substr(start, index - start), false});
         }
 
         return tokens;
@@ -874,6 +888,36 @@ namespace
         }
     }
 
+    ScriptDescriptor parseScriptBlock(TokenStream &tokens)
+    {
+        tokens.expect("{");
+
+        ScriptDescriptor descriptor;
+        while (true)
+        {
+            if (tokens.match("}"))
+            {
+                if (descriptor.type.empty())
+                {
+                    throw std::runtime_error("script requires a type.");
+                }
+
+                return descriptor;
+            }
+
+            std::string key = toLower(tokens.consume());
+            if (key == "type")
+            {
+                descriptor.type = tokens.consume();
+            }
+            else
+            {
+                SceneToken valueToken = tokens.consumeToken();
+                descriptor.setProperty(key, valueToken.value, valueToken.isString ? ScriptPropertyValueKind::String : ScriptPropertyValueKind::Raw);
+            }
+        }
+    }
+
     ObjectConfig parseObject(TokenStream &tokens)
     {
         std::string objectKeyword = toLower(tokens.consume());
@@ -944,6 +988,10 @@ namespace
             else if (key == "animator")
             {
                 parseAnimatorBlock(tokens, config.animator);
+            }
+            else if (key == "script")
+            {
+                config.scripts.push_back(parseScriptBlock(tokens));
             }
             else
             {
@@ -1109,6 +1157,21 @@ std::vector<GameObject *> Scene::loadScene()
                     gameObject->addComponentInternal(audio);
                 }
 
+                if (!config.scripts.empty())
+                {
+                    ScriptComponent *scriptComponent = new ScriptComponent(gameObject);
+                    for (const ScriptDescriptor &scriptDescriptor : config.scripts)
+                    {
+                        if (BehaviorFactoryRegistry::getInstance().createBehavior(scriptComponent, scriptDescriptor) == nullptr)
+                        {
+                            delete scriptComponent;
+                            throw std::runtime_error("Unknown script type '" + scriptDescriptor.type + "'.");
+                        }
+                    }
+
+                    gameObject->addComponentInternal(scriptComponent);
+                }
+
                 objects.push_back(gameObject);
             }
             catch (const std::exception &)
@@ -1160,6 +1223,7 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
         Camera *camera = gameObject->getComponent<Camera>();
         Audio *audio = gameObject->getComponent<Audio>();
         Animator *animator = gameObject->getComponent<Animator>();
+        ScriptComponent *scriptComponent = gameObject->getComponent<ScriptComponent>();
 
         if (wroteAnyObjects)
         {
@@ -1314,6 +1378,36 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
             }
 
             sceneFile << indent(1) << "}\n";
+        }
+
+        if (scriptComponent != nullptr)
+        {
+            for (const std::unique_ptr<Behavior> &behavior : scriptComponent->getBehaviors())
+            {
+                ScriptDescriptor descriptor;
+                descriptor.type = behavior->getTypeName();
+                if (descriptor.type.empty())
+                {
+                    continue;
+                }
+
+                behavior->serialize(descriptor);
+
+                sceneFile << indent(1) << "script {\n";
+                writeStringLine(sceneFile, 2, "type", descriptor.type);
+                for (const ScriptProperty &property : descriptor.properties)
+                {
+                    if (property.valueKind == ScriptPropertyValueKind::String)
+                    {
+                        writeStringLine(sceneFile, 2, property.name, property.value);
+                    }
+                    else
+                    {
+                        writeKeyValueLine(sceneFile, 2, property.name, property.value);
+                    }
+                }
+                sceneFile << indent(1) << "}\n";
+            }
         }
 
         sceneFile << "}\n";

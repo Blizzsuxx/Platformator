@@ -3,19 +3,55 @@
 #include <algorithm>
 
 #include "camera.h"
+#include "gamemanager.h"
 #include "mario_constants.h"
+#include "mario_helpers.h"
 #include "mario_player.h"
 #include "rigidbody.h"
 
 namespace mario
 {
-    MarioCameraRig::MarioCameraRig(Camera *camera, MarioPlayer *player) : camera(camera), player(player)
+    MarioCameraRig::MarioCameraRig() : camera(nullptr), player(nullptr), target("Player"), cameraLead(CAMERA_LEAD), levelWidth(LEVEL_WIDTH)
     {
     }
 
-    void MarioCameraRig::update() const
+    std::string MarioCameraRig::getTypeName() const
     {
-        if (camera == nullptr || player == nullptr || !player->isActive())
+        return "MarioCameraRig";
+    }
+
+    void MarioCameraRig::deserialize(const ScriptDescriptor &descriptor)
+    {
+        target = descriptor.getString("target", target);
+        cameraLead = descriptor.getFloat("cameralead", cameraLead);
+        levelWidth = descriptor.getFloat("levelwidth", levelWidth);
+    }
+
+    void MarioCameraRig::serialize(ScriptDescriptor &descriptor) const
+    {
+        descriptor.setStringProperty("target", target);
+        descriptor.setFloatProperty("cameralead", cameraLead);
+        descriptor.setFloatProperty("levelwidth", levelWidth);
+    }
+
+    void MarioCameraRig::awake()
+    {
+        camera = getComponent<Camera>();
+        player = nullptr;
+    }
+
+    void MarioCameraRig::lateUpdate(double)
+    {
+        if (player == nullptr)
+        {
+            player = getBehavior<MarioPlayer>(GameManager::getInstance().getGameObject(target));
+            if (player == nullptr)
+            {
+                return;
+            }
+        }
+
+        if (!player->isActive())
         {
             return;
         }
@@ -26,10 +62,10 @@ namespace mario
         Rigidbody *playerBody = player->getBody();
         if (playerBody != nullptr)
         {
-            targetX += std::clamp(playerBody->getVelocity().x() * 0.25f, -CAMERA_LEAD, CAMERA_LEAD);
+            targetX += std::clamp(playerBody->getVelocity().x() * 0.25f, -cameraLead, cameraLead);
         }
 
-        cameraRect.x = std::clamp(targetX, 0.0f, std::max(0.0f, LEVEL_WIDTH - cameraRect.w));
+        cameraRect.x = std::clamp(targetX, 0.0f, std::max(0.0f, levelWidth - cameraRect.w));
         cameraRect.y = 0.0f;
         camera->setCamera(cameraRect);
     }

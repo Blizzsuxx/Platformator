@@ -97,17 +97,53 @@ void ColliderPair::setAdjacencyIndexB(size_t index) const
 
 void ColliderPair::queueCollisionEnter() const
 {
-    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectA, objectB});
+    Collider *objectAOrMaybeNull = nullptr;
+    Collider *objectBOrMaybeNull = nullptr;
+
+    if (objectA != nullptr && !objectA->getGameObject()->getIsMarkedForDeletion())
+    {
+        objectAOrMaybeNull = objectA;
+    }
+    if (objectB != nullptr && !objectB->getGameObject()->getIsMarkedForDeletion())
+    {
+        objectBOrMaybeNull = objectB;
+    }
+
+    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionStay() const
 {
-    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectA, objectB});
+    Collider *objectAOrMaybeNull = nullptr;
+    Collider *objectBOrMaybeNull = nullptr;
+
+    if (objectA != nullptr && !objectA->getGameObject()->getIsMarkedForDeletion())
+    {
+        objectAOrMaybeNull = objectA;
+    }
+    if (objectB != nullptr && !objectB->getGameObject()->getIsMarkedForDeletion())
+    {
+        objectBOrMaybeNull = objectB;
+    }
+
+    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionExit() const
 {
-    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
+    Collider *objectAOrMaybeNull = nullptr;
+    Collider *objectBOrMaybeNull = nullptr;
+
+    if (objectA != nullptr && !objectA->getGameObject()->getIsMarkedForDeletion())
+    {
+        objectAOrMaybeNull = objectA;
+    }
+    if (objectB != nullptr && !objectB->getGameObject()->getIsMarkedForDeletion())
+    {
+        objectBOrMaybeNull = objectB;
+    }
+
+    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)

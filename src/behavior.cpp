@@ -1,6 +1,7 @@
 #include "behavior.h"
 
 #include "scriptcomponent.h"
+#include "collision.h"
 
 Behavior::Behavior()
     : gameObject(nullptr), enabled(true)
@@ -74,7 +75,7 @@ void Behavior::onDestroy()
 {
 }
 
-void Behavior::onCollisionEnter(Collider *, double)
+void Behavior::onCollisionEnter(const Collision *, Collider *, double)
 {
 }
 
@@ -82,7 +83,7 @@ void Behavior::onCollisionExit(Collider *, double)
 {
 }
 
-void Behavior::onCollisionStay(Collider *, double)
+void Behavior::onCollisionStay(const Collision *, Collider *, double)
 {
 }
 

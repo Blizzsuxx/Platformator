@@ -4,9 +4,10 @@
 #include "gridcell.h"
 #include "segmentedintervallist.h"
 #include "scriptcomponent.h"
+#include "collision.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0))
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
 {
 }
 
@@ -96,30 +97,30 @@ void Collider::applySync()
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
 }
 
-void Collider::triggerCollisionEnter(const Collider *other, double timeDelta) const
+void Collider::triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const
 {
     ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
     if (scriptComponent != nullptr)
     {
-        scriptComponent->dispatchCollisionEnter(const_cast<Collider *>(other), timeDelta);
+        scriptComponent->dispatchCollisionEnter(collision, other, timeDelta);
     }
 }
 
-void Collider::triggerCollisionExit(const Collider *other, double timeDelta) const
+void Collider::triggerCollisionExit(Collider *other, double timeDelta) const
 {
     ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
     if (scriptComponent != nullptr)
     {
-        scriptComponent->dispatchCollisionExit(const_cast<Collider *>(other), timeDelta);
+        scriptComponent->dispatchCollisionExit(other, timeDelta);
     }
 }
 
-void Collider::triggerCollisionStay(const Collider *other, double timeDelta) const
+void Collider::triggerCollisionStay(const Collision *collision, Collider *other, double timeDelta) const
 {
     ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
     if (scriptComponent != nullptr)
     {
-        scriptComponent->dispatchCollisionStay(const_cast<Collider *>(other), timeDelta);
+        scriptComponent->dispatchCollisionStay(collision, other, timeDelta);
     }
 }
 
@@ -225,4 +226,24 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     {
         flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
     }
+}
+
+void Collider::setPendingAddQueueIndex(size_t index)
+{
+    pendingAddQueueIndex = index;
+}
+
+size_t Collider::getPendingAddQueueIndex() const
+{
+    return pendingAddQueueIndex;
+}
+
+void Collider::setPendingSyncQueueIndex(size_t index)
+{
+    pendingSyncQueueIndex = index;
+}
+
+size_t Collider::getPendingSyncQueueIndex() const
+{
+    return pendingSyncQueueIndex;
 }

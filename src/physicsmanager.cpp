@@ -54,12 +54,13 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     }
 
     colliderComponent->markQueuedForAdd();
+    colliderComponent->setPendingAddQueueIndex(pendingColliderComponents.size());
     pendingColliderComponents.push_back(colliderComponent);
 }
 
 void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
+    if (!colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
     {
         return;
     }
@@ -72,7 +73,52 @@ void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
 
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {
-    pendingColliderSyncs.push_back(colliderComponent);
+    if (colliderComponent->getIsQueuedForSync())
+    {
+        return;
+    }
+
+    auto iterator = pendingColliderSyncs.push_back(colliderComponent);
+    colliderComponent->pendingSyncQueueIndex = static_cast<size_t>(iterator - pendingColliderSyncs.begin());
+}
+
+void PhysicsManager::dequeuePendingColliderComponent(Collider *colliderComponent)
+{
+    if (!colliderComponent->getIsQueuedForAdd())
+    {
+        return;
+    }
+
+    size_t removeIndex = colliderComponent->getPendingAddQueueIndex();
+    colliderComponent->setPendingAddQueueIndex(SIZE_MAX);
+    colliderComponent->clearQueuedForAdd();
+
+    size_t lastIndex = pendingColliderComponents.size() - 1;
+    if (removeIndex != lastIndex)
+    {
+        Collider *movedCollider = pendingColliderComponents[lastIndex];
+        pendingColliderComponents[removeIndex] = movedCollider;
+        movedCollider->setPendingAddQueueIndex(removeIndex);
+    }
+
+    pendingColliderComponents.pop_back();
+}
+
+void PhysicsManager::dequeuePendingColliderSync(Collider *colliderComponent)
+{
+    if (!colliderComponent->getIsQueuedForSync())
+    {
+        return;
+    }
+
+    size_t removeIndex = colliderComponent->getPendingSyncQueueIndex();
+    colliderComponent->setPendingSyncQueueIndex(SIZE_MAX);
+    colliderComponent->removeSync();
+
+    if (removeIndex < pendingColliderSyncs.size())
+    {
+        pendingColliderSyncs[removeIndex] = nullptr;
+    }
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -99,8 +145,8 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
-    colliderComponent->clearQueuedForAdd();
-    colliderComponent->removeSync();
+    dequeuePendingColliderComponent(colliderComponent);
+    dequeuePendingColliderSync(colliderComponent);
 
     if (!colliderComponent->getIsRegisteredInGrid())
     {
@@ -120,6 +166,12 @@ void PhysicsManager::flushPendingColliderSyncs()
 
     for (Collider *colliderComponent : pendingColliderSyncs)
     {
+        if (colliderComponent == nullptr)
+        {
+            continue;
+        }
+
+        colliderComponent->setPendingSyncQueueIndex(SIZE_MAX);
         if (!colliderComponent->getIsQueuedForSync())
         {
             continue;
@@ -140,6 +192,7 @@ void PhysicsManager::flushPendingColliderComponents()
 
     for (Collider *colliderComponent : pendingColliderComponents)
     {
+        colliderComponent->setPendingAddQueueIndex(SIZE_MAX);
         if (!colliderComponent->getIsQueuedForAdd())
         {
             continue;
@@ -669,22 +722,45 @@ void PhysicsManager::clearPendingPhysicsEvents()
 
 void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
 {
+    if (pendingPhysicsEvents.empty())
+    {
+        return;
+    }
+
     for (const PhysicsEvent &event : pendingPhysicsEvents)
     {
         if (event.type == PhysicsEvent::COLLISION_ENTER)
         {
-            event.colliderA->triggerCollisionEnter(event.colliderB, timeDelta);
-            event.colliderB->triggerCollisionEnter(event.colliderA, timeDelta);
+            if (event.colliderA != nullptr)
+            {
+                event.colliderA->triggerCollisionEnter(event.collision, event.colliderB, timeDelta);
+            }
+            if (event.colliderB != nullptr)
+            {
+                event.colliderB->triggerCollisionEnter(event.collision, event.colliderA, timeDelta);
+            }
         }
         else if (event.type == PhysicsEvent::COLLISION_STAY)
         {
-            event.colliderA->triggerCollisionStay(event.colliderB, timeDelta);
-            event.colliderB->triggerCollisionStay(event.colliderA, timeDelta);
+            if (event.colliderA != nullptr)
+            {
+                event.colliderA->triggerCollisionStay(event.collision, event.colliderB, timeDelta);
+            }
+            if (event.colliderB != nullptr)
+            {
+                event.colliderB->triggerCollisionStay(event.collision, event.colliderA, timeDelta);
+            }
         }
         else if (event.type == PhysicsEvent::COLLISION_EXIT)
         {
-            event.colliderA->triggerCollisionExit(event.colliderB, timeDelta);
-            event.colliderB->triggerCollisionExit(event.colliderA, timeDelta);
+            if (event.colliderA != nullptr)
+            {
+                event.colliderA->triggerCollisionExit(event.colliderB, timeDelta);
+            }
+            if (event.colliderB != nullptr)
+            {
+                event.colliderB->triggerCollisionExit(event.colliderA, timeDelta);
+            }
         }
     }
 

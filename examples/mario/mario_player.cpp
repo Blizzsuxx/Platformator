@@ -113,7 +113,7 @@ namespace mario
         return velocityBeforePhysics;
     }
 
-    void MarioPlayer::onCollisionEnter(Collider *other, double)
+    void MarioPlayer::onCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
     {
         if (!isActive())
         {

@@ -99,7 +99,7 @@ void ScriptComponent::destroyBehaviors()
     behaviors.clear();
 }
 
-void ScriptComponent::dispatchCollisionEnter(Collider *other, double timeDelta)
+void ScriptComponent::dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
 {
     const size_t behaviorCount = behaviors.size();
     for (size_t index = 0; index < behaviorCount; ++index)
@@ -110,7 +110,7 @@ void ScriptComponent::dispatchCollisionEnter(Collider *other, double timeDelta)
             continue;
         }
 
-        behavior->onCollisionEnter(other, timeDelta);
+        behavior->onCollisionEnter(collision, other, timeDelta);
     }
 }
 
@@ -129,7 +129,7 @@ void ScriptComponent::dispatchCollisionExit(Collider *other, double timeDelta)
     }
 }
 
-void ScriptComponent::dispatchCollisionStay(Collider *other, double timeDelta)
+void ScriptComponent::dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta)
 {
     const size_t behaviorCount = behaviors.size();
     for (size_t index = 0; index < behaviorCount; ++index)
@@ -140,7 +140,7 @@ void ScriptComponent::dispatchCollisionStay(Collider *other, double timeDelta)
             continue;
         }
 
-        behavior->onCollisionStay(other, timeDelta);
+        behavior->onCollisionStay(collision, other, timeDelta);
     }
 }
 

@@ -10,6 +10,7 @@ class LocalSortArray;
 class GridCell;
 class SegmentedIntervalList;
 class Edge;
+class Collision;
 
 class BoundingRadiusProjection
 {
@@ -122,6 +123,7 @@ enum ColliderFlags : uint8_t
 class Collider : public Component
 {
     friend class GameObject;
+    friend class PhysicsManager;
 
 public:
     Collider(GameObject *gameObject, ComponentType type);
@@ -131,9 +133,9 @@ public:
     virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
     virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
-    void triggerCollisionEnter(const Collider *other, double timeDelta) const;
-    void triggerCollisionExit(const Collider *other, double timeDelta) const;
-    void triggerCollisionStay(const Collider *other, double timeDelta) const;
+    void triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const;
+    void triggerCollisionExit(Collider *other, double timeDelta) const;
+    void triggerCollisionStay(const Collision *collision, Collider *other, double timeDelta) const;
 
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();
@@ -179,10 +181,19 @@ protected:
 
     GridCellRange gridCellRange;
     ColliderFlags flags;
+    size_t pendingAddQueueIndex;
+    size_t pendingSyncQueueIndex;
 
     void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
     void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
     void updateGridCellRange();
+
+    void setPendingAddQueueIndex(size_t index);
+    size_t getPendingAddQueueIndex() const;
+
+    void setPendingSyncQueueIndex(size_t index);
+    size_t getPendingSyncQueueIndex() const;
+
     virtual void updateCollider() = 0;
 };
 

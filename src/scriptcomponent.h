@@ -34,9 +34,9 @@ private:
     size_t gameManagerIndex;
 
     void destroyBehaviors();
-    void dispatchCollisionEnter(Collider *other, double timeDelta);
+    void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
     void dispatchCollisionExit(Collider *other, double timeDelta);
-    void dispatchCollisionStay(Collider *other, double timeDelta);
+    void dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 };
 
 template <>

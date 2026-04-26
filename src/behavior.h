@@ -11,6 +11,7 @@
 class Collider;
 class ScriptComponent;
 class Behavior;
+class Collision;
 
 namespace platformator_behavior_detail
 {
@@ -195,9 +196,9 @@ public:
     virtual void fixedUpdate(double timeDelta);
     virtual void lateUpdate(double timeDelta);
     virtual void onDestroy();
-    virtual void onCollisionEnter(Collider *other, double timeDelta);
+    virtual void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
     virtual void onCollisionExit(Collider *other, double timeDelta);
-    virtual void onCollisionStay(Collider *other, double timeDelta);
+    virtual void onCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 
     void setGameObject(GameObject *gameObject);
     GameObject *getGameObject();

@@ -29,7 +29,7 @@ namespace mario
         void start() override;
         void fixedUpdate(double timeDelta) override;
         void update(double timeDelta) override;
-        void onCollisionEnter(Collider *other, double timeDelta) override;
+        void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta) override;
 
         void defeat();
         void bounceAfterStomp();

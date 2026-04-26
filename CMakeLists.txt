@@ -76,6 +76,12 @@ add_executable(platformator_scene_script_roundtrip_test
 
 target_link_libraries(platformator_scene_script_roundtrip_test PRIVATE platformator_engine)
 
+add_executable(platformator_queued_deletion_safety_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/queued_deletion_safety_test.cpp"
+)
+
+target_link_libraries(platformator_queued_deletion_safety_test PRIVATE platformator_engine)
+
 add_test(
     NAME platformator_regression_tests
     COMMAND platformator_regression_tests
@@ -84,4 +90,9 @@ add_test(
 add_test(
     NAME platformator_scene_script_roundtrip_test
     COMMAND platformator_scene_script_roundtrip_test
+)
+
+add_test(
+    NAME platformator_queued_deletion_safety_test
+    COMMAND platformator_queued_deletion_safety_test
 )

@@ -53,6 +53,8 @@ public:
     void handlePendingPhysicsEvents(double timeDelta);
 
 private:
+    void dequeuePendingColliderComponent(Collider *colliderComponent);
+    void dequeuePendingColliderSync(Collider *colliderComponent);
     void flushPendingColliderSyncs();
     void flushPendingColliderComponents();
     void updateSleepingStates(double timeDelta);

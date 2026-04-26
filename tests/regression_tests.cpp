@@ -23,6 +23,7 @@
 #include "localsortarray.h"
 #include "physicsmanager.h"
 #include "rigidbody.h"
+#include "scriptcomponent.h"
 #include "sprite.h"
 #include "texturewrapper.h"
 
@@ -147,6 +148,33 @@ namespace
             ->setPosition(Eigen::Vector2f(x, y));
     }
 
+    class CollisionEventCounterBehavior : public Behavior
+    {
+    public:
+        CollisionEventCounterBehavior() : enterCount(0), stayCount(0), exitCount(0)
+        {
+        }
+
+        void onCollisionEnter(const Collision *, Collider *, double) override
+        {
+            enterCount++;
+        }
+
+        void onCollisionExit(Collider *, double) override
+        {
+            exitCount++;
+        }
+
+        void onCollisionStay(const Collision *, Collider *, double) override
+        {
+            stayCount++;
+        }
+
+        size_t enterCount;
+        size_t stayCount;
+        size_t exitCount;
+    };
+
     std::filesystem::path createTemporaryBmpAsset(const std::string &fileName, Uint8 red, Uint8 green, Uint8 blue)
     {
         std::filesystem::path filePath = (std::filesystem::current_path() / fileName).lexically_normal();
@@ -247,34 +275,27 @@ namespace
         sceneScope.add(boxA);
         sceneScope.add(boxB);
 
-        Collider *colliderA = boxA->getComponent<Collider>();
-        require(colliderA != nullptr, "Broad-phase regression lost the first collider.");
+        boxA->addComponent<ScriptComponent>();
+        ScriptComponent *scriptComponent = boxA->getComponent<ScriptComponent>();
+        require(scriptComponent != nullptr, "Broad-phase regression failed to create a script component for the first collider.");
 
-        size_t collisionEnterCount = 0;
-        size_t collisionStayCount = 0;
-        size_t collisionExitCount = 0;
-
-        colliderA->addCollisionEnterCallback([&](Collider *, double)
-                                             { collisionEnterCount++; });
-        colliderA->addCollisionStayCallback([&](Collider *, double)
-                                            { collisionStayCount++; });
-        colliderA->addCollisionExitCallback([&](Collider *, double)
-                                            { collisionExitCount++; });
+        auto *collisionCounter = new CollisionEventCounterBehavior();
+        scriptComponent->addBehavior(collisionCounter);
 
         gameManager.simulateFrame(kTimeStep);
-        require(collisionEnterCount == 0 && collisionStayCount == 0 && collisionExitCount == 0,
+        require(collisionCounter->enterCount == 0 && collisionCounter->stayCount == 0 && collisionCounter->exitCount == 0,
                 "Broad-phase regression unexpectedly reported a collision before overlap.");
 
         boxB->setPosition(Eigen::Vector2f(135.0f, 120.0f));
         gameManager.simulateFrame(kTimeStep);
-        require(collisionEnterCount == 1,
+        require(collisionCounter->enterCount == 1,
                 "Broad-phase regression expected a collision enter callback after overlap.");
-        require(collisionExitCount == 0,
+        require(collisionCounter->exitCount == 0,
                 "Broad-phase regression unexpectedly reported a collision exit while overlap persisted.");
 
         boxB->setPosition(Eigen::Vector2f(360.0f, 120.0f));
         gameManager.simulateFrame(kTimeStep);
-        require(collisionExitCount == 1,
+        require(collisionCounter->exitCount == 1,
                 "Broad-phase regression expected a collision exit callback after separation.");
     }
 
@@ -355,13 +376,13 @@ namespace
                 "Fast-motion regression expected the probe pair to be removed after the fast bridge moved away.");
     }
 
-    std::filesystem::path findRegressionAsset(const std::string &fileName)
+    std::filesystem::path findWorkspaceRelativePath(const std::filesystem::path &relativePath)
     {
         std::filesystem::path searchDirectory = std::filesystem::current_path();
 
         while (true)
         {
-            std::filesystem::path candidate = searchDirectory / "assets" / fileName;
+            std::filesystem::path candidate = searchDirectory / relativePath;
             if (std::filesystem::exists(candidate))
             {
                 return candidate.lexically_normal();
@@ -376,7 +397,17 @@ namespace
             searchDirectory = parentDirectory;
         }
 
-        throw std::runtime_error("Regression tests could not locate asset '" + fileName + "'.");
+        throw std::runtime_error("Regression tests could not locate resource '" + relativePath.generic_string() + "'.");
+    }
+
+    std::filesystem::path findRegressionAsset(const std::string &fileName)
+    {
+        return findWorkspaceRelativePath(std::filesystem::path("assets") / fileName);
+    }
+
+    std::filesystem::path findRegressionAudioAsset(const std::string &fileName)
+    {
+        return findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "audio" / fileName);
     }
 
     std::string makeSceneRelativeResourcePath(const std::filesystem::path &resourcePath, const std::filesystem::path &scenePath)
@@ -802,9 +833,16 @@ namespace
             require(animator != nullptr, "Animator regression failed to create the animator component.");
             require(sprite != nullptr, "Animator regression failed to create the sprite component.");
 
-            require(animator->addClip("blink", {frameAPath.string(), frameBPath.string()}, 20.0f, true, 8.0f, 8.0f),
-                    "Animator regression failed to add the test clip.");
-            require(animator->play("blink", true), "Animator regression failed to start the test clip.");
+            TextureWrapper *frameATexture = gameManager.loadTexture(frameAPath.string());
+            TextureWrapper *frameBTexture = gameManager.loadTexture(frameBPath.string());
+            require(frameATexture != nullptr && frameBTexture != nullptr,
+                    "Animator regression failed to load the test frame textures.");
+
+            const std::vector<TextureWrapper *> blinkFrames = {frameATexture, frameBTexture};
+
+            animator->addClip(AnimationClip(blinkFrames, 20.0f, true, 8.0f, 8.0f, "blink", false));
+            require(animator->getClips().size() == 1, "Animator regression failed to add the test clip.");
+            require(animator->play("blink"), "Animator regression failed to start the test clip.");
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
                     "Animator regression failed to apply the initial clip frame.");
 
@@ -854,15 +892,21 @@ namespace
             require(animator != nullptr, "Advanced animator regression failed to create the animator component.");
             require(sprite != nullptr, "Advanced animator regression failed to create the sprite component.");
 
-            const std::vector<AnimationFrame> stripFrames = {
-                AnimationFrame(sheetPath.string(), SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
-                AnimationFrame(sheetPath.string(), SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+            TextureWrapper *idleTexture = gameManager.loadTexture(frameAPath.string());
+            TextureWrapper *sheetTexture = gameManager.loadTexture(sheetPath.string());
+            require(idleTexture != nullptr && sheetTexture != nullptr,
+                    "Advanced animator regression failed to load the clip textures.");
 
-            require(animator->addClip("idle", {frameAPath.string()}, 1.0f, true, 4.0f, 4.0f),
-                    "Advanced animator regression failed to add the idle clip.");
-            require(animator->addClip("strip", stripFrames, 20.0f, true, 4.0f, 4.0f),
-                    "Advanced animator regression failed to add the strip clip.");
-            require(animator->playOnce("strip", "idle"), "Advanced animator regression failed to start one-shot playback.");
+            const std::vector<TextureWrapper *> idleFrames = {idleTexture};
+
+            const std::vector<AnimationFrame> stripFrames = {
+                AnimationFrame(sheetTexture, SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
+                AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+
+            animator->addClip(AnimationClip(stripFrames, 20.0f, false, 4.0f, 4.0f, "strip", false));
+            animator->addClip(AnimationClip(idleFrames, 1.0f, true, 4.0f, 4.0f, "idle", false));
+            require(animator->getClips().size() == 2, "Advanced animator regression failed to add the strip and idle clips.");
+            require(animator->play("strip"), "Advanced animator regression failed to start one-shot playback.");
 
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
                     "Advanced animator regression failed to apply the strip texture.");
@@ -897,20 +941,20 @@ namespace
         require(window != nullptr, "Audio regression requires an SDLWindow.");
         require(window->getMixer() != nullptr, "Audio regression requires an active mixer device.");
 
+        const std::filesystem::path audioPath = findRegressionAudioAsset("jump.wav");
+        const std::string audioPathString = audioPath.string();
+
         SceneScope sceneScope(gameManager);
         GameObject *audioObject = gameManager
                                       .createGameObject()
                                       ->setName("Audio Object")
-                                      ->addComponent<Audio>();
+                                      ->addComponent<Audio>(audioPathString.c_str());
         sceneScope.add(audioObject);
 
         Audio *audio = audioObject->getComponent<Audio>();
         require(audio != nullptr, "Audio regression failed to create the audio component.");
+        require(audio->getAudioWrapper() != nullptr, "Audio regression failed to load the test audio asset.");
 
-        MIX_Audio *sineWave = MIX_CreateSineWaveAudio(window->getMixer(), 440, 0.2f, 500);
-        require(sineWave != nullptr, "Audio regression failed to create a temporary sine wave.");
-
-        audio->setAudio(sineWave);
         audio->setGain(0.5f);
         require(std::abs(audio->getGain() - 0.5f) <= 1e-5f,
                 "Audio regression failed to apply the configured gain.");

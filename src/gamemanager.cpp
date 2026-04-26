@@ -102,8 +102,8 @@ void GameManager::removeGameObject(GameObject *gameObject)
 
 void GameManager::startDeletingGameObject(GameObject *gameObject)
 {
-    gameObject->removeComponentsFromGameManager();
     gameObject->setIsMarkedForDeletion(true);
+    gameObject->removeComponentsFromGameManager();
     gameObject->setIsRegisteredInGameManager(false);
     gameObjectsToDelete.push_back(gameObject);
 }

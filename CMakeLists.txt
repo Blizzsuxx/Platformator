@@ -24,6 +24,7 @@ add_subdirectory(vendored/SDL3_image-3.4.0 EXCLUDE_FROM_ALL)
 add_subdirectory(vendored/SDL3_ttf-3.1.0 EXCLUDE_FROM_ALL)
 add_subdirectory(vendored/eigen-5.0.1 EXCLUDE_FROM_ALL)
 add_subdirectory(vendored/oneTBB-2022.3.0 EXCLUDE_FROM_ALL)
+add_subdirectory(vendored/tomlplusplus-3.4.0 EXCLUDE_FROM_ALL)
 
 file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -45,6 +46,7 @@ target_link_libraries(platformator_engine PUBLIC
     SDL3_ttf::SDL3_ttf
     Eigen3::Eigen
     TBB::tbb
+    tomlplusplus::tomlplusplus
 )
 
 add_executable(main "${PLATFORMATOR_MAIN_SOURCE}")

@@ -9,6 +9,7 @@
 class Animator;
 class ScriptComponent;
 class Behavior;
+class AnimationClip;
 
 class GameManager
 {
@@ -46,6 +47,9 @@ public:
     AudioWrapper *loadAudio(const std::string &filePath);
     void freeAudio(AudioWrapper *audioWrapper);
     void freeAllAudio();
+    AnimationClip *loadAnimationClip(const std::string &filePath);
+    void freeAnimationClip(AnimationClip *animationClip);
+    void freeAllAnimationClips();
 
     void loadScene(Scene &scene);
     void saveScene(const Scene &scene);
@@ -62,6 +66,7 @@ private:
     std::vector<ScriptComponent *> scriptComponents;
     std::unordered_map<std::string, TextureWrapper> textureCache;
     std::unordered_map<std::string, AudioWrapper> audioCache;
+    std::unordered_map<std::string, AnimationClip> animationClipCache;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<Scene> scenes;
     std::vector<Behavior *> startedBehaviors;

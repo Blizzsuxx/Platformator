@@ -1,0 +1,10 @@
+animations {
+    clip {
+        name "walk"
+        fps 6
+        loop true
+        size 32 32
+        frame "../enemies/walk_0.png"
+        frame "../enemies/walk_1.png"
+    }
+}

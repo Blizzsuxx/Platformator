@@ -1,0 +1,9 @@
+animations {
+    clip {
+        name "wave"
+        fps 5
+        loop true
+        size 32 192
+        frame "../items/flag.png"
+    }
+}

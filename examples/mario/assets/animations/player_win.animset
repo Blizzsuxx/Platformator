@@ -1,0 +1,10 @@
+animations {
+    clip {
+        name "win"
+        fps 4
+        loop true
+        size 32 32
+        frame "../player/idle_0.png"
+        frame "../player/idle_1.png"
+    }
+}

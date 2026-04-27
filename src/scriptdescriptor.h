@@ -21,6 +21,7 @@ struct ScriptProperty
 struct ScriptDescriptor
 {
     std::string type;
+    std::string sourcePath;
     std::vector<ScriptProperty> properties;
 
     const std::string *findProperty(const std::string &name) const;

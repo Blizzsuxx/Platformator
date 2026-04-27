@@ -6,8 +6,9 @@
 #include "audio.h"
 #include "scriptcomponent.h"
 #include "texturewrapper.h"
+#include "animationclip.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -22,7 +23,9 @@ GameManager::~GameManager()
     gameObjects.clear();
 
     deleteMarkedGameObjects();
+    freeAllAnimationClips();
     freeAllTextures();
+    freeAllAudio();
 
     delete physicsManager;
     delete window;
@@ -541,6 +544,41 @@ void GameManager::freeAllAudio()
     audioCache.clear();
 }
 
+AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
+{
+    auto it = animationClipCache.find(filePath);
+    if (it != animationClipCache.end())
+    {
+        return &it->second;
+    }
+
+    auto [insertedIt, inserted] = animationClipCache.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(filePath),
+        std::forward_as_tuple(filePath)); // uses the AnimationClip constructor that takes a file path
+
+    return &insertedIt->second;
+}
+
+void GameManager::freeAnimationClip(AnimationClip *animationClip)
+{
+    if (animationClip == nullptr)
+    {
+        return;
+    }
+
+    auto it = animationClipCache.find(animationClip->getFilePath());
+    if (it != animationClipCache.end())
+    {
+        animationClipCache.erase(it);
+    }
+}
+
+void GameManager::freeAllAnimationClips()
+{
+    animationClipCache.clear();
+}
+
 void GameManager::addStartedBehavior(Behavior *behavior)
 {
     startedBehaviors.push_back(behavior);
@@ -550,6 +588,7 @@ void GameManager::triggerStartedBehaviors()
 {
     for (Behavior *behavior : startedBehaviors)
     {
+        behavior->resolveFieldBindings();
         behavior->start();
     }
     startedBehaviors.clear();

@@ -1,8 +1,8 @@
 # Mario Example
 
-This example adds a small Mario-like level on top of Platformator and now uses native collider callbacks for pickups, goal triggers, and enemy contacts instead of per-frame overlap scans.
+This example adds a small Mario-like level on top of Platformator and uses native collider callbacks for pickups, goal triggers, and enemy contacts instead of per-frame overlap scans.
 
-The Mario example's clip definitions now live directly in `examples/mario/level1.scene`, so you can retarget the player, enemy, coin, and flag animations by editing scene data rather than recompiling C++.
+The Mario example keeps reusable sound and animation assets in external files, but the scene still lists every runtime component explicitly. Objects that animate have an explicit `animator` block in `examples/mario/level1.scene`, while the script blocks own the `.animset` references that are loaded into those animator components at startup.
 
 Run it with:
 
@@ -31,14 +31,19 @@ Expected asset paths:
 - `examples/mario/assets/items/coin.png`
 - `examples/mario/assets/items/flag.png`
 
-Scene-defined animation clips:
+Animation set assets:
 
-- Player: `idle`, `run`, `jump`, `fall`, `win`
-- Goomba enemies: `walk`, `squash`
-- Coins: `spin`
-- Goal flag: `wave`
+- `examples/mario/assets/animations/player.animset`
+- `examples/mario/assets/animations/player_run.animset`
+- `examples/mario/assets/animations/player_jump.animset`
+- `examples/mario/assets/animations/player_fall.animset`
+- `examples/mario/assets/animations/player_win.animset`
+- `examples/mario/assets/animations/goomba.animset`
+- `examples/mario/assets/animations/goomba_squash.animset`
+- `examples/mario/assets/animations/coin.animset`
+- `examples/mario/assets/animations/flag.animset`
 
-The current scene uses the single-frame art above for those clips, so the example runs with the assets that already exist in the repository.
+Each `.animset` file now contains exactly one clip. The script block lists whichever clip assets a behavior needs, and gameplay code switches clips by calling `Animator::play(name)` on the explicit animator component.
 
 Optional richer animation asset paths:
 
@@ -61,7 +66,7 @@ Optional richer animation asset paths:
 - `examples/mario/assets/items/flag_wave_0.png`
 - `examples/mario/assets/items/flag_wave_1.png`
 
-If you add richer animation frames, update `examples/mario/level1.scene` to point each clip at those files.
+If you add richer animation frames, update the `.animset` files instead of editing the scene.
 
 Optional audio asset paths:
 
@@ -72,4 +77,4 @@ Optional audio asset paths:
 - `examples/mario/assets/audio/hurt.wav`
 - `examples/mario/assets/audio/win.wav`
 
-If the base art assets are not present yet, the example will still load the scene and physics objects. The richer animation frames and audio files are optional; the scene already references the audio emitters, and the sounds will start working as soon as you add matching files under `examples/mario/assets/audio/`. Use the engine debug draw if you need to inspect layout before art is in place.
+If the base art assets are not present yet, the example will still load the scene and physics objects. The richer animation frames and audio files are optional; the explicit scene components will start working as soon as you add matching files under `examples/mario/assets/`. Use the engine debug draw if you need to inspect layout before art is in place.

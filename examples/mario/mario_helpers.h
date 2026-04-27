@@ -1,11 +1,7 @@
 #pragma once
 
-#include <string>
-
 #include "gameobject.h"
 #include "scriptcomponent.h"
-
-class Animator;
 
 namespace mario
 {
@@ -16,7 +12,6 @@ namespace mario
     };
 
     Bounds getBounds(const GameObject *gameObject);
-    void playClipIfChanged(Animator *animator, const std::string &name);
 
     template <typename T>
     T *getBehavior(GameObject *gameObject)

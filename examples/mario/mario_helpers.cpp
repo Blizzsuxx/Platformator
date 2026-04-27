@@ -1,6 +1,5 @@
 #include "mario_helpers.h"
 
-#include "animator.h"
 #include "boxcollider.h"
 #include "circlecollider.h"
 #include "collider.h"
@@ -28,15 +27,5 @@ namespace mario
 
         const CircleCollider *circleCollider = static_cast<const CircleCollider *>(collider);
         return Bounds{gameObject->getPosition(), Eigen::Vector2f::Constant(circleCollider->getRadius())};
-    }
-
-    void playClipIfChanged(Animator *animator, const std::string &name)
-    {
-        if (animator == nullptr || animator->getCurrentClipName() == name)
-        {
-            return;
-        }
-
-        animator->play(name);
     }
 } // namespace mario

@@ -87,30 +87,13 @@ namespace
         float gain = 1.0f;
     };
 
-    struct AnimationClipConfig
-    {
-        struct FrameConfig
-        {
-            std::string path;
-            float duration = 0.0f;
-            SDL_FRect sourceRect = SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f};
-            bool hasSourceRect = false;
-        };
-
-        std::string name;
-        float fps = 12.0f;
-        bool loop = true;
-        float width = 0.0f;
-        float height = 0.0f;
-        std::vector<FrameConfig> frames;
-    };
-
     struct AnimatorConfig
     {
         bool enabled = false;
-        std::string play;
         float playbackSpeed = 1.0f;
-        std::vector<AnimationClipConfig> clips;
+        std::vector<std::string> legacyAssetPaths;
+        std::string legacyPlay;
+        bool hasLegacyClipData = false;
     };
 
     struct ObjectConfig
@@ -514,6 +497,41 @@ namespace
         writeKeyValueLine(stream, indentLevel, key, '"' + escapeSceneString(value) + '"');
     }
 
+    void skipBlock(TokenStream &tokens)
+    {
+        tokens.expect("{");
+
+        size_t depth = 1;
+        while (depth > 0)
+        {
+            const std::string token = tokens.consume();
+            if (token == "{")
+            {
+                depth++;
+            }
+            else if (token == "}")
+            {
+                depth--;
+            }
+        }
+    }
+
+    const std::string &getPrimaryAnimationClipName(const AnimationSetAsset &animationSet)
+    {
+        if (!animationSet.getInitialClipName().empty())
+        {
+            return animationSet.getInitialClipName();
+        }
+
+        if (!animationSet.getClips().empty())
+        {
+            return animationSet.getClips().front().name;
+        }
+
+        static const std::string emptyName;
+        return emptyName;
+    }
+
     void parseRigidbodyBlock(TokenStream &tokens, RigidbodyConfig &config)
     {
         config.enabled = true;
@@ -765,98 +783,6 @@ namespace
         }
     }
 
-    AnimationClipConfig parseAnimatorClipBlock(TokenStream &tokens)
-    {
-        tokens.expect("{");
-
-        AnimationClipConfig config;
-        while (true)
-        {
-            if (tokens.match("}"))
-            {
-                return config;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "name")
-            {
-                config.name = tokens.consume();
-            }
-            else if (key == "fps")
-            {
-                config.fps = parseFloatToken(tokens.consume());
-            }
-            else if (key == "loop")
-            {
-                config.loop = parseBoolToken(tokens.consume());
-            }
-            else if (key == "size")
-            {
-                config.width = parseFloatToken(tokens.consume());
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else if (key == "width")
-            {
-                config.width = parseFloatToken(tokens.consume());
-            }
-            else if (key == "height")
-            {
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else if (key == "frame")
-            {
-                AnimationClipConfig::FrameConfig frameConfig;
-                if (tokens.match("{"))
-                {
-                    while (true)
-                    {
-                        if (tokens.match("}"))
-                        {
-                            break;
-                        }
-
-                        std::string frameKey = toLower(tokens.consume());
-                        if (frameKey == "path")
-                        {
-                            frameConfig.path = tokens.consume();
-                        }
-                        else if (frameKey == "duration")
-                        {
-                            frameConfig.duration = parseFloatToken(tokens.consume());
-                        }
-                        else if (frameKey == "rect" || frameKey == "sourcerect")
-                        {
-                            frameConfig.sourceRect.x = parseFloatToken(tokens.consume());
-                            frameConfig.sourceRect.y = parseFloatToken(tokens.consume());
-                            frameConfig.sourceRect.w = parseFloatToken(tokens.consume());
-                            frameConfig.sourceRect.h = parseFloatToken(tokens.consume());
-                            frameConfig.hasSourceRect = true;
-                        }
-                        else
-                        {
-                            throw std::runtime_error("Unknown animator frame property '" + frameKey + "'.");
-                        }
-                    }
-                }
-                else
-                {
-                    frameConfig.path = tokens.consume();
-                }
-
-                if (frameConfig.path.empty())
-                {
-                    throw std::runtime_error("Animator frame requires a path.");
-                }
-
-                config.frames.push_back(frameConfig);
-            }
-            else
-            {
-                throw std::runtime_error("Unknown animator clip property '" + key + "'.");
-            }
-        }
-    }
-
     void parseAnimatorBlock(TokenStream &tokens, AnimatorConfig &config)
     {
         config.enabled = true;
@@ -870,17 +796,22 @@ namespace
             }
 
             std::string key = toLower(tokens.consume());
-            if (key == "play")
-            {
-                config.play = tokens.consume();
-            }
-            else if (key == "playbackspeed" || key == "speed")
+            if (key == "playbackspeed" || key == "speed")
             {
                 config.playbackSpeed = parseFloatToken(tokens.consume());
             }
+            else if (key == "asset")
+            {
+                config.legacyAssetPaths.push_back(tokens.consume());
+            }
+            else if (key == "play")
+            {
+                config.legacyPlay = tokens.consume();
+            }
             else if (key == "clip")
             {
-                config.clips.push_back(parseAnimatorClipBlock(tokens));
+                config.hasLegacyClipData = true;
+                skipBlock(tokens);
             }
             else
             {
@@ -889,11 +820,12 @@ namespace
         }
     }
 
-    ScriptDescriptor parseScriptBlock(TokenStream &tokens)
+    ScriptDescriptor parseScriptBlock(TokenStream &tokens, const std::string &sourcePath)
     {
         tokens.expect("{");
 
         ScriptDescriptor descriptor;
+        descriptor.sourcePath = sourcePath;
         while (true)
         {
             if (tokens.match("}"))
@@ -919,7 +851,7 @@ namespace
         }
     }
 
-    ObjectConfig parseObject(TokenStream &tokens)
+    ObjectConfig parseObject(TokenStream &tokens, const std::string &sourcePath)
     {
         std::string objectKeyword = toLower(tokens.consume());
         if (objectKeyword != "object")
@@ -992,7 +924,7 @@ namespace
             }
             else if (key == "script")
             {
-                config.scripts.push_back(parseScriptBlock(tokens));
+                config.scripts.push_back(parseScriptBlock(tokens, sourcePath));
             }
             else
             {
@@ -1028,7 +960,7 @@ std::vector<GameObject *> Scene::loadScene()
     {
         while (!tokens.empty())
         {
-            ObjectConfig config = parseObject(tokens);
+            ObjectConfig config = parseObject(tokens, filePath);
 
             if (config.boxCollider.enabled && config.circleCollider.enabled)
             {
@@ -1106,35 +1038,52 @@ std::vector<GameObject *> Scene::loadScene()
 
                 if (config.animator.enabled)
                 {
-                    GameManager &gameManager = GameManager::getInstance();
                     Animator *animator = new Animator(gameObject);
+
                     animator->setPlaybackSpeed(config.animator.playbackSpeed);
 
-                    for (const AnimationClipConfig &clipConfig : config.animator.clips)
+                    const bool hasLegacyAnimatorData = !config.animator.legacyAssetPaths.empty() || !config.animator.legacyPlay.empty() || config.animator.hasLegacyClipData;
+                    if (!config.animator.legacyAssetPaths.empty())
                     {
-                        std::vector<AnimationFrame> resolvedFrames;
-                        resolvedFrames.reserve(clipConfig.frames.size());
-                        for (const AnimationClipConfig::FrameConfig &frameConfig : clipConfig.frames)
+                        GameManager &gameManager = GameManager::getInstance();
+                        AnimationSetAsset *selectedAnimationSet = nullptr;
+                        std::string selectedAnimationSetPath;
+
+                        for (const std::string &legacyAssetPath : config.animator.legacyAssetPaths)
                         {
-                            std::string resolvedPath = resolveSceneRelativePath(filePath, frameConfig.path);
-                            TextureWrapper *textureWrapper = gameManager.loadTexture(resolvedPath);
-                            if (frameConfig.hasSourceRect)
+                            const std::string resolvedAnimationSetPath = resolveSceneRelativePath(filePath, legacyAssetPath);
+                            AnimationSetAsset *candidateAnimationSet = gameManager.loadAnimationSet(resolvedAnimationSetPath);
+                            if (selectedAnimationSet == nullptr)
                             {
-                                resolvedFrames.emplace_back(textureWrapper, frameConfig.sourceRect, frameConfig.duration);
+                                selectedAnimationSet = candidateAnimationSet;
+                                selectedAnimationSetPath = resolvedAnimationSetPath;
                             }
-                            else
+
+                            if (!config.animator.legacyPlay.empty() && getPrimaryAnimationClipName(*candidateAnimationSet) == config.animator.legacyPlay)
                             {
-                                resolvedFrames.emplace_back(textureWrapper, frameConfig.duration);
+                                selectedAnimationSet = candidateAnimationSet;
+                                selectedAnimationSetPath = resolvedAnimationSetPath;
+                                break;
                             }
                         }
 
-                        animator->addClip(AnimationClip(resolvedFrames, clipConfig.fps, clipConfig.loop, clipConfig.width, clipConfig.height, clipConfig.name, !clipConfig.loop));
+                        if (selectedAnimationSet != nullptr)
+                        {
+                            animator->play(selectedAnimationSet);
+                            if (!config.animator.legacyPlay.empty() && getPrimaryAnimationClipName(*selectedAnimationSet) != config.animator.legacyPlay)
+                            {
+                                std::cerr << "Scene '" << filePath << "' object '" << gameObject->getName()
+                                          << "' requested deprecated animator play target '" << config.animator.legacyPlay
+                                          << "' but no matching legacy animator asset was found; using '" << getPrimaryAnimationClipName(*selectedAnimationSet) << "' from '"
+                                          << selectedAnimationSetPath << "' instead. Legacy animator data will be dropped on save.\n";
+                            }
+                        }
                     }
 
-                    if (!config.animator.play.empty() && !animator->play(config.animator.play))
+                    if (hasLegacyAnimatorData)
                     {
-                        delete animator;
-                        throw std::runtime_error("Animator requested unknown clip '" + config.animator.play + "'.");
+                        std::cerr << "Scene '" << filePath << "' object '" << gameObject->getName()
+                                  << "' uses deprecated animator asset/play/clip properties. Migrate animation ownership into script animset references; legacy animator data will be dropped on save.\n";
                     }
 
                     gameObject->addComponentInternal(animator);
@@ -1166,7 +1115,7 @@ std::vector<GameObject *> Scene::loadScene()
                         if (BehaviorFactoryRegistry::getInstance().createBehavior(scriptComponent, scriptDescriptor) == nullptr)
                         {
                             delete scriptComponent;
-                            throw std::runtime_error("Unknown script type '" + scriptDescriptor.type + "'.");
+                            throw std::runtime_error("Unknown behavior type '" + scriptDescriptor.type + "'.");
                         }
                     }
 
@@ -1181,29 +1130,22 @@ std::vector<GameObject *> Scene::loadScene()
                 throw;
             }
         }
+
+        return objects;
     }
-    catch (const std::exception &exception)
+    catch (const std::exception &)
     {
         for (GameObject *gameObject : objects)
         {
             delete gameObject;
         }
 
-        throw std::runtime_error("Failed to load scene '" + filePath + "': " + exception.what());
+        throw;
     }
-
-    return objects;
 }
 
 void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
 {
-    std::filesystem::path scenePath(filePath);
-    std::filesystem::path sceneDirectory = scenePath.parent_path();
-    if (!sceneDirectory.empty())
-    {
-        std::filesystem::create_directories(sceneDirectory);
-    }
-
     std::ofstream sceneFile(filePath);
     if (!sceneFile.is_open())
     {
@@ -1213,7 +1155,7 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
     bool wroteAnyObjects = false;
     for (GameObject *gameObject : gameObjects)
     {
-        if (gameObject == nullptr || gameObject->getIsMarkedForDeletion())
+        if (gameObject == nullptr)
         {
             continue;
         }
@@ -1329,55 +1271,7 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
         if (animator != nullptr)
         {
             sceneFile << indent(1) << "animator {\n";
-            if (!animator->getCurrentClipName().empty())
-            {
-                writeStringLine(sceneFile, 2, "play", animator->getCurrentClipName());
-            }
             writeKeyValueLine(sceneFile, 2, "playbackSpeed", formatFloat(animator->getPlaybackSpeed()));
-
-            for (const AnimationClip &clip : animator->getClips())
-            {
-                sceneFile << indent(2) << "clip {\n";
-                writeStringLine(sceneFile, 3, "name", clip.name);
-                writeKeyValueLine(sceneFile, 3, "fps", formatFloat(clip.framesPerSecond));
-                writeKeyValueLine(sceneFile, 3, "loop", boolToToken(clip.loop));
-
-                if (clip.width > 0.0f || clip.height > 0.0f)
-                {
-                    sceneFile << indent(3) << "size " << formatFloat(clip.width) << ' ' << formatFloat(clip.height) << '\n';
-                }
-
-                for (const AnimationFrame &frame : clip.frames)
-                {
-                    if (frame.textureWrapper == nullptr)
-                    {
-                        continue;
-                    }
-
-                    const std::string &framePath = frame.textureWrapper->getFilePath();
-                    if (frame.duration > 0.0f || frame.hasSourceRect)
-                    {
-                        sceneFile << indent(3) << "frame {\n";
-                        writeStringLine(sceneFile, 4, "path", makeSceneResourcePath(filePath, framePath));
-                        if (frame.duration > 0.0f)
-                        {
-                            writeKeyValueLine(sceneFile, 4, "duration", formatFloat(frame.duration));
-                        }
-                        if (frame.hasSourceRect)
-                        {
-                            sceneFile << indent(4) << "rect " << formatFloat(frame.sourceRect.x) << ' ' << formatFloat(frame.sourceRect.y) << ' ' << formatFloat(frame.sourceRect.w) << ' ' << formatFloat(frame.sourceRect.h) << '\n';
-                        }
-                        sceneFile << indent(3) << "}\n";
-                    }
-                    else
-                    {
-                        writeStringLine(sceneFile, 3, "frame", makeSceneResourcePath(filePath, framePath));
-                    }
-                }
-
-                sceneFile << indent(2) << "}\n";
-            }
-
             sceneFile << indent(1) << "}\n";
         }
 

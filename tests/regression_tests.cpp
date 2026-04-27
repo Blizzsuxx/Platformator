@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "animationasset.h"
 #include "animator.h"
 #include "boxcollider.h"
 #include "circlecollider.h"
@@ -839,18 +840,29 @@ namespace
                     "Animator regression failed to load the test frame textures.");
 
             const std::vector<TextureWrapper *> blinkFrames = {frameATexture, frameBTexture};
+            const AnimationSetAsset blinkAnimationSet(
+                "blink.animset",
+                0.5f,
+                "blink",
+                std::vector<AnimationClip>{AnimationClip(blinkFrames, 20.0f, true, 8.0f, 8.0f, "blink", false)});
 
-            animator->addClip(AnimationClip(blinkFrames, 20.0f, true, 8.0f, 8.0f, "blink", false));
-            require(animator->getClips().size() == 1, "Animator regression failed to add the test clip.");
-            require(animator->play("blink"), "Animator regression failed to start the test clip.");
+            require(animator->play(&blinkAnimationSet), "Animator regression failed to start the test animation asset.");
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
                     "Animator regression failed to apply the initial clip frame.");
 
-            simulateFrames(gameManager, 7);
+            simulateFrames(gameManager, 4);
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+                    "Animator regression failed to respect the animation asset playback speed multiplier.");
+
+            simulateFrames(gameManager, 9);
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameBPath.string(),
                     "Animator regression failed to advance to the second frame.");
 
-            simulateFrames(gameManager, 7);
+            require(animator->play(&blinkAnimationSet), "Animator regression restarted instead of reusing the current animation asset.");
+            require(animator->getCurrentFrameIndex() == 1,
+                    "Animator regression reset the current frame when asked to play the already active animation asset.");
+
+            simulateFrames(gameManager, 12);
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
                     "Animator regression failed to loop back to the first frame.");
 
@@ -902,11 +914,18 @@ namespace
             const std::vector<AnimationFrame> stripFrames = {
                 AnimationFrame(sheetTexture, SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
                 AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+            const AnimationSetAsset stripAnimationSet(
+                "strip.animset",
+                1.0f,
+                "strip",
+                std::vector<AnimationClip>{AnimationClip(stripFrames, 20.0f, false, 4.0f, 4.0f, "strip", true)});
+            const AnimationSetAsset idleAnimationSet(
+                "idle.animset",
+                1.0f,
+                "idle",
+                std::vector<AnimationClip>{AnimationClip(idleFrames, 1.0f, true, 4.0f, 4.0f, "idle", false)});
 
-            animator->addClip(AnimationClip(stripFrames, 20.0f, false, 4.0f, 4.0f, "strip", false));
-            animator->addClip(AnimationClip(idleFrames, 1.0f, true, 4.0f, 4.0f, "idle", false));
-            require(animator->getClips().size() == 2, "Advanced animator regression failed to add the strip and idle clips.");
-            require(animator->play("strip"), "Advanced animator regression failed to start one-shot playback.");
+            require(animator->play(&stripAnimationSet), "Advanced animator regression failed to start one-shot playback.");
 
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
                     "Advanced animator regression failed to apply the strip texture.");
@@ -920,10 +939,18 @@ namespace
                     "Advanced animator regression failed to advance to the second strip frame.");
 
             simulateFrames(gameManager, 7);
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
+                    "Advanced animator regression failed to keep the final one-shot frame active after playback completed.");
+            require(sprite->getSourceRect() != nullptr && std::abs(sprite->getSourceRect()->x - 4.0f) <= 1e-5f,
+                    "Advanced animator regression failed to stop on the final one-shot frame.");
+            require(!animator->getIsPlaying(),
+                    "Advanced animator regression failed to stop playback when a non-looping animation finished.");
+
+            require(animator->play(&idleAnimationSet), "Advanced animator regression failed to switch to a replacement animation asset.");
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
-                    "Advanced animator regression failed to return to the queued idle clip.");
+                    "Advanced animator regression failed to switch to the idle animation asset.");
             require(sprite->getSourceRect() == nullptr,
-                    "Advanced animator regression failed to clear the sprite source rectangle when returning to a full-frame clip.");
+                    "Advanced animator regression failed to clear the sprite source rectangle when switching to a full-frame animation asset.");
 
             cleanupFiles();
         }

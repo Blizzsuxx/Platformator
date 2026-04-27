@@ -1,16 +1,28 @@
 #include "mario_coin.h"
 
+#include "animator.h"
 #include "mario_game.h"
 
 namespace mario
 {
     MarioCoin::MarioCoin()
+        : spinAnimset(),
+          coinSound()
     {
     }
 
     std::string MarioCoin::getTypeName() const
     {
         return "MarioCoin";
+    }
+
+    void MarioCoin::start()
+    {
+        Animator *animator = getAnimator();
+        if (animator != nullptr)
+        {
+            animator->play(spinAnimset.get());
+        }
     }
 
     bool MarioCoin::collect()
@@ -21,6 +33,7 @@ namespace mario
         }
 
         getGameObject()->setActive(false);
+        playSound(coinSound);
         MarioGame::getInstance().onCoinCollected();
         return true;
     }

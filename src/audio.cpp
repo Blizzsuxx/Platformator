@@ -123,6 +123,23 @@ bool Audio::play()
     return played;
 }
 
+bool Audio::play(AudioWrapper *audioWrapper)
+{
+    setAudio(audioWrapper);
+    return play();
+}
+
+bool Audio::replay(AudioWrapper *audioWrapper, Sint64 fadeOutFrames)
+{
+    setAudio(audioWrapper);
+    if (!stop(fadeOutFrames))
+    {
+        return false;
+    }
+
+    return play();
+}
+
 bool Audio::stop(Sint64 fadeOutFrames)
 {
     if (track == nullptr)

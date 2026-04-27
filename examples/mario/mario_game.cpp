@@ -15,11 +15,6 @@ namespace mario
           window(window),
           scene(scene),
           player(nullptr),
-          jumpAudio(nullptr),
-          coinAudio(nullptr),
-          stompAudio(nullptr),
-          hurtAudio(nullptr),
-          winAudio(nullptr),
           totalCoins(0),
           collectedCoins(0),
           gameWon(false)
@@ -43,12 +38,6 @@ namespace mario
 
     void MarioGame::initializeScene()
     {
-        jumpAudio = getAudioEmitter("SFX Jump");
-        coinAudio = getAudioEmitter("SFX Coin");
-        stompAudio = getAudioEmitter("SFX Stomp");
-        hurtAudio = getAudioEmitter("SFX Hurt");
-        winAudio = getAudioEmitter("SFX Win");
-
         player = nullptr;
         totalCoins = 0;
         for (GameObject *gameObject : gameManager.getGameObjects())
@@ -90,7 +79,6 @@ namespace mario
     void MarioGame::onCoinCollected()
     {
         collectedCoins++;
-        playCoinSound();
         updateWindowTitle();
     }
 
@@ -107,34 +95,8 @@ namespace mario
             player->stopForWin();
         }
 
-        playWinSound();
         std::cout << "Level clear. Coins collected: " << collectedCoins << '/' << totalCoins << '\n';
         updateWindowTitle();
-    }
-
-    void MarioGame::playJumpSound()
-    {
-        replayAudio(jumpAudio);
-    }
-
-    void MarioGame::playCoinSound()
-    {
-        replayAudio(coinAudio);
-    }
-
-    void MarioGame::playStompSound()
-    {
-        replayAudio(stompAudio);
-    }
-
-    void MarioGame::playHurtSound()
-    {
-        replayAudio(hurtAudio);
-    }
-
-    void MarioGame::playWinSound()
-    {
-        replayAudio(winAudio);
     }
 
     void MarioGame::registerEventHooks()
@@ -179,16 +141,5 @@ namespace mario
         }
 
         SDL_SetWindowTitle(window.getWindow(), title.c_str());
-    }
-
-    Audio *MarioGame::getAudioEmitter(const std::string &name) const
-    {
-        return gameManager.getGameObject(name)->getComponent<Audio>();
-    }
-
-    void MarioGame::replayAudio(Audio *audio) const
-    {
-        audio->stop();
-        audio->play();
     }
 } // namespace mario

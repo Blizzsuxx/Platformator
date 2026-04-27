@@ -25,6 +25,13 @@ namespace mario
           gravity(PLAYER_GRAVITY),
           maxFallSpeed(PLAYER_MAX_FALL_SPEED),
           stompBounceFactor(0.65f),
+          idleAnimset(),
+          runAnimset(),
+          jumpAnimset(),
+          fallAnimset(),
+          winAnimset(),
+          jumpSound(),
+          hurtSound(),
           spawn(Eigen::Vector2f::Zero()),
           positionBeforePhysics(Eigen::Vector2f::Zero()),
           velocityBeforePhysics(Eigen::Vector2f::Zero()),
@@ -41,7 +48,7 @@ namespace mario
     void MarioPlayer::start()
     {
         body = getGameObject()->getComponent<Rigidbody>();
-        animator = getGameObject()->getComponent<Animator>();
+        animator = getAnimator();
         sprite = getGameObject()->getComponent<Sprite>();
         spawn = getGameObject()->getPosition();
         positionBeforePhysics = spawn;
@@ -80,7 +87,7 @@ namespace mario
             return;
         }
 
-        game.playHurtSound();
+        playSound(hurtSound);
         respawn();
     }
 
@@ -207,7 +214,7 @@ namespace mario
         if (jumpPressed && !jumpWasPressed && isGrounded)
         {
             velocity.y() = -jumpSpeed;
-            game.playJumpSound();
+            playSound(jumpSound);
         }
 
         body->setVelocity(velocity);
@@ -226,7 +233,7 @@ namespace mario
 
         if (game.isGameWon())
         {
-            playClipIfChanged(animator, "win");
+            animator->play(winAnimset.get());
             return;
         }
 
@@ -235,22 +242,22 @@ namespace mario
         {
             if (velocity.y() < -5.0f)
             {
-                playClipIfChanged(animator, "jump");
+                animator->play(jumpAnimset.get());
             }
             else
             {
-                playClipIfChanged(animator, "fall");
+                animator->play(fallAnimset.get());
             }
             return;
         }
 
         if (std::abs(velocity.x()) > 5.0f)
         {
-            playClipIfChanged(animator, "run");
+            animator->play(runAnimset.get());
         }
         else
         {
-            playClipIfChanged(animator, "idle");
+            animator->play(idleAnimset.get());
         }
     }
 } // namespace mario

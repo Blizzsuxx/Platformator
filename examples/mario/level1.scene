@@ -23,61 +23,6 @@ object {
 }
 
 object {
-    name "SFX Jump"
-    tag "audio"
-    audio {
-        path "assets/audio/jump.wav"
-        autoplay false
-        loops 0
-        gain 0.9
-    }
-}
-
-object {
-    name "SFX Coin"
-    tag "audio"
-    audio {
-        path "assets/audio/coin.wav"
-        autoplay false
-        loops 0
-        gain 0.85
-    }
-}
-
-object {
-    name "SFX Stomp"
-    tag "audio"
-    audio {
-        path "assets/audio/stomp.wav"
-        autoplay false
-        loops 0
-        gain 0.9
-    }
-}
-
-object {
-    name "SFX Hurt"
-    tag "audio"
-    audio {
-        path "assets/audio/hurt.wav"
-        autoplay false
-        loops 0
-        gain 0.9
-    }
-}
-
-object {
-    name "SFX Win"
-    tag "audio"
-    audio {
-        path "assets/audio/win.wav"
-        autoplay false
-        loops 0
-        gain 0.95
-    }
-}
-
-object {
     name "Player"
     tag "player"
     position 120 408
@@ -103,48 +48,11 @@ object {
         flip none
         size 32 32
     }
+    audio {
+        gain 0.9
+    }
     animator {
-        play "idle"
         playbackSpeed 1
-        clip {
-            name "idle"
-            fps 4
-            loop true
-            size 32 32
-            frame "assets/player/idle_0.png"
-            frame "assets/player/idle_1.png"
-        }
-        clip {
-            name "run"
-            fps 12
-            loop true
-            size 32 32
-            frame "assets/player/run_0.png"
-            frame "assets/player/run_1.png"
-            frame "assets/player/run_2.png"
-        }
-        clip {
-            name "jump"
-            fps 1
-            loop false
-            size 32 32
-            frame "assets/player/jump.png"
-        }
-        clip {
-            name "fall"
-            fps 1
-            loop false
-            size 32 32
-            frame "assets/player/fall.png"
-        }
-        clip {
-            name "win"
-            fps 4
-            loop true
-            size 32 32
-            frame "assets/player/idle_0.png"
-            frame "assets/player/idle_1.png"
-        }
     }
     script {
         type "MarioPlayer"
@@ -153,6 +61,13 @@ object {
         gravity 358.065
         maxfallspeed 460
         stompbouncefactor 0.65
+        idleAnimset "assets/animations/player.animset"
+        runAnimset "assets/animations/player_run.animset"
+        jumpAnimset "assets/animations/player_jump.animset"
+        fallAnimset "assets/animations/player_fall.animset"
+        winAnimset "assets/animations/player_win.animset"
+        jumpSound "assets/audio/jump.wav"
+        hurtSound "assets/audio/hurt.wav"
     }
 }
 
@@ -485,22 +400,16 @@ object {
         flip none
         size 22 22
     }
+    audio {
+        gain 0.85
+    }
     animator {
-        play "spin"
         playbackSpeed 1
-        clip {
-            name "spin"
-            fps 10
-            loop true
-            size 22 22
-            frame "assets/items/coin_0.png"
-            frame "assets/items/coin_1.png"
-            frame "assets/items/coin_2.png"
-            frame "assets/items/coin_3.png"
-        }
     }
     script {
         type "MarioCoin"
+        spinAnimset "assets/animations/coin.animset"
+        coinSound "assets/audio/coin.wav"
     }
 }
 
@@ -530,22 +439,16 @@ object {
         flip none
         size 22 22
     }
+    audio {
+        gain 0.85
+    }
     animator {
-        play "spin"
         playbackSpeed 1
-        clip {
-            name "spin"
-            fps 10
-            loop true
-            size 22 22
-            frame "assets/items/coin_0.png"
-            frame "assets/items/coin_1.png"
-            frame "assets/items/coin_2.png"
-            frame "assets/items/coin_3.png"
-        }
     }
     script {
         type "MarioCoin"
+        spinAnimset "assets/animations/coin.animset"
+        coinSound "assets/audio/coin.wav"
     }
 }
 
@@ -575,22 +478,16 @@ object {
         flip none
         size 22 22
     }
+    audio {
+        gain 0.85
+    }
     animator {
-        play "spin"
         playbackSpeed 1
-        clip {
-            name "spin"
-            fps 10
-            loop true
-            size 22 22
-            frame "assets/items/coin_0.png"
-            frame "assets/items/coin_1.png"
-            frame "assets/items/coin_2.png"
-            frame "assets/items/coin_3.png"
-        }
     }
     script {
         type "MarioCoin"
+        spinAnimset "assets/animations/coin.animset"
+        coinSound "assets/audio/coin.wav"
     }
 }
 
@@ -620,22 +517,16 @@ object {
         flip none
         size 22 22
     }
+    audio {
+        gain 0.85
+    }
     animator {
-        play "spin"
         playbackSpeed 1
-        clip {
-            name "spin"
-            fps 10
-            loop true
-            size 22 22
-            frame "assets/items/coin_0.png"
-            frame "assets/items/coin_1.png"
-            frame "assets/items/coin_2.png"
-            frame "assets/items/coin_3.png"
-        }
     }
     script {
         type "MarioCoin"
+        spinAnimset "assets/animations/coin.animset"
+        coinSound "assets/audio/coin.wav"
     }
 }
 
@@ -665,22 +556,16 @@ object {
         flip none
         size 22 22
     }
+    audio {
+        gain 0.85
+    }
     animator {
-        play "spin"
         playbackSpeed 1
-        clip {
-            name "spin"
-            fps 10
-            loop true
-            size 22 22
-            frame "assets/items/coin_0.png"
-            frame "assets/items/coin_1.png"
-            frame "assets/items/coin_2.png"
-            frame "assets/items/coin_3.png"
-        }
     }
     script {
         type "MarioCoin"
+        spinAnimset "assets/animations/coin.animset"
+        coinSound "assets/audio/coin.wav"
     }
 }
 
@@ -710,24 +595,11 @@ object {
         flip none
         size 32 32
     }
+    audio {
+        gain 0.9
+    }
     animator {
-        play "walk"
         playbackSpeed 1
-        clip {
-            name "walk"
-            fps 6
-            loop true
-            size 32 32
-            frame "assets/enemies/walk_0.png"
-            frame "assets/enemies/walk_1.png"
-        }
-        clip {
-            name "squash"
-            fps 1
-            loop false
-            size 32 32
-            frame "assets/enemies/squash.png"
-        }
     }
     script {
         type "MarioPatrolEnemy"
@@ -738,6 +610,9 @@ object {
         stompminspeed 10
         stomptolerance 14
         squashduration 0.28
+        walkAnimset "assets/animations/goomba.animset"
+        squashAnimset "assets/animations/goomba_squash.animset"
+        stompSound "assets/audio/stomp.wav"
     }
 }
 
@@ -767,24 +642,11 @@ object {
         flip none
         size 32 32
     }
+    audio {
+        gain 0.9
+    }
     animator {
-        play "walk"
         playbackSpeed 1
-        clip {
-            name "walk"
-            fps 6
-            loop true
-            size 32 32
-            frame "assets/enemies/walk_0.png"
-            frame "assets/enemies/walk_1.png"
-        }
-        clip {
-            name "squash"
-            fps 1
-            loop false
-            size 32 32
-            frame "assets/enemies/squash.png"
-        }
     }
     script {
         type "MarioPatrolEnemy"
@@ -795,6 +657,9 @@ object {
         stompminspeed 10
         stomptolerance 14
         squashduration 0.28
+        walkAnimset "assets/animations/goomba.animset"
+        squashAnimset "assets/animations/goomba_squash.animset"
+        stompSound "assets/audio/stomp.wav"
     }
 }
 
@@ -824,18 +689,15 @@ object {
         flip none
         size 32 192
     }
+    audio {
+        gain 0.95
+    }
     animator {
-        play "wave"
         playbackSpeed 1
-        clip {
-            name "wave"
-            fps 5
-            loop true
-            size 32 192
-            frame "assets/items/flag.png"
-        }
     }
     script {
         type "MarioGoalFlag"
+        waveAnimset "assets/animations/flag.animset"
+        winSound "assets/audio/win.wav"
     }
 }

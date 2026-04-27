@@ -1,0 +1,9 @@
+animations {
+    clip {
+        name "squash"
+        fps 1
+        loop false
+        size 32 32
+        frame "../enemies/squash.png"
+    }
+}

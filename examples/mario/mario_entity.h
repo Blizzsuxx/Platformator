@@ -1,5 +1,7 @@
 #pragma once
 
+#include "animator.h"
+#include "audio.h"
 #include "behavior.h"
 
 namespace mario
@@ -10,6 +12,38 @@ namespace mario
         bool isActive() const
         {
             return getGameObject()->getActive();
+        }
+
+    protected:
+        Animator *getAnimator() const
+        {
+            GameObject *gameObject = getGameObject();
+            if (gameObject == nullptr)
+            {
+                return nullptr;
+            }
+
+            return gameObject->getComponent<Animator>();
+        }
+
+        Audio *getAudioEmitter() const
+        {
+            GameObject *gameObject = getGameObject();
+            if (gameObject == nullptr)
+            {
+                return nullptr;
+            }
+
+            return gameObject->getComponent<Audio>();
+        }
+
+        void playSound(const platformator_behavior_detail::AudioAssetReference &audioAsset)
+        {
+            Audio *audioEmitter = getAudioEmitter();
+            if (audioEmitter != nullptr)
+            {
+                audioEmitter->replay(audioAsset);
+            }
         }
     };
 } // namespace mario

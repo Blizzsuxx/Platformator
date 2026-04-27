@@ -26,7 +26,10 @@ namespace mario
             BEHAVIOR_FIELD(walkSpeed),
             BEHAVIOR_FIELD(stompMinSpeed),
             BEHAVIOR_FIELD(stompTolerance),
-            BEHAVIOR_FIELD(squashDuration));
+            BEHAVIOR_FIELD(squashDuration),
+            BEHAVIOR_FIELD(walkAnimset),
+            BEHAVIOR_FIELD(squashAnimset),
+            BEHAVIOR_FIELD(stompSound));
 
         void start() override;
         void fixedUpdate(double timeDelta) override;
@@ -44,6 +47,9 @@ namespace mario
         float stompMinSpeed;
         float stompTolerance;
         float squashDuration;
+        platformator_behavior_detail::AnimationSetAssetReference walkAnimset;
+        platformator_behavior_detail::AnimationSetAssetReference squashAnimset;
+        platformator_behavior_detail::AudioAssetReference stompSound;
         bool defeated;
         double defeatedTimer;
     };

@@ -24,7 +24,14 @@ namespace mario
             BEHAVIOR_FIELD(jumpSpeed),
             BEHAVIOR_FIELD(gravity),
             BEHAVIOR_FIELD(maxFallSpeed),
-            BEHAVIOR_FIELD(stompBounceFactor));
+            BEHAVIOR_FIELD(stompBounceFactor),
+            BEHAVIOR_FIELD(idleAnimset),
+            BEHAVIOR_FIELD(runAnimset),
+            BEHAVIOR_FIELD(jumpAnimset),
+            BEHAVIOR_FIELD(fallAnimset),
+            BEHAVIOR_FIELD(winAnimset),
+            BEHAVIOR_FIELD(jumpSound),
+            BEHAVIOR_FIELD(hurtSound));
 
         void start() override;
         void fixedUpdate(double timeDelta) override;
@@ -48,6 +55,13 @@ namespace mario
         float gravity;
         float maxFallSpeed;
         float stompBounceFactor;
+        platformator_behavior_detail::AnimationSetAssetReference idleAnimset;
+        platformator_behavior_detail::AnimationSetAssetReference runAnimset;
+        platformator_behavior_detail::AnimationSetAssetReference jumpAnimset;
+        platformator_behavior_detail::AnimationSetAssetReference fallAnimset;
+        platformator_behavior_detail::AnimationSetAssetReference winAnimset;
+        platformator_behavior_detail::AudioAssetReference jumpSound;
+        platformator_behavior_detail::AudioAssetReference hurtSound;
         Eigen::Vector2f spawn;
         Eigen::Vector2f positionBeforePhysics;
         Eigen::Vector2f velocityBeforePhysics;

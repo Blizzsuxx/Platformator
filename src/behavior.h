@@ -12,6 +12,10 @@ class Collider;
 class ScriptComponent;
 class Behavior;
 class Collision;
+class GameManager;
+class AudioWrapper;
+class TextureWrapper;
+class AnimationSetAsset;
 
 namespace platformator_behavior_detail
 {
@@ -25,11 +29,124 @@ namespace platformator_behavior_detail
         }
     };
 
+    GameObject *findGameObjectByName(const std::string &name);
+    std::string resolveAssetPath(const std::string &sourcePath, const std::string &path);
+
+    AudioWrapper *resolveAudioAssetByPath(const std::string &resolvedPath);
+    TextureWrapper *resolveTextureAssetByPath(const std::string &resolvedPath);
+    AnimationSetAsset *resolveAnimationSetAssetByPath(const std::string &resolvedPath);
+
+    template <typename Asset>
+    struct AssetReference
+    {
+        using Resolver = Asset *(*)(const std::string &resolvedPath);
+
+        std::string path;
+        std::string resolvedPath;
+        Asset *asset;
+        Resolver resolver;
+
+        AssetReference() : path(), resolvedPath(), asset(nullptr), resolver(nullptr)
+        {
+        }
+
+        explicit AssetReference(std::string path, Resolver resolver = nullptr)
+            : path(std::move(path)), resolvedPath(this->path), asset(nullptr), resolver(resolver)
+        {
+        }
+
+        AssetReference(std::string path, std::string resolvedPath, Resolver resolver)
+            : path(std::move(path)), resolvedPath(std::move(resolvedPath)), asset(nullptr), resolver(resolver)
+        {
+        }
+
+        Asset *get() const
+        {
+            return asset;
+        }
+
+        Asset *operator->() const
+        {
+            return asset;
+        }
+
+        Asset &operator*() const
+        {
+            return *asset;
+        }
+
+        operator Asset *() const
+        {
+            return asset;
+        }
+
+        explicit operator bool() const
+        {
+            return asset != nullptr;
+        }
+
+        void resolve()
+        {
+            asset = (resolvedPath.empty() || resolver == nullptr) ? nullptr : resolver(resolvedPath);
+        }
+    };
+
+    using AudioAssetReference = AssetReference<AudioWrapper>;
+    using TextureAssetReference = AssetReference<TextureWrapper>;
+    using AnimationSetAssetReference = AssetReference<AnimationSetAsset>;
+
+    template <typename T>
+    struct NamedComponentReference
+    {
+        std::string name;
+        T *component;
+
+        NamedComponentReference() : name(), component(nullptr)
+        {
+        }
+
+        explicit NamedComponentReference(std::string name) : name(std::move(name)), component(nullptr)
+        {
+        }
+
+        T *get() const
+        {
+            return component;
+        }
+
+        T *operator->() const
+        {
+            return component;
+        }
+
+        T &operator*() const
+        {
+            return *component;
+        }
+
+        operator T *() const
+        {
+            return component;
+        }
+
+        explicit operator bool() const
+        {
+            return component != nullptr;
+        }
+
+        void resolve()
+        {
+            GameObject *gameObject = name.empty() ? nullptr : findGameObjectByName(name);
+            component = gameObject != nullptr ? gameObject->getComponent<T>() : nullptr;
+        }
+    };
+
     struct BehaviorFieldDescriptor
     {
         const char *name;
         void (*deserialize)(Behavior &behavior, const char *name, const ScriptDescriptor &descriptor);
         void (*serialize)(const Behavior &behavior, const char *name, ScriptDescriptor &descriptor);
+        void (*resolve)(Behavior &behavior);
     };
 
     template <typename T>
@@ -147,6 +264,68 @@ namespace platformator_behavior_detail
         }
     };
 
+    template <typename T>
+    struct ScriptFieldTraits<NamedComponentReference<T>>
+    {
+        static NamedComponentReference<T> get(const ScriptDescriptor &descriptor, const char *name, const NamedComponentReference<T> &fallback)
+        {
+            return NamedComponentReference<T>(descriptor.getString(name, fallback.name));
+        }
+
+        static void set(ScriptDescriptor &descriptor, const char *name, const NamedComponentReference<T> &value)
+        {
+            descriptor.setStringProperty(name, value.name);
+        }
+    };
+
+    template <>
+    struct ScriptFieldTraits<AudioAssetReference>
+    {
+        static AudioAssetReference get(const ScriptDescriptor &descriptor, const char *name, const AudioAssetReference &fallback)
+        {
+            const std::string path = descriptor.getString(name, fallback.path);
+            const std::string resolvedPath = resolveAssetPath(descriptor.sourcePath, path);
+            return AudioAssetReference(path, resolvedPath, &resolveAudioAssetByPath);
+        }
+
+        static void set(ScriptDescriptor &descriptor, const char *name, const AudioAssetReference &value)
+        {
+            descriptor.setStringProperty(name, value.path);
+        }
+    };
+
+    template <>
+    struct ScriptFieldTraits<TextureAssetReference>
+    {
+        static TextureAssetReference get(const ScriptDescriptor &descriptor, const char *name, const TextureAssetReference &fallback)
+        {
+            const std::string path = descriptor.getString(name, fallback.path);
+            const std::string resolvedPath = resolveAssetPath(descriptor.sourcePath, path);
+            return TextureAssetReference(path, resolvedPath, &resolveTextureAssetByPath);
+        }
+
+        static void set(ScriptDescriptor &descriptor, const char *name, const TextureAssetReference &value)
+        {
+            descriptor.setStringProperty(name, value.path);
+        }
+    };
+
+    template <>
+    struct ScriptFieldTraits<AnimationSetAssetReference>
+    {
+        static AnimationSetAssetReference get(const ScriptDescriptor &descriptor, const char *name, const AnimationSetAssetReference &fallback)
+        {
+            const std::string path = descriptor.getString(name, fallback.path);
+            const std::string resolvedPath = resolveAssetPath(descriptor.sourcePath, path);
+            return AnimationSetAssetReference(path, resolvedPath, &resolveAnimationSetAssetByPath);
+        }
+
+        static void set(ScriptDescriptor &descriptor, const char *name, const AnimationSetAssetReference &value)
+        {
+            descriptor.setStringProperty(name, value.path);
+        }
+    };
+
     template <typename Owner, typename Field, Field Owner::*Member>
     struct BehaviorFieldBinding
     {
@@ -163,6 +342,15 @@ namespace platformator_behavior_detail
             const Owner &owner = static_cast<const Owner &>(behavior);
             ScriptFieldTraits<StoredField>::set(descriptor, name, owner.*Member);
         }
+
+        static void resolve(Behavior &behavior)
+        {
+            Owner &owner = static_cast<Owner &>(behavior);
+            if constexpr (requires(StoredField &field) { field.resolve(); })
+            {
+                (owner.*Member).resolve();
+            }
+        }
     };
 
     template <typename Owner, typename Field, Field Owner::*Member>
@@ -171,7 +359,8 @@ namespace platformator_behavior_detail
         return BehaviorFieldDescriptor{
             name,
             &BehaviorFieldBinding<Owner, Field, Member>::deserialize,
-            &BehaviorFieldBinding<Owner, Field, Member>::serialize};
+            &BehaviorFieldBinding<Owner, Field, Member>::serialize,
+            &BehaviorFieldBinding<Owner, Field, Member>::resolve};
     }
 }
 
@@ -179,6 +368,7 @@ class Behavior
 {
     friend class ScriptComponent;
     friend class BehaviorFactoryRegistry;
+    friend class GameManager;
 
 public:
     Behavior();
@@ -209,6 +399,8 @@ protected:
 private:
     GameObject *gameObject;
     bool enabled;
+
+    void resolveFieldBindings();
 };
 
 #define BEHAVIOR_FIELDS(TYPE, ...)                                                                                           \

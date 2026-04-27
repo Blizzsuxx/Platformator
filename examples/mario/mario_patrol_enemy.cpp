@@ -23,6 +23,9 @@ namespace mario
           stompMinSpeed(10.0f),
           stompTolerance(STOMP_TOLERANCE),
           squashDuration(static_cast<float>(ENEMY_SQUASH_DURATION)),
+          walkAnimset(),
+          squashAnimset(),
+          stompSound(),
           defeated(false),
           defeatedTimer(0.0)
     {
@@ -37,7 +40,7 @@ namespace mario
     {
         body = getGameObject()->getComponent<Rigidbody>();
         collider = getGameObject()->getComponent<Collider>();
-        animator = getGameObject()->getComponent<Animator>();
+        animator = getAnimator();
         sprite = getGameObject()->getComponent<Sprite>();
 
         if (maxX <= minX)
@@ -83,7 +86,10 @@ namespace mario
             sprite->setFlip(direction < 0.0f ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
         }
 
-        playClipIfChanged(animator, "walk");
+        if (animator != nullptr)
+        {
+            animator->play(walkAnimset.get());
+        }
     }
 
     void MarioPatrolEnemy::handlePlayerContact(MarioPlayer &player)
@@ -121,7 +127,7 @@ namespace mario
 
         if (animator != nullptr)
         {
-            playClipIfChanged(animator, "squash");
+            animator->play(squashAnimset.get());
         }
         else
         {
@@ -130,6 +136,6 @@ namespace mario
         }
 
         player.bounceAfterStomp();
-        game.playStompSound();
+        playSound(stompSound);
     }
 } // namespace mario

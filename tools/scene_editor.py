@@ -312,21 +312,21 @@ def _parse_bool(s: str) -> bool:
         return True
     if low in ("false", "0", "no"):
         return False
-    raise ParseError(f"Invalid boolean '{s}'")
+    raise ParseError(f"Invalid boolean \"{s}\". Expected: true/false, 1/0, yes/no.")
 
 
 def _parse_float(s: str) -> float:
     try:
         return float(s)
-    except ValueError:
-        raise ParseError(f"Invalid float '{s}'")
+    except ValueError as e:
+        raise ParseError(f"Invalid float \"{s}\": {e}")
 
 
 def _parse_int(s: str) -> int:
     try:
         return int(s)
-    except ValueError:
-        raise ParseError(f"Invalid int '{s}'")
+    except ValueError as e:
+        raise ParseError(f"Invalid int \"{s}\": {e}")
 
 
 def _parse_vec2(ts: TokenStream) -> Tuple[float, float]:
@@ -595,7 +595,7 @@ def parse_scene(text: str) -> List[SceneObject]:
 
 
 def _fmt_float(v: float) -> str:
-    """Format a float matching the engine's precision output."""
+    """Format a float using 9 significant digits (matching the engine's %.9g precision)."""
     s = f"{v:.9g}"
     return s
 

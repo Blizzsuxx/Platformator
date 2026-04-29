@@ -7,8 +7,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
-#include "animationclip.h"
+#include <toml++/toml.hpp>
+
 #include "animator.h"
 #include "audio.h"
 #include "behaviorfactoryregistry.h"
@@ -17,691 +19,557 @@
 #include "scene.h"
 #include "scriptcomponent.h"
 
+namespace scene_roundtrip_test_support
+{
+    class NamespacedSceneBehavior : public Behavior
+    {
+    };
+}
+
+REGISTER_BEHAVIOR(scene_roundtrip_test_support::NamespacedSceneBehavior);
+
 namespace
 {
-        void require(bool condition, const std::string &message)
+    void require(bool condition, const std::string &message)
+    {
+        if (!condition)
         {
-                if (!condition)
-                {
-                        throw std::runtime_error(message);
-                }
+            throw std::runtime_error(message);
+        }
+    }
+
+    void configureHeadlessEnvironment()
+    {
+        setenv("SDL_VIDEODRIVER", "dummy", 1);
+        setenv("SDL_AUDIODRIVER", "dummy", 1);
+        setenv("SDL_RENDER_DRIVER", "software", 1);
+    }
+
+    std::filesystem::path findWorkspaceRelativePath(const std::filesystem::path &relativePath)
+    {
+        std::filesystem::path searchDirectory = std::filesystem::current_path();
+
+        while (true)
+        {
+            std::filesystem::path candidate = searchDirectory / relativePath;
+            if (std::filesystem::exists(candidate))
+            {
+                return candidate.lexically_normal();
+            }
+
+            std::filesystem::path parentDirectory = searchDirectory.parent_path();
+            if (parentDirectory == searchDirectory)
+            {
+                break;
+            }
+
+            searchDirectory = parentDirectory;
         }
 
-        void configureHeadlessEnvironment()
+        throw std::runtime_error("Scene round-trip test could not locate resource '" + relativePath.generic_string() + "'.");
+    }
+
+    void cleanupAllGameObjects(GameManager &gameManager)
+    {
+        while (!gameManager.getGameObjects().empty())
         {
-                setenv("SDL_VIDEODRIVER", "dummy", 1);
-                setenv("SDL_AUDIODRIVER", "dummy", 1);
-                setenv("SDL_RENDER_DRIVER", "software", 1);
+            std::vector<GameObject *> snapshot = gameManager.getGameObjects();
+            for (GameObject *gameObject : snapshot)
+            {
+                gameManager.destroyGameObject(gameObject);
+            }
+            gameManager.simulateFrame(FRAME_TIME);
+        }
+    }
+
+    class AnnotatedSceneBehavior : public Behavior
+    {
+    public:
+        SERIALIZABLE_BEHAVIOR(AnnotatedSceneBehavior);
+
+        SERIALIZED_FIELD(std::string, displayName);
+        SERIALIZED_FIELD(float, speed);
+        SERIALIZED_FIELD(bool, allowDash);
+        SERIALIZED_FIELD(double, precision);
+        SERIALIZED_FIELD(Eigen::Vector2f, offset);
+        SERIALIZED_FIELD(platformator::GameObjectRef, targetObject);
+        SERIALIZED_FIELD(platformator::ComponentRef<Audio>, emitter);
+        SERIALIZED_FIELD(platformator::TextureAssetRef, icon);
+        SERIALIZED_FIELD(platformator::AnimationClipRef, idleClip);
+        SERIALIZED_FIELD(platformator::AudioAssetRef, sound);
+    };
+
+    REGISTER_BEHAVIOR(AnnotatedSceneBehavior);
+
+    template <typename T>
+    T *findBehavior(ScriptComponent *scriptComponent)
+    {
+        for (Behavior *candidate : scriptComponent->getBehaviors())
+        {
+            if (T *typedBehavior = dynamic_cast<T *>(candidate))
+            {
+                return typedBehavior;
+            }
         }
 
-        void drainDeletion(GameManager &gameManager)
+        return nullptr;
+    }
+
+    const toml::table *findSavedObject(const toml::array &objects, const std::string &name)
+    {
+        for (const toml::node &node : objects)
         {
-                gameManager.simulateFrame(FRAME_TIME);
+            const toml::table *objectTable = node.as_table();
+            if (objectTable == nullptr)
+            {
+                continue;
+            }
+
+            const toml::node *nameNode = objectTable->get("name");
+            if (nameNode != nullptr && nameNode->is_string() && nameNode->value_exact<std::string>().value_or("") == name)
+            {
+                return objectTable;
+            }
         }
 
-        std::filesystem::path findWorkspaceRelativePath(const std::filesystem::path &relativePath)
+        return nullptr;
+    }
+
+    void testSceneVersion2RoundTrip()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        cleanupAllGameObjects(gameManager);
+
+        const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_roundtrip.scene";
+        const std::filesystem::path animationClipPath = std::filesystem::current_path() / "scene_v2_roundtrip.animset";
+        const std::filesystem::path texturePath = findWorkspaceRelativePath(std::filesystem::path("assets") / "ball.png");
+        const std::filesystem::path audioPath = findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "audio" / "jump.wav");
+
+        const std::string sceneRelativeTexturePath = std::filesystem::relative(texturePath, scenePath.parent_path()).generic_string();
+        const std::string sceneRelativeAudioPath = std::filesystem::relative(audioPath, scenePath.parent_path()).generic_string();
+        const std::string sceneRelativeAnimsetPath = std::filesystem::relative(animationClipPath, scenePath.parent_path()).generic_string();
+        const std::string animsetRelativeTexturePath = std::filesystem::relative(texturePath, animationClipPath.parent_path()).generic_string();
+
+        auto cleanupFiles = [&]()
         {
-                std::filesystem::path searchDirectory = std::filesystem::current_path();
-
-                while (true)
-                {
-                        std::filesystem::path candidate = searchDirectory / relativePath;
-                        if (std::filesystem::exists(candidate))
-                        {
-                                return candidate.lexically_normal();
-                        }
-
-                        std::filesystem::path parentDirectory = searchDirectory.parent_path();
-                        if (parentDirectory == searchDirectory)
-                        {
-                                break;
-                        }
-
-                        searchDirectory = parentDirectory;
-                }
-
-                throw std::runtime_error("Scene script round-trip test could not locate resource '" + relativePath.generic_string() + "'.");
-        }
-
-        class TestSerializedBehavior : public Behavior
-        {
-        public:
-                TestSerializedBehavior()
-                    : displayName(""), speed(0.0f), allowDash(false), precision(0.0), offset(Eigen::Vector2f::Zero()), target(), emitter(), icon(), idleAnimset(), runAnimset(), sound()
-                {
-                }
-
-                BEHAVIOR_FIELDS(
-                    TestSerializedBehavior,
-                    BEHAVIOR_FIELD(displayName),
-                    BEHAVIOR_FIELD(speed),
-                    BEHAVIOR_FIELD(allowDash),
-                    BEHAVIOR_FIELD(precision),
-                    BEHAVIOR_FIELD(offset),
-                    BEHAVIOR_FIELD(target),
-                    BEHAVIOR_FIELD(emitter),
-                    BEHAVIOR_FIELD(icon),
-                    BEHAVIOR_FIELD(idleAnimset),
-                    BEHAVIOR_FIELD(runAnimset),
-                    BEHAVIOR_FIELD(sound));
-
-                void start() override
-                {
-                        Animator *animator = getGameObject()->getComponent<Animator>();
-                        require(animator != nullptr, "Scene script round-trip test expected an explicit animator component.");
-
-                        require(animator->play(idleAnimset.get()),
-                                "Scene script round-trip test failed to play the initial script-owned animset directly through the animator.");
-                }
-
-                const std::string &getDisplayName() const
-                {
-                        return displayName;
-                }
-
-                float getSpeed() const
-                {
-                        return speed;
-                }
-
-                bool getAllowDash() const
-                {
-                        return allowDash;
-                }
-
-                double getPrecision() const
-                {
-                        return precision;
-                }
-
-                const Eigen::Vector2f &getOffset() const
-                {
-                        return offset;
-                }
-
-                const platformator_behavior_detail::NamedGameObjectReference &getTarget() const
-                {
-                        return target;
-                }
-
-                const platformator_behavior_detail::NamedComponentReference<Audio> &getEmitter() const
-                {
-                        return emitter;
-                }
-
-                const platformator_behavior_detail::TextureAssetReference &getIcon() const
-                {
-                        return icon;
-                }
-
-                const platformator_behavior_detail::AnimationClipReference &getIdleAnimset() const
-                {
-                        return idleAnimset;
-                }
-
-                const platformator_behavior_detail::AnimationClipReference &getRunAnimset() const
-                {
-                        return runAnimset;
-                }
-
-                const platformator_behavior_detail::AudioAssetReference &getSound() const
-                {
-                        return sound;
-                }
-
-        private:
-                std::string displayName;
-                float speed;
-                bool allowDash;
-                double precision;
-                Eigen::Vector2f offset;
-                platformator_behavior_detail::NamedGameObjectReference target;
-                platformator_behavior_detail::NamedComponentReference<Audio> emitter;
-                platformator_behavior_detail::TextureAssetReference icon;
-                platformator_behavior_detail::AnimationClipReference idleAnimset;
-                platformator_behavior_detail::AnimationClipReference runAnimset;
-                platformator_behavior_detail::AudioAssetReference sound;
+            std::error_code errorCode;
+            std::filesystem::remove(scenePath, errorCode);
+            std::filesystem::remove(animationClipPath, errorCode);
         };
 
-        class StrictBoolBehavior : public Behavior
+        cleanupFiles();
+
+        try
         {
-        public:
-                StrictBoolBehavior() : allowDash(false)
-                {
-                }
+            std::ofstream animationFile(animationClipPath);
+            require(animationFile.is_open(), "Scene v2 round-trip test failed to create the temporary animation clip file.");
+            animationFile << "format = \"platformator_animset\"\n";
+            animationFile << "version = 1\n";
+            animationFile << "name = \"idle\"\n";
+            animationFile << "fps = 1\n";
+            animationFile << "loop = true\n";
+            animationFile << "size = [32, 32]\n";
+            animationFile << "frames = [\n";
+            animationFile << "    \"" << animsetRelativeTexturePath << "\",\n";
+            animationFile << "]\n";
+            animationFile.close();
 
-                BEHAVIOR_FIELDS(
-                    StrictBoolBehavior,
-                    BEHAVIOR_FIELD(allowDash));
+            std::ofstream sceneFile(scenePath);
+            require(sceneFile.is_open(), "Scene v2 round-trip test failed to create the temporary scene file.");
+            sceneFile << "format = \"platformator_scene\"\n";
+            sceneFile << "version = 2\n\n";
 
-                bool getAllowDash() const
-                {
-                        return allowDash;
-                }
+            sceneFile << "[[objects]]\n";
+            sceneFile << "id = 100\n";
+            sceneFile << "name = \"Target Dummy\"\n\n";
+            sceneFile << "[objects.audio]\n";
+            sceneFile << "id = 300\n";
+            sceneFile << "gain = 0.4\n\n";
 
-        private:
-                bool allowDash;
+            sceneFile << "[[objects]]\n";
+            sceneFile << "id = 101\n";
+            sceneFile << "name = \"Main Camera\"\n";
+            sceneFile << "children = [102]\n\n";
+            sceneFile << "[objects.camera]\n";
+            sceneFile << "id = 200\n";
+            sceneFile << "viewport = [0, 0, 640, 480]\n\n";
+
+            sceneFile << "[[objects]]\n";
+            sceneFile << "id = 103\n";
+            sceneFile << "name = \"Sprite Only\"\n\n";
+            sceneFile << "[objects.sprite]\n";
+            sceneFile << "id = 204\n";
+            sceneFile << "path = \"" << sceneRelativeTexturePath << "\"\n";
+            sceneFile << "flip = \"none\"\n";
+            sceneFile << "size = [32, 32]\n";
+            sceneFile << "sourceRect = [0, 0, 16, 16]\n\n";
+
+            sceneFile << "[[objects]]\n";
+            sceneFile << "id = 102\n";
+            sceneFile << "name = \"Scripted Object\"\n";
+            sceneFile << "position = [12, 34]\n";
+            sceneFile << "scale = [1.5, 2.0]\n\n";
+            sceneFile << "[objects.sprite]\n";
+            sceneFile << "id = 202\n";
+            sceneFile << "path = \"" << sceneRelativeTexturePath << "\"\n";
+            sceneFile << "flip = \"horizontal\"\n";
+            sceneFile << "size = [32, 32]\n";
+            sceneFile << "sourceRect = [0, 0, 16, 16]\n\n";
+            sceneFile << "[objects.animator]\n";
+            sceneFile << "id = 201\n";
+            sceneFile << "playbackSpeed = 1.5\n";
+            sceneFile << "clip = \"" << sceneRelativeAnimsetPath << "\"\n";
+            sceneFile << "playing = true\n\n";
+            sceneFile << "[objects.script]\n";
+            sceneFile << "id = 203\n\n";
+            sceneFile << "[[objects.script.behaviors]]\n";
+            sceneFile << "type = \"AnnotatedSceneBehavior\"\n";
+            sceneFile << "displayName = \"Player One\"\n";
+            sceneFile << "speed = 123.5\n";
+            sceneFile << "allowDash = true\n";
+            sceneFile << "precision = 987.654321\n";
+            sceneFile << "offset = [11.25, -4.5]\n";
+            sceneFile << "targetObject = { gameObject = 100 }\n";
+            sceneFile << "emitter = { component = 300 }\n";
+            sceneFile << "icon = \"" << sceneRelativeTexturePath << "\"\n";
+            sceneFile << "idleClip = \"" << sceneRelativeAnimsetPath << "\"\n";
+            sceneFile << "sound = \"" << sceneRelativeAudioPath << "\"\n";
+            sceneFile.close();
+
+            Scene scene(scenePath.string());
+            gameManager.loadScene(scene);
+            gameManager.simulateFrame(FRAME_TIME);
+
+            GameObject *mainCamera = gameManager.getGameObject("Main Camera");
+            GameObject *spriteOnlyObject = gameManager.getGameObject("Sprite Only");
+            GameObject *targetDummy = gameManager.getGameObject("Target Dummy");
+            GameObject *scriptedObject = gameManager.getGameObject("Scripted Object");
+            require(mainCamera != nullptr, "Scene v2 round-trip test failed to load the main camera object.");
+            require(spriteOnlyObject != nullptr, "Scene v2 round-trip test failed to load the sprite-only object.");
+            require(targetDummy != nullptr, "Scene v2 round-trip test failed to load the target object.");
+            require(scriptedObject != nullptr, "Scene v2 round-trip test failed to load the scripted object.");
+            require(scriptedObject->getId() == 102, "Scene v2 round-trip test failed to restore the scripted object id.");
+            require(mainCamera->getChildren().size() == 1 && mainCamera->getChildren()[0] == scriptedObject,
+                    "Scene v2 round-trip test failed to restore child object references.");
+
+            Audio *targetAudio = targetDummy->getComponent<Audio>();
+            require(targetAudio != nullptr && targetAudio->getId() == 300,
+                    "Scene v2 round-trip test failed to restore the referenced audio component id.");
+
+            Sprite *spriteOnly = spriteOnlyObject->getComponent<Sprite>();
+            require(spriteOnly != nullptr && spriteOnly->getId() == 204,
+                    "Scene v2 round-trip test failed to restore the sprite-only component id.");
+            require(spriteOnly->hasSourceRect() && std::abs(spriteOnly->getSourceRect()->w - 16.0f) <= 1e-5f,
+                    "Scene v2 round-trip test failed to restore sprite source rect state.");
+
+            Sprite *sprite = scriptedObject->getComponent<Sprite>();
+            require(sprite != nullptr && sprite->getId() == 202,
+                    "Scene v2 round-trip test failed to restore the sprite component id.");
+            require(sprite->getFlip() == SDL_FLIP_HORIZONTAL,
+                    "Scene v2 round-trip test failed to restore sprite flip mode.");
+
+            Animator *animator = scriptedObject->getComponent<Animator>();
+            require(animator != nullptr && animator->getId() == 201,
+                    "Scene v2 round-trip test failed to restore the animator component id.");
+            require(std::abs(animator->getPlaybackSpeed() - 1.5f) <= 1e-5f,
+                    "Scene v2 round-trip test failed to restore animator playback speed.");
+            require(animator->getCurrentAnimationClip() != nullptr && animator->getCurrentAnimationClip()->getName() == "idle",
+                    "Scene v2 round-trip test failed to restore the animator clip asset.");
+
+            ScriptComponent *scriptComponent = scriptedObject->getComponent<ScriptComponent>();
+            require(scriptComponent != nullptr && scriptComponent->getId() == 203,
+                    "Scene v2 round-trip test failed to restore the script component id.");
+
+            AnnotatedSceneBehavior *behavior = findBehavior<AnnotatedSceneBehavior>(scriptComponent);
+            require(behavior != nullptr, "Scene v2 round-trip test failed to instantiate the annotated behavior.");
+            require(behavior->displayName == "Player One", "Scene v2 round-trip test failed to deserialize the string field.");
+            require(std::abs(behavior->speed - 123.5f) <= 1e-5f, "Scene v2 round-trip test failed to deserialize the float field.");
+            require(behavior->allowDash, "Scene v2 round-trip test failed to deserialize the bool field.");
+            require(std::abs(behavior->precision - 987.654321) <= 1e-12, "Scene v2 round-trip test failed to deserialize the double field.");
+            require((behavior->offset - Eigen::Vector2f(11.25f, -4.5f)).norm() <= 1e-5f,
+                    "Scene v2 round-trip test failed to deserialize the Vector2f field.");
+            require(behavior->targetObject.id == 100 && behavior->targetObject.get() == targetDummy,
+                    "Scene v2 round-trip test failed to resolve the game object reference field.");
+            require(behavior->emitter.id == 300 && behavior->emitter.get() == targetAudio,
+                    "Scene v2 round-trip test failed to resolve the component reference field.");
+            require(behavior->icon.path == sceneRelativeTexturePath && behavior->icon.get() != nullptr,
+                    "Scene v2 round-trip test failed to resolve the texture asset field.");
+            require(behavior->idleClip.path == sceneRelativeAnimsetPath && behavior->idleClip.get() != nullptr,
+                    "Scene v2 round-trip test failed to resolve the animation clip asset field.");
+            require(behavior->sound.path == sceneRelativeAudioPath && behavior->sound.get() != nullptr,
+                    "Scene v2 round-trip test failed to resolve the audio asset field.");
+
+            gameManager.saveScene(scene);
+
+            const toml::table savedDocument = toml::parse_file(scenePath.string());
+            require(savedDocument["version"].value_or(0) == 2,
+                    "Scene v2 round-trip test failed to save the new scene version.");
+
+            const toml::array *savedObjects = savedDocument.get_as<toml::array>("objects");
+            require(savedObjects != nullptr, "Scene v2 round-trip test failed to save the objects array.");
+
+            const toml::table *savedMainCamera = findSavedObject(*savedObjects, "Main Camera");
+            require(savedMainCamera != nullptr, "Scene v2 round-trip test failed to save the main camera object.");
+            const toml::array *savedChildren = savedMainCamera->get_as<toml::array>("children");
+            require(savedChildren != nullptr && savedChildren->size() == 1 && savedChildren->get(0)->value_or<int64_t>(0) == 102,
+                    "Scene v2 round-trip test failed to preserve child ids.");
+
+            const toml::table *savedScriptedObject = findSavedObject(*savedObjects, "Scripted Object");
+            require(savedScriptedObject != nullptr, "Scene v2 round-trip test failed to save the scripted object.");
+            const toml::table *savedScript = savedScriptedObject->get_as<toml::table>("script");
+            require(savedScript != nullptr, "Scene v2 round-trip test failed to save the explicit script component block.");
+            const toml::array *savedBehaviors = savedScript->get_as<toml::array>("behaviors");
+            require(savedBehaviors != nullptr && !savedBehaviors->empty(),
+                    "Scene v2 round-trip test failed to save script behaviors.");
+            const toml::table *savedBehavior = savedBehaviors->get(0)->as_table();
+            require(savedBehavior != nullptr, "Scene v2 round-trip test failed to save the behavior table.");
+            require(savedBehavior->get("displayName") != nullptr,
+                    "Scene v2 round-trip test failed to preserve annotated field casing when saving behavior data.");
+            const toml::table *savedTargetRef = savedBehavior->get_as<toml::table>("targetObject");
+            require(savedTargetRef != nullptr && savedTargetRef->get("gameObject")->value_or<int64_t>(0) == 100,
+                    "Scene v2 round-trip test failed to serialize the game object reference field using ids.");
+            const toml::table *savedEmitterRef = savedBehavior->get_as<toml::table>("emitter");
+            require(savedEmitterRef != nullptr && savedEmitterRef->get("component")->value_or<int64_t>(0) == 300,
+                    "Scene v2 round-trip test failed to serialize the component reference field using ids.");
+
+            cleanupAllGameObjects(gameManager);
+            gameManager.loadScene(scene);
+            gameManager.simulateFrame(FRAME_TIME);
+
+            scriptedObject = gameManager.getGameObject("Scripted Object");
+            require(scriptedObject != nullptr && scriptedObject->getId() == 102,
+                    "Scene v2 round-trip test failed to reload the saved scripted object.");
+            scriptComponent = scriptedObject->getComponent<ScriptComponent>();
+            behavior = findBehavior<AnnotatedSceneBehavior>(scriptComponent);
+            require(behavior != nullptr && behavior->targetObject.get() != nullptr && behavior->emitter.get() != nullptr,
+                    "Scene v2 round-trip test failed to reload serialized references from the saved scene.");
+
+            cleanupAllGameObjects(gameManager);
+            cleanupFiles();
+        }
+        catch (const std::exception &)
+        {
+            cleanupAllGameObjects(gameManager);
+            cleanupFiles();
+            throw;
+        }
+    }
+
+    void testSceneVersion2RejectsInvalidIds()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        cleanupAllGameObjects(gameManager);
+
+        const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_invalid_ids.scene";
+
+        auto cleanupFile = [&]()
+        {
+            std::error_code errorCode;
+            std::filesystem::remove(scenePath, errorCode);
         };
 
-        class ReferenceResolutionBehavior : public Behavior
+        cleanupFile();
+
+        try
         {
-        public:
-                ReferenceResolutionBehavior()
-                    : target(), emitter(), icon(), idleAnimset(), sound()
-                {
-                }
+            {
+                std::ofstream sceneFile(scenePath);
+                require(sceneFile.is_open(), "Scene invalid-id test failed to create the temporary scene file.");
+                sceneFile << "format = \"platformator_scene\"\n";
+                sceneFile << "version = 2\n\n";
+                sceneFile << "[[objects]]\n";
+                sceneFile << "id = 0\n";
+                sceneFile << "name = \"Zero Id\"\n";
+            }
 
-                BEHAVIOR_FIELDS(
-                    ReferenceResolutionBehavior,
-                    BEHAVIOR_FIELD(target),
-                    BEHAVIOR_FIELD(emitter),
-                    BEHAVIOR_FIELD(icon),
-                    BEHAVIOR_FIELD(idleAnimset),
-                    BEHAVIOR_FIELD(sound));
+            bool threw = false;
+            try
+            {
+                Scene scene(scenePath.string());
+                gameManager.loadScene(scene);
+            }
+            catch (const std::exception &exception)
+            {
+                threw = true;
+                require(std::string(exception.what()).find("must be positive") != std::string::npos,
+                        "Scene invalid-id test failed to reject id 0 with a positive-id error.");
+            }
+            require(threw, "Scene invalid-id test expected object id 0 to be rejected.");
 
-                const platformator_behavior_detail::NamedGameObjectReference &getTarget() const
-                {
-                        return target;
-                }
+            cleanupFile();
 
-                const platformator_behavior_detail::NamedComponentReference<Audio> &getEmitter() const
-                {
-                        return emitter;
-                }
+            {
+                std::ofstream sceneFile(scenePath);
+                require(sceneFile.is_open(), "Scene duplicate-id test failed to create the temporary scene file.");
+                sceneFile << "format = \"platformator_scene\"\n";
+                sceneFile << "version = 2\n\n";
+                sceneFile << "[[objects]]\n";
+                sceneFile << "id = 400\n";
+                sceneFile << "name = \"First\"\n\n";
+                sceneFile << "[objects.audio]\n";
+                sceneFile << "id = 900\n";
+                sceneFile << "gain = 0.5\n\n";
+                sceneFile << "[[objects]]\n";
+                sceneFile << "id = 401\n";
+                sceneFile << "name = \"Second\"\n\n";
+                sceneFile << "[objects.script]\n";
+                sceneFile << "id = 900\n";
+            }
 
-                const platformator_behavior_detail::TextureAssetReference &getIcon() const
-                {
-                        return icon;
-                }
+            threw = false;
+            try
+            {
+                Scene scene(scenePath.string());
+                gameManager.loadScene(scene);
+            }
+            catch (const std::exception &exception)
+            {
+                threw = true;
+                require(std::string(exception.what()).find("duplicates id 900") != std::string::npos,
+                        "Scene duplicate-id test failed to reject duplicate component ids.");
+            }
+            require(threw, "Scene duplicate-id test expected duplicate component ids to be rejected.");
 
-                const platformator_behavior_detail::AnimationClipReference &getIdleAnimset() const
-                {
-                        return idleAnimset;
-                }
+            cleanupAllGameObjects(gameManager);
+            cleanupFile();
+        }
+        catch (const std::exception &)
+        {
+            cleanupAllGameObjects(gameManager);
+            cleanupFile();
+            throw;
+        }
+    }
 
-                const platformator_behavior_detail::AudioAssetReference &getSound() const
-                {
-                        return sound;
-                }
+    void testFailedSceneLoadDoesNotLeaveStartedBehaviors()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        cleanupAllGameObjects(gameManager);
 
-        private:
-                platformator_behavior_detail::NamedGameObjectReference target;
-                platformator_behavior_detail::NamedComponentReference<Audio> emitter;
-                platformator_behavior_detail::TextureAssetReference icon;
-                platformator_behavior_detail::AnimationClipReference idleAnimset;
-                platformator_behavior_detail::AudioAssetReference sound;
+        const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_failed_load.scene";
+
+        auto cleanupFile = [&]()
+        {
+            std::error_code errorCode;
+            std::filesystem::remove(scenePath, errorCode);
         };
 
-        template <typename T>
-        T *findBehavior(ScriptComponent *scriptComponent)
-        {
-                for (Behavior *candidate : scriptComponent->getBehaviors())
-                {
-                        if (T *typedBehavior = dynamic_cast<T *>(candidate))
-                        {
-                                return typedBehavior;
-                        }
-                }
+        cleanupFile();
 
-                return nullptr;
+        try
+        {
+            std::ofstream sceneFile(scenePath);
+            require(sceneFile.is_open(), "Scene failed-load test failed to create the temporary scene file.");
+            sceneFile << "format = \"platformator_scene\"\n";
+            sceneFile << "version = 2\n\n";
+            sceneFile << "[[objects]]\n";
+            sceneFile << "id = 700\n";
+            sceneFile << "name = \"Broken Scripted Object\"\n\n";
+            sceneFile << "[objects.script]\n";
+            sceneFile << "id = 701\n\n";
+            sceneFile << "[[objects.script.behaviors]]\n";
+            sceneFile << "type = \"scene_roundtrip_test_support::NamespacedSceneBehavior\"\n\n";
+            sceneFile << "[[objects.script.behaviors]]\n";
+            sceneFile << "type = \"MissingBehaviorType\"\n";
+            sceneFile.close();
+
+            bool threw = false;
+            try
+            {
+                Scene scene(scenePath.string());
+                gameManager.loadScene(scene);
+            }
+            catch (const std::exception &exception)
+            {
+                threw = true;
+                require(std::string(exception.what()).find("Unknown behavior type 'MissingBehaviorType'") != std::string::npos,
+                        "Scene failed-load test failed to report the unknown behavior type.");
+            }
+
+            require(threw, "Scene failed-load test expected scene loading to fail.");
+            require(gameManager.getGameObjects().empty(), "Scene failed-load test should not leave partially loaded game objects registered.");
+
+            gameManager.simulateFrame(FRAME_TIME);
+            require(gameManager.getGameObjects().empty(), "Scene failed-load test left runtime state behind after a failed load.");
+
+            cleanupAllGameObjects(gameManager);
+            cleanupFile();
         }
-
-        void registerSceneScriptTestBehaviors()
+        catch (const std::exception &)
         {
-                static bool registered = false;
-                if (registered)
-                {
-                        return;
-                }
-
-                BehaviorFactoryRegistry &registry = BehaviorFactoryRegistry::getInstance();
-                registry.registerBehavior<TestSerializedBehavior>("TestSerializedBehavior");
-                registry.registerBehavior<StrictBoolBehavior>("StrictBoolBehavior");
-                registry.registerBehavior<ReferenceResolutionBehavior>("ReferenceResolutionBehavior");
-                registered = true;
+            cleanupAllGameObjects(gameManager);
+            cleanupFile();
+            throw;
         }
+    }
 
-        void destroyNamedObject(GameManager &gameManager, const std::string &name)
+    void testSceneVersion1StillLoads()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+        cleanupAllGameObjects(gameManager);
+
+        try
         {
-                GameObject *gameObject = gameManager.getGameObject(name);
-                if (gameObject != nullptr)
-                {
-                        gameManager.destroyGameObject(gameObject);
-                        drainDeletion(gameManager);
-                }
+            Scene scene(findWorkspaceRelativePath(std::filesystem::path("assets") / "scenes" / "default.scene").string());
+            gameManager.loadScene(scene);
+
+            GameObject *ball = gameManager.getGameObject("Ball");
+            GameObject *mainCamera = gameManager.getGameObject("Main Camera");
+            require(ball != nullptr, "Scene v1 compatibility test failed to load the Ball object from the default scene.");
+            require(ball->getComponent<Rigidbody>() != nullptr, "Scene v1 compatibility test failed to restore Ball rigidbody state.");
+            require(ball->getComponent<BoxCollider>() != nullptr, "Scene v1 compatibility test failed to restore Ball collider state.");
+            require(ball->getComponent<Sprite>() != nullptr, "Scene v1 compatibility test failed to restore Ball sprite state.");
+            require(mainCamera != nullptr && mainCamera->getComponent<Camera>() != nullptr,
+                    "Scene v1 compatibility test failed to restore the main camera component.");
+
+            cleanupAllGameObjects(gameManager);
         }
-
-        void testSceneScriptRoundTrip()
+        catch (const std::exception &)
         {
-                registerSceneScriptTestBehaviors();
-
-                GameManager &gameManager = GameManager::getInstance();
-                std::filesystem::path scenePath = std::filesystem::current_path() / "scene_script_roundtrip_regression.scene";
-                std::filesystem::path idleAnimationSetPath = std::filesystem::current_path() / "scene_script_roundtrip_idle.animset";
-                std::filesystem::path runAnimationSetPath = std::filesystem::current_path() / "scene_script_roundtrip_run.animset";
-                const std::filesystem::path audioAssetPath = findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "audio" / "jump.wav");
-                const std::filesystem::path textureAssetPath = findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "player" / "idle_0.png");
-                const std::filesystem::path runTextureAssetPath = findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "player" / "run_0.png");
-                const std::string sceneAudioPath = std::filesystem::relative(audioAssetPath, scenePath.parent_path()).generic_string();
-                const std::string sceneTexturePath = std::filesystem::relative(textureAssetPath, scenePath.parent_path()).generic_string();
-                const std::string sceneIdleAnimationSetPath = std::filesystem::relative(idleAnimationSetPath, scenePath.parent_path()).generic_string();
-                const std::string sceneRunAnimationSetPath = std::filesystem::relative(runAnimationSetPath, scenePath.parent_path()).generic_string();
-                const std::string idleAnimationTexturePath = std::filesystem::relative(textureAssetPath, idleAnimationSetPath.parent_path()).generic_string();
-                const std::string runAnimationTexturePath = std::filesystem::relative(runTextureAssetPath, runAnimationSetPath.parent_path()).generic_string();
-
-                auto cleanup = [&]()
-                {
-                        destroyNamedObject(gameManager, "Scripted Object");
-                        destroyNamedObject(gameManager, "Audio Emitter");
-
-                        std::error_code errorCode;
-                        std::filesystem::remove(scenePath, errorCode);
-                        std::filesystem::remove(idleAnimationSetPath, errorCode);
-                        std::filesystem::remove(runAnimationSetPath, errorCode);
-                };
-
-                cleanup();
-
-                try
-                {
-                        std::ofstream idleAnimationSetFile(idleAnimationSetPath);
-                        require(idleAnimationSetFile.is_open(), "Scene script round-trip test failed to create the temporary idle animation set file.");
-                        idleAnimationSetFile << "format = \"platformator_animset\"\n";
-                        idleAnimationSetFile << "version = 1\n";
-                        idleAnimationSetFile << "name = \"idle\"\n";
-                        idleAnimationSetFile << "fps = 1\n";
-                        idleAnimationSetFile << "loop = true\n";
-                        idleAnimationSetFile << "size = [32, 32]\n";
-                        idleAnimationSetFile << "frames = [\n";
-                        idleAnimationSetFile << "    \"" << idleAnimationTexturePath << "\",\n";
-                        idleAnimationSetFile << "]\n";
-                        idleAnimationSetFile.close();
-
-                        std::ofstream runAnimationSetFile(runAnimationSetPath);
-                        require(runAnimationSetFile.is_open(), "Scene script round-trip test failed to create the temporary run animation set file.");
-                        runAnimationSetFile << "format = \"platformator_animset\"\n";
-                        runAnimationSetFile << "version = 1\n";
-                        runAnimationSetFile << "name = \"run\"\n";
-                        runAnimationSetFile << "fps = 2\n";
-                        runAnimationSetFile << "loop = true\n";
-                        runAnimationSetFile << "size = [32, 32]\n";
-                        runAnimationSetFile << "frames = [\n";
-                        runAnimationSetFile << "    \"" << runAnimationTexturePath << "\",\n";
-                        runAnimationSetFile << "]\n";
-                        runAnimationSetFile.close();
-
-                        std::ofstream sceneFile(scenePath);
-                        require(sceneFile.is_open(), "Scene script round-trip test failed to create the temporary scene file.");
-
-                        sceneFile << "format = \"platformator_scene\"\n";
-                        sceneFile << "version = 1\n\n";
-                        sceneFile << "[[objects]]\n";
-                        sceneFile << "name = \"Audio Emitter\"\n\n";
-                        sceneFile << "[objects.audio]\n";
-                        sceneFile << "gain = 0.4\n\n";
-                        sceneFile << "[[objects]]\n";
-                        sceneFile << "name = \"Scripted Object\"\n\n";
-                        sceneFile << "[objects.animator]\n";
-                        sceneFile << "playbackSpeed = 1\n\n";
-                        sceneFile << "[[objects.scripts]]\n";
-                        sceneFile << "type = \"TestSerializedBehavior\"\n";
-                        sceneFile << "displayName = \"Player One\"\n";
-                        sceneFile << "speed = 123.5\n";
-                        sceneFile << "allowDash = true\n";
-                        sceneFile << "precision = 987.654321\n";
-                        sceneFile << "offset = [11.25, -4.5]\n";
-                        sceneFile << "target = \"Target Dummy\"\n";
-                        sceneFile << "emitter = \"Audio Emitter\"\n";
-                        sceneFile << "icon = \"" << sceneTexturePath << "\"\n";
-                        sceneFile << "idleAnimset = \"" << sceneIdleAnimationSetPath << "\"\n";
-                        sceneFile << "runAnimset = \"" << sceneRunAnimationSetPath << "\"\n";
-                        sceneFile << "sound = \"" << sceneAudioPath << "\"\n";
-                        sceneFile.close();
-
-                        Scene scene(scenePath.string());
-                        gameManager.loadScene(scene);
-                        gameManager.simulateFrame(FRAME_TIME);
-
-                        GameObject *scriptedObject = gameManager.getGameObject("Scripted Object");
-                        require(scriptedObject != nullptr, "Scene script round-trip test expected one loaded object.");
-
-                        ScriptComponent *scriptComponent = scriptedObject->getComponent<ScriptComponent>();
-                        require(scriptComponent != nullptr, "Scene script round-trip test failed to load the script component.");
-                        Animator *animator = scriptedObject->getComponent<Animator>();
-                        require(animator != nullptr, "Scene script round-trip test failed to load the explicit animator component.");
-                        require(animator->getCurrentClipName() == "idle",
-                                "Scene script round-trip test failed to restore the animator's current clip.");
-                        require(animator->getIsPlaying(),
-                                "Scene script round-trip test failed to leave the animator playing after the initial script-owned animset started.");
-
-                        TestSerializedBehavior *behavior = findBehavior<TestSerializedBehavior>(scriptComponent);
-                        require(behavior != nullptr, "Scene script round-trip test failed to load the test behavior.");
-                        require(behavior->getDisplayName() == "Player One",
-                                "Scene script round-trip test failed to deserialize the string property.");
-                        require(std::abs(behavior->getSpeed() - 123.5f) <= 1e-5f,
-                                "Scene script round-trip test failed to deserialize the float property.");
-                        require(behavior->getAllowDash(),
-                                "Scene script round-trip test failed to deserialize the bool property.");
-                        require(std::abs(behavior->getPrecision() - 987.654321) <= 1e-12,
-                                "Scene script round-trip test failed to deserialize the double property.");
-                        require((behavior->getOffset() - Eigen::Vector2f(11.25f, -4.5f)).norm() <= 1e-5f,
-                                "Scene script round-trip test failed to deserialize the Vector2f property.");
-                        require(behavior->getTarget().name == "Target Dummy",
-                                "Scene script round-trip test failed to deserialize the named object reference property.");
-                        require(behavior->getEmitter().name == "Audio Emitter",
-                                "Scene script round-trip test failed to deserialize the named component reference property.");
-                        require(behavior->getEmitter().get() != nullptr,
-                                "Scene script round-trip test failed to resolve the named component reference after behavior start.");
-                        require(behavior->getIcon().path == sceneTexturePath,
-                                "Scene script round-trip test failed to deserialize the texture asset reference path.");
-                        require(behavior->getIcon().get() != nullptr,
-                                "Scene script round-trip test failed to resolve the texture asset reference after behavior start.");
-                        require(behavior->getIdleAnimset().path == sceneIdleAnimationSetPath,
-                                "Scene script round-trip test failed to deserialize the idle animset script property.");
-                        require(behavior->getIdleAnimset().get() != nullptr,
-                                "Scene script round-trip test failed to resolve the idle animset script property after behavior start.");
-                        require(behavior->getRunAnimset().path == sceneRunAnimationSetPath,
-                                "Scene script round-trip test failed to deserialize the run animset script property.");
-                        require(behavior->getRunAnimset().get() != nullptr,
-                                "Scene script round-trip test failed to resolve the run animset script property after behavior start.");
-                        require(animator->play(behavior->getRunAnimset().get()),
-                                "Scene script round-trip test failed to switch clips by playing a different script-owned animset directly through the animator.");
-                        require(animator->getCurrentClipName() == "run",
-                                "Scene script round-trip test failed to switch the animator to the requested runtime clip.");
-                        require(animator->getCurrentFrameIndex() == 0,
-                                "Scene script round-trip test failed to restart playback from the first frame of the requested animset.");
-                        require(behavior->getSound().path == sceneAudioPath,
-                                "Scene script round-trip test failed to deserialize the audio asset reference path.");
-                        require(behavior->getSound().get() != nullptr,
-                                "Scene script round-trip test failed to resolve the audio asset reference after behavior start.");
-
-                        gameManager.saveScene(scene);
-
-                        std::ifstream savedSceneFile(scenePath);
-                        require(savedSceneFile.is_open(), "Scene script round-trip test failed to reopen the saved scene file.");
-
-                        std::stringstream savedSceneContents;
-                        savedSceneContents << savedSceneFile.rdbuf();
-                        const std::string saved = savedSceneContents.str();
-
-                        require(saved.find("displayname = \"Player One\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve quoted string script properties.");
-                        require(saved.find("speed = 123.5") != std::string::npos,
-                                "Scene script round-trip test failed to preserve raw numeric script properties.");
-                        require(saved.find("allowdash = true") != std::string::npos,
-                                "Scene script round-trip test failed to preserve raw boolean script properties.");
-                        require(saved.find("precision = 987.654321") != std::string::npos,
-                                "Scene script round-trip test failed to preserve raw double script properties.");
-                        require(saved.find("offset = [11.25, -4.5]") != std::string::npos,
-                                "Scene script round-trip test failed to preserve raw Vector2f script properties.");
-                        require(saved.find("target = \"Target Dummy\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve named object reference properties.");
-                        require(saved.find("emitter = \"Audio Emitter\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve named component reference properties.");
-                        require(saved.find("icon = \"" + sceneTexturePath + "\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve texture asset reference properties.");
-                        require(saved.find("idleanimset = \"" + sceneIdleAnimationSetPath + "\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve the idle animset script property.");
-                        require(saved.find("runanimset = \"" + sceneRunAnimationSetPath + "\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve the run animset script property.");
-                        require(saved.find("sound = \"" + sceneAudioPath + "\"") != std::string::npos,
-                                "Scene script round-trip test failed to preserve audio asset reference properties.");
-                        require(saved.find("[objects.animator]") != std::string::npos,
-                                "Scene script round-trip test failed to preserve the explicit animator component.");
-                        require(saved.find("asset = \"" + sceneIdleAnimationSetPath + "\"") == std::string::npos,
-                                "Scene script round-trip test incorrectly wrote animset references into the animator block.");
-                        require(saved.find("play = \"") == std::string::npos,
-                                "Scene script round-trip test incorrectly wrote runtime clip playback state into the animator block.");
-                        require(saved.find("speed = \"123.5\"") == std::string::npos,
-                                "Scene script round-trip test incorrectly quoted a numeric script property.");
-                        require(saved.find("allowdash = \"true\"") == std::string::npos,
-                                "Scene script round-trip test incorrectly quoted a boolean script property.");
-                        require(saved.find("precision = \"987.654321\"") == std::string::npos,
-                                "Scene script round-trip test incorrectly quoted a double script property.");
-                        require(saved.find("offset = \"11.25,-4.5\"") == std::string::npos,
-                                "Scene script round-trip test incorrectly quoted a Vector2f script property.");
-
-                        cleanup();
-                }
-                catch (const std::exception &)
-                {
-                        cleanup();
-                        throw;
-                }
+            cleanupAllGameObjects(gameManager);
+            throw;
         }
+    }
 
-        void testSceneScriptExactTyping()
-        {
-                registerSceneScriptTestBehaviors();
-
-                GameManager &gameManager = GameManager::getInstance();
-                std::filesystem::path scenePath = std::filesystem::current_path() / "scene_script_exact_typing.scene";
-
-                auto cleanup = [&]()
-                {
-                        destroyNamedObject(gameManager, "Strict Scripted Object");
-
-                        std::error_code errorCode;
-                        std::filesystem::remove(scenePath, errorCode);
-                };
-
-                cleanup();
-
-                try
-                {
-                        std::ofstream sceneFile(scenePath);
-                        require(sceneFile.is_open(), "Scene script exact-typing test failed to create the temporary scene file.");
-
-                        sceneFile << "format = \"platformator_scene\"\n";
-                        sceneFile << "version = 1\n\n";
-                        sceneFile << "[[objects]]\n";
-                        sceneFile << "name = \"Strict Scripted Object\"\n\n";
-                        sceneFile << "[[objects.scripts]]\n";
-                        sceneFile << "type = \"StrictBoolBehavior\"\n";
-                        sceneFile << "allowDash = 1\n";
-                        sceneFile.close();
-
-                        bool threw = false;
-                        try
-                        {
-                                Scene scene(scenePath.string());
-                                gameManager.loadScene(scene);
-                        }
-                        catch (const std::exception &exception)
-                        {
-                                threw = true;
-                                require(std::string(exception.what()).find("expected a bool") != std::string::npos,
-                                        "Scene script exact-typing test failed to report a typed bool mismatch.");
-                        }
-
-                        require(threw,
-                                "Scene script exact-typing test expected loading to reject an integer for a bool field.");
-
-                        cleanup();
-                }
-                catch (const std::exception &)
-                {
-                        cleanup();
-                        throw;
-                }
-        }
-
-        void testSceneScriptMissingReferencesAndAssets()
-        {
-                registerSceneScriptTestBehaviors();
-
-                GameManager &gameManager = GameManager::getInstance();
-                std::filesystem::path scenePath = std::filesystem::current_path() / "scene_script_missing_references.scene";
-                const std::string missingIconPath = (std::filesystem::path("missing") / "icon.png").generic_string();
-                const std::string missingAnimsetPath = (std::filesystem::path("missing") / "idle.animset").generic_string();
-                const std::string missingAudioPath = (std::filesystem::path("missing") / "sound.wav").generic_string();
-
-                auto cleanup = [&]()
-                {
-                        destroyNamedObject(gameManager, "Reference Test Object");
-
-                        std::error_code errorCode;
-                        std::filesystem::remove(scenePath, errorCode);
-                };
-
-                cleanup();
-
-                try
-                {
-                        std::ofstream sceneFile(scenePath);
-                        require(sceneFile.is_open(), "Scene script missing-reference test failed to create the temporary scene file.");
-
-                        sceneFile << "format = \"platformator_scene\"\n";
-                        sceneFile << "version = 1\n\n";
-                        sceneFile << "[[objects]]\n";
-                        sceneFile << "name = \"Reference Test Object\"\n\n";
-                        sceneFile << "[[objects.scripts]]\n";
-                        sceneFile << "type = \"ReferenceResolutionBehavior\"\n";
-                        sceneFile << "target = \"Missing Target\"\n";
-                        sceneFile << "emitter = \"Missing Emitter\"\n";
-                        sceneFile << "icon = \"" << missingIconPath << "\"\n";
-                        sceneFile << "idleAnimset = \"" << missingAnimsetPath << "\"\n";
-                        sceneFile << "sound = \"" << missingAudioPath << "\"\n";
-                        sceneFile.close();
-
-                        Scene scene(scenePath.string());
-                        gameManager.loadScene(scene);
-                        gameManager.simulateFrame(FRAME_TIME);
-
-                        GameObject *referenceObject = gameManager.getGameObject("Reference Test Object");
-                        require(referenceObject != nullptr,
-                                "Scene script missing-reference test failed to load the scripted object.");
-
-                        ScriptComponent *scriptComponent = referenceObject->getComponent<ScriptComponent>();
-                        require(scriptComponent != nullptr,
-                                "Scene script missing-reference test failed to load the script component.");
-
-                        ReferenceResolutionBehavior *behavior = findBehavior<ReferenceResolutionBehavior>(scriptComponent);
-                        require(behavior != nullptr,
-                                "Scene script missing-reference test failed to load the reference-resolution behavior.");
-                        require(behavior->getTarget().name == "Missing Target",
-                                "Scene script missing-reference test failed to preserve the missing named object reference.");
-                        require(gameManager.getGameObject(behavior->getTarget().name) == nullptr,
-                                "Scene script missing-reference test unexpectedly resolved a missing named object.");
-                        require(behavior->getEmitter().name == "Missing Emitter",
-                                "Scene script missing-reference test failed to preserve the missing named component reference.");
-                        require(behavior->getEmitter().get() == nullptr,
-                                "Scene script missing-reference test unexpectedly resolved a missing named component.");
-                        require(behavior->getIcon().path == missingIconPath,
-                                "Scene script missing-reference test failed to preserve the missing texture asset path.");
-                        require(behavior->getIcon().get() == nullptr,
-                                "Scene script missing-reference test unexpectedly resolved a missing texture asset.");
-                        require(behavior->getIdleAnimset().path == missingAnimsetPath,
-                                "Scene script missing-reference test failed to preserve the missing animation asset path.");
-                        require(behavior->getIdleAnimset().get() == nullptr,
-                                "Scene script missing-reference test unexpectedly resolved a missing animation asset.");
-                        require(behavior->getSound().path == missingAudioPath,
-                                "Scene script missing-reference test failed to preserve the missing audio asset path.");
-                        require(behavior->getSound().get() == nullptr,
-                                "Scene script missing-reference test unexpectedly resolved a missing audio asset.");
-
-                        cleanup();
-                }
-                catch (const std::exception &)
-                {
-                        cleanup();
-                        throw;
-                }
-        }
-
-        void testSceneScriptUnknownBehaviorType()
-        {
-                GameManager &gameManager = GameManager::getInstance();
-                std::filesystem::path scenePath = std::filesystem::current_path() / "scene_script_unknown_behavior.scene";
-
-                auto cleanup = [&]()
-                {
-                        destroyNamedObject(gameManager, "Unknown Behavior Object");
-
-                        std::error_code errorCode;
-                        std::filesystem::remove(scenePath, errorCode);
-                };
-
-                cleanup();
-
-                try
-                {
-                        std::ofstream sceneFile(scenePath);
-                        require(sceneFile.is_open(), "Scene script unknown-type test failed to create the temporary scene file.");
-
-                        sceneFile << "format = \"platformator_scene\"\n";
-                        sceneFile << "version = 1\n\n";
-                        sceneFile << "[[objects]]\n";
-                        sceneFile << "name = \"Unknown Behavior Object\"\n\n";
-                        sceneFile << "[[objects.scripts]]\n";
-                        sceneFile << "type = \"MissingBehaviorType\"\n";
-                        sceneFile.close();
-
-                        bool threw = false;
-                        try
-                        {
-                                Scene scene(scenePath.string());
-                                gameManager.loadScene(scene);
-                        }
-                        catch (const std::exception &exception)
-                        {
-                                threw = true;
-                                require(std::string(exception.what()).find("Unknown behavior type 'MissingBehaviorType'") != std::string::npos,
-                                        "Scene script unknown-type test failed to report the missing behavior type.");
-                        }
-
-                        require(threw,
-                                "Scene script unknown-type test expected loading to fail for an unregistered behavior type.");
-
-                        cleanup();
-                }
-                catch (const std::exception &)
-                {
-                        cleanup();
-                        throw;
-                }
-        }
-
-        struct TestCase
-        {
-                const char *name;
-                void (*run)();
-        };
-
-} // namespace
+    struct TestCase
+    {
+        const char *name;
+        void (*run)();
+    };
+}
 
 int main()
 {
-        configureHeadlessEnvironment();
-        GameManager::getInstance();
+    configureHeadlessEnvironment();
+    GameManager::getInstance();
 
-        static const TestCase testCases[] = {
-            {"scene_script_round_trip", testSceneScriptRoundTrip},
-            {"scene_script_exact_typing", testSceneScriptExactTyping},
-            {"scene_script_missing_references_and_assets", testSceneScriptMissingReferencesAndAssets},
-            {"scene_script_unknown_behavior_type", testSceneScriptUnknownBehaviorType},
-        };
+    static const TestCase testCases[] = {
+        {"scene_version2_round_trip", testSceneVersion2RoundTrip},
+        {"scene_version2_rejects_invalid_ids", testSceneVersion2RejectsInvalidIds},
+        {"scene_failed_load_clears_pending_starts", testFailedSceneLoadDoesNotLeaveStartedBehaviors},
+        {"scene_version1_still_loads", testSceneVersion1StillLoads},
+    };
 
-        size_t failureCount = 0;
-        for (const TestCase &testCase : testCases)
+    size_t failureCount = 0;
+    for (const TestCase &testCase : testCases)
+    {
+        try
         {
-                try
-                {
-                        testCase.run();
-                        std::cout << "[PASS] " << testCase.name << '\n';
-                }
-                catch (const std::exception &exception)
-                {
-                        ++failureCount;
-                        std::cerr << "[FAIL] " << testCase.name << ": " << exception.what() << '\n';
-                }
+            testCase.run();
+            std::cout << "[PASS] " << testCase.name << '\n';
         }
-
-        if (failureCount != 0)
+        catch (const std::exception &exception)
         {
-                std::cerr << failureCount << " scene script regression test(s) failed.\n";
-                return 1;
+            ++failureCount;
+            std::cerr << "[FAIL] " << testCase.name << ": " << exception.what() << '\n';
         }
+    }
 
-        return 0;
+    if (failureCount != 0)
+    {
+        std::cerr << failureCount << " scene serialization test(s) failed.\n";
+        return 1;
+    }
+
+    return 0;
 }

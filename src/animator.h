@@ -17,6 +17,7 @@ public:
     float getPlaybackSpeed() const;
     bool getIsPlaying() const;
     bool getIsPaused() const;
+    const AnimationClip *getCurrentAnimationClip() const;
     const std::string &getCurrentClipName() const;
 
     bool play(const AnimationClip *animationClip);

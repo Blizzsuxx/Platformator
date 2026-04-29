@@ -2,6 +2,7 @@
 
 #include "sdlwindow.h"
 #include "physicsmanager.h"
+#include <cstdint>
 #include <vector>
 #include "scene.h"
 #include "audiowrapper.h"
@@ -32,6 +33,8 @@ public:
     GameManager &operator=(const GameManager &) = delete;
 
     GameObject *getGameObject(std::string name);
+    GameObject *getGameObjectById(uint64_t id);
+    Component *getComponentById(uint64_t id);
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
 
@@ -106,4 +109,5 @@ private:
     void triggerStartedBehaviors();
 
     void addStartedBehavior(Behavior *behavior);
+    void removeStartedBehavior(Behavior *behavior);
 };

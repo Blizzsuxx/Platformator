@@ -1,12 +1,13 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "gameobject.h"
 #include "behaviorspec.h"
+#include "gameobject.h"
 
 class Collider;
 class ScriptComponent;
@@ -19,22 +20,164 @@ class AnimationClip;
 
 namespace platformator_behavior_detail
 {
-    struct NamedGameObjectReference
-    {
-        std::string name;
-
-        NamedGameObjectReference() = default;
-        explicit NamedGameObjectReference(std::string name) : name(std::move(name))
-        {
-        }
-    };
-
     GameObject *findGameObjectByName(const std::string &name);
+    GameObject *findGameObjectById(uint64_t id);
+    Component *findComponentById(uint64_t id);
     std::string resolveAssetPath(const std::string &sourcePath, const std::string &path);
 
     AudioWrapper *resolveAudioAssetByPath(const std::string &resolvedPath);
     TextureWrapper *resolveTextureAssetByPath(const std::string &resolvedPath);
     AnimationClip *resolveAnimationClipByPath(const std::string &resolvedPath);
+
+    struct GameObjectReference
+    {
+        uint64_t id;
+        GameObject *gameObject;
+
+        GameObjectReference() : id(0), gameObject(nullptr)
+        {
+        }
+
+        explicit GameObjectReference(uint64_t id) : id(id), gameObject(nullptr)
+        {
+        }
+
+        explicit GameObjectReference(GameObject *gameObject) : id(gameObject != nullptr ? gameObject->getId() : 0), gameObject(gameObject)
+        {
+        }
+
+        GameObject *get() const
+        {
+            return gameObject;
+        }
+
+        GameObject *operator->() const
+        {
+            return gameObject;
+        }
+
+        GameObject &operator*() const
+        {
+            return *gameObject;
+        }
+
+        operator GameObject *() const
+        {
+            return gameObject;
+        }
+
+        explicit operator bool() const
+        {
+            return gameObject != nullptr;
+        }
+
+        void set(GameObject *value)
+        {
+            gameObject = value;
+            id = value != nullptr ? value->getId() : 0;
+        }
+
+        void resolve();
+    };
+
+    template <typename T>
+    struct ComponentReference
+    {
+        uint64_t id;
+        T *component;
+
+        ComponentReference() : id(0), component(nullptr)
+        {
+        }
+
+        explicit ComponentReference(uint64_t id) : id(id), component(nullptr)
+        {
+        }
+
+        explicit ComponentReference(T *component) : id(component != nullptr ? component->getId() : 0), component(component)
+        {
+        }
+
+        T *get() const
+        {
+            return component;
+        }
+
+        T *operator->() const
+        {
+            return component;
+        }
+
+        T &operator*() const
+        {
+            return *component;
+        }
+
+        operator T *() const
+        {
+            return component;
+        }
+
+        explicit operator bool() const
+        {
+            return component != nullptr;
+        }
+
+        void set(T *value)
+        {
+            component = value;
+            id = value != nullptr ? value->getId() : 0;
+        }
+
+        void resolve()
+        {
+            component = id == 0 ? nullptr : dynamic_cast<T *>(findComponentById(id));
+        }
+    };
+
+    struct NamedGameObjectReference
+    {
+        std::string name;
+        GameObject *gameObject;
+
+        NamedGameObjectReference() : name(), gameObject(nullptr)
+        {
+        }
+
+        explicit NamedGameObjectReference(std::string name) : name(std::move(name)), gameObject(nullptr)
+        {
+        }
+
+        GameObject *get() const
+        {
+            return gameObject;
+        }
+
+        GameObject *operator->() const
+        {
+            return gameObject;
+        }
+
+        GameObject &operator*() const
+        {
+            return *gameObject;
+        }
+
+        operator GameObject *() const
+        {
+            return gameObject;
+        }
+
+        explicit operator bool() const
+        {
+            return gameObject != nullptr;
+        }
+
+        void resolve()
+        {
+            gameObject = name.empty() ? nullptr : findGameObjectByName(name);
+        }
+    };
 
     template <typename Asset>
     struct AssetReference
@@ -151,6 +294,19 @@ namespace platformator_behavior_detail
 
     template <typename T>
     inline constexpr bool unsupported_behavior_field_v = false;
+
+    template <typename Owner>
+    std::vector<BehaviorFieldDescriptor> &annotatedFieldDescriptorsMutable()
+    {
+        static std::vector<BehaviorFieldDescriptor> descriptors;
+        return descriptors;
+    }
+
+    template <typename Owner>
+    const std::vector<BehaviorFieldDescriptor> &annotatedFieldDescriptors()
+    {
+        return annotatedFieldDescriptorsMutable<Owner>();
+    }
 
     template <typename T>
     struct ScriptFieldTraits
@@ -279,6 +435,34 @@ namespace platformator_behavior_detail
     };
 
     template <>
+    struct ScriptFieldTraits<GameObjectReference>
+    {
+        static GameObjectReference get(const BehaviorSpec &spec, const char *name, const GameObjectReference &fallback)
+        {
+            return GameObjectReference(spec.getGameObjectId(name, fallback.id));
+        }
+
+        static void set(BehaviorSpec &spec, const char *name, const GameObjectReference &value)
+        {
+            spec.setGameObjectReferenceProperty(name, value.gameObject != nullptr ? value.gameObject->getId() : value.id);
+        }
+    };
+
+    template <typename T>
+    struct ScriptFieldTraits<ComponentReference<T>>
+    {
+        static ComponentReference<T> get(const BehaviorSpec &spec, const char *name, const ComponentReference<T> &fallback)
+        {
+            return ComponentReference<T>(spec.getComponentId(name, fallback.id));
+        }
+
+        static void set(BehaviorSpec &spec, const char *name, const ComponentReference<T> &value)
+        {
+            spec.setComponentReferenceProperty(name, value.component != nullptr ? value.component->getId() : value.id);
+        }
+    };
+
+    template <>
     struct ScriptFieldTraits<AudioAssetReference>
     {
         static AudioAssetReference get(const BehaviorSpec &spec, const char *name, const AudioAssetReference &fallback)
@@ -362,6 +546,40 @@ namespace platformator_behavior_detail
             &BehaviorFieldBinding<Owner, Field, Member>::serialize,
             &BehaviorFieldBinding<Owner, Field, Member>::resolve};
     }
+
+    template <typename Owner, typename Field, Field Owner::*Member>
+    void registerAnnotatedField(const char *name)
+    {
+        std::vector<BehaviorFieldDescriptor> &fields = annotatedFieldDescriptorsMutable<Owner>();
+        for (const BehaviorFieldDescriptor &field : fields)
+        {
+            if (std::string_view(field.name) == name)
+            {
+                return;
+            }
+        }
+
+        fields.push_back(makeFieldDescriptor<Owner, Field, Member>(name));
+    }
+
+    template <typename Owner, typename Field, Field Owner::*Member>
+    struct BehaviorFieldRegistrar
+    {
+        explicit BehaviorFieldRegistrar(const char *name)
+        {
+            registerAnnotatedField<Owner, Field, Member>(name);
+        }
+    };
+}
+
+namespace platformator
+{
+    using GameObjectRef = platformator_behavior_detail::GameObjectReference;
+    template <typename T>
+    using ComponentRef = platformator_behavior_detail::ComponentReference<T>;
+    using AudioAssetRef = platformator_behavior_detail::AudioAssetReference;
+    using TextureAssetRef = platformator_behavior_detail::TextureAssetReference;
+    using AnimationClipRef = platformator_behavior_detail::AnimationClipReference;
 }
 
 class Behavior
@@ -417,3 +635,24 @@ private:
 
 #define BEHAVIOR_FIELD_NAMED(member, name) \
     ::platformator_behavior_detail::makeFieldDescriptor<PlatformatorBehaviorFieldOwner, decltype(PlatformatorBehaviorFieldOwner::member), &PlatformatorBehaviorFieldOwner::member>(name)
+
+#define PLATFORMATOR_SERIALIZABLE_BEHAVIOR(TYPE)                                                                             \
+    using PlatformatorSerializedBehaviorOwner = TYPE;                                                                        \
+    const std::vector<::platformator_behavior_detail::BehaviorFieldDescriptor> &getBehaviorFieldDescriptors() const override \
+    {                                                                                                                        \
+        return ::platformator_behavior_detail::annotatedFieldDescriptors<TYPE>();                                            \
+    }
+
+#define PLATFORMATOR_SERIALIZED_FIELD(TYPE, member)                                                                                                                                      \
+    TYPE member{};                                                                                                                                                                       \
+    [[maybe_unused]] inline static const ::platformator_behavior_detail::BehaviorFieldRegistrar<PlatformatorSerializedBehaviorOwner, TYPE, &PlatformatorSerializedBehaviorOwner::member> \
+        platformatorSerializedFieldRegistrar_##member { #member }
+
+#define PLATFORMATOR_SERIALIZED_FIELD_NAMED(TYPE, member, name)                                                                                                                          \
+    TYPE member{};                                                                                                                                                                       \
+    [[maybe_unused]] inline static const ::platformator_behavior_detail::BehaviorFieldRegistrar<PlatformatorSerializedBehaviorOwner, TYPE, &PlatformatorSerializedBehaviorOwner::member> \
+        platformatorSerializedFieldRegistrar_##member { name }
+
+#define SERIALIZABLE_BEHAVIOR(TYPE) PLATFORMATOR_SERIALIZABLE_BEHAVIOR(TYPE)
+#define SERIALIZED_FIELD(TYPE, member) PLATFORMATOR_SERIALIZED_FIELD(TYPE, member)
+#define SERIALIZED_FIELD_NAMED(TYPE, member, name) PLATFORMATOR_SERIALIZED_FIELD_NAMED(TYPE, member, name)

@@ -1,0 +1,48 @@
+format = 'platformator_scene'
+version = 2
+
+[[objects]]
+active = true
+id = 86
+name = 'Roundtrip Ball'
+position = [ 210.0, 220.0 ]
+rotation = 0.25
+scale = [ 2.0, 1.5 ]
+tag = 'Roundtrip'
+
+    [objects.circleCollider]
+    collisionGroup = 7
+    collisionMask = 11
+    id = 88
+    radius = 12.0
+    trigger = true
+
+    [objects.rigidbody]
+    angularVelocity = 0.60000002384185791
+    bodyType = 'kinematic'
+    force = [ 4.0, 5.0 ]
+    friction = 0.30000001192092896
+    gravity = false
+    id = 87
+    mass = 9.0
+    restitution = 0.69999998807907104
+    torque = 1.2000000476837158
+    velocity = [ 30.0, -40.0 ]
+
+    [objects.sprite]
+    flip = 'vertical'
+    id = 89
+    path = 'assets/wall.png'
+    size = [ 32.0, 48.0 ]
+
+[[objects]]
+active = true
+id = 90
+name = 'Roundtrip Camera'
+position = [ 0.0, 0.0 ]
+rotation = 0.0
+scale = [ 1.0, 1.0 ]
+
+    [objects.camera]
+    id = 91
+    viewport = [ 3.0, 4.0, 300.0, 200.0 ]

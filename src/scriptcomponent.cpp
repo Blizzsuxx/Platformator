@@ -35,7 +35,11 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
 {
     behaviors.push_back(behavior);
     behavior->setGameObject(getGameObject());
-    GameManager::getInstance().addStartedBehavior(behavior);
+    if (gameManagerIndex != SIZE_MAX && getGameObject() != nullptr && getGameObject()->getActive() &&
+        !getGameObject()->getIsMarkedForDeletion())
+    {
+        GameManager::getInstance().addStartedBehavior(behavior);
+    }
 
     return behavior;
 }
@@ -91,6 +95,7 @@ void ScriptComponent::destroyBehaviors()
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
+        GameManager::getInstance().removeStartedBehavior(behavior);
         behavior->onDestroy();
 
         delete behavior;

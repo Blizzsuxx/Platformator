@@ -5,6 +5,7 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include "baseobject.h"
 
 class GameObject;
 
@@ -28,7 +29,7 @@ enum GameObjectFlags : uint8_t
     IS_ACTIVE = 1 << 2
 };
 
-class Component
+class Component : public BaseObject
 {
     friend class GameManager;
 
@@ -44,7 +45,7 @@ private:
     ComponentType type;
 };
 
-class GameObject
+class GameObject : public BaseObject
 {
     friend class GameManager;
     friend class Scene;

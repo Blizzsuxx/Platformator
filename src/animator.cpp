@@ -34,6 +34,11 @@ bool Animator::getIsPaused() const
     return !playing;
 }
 
+const AnimationClip *Animator::getCurrentAnimationClip() const
+{
+    return currentAnimationClip;
+}
+
 bool Animator::play(const AnimationClip *animationClip)
 {
     if (animationClip == nullptr || animationClip->getFrames().empty())

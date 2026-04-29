@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <toml++/toml.hpp>
+
 #include "animationclip.h"
 #include "animator.h"
 #include "boxcollider.h"
@@ -423,6 +425,26 @@ namespace
         return resourcePath.generic_string();
     }
 
+    const toml::table *findSavedObject(const toml::array &objects, const std::string &name)
+    {
+        for (const toml::node &node : objects)
+        {
+            const toml::table *objectTable = node.as_table();
+            if (objectTable == nullptr)
+            {
+                continue;
+            }
+
+            const toml::node *nameNode = objectTable->get("name");
+            if (nameNode != nullptr && nameNode->is_string() && nameNode->value_exact<std::string>().value_or("") == name)
+            {
+                return objectTable;
+            }
+        }
+
+        return nullptr;
+    }
+
     void destroyNamedObject(GameManager &gameManager, SDLWindow *window, const std::string &name)
     {
         GameObject *gameObject = gameManager.getGameObject(name);
@@ -633,11 +655,13 @@ namespace
 
             require(std::filesystem::exists(scenePath), "Scene round-trip regression failed to create the saved scene file.");
 
-            std::ifstream savedSceneFile(scenePath);
-            require(savedSceneFile.is_open(), "Scene round-trip regression failed to reopen the saved scene file.");
-            std::stringstream savedSceneContents;
-            savedSceneContents << savedSceneFile.rdbuf();
-            require(savedSceneContents.str().find("path = \"" + expectedSavedSpritePath + "\"") != std::string::npos,
+            const toml::table savedScene = toml::parse_file(scenePath.string());
+            const toml::array *savedObjects = savedScene.get_as<toml::array>("objects");
+            require(savedObjects != nullptr, "Scene round-trip regression failed to save the objects array.");
+            const toml::table *savedBall = findSavedObject(*savedObjects, "Roundtrip Ball");
+            require(savedBall != nullptr, "Scene round-trip regression failed to save the ball object.");
+            const toml::table *savedSprite = savedBall->get_as<toml::table>("sprite");
+            require(savedSprite != nullptr && savedSprite->get("path")->value_exact<std::string>().value_or("") == expectedSavedSpritePath,
                     "Scene round-trip regression failed to save sprite paths relative to the scene file.");
 
             destroyNamedObject(gameManager, window, "Roundtrip Ball");

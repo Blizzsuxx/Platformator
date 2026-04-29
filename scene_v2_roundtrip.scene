@@ -1,0 +1,54 @@
+format = "platformator_scene"
+version = 2
+
+[[objects]]
+id = 100
+name = "Target Dummy"
+
+[objects.audio]
+id = 300
+gain = 0.4
+
+[[objects]]
+id = 101
+name = "Main Camera"
+children = [102]
+
+[objects.camera]
+id = 200
+viewport = [0, 0, 640, 480]
+
+[[objects]]
+id = 102
+name = "Scripted Object"
+position = [12, 34]
+scale = [1.5, 2.0]
+
+[objects.sprite]
+id = 202
+path = "assets/ball.png"
+flip = "horizontal"
+size = [32, 32]
+sourceRect = [0, 0, 16, 16]
+
+[objects.animator]
+id = 201
+playbackSpeed = 1.5
+clip = "scene_v2_roundtrip.animset"
+playing = true
+
+[objects.script]
+id = 203
+
+[[objects.script.behaviors]]
+type = "AnnotatedSceneBehavior"
+displayName = "Player One"
+speed = 123.5
+allowDash = true
+precision = 987.654321
+offset = [11.25, -4.5]
+targetObject = { gameObject = 100 }
+emitter = { component = 300 }
+icon = "assets/ball.png"
+idleClip = "scene_v2_roundtrip.animset"
+sound = "examples/mario/assets/audio/jump.wav"

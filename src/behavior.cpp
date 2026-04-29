@@ -3,14 +3,9 @@
 #include <filesystem>
 
 #include "animationclip.h"
+#include "collision.h"
 #include "gamemanager.h"
 #include "scriptcomponent.h"
-#include "collision.h"
-
-Behavior::Behavior()
-    : gameObject(nullptr), enabled(true), registeredTypeName()
-{
-}
 
 namespace
 {
@@ -29,6 +24,26 @@ GameObject *platformator_behavior_detail::findGameObjectByName(const std::string
     }
 
     return GameManager::getInstance().getGameObject(name);
+}
+
+GameObject *platformator_behavior_detail::findGameObjectById(uint64_t id)
+{
+    if (id == 0)
+    {
+        return nullptr;
+    }
+
+    return GameManager::getInstance().getGameObjectById(id);
+}
+
+Component *platformator_behavior_detail::findComponentById(uint64_t id)
+{
+    if (id == 0)
+    {
+        return nullptr;
+    }
+
+    return GameManager::getInstance().getComponentById(id);
 }
 
 std::string platformator_behavior_detail::resolveAssetPath(const std::string &sourcePath, const std::string &path)
@@ -97,6 +112,16 @@ AnimationClip *platformator_behavior_detail::resolveAnimationClipByPath(const st
     }
 
     return GameManager::getInstance().loadAnimationClip(resolvedPath);
+}
+
+void platformator_behavior_detail::GameObjectReference::resolve()
+{
+    gameObject = id == 0 ? nullptr : findGameObjectById(id);
+}
+
+Behavior::Behavior()
+    : gameObject(nullptr), enabled(true), registeredTypeName()
+{
 }
 
 GameObject *Behavior::getGameObject() const

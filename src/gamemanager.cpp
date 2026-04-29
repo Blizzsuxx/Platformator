@@ -50,6 +50,25 @@ void GameManager::loadScene(Scene &scene)
         addGameObject(gameObject);
     }
     createMainCameraIfNoMainCameraExists();
+
+    for (GameObject *gameObject : loadedObjects)
+    {
+        if (!gameObject->getActive())
+        {
+            continue;
+        }
+
+        ScriptComponent *scriptComponent = gameObject->getComponent<ScriptComponent>();
+        if (scriptComponent == nullptr)
+        {
+            continue;
+        }
+
+        for (Behavior *behavior : scriptComponent->getBehaviors())
+        {
+            addStartedBehavior(behavior);
+        }
+    }
 }
 
 void GameManager::saveScene(const Scene &scene)
@@ -131,6 +150,37 @@ GameObject *GameManager::getGameObject(std::string name)
         if (gameObject->getName() == name)
         {
             return gameObject;
+        }
+    }
+
+    return nullptr;
+}
+
+GameObject *GameManager::getGameObjectById(uint64_t id)
+{
+    for (GameObject *gameObject : gameObjects)
+    {
+        if (gameObject->getId() == id)
+        {
+            return gameObject;
+        }
+    }
+
+    return nullptr;
+}
+
+Component *GameManager::getComponentById(uint64_t id)
+{
+    for (GameObject *gameObject : gameObjects)
+    {
+        Component **components = gameObject->getComponents();
+        for (size_t componentIndex = 0; componentIndex < COMPONENT_TYPE_COUNT; ++componentIndex)
+        {
+            Component *component = components[componentIndex];
+            if (component != nullptr && component->getId() == id)
+            {
+                return component;
+            }
         }
     }
 
@@ -586,6 +636,15 @@ void GameManager::freeAllAnimationClips()
 void GameManager::addStartedBehavior(Behavior *behavior)
 {
     startedBehaviors.push_back(behavior);
+}
+
+void GameManager::removeStartedBehavior(Behavior *behavior)
+{
+    auto it = std::remove(startedBehaviors.begin(), startedBehaviors.end(), behavior);
+    if (it != startedBehaviors.end())
+    {
+        startedBehaviors.erase(it, startedBehaviors.end());
+    }
 }
 
 void GameManager::triggerStartedBehaviors()

@@ -8,16 +8,22 @@
 
 namespace
 {
-    std::string toLower(std::string value)
+    bool equalsIgnoreCase(std::string_view left, std::string_view right)
     {
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character)
-                       { return static_cast<char>(std::tolower(character)); });
-        return value;
-    }
+        if (left.size() != right.size())
+        {
+            return false;
+        }
 
-    std::string normalizePropertyName(const std::string &name)
-    {
-        return toLower(name);
+        for (size_t index = 0; index < left.size(); ++index)
+        {
+            if (std::tolower(static_cast<unsigned char>(left[index])) != std::tolower(static_cast<unsigned char>(right[index])))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     std::string formatScriptValue(const ScriptValue &value)
@@ -44,11 +50,19 @@ namespace
                     stream << typedValue;
                     return stream.str();
                 }
-                else
+                else if constexpr (std::is_same_v<ValueType, Eigen::Vector2f>)
                 {
                     std::ostringstream stream;
                     stream << '[' << typedValue.x() << ", " << typedValue.y() << ']';
                     return stream.str();
+                }
+                else if constexpr (std::is_same_v<ValueType, platformator_behavior_detail::GameObjectIdReference>)
+                {
+                    return "gameObject#" + std::to_string(typedValue.id);
+                }
+                else
+                {
+                    return "component#" + std::to_string(typedValue.id);
                 }
             },
             value);
@@ -57,10 +71,17 @@ namespace
 
 const BehaviorProperty *BehaviorSpec::findProperty(const std::string &name) const
 {
-    const std::string normalizedName = normalizePropertyName(name);
     for (auto it = properties.rbegin(); it != properties.rend(); ++it)
     {
-        if (it->name == normalizedName)
+        if (it->name == name)
+        {
+            return &*it;
+        }
+    }
+
+    for (auto it = properties.rbegin(); it != properties.rend(); ++it)
+    {
+        if (equalsIgnoreCase(it->name, name))
         {
             return &*it;
         }
@@ -185,19 +206,60 @@ Eigen::Vector2f BehaviorSpec::getVector2f(const std::string &name, const Eigen::
     throw std::runtime_error("Script property '" + name + "' expected a Vector2f but found " + formatScriptValue(property->value) + '.');
 }
 
+uint64_t BehaviorSpec::getGameObjectId(const std::string &name, uint64_t fallback) const
+{
+    const BehaviorProperty *property = findProperty(name);
+    if (property == nullptr)
+    {
+        return fallback;
+    }
+
+    if (const auto *value = std::get_if<platformator_behavior_detail::GameObjectIdReference>(&property->value))
+    {
+        return value->id;
+    }
+
+    throw std::runtime_error("Script property '" + name + "' expected a game object reference but found " + formatScriptValue(property->value) + '.');
+}
+
+uint64_t BehaviorSpec::getComponentId(const std::string &name, uint64_t fallback) const
+{
+    const BehaviorProperty *property = findProperty(name);
+    if (property == nullptr)
+    {
+        return fallback;
+    }
+
+    if (const auto *value = std::get_if<platformator_behavior_detail::ComponentIdReference>(&property->value))
+    {
+        return value->id;
+    }
+
+    throw std::runtime_error("Script property '" + name + "' expected a component reference but found " + formatScriptValue(property->value) + '.');
+}
+
 void BehaviorSpec::setProperty(const std::string &name, ScriptValue value)
 {
-    const std::string normalizedName = normalizePropertyName(name);
     for (BehaviorProperty &property : properties)
     {
-        if (property.name == normalizedName)
+        if (property.name == name)
         {
             property.value = std::move(value);
             return;
         }
     }
 
-    properties.push_back(BehaviorProperty{normalizedName, std::move(value)});
+    for (BehaviorProperty &property : properties)
+    {
+        if (equalsIgnoreCase(property.name, name))
+        {
+            property.name = name;
+            property.value = std::move(value);
+            return;
+        }
+    }
+
+    properties.push_back(BehaviorProperty{name, std::move(value)});
 }
 
 void BehaviorSpec::setStringProperty(const std::string &name, std::string value)
@@ -228,4 +290,14 @@ void BehaviorSpec::setBoolProperty(const std::string &name, bool value)
 void BehaviorSpec::setVector2fProperty(const std::string &name, const Eigen::Vector2f &value)
 {
     setProperty(name, value);
+}
+
+void BehaviorSpec::setGameObjectReferenceProperty(const std::string &name, uint64_t id)
+{
+    setProperty(name, platformator_behavior_detail::GameObjectIdReference{id});
+}
+
+void BehaviorSpec::setComponentReferenceProperty(const std::string &name, uint64_t id)
+{
+    setProperty(name, platformator_behavior_detail::ComponentIdReference{id});
 }

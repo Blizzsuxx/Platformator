@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -53,13 +52,11 @@ namespace platformator_behavior_registry_detail
     }
 }
 
-#define PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT_IMPL(left, right) left##right
-#define PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(left, right) PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT_IMPL(left, right)
+#define PLATFORMATOR_BEHAVIOR_REGISTRY_UNIQUE_IMPL(prefix, suffix) prefix##suffix
+#define PLATFORMATOR_BEHAVIOR_REGISTRY_UNIQUE(prefix, suffix) PLATFORMATOR_BEHAVIOR_REGISTRY_UNIQUE_IMPL(prefix, suffix)
 
-// Header-safe self-registration macro. Place it after the behavior class definition,
-// typically in the same header and namespace as the class.
 #define REGISTER_BEHAVIOR_NAMED(TYPE, TYPE_NAME)                                                                      \
-    [[maybe_unused]] inline const bool PLATFORMATOR_BEHAVIOR_REGISTRY_CONCAT(platformatorRegisteredBehavior_, TYPE) = \
+    [[maybe_unused]] const bool PLATFORMATOR_BEHAVIOR_REGISTRY_UNIQUE(platformatorRegisteredBehavior_, __COUNTER__) = \
         ::platformator_behavior_registry_detail::registerBehaviorType<TYPE>(TYPE_NAME)
 
 #define REGISTER_BEHAVIOR(TYPE) REGISTER_BEHAVIOR_NAMED(TYPE, #TYPE)

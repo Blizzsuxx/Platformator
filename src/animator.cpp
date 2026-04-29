@@ -2,12 +2,11 @@
 
 #include <algorithm>
 
-#include "gamemanager.h"
 #include "sprite.h"
 #include "texturewrapper.h"
 
 Animator::Animator(GameObject *gameObject)
-    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationSet(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX)
+    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX)
 {
 }
 
@@ -35,17 +34,25 @@ bool Animator::getIsPaused() const
     return !playing;
 }
 
-bool Animator::play(const AnimationClip **animationClip)
+bool Animator::play(const AnimationClip *animationClip)
 {
-    if (currentAnimationSet == animationSet)
+    if (animationClip == nullptr || animationClip->getFrames().empty())
+    {
+        return false;
+    }
+
+    if (currentAnimationClip == animationClip)
     {
         if (playing)
         {
             return true;
         }
+
+        playing = true;
+        return true;
     }
 
-    currentAnimationSet = animationSet;
+    currentAnimationClip = animationClip;
     currentFrameIndex = 0;
     accumulatedTime = 0.0;
     playing = true;
@@ -79,18 +86,12 @@ void Animator::setPlaybackSpeed(float playbackSpeed)
 void Animator::update(double timeDelta)
 {
     const AnimationClip *clip = getCurrentClip();
-    if (!playing || clip == nullptr || clip->frames.empty())
+    if (!playing || clip == nullptr || clip->getFrames().empty() || playbackSpeed <= 0.0f)
     {
         return;
     }
 
-    const double effectivePlaybackSpeed = static_cast<double>(playbackSpeed) * static_cast<double>(currentAnimationSet->getPlaybackSpeed());
-    if (effectivePlaybackSpeed <= 0.0)
-    {
-        return;
-    }
-
-    accumulatedTime += timeDelta * effectivePlaybackSpeed;
+    accumulatedTime += timeDelta * static_cast<double>(playbackSpeed);
 
     while (playing)
     {
@@ -108,7 +109,7 @@ void Animator::update(double timeDelta)
 void Animator::applyCurrentFrame() const
 {
     const AnimationClip *clip = getCurrentClip();
-    if (clip == nullptr || clip->frames.empty() || currentFrameIndex >= clip->frames.size())
+    if (clip == nullptr || clip->getFrames().empty() || currentFrameIndex >= clip->getFrames().size())
     {
         return;
     }
@@ -119,7 +120,7 @@ void Animator::applyCurrentFrame() const
         return;
     }
 
-    const AnimationFrame &frame = clip->frames[currentFrameIndex];
+    const AnimationFrame &frame = clip->getFrames()[currentFrameIndex];
     TextureWrapper *textureWrapper = frame.textureWrapper;
     sprite->setTextureWrapper(textureWrapper);
 
@@ -132,8 +133,8 @@ void Animator::applyCurrentFrame() const
         sprite->clearSourceRect();
     }
 
-    float width = clip->width;
-    float height = clip->height;
+    float width = clip->getWidth();
+    float height = clip->getHeight();
     if (width <= 0.0f && frame.hasSourceRect)
     {
         width = frame.sourceRect.w;
@@ -164,50 +165,45 @@ void Animator::applyCurrentFrame() const
 
 const AnimationClip *Animator::getCurrentClip() const
 {
-    if (currentAnimationSet == nullptr || currentAnimationSet->getClips().empty())
-    {
-        return nullptr;
-    }
-
-    return &currentAnimationSet->getClips().front();
+    return currentAnimationClip;
 }
 
 double Animator::getCurrentFrameDuration() const
 {
     const AnimationClip *clip = getCurrentClip();
-    if (clip == nullptr || clip->frames.empty() || currentFrameIndex >= clip->frames.size())
+    if (clip == nullptr || clip->getFrames().empty() || currentFrameIndex >= clip->getFrames().size())
     {
         return 0.0;
     }
 
-    const AnimationFrame &frame = clip->frames[currentFrameIndex];
+    const AnimationFrame &frame = clip->getFrames()[currentFrameIndex];
     if (frame.duration > 0.0f)
     {
         return frame.duration;
     }
 
-    if (clip->framesPerSecond <= 0.0f)
+    if (clip->getFramesPerSecond() <= 0.0f)
     {
         return 0.0;
     }
 
-    return 1.0 / clip->framesPerSecond;
+    return 1.0 / clip->getFramesPerSecond();
 }
 
 void Animator::advanceFrame()
 {
     const AnimationClip *clip = getCurrentClip();
-    if (clip == nullptr || clip->frames.empty())
+    if (clip == nullptr || clip->getFrames().empty())
     {
         return;
     }
 
-    if (currentFrameIndex + 1 < clip->frames.size())
+    if (currentFrameIndex + 1 < clip->getFrames().size())
     {
         currentFrameIndex++;
         applyCurrentFrame();
     }
-    else if (clip->loop)
+    else if (clip->getLoop())
     {
         currentFrameIndex = 0;
         applyCurrentFrame();
@@ -228,7 +224,7 @@ const std::string &Animator::getCurrentClipName() const
         return emptyString;
     }
 
-    return clip->name;
+    return clip->getName();
 }
 
 size_t Animator::getGameManagerIndex() const

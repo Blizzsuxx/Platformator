@@ -17,7 +17,6 @@ namespace mario
     public:
         MarioPatrolEnemy();
 
-        std::string getTypeName() const override;
         BEHAVIOR_FIELDS(
             MarioPatrolEnemy,
             BEHAVIOR_FIELD(minX),
@@ -47,8 +46,8 @@ namespace mario
         float stompMinSpeed;
         float stompTolerance;
         float squashDuration;
-        platformator_behavior_detail::AnimationSetAssetReference walkAnimset;
-        platformator_behavior_detail::AnimationSetAssetReference squashAnimset;
+        platformator_behavior_detail::AnimationClipReference walkAnimset;
+        platformator_behavior_detail::AnimationClipReference squashAnimset;
         platformator_behavior_detail::AudioAssetReference stompSound;
         bool defeated;
         double defeatedTimer;

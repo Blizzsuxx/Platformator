@@ -11,11 +11,6 @@ namespace mario
     {
     }
 
-    std::string MarioCoin::getTypeName() const
-    {
-        return "MarioCoin";
-    }
-
     void MarioCoin::start()
     {
         Animator *animator = getAnimator();

@@ -40,11 +40,6 @@ namespace mario
     {
     }
 
-    std::string MarioPlayer::getTypeName() const
-    {
-        return "MarioPlayer";
-    }
-
     void MarioPlayer::start()
     {
         body = getGameObject()->getComponent<Rigidbody>();

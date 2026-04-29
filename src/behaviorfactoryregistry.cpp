@@ -7,15 +7,16 @@ void BehaviorFactoryRegistry::registerFactory(const std::string &type, Factory f
     factories[type] = std::move(factory);
 }
 
-Behavior *BehaviorFactoryRegistry::createBehavior(ScriptComponent *scriptComponent, const ScriptDescriptor &descriptor) const
+Behavior *BehaviorFactoryRegistry::instantiateBehavior(ScriptComponent *scriptComponent, const BehaviorSpec &spec) const
 {
-    auto it = factories.find(descriptor.type);
+    auto it = factories.find(spec.type);
     if (it == factories.end())
     {
         return nullptr;
     }
 
     Behavior *behavior = it->second();
-    behavior->deserialize(descriptor);
+    behavior->setEnabled(spec.enabled);
+    behavior->deserialize(spec);
     return scriptComponent->addBehavior(behavior);
 }

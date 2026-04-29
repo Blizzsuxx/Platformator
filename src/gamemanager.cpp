@@ -234,6 +234,7 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath)
     if (!texture)
     {
         printf("Failed to load %s: %s\n", filePath.c_str(), SDL_GetError());
+        return nullptr;
     }
 
     // need this so that TextureWrapper is made in-place (so it doesn't destroy the texture)
@@ -519,6 +520,7 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath)
     if (!audio)
     {
         printf("Failed to load %s: %s\n", filePath.c_str(), SDL_GetError());
+        return nullptr;
     }
 
     // need this so that AudioWrapper is made in-place (so it doesn't destroy the audio)
@@ -552,10 +554,12 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
         return &it->second;
     }
 
+    AnimationClip animationClip = Scene::loadAnimationClipFile(filePath);
+
     auto [insertedIt, inserted] = animationClipCache.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(filePath),
-        std::forward_as_tuple(filePath)); // uses the AnimationClip constructor that takes a file path
+        std::forward_as_tuple(animationClip));
 
     return &insertedIt->second;
 }

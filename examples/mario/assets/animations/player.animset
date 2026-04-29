@@ -1,10 +1,10 @@
-animations {
-    clip {
-        name "idle"
-        fps 4
-        loop true
-        size 32 32
-        frame "../player/idle_0.png"
-        frame "../player/idle_1.png"
-    }
-}
+format = "platformator_animset"
+version = 1
+name = "idle"
+fps = 4
+loop = true
+size = [32, 32]
+frames = [
+    "../player/idle_0.png",
+    "../player/idle_1.png",
+]

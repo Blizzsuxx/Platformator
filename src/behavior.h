@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "gameobject.h"
-#include "scriptdescriptor.h"
+#include "behaviorspec.h"
 
 class Collider;
 class ScriptComponent;
@@ -15,7 +15,7 @@ class Collision;
 class GameManager;
 class AudioWrapper;
 class TextureWrapper;
-class AnimationSetAsset;
+class AnimationClip;
 
 namespace platformator_behavior_detail
 {
@@ -34,7 +34,7 @@ namespace platformator_behavior_detail
 
     AudioWrapper *resolveAudioAssetByPath(const std::string &resolvedPath);
     TextureWrapper *resolveTextureAssetByPath(const std::string &resolvedPath);
-    AnimationSetAsset *resolveAnimationSetAssetByPath(const std::string &resolvedPath);
+    AnimationClip *resolveAnimationClipByPath(const std::string &resolvedPath);
 
     template <typename Asset>
     struct AssetReference
@@ -93,7 +93,7 @@ namespace platformator_behavior_detail
 
     using AudioAssetReference = AssetReference<AudioWrapper>;
     using TextureAssetReference = AssetReference<TextureWrapper>;
-    using AnimationSetAssetReference = AssetReference<AnimationSetAsset>;
+    using AnimationClipReference = AssetReference<AnimationClip>;
 
     template <typename T>
     struct NamedComponentReference
@@ -144,8 +144,8 @@ namespace platformator_behavior_detail
     struct BehaviorFieldDescriptor
     {
         const char *name;
-        void (*deserialize)(Behavior &behavior, const char *name, const ScriptDescriptor &descriptor);
-        void (*serialize)(const Behavior &behavior, const char *name, ScriptDescriptor &descriptor);
+        void (*deserialize)(Behavior &behavior, const char *name, const BehaviorSpec &spec);
+        void (*serialize)(const Behavior &behavior, const char *name, BehaviorSpec &spec);
         void (*resolve)(Behavior &behavior);
     };
 
@@ -155,12 +155,12 @@ namespace platformator_behavior_detail
     template <typename T>
     struct ScriptFieldTraits
     {
-        static T get(const ScriptDescriptor &, const char *, const T &)
+        static T get(const BehaviorSpec &, const char *, const T &)
         {
             static_assert(unsupported_behavior_field_v<T>, "Unsupported behavior field type");
         }
 
-        static void set(ScriptDescriptor &, const char *, const T &)
+        static void set(BehaviorSpec &, const char *, const T &)
         {
             static_assert(unsupported_behavior_field_v<T>, "Unsupported behavior field type");
         }
@@ -169,160 +169,160 @@ namespace platformator_behavior_detail
     template <>
     struct ScriptFieldTraits<std::string>
     {
-        static std::string get(const ScriptDescriptor &descriptor, const char *name, const std::string &fallback)
+        static std::string get(const BehaviorSpec &spec, const char *name, const std::string &fallback)
         {
-            return descriptor.getString(name, fallback);
+            return spec.getString(name, fallback);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const std::string &value)
+        static void set(BehaviorSpec &spec, const char *name, const std::string &value)
         {
-            descriptor.setStringProperty(name, value);
+            spec.setStringProperty(name, value);
         }
     };
 
     template <>
     struct ScriptFieldTraits<float>
     {
-        static float get(const ScriptDescriptor &descriptor, const char *name, float fallback)
+        static float get(const BehaviorSpec &spec, const char *name, float fallback)
         {
-            return descriptor.getFloat(name, fallback);
+            return spec.getFloat(name, fallback);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, float value)
+        static void set(BehaviorSpec &spec, const char *name, float value)
         {
-            descriptor.setFloatProperty(name, value);
+            spec.setFloatProperty(name, value);
         }
     };
 
     template <>
     struct ScriptFieldTraits<double>
     {
-        static double get(const ScriptDescriptor &descriptor, const char *name, double fallback)
+        static double get(const BehaviorSpec &spec, const char *name, double fallback)
         {
-            return descriptor.getDouble(name, fallback);
+            return spec.getDouble(name, fallback);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, double value)
+        static void set(BehaviorSpec &spec, const char *name, double value)
         {
-            descriptor.setDoubleProperty(name, value);
+            spec.setDoubleProperty(name, value);
         }
     };
 
     template <>
     struct ScriptFieldTraits<int>
     {
-        static int get(const ScriptDescriptor &descriptor, const char *name, int fallback)
+        static int get(const BehaviorSpec &spec, const char *name, int fallback)
         {
-            return descriptor.getInt(name, fallback);
+            return spec.getInt(name, fallback);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, int value)
+        static void set(BehaviorSpec &spec, const char *name, int value)
         {
-            descriptor.setIntProperty(name, value);
+            spec.setIntProperty(name, value);
         }
     };
 
     template <>
     struct ScriptFieldTraits<bool>
     {
-        static bool get(const ScriptDescriptor &descriptor, const char *name, bool fallback)
+        static bool get(const BehaviorSpec &spec, const char *name, bool fallback)
         {
-            return descriptor.getBool(name, fallback);
+            return spec.getBool(name, fallback);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, bool value)
+        static void set(BehaviorSpec &spec, const char *name, bool value)
         {
-            descriptor.setBoolProperty(name, value);
+            spec.setBoolProperty(name, value);
         }
     };
 
     template <>
     struct ScriptFieldTraits<Eigen::Vector2f>
     {
-        static Eigen::Vector2f get(const ScriptDescriptor &descriptor, const char *name, const Eigen::Vector2f &fallback)
+        static Eigen::Vector2f get(const BehaviorSpec &spec, const char *name, const Eigen::Vector2f &fallback)
         {
-            return descriptor.getVector2f(name, fallback);
+            return spec.getVector2f(name, fallback);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const Eigen::Vector2f &value)
+        static void set(BehaviorSpec &spec, const char *name, const Eigen::Vector2f &value)
         {
-            descriptor.setVector2fProperty(name, value);
+            spec.setVector2fProperty(name, value);
         }
     };
 
     template <>
     struct ScriptFieldTraits<NamedGameObjectReference>
     {
-        static NamedGameObjectReference get(const ScriptDescriptor &descriptor, const char *name, const NamedGameObjectReference &fallback)
+        static NamedGameObjectReference get(const BehaviorSpec &spec, const char *name, const NamedGameObjectReference &fallback)
         {
-            return NamedGameObjectReference(descriptor.getString(name, fallback.name));
+            return NamedGameObjectReference(spec.getString(name, fallback.name));
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const NamedGameObjectReference &value)
+        static void set(BehaviorSpec &spec, const char *name, const NamedGameObjectReference &value)
         {
-            descriptor.setStringProperty(name, value.name);
+            spec.setStringProperty(name, value.name);
         }
     };
 
     template <typename T>
     struct ScriptFieldTraits<NamedComponentReference<T>>
     {
-        static NamedComponentReference<T> get(const ScriptDescriptor &descriptor, const char *name, const NamedComponentReference<T> &fallback)
+        static NamedComponentReference<T> get(const BehaviorSpec &spec, const char *name, const NamedComponentReference<T> &fallback)
         {
-            return NamedComponentReference<T>(descriptor.getString(name, fallback.name));
+            return NamedComponentReference<T>(spec.getString(name, fallback.name));
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const NamedComponentReference<T> &value)
+        static void set(BehaviorSpec &spec, const char *name, const NamedComponentReference<T> &value)
         {
-            descriptor.setStringProperty(name, value.name);
+            spec.setStringProperty(name, value.name);
         }
     };
 
     template <>
     struct ScriptFieldTraits<AudioAssetReference>
     {
-        static AudioAssetReference get(const ScriptDescriptor &descriptor, const char *name, const AudioAssetReference &fallback)
+        static AudioAssetReference get(const BehaviorSpec &spec, const char *name, const AudioAssetReference &fallback)
         {
-            const std::string path = descriptor.getString(name, fallback.path);
-            const std::string resolvedPath = resolveAssetPath(descriptor.sourcePath, path);
+            const std::string path = spec.getString(name, fallback.path);
+            const std::string resolvedPath = resolveAssetPath(spec.sourcePath, path);
             return AudioAssetReference(path, resolvedPath, &resolveAudioAssetByPath);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const AudioAssetReference &value)
+        static void set(BehaviorSpec &spec, const char *name, const AudioAssetReference &value)
         {
-            descriptor.setStringProperty(name, value.path);
+            spec.setStringProperty(name, value.path);
         }
     };
 
     template <>
     struct ScriptFieldTraits<TextureAssetReference>
     {
-        static TextureAssetReference get(const ScriptDescriptor &descriptor, const char *name, const TextureAssetReference &fallback)
+        static TextureAssetReference get(const BehaviorSpec &spec, const char *name, const TextureAssetReference &fallback)
         {
-            const std::string path = descriptor.getString(name, fallback.path);
-            const std::string resolvedPath = resolveAssetPath(descriptor.sourcePath, path);
+            const std::string path = spec.getString(name, fallback.path);
+            const std::string resolvedPath = resolveAssetPath(spec.sourcePath, path);
             return TextureAssetReference(path, resolvedPath, &resolveTextureAssetByPath);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const TextureAssetReference &value)
+        static void set(BehaviorSpec &spec, const char *name, const TextureAssetReference &value)
         {
-            descriptor.setStringProperty(name, value.path);
+            spec.setStringProperty(name, value.path);
         }
     };
 
     template <>
-    struct ScriptFieldTraits<AnimationSetAssetReference>
+    struct ScriptFieldTraits<AnimationClipReference>
     {
-        static AnimationSetAssetReference get(const ScriptDescriptor &descriptor, const char *name, const AnimationSetAssetReference &fallback)
+        static AnimationClipReference get(const BehaviorSpec &spec, const char *name, const AnimationClipReference &fallback)
         {
-            const std::string path = descriptor.getString(name, fallback.path);
-            const std::string resolvedPath = resolveAssetPath(descriptor.sourcePath, path);
-            return AnimationSetAssetReference(path, resolvedPath, &resolveAnimationSetAssetByPath);
+            const std::string path = spec.getString(name, fallback.path);
+            const std::string resolvedPath = resolveAssetPath(spec.sourcePath, path);
+            return AnimationClipReference(path, resolvedPath, &resolveAnimationClipByPath);
         }
 
-        static void set(ScriptDescriptor &descriptor, const char *name, const AnimationSetAssetReference &value)
+        static void set(BehaviorSpec &spec, const char *name, const AnimationClipReference &value)
         {
-            descriptor.setStringProperty(name, value.path);
+            spec.setStringProperty(name, value.path);
         }
     };
 
@@ -331,16 +331,16 @@ namespace platformator_behavior_detail
     {
         using StoredField = std::remove_cv_t<std::remove_reference_t<Field>>;
 
-        static void deserialize(Behavior &behavior, const char *name, const ScriptDescriptor &descriptor)
+        static void deserialize(Behavior &behavior, const char *name, const BehaviorSpec &spec)
         {
             Owner &owner = static_cast<Owner &>(behavior);
-            owner.*Member = ScriptFieldTraits<StoredField>::get(descriptor, name, owner.*Member);
+            owner.*Member = ScriptFieldTraits<StoredField>::get(spec, name, owner.*Member);
         }
 
-        static void serialize(const Behavior &behavior, const char *name, ScriptDescriptor &descriptor)
+        static void serialize(const Behavior &behavior, const char *name, BehaviorSpec &spec)
         {
             const Owner &owner = static_cast<const Owner &>(behavior);
-            ScriptFieldTraits<StoredField>::set(descriptor, name, owner.*Member);
+            ScriptFieldTraits<StoredField>::set(spec, name, owner.*Member);
         }
 
         static void resolve(Behavior &behavior)
@@ -378,8 +378,8 @@ public:
     bool getEnabled() const;
     void setEnabled(bool enabled);
     virtual std::string getTypeName() const;
-    virtual void deserialize(const ScriptDescriptor &descriptor);
-    virtual void serialize(ScriptDescriptor &descriptor) const;
+    virtual void deserialize(const BehaviorSpec &spec);
+    virtual void serialize(BehaviorSpec &spec) const;
 
     virtual void start();
     virtual void update(double timeDelta);
@@ -399,8 +399,10 @@ protected:
 private:
     GameObject *gameObject;
     bool enabled;
+    std::string registeredTypeName;
 
     void resolveFieldBindings();
+    void setRegisteredTypeName(std::string typeName);
 };
 
 #define BEHAVIOR_FIELDS(TYPE, ...)                                                                                           \

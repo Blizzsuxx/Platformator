@@ -1,11 +1,11 @@
-animations {
-    clip {
-        name "run"
-        fps 12
-        loop true
-        size 32 32
-        frame "../player/run_0.png"
-        frame "../player/run_1.png"
-        frame "../player/run_2.png"
-    }
-}
+format = "platformator_animset"
+version = 1
+name = "run"
+fps = 12
+loop = true
+size = [32, 32]
+frames = [
+    "../player/run_0.png",
+    "../player/run_1.png",
+    "../player/run_2.png",
+]

@@ -3,12 +3,9 @@
 #include <cstddef>
 #include <SDL3/SDL.h>
 #include <string>
-#include <vector>
-#include "texturewrapper.h"
 
+#include "animationclip.h"
 #include "gameobject.h"
-
-class AnimationSetAsset;
 
 class Animator : public Component
 {
@@ -20,6 +17,7 @@ public:
     float getPlaybackSpeed() const;
     bool getIsPlaying() const;
     bool getIsPaused() const;
+    const std::string &getCurrentClipName() const;
 
     bool play(const AnimationClip *animationClip);
     void stop();
@@ -38,7 +36,6 @@ private:
     float playbackSpeed;
     bool playing;
     size_t gameManagerIndex;
-    SDL_FlipMode flip;
 
     const AnimationClip *getCurrentClip() const;
     double getCurrentFrameDuration() const;

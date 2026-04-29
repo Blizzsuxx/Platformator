@@ -17,7 +17,6 @@ namespace mario
     public:
         MarioPlayer();
 
-        std::string getTypeName() const override;
         BEHAVIOR_FIELDS(
             MarioPlayer,
             BEHAVIOR_FIELD(walkSpeed),
@@ -55,11 +54,11 @@ namespace mario
         float gravity;
         float maxFallSpeed;
         float stompBounceFactor;
-        platformator_behavior_detail::AnimationSetAssetReference idleAnimset;
-        platformator_behavior_detail::AnimationSetAssetReference runAnimset;
-        platformator_behavior_detail::AnimationSetAssetReference jumpAnimset;
-        platformator_behavior_detail::AnimationSetAssetReference fallAnimset;
-        platformator_behavior_detail::AnimationSetAssetReference winAnimset;
+        platformator_behavior_detail::AnimationClipReference idleAnimset;
+        platformator_behavior_detail::AnimationClipReference runAnimset;
+        platformator_behavior_detail::AnimationClipReference jumpAnimset;
+        platformator_behavior_detail::AnimationClipReference fallAnimset;
+        platformator_behavior_detail::AnimationClipReference winAnimset;
         platformator_behavior_detail::AudioAssetReference jumpSound;
         platformator_behavior_detail::AudioAssetReference hurtSound;
         Eigen::Vector2f spawn;

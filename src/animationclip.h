@@ -1,9 +1,10 @@
 #pragma once
 
-#include "texturewrapper.h"
 #include <SDL3/SDL.h>
 #include <string>
 #include <vector>
+
+#include "texturewrapper.h"
 
 struct AnimationFrame
 {
@@ -25,8 +26,8 @@ private:
 
 struct AnimationClip
 {
-    AnimationClip(double framesPerSecond, bool loop, float width, float height, const char *filePath);
-    AnimationClip(const char *filePath);
+    AnimationClip();
+    AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width, float height, std::string name, std::string filePath = "");
     ~AnimationClip();
 
     const std::vector<AnimationFrame> &getFrames() const;
@@ -34,6 +35,7 @@ struct AnimationClip
     bool getLoop() const;
     float getWidth() const;
     float getHeight() const;
+    const std::string &getName() const;
     const std::string &getFilePath() const;
 
     void addReference();
@@ -44,6 +46,7 @@ struct AnimationClip
     bool loop;
     float width;
     float height;
+    std::string name;
     std::string filePath;
     size_t referenceCount;
 };

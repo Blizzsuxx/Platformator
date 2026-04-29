@@ -10,7 +10,6 @@ namespace mario
     public:
         MarioCoin();
 
-        std::string getTypeName() const override;
         BEHAVIOR_FIELDS(
             MarioCoin,
             BEHAVIOR_FIELD(spinAnimset),
@@ -21,7 +20,7 @@ namespace mario
         bool collect();
 
     private:
-        platformator_behavior_detail::AnimationSetAssetReference spinAnimset;
+        platformator_behavior_detail::AnimationClipReference spinAnimset;
         platformator_behavior_detail::AudioAssetReference coinSound;
     };
 

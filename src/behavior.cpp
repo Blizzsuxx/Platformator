@@ -2,13 +2,13 @@
 
 #include <filesystem>
 
-#include "animationasset.h"
+#include "animationclip.h"
 #include "gamemanager.h"
 #include "scriptcomponent.h"
 #include "collision.h"
 
 Behavior::Behavior()
-    : gameObject(nullptr), enabled(true)
+    : gameObject(nullptr), enabled(true), registeredTypeName()
 {
 }
 
@@ -49,17 +49,54 @@ std::string platformator_behavior_detail::resolveAssetPath(const std::string &so
 
 AudioWrapper *platformator_behavior_detail::resolveAudioAssetByPath(const std::string &resolvedPath)
 {
-    return resolvedPath.empty() ? nullptr : GameManager::getInstance().loadAudio(resolvedPath);
+    if (resolvedPath.empty())
+    {
+        return nullptr;
+    }
+
+    AudioWrapper *audio = GameManager::getInstance().loadAudio(resolvedPath);
+    if (audio != nullptr && audio->getAudio() != nullptr)
+    {
+        return audio;
+    }
+
+    if (audio != nullptr)
+    {
+        GameManager::getInstance().freeAudio(audio);
+    }
+
+    return nullptr;
 }
 
 TextureWrapper *platformator_behavior_detail::resolveTextureAssetByPath(const std::string &resolvedPath)
 {
-    return resolvedPath.empty() ? nullptr : GameManager::getInstance().loadTexture(resolvedPath);
+    if (resolvedPath.empty())
+    {
+        return nullptr;
+    }
+
+    TextureWrapper *texture = GameManager::getInstance().loadTexture(resolvedPath);
+    if (texture != nullptr && texture->getTexture() != nullptr)
+    {
+        return texture;
+    }
+
+    if (texture != nullptr)
+    {
+        GameManager::getInstance().freeTexture(texture);
+    }
+
+    return nullptr;
 }
 
-AnimationSetAsset *platformator_behavior_detail::resolveAnimationSetAssetByPath(const std::string &resolvedPath)
+AnimationClip *platformator_behavior_detail::resolveAnimationClipByPath(const std::string &resolvedPath)
 {
-    return resolvedPath.empty() ? nullptr : GameManager::getInstance().loadAnimationSet(resolvedPath);
+    if (resolvedPath.empty())
+    {
+        return nullptr;
+    }
+
+    return GameManager::getInstance().loadAnimationClip(resolvedPath);
 }
 
 GameObject *Behavior::getGameObject() const
@@ -74,30 +111,35 @@ bool Behavior::getEnabled() const
 
 std::string Behavior::getTypeName() const
 {
-    return "";
+    return registeredTypeName;
 }
 
-void Behavior::deserialize(const ScriptDescriptor &descriptor)
+void Behavior::deserialize(const BehaviorSpec &spec)
 {
     const std::vector<platformator_behavior_detail::BehaviorFieldDescriptor> &fields = getBehaviorFieldDescriptors();
     for (const platformator_behavior_detail::BehaviorFieldDescriptor &field : fields)
     {
-        field.deserialize(*this, field.name, descriptor);
+        field.deserialize(*this, field.name, spec);
     }
 }
 
-void Behavior::serialize(ScriptDescriptor &descriptor) const
+void Behavior::serialize(BehaviorSpec &spec) const
 {
     const std::vector<platformator_behavior_detail::BehaviorFieldDescriptor> &fields = getBehaviorFieldDescriptors();
     for (const platformator_behavior_detail::BehaviorFieldDescriptor &field : fields)
     {
-        field.serialize(*this, field.name, descriptor);
+        field.serialize(*this, field.name, spec);
     }
 }
 
 void Behavior::setEnabled(bool enabled)
 {
     this->enabled = enabled;
+}
+
+void Behavior::setRegisteredTypeName(std::string typeName)
+{
+    registeredTypeName = std::move(typeName);
 }
 
 void Behavior::start()

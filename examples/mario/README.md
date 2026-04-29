@@ -43,7 +43,7 @@ Animation set assets:
 - `examples/mario/assets/animations/coin.animset`
 - `examples/mario/assets/animations/flag.animset`
 
-Each `.animset` file now contains exactly one clip. The script block lists whichever clip assets a behavior needs, and gameplay code switches clips by calling `Animator::play(name)` on the explicit animator component.
+Each `.animset` file now contains exactly one clip in TOML form. The script block lists whichever clip assets a behavior needs, and gameplay code switches clips by calling `Animator::play(animationClip)` on the explicit animator component.
 
 Optional richer animation asset paths:
 

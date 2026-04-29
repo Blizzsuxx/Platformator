@@ -1,703 +1,684 @@
-object {
-    name "Main Camera"
-    camera {
-        viewport 0 0 640 480
-    }
-    script {
-        type "MarioCameraRig"
-        target "Player"
-        cameralead 90
-        levelwidth 2240
-    }
-}
+format = "platformator_scene"
+version = 1
 
-object {
-    name "BGM"
-    tag "audio"
-    audio {
-        path "assets/audio/music.wav"
-        autoplay true
-        loops -1
-        gain 0.5
-    }
-}
+[[objects]]
+name = "Main Camera"
 
-object {
-    name "Player"
-    tag "player"
-    position 120 408
-    rigidbody {
-        bodyType kinematic
-        gravity false
-        mass 3
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0.6
-        restitution 0
-    }
-    boxCollider {
-        size 28 32
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/player/idle_0.png"
-        flip none
-        size 32 32
-    }
-    audio {
-        gain 0.9
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioPlayer"
-        walkspeed 180
-        jumpspeed 250
-        gravity 358.065
-        maxfallspeed 460
-        stompbouncefactor 0.65
-        idleAnimset "assets/animations/player.animset"
-        runAnimset "assets/animations/player_run.animset"
-        jumpAnimset "assets/animations/player_jump.animset"
-        fallAnimset "assets/animations/player_fall.animset"
-        winAnimset "assets/animations/player_win.animset"
-        jumpSound "assets/audio/jump.wav"
-        hurtSound "assets/audio/hurt.wav"
-    }
-}
+[objects.camera]
+viewport = [0, 0, 640, 480]
 
-object {
-    name "Ground A"
-    tag "solid"
-    position 160 456
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 320 48
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/ground.png"
-        flip none
-        size 320 48
-    }
-}
+[[objects.scripts]]
+type = "MarioCameraRig"
+target = "Player"
+cameralead = 90
+levelwidth = 2240
 
-object {
-    name "Ground B"
-    tag "solid"
-    position 480 456
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 320 48
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/ground.png"
-        flip none
-        size 320 48
-    }
-}
+[[objects]]
+name = "BGM"
+tag = "audio"
 
-object {
-    name "Ground C"
-    tag "solid"
-    position 920 456
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 560 48
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/ground.png"
-        flip none
-        size 560 48
-    }
-}
+[objects.audio]
+path = "assets/audio/music.wav"
+autoplay = true
+loops = -1
+gain = 0.5
 
-object {
-    name "Ground D"
-    tag "solid"
-    position 1520 456
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 640 48
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/ground.png"
-        flip none
-        size 640 48
-    }
-}
+[[objects]]
+name = "Player"
+tag = "player"
+position = [120, 408]
 
-object {
-    name "Platform A"
-    tag "solid"
-    position 520 360
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 128 24
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/platform.png"
-        flip none
-        size 128 24
-    }
-}
+[objects.rigidbody]
+bodyType = "kinematic"
+gravity = false
+mass = 3
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0.6
+restitution = 0
 
-object {
-    name "Platform B"
-    tag "solid"
-    position 820 304
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 160 24
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/platform.png"
-        flip none
-        size 160 24
-    }
-}
+[objects.boxCollider]
+size = [28, 32]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
 
-object {
-    name "Platform C"
-    tag "solid"
-    position 1110 248
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 128 24
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/platform.png"
-        flip none
-        size 128 24
-    }
-}
+[objects.sprite]
+path = "assets/player/idle_0.png"
+flip = "none"
+size = [32, 32]
 
-object {
-    name "Pipe"
-    tag "solid"
-    position 1340 408
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 72 96
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/pipe.png"
-        flip none
-        size 72 96
-    }
-}
+[objects.audio]
+gain = 0.9
 
-object {
-    name "Brick Row Left"
-    tag "solid"
-    position 700 248
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 96 32
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/brick.png"
-        flip none
-        size 96 32
-    }
-}
+[objects.animator]
+playbackSpeed = 1
 
-object {
-    name "Brick Row Right"
-    tag "solid"
-    position 1088 184
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 1
-        restitution 0
-    }
-    boxCollider {
-        size 128 32
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/tiles/brick.png"
-        flip none
-        size 128 32
-    }
-}
+[[objects.scripts]]
+type = "MarioPlayer"
+walkspeed = 180
+jumpspeed = 250
+gravity = 358.065
+maxfallspeed = 460
+stompbouncefactor = 0.65
+idleAnimset = "assets/animations/player.animset"
+runAnimset = "assets/animations/player_run.animset"
+jumpAnimset = "assets/animations/player_jump.animset"
+fallAnimset = "assets/animations/player_fall.animset"
+winAnimset = "assets/animations/player_win.animset"
+jumpSound = "assets/audio/jump.wav"
+hurtSound = "assets/audio/hurt.wav"
 
-object {
-    name "Death Zone"
-    tag "death"
-    position 1120 776
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    boxCollider {
-        size 2600 160
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-}
+[[objects]]
+name = "Ground A"
+tag = "solid"
+position = [160, 456]
 
-object {
-    name "Coin A"
-    tag "coin"
-    position 520 316
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    circleCollider {
-        radius 10
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/items/coin_0.png"
-        flip none
-        size 22 22
-    }
-    audio {
-        gain 0.85
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioCoin"
-        spinAnimset "assets/animations/coin.animset"
-        coinSound "assets/audio/coin.wav"
-    }
-}
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
 
-object {
-    name "Coin B"
-    tag "coin"
-    position 820 260
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    circleCollider {
-        radius 10
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/items/coin_0.png"
-        flip none
-        size 22 22
-    }
-    audio {
-        gain 0.85
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioCoin"
-        spinAnimset "assets/animations/coin.animset"
-        coinSound "assets/audio/coin.wav"
-    }
-}
+[objects.boxCollider]
+size = [320, 48]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
 
-object {
-    name "Coin C"
-    tag "coin"
-    position 1110 204
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    circleCollider {
-        radius 10
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/items/coin_0.png"
-        flip none
-        size 22 22
-    }
-    audio {
-        gain 0.85
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioCoin"
-        spinAnimset "assets/animations/coin.animset"
-        coinSound "assets/audio/coin.wav"
-    }
-}
+[objects.sprite]
+path = "assets/tiles/ground.png"
+flip = "none"
+size = [320, 48]
 
-object {
-    name "Coin D"
-    tag "coin"
-    position 1490 396
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    circleCollider {
-        radius 10
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/items/coin_0.png"
-        flip none
-        size 22 22
-    }
-    audio {
-        gain 0.85
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioCoin"
-        spinAnimset "assets/animations/coin.animset"
-        coinSound "assets/audio/coin.wav"
-    }
-}
+[[objects]]
+name = "Ground B"
+tag = "solid"
+position = [480, 456]
 
-object {
-    name "Coin E"
-    tag "coin"
-    position 1750 396
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    circleCollider {
-        radius 10
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/items/coin_0.png"
-        flip none
-        size 22 22
-    }
-    audio {
-        gain 0.85
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioCoin"
-        spinAnimset "assets/animations/coin.animset"
-        coinSound "assets/audio/coin.wav"
-    }
-}
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
 
-object {
-    name "Goomba A"
-    tag "enemy"
-    position 640 418
-    rigidbody {
-        bodyType kinematic
-        gravity false
-        mass 1
-        velocity -55 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0.8
-        restitution 0
-    }
-    boxCollider {
-        size 28 28
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/enemies/walk_0.png"
-        flip none
-        size 32 32
-    }
-    audio {
-        gain 0.9
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioPatrolEnemy"
-        minx 550
-        maxx 730
-        direction -1
-        walkspeed 55
-        stompminspeed 10
-        stomptolerance 14
-        squashduration 0.28
-        walkAnimset "assets/animations/goomba.animset"
-        squashAnimset "assets/animations/goomba_squash.animset"
-        stompSound "assets/audio/stomp.wav"
-    }
-}
+[objects.boxCollider]
+size = [320, 48]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
 
-object {
-    name "Goomba B"
-    tag "enemy"
-    position 1560 418
-    rigidbody {
-        bodyType kinematic
-        gravity false
-        mass 1
-        velocity 55 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0.8
-        restitution 0
-    }
-    boxCollider {
-        size 28 28
-        trigger false
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/enemies/walk_0.png"
-        flip none
-        size 32 32
-    }
-    audio {
-        gain 0.9
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioPatrolEnemy"
-        minx 1450
-        maxx 1670
-        direction 1
-        walkspeed 55
-        stompminspeed 10
-        stomptolerance 14
-        squashduration 0.28
-        walkAnimset "assets/animations/goomba.animset"
-        squashAnimset "assets/animations/goomba_squash.animset"
-        stompSound "assets/audio/stomp.wav"
-    }
-}
+[objects.sprite]
+path = "assets/tiles/ground.png"
+flip = "none"
+size = [320, 48]
 
-object {
-    name "Goal Flag"
-    tag "goal"
-    position 2120 336
-    rigidbody {
-        bodyType static
-        gravity false
-        mass 1
-        velocity 0 0
-        force 0 0
-        angularVelocity 0
-        torque 0
-        friction 0
-        restitution 0
-    }
-    boxCollider {
-        size 32 192
-        trigger true
-        collisionGroup 1
-        collisionMask 1
-    }
-    sprite {
-        path "assets/items/flag.png"
-        flip none
-        size 32 192
-    }
-    audio {
-        gain 0.95
-    }
-    animator {
-        playbackSpeed 1
-    }
-    script {
-        type "MarioGoalFlag"
-        waveAnimset "assets/animations/flag.animset"
-        winSound "assets/audio/win.wav"
-    }
-}
+[[objects]]
+name = "Ground C"
+tag = "solid"
+position = [920, 456]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [560, 48]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/ground.png"
+flip = "none"
+size = [560, 48]
+
+[[objects]]
+name = "Ground D"
+tag = "solid"
+position = [1520, 456]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [640, 48]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/ground.png"
+flip = "none"
+size = [640, 48]
+
+[[objects]]
+name = "Platform A"
+tag = "solid"
+position = [520, 360]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [128, 24]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/platform.png"
+flip = "none"
+size = [128, 24]
+
+[[objects]]
+name = "Platform B"
+tag = "solid"
+position = [820, 304]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [160, 24]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/platform.png"
+flip = "none"
+size = [160, 24]
+
+[[objects]]
+name = "Platform C"
+tag = "solid"
+position = [1110, 248]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [128, 24]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/platform.png"
+flip = "none"
+size = [128, 24]
+
+[[objects]]
+name = "Pipe"
+tag = "solid"
+position = [1340, 408]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [72, 96]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/pipe.png"
+flip = "none"
+size = [72, 96]
+
+[[objects]]
+name = "Brick Row Left"
+tag = "solid"
+position = [700, 248]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [96, 32]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/brick.png"
+flip = "none"
+size = [96, 32]
+
+[[objects]]
+name = "Brick Row Right"
+tag = "solid"
+position = [1088, 184]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 1
+restitution = 0
+
+[objects.boxCollider]
+size = [128, 32]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/tiles/brick.png"
+flip = "none"
+size = [128, 32]
+
+[[objects]]
+name = "Death Zone"
+tag = "death"
+position = [1120, 776]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.boxCollider]
+size = [2600, 160]
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[[objects]]
+name = "Coin A"
+tag = "coin"
+position = [520, 316]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.circleCollider]
+radius = 10
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/items/coin_0.png"
+flip = "none"
+size = [22, 22]
+
+[objects.audio]
+gain = 0.85
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioCoin"
+spinAnimset = "assets/animations/coin.animset"
+coinSound = "assets/audio/coin.wav"
+
+[[objects]]
+name = "Coin B"
+tag = "coin"
+position = [820, 260]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.circleCollider]
+radius = 10
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/items/coin_0.png"
+flip = "none"
+size = [22, 22]
+
+[objects.audio]
+gain = 0.85
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioCoin"
+spinAnimset = "assets/animations/coin.animset"
+coinSound = "assets/audio/coin.wav"
+
+[[objects]]
+name = "Coin C"
+tag = "coin"
+position = [1110, 204]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.circleCollider]
+radius = 10
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/items/coin_0.png"
+flip = "none"
+size = [22, 22]
+
+[objects.audio]
+gain = 0.85
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioCoin"
+spinAnimset = "assets/animations/coin.animset"
+coinSound = "assets/audio/coin.wav"
+
+[[objects]]
+name = "Coin D"
+tag = "coin"
+position = [1490, 396]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.circleCollider]
+radius = 10
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/items/coin_0.png"
+flip = "none"
+size = [22, 22]
+
+[objects.audio]
+gain = 0.85
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioCoin"
+spinAnimset = "assets/animations/coin.animset"
+coinSound = "assets/audio/coin.wav"
+
+[[objects]]
+name = "Coin E"
+tag = "coin"
+position = [1750, 396]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.circleCollider]
+radius = 10
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/items/coin_0.png"
+flip = "none"
+size = [22, 22]
+
+[objects.audio]
+gain = 0.85
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioCoin"
+spinAnimset = "assets/animations/coin.animset"
+coinSound = "assets/audio/coin.wav"
+
+[[objects]]
+name = "Goomba A"
+tag = "enemy"
+position = [640, 418]
+
+[objects.rigidbody]
+bodyType = "kinematic"
+gravity = false
+mass = 1
+velocity = [-55, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0.8
+restitution = 0
+
+[objects.boxCollider]
+size = [28, 28]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/enemies/walk_0.png"
+flip = "none"
+size = [32, 32]
+
+[objects.audio]
+gain = 0.9
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioPatrolEnemy"
+minx = 550
+maxx = 730
+direction = -1
+walkspeed = 55
+stompminspeed = 10
+stomptolerance = 14
+squashduration = 0.28
+walkAnimset = "assets/animations/goomba.animset"
+squashAnimset = "assets/animations/goomba_squash.animset"
+stompSound = "assets/audio/stomp.wav"
+
+[[objects]]
+name = "Goomba B"
+tag = "enemy"
+position = [1560, 418]
+
+[objects.rigidbody]
+bodyType = "kinematic"
+gravity = false
+mass = 1
+velocity = [55, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0.8
+restitution = 0
+
+[objects.boxCollider]
+size = [28, 28]
+trigger = false
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/enemies/walk_0.png"
+flip = "none"
+size = [32, 32]
+
+[objects.audio]
+gain = 0.9
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioPatrolEnemy"
+minx = 1450
+maxx = 1670
+direction = 1
+walkspeed = 55
+stompminspeed = 10
+stomptolerance = 14
+squashduration = 0.28
+walkAnimset = "assets/animations/goomba.animset"
+squashAnimset = "assets/animations/goomba_squash.animset"
+stompSound = "assets/audio/stomp.wav"
+
+[[objects]]
+name = "Goal Flag"
+tag = "goal"
+position = [2120, 336]
+
+[objects.rigidbody]
+bodyType = "static"
+gravity = false
+mass = 1
+velocity = [0, 0]
+force = [0, 0]
+angularVelocity = 0
+torque = 0
+friction = 0
+restitution = 0
+
+[objects.boxCollider]
+size = [32, 192]
+trigger = true
+collisionGroup = 1
+collisionMask = 1
+
+[objects.sprite]
+path = "assets/items/flag.png"
+flip = "none"
+size = [32, 192]
+
+[objects.audio]
+gain = 0.95
+
+[objects.animator]
+playbackSpeed = 1
+
+[[objects.scripts]]
+type = "MarioGoalFlag"
+waveAnimset = "assets/animations/flag.animset"
+winSound = "assets/audio/win.wav"

@@ -1,4 +1,7 @@
 #include "animationclip.h"
+
+#include <utility>
+
 #include "gamemanager.h"
 
 AnimationFrame::AnimationFrame(TextureWrapper *textureWrapper, float duration)
@@ -48,21 +51,14 @@ void AnimationFrame::releaseTexture()
     }
 }
 
-AnimationClip::AnimationClip(double framesPerSecond, bool loop, float width, float height, const char *filePath)
-    : frames(), framesPerSecond(framesPerSecond), loop(loop), width(width), height(height), filePath(filePath), referenceCount(0)
+AnimationClip::AnimationClip()
+    : frames(), framesPerSecond(12.0), loop(true), width(0.0f), height(0.0f), name(), filePath(), referenceCount(0)
 {
 }
 
-AnimationClip::AnimationClip(const char *filePath)
-    : frames(), framesPerSecond(0.0), loop(false), width(0.0f), height(0.0f), filePath(filePath), referenceCount(0)
+AnimationClip::AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width, float height, std::string name, std::string filePath)
+    : frames(std::move(frames)), framesPerSecond(framesPerSecond), loop(loop), width(width), height(height), name(std::move(name)), filePath(std::move(filePath)), referenceCount(0)
 {
-    // Load the animation clip data from the file
-    // This is a placeholder implementation and should be replaced with actual file loading logic
-    // For example, you could parse a JSON or XML file to populate the frames and other properties
-
-    // Example of adding a frame (this should be replaced with actual data from the file)
-    // TextureWrapper *textureWrapper = GameManager::getInstance().loadTexture("example_frame_texture.png");
-    // frames.emplace_back(textureWrapper, 0.1f); // Add a frame with a duration of 0.1 seconds
 }
 
 AnimationClip::~AnimationClip()
@@ -95,6 +91,11 @@ float AnimationClip::getHeight() const
     return height;
 }
 
+const std::string &AnimationClip::getName() const
+{
+    return name;
+}
+
 const std::string &AnimationClip::getFilePath() const
 {
     return filePath;
@@ -111,7 +112,7 @@ bool AnimationClip::removeReferenceAndFreeIfNoReferences()
     {
         referenceCount--;
     }
-    if (referenceCount == 0)
+    if (referenceCount == 0 && !filePath.empty())
     {
         GameManager::getInstance().freeAnimationClip(this);
         return true;

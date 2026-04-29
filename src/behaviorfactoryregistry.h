@@ -27,12 +27,15 @@ public:
         static_assert(std::is_base_of_v<Behavior, T>, "registerBehavior<T> requires T to derive from Behavior");
         static_assert(std::is_default_constructible_v<T>, "registerBehavior<T> requires T to be default constructible");
 
-        registerFactory(type, []() -> Behavior *
-                        { return new T(); });
+        registerFactory(type, [type]() -> Behavior *
+                        {
+                            Behavior *behavior = new T();
+                            behavior->setRegisteredTypeName(type);
+                            return behavior; });
     }
 
     void registerFactory(const std::string &type, Factory factory);
-    Behavior *createBehavior(ScriptComponent *scriptComponent, const ScriptDescriptor &descriptor) const;
+    Behavior *instantiateBehavior(ScriptComponent *scriptComponent, const BehaviorSpec &spec) const;
 
 private:
     BehaviorFactoryRegistry() = default;

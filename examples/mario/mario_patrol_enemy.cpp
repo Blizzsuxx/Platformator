@@ -31,11 +31,6 @@ namespace mario
     {
     }
 
-    std::string MarioPatrolEnemy::getTypeName() const
-    {
-        return "MarioPatrolEnemy";
-    }
-
     void MarioPatrolEnemy::start()
     {
         body = getGameObject()->getComponent<Rigidbody>();

@@ -11,11 +11,6 @@ namespace mario
     {
     }
 
-    std::string MarioGoalFlag::getTypeName() const
-    {
-        return "MarioGoalFlag";
-    }
-
     void MarioGoalFlag::start()
     {
         Animator *animator = getAnimator();

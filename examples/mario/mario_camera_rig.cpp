@@ -16,11 +16,6 @@ namespace mario
     {
     }
 
-    std::string MarioCameraRig::getTypeName() const
-    {
-        return "MarioCameraRig";
-    }
-
     void MarioCameraRig::start()
     {
         camera = getGameObject()->getComponent<Camera>();

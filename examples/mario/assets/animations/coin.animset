@@ -1,12 +1,12 @@
-animations {
-    clip {
-        name "spin"
-        fps 10
-        loop true
-        size 22 22
-        frame "../items/coin_0.png"
-        frame "../items/coin_1.png"
-        frame "../items/coin_2.png"
-        frame "../items/coin_3.png"
-    }
-}
+format = "platformator_animset"
+version = 1
+name = "spin"
+fps = 10
+loop = true
+size = [22, 22]
+frames = [
+    "../items/coin_0.png",
+    "../items/coin_1.png",
+    "../items/coin_2.png",
+    "../items/coin_3.png",
+]

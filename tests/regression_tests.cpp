@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "animationasset.h"
+#include "animationclip.h"
 #include "animator.h"
 #include "boxcollider.h"
 #include "circlecollider.h"
@@ -468,42 +468,38 @@ namespace
             std::ofstream sceneFile(scenePath);
             require(sceneFile.is_open(), "Scene loading regression failed to create the temporary scene file.");
 
-            sceneFile << "object {\n";
-            sceneFile << "    name \"Loaded Ball\"\n";
-            sceneFile << "    tag \"Player\"\n";
-            sceneFile << "    active true\n";
-            sceneFile << "    position 123 234\n";
-            sceneFile << "    rotation 0.5\n";
-            sceneFile << "    scale 2 1.5\n";
-            sceneFile << "    rigidbody {\n";
-            sceneFile << "        bodyType dynamic\n";
-            sceneFile << "        gravity false\n";
-            sceneFile << "        mass 7\n";
-            sceneFile << "        velocity 10 -20\n";
-            sceneFile << "        force 1 2\n";
-            sceneFile << "        angularVelocity 0.25\n";
-            sceneFile << "        torque 0.75\n";
-            sceneFile << "        friction 0.4\n";
-            sceneFile << "        restitution 0.6\n";
-            sceneFile << "    }\n";
-            sceneFile << "    circleCollider {\n";
-            sceneFile << "        radius 12\n";
-            sceneFile << "        trigger false\n";
-            sceneFile << "        collisionGroup 3\n";
-            sceneFile << "        collisionMask 5\n";
-            sceneFile << "    }\n";
-            sceneFile << "    sprite {\n";
-            sceneFile << "        path \"" << sceneSpritePath << "\"\n";
-            sceneFile << "        flip horizontal\n";
-            sceneFile << "        size 32 48\n";
-            sceneFile << "    }\n";
-            sceneFile << "}\n\n";
-            sceneFile << "object {\n";
-            sceneFile << "    name \"Loaded Camera\"\n";
-            sceneFile << "    camera {\n";
-            sceneFile << "        viewport 5 10 320 240\n";
-            sceneFile << "    }\n";
-            sceneFile << "}\n";
+            sceneFile << "format = \"platformator_scene\"\n";
+            sceneFile << "version = 1\n\n";
+            sceneFile << "[[objects]]\n";
+            sceneFile << "name = \"Loaded Ball\"\n";
+            sceneFile << "tag = \"Player\"\n";
+            sceneFile << "active = true\n";
+            sceneFile << "position = [123, 234]\n";
+            sceneFile << "rotation = 0.5\n";
+            sceneFile << "scale = [2, 1.5]\n\n";
+            sceneFile << "[objects.rigidbody]\n";
+            sceneFile << "bodyType = \"dynamic\"\n";
+            sceneFile << "gravity = false\n";
+            sceneFile << "mass = 7\n";
+            sceneFile << "velocity = [10, -20]\n";
+            sceneFile << "force = [1, 2]\n";
+            sceneFile << "angularVelocity = 0.25\n";
+            sceneFile << "torque = 0.75\n";
+            sceneFile << "friction = 0.4\n";
+            sceneFile << "restitution = 0.6\n\n";
+            sceneFile << "[objects.circleCollider]\n";
+            sceneFile << "radius = 12\n";
+            sceneFile << "trigger = false\n";
+            sceneFile << "collisionGroup = 3\n";
+            sceneFile << "collisionMask = 5\n\n";
+            sceneFile << "[objects.sprite]\n";
+            sceneFile << "path = \"" << sceneSpritePath << "\"\n";
+            sceneFile << "flip = \"horizontal\"\n";
+            sceneFile << "size = [32, 48]\n\n";
+            sceneFile << "[[objects]]\n";
+            sceneFile << "name = \"Loaded Camera\"\n\n";
+            sceneFile << "[objects.camera]\n";
+            sceneFile << "viewport = [5, 10, 320, 240]\n";
             sceneFile.close();
 
             Scene scene(scenePath.string());
@@ -641,7 +637,7 @@ namespace
             require(savedSceneFile.is_open(), "Scene round-trip regression failed to reopen the saved scene file.");
             std::stringstream savedSceneContents;
             savedSceneContents << savedSceneFile.rdbuf();
-            require(savedSceneContents.str().find("path \"" + expectedSavedSpritePath + "\"") != std::string::npos,
+            require(savedSceneContents.str().find("path = \"" + expectedSavedSpritePath + "\"") != std::string::npos,
                     "Scene round-trip regression failed to save sprite paths relative to the scene file.");
 
             destroyNamedObject(gameManager, window, "Roundtrip Ball");
@@ -839,28 +835,26 @@ namespace
             require(frameATexture != nullptr && frameBTexture != nullptr,
                     "Animator regression failed to load the test frame textures.");
 
-            const std::vector<TextureWrapper *> blinkFrames = {frameATexture, frameBTexture};
-            const AnimationSetAsset blinkAnimationSet(
-                "blink.animset",
-                0.5f,
-                "blink",
-                std::vector<AnimationClip>{AnimationClip(blinkFrames, 20.0f, true, 8.0f, 8.0f, "blink", false)});
+            const std::vector<AnimationFrame> blinkFrames = {
+                AnimationFrame(frameATexture, 0.0f),
+                AnimationFrame(frameBTexture, 0.0f)};
+            const AnimationClip blinkAnimationClip(blinkFrames, 10.0f, true, 8.0f, 8.0f, "blink");
 
-            require(animator->play(&blinkAnimationSet), "Animator regression failed to start the test animation asset.");
+            require(animator->play(&blinkAnimationClip), "Animator regression failed to start the test animation clip.");
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
                     "Animator regression failed to apply the initial clip frame.");
 
             simulateFrames(gameManager, 4);
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
-                    "Animator regression failed to respect the animation asset playback speed multiplier.");
+                    "Animator regression failed to respect the animation clip playback speed.");
 
             simulateFrames(gameManager, 9);
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameBPath.string(),
                     "Animator regression failed to advance to the second frame.");
 
-            require(animator->play(&blinkAnimationSet), "Animator regression restarted instead of reusing the current animation asset.");
+            require(animator->play(&blinkAnimationClip), "Animator regression restarted instead of reusing the current animation clip.");
             require(animator->getCurrentFrameIndex() == 1,
-                    "Animator regression reset the current frame when asked to play the already active animation asset.");
+                    "Animator regression reset the current frame when asked to play the already active animation clip.");
 
             simulateFrames(gameManager, 12);
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
@@ -909,23 +903,15 @@ namespace
             require(idleTexture != nullptr && sheetTexture != nullptr,
                     "Advanced animator regression failed to load the clip textures.");
 
-            const std::vector<TextureWrapper *> idleFrames = {idleTexture};
+            const std::vector<AnimationFrame> idleFrames = {AnimationFrame(idleTexture, 0.0f)};
 
             const std::vector<AnimationFrame> stripFrames = {
                 AnimationFrame(sheetTexture, SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
                 AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
-            const AnimationSetAsset stripAnimationSet(
-                "strip.animset",
-                1.0f,
-                "strip",
-                std::vector<AnimationClip>{AnimationClip(stripFrames, 20.0f, false, 4.0f, 4.0f, "strip", true)});
-            const AnimationSetAsset idleAnimationSet(
-                "idle.animset",
-                1.0f,
-                "idle",
-                std::vector<AnimationClip>{AnimationClip(idleFrames, 1.0f, true, 4.0f, 4.0f, "idle", false)});
+            const AnimationClip stripAnimationClip(stripFrames, 20.0f, false, 4.0f, 4.0f, "strip");
+            const AnimationClip idleAnimationClip(idleFrames, 1.0f, true, 4.0f, 4.0f, "idle");
 
-            require(animator->play(&stripAnimationSet), "Advanced animator regression failed to start one-shot playback.");
+            require(animator->play(&stripAnimationClip), "Advanced animator regression failed to start one-shot playback.");
 
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
                     "Advanced animator regression failed to apply the strip texture.");
@@ -946,11 +932,79 @@ namespace
             require(!animator->getIsPlaying(),
                     "Advanced animator regression failed to stop playback when a non-looping animation finished.");
 
-            require(animator->play(&idleAnimationSet), "Advanced animator regression failed to switch to a replacement animation asset.");
+            require(animator->play(&idleAnimationClip), "Advanced animator regression failed to switch to a replacement animation clip.");
             require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
-                    "Advanced animator regression failed to switch to the idle animation asset.");
+                    "Advanced animator regression failed to switch to the idle animation clip.");
             require(sprite->getSourceRect() == nullptr,
-                    "Advanced animator regression failed to clear the sprite source rectangle when switching to a full-frame animation asset.");
+                    "Advanced animator regression failed to clear the sprite source rectangle when switching to a full-frame animation clip.");
+
+            cleanupFiles();
+        }
+        catch (const std::exception &)
+        {
+            cleanupFiles();
+            throw;
+        }
+    }
+
+    void testAnimationClipFileRoundTrip()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        const std::filesystem::path frameAPath = createTemporaryBmpAsset("animationclip_roundtrip_idle_regression.bmp", 255, 0, 0);
+        const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animationclip_roundtrip_sheet_regression.bmp");
+        const std::filesystem::path clipPath = (std::filesystem::current_path() / "animationclip_roundtrip_regression.animset").lexically_normal();
+
+        auto cleanupFiles = [&]()
+        {
+            std::error_code errorCode;
+            std::filesystem::remove(frameAPath, errorCode);
+            std::filesystem::remove(sheetPath, errorCode);
+            std::filesystem::remove(clipPath, errorCode);
+        };
+
+        try
+        {
+            TextureWrapper *idleTexture = gameManager.loadTexture(frameAPath.string());
+            TextureWrapper *sheetTexture = gameManager.loadTexture(sheetPath.string());
+            require(idleTexture != nullptr && sheetTexture != nullptr,
+                    "Animation clip file round-trip regression failed to load the source textures.");
+
+            const std::vector<AnimationFrame> frames = {
+                AnimationFrame(idleTexture, 0.0f),
+                AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+            const AnimationClip sourceClip(frames, 20.0f, false, 4.0f, 4.0f, "saved_clip");
+
+            Scene::saveAnimationClipFile(sourceClip, clipPath.string());
+            const AnimationClip loadedClip = Scene::loadAnimationClipFile(clipPath.string());
+
+            require(loadedClip.getName() == "saved_clip",
+                    "Animation clip file round-trip regression lost the clip name.");
+            require(std::abs(loadedClip.getFramesPerSecond() - 20.0) <= 1e-6,
+                    "Animation clip file round-trip regression lost the clip playback speed.");
+            require(!loadedClip.getLoop(),
+                    "Animation clip file round-trip regression lost the clip loop flag.");
+            require(std::abs(loadedClip.getWidth() - 4.0f) <= 1e-5f && std::abs(loadedClip.getHeight() - 4.0f) <= 1e-5f,
+                    "Animation clip file round-trip regression lost the clip size.");
+            require(loadedClip.getFrames().size() == 2,
+                    "Animation clip file round-trip regression lost clip frames during save/load.");
+
+            const AnimationFrame &loadedIdleFrame = loadedClip.getFrames()[0];
+            const AnimationFrame &loadedStripFrame = loadedClip.getFrames()[1];
+
+            require(loadedIdleFrame.textureWrapper != nullptr && loadedIdleFrame.textureWrapper->getFilePath() == frameAPath.string(),
+                    "Animation clip file round-trip regression lost the first frame texture path.");
+            require(!loadedIdleFrame.hasSourceRect,
+                    "Animation clip file round-trip regression added an unexpected source rectangle to the first frame.");
+            require(loadedStripFrame.textureWrapper != nullptr && loadedStripFrame.textureWrapper->getFilePath() == sheetPath.string(),
+                    "Animation clip file round-trip regression lost the second frame texture path.");
+            require(loadedStripFrame.hasSourceRect,
+                    "Animation clip file round-trip regression lost the strip frame source rectangle.");
+            require(std::abs(loadedStripFrame.duration - 0.05f) <= 1e-5f,
+                    "Animation clip file round-trip regression lost the strip frame duration.");
+            require(std::abs(loadedStripFrame.sourceRect.x - 4.0f) <= 1e-5f && std::abs(loadedStripFrame.sourceRect.y) <= 1e-5f &&
+                        std::abs(loadedStripFrame.sourceRect.w - 4.0f) <= 1e-5f && std::abs(loadedStripFrame.sourceRect.h - 4.0f) <= 1e-5f,
+                    "Animation clip file round-trip regression lost the strip frame source rectangle contents.");
 
             cleanupFiles();
         }
@@ -1066,6 +1120,7 @@ int main()
         {"kinematic_body_semantics", testKinematicBodySemantics},
         {"animator_component_playback", testAnimatorComponentPlayback},
         {"animator_advanced_playback", testAnimatorAdvancedPlayback},
+        {"animationclip_file_round_trip", testAnimationClipFileRoundTrip},
         {"audio_component_controls", testAudioComponentControls},
         {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
     };

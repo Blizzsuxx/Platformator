@@ -10,7 +10,6 @@ namespace mario
     public:
         MarioGoalFlag();
 
-        std::string getTypeName() const override;
         BEHAVIOR_FIELDS(
             MarioGoalFlag,
             BEHAVIOR_FIELD(waveAnimset),
@@ -21,7 +20,7 @@ namespace mario
         bool reach();
 
     private:
-        platformator_behavior_detail::AnimationSetAssetReference waveAnimset;
+        platformator_behavior_detail::AnimationClipReference waveAnimset;
         platformator_behavior_detail::AudioAssetReference winSound;
     };
 

@@ -1,40 +1,53 @@
 #include "scene.h"
 
+#include <SDL3/SDL.h>
+
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
 #include <cmath>
 #include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
 #include <sstream>
 #include <stdexcept>
-#include <utility>
+#include <string_view>
 
+#include <toml++/toml.hpp>
+
+#include "animationclipfilewriter.h"
+#include "animationclip.h"
 #include "animator.h"
 #include "audio.h"
+#include "behaviorfactoryregistry.h"
 #include "boxcollider.h"
 #include "camera.h"
 #include "circlecollider.h"
 #include "gamemanager.h"
 #include "rigidbody.h"
+#include "scenefilewriter.h"
 #include "scriptcomponent.h"
-#include "scriptdescriptor.h"
 #include "sprite.h"
-#include "texturewrapper.h"
-#include "behaviorfactoryregistry.h"
 
 namespace
 {
+    constexpr uint64_t DEFAULT_COLLISION_GROUP = 1;
+    constexpr uint64_t DEFAULT_COLLISION_MASK = 1;
+
+    struct CameraConfig
+    {
+        bool enabled = false;
+        float x = 0.0f;
+        float y = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+    };
+
     struct RigidbodyConfig
     {
         bool enabled = false;
-        BodyType bodyType = DYNAMIC;
+        BodyType bodyType = BodyType::DYNAMIC;
         bool gravity = true;
-        float mass = 1.0f;
         Eigen::Vector2f velocity = Eigen::Vector2f::Zero();
         Eigen::Vector2f force = Eigen::Vector2f::Zero();
+        float mass = 1.0f;
         float angularVelocity = 0.0f;
         float torque = 0.0f;
         float friction = 1.0f;
@@ -47,8 +60,8 @@ namespace
         float width = 0.0f;
         float height = 0.0f;
         bool isTrigger = false;
-        uint64_t collisionGroup = 1;
-        uint64_t collisionMask = 1;
+        uint64_t collisionGroup = DEFAULT_COLLISION_GROUP;
+        uint64_t collisionMask = DEFAULT_COLLISION_MASK;
     };
 
     struct CircleColliderConfig
@@ -56,8 +69,8 @@ namespace
         bool enabled = false;
         float radius = 0.0f;
         bool isTrigger = false;
-        uint64_t collisionGroup = 1;
-        uint64_t collisionMask = 1;
+        uint64_t collisionGroup = DEFAULT_COLLISION_GROUP;
+        uint64_t collisionMask = DEFAULT_COLLISION_MASK;
     };
 
     struct SpriteConfig
@@ -69,13 +82,10 @@ namespace
         float height = 0.0f;
     };
 
-    struct CameraConfig
+    struct AnimatorConfig
     {
         bool enabled = false;
-        float x = 0.0f;
-        float y = 0.0f;
-        float width = SCREEN_WIDTH;
-        float height = SCREEN_HEIGHT;
+        float playbackSpeed = 1.0f;
     };
 
     struct AudioConfig
@@ -87,90 +97,75 @@ namespace
         float gain = 1.0f;
     };
 
-    struct AnimatorConfig
-    {
-        bool enabled = false;
-        float playbackSpeed = 1.0f;
-        std::vector<std::string> legacyAssetPaths;
-        std::string legacyPlay;
-        bool hasLegacyClipData = false;
-    };
-
     struct ObjectConfig
     {
         std::string name;
         std::string tag;
         bool active = true;
         Eigen::Vector2f position = Eigen::Vector2f::Zero();
-        Eigen::Vector2f scale = Eigen::Vector2f::Ones();
         float rotation = 0.0f;
+        Eigen::Vector2f scale = Eigen::Vector2f::Ones();
+        CameraConfig camera;
         RigidbodyConfig rigidbody;
         BoxColliderConfig boxCollider;
         CircleColliderConfig circleCollider;
         SpriteConfig sprite;
-        CameraConfig camera;
-        AudioConfig audio;
         AnimatorConfig animator;
-        std::vector<ScriptDescriptor> scripts;
+        AudioConfig audio;
+        std::vector<BehaviorSpec> scripts;
     };
 
-    struct SceneToken
+    struct AnimationClipFrameConfig
     {
-        std::string value;
-        bool isString = false;
+        std::string path;
+        float duration = 0.0f;
+        SDL_FRect sourceRect{0.0f, 0.0f, 0.0f, 0.0f};
+        bool hasSourceRect = false;
     };
 
-    class TokenStream
+    struct AnimationClipConfig
     {
-    public:
-        explicit TokenStream(std::vector<SceneToken> tokens) : tokens(std::move(tokens)), index(0)
-        {
-        }
-
-        bool empty() const
-        {
-            return index >= tokens.size();
-        }
-
-        std::string consume()
-        {
-            return consumeToken().value;
-        }
-
-        SceneToken consumeToken()
-        {
-            if (empty())
-            {
-                throw std::runtime_error("Unexpected end of scene file.");
-            }
-
-            return tokens[index++];
-        }
-
-        bool match(const std::string &expected)
-        {
-            if (!empty() && tokens[index].value == expected)
-            {
-                index++;
-                return true;
-            }
-
-            return false;
-        }
-
-        void expect(const std::string &expected)
-        {
-            SceneToken token = consumeToken();
-            if (token.value != expected)
-            {
-                throw std::runtime_error("Expected '" + expected + "' but found '" + token.value + "'.");
-            }
-        }
-
-    private:
-        std::vector<SceneToken> tokens;
-        size_t index;
+        std::string name;
+        float fps = 12.0f;
+        bool loop = true;
+        float width = 0.0f;
+        float height = 0.0f;
+        std::vector<AnimationClipFrameConfig> frames;
     };
+
+    std::string formatFloat(double value)
+    {
+        if (std::abs(value) < 1e-9)
+        {
+            value = 0.0;
+        }
+
+        std::ostringstream stream;
+        stream.setf(std::ios::fixed, std::ios::floatfield);
+        stream.precision(6);
+        stream << value;
+
+        std::string text = stream.str();
+        while (!text.empty() && text.back() == '0')
+        {
+            text.pop_back();
+        }
+        if (!text.empty() && text.back() == '.')
+        {
+            text.pop_back();
+        }
+        if (text.empty() || text == "-0")
+        {
+            return "0";
+        }
+
+        return text;
+    }
+
+    std::string boolToToken(bool value)
+    {
+        return value ? "true" : "false";
+    }
 
     std::string toLower(std::string value)
     {
@@ -179,760 +174,625 @@ namespace
         return value;
     }
 
-    std::vector<SceneToken> tokenize(const std::string &contents)
+    std::string requireString(const toml::table &table, std::string_view key, const std::string &context)
     {
-        std::vector<SceneToken> tokens;
-        size_t index = 0;
-
-        while (index < contents.size())
+        if (const toml::node *node = table.get(key))
         {
-            char currentCharacter = contents[index];
-
-            if (std::isspace(static_cast<unsigned char>(currentCharacter)))
+            if (node->is_string())
             {
-                index++;
-                continue;
+                const auto value = node->value_exact<std::string>();
+                return *value;
             }
 
-            if (currentCharacter == '#')
-            {
-                while (index < contents.size() && contents[index] != '\n')
-                {
-                    index++;
-                }
-                continue;
-            }
-
-            if (currentCharacter == '/' && index + 1 < contents.size() && contents[index + 1] == '/')
-            {
-                index += 2;
-                while (index < contents.size() && contents[index] != '\n')
-                {
-                    index++;
-                }
-                continue;
-            }
-
-            if (currentCharacter == '{' || currentCharacter == '}')
-            {
-                tokens.push_back(SceneToken{std::string(1, currentCharacter), false});
-                index++;
-                continue;
-            }
-
-            if (currentCharacter == '"')
-            {
-                index++;
-                std::string token;
-
-                while (index < contents.size())
-                {
-                    char stringCharacter = contents[index++];
-                    if (stringCharacter == '"')
-                    {
-                        break;
-                    }
-
-                    if (stringCharacter == '\\' && index < contents.size())
-                    {
-                        token.push_back(contents[index++]);
-                        continue;
-                    }
-
-                    token.push_back(stringCharacter);
-                }
-
-                tokens.push_back(SceneToken{token, true});
-                continue;
-            }
-
-            size_t start = index;
-            while (index < contents.size())
-            {
-                char tokenCharacter = contents[index];
-                if (std::isspace(static_cast<unsigned char>(tokenCharacter)) || tokenCharacter == '{' || tokenCharacter == '}' || tokenCharacter == '#')
-                {
-                    break;
-                }
-
-                if (tokenCharacter == '/' && index + 1 < contents.size() && contents[index + 1] == '/')
-                {
-                    break;
-                }
-
-                index++;
-            }
-
-            tokens.push_back(SceneToken{contents.substr(start, index - start), false});
+            throw std::runtime_error(context + " must be a string.");
         }
 
-        return tokens;
+        return "";
     }
 
-    bool parseBoolToken(const std::string &token)
+    bool readBool(const toml::table &table, std::string_view key, bool fallback, const std::string &context)
     {
-        std::string lowerCaseToken = toLower(token);
-        if (lowerCaseToken == "true" || lowerCaseToken == "1" || lowerCaseToken == "yes")
+        if (const toml::node *node = table.get(key))
         {
-            return true;
+            if (node->is_boolean())
+            {
+                const auto value = node->value_exact<bool>();
+                return *value;
+            }
+
+            throw std::runtime_error(context + " must be a bool.");
         }
 
-        if (lowerCaseToken == "false" || lowerCaseToken == "0" || lowerCaseToken == "no")
-        {
-            return false;
-        }
-
-        throw std::runtime_error("Invalid boolean value '" + token + "'.");
+        return fallback;
     }
 
-    float parseFloatToken(const std::string &token)
+    double readNumber(const toml::node &node, const std::string &context)
     {
+        if (node.is_floating_point())
+        {
+            const auto value = node.value_exact<double>();
+            return *value;
+        }
+
+        if (node.is_integer())
+        {
+            const auto value = node.value_exact<int64_t>();
+            return static_cast<double>(*value);
+        }
+
+        throw std::runtime_error(context + " must be numeric.");
+    }
+
+    float readFloat(const toml::table &table, std::string_view key, float fallback, const std::string &context)
+    {
+        if (const toml::node *node = table.get(key))
+        {
+            return static_cast<float>(readNumber(*node, context));
+        }
+
+        return fallback;
+    }
+
+    int64_t readInteger(const toml::table &table, std::string_view key, int64_t fallback, const std::string &context)
+    {
+        if (const toml::node *node = table.get(key))
+        {
+            if (node->is_integer())
+            {
+                const auto value = node->value_exact<int64_t>();
+                return *value;
+            }
+
+            throw std::runtime_error(context + " must be an integer.");
+        }
+
+        return fallback;
+    }
+
+    const toml::array *readArray(const toml::table &table, std::string_view key, const std::string &context)
+    {
+        if (const toml::node *node = table.get(key))
+        {
+            if (const toml::array *array = node->as_array())
+            {
+                return array;
+            }
+
+            throw std::runtime_error(context + " must be an array.");
+        }
+
+        return nullptr;
+    }
+
+    Eigen::Vector2f readVector2(const toml::table &table, std::string_view key, const Eigen::Vector2f &fallback, const std::string &context)
+    {
+        const toml::array *array = readArray(table, key, context);
+        if (array == nullptr)
+        {
+            return fallback;
+        }
+
+        if (array->size() != 2)
+        {
+            throw std::runtime_error(context + " must contain exactly two numeric values.");
+        }
+
+        const toml::node *xNode = array->get(0);
+        const toml::node *yNode = array->get(1);
+        if (xNode == nullptr || yNode == nullptr)
+        {
+            throw std::runtime_error(context + " must contain exactly two numeric values.");
+        }
+
+        return Eigen::Vector2f(static_cast<float>(readNumber(*xNode, context)), static_cast<float>(readNumber(*yNode, context)));
+    }
+
+    SDL_FRect readRect4(const toml::table &table, std::string_view key, const SDL_FRect &fallback, const std::string &context)
+    {
+        const toml::array *array = readArray(table, key, context);
+        if (array == nullptr)
+        {
+            return fallback;
+        }
+
+        if (array->size() != 4)
+        {
+            throw std::runtime_error(context + " must contain exactly four numeric values.");
+        }
+
+        const toml::node *xNode = array->get(0);
+        const toml::node *yNode = array->get(1);
+        const toml::node *wNode = array->get(2);
+        const toml::node *hNode = array->get(3);
+        if (xNode == nullptr || yNode == nullptr || wNode == nullptr || hNode == nullptr)
+        {
+            throw std::runtime_error(context + " must contain exactly four numeric values.");
+        }
+
+        return SDL_FRect{static_cast<float>(readNumber(*xNode, context)),
+                         static_cast<float>(readNumber(*yNode, context)),
+                         static_cast<float>(readNumber(*wNode, context)),
+                         static_cast<float>(readNumber(*hNode, context))};
+    }
+
+    std::string resolveResourcePath(const std::string &sourcePath, const std::string &resourcePath)
+    {
+        if (resourcePath.empty())
+        {
+            return "";
+        }
+
+        const std::filesystem::path path(resourcePath);
+        if (path.is_absolute())
+        {
+            return path.lexically_normal().string();
+        }
+
+        return (std::filesystem::path(sourcePath).parent_path() / path).lexically_normal().string();
+    }
+
+    std::string resolveSceneRelativePath(const std::string &scenePath, const std::string &resourcePath)
+    {
+        return resolveResourcePath(scenePath, resourcePath);
+    }
+
+    AnimationClipFrameConfig parseAnimationClipFrameConfig(const toml::table &table, const std::string &context)
+    {
+        for (const auto &[key, node] : table)
+        {
+            const std::string keyString = std::string(key.str());
+            if (keyString != "path" && keyString != "duration" && keyString != "rect" && keyString != "sourceRect")
+            {
+                throw std::runtime_error(context + " contains unsupported key '" + keyString + "'.");
+            }
+            (void)node;
+        }
+
+        AnimationClipFrameConfig config;
+        config.path = requireString(table, "path", context + ".path");
+        if (config.path.empty())
+        {
+            throw std::runtime_error(context + ".path is required.");
+        }
+
+        config.duration = readFloat(table, "duration", 0.0f, context + ".duration");
+
+        const toml::node *rectNode = table.get("rect");
+        const toml::node *sourceRectNode = table.get("sourceRect");
+        if (rectNode != nullptr && sourceRectNode != nullptr)
+        {
+            throw std::runtime_error(context + " cannot define both rect and sourceRect.");
+        }
+        if (rectNode != nullptr)
+        {
+            config.sourceRect = readRect4(table, "rect", SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f}, context + ".rect");
+            config.hasSourceRect = true;
+        }
+        else if (sourceRectNode != nullptr)
+        {
+            config.sourceRect = readRect4(table, "sourceRect", SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f}, context + ".sourceRect");
+            config.hasSourceRect = true;
+        }
+
+        return config;
+    }
+
+    AnimationClipConfig parseAnimationClipConfig(const std::string &filePath)
+    {
+        toml::table document;
         try
         {
-            return std::stof(token);
+            document = toml::parse_file(filePath);
         }
-        catch (const std::exception &)
+        catch (const toml::parse_error &error)
         {
-            throw std::runtime_error("Invalid float value '" + token + "'.");
+            throw std::runtime_error("Failed to parse animation clip file '" + filePath + "': " + std::string(error.description()));
         }
+
+        for (const auto &[key, node] : document)
+        {
+            const std::string keyString = std::string(key.str());
+            if (keyString != "format" && keyString != "version" && keyString != "name" && keyString != "fps" && keyString != "loop" &&
+                keyString != "size" && keyString != "width" && keyString != "height" && keyString != "frames")
+            {
+                throw std::runtime_error("Animation clip file '" + filePath + "' contains unsupported key '" + keyString + "'.");
+            }
+            (void)node;
+        }
+
+        const std::string format = requireString(document, "format", "animation clip format");
+        if (!format.empty() && format != "platformator_animset")
+        {
+            throw std::runtime_error("Animation clip file '" + filePath + "' has unsupported format '" + format + "'.");
+        }
+
+        const int64_t version = readInteger(document, "version", 1, "animation clip version");
+        if (document.get("version") != nullptr && version != 1)
+        {
+            throw std::runtime_error("Animation clip file '" + filePath + "' has unsupported version '" + std::to_string(version) + "'.");
+        }
+
+        AnimationClipConfig config;
+        config.name = requireString(document, "name", "animation clip name");
+        config.fps = readFloat(document, "fps", config.fps, "animation clip fps");
+        config.loop = readBool(document, "loop", config.loop, "animation clip loop");
+
+        const toml::array *size = readArray(document, "size", "animation clip size");
+        if (size != nullptr)
+        {
+            if (size->size() != 2)
+            {
+                throw std::runtime_error("animation clip size must contain exactly two numeric values.");
+            }
+
+            const toml::node *widthNode = size->get(0);
+            const toml::node *heightNode = size->get(1);
+            if (widthNode == nullptr || heightNode == nullptr)
+            {
+                throw std::runtime_error("animation clip size must contain exactly two numeric values.");
+            }
+
+            config.width = static_cast<float>(readNumber(*widthNode, "animation clip size"));
+            config.height = static_cast<float>(readNumber(*heightNode, "animation clip size"));
+        }
+
+        config.width = readFloat(document, "width", config.width, "animation clip width");
+        config.height = readFloat(document, "height", config.height, "animation clip height");
+
+        const toml::array *frames = readArray(document, "frames", "animation clip frames");
+        if (frames == nullptr || frames->empty())
+        {
+            throw std::runtime_error("Animation clip file '" + filePath + "' must define at least one frame.");
+        }
+
+        config.frames.reserve(frames->size());
+        for (size_t index = 0; index < frames->size(); ++index)
+        {
+            const toml::node *frameNode = frames->get(index);
+            if (frameNode == nullptr)
+            {
+                throw std::runtime_error("Animation clip file '" + filePath + "' contains an invalid frame entry.");
+            }
+
+            const std::string context = "frames[" + std::to_string(index) + "]";
+            if (const auto path = frameNode->value<std::string>())
+            {
+                config.frames.push_back(AnimationClipFrameConfig{*path, 0.0f, SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f}, false});
+            }
+            else if (const toml::table *frameTable = frameNode->as_table())
+            {
+                config.frames.push_back(parseAnimationClipFrameConfig(*frameTable, context));
+            }
+            else
+            {
+                throw std::runtime_error("Animation clip file '" + filePath + "' " + context + " must be either a string path or a frame table.");
+            }
+        }
+
+        return config;
     }
 
-    uint64_t parseUInt64Token(const std::string &token)
+    BodyType parseBodyType(const std::string &value, const std::string &context)
     {
-        try
+        const std::string lowered = toLower(value);
+        if (lowered == "dynamic")
         {
-            return static_cast<uint64_t>(std::stoull(token));
+            return BodyType::DYNAMIC;
         }
-        catch (const std::exception &)
+        if (lowered == "static")
         {
-            throw std::runtime_error("Invalid unsigned integer value '" + token + "'.");
+            return BodyType::STATIC;
         }
+        if (lowered == "kinematic")
+        {
+            return BodyType::KINEMATIC;
+        }
+
+        throw std::runtime_error(context + " must be one of dynamic, static, or kinematic.");
     }
 
-    int parseIntToken(const std::string &token)
+    SDL_FlipMode parseFlipMode(const std::string &value, const std::string &context)
     {
-        try
-        {
-            return std::stoi(token);
-        }
-        catch (const std::exception &)
-        {
-            throw std::runtime_error("Invalid integer value '" + token + "'.");
-        }
-    }
-
-    Eigen::Vector2f parseVector2(TokenStream &tokens)
-    {
-        float x = parseFloatToken(tokens.consume());
-        float y = parseFloatToken(tokens.consume());
-        return Eigen::Vector2f(x, y);
-    }
-
-    SDL_FlipMode parseFlipMode(const std::string &token)
-    {
-        std::string lowerCaseToken = toLower(token);
-        if (lowerCaseToken == "none")
+        const std::string lowered = toLower(value);
+        if (lowered.empty() || lowered == "none")
         {
             return SDL_FLIP_NONE;
         }
-        if (lowerCaseToken == "horizontal")
+        if (lowered == "horizontal")
         {
             return SDL_FLIP_HORIZONTAL;
         }
-        if (lowerCaseToken == "vertical")
+        if (lowered == "vertical")
         {
             return SDL_FLIP_VERTICAL;
         }
-        if (lowerCaseToken == "both")
+        if (lowered == "both")
         {
             return static_cast<SDL_FlipMode>(SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL);
         }
 
-        throw std::runtime_error("Invalid sprite flip mode '" + token + "'.");
+        throw std::runtime_error(context + " must be one of none, horizontal, vertical, or both.");
     }
 
-    BodyType parseBodyType(const std::string &token)
+    BehaviorProperty parseScriptProperty(const std::string &key, const toml::node &node, const std::string &context)
     {
-        std::string lowerCaseToken = toLower(token);
-        if (lowerCaseToken == "dynamic")
+        if (node.is_string())
         {
-            return DYNAMIC;
-        }
-        if (lowerCaseToken == "static")
-        {
-            return STATIC;
-        }
-        if (lowerCaseToken == "kinematic")
-        {
-            return KINEMATIC;
+            const auto value = node.value<std::string>();
+            return BehaviorProperty{key, *value};
         }
 
-        throw std::runtime_error("Invalid rigidbody bodyType '" + token + "'.");
-    }
-
-    std::string resolveSceneRelativePath(const std::string &sceneFilePath, const std::string &resourcePath)
-    {
-        std::filesystem::path resolvedPath(resourcePath);
-        if (resolvedPath.is_relative())
+        if (node.is_integer())
         {
-            resolvedPath = std::filesystem::path(sceneFilePath).parent_path() / resolvedPath;
+            const auto value = node.value<int64_t>();
+            return BehaviorProperty{key, *value};
         }
 
-        return resolvedPath.lexically_normal().string();
-    }
-
-    std::string escapeSceneString(const std::string &value)
-    {
-        std::string escaped;
-        escaped.reserve(value.size());
-
-        for (char character : value)
+        if (node.is_floating_point())
         {
-            if (character == '\\' || character == '"')
+            const auto value = node.value<double>();
+            return BehaviorProperty{key, *value};
+        }
+
+        if (node.is_boolean())
+        {
+            const auto value = node.value<bool>();
+            return BehaviorProperty{key, *value};
+        }
+
+        if (const toml::array *array = node.as_array())
+        {
+            if (array->size() != 2)
             {
-                escaped.push_back('\\');
+                throw std::runtime_error(context + " array properties must contain exactly two numeric values.");
             }
-            escaped.push_back(character);
-        }
 
-        return escaped;
-    }
-
-    std::string formatFloat(float value)
-    {
-        if (!std::isfinite(value))
-        {
-            throw std::runtime_error("Cannot save scene values that are not finite.");
-        }
-
-        std::ostringstream stream;
-        stream << std::setprecision(9) << value;
-        return stream.str();
-    }
-
-    std::string boolToToken(bool value)
-    {
-        return value ? "true" : "false";
-    }
-
-    std::string bodyTypeToToken(BodyType bodyType)
-    {
-        switch (bodyType)
-        {
-        case DYNAMIC:
-            return "dynamic";
-        case STATIC:
-            return "static";
-        case KINEMATIC:
-            return "kinematic";
-        default:
-            throw std::runtime_error("Cannot save scene with an unknown rigidbody type.");
-        }
-    }
-
-    std::string flipModeToToken(SDL_FlipMode flipMode)
-    {
-        if (flipMode == SDL_FLIP_NONE)
-        {
-            return "none";
-        }
-        if (flipMode == SDL_FLIP_HORIZONTAL)
-        {
-            return "horizontal";
-        }
-        if (flipMode == SDL_FLIP_VERTICAL)
-        {
-            return "vertical";
-        }
-        if (flipMode == static_cast<SDL_FlipMode>(SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL))
-        {
-            return "both";
-        }
-
-        throw std::runtime_error("Cannot save scene with an unsupported sprite flip mode.");
-    }
-
-    std::string makeSceneResourcePath(const std::string &sceneFilePath, const std::string &resourcePath)
-    {
-        if (resourcePath.empty())
-        {
-            return resourcePath;
-        }
-
-        std::filesystem::path sceneDirectory = std::filesystem::absolute(std::filesystem::path(sceneFilePath)).parent_path();
-        std::filesystem::path normalizedResourcePath = std::filesystem::path(resourcePath);
-        if (normalizedResourcePath.is_relative())
-        {
-            normalizedResourcePath = std::filesystem::absolute(normalizedResourcePath);
-        }
-        normalizedResourcePath = normalizedResourcePath.lexically_normal();
-
-        if (sceneDirectory.empty())
-        {
-            return normalizedResourcePath.generic_string();
-        }
-
-        std::error_code errorCode;
-        std::filesystem::path relativePath = std::filesystem::relative(normalizedResourcePath, sceneDirectory, errorCode);
-        if (!errorCode && !relativePath.empty())
-        {
-            return relativePath.generic_string();
-        }
-
-        return normalizedResourcePath.generic_string();
-    }
-
-    std::string indent(size_t level)
-    {
-        return std::string(level * 4, ' ');
-    }
-
-    void writeKeyValueLine(std::ostream &stream, size_t indentLevel, const std::string &key, const std::string &value)
-    {
-        stream << indent(indentLevel) << key << ' ' << value << '\n';
-    }
-
-    void writeStringLine(std::ostream &stream, size_t indentLevel, const std::string &key, const std::string &value)
-    {
-        writeKeyValueLine(stream, indentLevel, key, '"' + escapeSceneString(value) + '"');
-    }
-
-    void skipBlock(TokenStream &tokens)
-    {
-        tokens.expect("{");
-
-        size_t depth = 1;
-        while (depth > 0)
-        {
-            const std::string token = tokens.consume();
-            if (token == "{")
+            const toml::node *xNode = array->get(0);
+            const toml::node *yNode = array->get(1);
+            if (xNode == nullptr || yNode == nullptr)
             {
-                depth++;
+                throw std::runtime_error(context + " array properties must contain exactly two numeric values.");
             }
-            else if (token == "}")
-            {
-                depth--;
-            }
+
+            return BehaviorProperty{key,
+                                    Eigen::Vector2f(static_cast<float>(readNumber(*xNode, context)),
+                                                    static_cast<float>(readNumber(*yNode, context)))};
         }
+
+        throw std::runtime_error(context + " uses an unsupported TOML value type.");
     }
 
-    const std::string &getPrimaryAnimationClipName(const AnimationSetAsset &animationSet)
+    CameraConfig parseCameraConfig(const toml::table &table)
     {
-        if (!animationSet.getInitialClipName().empty())
-        {
-            return animationSet.getInitialClipName();
-        }
-
-        if (!animationSet.getClips().empty())
-        {
-            return animationSet.getClips().front().name;
-        }
-
-        static const std::string emptyName;
-        return emptyName;
-    }
-
-    void parseRigidbodyBlock(TokenStream &tokens, RigidbodyConfig &config)
-    {
+        CameraConfig config;
         config.enabled = true;
-        tokens.expect("{");
 
-        while (true)
-        {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "bodytype")
-            {
-                config.bodyType = parseBodyType(tokens.consume());
-            }
-            else if (key == "gravity")
-            {
-                config.gravity = parseBoolToken(tokens.consume());
-            }
-            else if (key == "mass")
-            {
-                config.mass = parseFloatToken(tokens.consume());
-            }
-            else if (key == "velocity")
-            {
-                config.velocity = parseVector2(tokens);
-            }
-            else if (key == "force")
-            {
-                config.force = parseVector2(tokens);
-            }
-            else if (key == "angularvelocity")
-            {
-                config.angularVelocity = parseFloatToken(tokens.consume());
-            }
-            else if (key == "torque")
-            {
-                config.torque = parseFloatToken(tokens.consume());
-            }
-            else if (key == "friction")
-            {
-                config.friction = parseFloatToken(tokens.consume());
-            }
-            else if (key == "restitution")
-            {
-                config.restitution = parseFloatToken(tokens.consume());
-            }
-            else
-            {
-                throw std::runtime_error("Unknown rigidbody property '" + key + "'.");
-            }
-        }
+        const SDL_FRect viewport = readRect4(table, "viewport", SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f}, "camera.viewport");
+        config.x = readFloat(table, "x", viewport.x, "camera.x");
+        config.y = readFloat(table, "y", viewport.y, "camera.y");
+        config.width = readFloat(table, "width", viewport.w, "camera.width");
+        config.height = readFloat(table, "height", viewport.h, "camera.height");
+        return config;
     }
 
-    void parseBoxColliderBlock(TokenStream &tokens, BoxColliderConfig &config)
+    RigidbodyConfig parseRigidbodyConfig(const toml::table &table)
     {
+        RigidbodyConfig config;
         config.enabled = true;
-        tokens.expect("{");
-
-        while (true)
+        const std::string bodyType = requireString(table, "bodyType", "rigidbody.bodyType");
+        if (!bodyType.empty())
         {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "size")
-            {
-                config.width = parseFloatToken(tokens.consume());
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else if (key == "width")
-            {
-                config.width = parseFloatToken(tokens.consume());
-            }
-            else if (key == "height")
-            {
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else if (key == "trigger" || key == "istrigger")
-            {
-                config.isTrigger = parseBoolToken(tokens.consume());
-            }
-            else if (key == "collisiongroup" || key == "group")
-            {
-                config.collisionGroup = parseUInt64Token(tokens.consume());
-            }
-            else if (key == "collisionmask" || key == "mask")
-            {
-                config.collisionMask = parseUInt64Token(tokens.consume());
-            }
-            else
-            {
-                throw std::runtime_error("Unknown boxCollider property '" + key + "'.");
-            }
+            config.bodyType = parseBodyType(bodyType, "rigidbody.bodyType");
         }
+        config.gravity = readBool(table, "gravity", config.gravity, "rigidbody.gravity");
+        config.mass = readFloat(table, "mass", config.mass, "rigidbody.mass");
+        config.velocity = readVector2(table, "velocity", config.velocity, "rigidbody.velocity");
+        config.force = readVector2(table, "force", config.force, "rigidbody.force");
+        config.angularVelocity = readFloat(table, "angularVelocity", config.angularVelocity, "rigidbody.angularVelocity");
+        config.torque = readFloat(table, "torque", config.torque, "rigidbody.torque");
+        config.friction = readFloat(table, "friction", config.friction, "rigidbody.friction");
+        config.restitution = readFloat(table, "restitution", config.restitution, "rigidbody.restitution");
+        return config;
     }
 
-    void parseCircleColliderBlock(TokenStream &tokens, CircleColliderConfig &config)
+    BoxColliderConfig parseBoxColliderConfig(const toml::table &table)
     {
+        BoxColliderConfig config;
         config.enabled = true;
-        tokens.expect("{");
-
-        while (true)
+        const Eigen::Vector2f size = readVector2(table, "size", Eigen::Vector2f(config.width, config.height), "boxCollider.size");
+        config.width = readFloat(table, "width", size.x(), "boxCollider.width");
+        config.height = readFloat(table, "height", size.y(), "boxCollider.height");
+        config.isTrigger = readBool(table, "trigger", config.isTrigger, "boxCollider.trigger");
+        const int64_t collisionGroup = readInteger(table, "collisionGroup", static_cast<int64_t>(config.collisionGroup), "boxCollider.collisionGroup");
+        const int64_t collisionMask = readInteger(table, "collisionMask", static_cast<int64_t>(config.collisionMask), "boxCollider.collisionMask");
+        if (collisionGroup < 0 || collisionMask < 0)
         {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "radius")
-            {
-                config.radius = parseFloatToken(tokens.consume());
-            }
-            else if (key == "trigger" || key == "istrigger")
-            {
-                config.isTrigger = parseBoolToken(tokens.consume());
-            }
-            else if (key == "collisiongroup" || key == "group")
-            {
-                config.collisionGroup = parseUInt64Token(tokens.consume());
-            }
-            else if (key == "collisionmask" || key == "mask")
-            {
-                config.collisionMask = parseUInt64Token(tokens.consume());
-            }
-            else
-            {
-                throw std::runtime_error("Unknown circleCollider property '" + key + "'.");
-            }
+            throw std::runtime_error("Collider collisionGroup and collisionMask must be non-negative.");
         }
+        config.collisionGroup = static_cast<uint64_t>(collisionGroup);
+        config.collisionMask = static_cast<uint64_t>(collisionMask);
+        return config;
     }
 
-    void parseSpriteBlock(TokenStream &tokens, SpriteConfig &config)
+    CircleColliderConfig parseCircleColliderConfig(const toml::table &table)
     {
+        CircleColliderConfig config;
         config.enabled = true;
-        tokens.expect("{");
-
-        while (true)
+        config.radius = readFloat(table, "radius", config.radius, "circleCollider.radius");
+        config.isTrigger = readBool(table, "trigger", config.isTrigger, "circleCollider.trigger");
+        const int64_t collisionGroup = readInteger(table, "collisionGroup", static_cast<int64_t>(config.collisionGroup), "circleCollider.collisionGroup");
+        const int64_t collisionMask = readInteger(table, "collisionMask", static_cast<int64_t>(config.collisionMask), "circleCollider.collisionMask");
+        if (collisionGroup < 0 || collisionMask < 0)
         {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "path")
-            {
-                config.path = tokens.consume();
-            }
-            else if (key == "flip")
-            {
-                config.flip = parseFlipMode(tokens.consume());
-            }
-            else if (key == "size")
-            {
-                config.width = parseFloatToken(tokens.consume());
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else if (key == "width")
-            {
-                config.width = parseFloatToken(tokens.consume());
-            }
-            else if (key == "height")
-            {
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else
-            {
-                throw std::runtime_error("Unknown sprite property '" + key + "'.");
-            }
+            throw std::runtime_error("Collider collisionGroup and collisionMask must be non-negative.");
         }
+        config.collisionGroup = static_cast<uint64_t>(collisionGroup);
+        config.collisionMask = static_cast<uint64_t>(collisionMask);
+        return config;
     }
 
-    void parseCameraBlock(TokenStream &tokens, CameraConfig &config)
+    SpriteConfig parseSpriteConfig(const toml::table &table)
     {
+        SpriteConfig config;
         config.enabled = true;
-        tokens.expect("{");
-
-        while (true)
+        config.path = requireString(table, "path", "sprite.path");
+        const std::string flipToken = requireString(table, "flip", "sprite.flip");
+        if (!flipToken.empty())
         {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "viewport")
-            {
-                config.x = parseFloatToken(tokens.consume());
-                config.y = parseFloatToken(tokens.consume());
-                config.width = parseFloatToken(tokens.consume());
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else if (key == "position")
-            {
-                config.x = parseFloatToken(tokens.consume());
-                config.y = parseFloatToken(tokens.consume());
-            }
-            else if (key == "size")
-            {
-                config.width = parseFloatToken(tokens.consume());
-                config.height = parseFloatToken(tokens.consume());
-            }
-            else
-            {
-                throw std::runtime_error("Unknown camera property '" + key + "'.");
-            }
+            config.flip = parseFlipMode(flipToken, "sprite.flip");
         }
+        const Eigen::Vector2f size = readVector2(table, "size", Eigen::Vector2f(config.width, config.height), "sprite.size");
+        config.width = readFloat(table, "width", size.x(), "sprite.width");
+        config.height = readFloat(table, "height", size.y(), "sprite.height");
+        return config;
     }
 
-    void parseAudioBlock(TokenStream &tokens, AudioConfig &config)
+    AnimatorConfig parseAnimatorConfig(const toml::table &table)
     {
+        AnimatorConfig config;
         config.enabled = true;
-        tokens.expect("{");
-
-        while (true)
-        {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "path")
-            {
-                config.path = tokens.consume();
-            }
-            else if (key == "autoplay")
-            {
-                config.autoplay = parseBoolToken(tokens.consume());
-            }
-            else if (key == "loops")
-            {
-                config.loops = parseIntToken(tokens.consume());
-            }
-            else if (key == "gain")
-            {
-                config.gain = parseFloatToken(tokens.consume());
-            }
-            else
-            {
-                throw std::runtime_error("Unknown audio property '" + key + "'.");
-            }
-        }
+        config.playbackSpeed = readFloat(table, "playbackSpeed", config.playbackSpeed, "animator.playbackSpeed");
+        return config;
     }
 
-    void parseAnimatorBlock(TokenStream &tokens, AnimatorConfig &config)
+    AudioConfig parseAudioConfig(const toml::table &table)
     {
+        AudioConfig config;
         config.enabled = true;
-        tokens.expect("{");
-
-        while (true)
-        {
-            if (tokens.match("}"))
-            {
-                return;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "playbackspeed" || key == "speed")
-            {
-                config.playbackSpeed = parseFloatToken(tokens.consume());
-            }
-            else if (key == "asset")
-            {
-                config.legacyAssetPaths.push_back(tokens.consume());
-            }
-            else if (key == "play")
-            {
-                config.legacyPlay = tokens.consume();
-            }
-            else if (key == "clip")
-            {
-                config.hasLegacyClipData = true;
-                skipBlock(tokens);
-            }
-            else
-            {
-                throw std::runtime_error("Unknown animator property '" + key + "'.");
-            }
-        }
+        config.path = requireString(table, "path", "audio.path");
+        config.autoplay = readBool(table, "autoplay", config.autoplay, "audio.autoplay");
+        config.loops = static_cast<int>(readInteger(table, "loops", config.loops, "audio.loops"));
+        config.gain = readFloat(table, "gain", config.gain, "audio.gain");
+        return config;
     }
 
-    ScriptDescriptor parseScriptBlock(TokenStream &tokens, const std::string &sourcePath)
+    BehaviorSpec parseBehaviorSpec(const toml::table &table, const std::string &sceneFilePath, size_t index)
     {
-        tokens.expect("{");
-
-        ScriptDescriptor descriptor;
-        descriptor.sourcePath = sourcePath;
-        while (true)
+        BehaviorSpec spec;
+        spec.sourcePath = sceneFilePath;
+        spec.type = requireString(table, "type", "scripts[" + std::to_string(index) + "].type");
+        spec.enabled = readBool(table, "enabled", true, "scripts[" + std::to_string(index) + "].enabled");
+        if (spec.type.empty())
         {
-            if (tokens.match("}"))
-            {
-                if (descriptor.type.empty())
-                {
-                    throw std::runtime_error("script requires a type.");
-                }
-
-                return descriptor;
-            }
-
-            std::string key = toLower(tokens.consume());
-            if (key == "type")
-            {
-                descriptor.type = tokens.consume();
-            }
-            else
-            {
-                SceneToken valueToken = tokens.consumeToken();
-                descriptor.setProperty(key, valueToken.value, valueToken.isString ? ScriptPropertyValueKind::String : ScriptPropertyValueKind::Raw);
-            }
+            throw std::runtime_error("scripts[" + std::to_string(index) + "].type is required.");
         }
+
+        for (const auto &[key, node] : table)
+        {
+            const std::string propertyName = std::string(key.str());
+            if (propertyName == "type" || propertyName == "enabled")
+            {
+                continue;
+            }
+
+            const BehaviorProperty property = parseScriptProperty(propertyName, node, "scripts[" + std::to_string(index) + "]." + propertyName);
+            spec.setProperty(property.name, property.value);
+        }
+
+        return spec;
     }
 
-    ObjectConfig parseObject(TokenStream &tokens, const std::string &sourcePath)
+    ObjectConfig parseObject(const toml::table &table, const std::string &sceneFilePath, size_t index)
     {
-        std::string objectKeyword = toLower(tokens.consume());
-        if (objectKeyword != "object")
-        {
-            throw std::runtime_error("Expected 'object' but found '" + objectKeyword + "'.");
-        }
-
-        tokens.expect("{");
-
         ObjectConfig config;
-        while (true)
+        const std::string objectContext = "objects[" + std::to_string(index) + "]";
+        config.name = requireString(table, "name", objectContext + ".name");
+        config.tag = requireString(table, "tag", objectContext + ".tag");
+        config.active = readBool(table, "active", config.active, objectContext + ".active");
+        config.position = readVector2(table, "position", config.position, objectContext + ".position");
+        config.rotation = readFloat(table, "rotation", config.rotation, objectContext + ".rotation");
+        config.scale = readVector2(table, "scale", config.scale, objectContext + ".scale");
+
+        for (const auto &[key, node] : table)
         {
-            if (tokens.match("}"))
+            const std::string name = std::string(key.str());
+            if (name == "name" || name == "tag" || name == "active" || name == "position" || name == "rotation" || name == "scale")
             {
-                return config;
+                continue;
             }
 
-            std::string key = toLower(tokens.consume());
-            if (key == "name")
+            if (name == "camera")
             {
-                config.name = tokens.consume();
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.camera = parseCameraConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "tag")
+            else if (name == "rigidbody")
             {
-                config.tag = tokens.consume();
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.rigidbody = parseRigidbodyConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "active")
+            else if (name == "boxCollider")
             {
-                config.active = parseBoolToken(tokens.consume());
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.boxCollider = parseBoxColliderConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "position")
+            else if (name == "circleCollider")
             {
-                config.position = parseVector2(tokens);
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.circleCollider = parseCircleColliderConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "scale")
+            else if (name == "sprite")
             {
-                config.scale = parseVector2(tokens);
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.sprite = parseSpriteConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "rotation")
+            else if (name == "animator")
             {
-                config.rotation = parseFloatToken(tokens.consume());
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.animator = parseAnimatorConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "rigidbody")
+            else if (name == "audio")
             {
-                parseRigidbodyBlock(tokens, config.rigidbody);
+                if (const toml::table *componentTable = node.as_table())
+                {
+                    config.audio = parseAudioConfig(*componentTable);
+                    continue;
+                }
             }
-            else if (key == "boxcollider")
+            else if (name == "scripts")
             {
-                parseBoxColliderBlock(tokens, config.boxCollider);
+                if (const toml::array *scriptsArray = node.as_array())
+                {
+                    size_t scriptIndex = 0;
+                    for (const toml::node &scriptNode : *scriptsArray)
+                    {
+                        const toml::table *scriptTable = scriptNode.as_table();
+                        if (scriptTable == nullptr)
+                        {
+                            throw std::runtime_error(objectContext + ".scripts entries must be tables.");
+                        }
+
+                        config.scripts.push_back(parseBehaviorSpec(*scriptTable, sceneFilePath, scriptIndex));
+                        scriptIndex++;
+                    }
+                    continue;
+                }
             }
-            else if (key == "circlecollider")
-            {
-                parseCircleColliderBlock(tokens, config.circleCollider);
-            }
-            else if (key == "sprite")
-            {
-                parseSpriteBlock(tokens, config.sprite);
-            }
-            else if (key == "camera")
-            {
-                parseCameraBlock(tokens, config.camera);
-            }
-            else if (key == "audio")
-            {
-                parseAudioBlock(tokens, config.audio);
-            }
-            else if (key == "animator")
-            {
-                parseAnimatorBlock(tokens, config.animator);
-            }
-            else if (key == "script")
-            {
-                config.scripts.push_back(parseScriptBlock(tokens, sourcePath));
-            }
-            else
-            {
-                throw std::runtime_error("Unknown object property or component '" + key + "'.");
-            }
+
+            throw std::runtime_error(objectContext + " contains unsupported key '" + name + "'.");
         }
+
+        return config;
     }
-} // namespace
+}
 
 Scene::Scene(std::string filepath) : filePath(std::move(filepath))
 {
@@ -942,25 +802,85 @@ Scene::~Scene()
 {
 }
 
-std::vector<GameObject *> Scene::loadScene()
+AnimationClip Scene::loadAnimationClipFile(const std::string &filePath)
 {
-    std::ifstream sceneFile(filePath);
-    if (!sceneFile.is_open())
+    const AnimationClipConfig config = parseAnimationClipConfig(filePath);
+
+    GameManager &gameManager = GameManager::getInstance();
+    std::vector<AnimationFrame> frames;
+    frames.reserve(config.frames.size());
+    for (const AnimationClipFrameConfig &frameConfig : config.frames)
     {
-        throw std::runtime_error("Failed to open scene file '" + filePath + "'.");
+        TextureWrapper *textureWrapper = gameManager.loadTexture(resolveResourcePath(filePath, frameConfig.path));
+        if (frameConfig.hasSourceRect)
+        {
+            frames.emplace_back(textureWrapper, frameConfig.sourceRect, frameConfig.duration);
+        }
+        else
+        {
+            frames.emplace_back(textureWrapper, frameConfig.duration);
+        }
     }
 
-    std::stringstream buffer;
-    buffer << sceneFile.rdbuf();
+    const std::string clipName = config.name.empty() ? std::filesystem::path(filePath).stem().string() : config.name;
+    return AnimationClip(std::move(frames), config.fps, config.loop, config.width, config.height, clipName, filePath);
+}
 
-    TokenStream tokens(tokenize(buffer.str()));
+void Scene::saveAnimationClipFile(const AnimationClip &animationClip, const std::string &filePath)
+{
+    AnimationClipFileWriter(filePath).write(animationClip);
+}
+
+std::vector<GameObject *> Scene::loadScene()
+{
+    toml::table document;
+    try
+    {
+        document = toml::parse_file(filePath);
+    }
+    catch (const toml::parse_error &error)
+    {
+        throw std::runtime_error("Failed to parse scene file '" + filePath + "': " + std::string(error.description()));
+    }
+
+    for (const auto &[key, node] : document)
+    {
+        const std::string rootKey = std::string(key.str());
+        if (rootKey != "format" && rootKey != "version" && rootKey != "objects")
+        {
+            throw std::runtime_error("Unsupported top-level scene key '" + rootKey + "'.");
+        }
+        (void)node;
+    }
+
+    const toml::node *objectsNode = document.get("objects");
+    if (objectsNode == nullptr)
+    {
+        return {};
+    }
+
+    const toml::array *objectsArray = objectsNode->as_array();
+    if (objectsArray == nullptr)
+    {
+        throw std::runtime_error("Scene 'objects' must be an array of tables.");
+    }
+
     std::vector<GameObject *> objects;
+    objects.reserve(objectsArray->size());
 
     try
     {
-        while (!tokens.empty())
+        size_t objectIndex = 0;
+        for (const toml::node &objectNode : *objectsArray)
         {
-            ObjectConfig config = parseObject(tokens, filePath);
+            const toml::table *objectTable = objectNode.as_table();
+            if (objectTable == nullptr)
+            {
+                throw std::runtime_error("Scene objects must be tables.");
+            }
+
+            ObjectConfig config = parseObject(*objectTable, filePath, objectIndex);
+            objectIndex++;
 
             if (config.boxCollider.enabled && config.circleCollider.enabled)
             {
@@ -1029,7 +949,7 @@ std::vector<GameObject *> Scene::loadScene()
                     }
                     else
                     {
-                        std::string resolvedPath = resolveSceneRelativePath(filePath, config.sprite.path);
+                        const std::string resolvedPath = resolveSceneRelativePath(filePath, config.sprite.path);
                         sprite = new Sprite(gameObject, resolvedPath.c_str(), config.sprite.flip, config.sprite.width, config.sprite.height);
                     }
 
@@ -1039,69 +959,23 @@ std::vector<GameObject *> Scene::loadScene()
                 if (config.animator.enabled)
                 {
                     Animator *animator = new Animator(gameObject);
-
                     animator->setPlaybackSpeed(config.animator.playbackSpeed);
-
-                    const bool hasLegacyAnimatorData = !config.animator.legacyAssetPaths.empty() || !config.animator.legacyPlay.empty() || config.animator.hasLegacyClipData;
-                    if (!config.animator.legacyAssetPaths.empty())
-                    {
-                        GameManager &gameManager = GameManager::getInstance();
-                        AnimationSetAsset *selectedAnimationSet = nullptr;
-                        std::string selectedAnimationSetPath;
-
-                        for (const std::string &legacyAssetPath : config.animator.legacyAssetPaths)
-                        {
-                            const std::string resolvedAnimationSetPath = resolveSceneRelativePath(filePath, legacyAssetPath);
-                            AnimationSetAsset *candidateAnimationSet = gameManager.loadAnimationSet(resolvedAnimationSetPath);
-                            if (selectedAnimationSet == nullptr)
-                            {
-                                selectedAnimationSet = candidateAnimationSet;
-                                selectedAnimationSetPath = resolvedAnimationSetPath;
-                            }
-
-                            if (!config.animator.legacyPlay.empty() && getPrimaryAnimationClipName(*candidateAnimationSet) == config.animator.legacyPlay)
-                            {
-                                selectedAnimationSet = candidateAnimationSet;
-                                selectedAnimationSetPath = resolvedAnimationSetPath;
-                                break;
-                            }
-                        }
-
-                        if (selectedAnimationSet != nullptr)
-                        {
-                            animator->play(selectedAnimationSet);
-                            if (!config.animator.legacyPlay.empty() && getPrimaryAnimationClipName(*selectedAnimationSet) != config.animator.legacyPlay)
-                            {
-                                std::cerr << "Scene '" << filePath << "' object '" << gameObject->getName()
-                                          << "' requested deprecated animator play target '" << config.animator.legacyPlay
-                                          << "' but no matching legacy animator asset was found; using '" << getPrimaryAnimationClipName(*selectedAnimationSet) << "' from '"
-                                          << selectedAnimationSetPath << "' instead. Legacy animator data will be dropped on save.\n";
-                            }
-                        }
-                    }
-
-                    if (hasLegacyAnimatorData)
-                    {
-                        std::cerr << "Scene '" << filePath << "' object '" << gameObject->getName()
-                                  << "' uses deprecated animator asset/play/clip properties. Migrate animation ownership into script animset references; legacy animator data will be dropped on save.\n";
-                    }
-
                     gameObject->addComponentInternal(animator);
                 }
 
                 if (config.audio.enabled)
                 {
                     Audio *audio = nullptr;
-                    if (!config.audio.path.empty())
-                    {
-                        std::string resolvedPath = resolveSceneRelativePath(filePath, config.audio.path);
-                        audio = new Audio(gameObject, resolvedPath.c_str(), config.audio.gain, config.audio.autoplay, config.audio.loops);
-                    }
-                    else
+                    if (config.audio.path.empty())
                     {
                         audio = new Audio(gameObject);
                         audio->setGain(config.audio.gain);
-                        audio->setLoopCount(config.audio.loops);
+                        audio->setLoopCount(static_cast<float>(config.audio.loops));
+                    }
+                    else
+                    {
+                        const std::string resolvedPath = resolveSceneRelativePath(filePath, config.audio.path);
+                        audio = new Audio(gameObject, resolvedPath.c_str(), config.audio.gain, config.audio.autoplay, static_cast<float>(config.audio.loops));
                     }
 
                     gameObject->addComponentInternal(audio);
@@ -1110,12 +984,13 @@ std::vector<GameObject *> Scene::loadScene()
                 if (!config.scripts.empty())
                 {
                     ScriptComponent *scriptComponent = new ScriptComponent(gameObject);
-                    for (const ScriptDescriptor &scriptDescriptor : config.scripts)
+                    for (const BehaviorSpec &behaviorSpec : config.scripts)
                     {
-                        if (BehaviorFactoryRegistry::getInstance().createBehavior(scriptComponent, scriptDescriptor) == nullptr)
+                        Behavior *behavior = BehaviorFactoryRegistry::getInstance().instantiateBehavior(scriptComponent, behaviorSpec);
+                        if (behavior == nullptr)
                         {
                             delete scriptComponent;
-                            throw std::runtime_error("Unknown behavior type '" + scriptDescriptor.type + "'.");
+                            throw std::runtime_error("Unknown behavior type '" + behaviorSpec.type + "'.");
                         }
                     }
 
@@ -1146,165 +1021,5 @@ std::vector<GameObject *> Scene::loadScene()
 
 void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
 {
-    std::ofstream sceneFile(filePath);
-    if (!sceneFile.is_open())
-    {
-        throw std::runtime_error("Failed to open scene file '" + filePath + "' for writing.");
-    }
-
-    bool wroteAnyObjects = false;
-    for (GameObject *gameObject : gameObjects)
-    {
-        if (gameObject == nullptr)
-        {
-            continue;
-        }
-
-        Rigidbody *rigidbody = gameObject->getComponent<Rigidbody>();
-        Collider *collider = static_cast<Collider *>(gameObject->getComponent(ComponentType::COLLIDER));
-        Sprite *sprite = gameObject->getComponent<Sprite>();
-        Camera *camera = gameObject->getComponent<Camera>();
-        Audio *audio = gameObject->getComponent<Audio>();
-        Animator *animator = gameObject->getComponent<Animator>();
-        ScriptComponent *scriptComponent = gameObject->getComponent<ScriptComponent>();
-
-        if (wroteAnyObjects)
-        {
-            sceneFile << '\n';
-        }
-        wroteAnyObjects = true;
-
-        sceneFile << "object {\n";
-        writeStringLine(sceneFile, 1, "name", gameObject->getName());
-        if (!gameObject->getTag().empty())
-        {
-            writeStringLine(sceneFile, 1, "tag", gameObject->getTag());
-        }
-        writeKeyValueLine(sceneFile, 1, "active", boolToToken(gameObject->getActive()));
-        sceneFile << indent(1) << "position " << formatFloat(gameObject->getPosition().x()) << ' ' << formatFloat(gameObject->getPosition().y()) << '\n';
-        sceneFile << indent(1) << "rotation " << formatFloat(gameObject->getRotation()) << '\n';
-        sceneFile << indent(1) << "scale " << formatFloat(gameObject->getScale().x()) << ' ' << formatFloat(gameObject->getScale().y()) << '\n';
-
-        if (camera != nullptr)
-        {
-            const SDL_FRect &cameraRect = camera->getCamera();
-            sceneFile << indent(1) << "camera {\n";
-            sceneFile << indent(2) << "viewport " << formatFloat(cameraRect.x) << ' ' << formatFloat(cameraRect.y) << ' ' << formatFloat(cameraRect.w) << ' ' << formatFloat(cameraRect.h) << '\n';
-            sceneFile << indent(1) << "}\n";
-        }
-
-        if (rigidbody != nullptr)
-        {
-            sceneFile << indent(1) << "rigidbody {\n";
-            writeKeyValueLine(sceneFile, 2, "bodyType", bodyTypeToToken(rigidbody->getBodyType()));
-            writeKeyValueLine(sceneFile, 2, "gravity", boolToToken(rigidbody->getGravity()));
-            writeKeyValueLine(sceneFile, 2, "mass", formatFloat(rigidbody->getMass()));
-            sceneFile << indent(2) << "velocity " << formatFloat(rigidbody->getVelocity().x()) << ' ' << formatFloat(rigidbody->getVelocity().y()) << '\n';
-            sceneFile << indent(2) << "force " << formatFloat(rigidbody->getForce().x()) << ' ' << formatFloat(rigidbody->getForce().y()) << '\n';
-            writeKeyValueLine(sceneFile, 2, "angularVelocity", formatFloat(rigidbody->getAngularVelocity()));
-            writeKeyValueLine(sceneFile, 2, "torque", formatFloat(rigidbody->getTorque()));
-            writeKeyValueLine(sceneFile, 2, "friction", formatFloat(rigidbody->getFriction()));
-            writeKeyValueLine(sceneFile, 2, "restitution", formatFloat(rigidbody->getRestitution()));
-            sceneFile << indent(1) << "}\n";
-        }
-
-        if (collider != nullptr)
-        {
-            if (collider->getColliderType() == ColliderType::BoxCollider)
-            {
-                BoxCollider *boxCollider = static_cast<BoxCollider *>(collider);
-                float scaleX = gameObject->getScale().x();
-                float scaleY = gameObject->getScale().y();
-                float unscaledWidth = std::abs(scaleX) > 1e-6f ? boxCollider->getWidth() / scaleX : boxCollider->getWidth();
-                float unscaledHeight = std::abs(scaleY) > 1e-6f ? boxCollider->getHeight() / scaleY : boxCollider->getHeight();
-
-                sceneFile << indent(1) << "boxCollider {\n";
-                sceneFile << indent(2) << "size " << formatFloat(unscaledWidth) << ' ' << formatFloat(unscaledHeight) << '\n';
-                writeKeyValueLine(sceneFile, 2, "trigger", boolToToken(boxCollider->getIsTrigger()));
-                writeKeyValueLine(sceneFile, 2, "collisionGroup", std::to_string(boxCollider->getCollisionGroup()));
-                writeKeyValueLine(sceneFile, 2, "collisionMask", std::to_string(boxCollider->getCollisionMask()));
-                sceneFile << indent(1) << "}\n";
-            }
-            else if (collider->getColliderType() == ColliderType::CircleCollider)
-            {
-                CircleCollider *circleCollider = static_cast<CircleCollider *>(collider);
-                float scaleX = std::abs(gameObject->getScale().x());
-                float scaleY = std::abs(gameObject->getScale().y());
-                float maxScale = std::max(scaleX, scaleY);
-                float unscaledRadius = maxScale > 1e-6f ? circleCollider->getRadius() / maxScale : circleCollider->getRadius();
-
-                sceneFile << indent(1) << "circleCollider {\n";
-                writeKeyValueLine(sceneFile, 2, "radius", formatFloat(unscaledRadius));
-                writeKeyValueLine(sceneFile, 2, "trigger", boolToToken(circleCollider->getIsTrigger()));
-                writeKeyValueLine(sceneFile, 2, "collisionGroup", std::to_string(circleCollider->getCollisionGroup()));
-                writeKeyValueLine(sceneFile, 2, "collisionMask", std::to_string(circleCollider->getCollisionMask()));
-                sceneFile << indent(1) << "}\n";
-            }
-        }
-
-        if (sprite != nullptr)
-        {
-            sceneFile << indent(1) << "sprite {\n";
-            TextureWrapper *textureWrapper = sprite->getTextureWrapper();
-            if (textureWrapper != nullptr)
-            {
-                writeStringLine(sceneFile, 2, "path", makeSceneResourcePath(filePath, textureWrapper->getFilePath()));
-            }
-            writeKeyValueLine(sceneFile, 2, "flip", flipModeToToken(sprite->getFlip()));
-            sceneFile << indent(2) << "size " << formatFloat(sprite->getWidth()) << ' ' << formatFloat(sprite->getHeight()) << '\n';
-            sceneFile << indent(1) << "}\n";
-        }
-
-        if (audio != nullptr)
-        {
-            sceneFile << indent(1) << "audio {\n";
-            if (!audio->getFilePath().empty())
-            {
-                writeStringLine(sceneFile, 2, "path", makeSceneResourcePath(filePath, audio->getFilePath()));
-            }
-            writeKeyValueLine(sceneFile, 2, "autoplay", boolToToken(audio->getAutoPlay()));
-            writeKeyValueLine(sceneFile, 2, "loops", std::to_string(audio->getLoopCount()));
-            writeKeyValueLine(sceneFile, 2, "gain", formatFloat(audio->getGain()));
-            sceneFile << indent(1) << "}\n";
-        }
-
-        if (animator != nullptr)
-        {
-            sceneFile << indent(1) << "animator {\n";
-            writeKeyValueLine(sceneFile, 2, "playbackSpeed", formatFloat(animator->getPlaybackSpeed()));
-            sceneFile << indent(1) << "}\n";
-        }
-
-        if (scriptComponent != nullptr)
-        {
-            for (const Behavior *behavior : scriptComponent->getBehaviors())
-            {
-                ScriptDescriptor descriptor;
-                descriptor.type = behavior->getTypeName();
-                if (descriptor.type.empty())
-                {
-                    continue;
-                }
-
-                behavior->serialize(descriptor);
-
-                sceneFile << indent(1) << "script {\n";
-                writeStringLine(sceneFile, 2, "type", descriptor.type);
-                for (const ScriptProperty &property : descriptor.properties)
-                {
-                    if (property.valueKind == ScriptPropertyValueKind::String)
-                    {
-                        writeStringLine(sceneFile, 2, property.name, property.value);
-                    }
-                    else
-                    {
-                        writeKeyValueLine(sceneFile, 2, property.name, property.value);
-                    }
-                }
-                sceneFile << indent(1) << "}\n";
-            }
-        }
-
-        sceneFile << "}\n";
-    }
+    SceneFileWriter(filePath).write(gameObjects);
 }

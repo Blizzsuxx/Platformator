@@ -1,7 +1,5 @@
 #pragma once
 
-#include <string>
-
 #include "behaviorfactoryregistry.h"
 #include "mario_entity.h"
 
@@ -16,7 +14,6 @@ namespace mario
     public:
         MarioCameraRig();
 
-        std::string getTypeName() const override;
         BEHAVIOR_FIELDS(
             MarioCameraRig,
             BEHAVIOR_FIELD(target),

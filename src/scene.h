@@ -6,7 +6,7 @@
 #include "animationclip.h"
 #include "gameobject.h"
 
-struct Scene
+class Scene
 {
 public:
     Scene(std::string filepath);

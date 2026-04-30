@@ -7,6 +7,7 @@
 #include "scriptcomponent.h"
 #include "texturewrapper.h"
 #include "animationclip.h"
+#include <fstream>
 
 GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
@@ -604,7 +605,16 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
         return &it->second;
     }
 
-    AnimationClip animationClip = Scene::loadAnimationClipFile(filePath);
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        printf("Failed to load %s\n", filePath.c_str());
+        return nullptr;
+    }
+    nlohmann::json json = nlohmann::json::parse(file);
+    file.close();
+
+    AnimationClip animationClip = json.get<AnimationClip>();
 
     auto [insertedIt, inserted] = animationClipCache.emplace(
         std::piecewise_construct,

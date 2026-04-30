@@ -9,6 +9,7 @@
 #include "gameobject.h"
 
 class Collision;
+class Collider;
 
 class Behavior
 {

@@ -1,54 +1,81 @@
-format = "platformator_scene"
+format = 'platformator_scene'
 version = 2
 
 [[objects]]
+active = true
 id = 100
-name = "Target Dummy"
+name = 'Target Dummy'
+position = [ 0.0, 0.0 ]
+rotation = 0.0
+scale = [ 1.0, 1.0 ]
 
-[objects.audio]
-id = 300
-gain = 0.4
+    [objects.audio]
+    autoplay = false
+    gain = 0.40000000596046448
+    id = 300
+    loops = 0
 
 [[objects]]
+active = true
+children = [ 102 ]
 id = 101
-name = "Main Camera"
-children = [102]
+name = 'Main Camera'
+position = [ 0.0, 0.0 ]
+rotation = 0.0
+scale = [ 1.0, 1.0 ]
 
-[objects.camera]
-id = 200
-viewport = [0, 0, 640, 480]
+    [objects.camera]
+    id = 200
+    viewport = [ 0.0, 0.0, 640.0, 480.0 ]
 
 [[objects]]
+active = true
+id = 103
+name = 'Sprite Only'
+position = [ 0.0, 0.0 ]
+rotation = 0.0
+scale = [ 1.0, 1.0 ]
+
+    [objects.sprite]
+    flip = 'none'
+    id = 204
+    path = 'assets/ball.png'
+    size = [ 32.0, 32.0 ]
+    sourceRect = [ 0.0, 0.0, 16.0, 16.0 ]
+
+[[objects]]
+active = true
 id = 102
-name = "Scripted Object"
-position = [12, 34]
-scale = [1.5, 2.0]
+name = 'Scripted Object'
+position = [ 12.0, 34.0 ]
+rotation = 0.0
+scale = [ 1.5, 2.0 ]
 
-[objects.sprite]
-id = 202
-path = "assets/ball.png"
-flip = "horizontal"
-size = [32, 32]
-sourceRect = [0, 0, 16, 16]
+    [objects.animator]
+    clip = 'scene_v2_roundtrip.animset'
+    id = 201
+    playbackSpeed = 1.5
+    playing = true
 
-[objects.animator]
-id = 201
-playbackSpeed = 1.5
-clip = "scene_v2_roundtrip.animset"
-playing = true
+    [objects.script]
+    id = 203
 
-[objects.script]
-id = 203
+        [[objects.script.behaviors]]
+        allowDash = true
+        displayName = 'Player One'
+        emitter = { component = 300 }
+        enabled = true
+        icon = 'assets/ball.png'
+        idleClip = 'scene_v2_roundtrip.animset'
+        offset = [ 11.25, -4.5 ]
+        precision = 987.65432099999998
+        sound = 'examples/mario/assets/audio/jump.wav'
+        speed = 123.5
+        targetObject = { gameObject = 100 }
+        type = 'AnnotatedSceneBehavior'
 
-[[objects.script.behaviors]]
-type = "AnnotatedSceneBehavior"
-displayName = "Player One"
-speed = 123.5
-allowDash = true
-precision = 987.654321
-offset = [11.25, -4.5]
-targetObject = { gameObject = 100 }
-emitter = { component = 300 }
-icon = "assets/ball.png"
-idleClip = "scene_v2_roundtrip.animset"
-sound = "examples/mario/assets/audio/jump.wav"
+    [objects.sprite]
+    flip = 'horizontal'
+    id = 202
+    path = 'assets/ball.png'
+    size = [ 32.0, 32.0 ]

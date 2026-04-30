@@ -24,7 +24,7 @@ GameObject::~GameObject()
 
     for (GameObject *child : children)
     {
-        if (child != nullptr)
+        if (child != nullptr && !child->getIsRegisteredInGameManager() && !child->getIsMarkedForDeletion())
         {
             delete child;
         }

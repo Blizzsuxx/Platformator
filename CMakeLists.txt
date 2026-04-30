@@ -24,7 +24,12 @@ add_subdirectory(vendored/SDL3_image-3.4.0 EXCLUDE_FROM_ALL)
 add_subdirectory(vendored/SDL3_ttf-3.1.0 EXCLUDE_FROM_ALL)
 add_subdirectory(vendored/eigen-5.0.1 EXCLUDE_FROM_ALL)
 add_subdirectory(vendored/oneTBB-2022.3.0 EXCLUDE_FROM_ALL)
-add_subdirectory(vendored/tomlplusplus-3.4.0 EXCLUDE_FROM_ALL)
+
+add_library(nlohmann_json INTERFACE)
+add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+target_include_directories(nlohmann_json INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendored/json"
+)
 
 file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -46,7 +51,7 @@ target_link_libraries(platformator_engine PUBLIC
     SDL3_ttf::SDL3_ttf
     Eigen3::Eigen
     TBB::tbb
-    tomlplusplus::tomlplusplus
+    nlohmann_json::nlohmann_json
 )
 
 add_executable(main "${PLATFORMATOR_MAIN_SOURCE}")

@@ -8,6 +8,8 @@
 
 #include "gameobject.h"
 
+class Collision;
+
 class Behavior
 {
     friend class ScriptComponent;
@@ -21,8 +23,6 @@ public:
     GameObject *getGameObject() const;
     bool getEnabled() const;
     void setEnabled(bool enabled);
-    virtual void deserialize(const BehaviorSpec &spec);
-    virtual void serialize(BehaviorSpec &spec) const;
 
     virtual void start();
     virtual void update(double timeDelta);
@@ -36,5 +36,3 @@ public:
 private:
     bool enabled;
 };
-
-#define SERIALIZ

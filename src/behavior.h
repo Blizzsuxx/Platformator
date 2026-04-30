@@ -34,6 +34,8 @@ public:
     virtual void onCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 
     virtual std::string getTypeName() const = 0;
+    virtual void serialize(nlohmann::json &j) const = 0;
+    virtual void deserialize(const nlohmann::json &j) = 0;
 
 private:
     GameObject *gameObject = nullptr;

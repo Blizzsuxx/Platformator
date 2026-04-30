@@ -8,6 +8,7 @@
 
 #include <json.hpp>
 #include "jsonhelpers.h"
+#include "behaviorfactoryregistry.h"
 
 class Collider;
 
@@ -50,7 +51,13 @@ struct ComponentTypeFor<ScriptComponent>
 
 void to_json(nlohmann::json &j, const ScriptComponent &scriptComponent)
 {
-    j = nlohmann::json{{"behaviors", scriptComponent.getBehaviors()}};
+    j["behaviors"] = nlohmann::json::array();
+    for (const auto &behavior : scriptComponent.getBehaviors())
+    {
+        nlohmann::json behaviorJson;
+        behavior->serialize(behaviorJson);
+        j["behaviors"].push_back(behaviorJson);
+    }
 }
 
 void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent)
@@ -61,7 +68,7 @@ void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent)
         Behavior *behavior = BehaviorFactoryRegistry::getInstance().createBehavior(type);
         if (behavior)
         {
-            from_json(behaviorJson, *behavior);
+            behavior->deserialize(behaviorJson);
             scriptComponent.addBehavior(behavior);
         }
     }

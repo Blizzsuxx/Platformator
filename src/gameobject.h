@@ -38,10 +38,13 @@ class Component : public BaseObject
 
 public:
     Component(GameObject *gameObject, ComponentType type);
+    Component(ComponentType type);
     virtual ~Component() = default;
 
     GameObject *getGameObject() const;
     ComponentType getType() const;
+
+    void setGameObject(GameObject *gameObject);
 
 private:
     GameObject *gameObject;
@@ -54,6 +57,7 @@ class GameObject : public BaseObject
     friend class Scene;
 
 public:
+    GameObject();
     GameObject(GameObject &) = delete;
     GameObject &operator=(const GameObject &) = delete;
 
@@ -72,7 +76,7 @@ public:
     const std::string &getTag() const;
 
     Component *getComponent(const ComponentType &componentType) const;
-    Component **getComponents();
+    Component *const *getComponents() const;
 
     template <typename T>
     T *getComponent() const;
@@ -96,7 +100,6 @@ public:
     bool getIsMarkedForDeletion() const;
 
 private:
-    GameObject();
     GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag);
 
     ~GameObject();

@@ -4,6 +4,8 @@ void to_json(nlohmann::json &j, const CircleCollider &circleCollider)
 {
     j = nlohmann::json{{"radius", circleCollider.getRadius()},
                        {"collisionGroup", circleCollider.getCollisionGroup()},
+                       {"type", ComponentType::COLLIDER},
+                       {"colliderType", circleCollider.getColliderType()},
                        {"collisionMask", circleCollider.getCollisionMask()}};
 }
 

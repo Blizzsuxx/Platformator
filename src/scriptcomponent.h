@@ -17,6 +17,7 @@ class ScriptComponent : public Component
     friend class Collider;
 
 public:
+    ScriptComponent();
     ScriptComponent(GameObject *gameObject);
     ~ScriptComponent() override;
 

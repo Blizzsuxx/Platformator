@@ -10,6 +10,7 @@ void to_json(nlohmann::json &j, const Rigidbody &rigidbody)
                        {"friction", rigidbody.getFriction()},
                        {"restitution", rigidbody.getRestitution()},
                        {"bodyType", rigidbody.getBodyType()},
+                       {"type", ComponentType::RIGID_BODY},
                        {"gravity", rigidbody.getGravity()}};
 }
 

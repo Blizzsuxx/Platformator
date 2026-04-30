@@ -82,7 +82,7 @@ Component *GameObject::getComponent(const ComponentType &componentType) const
     return components[componentType];
 }
 
-Component **GameObject::getComponents()
+Component *const *GameObject::getComponents() const
 {
     return components;
 }
@@ -208,6 +208,7 @@ void GameObject::addComponentInternal(Component *component)
     }
 
     components[type] = component;
+    component->setGameObject(this);
 
     if (type == ComponentType::COLLIDER || type == ComponentType::RIGID_BODY)
     {

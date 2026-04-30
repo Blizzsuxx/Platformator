@@ -10,6 +10,7 @@
 class Camera : public Component
 {
 public:
+    Camera();
     Camera(GameObject *gameObject);
     Camera(GameObject *gameObject, float w, float h);
     Camera(GameObject *gameObject, float x, float y, float w, float h);

@@ -8,6 +8,7 @@
 class CircleCollider : public Collider
 {
 public:
+    CircleCollider();
     CircleCollider(GameObject *gameObject, const float radius);
     ~CircleCollider();
 

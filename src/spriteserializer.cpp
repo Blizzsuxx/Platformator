@@ -14,6 +14,7 @@ void to_json(nlohmann::json &j, const Sprite &sprite)
     {
         j["sourceRect"] = *sprite.getSourceRect();
     }
+    j["type"] = ComponentType::SPRITE;
 }
 
 void from_json(const nlohmann::json &j, Sprite &sprite)

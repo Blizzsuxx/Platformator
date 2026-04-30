@@ -12,6 +12,7 @@ class TextureWrapper;
 class Sprite : public Component
 {
 public:
+    Sprite();
     Sprite(GameObject *gameObject);
     Sprite(GameObject *gameObject, TextureWrapper *textureWrapper);
     Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip);

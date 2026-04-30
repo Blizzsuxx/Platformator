@@ -10,6 +10,10 @@ Animator::Animator(GameObject *gameObject)
 {
 }
 
+Animator::Animator() : Component(ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX)
+{
+}
+
 Animator::~Animator()
 {
 }

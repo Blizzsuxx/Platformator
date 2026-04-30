@@ -157,37 +157,6 @@ GameObject *GameManager::getGameObject(std::string name)
     return nullptr;
 }
 
-GameObject *GameManager::getGameObjectById(uint64_t id)
-{
-    for (GameObject *gameObject : gameObjects)
-    {
-        if (gameObject->getId() == id)
-        {
-            return gameObject;
-        }
-    }
-
-    return nullptr;
-}
-
-Component *GameManager::getComponentById(uint64_t id)
-{
-    for (GameObject *gameObject : gameObjects)
-    {
-        Component **components = gameObject->getComponents();
-        for (size_t componentIndex = 0; componentIndex < COMPONENT_TYPE_COUNT; ++componentIndex)
-        {
-            Component *component = components[componentIndex];
-            if (component != nullptr && component->getId() == id)
-            {
-                return component;
-            }
-        }
-    }
-
-    return nullptr;
-}
-
 std::vector<GameObject *> &GameManager::getGameObjects()
 {
     return gameObjects;

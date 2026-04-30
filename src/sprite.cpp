@@ -2,6 +2,10 @@
 #include "gamemanager.h"
 #include "texturewrapper.h"
 
+Sprite::Sprite() : Component(ComponentType::SPRITE), textureWrapper(nullptr), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+{
+}
+
 Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, (TextureWrapper *)nullptr, SDL_FLIP_NONE)
 {
 }

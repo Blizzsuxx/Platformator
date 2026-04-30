@@ -9,6 +9,7 @@ void to_json(nlohmann::json &j, const ScriptComponent &scriptComponent)
         behavior->serialize(behaviorJson);
         j["behaviors"].push_back(behaviorJson);
     }
+    j["type"] = ComponentType::SCRIPT;
 }
 
 void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent)

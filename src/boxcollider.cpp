@@ -7,6 +7,10 @@ BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float 
 {
 }
 
+BoxCollider::BoxCollider() : Collider(ComponentType::COLLIDER), width(0.0f), height(0.0f), vertices(), normals(2)
+{
+}
+
 BoxCollider::~BoxCollider()
 {
 }

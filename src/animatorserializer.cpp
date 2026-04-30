@@ -10,6 +10,7 @@ void to_json(nlohmann::json &j, const Animator &animator)
         {"currentFrameIndex", animator.getCurrentFrameIndex()},
         {"playbackSpeed", animator.getPlaybackSpeed()},
         {"playing", animator.getIsPlaying()},
+        {"type", ComponentType::ANIMATOR},
         {"animationClipFilePath", currentClip ? currentClip->getFilePath() : ""}};
 }
 

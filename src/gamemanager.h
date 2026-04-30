@@ -33,8 +33,6 @@ public:
     GameManager &operator=(const GameManager &) = delete;
 
     GameObject *getGameObject(std::string name);
-    GameObject *getGameObjectById(uint64_t id);
-    Component *getComponentById(uint64_t id);
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
 

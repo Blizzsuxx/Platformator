@@ -14,6 +14,12 @@ Audio::Audio(GameObject *gameObject)
     track = MIX_CreateTrack(window->getMixer());
 }
 
+Audio::Audio() : Component(ComponentType::AUDIO), audioWrapper(nullptr), track(nullptr), gain(1.0f), loopCount(0), autoPlay(false), gameManagerIndex(SIZE_MAX)
+{
+    SDLWindow *window = GameManager::getInstance().getWindow();
+    track = MIX_CreateTrack(window->getMixer());
+}
+
 Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool autoPlay, float loopCount)
     : Audio(gameObject, (AudioWrapper *)nullptr, gain, autoPlay, loopCount)
 {

@@ -13,6 +13,7 @@ class Animator : public Component
 {
 public:
     Animator(GameObject *gameObject);
+    Animator();
     ~Animator() override;
 
     size_t getCurrentFrameIndex() const;

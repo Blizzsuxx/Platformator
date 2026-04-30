@@ -16,6 +16,7 @@ enum BodyType
 class Rigidbody : public Component
 {
 public:
+    Rigidbody();
     Rigidbody(GameObject *gameObject);
     Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity);
     ~Rigidbody();

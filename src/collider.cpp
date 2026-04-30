@@ -11,6 +11,10 @@ Collider::Collider(GameObject *gameObject, ComponentType type)
 {
 }
 
+Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
+{
+}
+
 Collider::~Collider()
 {
 }

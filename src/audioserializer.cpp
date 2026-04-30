@@ -8,6 +8,7 @@ void to_json(nlohmann::json &j, const Audio &audio)
         {"filePath", audio.getFilePath()},
         {"gain", audio.getGain()},
         {"loopCount", audio.getLoopCount()},
+        {"type", ComponentType::AUDIO},
         {"autoPlay", audio.getAutoPlay()},
     };
 }

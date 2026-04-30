@@ -2,6 +2,10 @@
 #include "helpers.h"
 #include "rigidbody.h"
 
+CircleCollider::CircleCollider() : Collider(ComponentType::COLLIDER), radius(0.0f)
+{
+}
+
 CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER), radius(radius)
 {
 }

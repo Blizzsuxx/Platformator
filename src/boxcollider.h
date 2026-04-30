@@ -10,6 +10,7 @@ class BoxCollider : public Collider
 {
 public:
     BoxCollider(GameObject *gameObject, const float width, const float height);
+    BoxCollider();
     ~BoxCollider();
 
     // Inherited via Collider

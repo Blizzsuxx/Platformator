@@ -1,7 +1,7 @@
 #pragma once
 
-#include "behaviorfactoryregistry.h"
 #include "mario_entity.h"
+#include "jsonhelpers.h"
 
 class Camera;
 
@@ -14,11 +14,6 @@ namespace mario
     public:
         MarioCameraRig();
 
-        BEHAVIOR_FIELDS(
-            MarioCameraRig,
-            BEHAVIOR_FIELD(target),
-            BEHAVIOR_FIELD(cameraLead),
-            BEHAVIOR_FIELD(levelWidth));
         void start() override;
         void lateUpdate(double timeDelta) override;
 
@@ -30,5 +25,10 @@ namespace mario
         float levelWidth;
     };
 
-    REGISTER_BEHAVIOR(MarioCameraRig);
+    REGISTER_SCRIPT(
+        MarioCameraRig,
+        target,
+        cameraLead,
+        levelWidth);
+
 } // namespace mario

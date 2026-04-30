@@ -4,6 +4,10 @@ Component::Component(GameObject *gameObject, ComponentType type) : gameObject(ga
 {
 }
 
+Component::Component(ComponentType type) : gameObject(nullptr), type(type)
+{
+}
+
 GameObject *Component::getGameObject() const
 {
     return gameObject;
@@ -12,4 +16,9 @@ GameObject *Component::getGameObject() const
 ComponentType Component::getType() const
 {
     return type;
+}
+
+void Component::setGameObject(GameObject *gameObject)
+{
+    this->gameObject = gameObject;
 }

@@ -3,6 +3,10 @@
 #include "collider.h"
 #include "gamemanager.h"
 
+ScriptComponent::ScriptComponent() : Component(ComponentType::SCRIPT), behaviors(), gameManagerIndex(SIZE_MAX)
+{
+}
+
 ScriptComponent::ScriptComponent(GameObject *gameObject)
     : Component(gameObject, ComponentType::SCRIPT), behaviors(), gameManagerIndex(SIZE_MAX)
 {
@@ -50,10 +54,6 @@ void ScriptComponent::update(double timeDelta)
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        if (!behavior->getEnabled())
-        {
-            continue;
-        }
 
         behavior->update(timeDelta);
     }
@@ -65,10 +65,6 @@ void ScriptComponent::fixedUpdate(double timeDelta)
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        if (!behavior->getEnabled())
-        {
-            continue;
-        }
 
         behavior->fixedUpdate(timeDelta);
     }
@@ -80,10 +76,6 @@ void ScriptComponent::lateUpdate(double timeDelta)
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        if (!behavior->getEnabled())
-        {
-            continue;
-        }
 
         behavior->lateUpdate(timeDelta);
     }
@@ -110,10 +102,6 @@ void ScriptComponent::dispatchCollisionEnter(const Collision *collision, Collide
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        if (!behavior->getEnabled())
-        {
-            continue;
-        }
 
         behavior->onCollisionEnter(collision, other, timeDelta);
     }
@@ -125,10 +113,6 @@ void ScriptComponent::dispatchCollisionExit(Collider *other, double timeDelta)
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        if (!behavior->getEnabled())
-        {
-            continue;
-        }
 
         behavior->onCollisionExit(other, timeDelta);
     }
@@ -140,10 +124,6 @@ void ScriptComponent::dispatchCollisionStay(const Collision *collision, Collider
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        if (!behavior->getEnabled())
-        {
-            continue;
-        }
 
         behavior->onCollisionStay(collision, other, timeDelta);
     }

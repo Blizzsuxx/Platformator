@@ -15,6 +15,7 @@ public:
     Audio(GameObject *gameObject);
     Audio(GameObject *gameObject, const char *filePath, float gain = 1.0f, bool autoPlay = false, float loopCount = 0);
     Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain = 1.0f, bool autoPlay = false, float loopCount = 0);
+    Audio();
     ~Audio() override;
 
     MIX_Track *getTrack() const;

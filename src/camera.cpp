@@ -1,5 +1,9 @@
 #include "camera.h"
 
+Camera::Camera() : Component(ComponentType::CAMERA), camera{0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT}
+{
+}
+
 Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA), camera{0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT}
 {
 }

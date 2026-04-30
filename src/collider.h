@@ -127,6 +127,7 @@ class Collider : public Component
 
 public:
     Collider(GameObject *gameObject, ComponentType type);
+    Collider(ComponentType type);
     ~Collider();
 
     virtual ColliderType getColliderType() const = 0;

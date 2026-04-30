@@ -4,6 +4,11 @@
 
 #include "gamemanager.h"
 
+AnimationFrame::AnimationFrame()
+    : textureWrapper(nullptr), duration(0.0f), sourceRect{0.0f, 0.0f, 0.0f, 0.0f}, hasSourceRect(false)
+{
+}
+
 AnimationFrame::AnimationFrame(TextureWrapper *textureWrapper, float duration)
     : textureWrapper(textureWrapper), duration(duration), sourceRect{0.0f, 0.0f, 0.0f, 0.0f}, hasSourceRect(false)
 {
@@ -48,6 +53,21 @@ void AnimationFrame::releaseTexture()
         TextureWrapper *currentTextureWrapper = textureWrapper;
         textureWrapper = nullptr;
         currentTextureWrapper->removeReferenceAndFreeIfNoReferences();
+    }
+}
+
+TextureWrapper *AnimationFrame::getTextureWrapper() const
+{
+    return textureWrapper;
+}
+
+void AnimationFrame::setTextureWrapper(TextureWrapper *newTextureWrapper)
+{
+    if (textureWrapper != newTextureWrapper)
+    {
+        releaseTexture();
+        textureWrapper = newTextureWrapper;
+        retainTexture();
     }
 }
 

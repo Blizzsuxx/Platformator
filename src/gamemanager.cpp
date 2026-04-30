@@ -651,7 +651,6 @@ void GameManager::triggerStartedBehaviors()
 {
     for (Behavior *behavior : startedBehaviors)
     {
-        behavior->resolveFieldBindings();
         behavior->start();
     }
     startedBehaviors.clear();

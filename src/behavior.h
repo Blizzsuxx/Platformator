@@ -21,8 +21,7 @@ public:
     virtual ~Behavior() = default;
 
     GameObject *getGameObject() const;
-    bool getEnabled() const;
-    void setEnabled(bool enabled);
+    void setGameObject(GameObject *gameObject);
 
     virtual void start();
     virtual void update(double timeDelta);
@@ -33,6 +32,8 @@ public:
     virtual void onCollisionExit(Collider *other, double timeDelta);
     virtual void onCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 
+    virtual std::string getTypeName() const = 0;
+
 private:
-    bool enabled;
+    GameObject *gameObject = nullptr;
 };

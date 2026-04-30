@@ -241,3 +241,25 @@ void Animator::setGameManagerIndex(size_t index)
 {
     gameManagerIndex = index;
 }
+
+void Animator::setCurrentClip(const AnimationClip *clip)
+{
+    if (currentAnimationClip == clip)
+    {
+        return;
+    }
+
+    currentAnimationClip = clip;
+    currentFrameIndex = 0;
+    accumulatedTime = 0.0;
+    if (clip != nullptr)
+    {
+        applyCurrentFrame();
+    }
+}
+
+void Animator::setCurrentFrameIndex(size_t frameIndex)
+{
+    currentFrameIndex = frameIndex;
+    applyCurrentFrame();
+}

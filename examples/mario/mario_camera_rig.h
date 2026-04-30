@@ -24,12 +24,12 @@ namespace mario
         ObjectReference<GameObject> target;
         float cameraLead;
         float levelWidth;
-    };
 
-    REGISTER_SCRIPT(
-        MarioCameraRig,
-        target,
-        cameraLead,
-        levelWidth);
+        REGISTER_SCRIPT(
+            MarioCameraRig,
+            target,
+            cameraLead,
+            levelWidth);
+    };
 
 } // namespace mario

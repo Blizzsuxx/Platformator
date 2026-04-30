@@ -23,12 +23,12 @@ private:                                                           \
             BehaviorFactoryRegistry::registerBehavior(#Type, []() { return new Type(); }); \
             return true; }();
 
-void to_json(nlohmann::json &j, const SDL_FRect &rect)
+inline void to_json(nlohmann::json &j, const SDL_FRect &rect)
 {
     j = nlohmann::json{{"x", rect.x}, {"y", rect.y}, {"w", rect.w}, {"h", rect.h}};
 }
 
-void from_json(const nlohmann::json &j, SDL_FRect &rect)
+inline void from_json(const nlohmann::json &j, SDL_FRect &rect)
 {
     rect.x = j.at("x").get<float>();
     rect.y = j.at("y").get<float>();
@@ -36,23 +36,31 @@ void from_json(const nlohmann::json &j, SDL_FRect &rect)
     rect.h = j.at("h").get<float>();
 }
 
-void to_json(nlohmann::json &j, const Eigen::Vector2f &vec)
-{
-    j = nlohmann::json{{"x", vec.x()}, {"y", vec.y()}};
-}
+NLOHMANN_JSON_NAMESPACE_BEGIN
 
-void from_json(const nlohmann::json &j, Eigen::Vector2f &vec)
+template <>
+struct adl_serializer<Eigen::Vector2f>
 {
-    vec.x() = j.at("x").get<float>();
-    vec.y() = j.at("y").get<float>();
-}
+    static void to_json(json &j, const Eigen::Vector2f &vec)
+    {
+        j = json{{"x", vec.x()}, {"y", vec.y()}};
+    }
 
-void to_json(nlohmann::json &j, const SDL_FlipMode &flipMode)
+    static void from_json(const json &j, Eigen::Vector2f &vec)
+    {
+        vec.x() = j.at("x").get<float>();
+        vec.y() = j.at("y").get<float>();
+    }
+};
+
+NLOHMANN_JSON_NAMESPACE_END
+
+inline void to_json(nlohmann::json &j, const SDL_FlipMode &flipMode)
 {
     j = static_cast<int>(flipMode);
 }
 
-void from_json(const nlohmann::json &j, SDL_FlipMode &flipMode)
+inline void from_json(const nlohmann::json &j, SDL_FlipMode &flipMode)
 {
     flipMode = static_cast<SDL_FlipMode>(j.get<int>());
 }

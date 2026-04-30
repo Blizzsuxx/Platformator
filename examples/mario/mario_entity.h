@@ -37,7 +37,7 @@ namespace mario
             return gameObject->getComponent<Audio>();
         }
 
-        void playSound(const platformator_behavior_detail::AudioAssetReference &audioAsset)
+        void playSound(AudioWrapper *audioAsset) const
         {
             Audio *audioEmitter = getAudioEmitter();
             if (audioEmitter != nullptr)

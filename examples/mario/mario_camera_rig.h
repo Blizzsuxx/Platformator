@@ -2,6 +2,7 @@
 
 #include "mario_entity.h"
 #include "jsonhelpers.h"
+#include "objectreference.h"
 
 class Camera;
 
@@ -20,7 +21,7 @@ namespace mario
     private:
         Camera *camera;
         MarioPlayer *player;
-        platformator_behavior_detail::NamedGameObjectReference target;
+        ObjectReference<GameObject> target;
         float cameraLead;
         float levelWidth;
     };

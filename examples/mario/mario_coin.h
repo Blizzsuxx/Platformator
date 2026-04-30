@@ -10,19 +10,17 @@ namespace mario
     public:
         MarioCoin();
 
-        BEHAVIOR_FIELDS(
-            MarioCoin,
-            BEHAVIOR_FIELD(spinAnimset),
-            BEHAVIOR_FIELD(coinSound));
-
         void start() override;
 
         bool collect();
 
     private:
-        platformator_behavior_detail::AnimationClipReference spinAnimset;
-        platformator_behavior_detail::AudioAssetReference coinSound;
+        AnimationClip spinAnimset;
+        AudioWrapper coinSound;
     };
 
-    REGISTER_BEHAVIOR(MarioCoin);
+    REGISTER_SCRIPT(
+        MarioCoin,
+        spinAnimset,
+        coinSound);
 } // namespace mario

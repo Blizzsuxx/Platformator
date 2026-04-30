@@ -17,19 +17,6 @@ namespace mario
     public:
         MarioPatrolEnemy();
 
-        BEHAVIOR_FIELDS(
-            MarioPatrolEnemy,
-            BEHAVIOR_FIELD(minX),
-            BEHAVIOR_FIELD(maxX),
-            BEHAVIOR_FIELD(direction),
-            BEHAVIOR_FIELD(walkSpeed),
-            BEHAVIOR_FIELD(stompMinSpeed),
-            BEHAVIOR_FIELD(stompTolerance),
-            BEHAVIOR_FIELD(squashDuration),
-            BEHAVIOR_FIELD(walkAnimset),
-            BEHAVIOR_FIELD(squashAnimset),
-            BEHAVIOR_FIELD(stompSound));
-
         void start() override;
         void fixedUpdate(double timeDelta) override;
         void handlePlayerContact(MarioPlayer &player);
@@ -46,12 +33,22 @@ namespace mario
         float stompMinSpeed;
         float stompTolerance;
         float squashDuration;
-        platformator_behavior_detail::AnimationClipReference walkAnimset;
-        platformator_behavior_detail::AnimationClipReference squashAnimset;
-        platformator_behavior_detail::AudioAssetReference stompSound;
+        AnimationClip walkAnimset;
+        AnimationClip squashAnimset;
+        AudioWrapper stompSound;
         bool defeated;
         double defeatedTimer;
     };
 
-    REGISTER_BEHAVIOR(MarioPatrolEnemy);
+    REGISTER_SCRIPT(
+        MarioPatrolEnemy,
+        minX,
+        maxX,
+        walkSpeed,
+        stompMinSpeed,
+        stompTolerance,
+        squashDuration,
+        walkAnimset,
+        squashAnimset,
+        stompSound);
 } // namespace mario

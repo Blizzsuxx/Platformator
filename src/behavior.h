@@ -37,6 +37,7 @@ public:
     virtual std::string getTypeName() const = 0;
     virtual void serialize(nlohmann::json &j) const = 0;
     virtual void deserialize(const nlohmann::json &j) = 0;
+    virtual void resolveReferences() = 0;
 
 private:
     GameObject *gameObject = nullptr;

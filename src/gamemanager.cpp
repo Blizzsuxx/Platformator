@@ -57,6 +57,7 @@ void GameManager::loadScene(Scene &scene)
 
         for (Behavior *behavior : scriptComponent->getBehaviors())
         {
+            behavior->resolveReferences();
             addStartedBehavior(behavior);
         }
     }

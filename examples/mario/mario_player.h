@@ -17,21 +17,6 @@ namespace mario
     public:
         MarioPlayer();
 
-        BEHAVIOR_FIELDS(
-            MarioPlayer,
-            BEHAVIOR_FIELD(walkSpeed),
-            BEHAVIOR_FIELD(jumpSpeed),
-            BEHAVIOR_FIELD(gravity),
-            BEHAVIOR_FIELD(maxFallSpeed),
-            BEHAVIOR_FIELD(stompBounceFactor),
-            BEHAVIOR_FIELD(idleAnimset),
-            BEHAVIOR_FIELD(runAnimset),
-            BEHAVIOR_FIELD(jumpAnimset),
-            BEHAVIOR_FIELD(fallAnimset),
-            BEHAVIOR_FIELD(winAnimset),
-            BEHAVIOR_FIELD(jumpSound),
-            BEHAVIOR_FIELD(hurtSound));
-
         void start() override;
         void fixedUpdate(double timeDelta) override;
         void update(double timeDelta) override;
@@ -59,8 +44,8 @@ namespace mario
         AnimationClip jumpAnimset;
         AnimationClip fallAnimset;
         AnimationClip winAnimset;
-        AudioAsset jumpSound;
-        AudioAsset hurtSound;
+        AudioWrapper jumpSound;
+        AudioWrapper hurtSound;
         Eigen::Vector2f spawn;
         Eigen::Vector2f positionBeforePhysics;
         Eigen::Vector2f velocityBeforePhysics;
@@ -72,5 +57,18 @@ namespace mario
         void updateAnimation();
     };
 
-    REGISTER_BEHAVIOR(MarioPlayer);
+    REGISTER_SCRIPT(
+        MarioPlayer,
+        walkSpeed,
+        jumpSpeed,
+        gravity,
+        maxFallSpeed,
+        stompBounceFactor,
+        idleAnimset,
+        runAnimset,
+        jumpAnimset,
+        fallAnimset,
+        winAnimset,
+        jumpSound,
+        hurtSound);
 } // namespace mario

@@ -16,6 +16,10 @@ public:                                                            \
     {                                                              \
         from_json(j, *this);                                       \
     }                                                              \
+    void resolveReferences() override                              \
+    {                                                              \
+        resolveReferencesImpl();                                   \
+    }                                                              \
                                                                    \
 private:                                                           \
     /* This line auto-registers with your factory */               \

@@ -10,19 +10,17 @@ namespace mario
     public:
         MarioGoalFlag();
 
-        BEHAVIOR_FIELDS(
-            MarioGoalFlag,
-            BEHAVIOR_FIELD(waveAnimset),
-            BEHAVIOR_FIELD(winSound));
-
         void start() override;
 
         bool reach();
 
     private:
-        platformator_behavior_detail::AnimationClipReference waveAnimset;
-        platformator_behavior_detail::AudioAssetReference winSound;
+        AnimationClip waveAnimset;
+        AudioWrapper winSound;
     };
 
-    REGISTER_BEHAVIOR(MarioGoalFlag);
+    REGISTER_SCRIPT(
+        MarioGoalFlag,
+        waveAnimset,
+        winSound);
 } // namespace mario

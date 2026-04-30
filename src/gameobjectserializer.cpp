@@ -11,7 +11,8 @@
 
 void to_json(nlohmann::json &j, const GameObject &gameObject)
 {
-    j = nlohmann::json{{"rotation", gameObject.getRotation()},
+    j = nlohmann::json{{"id", gameObject.getId()},
+                       {"rotation", gameObject.getRotation()},
                        {"active", gameObject.getActive()},
                        {"position", gameObject.getPosition()},
                        {"scale", gameObject.getScale()},
@@ -83,6 +84,8 @@ void to_json(nlohmann::json &j, const GameObject &gameObject)
 
 void from_json(const nlohmann::json &j, GameObject &gameObject)
 {
+    gameObject.setId(j.at("id").get<int>());
+
     gameObject.setRotation(j.at("rotation").get<float>());
     gameObject.setActive(j.at("active").get<bool>());
     gameObject.setPosition(j.at("position").get<Eigen::Vector2f>());

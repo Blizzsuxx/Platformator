@@ -5,6 +5,7 @@
 void to_json(nlohmann::json &j, const Audio &audio)
 {
     j = nlohmann::json{
+        {"id", audio.getId()},
         {"filePath", audio.getFilePath()},
         {"gain", audio.getGain()},
         {"loopCount", audio.getLoopCount()},
@@ -15,6 +16,8 @@ void to_json(nlohmann::json &j, const Audio &audio)
 
 void from_json(const nlohmann::json &j, Audio &audio)
 {
+    audio.setId(j.at("id").get<int>());
+
     std::string filePath;
     j.at("filePath").get_to(filePath);
 

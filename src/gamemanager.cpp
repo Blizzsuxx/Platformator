@@ -9,7 +9,7 @@
 #include "animationclip.h"
 #include <fstream>
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), gameObjectsToDelete(), scenes(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -30,16 +30,6 @@ GameManager::~GameManager()
 
     delete physicsManager;
     delete window;
-}
-
-void GameManager::addScene(const Scene &scene)
-{
-    scenes.push_back(scene);
-}
-
-std::vector<Scene> &GameManager::getScenes()
-{
-    return scenes;
 }
 
 void GameManager::loadScene(Scene &scene)
@@ -98,6 +88,9 @@ GameObject *GameManager::addGameObject(GameObject *gameObject)
     gameObject->setGameManagerIteratorIndex(gameObjects.size());
     gameObjects.push_back(gameObject);
     gameObject->setIsRegisteredInGameManager(true);
+
+    idToObjectMap[gameObject->getId()] = gameObject;
+
     gameObject->addComponentsToGameManager();
 
     return gameObject;
@@ -119,6 +112,8 @@ void GameManager::removeGameObject(GameObject *gameObject)
         movedGameObject->setGameManagerIteratorIndex(removeIndex);
     }
     gameObjects.pop_back();
+    idToObjectMap.erase(gameObject->getId());
+    gameObject->setGameManagerIteratorIndex(SIZE_MAX);
 
     startDeletingGameObject(gameObject);
 }
@@ -300,6 +295,7 @@ void GameManager::notifyComponentAdded(Component *component)
         return;
     }
 
+    idToObjectMap[component->getId()] = component;
     notifyPhysicsManagerOfComponentAdded(component);
     notifyWindowOfComponentAdded(component);
     notifyRuntimeOfComponentAdded(component);
@@ -315,6 +311,7 @@ void GameManager::notifyComponentRemoved(Component *component)
     notifyPhysicsManagerOfComponentRemoved(component);
     notifyWindowOfComponentRemoved(component);
     notifyRuntimeOfComponentRemoved(component);
+    idToObjectMap.erase(component->getId());
 }
 
 void GameManager::notifyRuntimeOfComponentAdded(Component *component)
@@ -633,4 +630,14 @@ void GameManager::triggerStartedBehaviors()
         behavior->start();
     }
     startedBehaviors.clear();
+}
+
+BaseObject *GameManager::getObjectById(int id) const
+{
+    auto it = idToObjectMap.find(id);
+    if (it != idToObjectMap.end())
+    {
+        return it->second;
+    }
+    return nullptr;
 }

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "gameobject.h"
+#include "objectreference.h"
 
 class Collision;
 class Collider;

@@ -7,6 +7,7 @@ void to_json(nlohmann::json &j, const Animator &animator)
     const AnimationClip *currentClip = animator.getCurrentClip();
 
     j = nlohmann::json{
+        {"id", animator.getId()},
         {"currentFrameIndex", animator.getCurrentFrameIndex()},
         {"playbackSpeed", animator.getPlaybackSpeed()},
         {"playing", animator.getIsPlaying()},
@@ -16,6 +17,8 @@ void to_json(nlohmann::json &j, const Animator &animator)
 
 void from_json(const nlohmann::json &j, Animator &animator)
 {
+    animator.setId(j.at("id").get<int>());
+
     std::string animationClipFilePath;
     j.at("animationClipFilePath").get_to(animationClipFilePath);
     if (!animationClipFilePath.empty())

@@ -2,7 +2,8 @@
 
 void to_json(nlohmann::json &j, const Rigidbody &rigidbody)
 {
-    j = nlohmann::json{{"velocity", rigidbody.getVelocity()},
+    j = nlohmann::json{{"id", rigidbody.getId()},
+                       {"velocity", rigidbody.getVelocity()},
                        {"force", rigidbody.getForce()},
                        {"mass", rigidbody.getMass()},
                        {"angularVelocity", rigidbody.getAngularVelocity()},
@@ -16,6 +17,8 @@ void to_json(nlohmann::json &j, const Rigidbody &rigidbody)
 
 void from_json(const nlohmann::json &j, Rigidbody &rigidbody)
 {
+    rigidbody.setId(j.at("id").get<int>());
+
     rigidbody.setVelocity(j.at("velocity").get<Eigen::Vector2f>());
     rigidbody.setForce(j.at("force").get<Eigen::Vector2f>());
     rigidbody.setMass(j.at("mass").get<float>());

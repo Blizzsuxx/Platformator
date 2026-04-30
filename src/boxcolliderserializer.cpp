@@ -2,7 +2,8 @@
 
 void to_json(nlohmann::json &j, const BoxCollider &boxCollider)
 {
-    j = nlohmann::json{{"width", boxCollider.getWidth()},
+    j = nlohmann::json{{"id", boxCollider.getId()},
+                       {"width", boxCollider.getWidth()},
                        {"height", boxCollider.getHeight()},
                        {"collisionGroup", boxCollider.getCollisionGroup()},
                        {"type", ComponentType::COLLIDER},
@@ -12,6 +13,8 @@ void to_json(nlohmann::json &j, const BoxCollider &boxCollider)
 
 void from_json(const nlohmann::json &j, BoxCollider &boxCollider)
 {
+    boxCollider.setId(j.at("id").get<int>());
+
     boxCollider.setWidth(j.at("width").get<float>());
     boxCollider.setHeight(j.at("height").get<float>());
     boxCollider.setCollisionGroup(j.at("collisionGroup").get<uint64_t>());

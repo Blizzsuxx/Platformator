@@ -54,8 +54,8 @@ public:
 
     void loadScene(Scene &scene);
     void saveScene(const Scene &scene);
-    std::vector<Scene> &getScenes();
-    void addScene(const Scene &scene);
+
+    BaseObject *getObjectById(int id) const;
 
 private:
     GameManager();
@@ -68,8 +68,8 @@ private:
     std::unordered_map<std::string, TextureWrapper> textureCache;
     std::unordered_map<std::string, AudioWrapper> audioCache;
     std::unordered_map<std::string, AnimationClip> animationClipCache;
+    std::unordered_map<int, BaseObject *> idToObjectMap;
     std::vector<GameObject *> gameObjectsToDelete;
-    std::vector<Scene> scenes;
     std::vector<Behavior *> startedBehaviors;
 
     PhysicsManager *physicsManager;

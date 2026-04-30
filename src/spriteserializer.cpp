@@ -5,6 +5,7 @@
 
 void to_json(nlohmann::json &j, const Sprite &sprite)
 {
+    j["id"] = sprite.getId();
     j["textureFilePath"] = sprite.getTextureWrapper() ? sprite.getTextureWrapper()->getFilePath() : "";
     j["flip"] = sprite.getFlip();
     j["width"] = sprite.getWidth();
@@ -19,6 +20,8 @@ void to_json(nlohmann::json &j, const Sprite &sprite)
 
 void from_json(const nlohmann::json &j, Sprite &sprite)
 {
+    sprite.setId(j.at("id").get<int>());
+
     std::string filePath = j.at("textureFilePath").get<std::string>();
     if (!filePath.empty())
     {

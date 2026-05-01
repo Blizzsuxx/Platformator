@@ -1,7 +1,7 @@
 #include "audiowrapper.h"
 #include "gamemanager.h"
 
-AudioWrapper::AudioWrapper(MIX_Audio *audio, const std::string &filePath) : audio(audio), filePath(filePath), referenceCount(0)
+AudioWrapper::AudioWrapper(MIX_Audio *audio, const std::string &filePath) : Asset(filePath), audio(audio), referenceCount(0)
 {
 }
 
@@ -15,11 +15,6 @@ MIX_Audio *AudioWrapper::getAudio() const
     return audio;
 }
 
-const std::string &AudioWrapper::getFilePath() const
-{
-    return filePath;
-}
-
 void AudioWrapper::addReference()
 {
     referenceCount++;
@@ -31,7 +26,7 @@ bool AudioWrapper::removeReferenceAndFreeIfNoReferences()
     {
         referenceCount--;
     }
-    if (referenceCount == 0)
+    if (referenceCount == 0 && !getFilePath().empty())
     {
         GameManager::getInstance().freeAudio(this);
         return true;

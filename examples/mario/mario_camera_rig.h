@@ -25,11 +25,13 @@ namespace mario
         float cameraLead;
         float levelWidth;
 
-        REGISTER_SCRIPT(
+        SERIALIZABLE_SCRIPT(
             MarioCameraRig,
             target,
             cameraLead,
             levelWidth);
     };
+
+    REGISTER_SCRIPT(MarioCameraRig);
 
 } // namespace mario

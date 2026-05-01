@@ -17,10 +17,12 @@ namespace mario
     private:
         AnimationClip spinAnimset;
         AudioWrapper coinSound;
+
+        SERIALIZABLE_SCRIPT(
+            MarioCoin,
+            spinAnimset,
+            coinSound);
     };
 
-    REGISTER_SCRIPT(
-        MarioCoin,
-        spinAnimset,
-        coinSound);
+    REGISTER_SCRIPT(MarioCoin);
 } // namespace mario

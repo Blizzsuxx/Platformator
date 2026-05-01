@@ -36,3 +36,29 @@ private:
         return distribution(generator);
     }
 };
+
+class Asset
+{
+protected:
+    Asset(std::string filePath) : filePath(std::move(filePath))
+    {
+    }
+
+    Asset() : filePath("")
+    {
+    }
+
+public:
+    const std::string &getFilePath() const
+    {
+        return filePath;
+    }
+
+    void setFilePath(const std::string &newFilePath)
+    {
+        filePath = newFilePath;
+    }
+
+private:
+    std::string filePath;
+};

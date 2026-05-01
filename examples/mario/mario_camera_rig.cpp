@@ -12,7 +12,7 @@
 namespace mario
 {
     MarioCameraRig::MarioCameraRig()
-        : camera(nullptr), player(nullptr), target(platformator_behavior_detail::NamedGameObjectReference("Player")), cameraLead(CAMERA_LEAD), levelWidth(LEVEL_WIDTH)
+        : camera(nullptr), player(nullptr), target(), cameraLead(CAMERA_LEAD), levelWidth(LEVEL_WIDTH)
     {
     }
 
@@ -26,7 +26,13 @@ namespace mario
     {
         if (player == nullptr)
         {
-            player = getBehavior<MarioPlayer>(GameManager::getInstance().getGameObject(target.name));
+            GameObject *targetObject = target.get();
+            if (targetObject == nullptr)
+            {
+                targetObject = target.resolve();
+            }
+
+            player = getBehavior<MarioPlayer>(targetObject);
             if (player == nullptr)
             {
                 return;

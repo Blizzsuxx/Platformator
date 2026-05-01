@@ -72,12 +72,12 @@ void AnimationFrame::setTextureWrapper(TextureWrapper *newTextureWrapper)
 }
 
 AnimationClip::AnimationClip()
-    : frames(), framesPerSecond(12.0), loop(true), width(0.0f), height(0.0f), name(), filePath(), referenceCount(0)
+    : Asset(), frames(), framesPerSecond(12.0), loop(true), width(0.0f), height(0.0f), name(), referenceCount(0)
 {
 }
 
 AnimationClip::AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width, float height, std::string name, std::string filePath)
-    : frames(std::move(frames)), framesPerSecond(framesPerSecond), loop(loop), width(width), height(height), name(std::move(name)), filePath(std::move(filePath)), referenceCount(0)
+    : Asset(std::move(filePath)), frames(std::move(frames)), framesPerSecond(framesPerSecond), loop(loop), width(width), height(height), name(std::move(name)), referenceCount(0)
 {
 }
 
@@ -116,11 +116,6 @@ const std::string &AnimationClip::getName() const
     return name;
 }
 
-const std::string &AnimationClip::getFilePath() const
-{
-    return filePath;
-}
-
 void AnimationClip::addReference()
 {
     referenceCount++;
@@ -132,7 +127,7 @@ bool AnimationClip::removeReferenceAndFreeIfNoReferences()
     {
         referenceCount--;
     }
-    if (referenceCount == 0 && !filePath.empty())
+    if (referenceCount == 0 && !getFilePath().empty())
     {
         GameManager::getInstance().freeAnimationClip(this);
         return true;

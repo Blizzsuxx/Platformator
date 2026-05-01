@@ -17,10 +17,12 @@ namespace mario
     private:
         AnimationClip waveAnimset;
         AudioWrapper winSound;
+
+        SERIALIZABLE_SCRIPT(
+            MarioGoalFlag,
+            waveAnimset,
+            winSound);
     };
 
-    REGISTER_SCRIPT(
-        MarioGoalFlag,
-        waveAnimset,
-        winSound);
+    REGISTER_SCRIPT(MarioGoalFlag);
 } // namespace mario

@@ -55,20 +55,22 @@ namespace mario
         void respawn();
         void updateInput(double timeDelta);
         void updateAnimation();
+
+        SERIALIZABLE_SCRIPT(
+            MarioPlayer,
+            walkSpeed,
+            jumpSpeed,
+            gravity,
+            maxFallSpeed,
+            stompBounceFactor,
+            idleAnimset,
+            runAnimset,
+            jumpAnimset,
+            fallAnimset,
+            winAnimset,
+            jumpSound,
+            hurtSound);
     };
 
-    REGISTER_SCRIPT(
-        MarioPlayer,
-        walkSpeed,
-        jumpSpeed,
-        gravity,
-        maxFallSpeed,
-        stompBounceFactor,
-        idleAnimset,
-        runAnimset,
-        jumpAnimset,
-        fallAnimset,
-        winAnimset,
-        jumpSound,
-        hurtSound);
+    REGISTER_SCRIPT(MarioPlayer);
 } // namespace mario

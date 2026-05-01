@@ -32,7 +32,7 @@ private:
     void releaseTexture();
 };
 
-struct AnimationClip
+struct AnimationClip : public Asset
 {
     AnimationClip();
     AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width, float height, std::string name, std::string filePath = "");
@@ -44,7 +44,6 @@ struct AnimationClip
     float getWidth() const;
     float getHeight() const;
     const std::string &getName() const;
-    const std::string &getFilePath() const;
 
     void addReference();
     bool removeReferenceAndFreeIfNoReferences();
@@ -55,7 +54,6 @@ struct AnimationClip
     float width;
     float height;
     std::string name;
-    std::string filePath;
     size_t referenceCount;
 };
 
@@ -63,4 +61,3 @@ void to_json(nlohmann::json &j, const AnimationFrame &frame);
 void from_json(const nlohmann::json &j, AnimationFrame &frame);
 
 void to_json(nlohmann::json &j, const AnimationClip &clip);
-void from_json(const nlohmann::json &j, AnimationClip &clip);

@@ -38,17 +38,19 @@ namespace mario
         AudioWrapper stompSound;
         bool defeated;
         double defeatedTimer;
+
+        SERIALIZABLE_SCRIPT(
+            MarioPatrolEnemy,
+            minX,
+            maxX,
+            walkSpeed,
+            stompMinSpeed,
+            stompTolerance,
+            squashDuration,
+            walkAnimset,
+            squashAnimset,
+            stompSound);
     };
 
-    REGISTER_SCRIPT(
-        MarioPatrolEnemy,
-        minX,
-        maxX,
-        walkSpeed,
-        stompMinSpeed,
-        stompTolerance,
-        squashDuration,
-        walkAnimset,
-        squashAnimset,
-        stompSound);
+    REGISTER_SCRIPT(MarioPatrolEnemy);
 } // namespace mario

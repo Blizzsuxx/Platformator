@@ -22,6 +22,7 @@ namespace platformator_json_detail
 
 #define PLATFORMATOR_CONCAT_INNER(left, right) left##right
 #define PLATFORMATOR_CONCAT(left, right) PLATFORMATOR_CONCAT_INNER(left, right)
+#define PLATFORMATOR_UNIQUE_NAME(prefix) PLATFORMATOR_CONCAT(prefix, __COUNTER__)
 #define PLATFORMATOR_FOR_EACH_1(macro, value1) macro(value1)
 #define PLATFORMATOR_FOR_EACH_2(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_1(macro, __VA_ARGS__)
 #define PLATFORMATOR_FOR_EACH_3(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_2(macro, __VA_ARGS__)
@@ -61,7 +62,7 @@ public:                                                                         
     }
 
 #define REGISTER_SCRIPT(Type) \
-    inline const bool PLATFORMATOR_CONCAT(platformatorRegisteredBehavior_, __LINE__) = []() { \
+    inline const bool PLATFORMATOR_UNIQUE_NAME(platformatorRegisteredBehavior_) = []() { \
         BehaviorFactoryRegistry::getInstance().registerFactory(#Type, []() -> Behavior * { return new Type(); }); \
         return true; }();
 

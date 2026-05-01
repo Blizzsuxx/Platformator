@@ -27,10 +27,40 @@ AnimationFrame::AnimationFrame(const AnimationFrame &other)
     retainTexture();
 }
 
+AnimationFrame &AnimationFrame::operator=(const AnimationFrame &other)
+{
+    if (this == &other)
+    {
+        return *this;
+    }
+
+    setTextureWrapper(other.textureWrapper);
+    duration = other.duration;
+    sourceRect = other.sourceRect;
+    hasSourceRect = other.hasSourceRect;
+    return *this;
+}
+
 AnimationFrame::AnimationFrame(AnimationFrame &&other) noexcept
     : textureWrapper(other.textureWrapper), duration(other.duration), sourceRect(other.sourceRect), hasSourceRect(other.hasSourceRect)
 {
     other.textureWrapper = nullptr;
+}
+
+AnimationFrame &AnimationFrame::operator=(AnimationFrame &&other) noexcept
+{
+    if (this == &other)
+    {
+        return *this;
+    }
+
+    releaseTexture();
+    textureWrapper = other.textureWrapper;
+    duration = other.duration;
+    sourceRect = other.sourceRect;
+    hasSourceRect = other.hasSourceRect;
+    other.textureWrapper = nullptr;
+    return *this;
 }
 
 AnimationFrame::~AnimationFrame()

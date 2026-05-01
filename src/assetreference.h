@@ -100,17 +100,20 @@ private:
             return gameManager.loadTexture(assetPath);
         }
 
-        if constexpr (std::is_same_v<T, AudioWrapper>)
+        else if constexpr (std::is_same_v<T, AudioWrapper>)
         {
             return gameManager.loadAudio(assetPath);
         }
 
-        if constexpr (std::is_same_v<T, AnimationClip>)
+        else if constexpr (std::is_same_v<T, AnimationClip>)
         {
             return gameManager.loadAnimationClip(assetPath);
         }
 
-        static_assert(always_false_asset_reference_v<T>, "AssetReference does not know how to load this asset type.");
+        else
+        {
+            static_assert(always_false_asset_reference_v<T>, "AssetReference does not know how to load this asset type.");
+        }
     }
 
     T *object;

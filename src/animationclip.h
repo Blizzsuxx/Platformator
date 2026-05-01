@@ -61,3 +61,4 @@ void to_json(nlohmann::json &j, const AnimationFrame &frame);
 void from_json(const nlohmann::json &j, AnimationFrame &frame);
 
 void to_json(nlohmann::json &j, const AnimationClip &clip);
+void from_json(const nlohmann::json &j, AnimationClip &clip);

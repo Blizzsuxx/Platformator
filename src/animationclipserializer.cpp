@@ -37,3 +37,17 @@ void to_json(nlohmann::json &j, const AnimationClip &clip)
         {"name", clip.name},
         {"filePath", clip.getFilePath()}};
 }
+
+void from_json(const nlohmann::json &j, AnimationClip &clip)
+{
+    j.at("frames").get_to(clip.frames);
+    j.at("framesPerSecond").get_to(clip.framesPerSecond);
+    j.at("loop").get_to(clip.loop);
+    j.at("width").get_to(clip.width);
+    j.at("height").get_to(clip.height);
+    j.at("name").get_to(clip.name);
+
+    std::string filePath;
+    j.at("filePath").get_to(filePath);
+    clip.setFilePath(filePath);
+}

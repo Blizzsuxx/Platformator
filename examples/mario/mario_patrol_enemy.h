@@ -33,9 +33,9 @@ namespace mario
         float stompMinSpeed;
         float stompTolerance;
         float squashDuration;
-        AnimationClip walkAnimset;
-        AnimationClip squashAnimset;
-        AudioWrapper stompSound;
+        AssetReference<AnimationClip> walkAnimset;
+        AssetReference<AnimationClip> squashAnimset;
+        AssetReference<AudioWrapper> stompSound;
         bool defeated;
         double defeatedTimer;
 

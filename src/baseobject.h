@@ -2,6 +2,8 @@
 
 #include <limits>
 #include <random>
+#include <string>
+#include <utility>
 
 class BaseObject
 {

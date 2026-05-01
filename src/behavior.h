@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "assetreference.h"
 #include "gameobject.h"
 #include "objectreference.h"
 

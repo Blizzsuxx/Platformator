@@ -1,12 +1,16 @@
 #pragma once
 
 #include <optional>
+#include <string>
 #include <type_traits>
 
 #include <json.hpp>
 
-#include "gamemanager.h"
 #include "baseobject.h"
+#include "gamemanager.h"
+
+template <typename T>
+inline constexpr bool always_false_asset_reference_v = false;
 
 template <typename T>
 class AssetReference
@@ -69,8 +73,7 @@ public:
             return nullptr;
         }
 
-        BaseObject *resolvedObject = gameManager.getObjectByFilePath(*filePath);
-        object = resolvedObject == nullptr ? nullptr : static_cast<T *>(resolvedObject);
+        object = loadAsset(gameManager, *filePath);
         return object;
     }
 
@@ -90,17 +93,37 @@ public:
     }
 
 private:
+    static T *loadAsset(GameManager &gameManager, const std::string &assetPath)
+    {
+        if constexpr (std::is_same_v<T, TextureWrapper>)
+        {
+            return gameManager.loadTexture(assetPath);
+        }
+
+        if constexpr (std::is_same_v<T, AudioWrapper>)
+        {
+            return gameManager.loadAudio(assetPath);
+        }
+
+        if constexpr (std::is_same_v<T, AnimationClip>)
+        {
+            return gameManager.loadAnimationClip(assetPath);
+        }
+
+        static_assert(always_false_asset_reference_v<T>, "AssetReference does not know how to load this asset type.");
+    }
+
     T *object;
-    std::optional<int> objectId;
+    std::optional<std::string> filePath;
 };
 
 template <typename T>
-void to_json(nlohmann::json &j, const ObjectReference<T> &reference)
+void to_json(nlohmann::json &j, const AssetReference<T> &reference)
 {
-    const std::optional<int> referenceId = reference.getReferencedId();
-    if (referenceId.has_value())
+    const std::optional<std::string> assetPath = reference.getFilePath();
+    if (assetPath.has_value())
     {
-        j = *referenceId;
+        j = *assetPath;
         return;
     }
 
@@ -108,7 +131,7 @@ void to_json(nlohmann::json &j, const ObjectReference<T> &reference)
 }
 
 template <typename T>
-void from_json(const nlohmann::json &j, ObjectReference<T> &reference)
+void from_json(const nlohmann::json &j, AssetReference<T> &reference)
 {
     if (j.is_null())
     {
@@ -116,5 +139,13 @@ void from_json(const nlohmann::json &j, ObjectReference<T> &reference)
         return;
     }
 
-    reference.setReferencedId(j.get<int>());
+    reference.setFilePath(j.get<std::string>());
+    reference.resolve();
 }
+
+namespace platformator
+{
+    using TextureAssetRef = AssetReference<TextureWrapper>;
+    using AudioAssetRef = AssetReference<AudioWrapper>;
+    using AnimationClipRef = AssetReference<AnimationClip>;
+} // namespace platformator

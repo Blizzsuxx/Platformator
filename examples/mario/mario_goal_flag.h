@@ -15,8 +15,8 @@ namespace mario
         bool reach();
 
     private:
-        AnimationClip waveAnimset;
-        AudioWrapper winSound;
+        AssetReference<AnimationClip> waveAnimset;
+        AssetReference<AudioWrapper> winSound;
 
         SERIALIZABLE_SCRIPT(
             MarioGoalFlag,

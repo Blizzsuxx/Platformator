@@ -2,6 +2,7 @@
 
 #include <string>
 #include <SDL3_mixer/SDL_mixer.h>
+#include "baseobject.h"
 #include "json.hpp"
 #include "jsonhelpers.h"
 

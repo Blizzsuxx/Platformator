@@ -35,5 +35,5 @@ void to_json(nlohmann::json &j, const AnimationClip &clip)
         {"width", clip.width},
         {"height", clip.height},
         {"name", clip.name},
-        {"filePath", clip.filePath}};
+        {"filePath", clip.getFilePath()}};
 }

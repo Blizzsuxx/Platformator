@@ -15,8 +15,8 @@ namespace mario
         bool collect();
 
     private:
-        AnimationClip spinAnimset;
-        AudioWrapper coinSound;
+        AssetReference<AnimationClip> spinAnimset;
+        AssetReference<AudioWrapper> coinSound;
 
         SERIALIZABLE_SCRIPT(
             MarioCoin,

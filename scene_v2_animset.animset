@@ -1,0 +1,9 @@
+format = "platformator_animset"
+version = 1
+name = "idle"
+fps = 1
+loop = true
+size = [32, 32]
+frames = [
+    "assets/ball.png",
+]

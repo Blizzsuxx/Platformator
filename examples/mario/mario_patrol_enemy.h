@@ -43,6 +43,7 @@ namespace mario
             MarioPatrolEnemy,
             minX,
             maxX,
+            direction,
             walkSpeed,
             stompMinSpeed,
             stompTolerance,

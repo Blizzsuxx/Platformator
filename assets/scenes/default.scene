@@ -1,139 +1,310 @@
-format = "platformator_scene"
-version = 1
-
-[[objects]]
-name = "Main Camera"
-
-[objects.camera]
-viewport = [0, 0, 640, 480]
-
-[[objects]]
-name = "Ball"
-position = [320, 240]
-
-[objects.rigidbody]
-bodyType = "dynamic"
-gravity = true
-mass = 10
-velocity = [200, 150]
-force = [0, 0]
-angularVelocity = 0
-torque = 0
-friction = 1
-restitution = 0
-
-[objects.boxCollider]
-height = 50
-width = 50
-trigger = false
-collisionGroup = 1
-collisionMask = 1
-
-[objects.sprite]
-path = "../ball.png"
-flip = "none"
-size = [50, 50]
-
-[[objects]]
-name = "Wall South"
-position = [320, 455]
-
-[objects.rigidbody]
-bodyType = "static"
-gravity = false
-mass = 1
-velocity = [0, 0]
-force = [0, 0]
-angularVelocity = 0
-torque = 0
-friction = 1
-restitution = 0
-
-[objects.boxCollider]
-size = [640, 50]
-trigger = false
-collisionGroup = 1
-collisionMask = 1
-
-[objects.sprite]
-path = "../wall.png"
-flip = "none"
-size = [640, 50]
-
-[[objects]]
-name = "Wall North"
-position = [320, 25]
-
-[objects.rigidbody]
-bodyType = "static"
-gravity = false
-mass = 1
-velocity = [0, 0]
-force = [0, 0]
-angularVelocity = 0
-torque = 0
-friction = 1
-restitution = 0
-
-[objects.boxCollider]
-size = [640, 50]
-trigger = false
-collisionGroup = 1
-collisionMask = 1
-
-[objects.sprite]
-path = "../wall.png"
-flip = "none"
-size = [640, 50]
-
-[[objects]]
-name = "Wall West"
-position = [25, 240]
-
-[objects.rigidbody]
-bodyType = "static"
-gravity = false
-mass = 1
-velocity = [0, 0]
-force = [0, 0]
-angularVelocity = 0
-torque = 0
-friction = 1
-restitution = 0
-
-[objects.boxCollider]
-size = [50, 480]
-trigger = false
-collisionGroup = 1
-collisionMask = 1
-
-[objects.sprite]
-path = "../wall.png"
-flip = "none"
-size = [50, 480]
-
-[[objects]]
-name = "Wall East"
-position = [615, 240]
-
-[objects.rigidbody]
-bodyType = "static"
-gravity = false
-mass = 1
-velocity = [0, 0]
-force = [0, 0]
-angularVelocity = 0
-torque = 0
-friction = 1
-restitution = 0
-
-[objects.boxCollider]
-size = [50, 480]
-trigger = false
-collisionGroup = 1
-collisionMask = 1
-
-[objects.sprite]
-path = "../wall.png"
-flip = "none"
-size = [50, 480]
+[
+    {
+        "id": 100,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Main Camera",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1000,
+                "camera": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "w": 640.0,
+                    "h": 480.0
+                },
+                "type": 2
+            }
+        ]
+    },
+    {
+        "id": 101,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 320.0,
+            "y": 240.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Ball",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1002,
+                "collisionGroup": 1,
+                "type": 3,
+                "colliderType": 1,
+                "collisionMask": 1,
+                "trigger": false,
+                "width": 50.0,
+                "height": 50.0
+            },
+            {
+                "id": 1001,
+                "velocity": {
+                    "x": 200.0,
+                    "y": 150.0
+                },
+                "force": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "mass": 10.0,
+                "angularVelocity": 0.0,
+                "torque": 0.0,
+                "friction": 1.0,
+                "restitution": 0.0,
+                "bodyType": 0,
+                "type": 4,
+                "gravity": true
+            },
+            {
+                "id": 1003,
+                "textureFilePath": "../ball.png",
+                "flip": 0,
+                "width": 50.0,
+                "height": 50.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    },
+    {
+        "id": 102,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 320.0,
+            "y": 455.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Wall South",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1005,
+                "collisionGroup": 1,
+                "type": 3,
+                "colliderType": 1,
+                "collisionMask": 1,
+                "trigger": false,
+                "width": 640.0,
+                "height": 50.0
+            },
+            {
+                "id": 1004,
+                "velocity": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "force": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "mass": 1.0,
+                "angularVelocity": 0.0,
+                "torque": 0.0,
+                "friction": 1.0,
+                "restitution": 0.0,
+                "bodyType": 1,
+                "type": 4,
+                "gravity": false
+            },
+            {
+                "id": 1006,
+                "textureFilePath": "../wall.png",
+                "flip": 0,
+                "width": 640.0,
+                "height": 50.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    },
+    {
+        "id": 103,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 320.0,
+            "y": 25.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Wall North",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1008,
+                "collisionGroup": 1,
+                "type": 3,
+                "colliderType": 1,
+                "collisionMask": 1,
+                "trigger": false,
+                "width": 640.0,
+                "height": 50.0
+            },
+            {
+                "id": 1007,
+                "velocity": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "force": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "mass": 1.0,
+                "angularVelocity": 0.0,
+                "torque": 0.0,
+                "friction": 1.0,
+                "restitution": 0.0,
+                "bodyType": 1,
+                "type": 4,
+                "gravity": false
+            },
+            {
+                "id": 1009,
+                "textureFilePath": "../wall.png",
+                "flip": 0,
+                "width": 640.0,
+                "height": 50.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    },
+    {
+        "id": 104,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 25.0,
+            "y": 240.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Wall West",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1011,
+                "collisionGroup": 1,
+                "type": 3,
+                "colliderType": 1,
+                "collisionMask": 1,
+                "trigger": false,
+                "width": 50.0,
+                "height": 480.0
+            },
+            {
+                "id": 1010,
+                "velocity": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "force": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "mass": 1.0,
+                "angularVelocity": 0.0,
+                "torque": 0.0,
+                "friction": 1.0,
+                "restitution": 0.0,
+                "bodyType": 1,
+                "type": 4,
+                "gravity": false
+            },
+            {
+                "id": 1012,
+                "textureFilePath": "../wall.png",
+                "flip": 0,
+                "width": 50.0,
+                "height": 480.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    },
+    {
+        "id": 105,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 615.0,
+            "y": 240.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Wall East",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1014,
+                "collisionGroup": 1,
+                "type": 3,
+                "colliderType": 1,
+                "collisionMask": 1,
+                "trigger": false,
+                "width": 50.0,
+                "height": 480.0
+            },
+            {
+                "id": 1013,
+                "velocity": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "force": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "mass": 1.0,
+                "angularVelocity": 0.0,
+                "torque": 0.0,
+                "friction": 1.0,
+                "restitution": 0.0,
+                "bodyType": 1,
+                "type": 4,
+                "gravity": false
+            },
+            {
+                "id": 1015,
+                "textureFilePath": "../wall.png",
+                "flip": 0,
+                "width": 50.0,
+                "height": 480.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    }
+]

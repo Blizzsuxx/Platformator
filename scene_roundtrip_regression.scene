@@ -1,0 +1,85 @@
+[
+    {
+        "id": 86,
+        "rotation": 0.25,
+        "active": true,
+        "position": {
+            "x": 210.0,
+            "y": 220.0
+        },
+        "scale": {
+            "x": 2.0,
+            "y": 1.5
+        },
+        "name": "Roundtrip Ball",
+        "tag": "Roundtrip",
+        "children": [],
+        "components": [
+            {
+                "id": 88,
+                "collisionGroup": 7,
+                "type": 3,
+                "colliderType": 0,
+                "collisionMask": 11,
+                "trigger": true,
+                "radius": 12.0
+            },
+            {
+                "id": 87,
+                "velocity": {
+                    "x": 30.0,
+                    "y": -40.0
+                },
+                "force": {
+                    "x": 4.0,
+                    "y": 5.0
+                },
+                "mass": 9.0,
+                "angularVelocity": 0.6000000238418579,
+                "torque": 1.2000000476837158,
+                "friction": 0.30000001192092896,
+                "restitution": 0.699999988079071,
+                "bodyType": 2,
+                "type": 4,
+                "gravity": false
+            },
+            {
+                "id": 89,
+                "textureFilePath": "assets/wall.png",
+                "flip": 2,
+                "width": 32.0,
+                "height": 48.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    },
+    {
+        "id": 90,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Roundtrip Camera",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 91,
+                "camera": {
+                    "x": 3.0,
+                    "y": 4.0,
+                    "w": 300.0,
+                    "h": 200.0
+                },
+                "type": 2
+            }
+        ]
+    }
+]

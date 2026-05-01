@@ -21,8 +21,15 @@ void from_json(const nlohmann::json &j, Audio &audio)
     std::string filePath;
     j.at("filePath").get_to(filePath);
 
-    AudioWrapper *audioWrapper = GameManager::getInstance().loadAudio(filePath);
-    audio.setAudio(audioWrapper);
+    if (!filePath.empty())
+    {
+        AudioWrapper *audioWrapper = GameManager::getInstance().loadAudio(filePath);
+        audio.setAudio(audioWrapper);
+    }
+    else
+    {
+        audio.setAudio(nullptr);
+    }
 
     audio.setGain(j.at("gain").get<float>());
     audio.setLoopCount(j.at("loopCount").get<float>());

@@ -1,0 +1,148 @@
+[
+    {
+        "id": 100,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Target Dummy",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 300,
+                "filePath": "",
+                "gain": 0.4000000059604645,
+                "loopCount": 0,
+                "type": 1,
+                "autoPlay": false
+            }
+        ]
+    },
+    {
+        "id": 101,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Main Camera",
+        "tag": "",
+        "children": [
+            {
+                "id": 102,
+                "rotation": 0.0,
+                "active": true,
+                "position": {
+                    "x": 12.0,
+                    "y": 34.0
+                },
+                "scale": {
+                    "x": 1.5,
+                    "y": 2.0
+                },
+                "name": "Scripted Object",
+                "tag": "",
+                "children": [],
+                "components": [
+                    {
+                        "id": 202,
+                        "textureFilePath": "assets/ball.png",
+                        "flip": 1,
+                        "width": 32.0,
+                        "height": 32.0,
+                        "sourceRectEnabled": false,
+                        "type": 6
+                    },
+                    {
+                        "id": 201,
+                        "currentFrameIndex": 0,
+                        "playbackSpeed": 1.5,
+                        "playing": true,
+                        "type": 0,
+                        "animationClipFilePath": "scene_v2_roundtrip.animset"
+                    },
+                    {
+                        "id": 203,
+                        "behaviors": [
+                            {
+                                "allowDash": true,
+                                "displayName": "Player One",
+                                "emitter": 300,
+                                "enabled": true,
+                                "icon": "assets/ball.png",
+                                "idleClip": "scene_v2_roundtrip.animset",
+                                "offset": {
+                                    "x": 11.25,
+                                    "y": -4.5
+                                },
+                                "precision": 987.654321,
+                                "sound": "examples/mario/assets/audio/jump.wav",
+                                "speed": 123.5,
+                                "targetObject": 100,
+                                "type": "AnnotatedSceneBehavior"
+                            }
+                        ],
+                        "type": 5
+                    }
+                ]
+            }
+        ],
+        "components": [
+            {
+                "id": 200,
+                "camera": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "w": 640.0,
+                    "h": 480.0
+                },
+                "type": 2
+            }
+        ]
+    },
+    {
+        "id": 103,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Sprite Only",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 204,
+                "textureFilePath": "assets/ball.png",
+                "flip": 0,
+                "width": 32.0,
+                "height": 32.0,
+                "sourceRectEnabled": true,
+                "type": 6,
+                "sourceRect": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "w": 16.0,
+                    "h": 16.0
+                }
+            }
+        ]
+    }
+]

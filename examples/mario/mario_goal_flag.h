@@ -23,6 +23,4 @@ namespace mario
             waveAnimset,
             winSound);
     };
-
-    REGISTER_SCRIPT(MarioGoalFlag);
 } // namespace mario

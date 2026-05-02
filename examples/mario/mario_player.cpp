@@ -130,7 +130,8 @@ namespace mario
 
         if (other->getIsTrigger())
         {
-            if (MarioCoin *coin = getBehavior<MarioCoin>(otherObject))
+            MarioCoin *coin = getBehavior<MarioCoin>(otherObject);
+            if (coin != nullptr)
             {
                 coin->collect();
                 return;

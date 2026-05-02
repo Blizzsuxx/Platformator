@@ -2,8 +2,10 @@
 
 void to_json(nlohmann::json &j, const CircleCollider &circleCollider)
 {
+    float radius = circleCollider.getRadiusWithoutScale();
+
     j = nlohmann::json{{"id", circleCollider.getId()},
-                       {"radius", circleCollider.getRadius()},
+                       {"radius", radius},
                        {"trigger", circleCollider.getIsTrigger()},
                        {"collisionGroup", circleCollider.getCollisionGroup()},
                        {"type", ComponentType::COLLIDER},

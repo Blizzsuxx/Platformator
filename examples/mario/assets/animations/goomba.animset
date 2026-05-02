@@ -1,10 +1,32 @@
-format = "platformator_animset"
-version = 1
-name = "walk"
-fps = 6
-loop = true
-size = [32, 32]
-frames = [
-    "../enemies/walk_0.png",
-    "../enemies/walk_1.png",
-]
+{
+    "frames": [
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../enemies/walk_0.png"
+        },
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../enemies/walk_1.png"
+        }
+    ],
+    "framesPerSecond": 6.0,
+    "loop": true,
+    "width": 32.0,
+    "height": 32.0,
+    "name": "walk",
+    "filePath": "assets/animations/goomba.animset"
+}

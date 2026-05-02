@@ -19,6 +19,7 @@ public:
 
     // Getters
     float getRadius() const;
+    float getRadiusWithoutScale() const;
 
     // Setters
     void setRadius(const float radius);

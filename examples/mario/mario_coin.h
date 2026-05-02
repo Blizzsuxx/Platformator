@@ -23,6 +23,4 @@ namespace mario
             spinAnimset,
             coinSound);
     };
-
-    REGISTER_SCRIPT(MarioCoin);
 } // namespace mario

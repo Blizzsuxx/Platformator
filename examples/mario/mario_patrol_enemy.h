@@ -52,6 +52,4 @@ namespace mario
             squashAnimset,
             stompSound);
     };
-
-    REGISTER_SCRIPT(MarioPatrolEnemy);
 } // namespace mario

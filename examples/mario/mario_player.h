@@ -71,6 +71,4 @@ namespace mario
             jumpSound,
             hurtSound);
     };
-
-    REGISTER_SCRIPT(MarioPlayer);
 } // namespace mario

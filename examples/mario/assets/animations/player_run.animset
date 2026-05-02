@@ -1,11 +1,43 @@
-format = "platformator_animset"
-version = 1
-name = "run"
-fps = 12
-loop = true
-size = [32, 32]
-frames = [
-    "../player/run_0.png",
-    "../player/run_1.png",
-    "../player/run_2.png",
-]
+{
+    "frames": [
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../player/run_0.png"
+        },
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../player/run_1.png"
+        },
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../player/run_2.png"
+        }
+    ],
+    "framesPerSecond": 12.0,
+    "loop": true,
+    "width": 32.0,
+    "height": 32.0,
+    "name": "run",
+    "filePath": "assets/animations/player_run.animset"
+}

@@ -1,9 +1,21 @@
-format = "platformator_animset"
-version = 1
-name = "idle"
-fps = 1
-loop = true
-size = [32, 32]
-frames = [
-    "assets/ball.png",
-]
+{
+    "frames": [
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "assets/ball.png"
+        }
+    ],
+    "framesPerSecond": 1.0,
+    "loop": true,
+    "width": 32.0,
+    "height": 32.0,
+    "name": "idle",
+    "filePath": "scene_v2_animset.animset"
+}

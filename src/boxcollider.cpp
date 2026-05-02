@@ -54,9 +54,19 @@ float BoxCollider::getWidth() const
     return width * getGameObject()->getScale().x();
 }
 
+float BoxCollider::getWidthWithoutScale() const
+{
+    return width;
+}
+
 float BoxCollider::getHeight() const
 {
     return height * getGameObject()->getScale().y();
+}
+
+float BoxCollider::getHeightWithoutScale() const
+{
+    return height;
 }
 
 // Setters
@@ -64,7 +74,13 @@ void BoxCollider::setWidth(const float width)
 {
     this->width = width;
 
-    Rigidbody *rigidbodyComponent = getGameObject()->getComponent<Rigidbody>();
+    GameObject *gameObject = getGameObject();
+    if (gameObject == nullptr)
+    {
+        return;
+    }
+
+    Rigidbody *rigidbodyComponent = gameObject->getComponent<Rigidbody>();
     if (rigidbodyComponent != nullptr)
     {
         rigidbodyComponent->refreshMomentOfInertiaCache();
@@ -77,7 +93,13 @@ void BoxCollider::setHeight(const float height)
 {
     this->height = height;
 
-    Rigidbody *rigidbodyComponent = getGameObject()->getComponent<Rigidbody>();
+    GameObject *gameObject = getGameObject();
+    if (gameObject == nullptr)
+    {
+        return;
+    }
+
+    Rigidbody *rigidbodyComponent = gameObject->getComponent<Rigidbody>();
     if (rigidbodyComponent != nullptr)
     {
         rigidbodyComponent->refreshMomentOfInertiaCache();

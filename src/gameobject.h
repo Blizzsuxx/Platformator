@@ -44,7 +44,7 @@ public:
     GameObject *getGameObject() const;
     ComponentType getType() const;
 
-    void setGameObject(GameObject *gameObject);
+    virtual void setGameObject(GameObject *gameObject);
 
 private:
     GameObject *gameObject;

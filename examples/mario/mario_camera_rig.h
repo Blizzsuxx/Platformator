@@ -32,6 +32,4 @@ namespace mario
             levelWidth);
     };
 
-    REGISTER_SCRIPT(MarioCameraRig);
-
 } // namespace mario

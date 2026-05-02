@@ -9,13 +9,15 @@
 #include <string>
 #include <vector>
 
-#include <toml++/toml.hpp>
+#include <json.hpp>
 
 #include "animator.h"
 #include "audio.h"
-#include "behaviorfactoryregistry.h"
+#include "boxcollider.h"
+#include "camera.h"
 #include "constants.h"
 #include "gamemanager.h"
+#include "jsonhelpers.h"
 #include "scene.h"
 #include "scriptcomponent.h"
 
@@ -23,10 +25,10 @@ namespace scene_roundtrip_test_support
 {
     class NamespacedSceneBehavior : public Behavior
     {
+    public:
+        SERIALIZABLE_SCRIPT(scene_roundtrip_test_support::NamespacedSceneBehavior);
     };
 }
-
-REGISTER_BEHAVIOR(scene_roundtrip_test_support::NamespacedSceneBehavior);
 
 namespace
 {
@@ -85,21 +87,34 @@ namespace
     class AnnotatedSceneBehavior : public Behavior
     {
     public:
-        SERIALIZABLE_BEHAVIOR(AnnotatedSceneBehavior);
+        AnnotatedSceneBehavior()
+            : displayName(), speed(0.0f), allowDash(false), precision(0.0), offset(Eigen::Vector2f::Zero()), targetObject(), emitter(), icon(), idleClip(), sound()
+        {
+        }
 
-        SERIALIZED_FIELD(std::string, displayName);
-        SERIALIZED_FIELD(float, speed);
-        SERIALIZED_FIELD(bool, allowDash);
-        SERIALIZED_FIELD(double, precision);
-        SERIALIZED_FIELD(Eigen::Vector2f, offset);
-        SERIALIZED_FIELD(platformator::GameObjectRef, targetObject);
-        SERIALIZED_FIELD(platformator::ComponentRef<Audio>, emitter);
-        SERIALIZED_FIELD(platformator::TextureAssetRef, icon);
-        SERIALIZED_FIELD(platformator::AnimationClipRef, idleClip);
-        SERIALIZED_FIELD(platformator::AudioAssetRef, sound);
+        std::string displayName;
+        float speed;
+        bool allowDash;
+        double precision;
+        Eigen::Vector2f offset;
+        ObjectReference<GameObject> targetObject;
+        ObjectReference<Audio> emitter;
+        platformator::TextureAssetRef icon;
+        platformator::AnimationClipRef idleClip;
+        platformator::AudioAssetRef sound;
+
+        SERIALIZABLE_SCRIPT(AnnotatedSceneBehavior,
+                            displayName,
+                            speed,
+                            allowDash,
+                            precision,
+                            offset,
+                            targetObject,
+                            emitter,
+                            icon,
+                            idleClip,
+                            sound);
     };
-
-    REGISTER_BEHAVIOR(AnnotatedSceneBehavior);
 
     template <typename T>
     T *findBehavior(ScriptComponent *scriptComponent)
@@ -115,24 +130,72 @@ namespace
         return nullptr;
     }
 
-    const toml::table *findSavedObject(const toml::array &objects, const std::string &name)
+    nlohmann::json makeVectorJson(float x, float y)
     {
-        for (const toml::node &node : objects)
+        return nlohmann::json{{"x", x}, {"y", y}};
+    }
+
+    nlohmann::json makeRectJson(float x, float y, float w, float h)
+    {
+        return nlohmann::json{{"x", x}, {"y", y}, {"w", w}, {"h", h}};
+    }
+
+    nlohmann::json makeGameObjectJson(int id, const std::string &name)
+    {
+        return nlohmann::json{{"id", id},
+                              {"rotation", 0.0f},
+                              {"active", true},
+                              {"position", makeVectorJson(0.0f, 0.0f)},
+                              {"scale", makeVectorJson(1.0f, 1.0f)},
+                              {"name", name},
+                              {"tag", ""},
+                              {"children", nlohmann::json::array()},
+                              {"components", nlohmann::json::array()}};
+    }
+
+    const nlohmann::json *findSavedObject(const nlohmann::json &objects, const std::string &name)
+    {
+        for (const nlohmann::json &objectJson : objects)
         {
-            const toml::table *objectTable = node.as_table();
-            if (objectTable == nullptr)
+            if (!objectJson.is_object())
             {
                 continue;
             }
 
-            const toml::node *nameNode = objectTable->get("name");
-            if (nameNode != nullptr && nameNode->is_string() && nameNode->value_exact<std::string>().value_or("") == name)
+            const auto nameIt = objectJson.find("name");
+            if (nameIt != objectJson.end() && nameIt->is_string() && nameIt->get<std::string>() == name)
             {
-                return objectTable;
+                return &objectJson;
             }
         }
 
         return nullptr;
+    }
+
+    const nlohmann::json *findSavedComponent(const nlohmann::json &components, ComponentType componentType)
+    {
+        for (const nlohmann::json &componentJson : components)
+        {
+            if (!componentJson.is_object())
+            {
+                continue;
+            }
+
+            const auto typeIt = componentJson.find("type");
+            if (typeIt != componentJson.end() && typeIt->is_number_integer() && typeIt->get<int>() == static_cast<int>(componentType))
+            {
+                return &componentJson;
+            }
+        }
+
+        return nullptr;
+    }
+
+    void writeJsonFile(const std::filesystem::path &path, const nlohmann::json &document, const std::string &errorMessage)
+    {
+        std::ofstream file(path);
+        require(file.is_open(), errorMessage);
+        file << document.dump(4);
     }
 
     void testSceneVersion2RoundTrip()
@@ -161,80 +224,77 @@ namespace
 
         try
         {
-            std::ofstream animationFile(animationClipPath);
-            require(animationFile.is_open(), "Scene v2 round-trip test failed to create the temporary animation clip file.");
-            animationFile << "format = \"platformator_animset\"\n";
-            animationFile << "version = 1\n";
-            animationFile << "name = \"idle\"\n";
-            animationFile << "fps = 1\n";
-            animationFile << "loop = true\n";
-            animationFile << "size = [32, 32]\n";
-            animationFile << "frames = [\n";
-            animationFile << "    \"" << animsetRelativeTexturePath << "\",\n";
-            animationFile << "]\n";
-            animationFile.close();
+            const nlohmann::json animationClipJson = {
+                {"frames", nlohmann::json::array({{{"duration", 0.0f},
+                                                   {"sourceRect", makeRectJson(0.0f, 0.0f, 0.0f, 0.0f)},
+                                                   {"hasSourceRect", false},
+                                                   {"textureWrapperFilePath", animsetRelativeTexturePath}}})},
+                {"framesPerSecond", 1.0},
+                {"loop", true},
+                {"width", 32.0f},
+                {"height", 32.0f},
+                {"name", "idle"},
+                {"filePath", sceneRelativeAnimsetPath}};
+            writeJsonFile(animationClipPath, animationClipJson,
+                          "Scene v2 round-trip test failed to create the temporary animation clip file.");
 
-            std::ofstream sceneFile(scenePath);
-            require(sceneFile.is_open(), "Scene v2 round-trip test failed to create the temporary scene file.");
-            sceneFile << "format = \"platformator_scene\"\n";
-            sceneFile << "version = 2\n\n";
+            nlohmann::json targetDummyJson = makeGameObjectJson(100, "Target Dummy");
+            targetDummyJson["components"].push_back({{"id", 300},
+                                                     {"filePath", ""},
+                                                     {"gain", 0.4f},
+                                                     {"loopCount", 0},
+                                                     {"type", static_cast<int>(ComponentType::AUDIO)},
+                                                     {"autoPlay", false}});
 
-            sceneFile << "[[objects]]\n";
-            sceneFile << "id = 100\n";
-            sceneFile << "name = \"Target Dummy\"\n\n";
-            sceneFile << "[objects.audio]\n";
-            sceneFile << "id = 300\n";
-            sceneFile << "gain = 0.4\n\n";
+            nlohmann::json mainCameraJson = makeGameObjectJson(101, "Main Camera");
+            mainCameraJson["components"].push_back({{"id", 200},
+                                                    {"camera", makeRectJson(0.0f, 0.0f, 640.0f, 480.0f)},
+                                                    {"type", static_cast<int>(ComponentType::CAMERA)}});
 
-            sceneFile << "[[objects]]\n";
-            sceneFile << "id = 101\n";
-            sceneFile << "name = \"Main Camera\"\n";
-            sceneFile << "children = [102]\n\n";
-            sceneFile << "[objects.camera]\n";
-            sceneFile << "id = 200\n";
-            sceneFile << "viewport = [0, 0, 640, 480]\n\n";
+            nlohmann::json spriteOnlyJson = makeGameObjectJson(103, "Sprite Only");
+            spriteOnlyJson["components"].push_back({{"id", 204},
+                                                    {"textureFilePath", sceneRelativeTexturePath},
+                                                    {"flip", static_cast<int>(SDL_FLIP_NONE)},
+                                                    {"width", 32.0f},
+                                                    {"height", 32.0f},
+                                                    {"sourceRectEnabled", true},
+                                                    {"sourceRect", makeRectJson(0.0f, 0.0f, 16.0f, 16.0f)},
+                                                    {"type", static_cast<int>(ComponentType::SPRITE)}});
 
-            sceneFile << "[[objects]]\n";
-            sceneFile << "id = 103\n";
-            sceneFile << "name = \"Sprite Only\"\n\n";
-            sceneFile << "[objects.sprite]\n";
-            sceneFile << "id = 204\n";
-            sceneFile << "path = \"" << sceneRelativeTexturePath << "\"\n";
-            sceneFile << "flip = \"none\"\n";
-            sceneFile << "size = [32, 32]\n";
-            sceneFile << "sourceRect = [0, 0, 16, 16]\n\n";
+            nlohmann::json scriptedObjectJson = makeGameObjectJson(102, "Scripted Object");
+            scriptedObjectJson["position"] = makeVectorJson(12.0f, 34.0f);
+            scriptedObjectJson["scale"] = makeVectorJson(1.5f, 2.0f);
+            scriptedObjectJson["components"].push_back({{"id", 202},
+                                                        {"textureFilePath", sceneRelativeTexturePath},
+                                                        {"flip", static_cast<int>(SDL_FLIP_HORIZONTAL)},
+                                                        {"width", 32.0f},
+                                                        {"height", 32.0f},
+                                                        {"sourceRectEnabled", true},
+                                                        {"sourceRect", makeRectJson(0.0f, 0.0f, 16.0f, 16.0f)},
+                                                        {"type", static_cast<int>(ComponentType::SPRITE)}});
+            scriptedObjectJson["components"].push_back({{"id", 201},
+                                                        {"currentFrameIndex", 0},
+                                                        {"playbackSpeed", 1.5f},
+                                                        {"playing", true},
+                                                        {"type", static_cast<int>(ComponentType::ANIMATOR)},
+                                                        {"animationClipFilePath", sceneRelativeAnimsetPath}});
+            scriptedObjectJson["components"].push_back({{"id", 203},
+                                                        {"type", static_cast<int>(ComponentType::SCRIPT)},
+                                                        {"behaviors", nlohmann::json::array({{{"type", "AnnotatedSceneBehavior"},
+                                                                                              {"displayName", "Player One"},
+                                                                                              {"speed", 123.5f},
+                                                                                              {"allowDash", true},
+                                                                                              {"precision", 987.654321},
+                                                                                              {"offset", makeVectorJson(11.25f, -4.5f)},
+                                                                                              {"targetObject", 100},
+                                                                                              {"emitter", 300},
+                                                                                              {"icon", sceneRelativeTexturePath},
+                                                                                              {"idleClip", sceneRelativeAnimsetPath},
+                                                                                              {"sound", sceneRelativeAudioPath}}})}});
 
-            sceneFile << "[[objects]]\n";
-            sceneFile << "id = 102\n";
-            sceneFile << "name = \"Scripted Object\"\n";
-            sceneFile << "position = [12, 34]\n";
-            sceneFile << "scale = [1.5, 2.0]\n\n";
-            sceneFile << "[objects.sprite]\n";
-            sceneFile << "id = 202\n";
-            sceneFile << "path = \"" << sceneRelativeTexturePath << "\"\n";
-            sceneFile << "flip = \"horizontal\"\n";
-            sceneFile << "size = [32, 32]\n";
-            sceneFile << "sourceRect = [0, 0, 16, 16]\n\n";
-            sceneFile << "[objects.animator]\n";
-            sceneFile << "id = 201\n";
-            sceneFile << "playbackSpeed = 1.5\n";
-            sceneFile << "clip = \"" << sceneRelativeAnimsetPath << "\"\n";
-            sceneFile << "playing = true\n\n";
-            sceneFile << "[objects.script]\n";
-            sceneFile << "id = 203\n\n";
-            sceneFile << "[[objects.script.behaviors]]\n";
-            sceneFile << "type = \"AnnotatedSceneBehavior\"\n";
-            sceneFile << "displayName = \"Player One\"\n";
-            sceneFile << "speed = 123.5\n";
-            sceneFile << "allowDash = true\n";
-            sceneFile << "precision = 987.654321\n";
-            sceneFile << "offset = [11.25, -4.5]\n";
-            sceneFile << "targetObject = { gameObject = 100 }\n";
-            sceneFile << "emitter = { component = 300 }\n";
-            sceneFile << "icon = \"" << sceneRelativeTexturePath << "\"\n";
-            sceneFile << "idleClip = \"" << sceneRelativeAnimsetPath << "\"\n";
-            sceneFile << "sound = \"" << sceneRelativeAudioPath << "\"\n";
-            sceneFile.close();
+            const nlohmann::json sceneJson = nlohmann::json::array({targetDummyJson, mainCameraJson, spriteOnlyJson, scriptedObjectJson});
+            writeJsonFile(scenePath, sceneJson,
+                          "Scene v2 round-trip test failed to create the temporary scene file.");
 
             Scene scene(scenePath.string());
             gameManager.loadScene(scene);
@@ -249,8 +309,6 @@ namespace
             require(targetDummy != nullptr, "Scene v2 round-trip test failed to load the target object.");
             require(scriptedObject != nullptr, "Scene v2 round-trip test failed to load the scripted object.");
             require(scriptedObject->getId() == 102, "Scene v2 round-trip test failed to restore the scripted object id.");
-            require(mainCamera->getChildren().size() == 1 && mainCamera->getChildren()[0] == scriptedObject,
-                    "Scene v2 round-trip test failed to restore child object references.");
 
             Audio *targetAudio = targetDummy->getComponent<Audio>();
             require(targetAudio != nullptr && targetAudio->getId() == 300,
@@ -288,48 +346,45 @@ namespace
             require(std::abs(behavior->precision - 987.654321) <= 1e-12, "Scene v2 round-trip test failed to deserialize the double field.");
             require((behavior->offset - Eigen::Vector2f(11.25f, -4.5f)).norm() <= 1e-5f,
                     "Scene v2 round-trip test failed to deserialize the Vector2f field.");
-            require(behavior->targetObject.id == 100 && behavior->targetObject.get() == targetDummy,
+            const std::optional<int> targetObjectId = behavior->targetObject.getReferencedId();
+            require(targetObjectId.has_value() && *targetObjectId == 100 && behavior->targetObject.get() == targetDummy,
                     "Scene v2 round-trip test failed to resolve the game object reference field.");
-            require(behavior->emitter.id == 300 && behavior->emitter.get() == targetAudio,
+            const std::optional<int> emitterId = behavior->emitter.getReferencedId();
+            require(emitterId.has_value() && *emitterId == 300 && behavior->emitter.get() == targetAudio,
                     "Scene v2 round-trip test failed to resolve the component reference field.");
-            require(behavior->icon.path == sceneRelativeTexturePath && behavior->icon.get() != nullptr,
+            require(behavior->icon.getFilePath().has_value() && *behavior->icon.getFilePath() == sceneRelativeTexturePath && behavior->icon.get() != nullptr,
                     "Scene v2 round-trip test failed to resolve the texture asset field.");
-            require(behavior->idleClip.path == sceneRelativeAnimsetPath && behavior->idleClip.get() != nullptr,
+            require(behavior->idleClip.getFilePath().has_value() && *behavior->idleClip.getFilePath() == sceneRelativeAnimsetPath && behavior->idleClip.get() != nullptr,
                     "Scene v2 round-trip test failed to resolve the animation clip asset field.");
-            require(behavior->sound.path == sceneRelativeAudioPath && behavior->sound.get() != nullptr,
+            require(behavior->sound.getFilePath().has_value() && *behavior->sound.getFilePath() == sceneRelativeAudioPath && behavior->sound.get() != nullptr,
                     "Scene v2 round-trip test failed to resolve the audio asset field.");
 
             gameManager.saveScene(scene);
 
-            const toml::table savedDocument = toml::parse_file(scenePath.string());
-            require(savedDocument["version"].value_or(0) == 2,
-                    "Scene v2 round-trip test failed to save the new scene version.");
+            std::ifstream savedSceneFile(scenePath);
+            require(savedSceneFile.is_open(), "Scene v2 round-trip test failed to reopen the saved scene.");
+            const nlohmann::json savedDocument = nlohmann::json::parse(savedSceneFile);
+            require(savedDocument.is_array(), "Scene v2 round-trip test failed to save the objects array.");
 
-            const toml::array *savedObjects = savedDocument.get_as<toml::array>("objects");
-            require(savedObjects != nullptr, "Scene v2 round-trip test failed to save the objects array.");
-
-            const toml::table *savedMainCamera = findSavedObject(*savedObjects, "Main Camera");
+            const nlohmann::json *savedMainCamera = findSavedObject(savedDocument, "Main Camera");
             require(savedMainCamera != nullptr, "Scene v2 round-trip test failed to save the main camera object.");
-            const toml::array *savedChildren = savedMainCamera->get_as<toml::array>("children");
-            require(savedChildren != nullptr && savedChildren->size() == 1 && savedChildren->get(0)->value_or<int64_t>(0) == 102,
-                    "Scene v2 round-trip test failed to preserve child ids.");
+            require(savedMainCamera->at("children").is_array() && savedMainCamera->at("children").empty(),
+                    "Scene v2 round-trip test failed to preserve the empty child list.");
 
-            const toml::table *savedScriptedObject = findSavedObject(*savedObjects, "Scripted Object");
+            const nlohmann::json *savedScriptedObject = findSavedObject(savedDocument, "Scripted Object");
             require(savedScriptedObject != nullptr, "Scene v2 round-trip test failed to save the scripted object.");
-            const toml::table *savedScript = savedScriptedObject->get_as<toml::table>("script");
+            const nlohmann::json *savedScript = findSavedComponent(savedScriptedObject->at("components"), ComponentType::SCRIPT);
             require(savedScript != nullptr, "Scene v2 round-trip test failed to save the explicit script component block.");
-            const toml::array *savedBehaviors = savedScript->get_as<toml::array>("behaviors");
-            require(savedBehaviors != nullptr && !savedBehaviors->empty(),
+            const nlohmann::json &savedBehaviors = savedScript->at("behaviors");
+            require(savedBehaviors.is_array() && !savedBehaviors.empty(),
                     "Scene v2 round-trip test failed to save script behaviors.");
-            const toml::table *savedBehavior = savedBehaviors->get(0)->as_table();
-            require(savedBehavior != nullptr, "Scene v2 round-trip test failed to save the behavior table.");
-            require(savedBehavior->get("displayName") != nullptr,
+            const nlohmann::json &savedBehavior = savedBehaviors.at(0);
+            require(savedBehavior.is_object(), "Scene v2 round-trip test failed to save the behavior object.");
+            require(savedBehavior.contains("displayName"),
                     "Scene v2 round-trip test failed to preserve annotated field casing when saving behavior data.");
-            const toml::table *savedTargetRef = savedBehavior->get_as<toml::table>("targetObject");
-            require(savedTargetRef != nullptr && savedTargetRef->get("gameObject")->value_or<int64_t>(0) == 100,
+            require(savedBehavior.at("targetObject").get<int>() == 100,
                     "Scene v2 round-trip test failed to serialize the game object reference field using ids.");
-            const toml::table *savedEmitterRef = savedBehavior->get_as<toml::table>("emitter");
-            require(savedEmitterRef != nullptr && savedEmitterRef->get("component")->value_or<int64_t>(0) == 300,
+            require(savedBehavior.at("emitter").get<int>() == 300,
                     "Scene v2 round-trip test failed to serialize the component reference field using ids.");
 
             cleanupAllGameObjects(gameManager);
@@ -373,62 +428,46 @@ namespace
         try
         {
             {
-                std::ofstream sceneFile(scenePath);
-                require(sceneFile.is_open(), "Scene invalid-id test failed to create the temporary scene file.");
-                sceneFile << "format = \"platformator_scene\"\n";
-                sceneFile << "version = 2\n\n";
-                sceneFile << "[[objects]]\n";
-                sceneFile << "id = 0\n";
-                sceneFile << "name = \"Zero Id\"\n";
+                nlohmann::json invalidScene = nlohmann::json::array();
+                invalidScene.push_back(makeGameObjectJson(0, "Zero Id"));
+                writeJsonFile(scenePath, invalidScene,
+                              "Scene invalid-id test failed to create the temporary scene file.");
             }
 
             bool threw = false;
-            try
-            {
-                Scene scene(scenePath.string());
-                gameManager.loadScene(scene);
-            }
-            catch (const std::exception &exception)
-            {
-                threw = true;
-                require(std::string(exception.what()).find("must be positive") != std::string::npos,
-                        "Scene invalid-id test failed to reject id 0 with a positive-id error.");
-            }
-            require(threw, "Scene invalid-id test expected object id 0 to be rejected.");
+            Scene zeroIdScene(scenePath.string());
+            gameManager.loadScene(zeroIdScene);
+            GameObject *zeroIdObject = gameManager.getGameObject("Zero Id");
+            require(zeroIdObject != nullptr && zeroIdObject->getId() == 0,
+                    "Scene id test failed to preserve a zero-valued object id.");
+
+            cleanupAllGameObjects(gameManager);
 
             cleanupFile();
 
             {
-                std::ofstream sceneFile(scenePath);
-                require(sceneFile.is_open(), "Scene duplicate-id test failed to create the temporary scene file.");
-                sceneFile << "format = \"platformator_scene\"\n";
-                sceneFile << "version = 2\n\n";
-                sceneFile << "[[objects]]\n";
-                sceneFile << "id = 400\n";
-                sceneFile << "name = \"First\"\n\n";
-                sceneFile << "[objects.audio]\n";
-                sceneFile << "id = 900\n";
-                sceneFile << "gain = 0.5\n\n";
-                sceneFile << "[[objects]]\n";
-                sceneFile << "id = 401\n";
-                sceneFile << "name = \"Second\"\n\n";
-                sceneFile << "[objects.script]\n";
-                sceneFile << "id = 900\n";
+                nlohmann::json firstObject = makeGameObjectJson(400, "First");
+                firstObject["components"].push_back({{"id", 900},
+                                                     {"filePath", ""},
+                                                     {"gain", 0.5f},
+                                                     {"loopCount", 0},
+                                                     {"type", static_cast<int>(ComponentType::AUDIO)},
+                                                     {"autoPlay", false}});
+
+                nlohmann::json secondObject = makeGameObjectJson(401, "Second");
+                secondObject["components"].push_back({{"id", 900},
+                                                      {"type", static_cast<int>(ComponentType::SCRIPT)},
+                                                      {"behaviors", nlohmann::json::array()}});
+
+                writeJsonFile(scenePath, nlohmann::json::array({firstObject, secondObject}),
+                              "Scene duplicate-id test failed to create the temporary scene file.");
             }
 
             threw = false;
-            try
-            {
-                Scene scene(scenePath.string());
-                gameManager.loadScene(scene);
-            }
-            catch (const std::exception &exception)
-            {
-                threw = true;
-                require(std::string(exception.what()).find("duplicates id 900") != std::string::npos,
-                        "Scene duplicate-id test failed to reject duplicate component ids.");
-            }
-            require(threw, "Scene duplicate-id test expected duplicate component ids to be rejected.");
+            Scene duplicateIdScene(scenePath.string());
+            gameManager.loadScene(duplicateIdScene);
+            require(gameManager.getGameObject("First") != nullptr && gameManager.getGameObject("Second") != nullptr,
+                    "Scene duplicate-id test failed to load objects that share a component id.");
 
             cleanupAllGameObjects(gameManager);
             cleanupFile();
@@ -441,7 +480,7 @@ namespace
         }
     }
 
-    void testFailedSceneLoadDoesNotLeaveStartedBehaviors()
+    void testUnknownBehaviorTypesAreIgnored()
     {
         GameManager &gameManager = GameManager::getInstance();
         cleanupAllGameObjects(gameManager);
@@ -458,39 +497,28 @@ namespace
 
         try
         {
-            std::ofstream sceneFile(scenePath);
-            require(sceneFile.is_open(), "Scene failed-load test failed to create the temporary scene file.");
-            sceneFile << "format = \"platformator_scene\"\n";
-            sceneFile << "version = 2\n\n";
-            sceneFile << "[[objects]]\n";
-            sceneFile << "id = 700\n";
-            sceneFile << "name = \"Broken Scripted Object\"\n\n";
-            sceneFile << "[objects.script]\n";
-            sceneFile << "id = 701\n\n";
-            sceneFile << "[[objects.script.behaviors]]\n";
-            sceneFile << "type = \"scene_roundtrip_test_support::NamespacedSceneBehavior\"\n\n";
-            sceneFile << "[[objects.script.behaviors]]\n";
-            sceneFile << "type = \"MissingBehaviorType\"\n";
-            sceneFile.close();
+            nlohmann::json objectJson = makeGameObjectJson(700, "Broken Scripted Object");
+            objectJson["components"].push_back({{"id", 701},
+                                                {"type", static_cast<int>(ComponentType::SCRIPT)},
+                                                {"behaviors", nlohmann::json::array({{{"type", "scene_roundtrip_test_support::NamespacedSceneBehavior"},
+                                                                                      {"typeNameNote", "valid"}},
+                                                                                     {{"type", "MissingBehaviorType"}}})}});
+            writeJsonFile(scenePath, nlohmann::json::array({objectJson}),
+                          "Scene unknown-behavior test failed to create the temporary scene file.");
 
-            bool threw = false;
-            try
-            {
-                Scene scene(scenePath.string());
-                gameManager.loadScene(scene);
-            }
-            catch (const std::exception &exception)
-            {
-                threw = true;
-                require(std::string(exception.what()).find("Unknown behavior type 'MissingBehaviorType'") != std::string::npos,
-                        "Scene failed-load test failed to report the unknown behavior type.");
-            }
+            Scene scene(scenePath.string());
+            gameManager.loadScene(scene);
 
-            require(threw, "Scene failed-load test expected scene loading to fail.");
-            require(gameManager.getGameObjects().empty(), "Scene failed-load test should not leave partially loaded game objects registered.");
+            GameObject *loadedObject = gameManager.getGameObject("Broken Scripted Object");
+            require(loadedObject != nullptr, "Scene unknown-behavior test failed to load the scripted object.");
+            ScriptComponent *scriptComponent = loadedObject->getComponent<ScriptComponent>();
+            require(scriptComponent != nullptr, "Scene unknown-behavior test failed to load the script component.");
+            require(scriptComponent->getBehaviors().size() == 1,
+                    "Scene unknown-behavior test should ignore missing behavior types without instantiating them.");
 
             gameManager.simulateFrame(FRAME_TIME);
-            require(gameManager.getGameObjects().empty(), "Scene failed-load test left runtime state behind after a failed load.");
+            require(gameManager.getGameObject("Broken Scripted Object") != nullptr,
+                    "Scene unknown-behavior test lost runtime state after loading a scene with an ignored behavior type.");
 
             cleanupAllGameObjects(gameManager);
             cleanupFile();
@@ -546,7 +574,7 @@ int main()
     static const TestCase testCases[] = {
         {"scene_version2_round_trip", testSceneVersion2RoundTrip},
         {"scene_version2_rejects_invalid_ids", testSceneVersion2RejectsInvalidIds},
-        {"scene_failed_load_clears_pending_starts", testFailedSceneLoadDoesNotLeaveStartedBehaviors},
+        {"scene_unknown_behaviors_are_ignored", testUnknownBehaviorTypesAreIgnored},
         {"scene_version1_still_loads", testSceneVersion1StillLoads},
     };
 

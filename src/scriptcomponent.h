@@ -30,6 +30,7 @@ public:
     void fixedUpdate(double timeDelta);
     void update(double timeDelta);
     void lateUpdate(double timeDelta);
+    void setGameObject(GameObject *gameObject) override;
 
     size_t getGameManagerIndex() const;
     void setGameManagerIndex(size_t index);

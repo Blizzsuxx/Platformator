@@ -20,6 +20,8 @@ public:
     // Getters
     float getWidth() const;
     float getHeight() const;
+    float getWidthWithoutScale() const;
+    float getHeightWithoutScale() const;
 
     // Setters
     void setWidth(const float width);

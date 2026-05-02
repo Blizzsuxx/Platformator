@@ -12,11 +12,12 @@
 #include <string>
 #include <vector>
 
-#include <toml++/toml.hpp>
+#include <json.hpp>
 
 #include "animationclip.h"
 #include "animator.h"
 #include "boxcollider.h"
+#include "camera.h"
 #include "circlecollider.h"
 #include "constants.h"
 #include "grid.h"
@@ -26,6 +27,7 @@
 #include "localsortarray.h"
 #include "physicsmanager.h"
 #include "rigidbody.h"
+#include "scene.h"
 #include "scriptcomponent.h"
 #include "sprite.h"
 #include "texturewrapper.h"
@@ -155,6 +157,24 @@ namespace
     {
     public:
         CollisionEventCounterBehavior() : enterCount(0), stayCount(0), exitCount(0)
+        {
+        }
+
+        std::string getTypeName() const override
+        {
+            return "CollisionEventCounterBehavior";
+        }
+
+        void serialize(nlohmann::json &j) const override
+        {
+            j = nlohmann::json{{"type", getTypeName()}};
+        }
+
+        void deserialize(const nlohmann::json &) override
+        {
+        }
+
+        void resolveReferences() override
         {
         }
 
@@ -425,24 +445,72 @@ namespace
         return resourcePath.generic_string();
     }
 
-    const toml::table *findSavedObject(const toml::array &objects, const std::string &name)
+    nlohmann::json makeVectorJson(float x, float y)
     {
-        for (const toml::node &node : objects)
+        return nlohmann::json{{"x", x}, {"y", y}};
+    }
+
+    nlohmann::json makeRectJson(float x, float y, float w, float h)
+    {
+        return nlohmann::json{{"x", x}, {"y", y}, {"w", w}, {"h", h}};
+    }
+
+    nlohmann::json makeGameObjectJson(int id, const std::string &name)
+    {
+        return nlohmann::json{{"id", id},
+                              {"rotation", 0.0f},
+                              {"active", true},
+                              {"position", makeVectorJson(0.0f, 0.0f)},
+                              {"scale", makeVectorJson(1.0f, 1.0f)},
+                              {"name", name},
+                              {"tag", ""},
+                              {"children", nlohmann::json::array()},
+                              {"components", nlohmann::json::array()}};
+    }
+
+    const nlohmann::json *findSavedObject(const nlohmann::json &objects, const std::string &name)
+    {
+        for (const nlohmann::json &objectJson : objects)
         {
-            const toml::table *objectTable = node.as_table();
-            if (objectTable == nullptr)
+            if (!objectJson.is_object())
             {
                 continue;
             }
 
-            const toml::node *nameNode = objectTable->get("name");
-            if (nameNode != nullptr && nameNode->is_string() && nameNode->value_exact<std::string>().value_or("") == name)
+            const auto nameIt = objectJson.find("name");
+            if (nameIt != objectJson.end() && nameIt->is_string() && nameIt->get<std::string>() == name)
             {
-                return objectTable;
+                return &objectJson;
             }
         }
 
         return nullptr;
+    }
+
+    const nlohmann::json *findSavedComponent(const nlohmann::json &components, ComponentType componentType)
+    {
+        for (const nlohmann::json &componentJson : components)
+        {
+            if (!componentJson.is_object())
+            {
+                continue;
+            }
+
+            const auto typeIt = componentJson.find("type");
+            if (typeIt != componentJson.end() && typeIt->is_number_integer() && typeIt->get<int>() == static_cast<int>(componentType))
+            {
+                return &componentJson;
+            }
+        }
+
+        return nullptr;
+    }
+
+    void writeJsonFile(const std::filesystem::path &path, const nlohmann::json &document, const std::string &errorMessage)
+    {
+        std::ofstream file(path);
+        require(file.is_open(), errorMessage);
+        file << document.dump(4);
     }
 
     void destroyNamedObject(GameManager &gameManager, SDLWindow *window, const std::string &name)
@@ -487,42 +555,44 @@ namespace
 
         try
         {
-            std::ofstream sceneFile(scenePath);
-            require(sceneFile.is_open(), "Scene loading regression failed to create the temporary scene file.");
+            nlohmann::json loadedBallJson = makeGameObjectJson(1100, "Loaded Ball");
+            loadedBallJson["tag"] = "Player";
+            loadedBallJson["position"] = makeVectorJson(123.0f, 234.0f);
+            loadedBallJson["rotation"] = 0.5f;
+            loadedBallJson["scale"] = makeVectorJson(2.0f, 1.5f);
+            loadedBallJson["components"].push_back({{"id", 1101},
+                                                    {"velocity", makeVectorJson(10.0f, -20.0f)},
+                                                    {"force", makeVectorJson(1.0f, 2.0f)},
+                                                    {"mass", 7.0f},
+                                                    {"angularVelocity", 0.25f},
+                                                    {"torque", 0.75f},
+                                                    {"friction", 0.4f},
+                                                    {"restitution", 0.6f},
+                                                    {"bodyType", static_cast<int>(BodyType::DYNAMIC)},
+                                                    {"type", static_cast<int>(ComponentType::RIGID_BODY)},
+                                                    {"gravity", false}});
+            loadedBallJson["components"].push_back({{"id", 1102},
+                                                    {"radius", 12.0f},
+                                                    {"trigger", false},
+                                                    {"collisionGroup", 3},
+                                                    {"type", static_cast<int>(ComponentType::COLLIDER)},
+                                                    {"colliderType", static_cast<int>(ColliderType::CircleCollider)},
+                                                    {"collisionMask", 5}});
+            loadedBallJson["components"].push_back({{"id", 1103},
+                                                    {"textureFilePath", sceneSpritePath},
+                                                    {"flip", static_cast<int>(SDL_FLIP_HORIZONTAL)},
+                                                    {"width", 32.0f},
+                                                    {"height", 48.0f},
+                                                    {"sourceRectEnabled", false},
+                                                    {"type", static_cast<int>(ComponentType::SPRITE)}});
 
-            sceneFile << "format = \"platformator_scene\"\n";
-            sceneFile << "version = 1\n\n";
-            sceneFile << "[[objects]]\n";
-            sceneFile << "name = \"Loaded Ball\"\n";
-            sceneFile << "tag = \"Player\"\n";
-            sceneFile << "active = true\n";
-            sceneFile << "position = [123, 234]\n";
-            sceneFile << "rotation = 0.5\n";
-            sceneFile << "scale = [2, 1.5]\n\n";
-            sceneFile << "[objects.rigidbody]\n";
-            sceneFile << "bodyType = \"dynamic\"\n";
-            sceneFile << "gravity = false\n";
-            sceneFile << "mass = 7\n";
-            sceneFile << "velocity = [10, -20]\n";
-            sceneFile << "force = [1, 2]\n";
-            sceneFile << "angularVelocity = 0.25\n";
-            sceneFile << "torque = 0.75\n";
-            sceneFile << "friction = 0.4\n";
-            sceneFile << "restitution = 0.6\n\n";
-            sceneFile << "[objects.circleCollider]\n";
-            sceneFile << "radius = 12\n";
-            sceneFile << "trigger = false\n";
-            sceneFile << "collisionGroup = 3\n";
-            sceneFile << "collisionMask = 5\n\n";
-            sceneFile << "[objects.sprite]\n";
-            sceneFile << "path = \"" << sceneSpritePath << "\"\n";
-            sceneFile << "flip = \"horizontal\"\n";
-            sceneFile << "size = [32, 48]\n\n";
-            sceneFile << "[[objects]]\n";
-            sceneFile << "name = \"Loaded Camera\"\n\n";
-            sceneFile << "[objects.camera]\n";
-            sceneFile << "viewport = [5, 10, 320, 240]\n";
-            sceneFile.close();
+            nlohmann::json loadedCameraJson = makeGameObjectJson(1200, "Loaded Camera");
+            loadedCameraJson["components"].push_back({{"id", 1201},
+                                                      {"camera", makeRectJson(5.0f, 10.0f, 320.0f, 240.0f)},
+                                                      {"type", static_cast<int>(ComponentType::CAMERA)}});
+
+            writeJsonFile(scenePath, nlohmann::json::array({loadedBallJson, loadedCameraJson}),
+                          "Scene loading regression failed to create the temporary scene file.");
 
             Scene scene(scenePath.string());
             gameManager.loadScene(scene);
@@ -655,13 +725,14 @@ namespace
 
             require(std::filesystem::exists(scenePath), "Scene round-trip regression failed to create the saved scene file.");
 
-            const toml::table savedScene = toml::parse_file(scenePath.string());
-            const toml::array *savedObjects = savedScene.get_as<toml::array>("objects");
-            require(savedObjects != nullptr, "Scene round-trip regression failed to save the objects array.");
-            const toml::table *savedBall = findSavedObject(*savedObjects, "Roundtrip Ball");
+            std::ifstream savedSceneFile(scenePath);
+            require(savedSceneFile.is_open(), "Scene round-trip regression failed to reopen the saved scene file.");
+            const nlohmann::json savedScene = nlohmann::json::parse(savedSceneFile);
+            require(savedScene.is_array(), "Scene round-trip regression failed to save the objects array.");
+            const nlohmann::json *savedBall = findSavedObject(savedScene, "Roundtrip Ball");
             require(savedBall != nullptr, "Scene round-trip regression failed to save the ball object.");
-            const toml::table *savedSprite = savedBall->get_as<toml::table>("sprite");
-            require(savedSprite != nullptr && savedSprite->get("path")->value_exact<std::string>().value_or("") == expectedSavedSpritePath,
+            const nlohmann::json *savedSprite = findSavedComponent(savedBall->at("components"), ComponentType::SPRITE);
+            require(savedSprite != nullptr && savedSprite->at("textureFilePath").get<std::string>() == expectedSavedSpritePath,
                     "Scene round-trip regression failed to save sprite paths relative to the scene file.");
 
             destroyNamedObject(gameManager, window, "Roundtrip Ball");
@@ -997,10 +1068,14 @@ namespace
             const std::vector<AnimationFrame> frames = {
                 AnimationFrame(idleTexture, 0.0f),
                 AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
-            const AnimationClip sourceClip(frames, 20.0f, false, 4.0f, 4.0f, "saved_clip");
+            const AnimationClip sourceClip(frames, 20.0f, false, 4.0f, 4.0f, "saved_clip", clipPath.string());
 
-            Scene::saveAnimationClipFile(sourceClip, clipPath.string());
-            const AnimationClip loadedClip = Scene::loadAnimationClipFile(clipPath.string());
+            writeJsonFile(clipPath, nlohmann::json(sourceClip),
+                          "Animation clip file round-trip regression failed to create the clip file.");
+            AnimationClip *loadedClipPointer = gameManager.loadAnimationClip(clipPath.string());
+            require(loadedClipPointer != nullptr,
+                    "Animation clip file round-trip regression failed to load the saved clip file.");
+            const AnimationClip &loadedClip = *loadedClipPointer;
 
             require(loadedClip.getName() == "saved_clip",
                     "Animation clip file round-trip regression lost the clip name.");

@@ -2,9 +2,12 @@
 
 void to_json(nlohmann::json &j, const BoxCollider &boxCollider)
 {
+    float width = boxCollider.getWidthWithoutScale();
+    float height = boxCollider.getHeightWithoutScale();
+
     j = nlohmann::json{{"id", boxCollider.getId()},
-                       {"width", boxCollider.getWidth()},
-                       {"height", boxCollider.getHeight()},
+                       {"width", width},
+                       {"height", height},
                        {"trigger", boxCollider.getIsTrigger()},
                        {"collisionGroup", boxCollider.getCollisionGroup()},
                        {"type", ComponentType::COLLIDER},

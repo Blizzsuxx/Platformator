@@ -123,7 +123,13 @@ void Animator::applyCurrentFrame() const
         return;
     }
 
-    Sprite *sprite = getGameObject()->getComponent<Sprite>();
+    GameObject *gameObject = getGameObject();
+    if (gameObject == nullptr)
+    {
+        return;
+    }
+
+    Sprite *sprite = gameObject->getComponent<Sprite>();
     if (sprite == nullptr)
     {
         return;
@@ -257,6 +263,16 @@ void Animator::setCurrentClip(const AnimationClip *clip)
     currentFrameIndex = 0;
     accumulatedTime = 0.0;
     if (clip != nullptr)
+    {
+        applyCurrentFrame();
+    }
+}
+
+void Animator::setGameObject(GameObject *gameObject)
+{
+    Component::setGameObject(gameObject);
+
+    if (gameObject != nullptr && currentAnimationClip != nullptr)
     {
         applyCurrentFrame();
     }

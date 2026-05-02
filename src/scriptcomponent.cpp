@@ -81,6 +81,19 @@ void ScriptComponent::lateUpdate(double timeDelta)
     }
 }
 
+void ScriptComponent::setGameObject(GameObject *gameObject)
+{
+    Component::setGameObject(gameObject);
+
+    for (Behavior *behavior : behaviors)
+    {
+        if (behavior != nullptr)
+        {
+            behavior->setGameObject(gameObject);
+        }
+    }
+}
+
 void ScriptComponent::destroyBehaviors()
 {
     const size_t behaviorCount = behaviors.size();

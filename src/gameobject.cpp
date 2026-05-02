@@ -191,7 +191,10 @@ void GameObject::addComponent(Component *component)
 {
     addComponentInternal(component);
 
-    GameManager::getInstance().notifyComponentAdded(component);
+    if (getIsRegisteredInGameManager())
+    {
+        GameManager::getInstance().notifyComponentAdded(component);
+    }
 }
 
 void GameObject::addComponentInternal(Component *component)
@@ -232,7 +235,10 @@ bool GameObject::removeComponent(const ComponentType &componentType)
         return false;
     }
 
-    GameManager::getInstance().notifyComponentRemoved(components[componentType]);
+    if (getIsRegisteredInGameManager())
+    {
+        GameManager::getInstance().notifyComponentRemoved(components[componentType]);
+    }
     delete components[componentType];
     components[componentType] = nullptr;
 

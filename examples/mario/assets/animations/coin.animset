@@ -1,12 +1,54 @@
-format = "platformator_animset"
-version = 1
-name = "spin"
-fps = 10
-loop = true
-size = [22, 22]
-frames = [
-    "../items/coin_0.png",
-    "../items/coin_1.png",
-    "../items/coin_2.png",
-    "../items/coin_3.png",
-]
+{
+    "frames": [
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../items/coin_0.png"
+        },
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../items/coin_1.png"
+        },
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../items/coin_2.png"
+        },
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "../items/coin_3.png"
+        }
+    ],
+    "framesPerSecond": 10.0,
+    "loop": true,
+    "width": 22.0,
+    "height": 22.0,
+    "name": "spin",
+    "filePath": "assets/animations/coin.animset"
+}

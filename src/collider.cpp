@@ -137,6 +137,11 @@ void Collider::setCollisionGroup(const uint64_t collisionGroup)
 
     this->collisionGroup = collisionGroup;
 
+    if (getGameObject() == nullptr)
+    {
+        return;
+    }
+
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
     if (physicsManager != nullptr)
     {
@@ -157,6 +162,11 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
     }
 
     this->collisionMask = collisionMask;
+
+    if (getGameObject() == nullptr)
+    {
+        return;
+    }
 
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
     if (physicsManager != nullptr)

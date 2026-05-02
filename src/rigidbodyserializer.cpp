@@ -19,6 +19,9 @@ void from_json(const nlohmann::json &j, Rigidbody &rigidbody)
 {
     rigidbody.setId(j.at("id").get<int>());
 
+    rigidbody.setBodyType(j.at("bodyType").get<BodyType>());
+    rigidbody.setGravity(j.at("gravity").get<bool>());
+
     rigidbody.setVelocity(j.at("velocity").get<Eigen::Vector2f>());
     rigidbody.setForce(j.at("force").get<Eigen::Vector2f>());
     rigidbody.setMass(j.at("mass").get<float>());
@@ -26,6 +29,4 @@ void from_json(const nlohmann::json &j, Rigidbody &rigidbody)
     rigidbody.setTorque(j.at("torque").get<float>());
     rigidbody.setFriction(j.at("friction").get<float>());
     rigidbody.setRestitution(j.at("restitution").get<float>());
-    rigidbody.setBodyType(j.at("bodyType").get<BodyType>());
-    rigidbody.setGravity(j.at("gravity").get<bool>());
 }

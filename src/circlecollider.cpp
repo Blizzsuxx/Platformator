@@ -30,7 +30,13 @@ void CircleCollider::setRadius(const float radius)
 {
     this->radius = radius;
 
-    Rigidbody *rigidbodyComponent = getGameObject()->getComponent<Rigidbody>();
+    GameObject *gameObject = getGameObject();
+    if (gameObject == nullptr)
+    {
+        return;
+    }
+
+    Rigidbody *rigidbodyComponent = gameObject->getComponent<Rigidbody>();
     if (rigidbodyComponent != nullptr)
     {
         rigidbodyComponent->refreshMomentOfInertiaCache();
@@ -103,4 +109,9 @@ Edge CircleCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
 
     Eigen::Vector2f supportPoint = getGameObject()->getPosition() + direction * getRadius();
     return Edge(supportPoint, supportPoint, supportPoint);
+}
+
+float CircleCollider::getRadiusWithoutScale() const
+{
+    return radius;
 }

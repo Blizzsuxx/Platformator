@@ -47,7 +47,13 @@ float Rigidbody::calculateAutomaticMomentOfInertia() const
         return 0.0f;
     }
 
-    Collider *collider = (Collider *)getGameObject()->getComponent(ComponentType::COLLIDER);
+    GameObject *gameObject = getGameObject();
+    if (gameObject == nullptr)
+    {
+        return 1.0f;
+    }
+
+    Collider *collider = (Collider *)gameObject->getComponent(ComponentType::COLLIDER);
     if (collider == nullptr)
     {
         return 1.0f;

@@ -1,13 +1,14 @@
 #include "gamemanager.h"
 
 #include <algorithm>
+#include <fstream>
 
 #include "animator.h"
+#include "animationclip.h"
 #include "audio.h"
+#include "pathmanager.h"
 #include "scriptcomponent.h"
 #include "texturewrapper.h"
-#include "animationclip.h"
-#include <fstream>
 
 GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
@@ -240,24 +241,31 @@ void GameManager::simulateFrame(double timeDelta)
 
 TextureWrapper *GameManager::loadTexture(const std::string &filePath)
 {
-    auto it = textureCache.find(filePath);
+    if (filePath.empty())
+    {
+        return nullptr;
+    }
+
+    const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Texture);
+
+    auto it = textureCache.find(resolvedPath.canonicalPath);
     if (it != textureCache.end())
     {
         return &it->second;
     }
 
-    SDL_Texture *texture = IMG_LoadTexture(window->getRenderer(), filePath.c_str());
+    SDL_Texture *texture = IMG_LoadTexture(window->getRenderer(), resolvedPath.absolutePath.c_str());
     if (!texture)
     {
-        printf("Failed to load %s: %s\n", filePath.c_str(), SDL_GetError());
+        printf("Failed to load %s: %s\n", resolvedPath.absolutePath.c_str(), SDL_GetError());
         return nullptr;
     }
 
     // need this so that TextureWrapper is made in-place (so it doesn't destroy the texture)
     auto [insertedIt, inserted] = textureCache.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(filePath),
-        std::forward_as_tuple(texture, filePath)); // uses the TextureWrapper constructor that takes an SDL_Texture* and a file path
+        std::forward_as_tuple(resolvedPath.canonicalPath),
+        std::forward_as_tuple(texture, resolvedPath.canonicalPath)); // uses the TextureWrapper constructor that takes an SDL_Texture* and a file path
 
     return &insertedIt->second;
 }
@@ -528,24 +536,31 @@ void GameManager::updateAnimatorComponents(double timeDelta)
 
 AudioWrapper *GameManager::loadAudio(const std::string &filePath)
 {
-    auto it = audioCache.find(filePath);
+    if (filePath.empty())
+    {
+        return nullptr;
+    }
+
+    const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Audio);
+
+    auto it = audioCache.find(resolvedPath.canonicalPath);
     if (it != audioCache.end())
     {
         return &it->second;
     }
 
-    MIX_Audio *audio = MIX_LoadAudio(window->getMixer(), filePath.c_str(), true);
+    MIX_Audio *audio = MIX_LoadAudio(window->getMixer(), resolvedPath.absolutePath.c_str(), true);
     if (!audio)
     {
-        printf("Failed to load %s: %s\n", filePath.c_str(), SDL_GetError());
+        printf("Failed to load %s: %s\n", resolvedPath.absolutePath.c_str(), SDL_GetError());
         return nullptr;
     }
 
     // need this so that AudioWrapper is made in-place (so it doesn't destroy the audio)
     auto [insertedIt, inserted] = audioCache.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(filePath),
-        std::forward_as_tuple(audio, filePath)); // uses the AudioWrapper constructor that takes an MIX_Audio* and a file path
+        std::forward_as_tuple(resolvedPath.canonicalPath),
+        std::forward_as_tuple(audio, resolvedPath.canonicalPath)); // uses the AudioWrapper constructor that takes an MIX_Audio* and a file path
 
     return &insertedIt->second;
 }
@@ -566,26 +581,34 @@ void GameManager::freeAllAudio()
 
 AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
 {
-    auto it = animationClipCache.find(filePath);
+    if (filePath.empty())
+    {
+        return nullptr;
+    }
+
+    const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::AnimationClip);
+
+    auto it = animationClipCache.find(resolvedPath.canonicalPath);
     if (it != animationClipCache.end())
     {
         return &it->second;
     }
 
-    std::ifstream file(filePath);
+    std::ifstream file(resolvedPath.absolutePath);
     if (!file.is_open())
     {
-        printf("Failed to load %s\n", filePath.c_str());
+        printf("Failed to load %s\n", resolvedPath.absolutePath.c_str());
         return nullptr;
     }
     nlohmann::json json = nlohmann::json::parse(file);
     file.close();
 
     AnimationClip animationClip = json.get<AnimationClip>();
+    animationClip.setFilePath(resolvedPath.canonicalPath);
 
     auto [insertedIt, inserted] = animationClipCache.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(filePath),
+        std::forward_as_tuple(resolvedPath.canonicalPath),
         std::forward_as_tuple(animationClip));
 
     return &insertedIt->second;

@@ -25,6 +25,7 @@
 #include "audio.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
+#include "pathmanager.h"
 #include "physicsmanager.h"
 #include "rigidbody.h"
 #include "scene.h"
@@ -198,9 +199,17 @@ namespace
         size_t exitCount;
     };
 
+    std::filesystem::path makeRuntimeAssetPath(const std::string &fileName)
+    {
+        return (std::filesystem::path("assets") / "test_runtime" / fileName).lexically_normal();
+    }
+
     std::filesystem::path createTemporaryBmpAsset(const std::string &fileName, Uint8 red, Uint8 green, Uint8 blue)
     {
-        std::filesystem::path filePath = (std::filesystem::current_path() / fileName).lexically_normal();
+        std::filesystem::path filePath = makeRuntimeAssetPath(fileName);
+
+        std::error_code directoryError;
+        std::filesystem::create_directories(filePath.parent_path(), directoryError);
 
         std::error_code errorCode;
         std::filesystem::remove(filePath, errorCode);
@@ -220,7 +229,10 @@ namespace
 
     std::filesystem::path createTemporaryStripBmpAsset(const std::string &fileName)
     {
-        std::filesystem::path filePath = (std::filesystem::current_path() / fileName).lexically_normal();
+        std::filesystem::path filePath = makeRuntimeAssetPath(fileName);
+
+        std::error_code directoryError;
+        std::filesystem::create_directories(filePath.parent_path(), directoryError);
 
         std::error_code errorCode;
         std::filesystem::remove(filePath, errorCode);
@@ -425,12 +437,12 @@ namespace
 
     std::filesystem::path findRegressionAsset(const std::string &fileName)
     {
-        return findWorkspaceRelativePath(std::filesystem::path("assets") / fileName);
+        return (std::filesystem::path("assets") / fileName).lexically_normal();
     }
 
     std::filesystem::path findRegressionAudioAsset(const std::string &fileName)
     {
-        return findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "audio" / fileName);
+        return (std::filesystem::path("assets") / "audio" / fileName).lexically_normal();
     }
 
     std::string makeSceneRelativeResourcePath(const std::filesystem::path &resourcePath, const std::filesystem::path &scenePath)
@@ -508,6 +520,12 @@ namespace
 
     void writeJsonFile(const std::filesystem::path &path, const nlohmann::json &document, const std::string &errorMessage)
     {
+        if (path.has_parent_path())
+        {
+            std::error_code directoryError;
+            std::filesystem::create_directories(path.parent_path(), directoryError);
+        }
+
         std::ofstream file(path);
         require(file.is_open(), errorMessage);
         file << document.dump(4);
@@ -538,7 +556,7 @@ namespace
 
         std::filesystem::path scenePath = std::filesystem::current_path() / "scene_loading_regression.scene";
         std::filesystem::path wallTexturePath = findRegressionAsset("wall.png");
-        std::string sceneSpritePath = makeSceneRelativeResourcePath(wallTexturePath, scenePath);
+        std::string sceneSpritePath = wallTexturePath.generic_string();
 
         auto cleanup = [&]()
         {
@@ -666,8 +684,8 @@ namespace
 
         std::filesystem::path scenePath = std::filesystem::current_path() / "scene_roundtrip_regression.scene";
         std::filesystem::path wallTexturePath = findRegressionAsset("wall.png");
-        std::string expectedSavedSpritePath = makeSceneRelativeResourcePath(wallTexturePath, scenePath);
-        std::string wallTexturePathString = wallTexturePath.string();
+        std::string expectedSavedSpritePath = wallTexturePath.generic_string();
+        std::string wallTexturePathString = wallTexturePath.generic_string();
 
         auto cleanup = [&]()
         {
@@ -1048,7 +1066,7 @@ namespace
 
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animationclip_roundtrip_idle_regression.bmp", 255, 0, 0);
         const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animationclip_roundtrip_sheet_regression.bmp");
-        const std::filesystem::path clipPath = (std::filesystem::current_path() / "animationclip_roundtrip_regression.animset").lexically_normal();
+        const std::filesystem::path clipPath = makeRuntimeAssetPath("animationclip_roundtrip_regression.animset");
 
         auto cleanupFiles = [&]()
         {
@@ -1153,6 +1171,40 @@ namespace
                 "Audio regression expected the track to be idle after stop().");
     }
 
+    void testPathManagerCanonicalizationAndFallback()
+    {
+        PathManager &pathManager = PathManager::getInstance();
+
+        std::string mixedCaseAbsolutePath = std::filesystem::absolute(std::filesystem::path("assets") / "ball.png").generic_string();
+        std::replace(mixedCaseAbsolutePath.begin(), mixedCaseAbsolutePath.end(), '/', '\\');
+        std::transform(mixedCaseAbsolutePath.begin(), mixedCaseAbsolutePath.end(), mixedCaseAbsolutePath.begin(), [](unsigned char character)
+                       { return static_cast<char>(std::toupper(character)); });
+
+        const ResolvedAssetPath sanitizedTexturePath = pathManager.resolveAssetPath(mixedCaseAbsolutePath, AssetPathType::Texture);
+        require(!sanitizedTexturePath.usedFallback,
+                "PathManager regression unexpectedly used a fallback for a real asset addressed by an absolute OS path.");
+        require(sanitizedTexturePath.canonicalPath == "assets/ball.png",
+                "PathManager regression failed to canonicalize an absolute texture path to assets/ball.png.");
+        require(std::filesystem::is_regular_file(sanitizedTexturePath.absolutePath),
+                "PathManager regression failed to resolve the canonical texture path to a real file on disk.");
+
+        const ResolvedAssetPath missingTexturePath = pathManager.resolveAssetPath("ASSETS\\TEXTURES\\DOES_NOT_EXIST.PNG", AssetPathType::Texture);
+        require(missingTexturePath.usedFallback,
+                "PathManager regression failed to switch to the texture fallback for a missing asset.");
+        require(missingTexturePath.canonicalPath == "assets/textures/missing.png",
+                "PathManager regression returned the wrong texture fallback path.");
+        require(std::filesystem::is_regular_file(missingTexturePath.absolutePath),
+                "PathManager regression resolved the texture fallback to a missing file.");
+
+        const ResolvedAssetPath missingModelPath = pathManager.resolveAssetPath("/tmp/not_in_assets/default_cube.obj", AssetPathType::Model);
+        require(missingModelPath.usedFallback,
+                "PathManager regression failed to reject a non-assets absolute model path.");
+        require(missingModelPath.canonicalPath == "assets/models/default_cube.obj",
+                "PathManager regression returned the wrong model fallback path.");
+        require(std::filesystem::is_regular_file(missingModelPath.absolutePath),
+                "PathManager regression resolved the model fallback to a missing file.");
+    }
+
     void testRotatedBoxSupportEdgeSelection()
     {
         GameManager &gameManager = GameManager::getInstance();
@@ -1221,6 +1273,7 @@ int main()
         {"animator_advanced_playback", testAnimatorAdvancedPlayback},
         {"animationclip_file_round_trip", testAnimationClipFileRoundTrip},
         {"audio_component_controls", testAudioComponentControls},
+        {"path_manager_canonicalization_and_fallback", testPathManagerCanonicalizationAndFallback},
         {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
     };
 

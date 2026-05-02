@@ -193,6 +193,12 @@ namespace
 
     void writeJsonFile(const std::filesystem::path &path, const nlohmann::json &document, const std::string &errorMessage)
     {
+        if (path.has_parent_path())
+        {
+            std::error_code directoryError;
+            std::filesystem::create_directories(path.parent_path(), directoryError);
+        }
+
         std::ofstream file(path);
         require(file.is_open(), errorMessage);
         file << document.dump(4);
@@ -204,14 +210,13 @@ namespace
         cleanupAllGameObjects(gameManager);
 
         const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_roundtrip.scene";
-        const std::filesystem::path animationClipPath = std::filesystem::current_path() / "scene_v2_roundtrip.animset";
-        const std::filesystem::path texturePath = findWorkspaceRelativePath(std::filesystem::path("assets") / "ball.png");
-        const std::filesystem::path audioPath = findWorkspaceRelativePath(std::filesystem::path("examples") / "mario" / "assets" / "audio" / "jump.wav");
+        const std::filesystem::path animationClipPath = std::filesystem::path("assets") / "test_runtime" / "scene_v2_roundtrip.animset";
+        const std::filesystem::path texturePath = std::filesystem::path("assets") / "ball.png";
+        const std::filesystem::path audioPath = std::filesystem::path("assets") / "audio" / "jump.wav";
 
-        const std::string sceneRelativeTexturePath = std::filesystem::relative(texturePath, scenePath.parent_path()).generic_string();
-        const std::string sceneRelativeAudioPath = std::filesystem::relative(audioPath, scenePath.parent_path()).generic_string();
-        const std::string sceneRelativeAnimsetPath = std::filesystem::relative(animationClipPath, scenePath.parent_path()).generic_string();
-        const std::string animsetRelativeTexturePath = std::filesystem::relative(texturePath, animationClipPath.parent_path()).generic_string();
+        const std::string textureAssetPath = texturePath.generic_string();
+        const std::string audioAssetPath = audioPath.generic_string();
+        const std::string animationClipAssetPath = animationClipPath.generic_string();
 
         auto cleanupFiles = [&]()
         {
@@ -228,13 +233,13 @@ namespace
                 {"frames", nlohmann::json::array({{{"duration", 0.0f},
                                                    {"sourceRect", makeRectJson(0.0f, 0.0f, 0.0f, 0.0f)},
                                                    {"hasSourceRect", false},
-                                                   {"textureWrapperFilePath", animsetRelativeTexturePath}}})},
+                                                   {"textureWrapperFilePath", textureAssetPath}}})},
                 {"framesPerSecond", 1.0},
                 {"loop", true},
                 {"width", 32.0f},
                 {"height", 32.0f},
                 {"name", "idle"},
-                {"filePath", sceneRelativeAnimsetPath}};
+                {"filePath", animationClipAssetPath}};
             writeJsonFile(animationClipPath, animationClipJson,
                           "Scene v2 round-trip test failed to create the temporary animation clip file.");
 
@@ -253,7 +258,7 @@ namespace
 
             nlohmann::json spriteOnlyJson = makeGameObjectJson(103, "Sprite Only");
             spriteOnlyJson["components"].push_back({{"id", 204},
-                                                    {"textureFilePath", sceneRelativeTexturePath},
+                                                    {"textureFilePath", textureAssetPath},
                                                     {"flip", static_cast<int>(SDL_FLIP_NONE)},
                                                     {"width", 32.0f},
                                                     {"height", 32.0f},
@@ -265,7 +270,7 @@ namespace
             scriptedObjectJson["position"] = makeVectorJson(12.0f, 34.0f);
             scriptedObjectJson["scale"] = makeVectorJson(1.5f, 2.0f);
             scriptedObjectJson["components"].push_back({{"id", 202},
-                                                        {"textureFilePath", sceneRelativeTexturePath},
+                                                        {"textureFilePath", textureAssetPath},
                                                         {"flip", static_cast<int>(SDL_FLIP_HORIZONTAL)},
                                                         {"width", 32.0f},
                                                         {"height", 32.0f},
@@ -277,7 +282,7 @@ namespace
                                                         {"playbackSpeed", 1.5f},
                                                         {"playing", true},
                                                         {"type", static_cast<int>(ComponentType::ANIMATOR)},
-                                                        {"animationClipFilePath", sceneRelativeAnimsetPath}});
+                                                        {"animationClipFilePath", animationClipAssetPath}});
             scriptedObjectJson["components"].push_back({{"id", 203},
                                                         {"type", static_cast<int>(ComponentType::SCRIPT)},
                                                         {"behaviors", nlohmann::json::array({{{"type", "AnnotatedSceneBehavior"},
@@ -288,9 +293,9 @@ namespace
                                                                                               {"offset", makeVectorJson(11.25f, -4.5f)},
                                                                                               {"targetObject", 100},
                                                                                               {"emitter", 300},
-                                                                                              {"icon", sceneRelativeTexturePath},
-                                                                                              {"idleClip", sceneRelativeAnimsetPath},
-                                                                                              {"sound", sceneRelativeAudioPath}}})}});
+                                                                                              {"icon", textureAssetPath},
+                                                                                              {"idleClip", animationClipAssetPath},
+                                                                                              {"sound", audioAssetPath}}})}});
 
             const nlohmann::json sceneJson = nlohmann::json::array({targetDummyJson, mainCameraJson, spriteOnlyJson, scriptedObjectJson});
             writeJsonFile(scenePath, sceneJson,
@@ -352,11 +357,11 @@ namespace
             const std::optional<int> emitterId = behavior->emitter.getReferencedId();
             require(emitterId.has_value() && *emitterId == 300 && behavior->emitter.get() == targetAudio,
                     "Scene v2 round-trip test failed to resolve the component reference field.");
-            require(behavior->icon.getFilePath().has_value() && *behavior->icon.getFilePath() == sceneRelativeTexturePath && behavior->icon.get() != nullptr,
+            require(behavior->icon.getFilePath().has_value() && *behavior->icon.getFilePath() == textureAssetPath && behavior->icon.get() != nullptr,
                     "Scene v2 round-trip test failed to resolve the texture asset field.");
-            require(behavior->idleClip.getFilePath().has_value() && *behavior->idleClip.getFilePath() == sceneRelativeAnimsetPath && behavior->idleClip.get() != nullptr,
+            require(behavior->idleClip.getFilePath().has_value() && *behavior->idleClip.getFilePath() == animationClipAssetPath && behavior->idleClip.get() != nullptr,
                     "Scene v2 round-trip test failed to resolve the animation clip asset field.");
-            require(behavior->sound.getFilePath().has_value() && *behavior->sound.getFilePath() == sceneRelativeAudioPath && behavior->sound.get() != nullptr,
+            require(behavior->sound.getFilePath().has_value() && *behavior->sound.getFilePath() == audioAssetPath && behavior->sound.get() != nullptr,
                     "Scene v2 round-trip test failed to resolve the audio asset field.");
 
             gameManager.saveScene(scene);

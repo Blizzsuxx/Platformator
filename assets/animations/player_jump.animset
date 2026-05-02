@@ -1,0 +1,21 @@
+{
+    "frames": [
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "assets/player/jump.png"
+        }
+    ],
+    "framesPerSecond": 1.0,
+    "loop": false,
+    "width": 32.0,
+    "height": 32.0,
+    "name": "jump",
+    "filePath": "assets/animations/player_jump.animset"
+}

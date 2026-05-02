@@ -1,0 +1,21 @@
+{
+    "frames": [
+        {
+            "duration": 0.0,
+            "sourceRect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.0,
+                "h": 0.0
+            },
+            "hasSourceRect": false,
+            "textureWrapperFilePath": "assets/items/flag.png"
+        }
+    ],
+    "framesPerSecond": 5.0,
+    "loop": true,
+    "width": 32.0,
+    "height": 192.0,
+    "name": "wave",
+    "filePath": "assets/animations/flag.animset"
+}

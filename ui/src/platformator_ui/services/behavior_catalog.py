@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -9,12 +11,36 @@ from typing import Any
 import orjson
 
 from platformator_ui.scene.models import ComponentType, SceneDocumentModel, ScriptComponentModel
+from platformator_ui.services.asset_paths import AssetKind
 
 
 SERIALIZABLE_SCRIPT_RE = re.compile(
     r"SERIALIZABLE_SCRIPT\s*\(\s*([A-Za-z_:][A-Za-z0-9_:]*)\s*(?:,\s*([^\)]*?))?\)",
     re.MULTILINE | re.DOTALL,
 )
+ASSET_REFERENCE_DECLARATION_RE = re.compile(
+    r"AssetReference<\s*([A-Za-z_:][A-Za-z0-9_:]*)\s*>\s+([A-Za-z_][A-Za-z0-9_]*)\s*;",
+    re.MULTILINE,
+)
+ASSET_REFERENCE_ALIAS_RE = re.compile(
+    r"platformator::(TextureAssetRef|AudioAssetRef|AnimationClipRef)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;",
+    re.MULTILINE,
+)
+OBJECT_REFERENCE_DECLARATION_RE = re.compile(
+    r"ObjectReference<\s*([A-Za-z_:][A-Za-z0-9_:]*)\s*>\s+([A-Za-z_][A-Za-z0-9_]*)\s*;",
+    re.MULTILINE,
+)
+
+
+class ObjectReferenceTargetKind(str, Enum):
+    SCENE_OBJECT = "scene_object"
+    COMPONENT = "component"
+
+
+@dataclass(frozen=True)
+class ObjectReferenceDescriptor:
+    target_kind: ObjectReferenceTargetKind
+    target_type_name: str | None = None
 
 
 def discover_behavior_templates(
@@ -28,22 +54,42 @@ def discover_behavior_templates(
 
 
 @lru_cache(maxsize=4)
+def discover_behavior_asset_fields(repo_root: Path) -> dict[str, dict[str, AssetKind]]:
+    asset_fields, _ = _scan_serializable_script_reference_fields(repo_root.resolve())
+    return asset_fields
+
+
+@lru_cache(maxsize=4)
+def discover_behavior_object_reference_fields(repo_root: Path) -> dict[str, dict[str, ObjectReferenceDescriptor]]:
+    _, object_fields = _scan_serializable_script_reference_fields(repo_root.resolve())
+    return object_fields
+
+
+@lru_cache(maxsize=4)
 def _discover_workspace_behavior_templates(repo_root: Path) -> dict[str, dict[str, Any]]:
     declared_fields = _scan_serializable_script_fields(repo_root)
     scene_samples = _scan_scene_behavior_samples(repo_root)
+    _, object_reference_fields = _scan_serializable_script_reference_fields(repo_root)
 
     templates: dict[str, dict[str, Any]] = {}
     for behavior_name in sorted(set(declared_fields) | set(scene_samples), key=str.casefold):
         field_names = declared_fields.get(behavior_name, ())
         sample = scene_samples.get(behavior_name, {})
+        reference_fields = object_reference_fields.get(behavior_name, {})
         template_defaults: dict[str, Any] = {}
 
         for field_name in field_names:
+            if field_name in reference_fields:
+                template_defaults[field_name] = None
+                continue
             if field_name in sample:
                 template_defaults[field_name] = _neutralize_value(sample[field_name])
 
         for field_name, sample_value in sample.items():
             if field_name not in template_defaults:
+                if field_name in reference_fields:
+                    template_defaults[field_name] = None
+                    continue
                 template_defaults[field_name] = _neutralize_value(sample_value)
 
         templates[behavior_name] = template_defaults
@@ -87,6 +133,101 @@ def _scan_scene_behavior_samples(repo_root: Path) -> dict[str, dict[str, Any]]:
             _collect_raw_object_behavior_samples(raw_object, samples)
 
     return samples
+
+
+def _scan_serializable_script_reference_fields(
+    repo_root: Path,
+) -> tuple[dict[str, dict[str, AssetKind]], dict[str, dict[str, ObjectReferenceDescriptor]]]:
+    asset_fields_by_behavior: dict[str, dict[str, AssetKind]] = {}
+    object_fields_by_behavior: dict[str, dict[str, ObjectReferenceDescriptor]] = {}
+
+    for file_path in _iter_source_files(repo_root):
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        asset_declarations = _scan_asset_reference_declarations(content)
+        object_declarations = _scan_object_reference_declarations(content)
+
+        for match in SERIALIZABLE_SCRIPT_RE.finditer(content):
+            behavior_name = match.group(1).strip()
+            field_block = match.group(2) or ""
+            field_names = tuple(
+                field_name.strip()
+                for field_name in field_block.replace("\n", " ").split(",")
+                if field_name.strip()
+            )
+            if not field_names:
+                continue
+
+            asset_fields = asset_fields_by_behavior.setdefault(behavior_name, {})
+            object_fields = object_fields_by_behavior.setdefault(behavior_name, {})
+
+            for field_name in field_names:
+                asset_kind = asset_declarations.get(field_name)
+                if asset_kind is not None:
+                    asset_fields[field_name] = asset_kind
+
+                object_descriptor = object_declarations.get(field_name)
+                if object_descriptor is not None:
+                    object_fields[field_name] = object_descriptor
+
+            if not asset_fields:
+                asset_fields_by_behavior.pop(behavior_name, None)
+            if not object_fields:
+                object_fields_by_behavior.pop(behavior_name, None)
+
+    return asset_fields_by_behavior, object_fields_by_behavior
+
+
+def _scan_asset_reference_declarations(content: str) -> dict[str, AssetKind]:
+    declarations: dict[str, AssetKind] = {}
+
+    for match in ASSET_REFERENCE_DECLARATION_RE.finditer(content):
+        declarations[match.group(2)] = _asset_kind_for_type(match.group(1))
+
+    for match in ASSET_REFERENCE_ALIAS_RE.finditer(content):
+        declarations[match.group(2)] = _asset_kind_for_alias(match.group(1))
+
+    return declarations
+
+
+def _scan_object_reference_declarations(content: str) -> dict[str, ObjectReferenceDescriptor]:
+    declarations: dict[str, ObjectReferenceDescriptor] = {}
+
+    for match in OBJECT_REFERENCE_DECLARATION_RE.finditer(content):
+        declarations[match.group(2)] = _object_reference_descriptor_for_type(match.group(1))
+
+    return declarations
+
+
+def _asset_kind_for_type(type_name: str) -> AssetKind:
+    short_name = type_name.rsplit("::", maxsplit=1)[-1]
+    if short_name == "TextureWrapper":
+        return AssetKind.TEXTURE
+    if short_name == "AudioWrapper":
+        return AssetKind.AUDIO
+    if short_name == "AnimationClip":
+        return AssetKind.ANIMATION_CLIP
+    return AssetKind.GENERIC
+
+
+def _asset_kind_for_alias(alias_name: str) -> AssetKind:
+    if alias_name == "TextureAssetRef":
+        return AssetKind.TEXTURE
+    if alias_name == "AudioAssetRef":
+        return AssetKind.AUDIO
+    if alias_name == "AnimationClipRef":
+        return AssetKind.ANIMATION_CLIP
+    return AssetKind.GENERIC
+
+
+def _object_reference_descriptor_for_type(type_name: str) -> ObjectReferenceDescriptor:
+    short_name = type_name.rsplit("::", maxsplit=1)[-1]
+    if short_name == "GameObject":
+        return ObjectReferenceDescriptor(ObjectReferenceTargetKind.SCENE_OBJECT, short_name)
+    return ObjectReferenceDescriptor(ObjectReferenceTargetKind.COMPONENT, short_name)
 
 
 def _collect_raw_object_behavior_samples(raw_object: Any, samples: dict[str, dict[str, Any]]) -> None:

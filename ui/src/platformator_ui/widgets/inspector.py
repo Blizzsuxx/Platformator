@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
+from pathlib import Path
 import re
 from enum import IntEnum
 from typing import Any, Mapping, get_args
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMenu,
@@ -25,10 +29,24 @@ from PySide6.QtWidgets import (
 )
 from pydantic import BaseModel
 
-from platformator_ui.scene.models import BaseComponentModel, GameObjectModel, RectModel, ScriptBehaviorModel, ScriptComponentModel, SpriteComponent
+from platformator_ui.scene.models import (
+    AnimatorComponent,
+    AudioComponent,
+    BaseComponentModel,
+    GameObjectModel,
+    SceneDocumentModel,
+    RectModel,
+    ScriptBehaviorModel,
+    ScriptComponentModel,
+    SpriteComponent,
+)
 from platformator_ui.scene.mutations import add_behavior, remove_component
+from platformator_ui.services.asset_paths import AssetKind, normalize_scene_editor_asset_path
+from platformator_ui.services.behavior_catalog import ObjectReferenceDescriptor, ObjectReferenceTargetKind
 
+from .asset_browser import ASSET_REFERENCE_MIME_TYPE
 from .behavior_library import BEHAVIOR_MIME_TYPE
+from .scene_tree import OBJECT_REFERENCE_MIME_TYPE
 
 
 class BehaviorDropLabel(QLabel):
@@ -74,13 +92,65 @@ class BehaviorDropLabel(QLabel):
         )
 
 
+class DropValueLineEdit(QLineEdit):
+    valueDropped = Signal(object)
+
+    def __init__(self, parser: Callable[[QMimeData], object | None], parent=None) -> None:
+        super().__init__(parent)
+        self._parser = parser
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event) -> None:
+        if self._parser(event.mimeData()) is not None:
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._parser(event.mimeData()) is not None:
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event) -> None:
+        dropped_value = self._parser(event.mimeData())
+        if dropped_value is None:
+            event.ignore()
+            return
+
+        self.valueDropped.emit(dropped_value)
+        event.acceptProposedAction()
+
+
 class InspectorWidget(QWidget):
     objectChanged = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        *,
+        assets_dir: Path | None = None,
+        repo_root: Path | None = None,
+        scene_document_provider: Callable[[], SceneDocumentModel] | None = None,
+        scene_path_provider: Callable[[], Path | None] | None = None,
+        behavior_asset_fields: Mapping[str, Mapping[str, AssetKind]] | None = None,
+        behavior_object_reference_fields: Mapping[str, Mapping[str, ObjectReferenceDescriptor]] | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._current_object: GameObjectModel | None = None
         self._behavior_templates: dict[str, dict[str, Any]] = {}
+        self._assets_dir = assets_dir
+        self._repo_root = repo_root
+        self._scene_document_provider = scene_document_provider or (lambda: SceneDocumentModel())
+        self._scene_path_provider = scene_path_provider or (lambda: None)
+        self._behavior_asset_fields = {
+            behavior_name: dict(field_map)
+            for behavior_name, field_map in (behavior_asset_fields or {}).items()
+        }
+        self._behavior_object_reference_fields = {
+            behavior_name: dict(field_map)
+            for behavior_name, field_map in (behavior_object_reference_fields or {}).items()
+        }
         self._is_updating = False
 
         root_layout = QVBoxLayout(self)
@@ -133,13 +203,13 @@ class InspectorWidget(QWidget):
         self.content_layout.addStretch(1)
 
         self.active_checkbox.toggled.connect(self._apply_object_changes)
-        self.name_edit.editingFinished.connect(self._apply_object_changes)
-        self.tag_edit.editingFinished.connect(self._apply_object_changes)
-        self.position_x.editingFinished.connect(self._apply_object_changes)
-        self.position_y.editingFinished.connect(self._apply_object_changes)
-        self.scale_x.editingFinished.connect(self._apply_object_changes)
-        self.scale_y.editingFinished.connect(self._apply_object_changes)
-        self.rotation.editingFinished.connect(self._apply_object_changes)
+        self.name_edit.textChanged.connect(self._apply_object_changes)
+        self.tag_edit.textChanged.connect(self._apply_object_changes)
+        self.position_x.valueChanged.connect(self._apply_object_changes)
+        self.position_y.valueChanged.connect(self._apply_object_changes)
+        self.scale_x.valueChanged.connect(self._apply_object_changes)
+        self.scale_y.valueChanged.connect(self._apply_object_changes)
+        self.rotation.valueChanged.connect(self._apply_object_changes)
 
         self.set_object(None)
 
@@ -350,6 +420,16 @@ class InspectorWidget(QWidget):
     ) -> None:
         label = self._humanize_label(field_name)
 
+        asset_kind = self._asset_reference_kind(owner, field_name)
+        if asset_kind is not None and (value is None or isinstance(value, str)):
+            form.addRow(label, self._build_asset_reference_editor(owner, field_name, value or "", asset_kind))
+            return
+
+        object_reference_descriptor = self._object_reference_descriptor(owner, field_name)
+        if object_reference_descriptor is not None and (value is None or isinstance(value, int)):
+            form.addRow(label, self._build_object_reference_editor(owner, field_name, value, object_reference_descriptor))
+            return
+
         if isinstance(value, bool):
             checkbox = QCheckBox(self.components_group)
             checkbox.setChecked(value)
@@ -377,7 +457,7 @@ class InspectorWidget(QWidget):
 
         if isinstance(value, int):
             spin_box = self._create_int_spin_box(value)
-            spin_box.editingFinished.connect(
+            spin_box.valueChanged.connect(
                 lambda owner=owner, field_name=field_name, spin_box=spin_box: self._assign_value(
                     owner,
                     field_name,
@@ -389,7 +469,7 @@ class InspectorWidget(QWidget):
 
         if isinstance(value, float):
             spin_box = self._create_double_spin_box(value)
-            spin_box.editingFinished.connect(
+            spin_box.valueChanged.connect(
                 lambda owner=owner, field_name=field_name, spin_box=spin_box: self._assign_value(
                     owner,
                     field_name,
@@ -402,7 +482,7 @@ class InspectorWidget(QWidget):
         if isinstance(value, str):
             line_edit = QLineEdit(self.components_group)
             line_edit.setText(value)
-            line_edit.editingFinished.connect(
+            line_edit.textChanged.connect(
                 lambda owner=owner, field_name=field_name, line_edit=line_edit: self._assign_value(
                     owner,
                     field_name,
@@ -426,6 +506,108 @@ class InspectorWidget(QWidget):
             return
 
         self._add_read_only_row(form, label, "-" if value is None else str(value))
+
+    def _build_asset_reference_editor(
+        self,
+        owner: BaseModel,
+        field_name: str,
+        value: str,
+        asset_kind: AssetKind,
+    ) -> QWidget:
+        container = QWidget(self.components_group)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        line_edit = DropValueLineEdit(
+            lambda mime_data, asset_kind=asset_kind: self._parse_asset_reference_drop(mime_data, asset_kind),
+            container,
+        )
+        line_edit.setText(value)
+        line_edit.setPlaceholderText("assets/...")
+        line_edit.textChanged.connect(
+            lambda _text, owner=owner, field_name=field_name, line_edit=line_edit: self._assign_asset_reference_value(
+                owner,
+                field_name,
+                line_edit.text(),
+            )
+        )
+        line_edit.valueDropped.connect(lambda dropped_value, line_edit=line_edit: line_edit.setText(str(dropped_value)))
+        layout.addWidget(line_edit, 1)
+
+        browse_button = QToolButton(container)
+        browse_button.setText("...")
+        browse_button.setToolTip(f"Choose {self._asset_kind_label(asset_kind)}")
+        browse_button.clicked.connect(
+            lambda checked=False, owner=owner, field_name=field_name, asset_kind=asset_kind, line_edit=line_edit: self._pick_asset_reference(
+                owner,
+                field_name,
+                asset_kind,
+                line_edit,
+            )
+        )
+        layout.addWidget(browse_button)
+
+        return container
+
+    def _build_object_reference_editor(
+        self,
+        owner: BaseModel,
+        field_name: str,
+        value: int | None,
+        descriptor: ObjectReferenceDescriptor,
+    ) -> QWidget:
+        container = QWidget(self.components_group)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        line_edit = DropValueLineEdit(
+            lambda mime_data, descriptor=descriptor: self._parse_object_reference_drop(mime_data, descriptor),
+            container,
+        )
+        line_edit.setReadOnly(True)
+        line_edit.setText(self._format_object_reference_display(value, descriptor))
+        line_edit.setPlaceholderText(self._object_reference_placeholder(descriptor))
+        line_edit.valueDropped.connect(
+            lambda dropped_value, owner=owner, field_name=field_name, descriptor=descriptor, line_edit=line_edit: self._set_object_reference_value(
+                owner,
+                field_name,
+                descriptor,
+                line_edit,
+                dropped_value,
+            )
+        )
+        layout.addWidget(line_edit, 1)
+
+        browse_button = QToolButton(container)
+        browse_button.setText("...")
+        browse_button.setToolTip("Choose reference")
+        browse_button.clicked.connect(
+            lambda checked=False, owner=owner, field_name=field_name, descriptor=descriptor, line_edit=line_edit: self._pick_object_reference(
+                owner,
+                field_name,
+                descriptor,
+                line_edit,
+            )
+        )
+        layout.addWidget(browse_button)
+
+        clear_button = QToolButton(container)
+        clear_button.setText("Clear")
+        clear_button.setToolTip("Clear reference")
+        clear_button.clicked.connect(
+            lambda checked=False, owner=owner, field_name=field_name, descriptor=descriptor, line_edit=line_edit: self._set_object_reference_value(
+                owner,
+                field_name,
+                descriptor,
+                line_edit,
+                None,
+            )
+        )
+        layout.addWidget(clear_button)
+
+        return container
 
     def _build_model_group(self, title: str, model: BaseModel) -> QGroupBox:
         group = QGroupBox(title, self.components_group)
@@ -587,6 +769,240 @@ class InspectorWidget(QWidget):
 
         setattr(owner, field_name, value)
         self.objectChanged.emit()
+
+    def _assign_asset_reference_value(self, owner: BaseModel, field_name: str, raw_value: str) -> None:
+        normalized_value = self._normalize_asset_reference_value(raw_value)
+        if normalized_value is not None:
+            self._assign_value(owner, field_name, normalized_value)
+            return
+        self._assign_value(owner, field_name, raw_value.strip())
+
+    def _asset_reference_kind(self, owner: BaseModel, field_name: str) -> AssetKind | None:
+        if isinstance(owner, SpriteComponent) and field_name == "textureFilePath":
+            return AssetKind.TEXTURE
+        if isinstance(owner, AudioComponent) and field_name == "filePath":
+            return AssetKind.AUDIO
+        if isinstance(owner, AnimatorComponent) and field_name == "animationClipFilePath":
+            return AssetKind.ANIMATION_CLIP
+        if isinstance(owner, ScriptBehaviorModel):
+            return self._behavior_asset_fields.get(owner.type, {}).get(field_name)
+        return None
+
+    def _object_reference_descriptor(self, owner: BaseModel, field_name: str) -> ObjectReferenceDescriptor | None:
+        if not isinstance(owner, ScriptBehaviorModel):
+            return None
+        return self._behavior_object_reference_fields.get(owner.type, {}).get(field_name)
+
+    def _parse_asset_reference_drop(self, mime_data: QMimeData, _asset_kind: AssetKind) -> str | None:
+        if mime_data.hasFormat(ASSET_REFERENCE_MIME_TYPE):
+            raw_value = bytes(mime_data.data(ASSET_REFERENCE_MIME_TYPE)).decode("utf-8").strip()
+            return self._normalize_asset_reference_value(raw_value)
+
+        for url in mime_data.urls():
+            if url.isLocalFile():
+                normalized = self._normalize_asset_reference_value(url.toLocalFile())
+                if normalized is not None:
+                    return normalized
+
+        if mime_data.hasText():
+            return self._normalize_asset_reference_value(mime_data.text())
+        return None
+
+    def _normalize_asset_reference_value(self, raw_value: str) -> str | None:
+        stripped_value = raw_value.strip()
+        if not stripped_value:
+            return ""
+
+        raw_path = Path(stripped_value)
+        if raw_path.is_absolute() and self._repo_root is not None:
+            try:
+                stripped_value = raw_path.resolve(strict=False).relative_to(self._repo_root.resolve(strict=False)).as_posix()
+            except ValueError:
+                return None
+
+        return normalize_scene_editor_asset_path(
+            stripped_value,
+            scene_path=self._scene_path_provider(),
+            repo_root=self._repo_root,
+        )
+
+    def _pick_asset_reference(
+        self,
+        owner: BaseModel,
+        field_name: str,
+        asset_kind: AssetKind,
+        line_edit: QLineEdit,
+    ) -> None:
+        selected_path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"Select {self._asset_kind_label(asset_kind)}",
+            self._asset_dialog_directory(line_edit.text()),
+            self._asset_dialog_filter(asset_kind),
+        )
+        if not selected_path:
+            return
+
+        normalized = self._normalize_asset_reference_value(selected_path)
+        if normalized is None:
+            return
+
+        line_edit.setText(normalized)
+
+    def _asset_dialog_directory(self, current_value: str) -> str:
+        normalized_current = self._normalize_asset_reference_value(current_value)
+        if normalized_current and self._repo_root is not None:
+            candidate = self._repo_root / normalized_current
+            if candidate.exists():
+                return str(candidate.parent)
+
+        if self._assets_dir is not None:
+            return str(self._assets_dir)
+        if self._repo_root is not None:
+            return str(self._repo_root)
+        return str(Path.home())
+
+    @staticmethod
+    def _asset_dialog_filter(asset_kind: AssetKind) -> str:
+        if asset_kind == AssetKind.TEXTURE:
+            return "Image Files (*.png *.jpg *.jpeg *.webp);;All Files (*)"
+        if asset_kind == AssetKind.AUDIO:
+            return "Audio Files (*.wav *.ogg *.mp3);;All Files (*)"
+        if asset_kind == AssetKind.ANIMATION_CLIP:
+            return "Animation Clip Files (*.animset);;All Files (*)"
+        return "All Files (*)"
+
+    @staticmethod
+    def _asset_kind_label(asset_kind: AssetKind) -> str:
+        return asset_kind.value.replace("_", " ").title()
+
+    def _parse_object_reference_drop(
+        self,
+        mime_data: QMimeData,
+        descriptor: ObjectReferenceDescriptor,
+    ) -> int | None:
+        if mime_data.hasFormat(OBJECT_REFERENCE_MIME_TYPE):
+            dropped_value = self._parse_reference_id(bytes(mime_data.data(OBJECT_REFERENCE_MIME_TYPE)).decode("utf-8"))
+            if dropped_value is not None and self._is_valid_object_reference(descriptor, dropped_value):
+                return dropped_value
+
+        if mime_data.hasText():
+            dropped_value = self._parse_reference_id(mime_data.text())
+            if dropped_value is not None and self._is_valid_object_reference(descriptor, dropped_value):
+                return dropped_value
+
+        return None
+
+    def _pick_object_reference(
+        self,
+        owner: BaseModel,
+        field_name: str,
+        descriptor: ObjectReferenceDescriptor,
+        line_edit: QLineEdit,
+    ) -> None:
+        choices = self._object_reference_choices(descriptor)
+        labels = [label for label, _value in choices]
+        current_value = getattr(owner, field_name, None)
+        current_index = 0
+        for index, (_label, candidate_value) in enumerate(choices):
+            if candidate_value == current_value:
+                current_index = index
+                break
+
+        selection, accepted = QInputDialog.getItem(
+            self,
+            "Select Reference",
+            self._object_reference_dialog_label(descriptor),
+            labels,
+            current=current_index,
+            editable=False,
+        )
+        if not accepted:
+            return
+
+        selected_value = dict(choices).get(selection)
+        self._set_object_reference_value(owner, field_name, descriptor, line_edit, selected_value)
+
+    def _set_object_reference_value(
+        self,
+        owner: BaseModel,
+        field_name: str,
+        descriptor: ObjectReferenceDescriptor,
+        line_edit: QLineEdit,
+        value: int | None,
+    ) -> None:
+        self._assign_value(owner, field_name, value)
+        line_edit.setText(self._format_object_reference_display(value, descriptor))
+
+    def _object_reference_choices(self, descriptor: ObjectReferenceDescriptor) -> list[tuple[str, int | None]]:
+        choices: list[tuple[str, int | None]] = [("(None)", None)]
+        scene_document = self._scene_document_provider()
+
+        if descriptor.target_kind == ObjectReferenceTargetKind.SCENE_OBJECT:
+            for game_object in scene_document.iter_objects():
+                choices.append((f"{game_object.name} ({game_object.id})", game_object.id))
+            return choices
+
+        for game_object in scene_document.iter_objects():
+            for component in game_object.components:
+                if not self._matches_component_reference_target(component, descriptor.target_type_name):
+                    continue
+                choices.append((f"{game_object.name} / {component.component_label} ({component.id})", component.id))
+
+        return choices
+
+    def _format_object_reference_display(
+        self,
+        value: int | None,
+        descriptor: ObjectReferenceDescriptor,
+    ) -> str:
+        if value is None:
+            return ""
+
+        for label, candidate_value in self._object_reference_choices(descriptor):
+            if candidate_value == value:
+                return label
+
+        target_label = "object" if descriptor.target_kind == ObjectReferenceTargetKind.SCENE_OBJECT else descriptor.target_type_name or "reference"
+        return f"Missing {target_label} ({value})"
+
+    def _is_valid_object_reference(self, descriptor: ObjectReferenceDescriptor, candidate_id: int) -> bool:
+        return any(value == candidate_id for _label, value in self._object_reference_choices(descriptor) if value is not None)
+
+    @staticmethod
+    def _matches_component_reference_target(component: BaseComponentModel, target_type_name: str | None) -> bool:
+        if not target_type_name:
+            return True
+
+        normalized_target = target_type_name.casefold()
+        component_label = component.component_label.replace(" ", "").casefold()
+        class_name = type(component).__name__.replace("Component", "").casefold()
+        return normalized_target in {component_label, class_name}
+
+    @staticmethod
+    def _object_reference_placeholder(descriptor: ObjectReferenceDescriptor) -> str:
+        if descriptor.target_kind == ObjectReferenceTargetKind.SCENE_OBJECT:
+            return "Drop a scene object or choose one"
+        if descriptor.target_type_name:
+            return f"Choose a {descriptor.target_type_name} reference"
+        return "Choose a reference"
+
+    @staticmethod
+    def _object_reference_dialog_label(descriptor: ObjectReferenceDescriptor) -> str:
+        if descriptor.target_kind == ObjectReferenceTargetKind.SCENE_OBJECT:
+            return "Scene object"
+        if descriptor.target_type_name:
+            return f"{descriptor.target_type_name} component"
+        return "Reference"
+
+    @staticmethod
+    def _parse_reference_id(raw_value: str) -> int | None:
+        stripped_value = raw_value.strip()
+        if not stripped_value:
+            return None
+        try:
+            return int(stripped_value)
+        except ValueError:
+            return None
 
     def _add_read_only_row(self, form: QFormLayout, label: str, value: str) -> None:
         form.addRow(label, QLabel(value, self.components_group))

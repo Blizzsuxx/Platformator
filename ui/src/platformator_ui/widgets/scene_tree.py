@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QMenu, QTreeWidget, QTreeWidgetItem
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtWidgets import QAbstractItemView, QMenu, QTreeWidget, QTreeWidgetItem
 
 from platformator_ui.scene.models import GameObjectModel, SceneDocumentModel
+
+
+OBJECT_REFERENCE_MIME_TYPE = "application/x-platformator-object-reference"
 
 
 class SceneTreeWidget(QTreeWidget):
@@ -27,9 +30,29 @@ class SceneTreeWidget(QTreeWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setHeaderLabels(["Scene Objects"])
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
         self.itemSelectionChanged.connect(self._emit_selection)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
+
+    def mimeData(self, items: list[QTreeWidgetItem]) -> QMimeData:
+        mime_data = QMimeData()
+        if not items:
+            return mime_data
+
+        object_id = items[0].data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(object_id, int):
+            encoded_id = str(object_id).encode("utf-8")
+            mime_data.setData(OBJECT_REFERENCE_MIME_TYPE, encoded_id)
+            mime_data.setText(str(object_id))
+        return mime_data
+
+    def mimeTypes(self) -> list[str]:
+        return [OBJECT_REFERENCE_MIME_TYPE]
+
+    def supportedDragActions(self) -> Qt.DropAction:
+        return Qt.DropAction.CopyAction
 
     def set_scene(self, scene_document: SceneDocumentModel) -> None:
         self.clear()

@@ -48,6 +48,7 @@ class SpritePreview:
 class SceneCanvasWidget(QWidget):
     objectSelected = Signal(object)
     sceneChanged = Signal()
+    objectMoveFinished = Signal(int)
 
     def __init__(self, project_paths: ProjectPaths, parent=None) -> None:
         super().__init__(parent)
@@ -56,7 +57,10 @@ class SceneCanvasWidget(QWidget):
         self._scene_path: Path | None = None
         self._selected_object_id: int | None = None
         self._drag_object_id: int | None = None
+        self._drag_start_position = QPointF()
         self._drag_offset = QPointF()
+        self._pan_active = False
+        self._pan_last_position = QPointF()
         self._view_center = QPointF(0.0, 0.0)
         self._pixels_per_unit = 1.0
         self._view_initialized = False
@@ -86,6 +90,29 @@ class SceneCanvasWidget(QWidget):
         self._selected_object_id = object_id
         self.update()
 
+    def zoom_in(self) -> None:
+        self._zoom_at(QPointF(self.width() / 2, self.height() / 2), 1.2)
+
+    def zoom_out(self) -> None:
+        self._zoom_at(QPointF(self.width() / 2, self.height() / 2), 1.0 / 1.2)
+
+    def frame_scene(self) -> None:
+        self._fit_view_to_scene()
+        self.update()
+
+    def frame_selection(self) -> None:
+        if self._scene_document is None or self._selected_object_id is None:
+            self.frame_scene()
+            return
+
+        selected_object = self._scene_document.find_object_by_id(self._selected_object_id)
+        if selected_object is None:
+            self.frame_scene()
+            return
+
+        self._fit_view_to_rect(self._object_bounds(selected_object))
+        self.update()
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if not self._view_initialized and self._scene_document is not None:
@@ -105,6 +132,12 @@ class SceneCanvasWidget(QWidget):
             self._draw_game_object(painter, game_object)
 
     def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._pan_active = True
+            self._pan_last_position = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
+
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
@@ -119,6 +152,7 @@ class SceneCanvasWidget(QWidget):
 
         self._selected_object_id = clicked_object.id
         self._drag_object_id = clicked_object.id
+        self._drag_start_position = QPointF(clicked_object.position.x, clicked_object.position.y)
         world_position = self._screen_to_world(event.position())
         self._drag_offset = QPointF(
             clicked_object.position.x - world_position.x(),
@@ -128,6 +162,17 @@ class SceneCanvasWidget(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event) -> None:
+        if self._pan_active:
+            delta = event.position() - self._pan_last_position
+            self._view_center = QPointF(
+                self._view_center.x() - delta.x() / self._pixels_per_unit,
+                self._view_center.y() - delta.y() / self._pixels_per_unit,
+            )
+            self._pan_last_position = event.position()
+            self._view_initialized = True
+            self.update()
+            return
+
         if self._scene_document is None or self._drag_object_id is None or not (event.buttons() & Qt.MouseButton.LeftButton):
             super().mouseMoveEvent(event)
             return
@@ -144,9 +189,32 @@ class SceneCanvasWidget(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._pan_active = False
+            self.unsetCursor()
+            return
+
         if event.button() == Qt.MouseButton.LeftButton:
+            moved_object_id = self._drag_object_id
+            started_at = QPointF(self._drag_start_position)
             self._drag_object_id = None
+            self._drag_start_position = QPointF()
+            if self._scene_document is not None and moved_object_id is not None:
+                moved_object = self._scene_document.find_object_by_id(moved_object_id)
+                if moved_object is not None:
+                    ended_at = QPointF(moved_object.position.x, moved_object.position.y)
+                    if started_at != ended_at:
+                        self.objectMoveFinished.emit(moved_object_id)
         super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event) -> None:
+        if event.angleDelta().y() == 0:
+            super().wheelEvent(event)
+            return
+
+        factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
+        self._zoom_at(event.position(), factor)
+        event.accept()
 
     def _draw_grid(self, painter: QPainter) -> None:
         painter.save()
@@ -185,7 +253,7 @@ class SceneCanvasWidget(QWidget):
             self._draw_sprite(painter, game_object, sprite_preview)
 
         if camera_component is not None:
-            self._draw_camera_bounds(painter, camera_component)
+            self._draw_camera_bounds(painter, game_object, camera_component)
 
         if box_collider is not None:
             self._draw_box_collider(painter, game_object, box_collider)
@@ -222,12 +290,12 @@ class SceneCanvasWidget(QWidget):
         painter.drawPixmap(target_rect, preview.pixmap, source_rect)
         painter.restore()
 
-    def _draw_camera_bounds(self, painter: QPainter, camera_component: CameraComponent) -> None:
+    def _draw_camera_bounds(self, painter: QPainter, game_object: GameObjectModel, camera_component: CameraComponent) -> None:
         world_rect = QRectF(
-            camera_component.camera.x,
-            camera_component.camera.y,
-            camera_component.camera.w,
-            camera_component.camera.h,
+            game_object.position.x,
+            game_object.position.y,
+            camera_component.width,
+            camera_component.height,
         )
         screen_rect = self._world_rect_to_screen(world_rect)
         painter.save()
@@ -316,10 +384,10 @@ class SceneCanvasWidget(QWidget):
         camera_component = game_object.find_component(CameraComponent)
         if camera_component is not None:
             camera_rect = QRectF(
-                camera_component.camera.x,
-                camera_component.camera.y,
-                camera_component.camera.w,
-                camera_component.camera.h,
+                game_object.position.x,
+                game_object.position.y,
+                camera_component.width,
+                camera_component.height,
             )
             bounds = camera_rect if bounds is None else bounds.united(camera_rect)
 
@@ -492,13 +560,7 @@ class SceneCanvasWidget(QWidget):
             self._view_initialized = True
             return
 
-        self._view_center = bounds.center()
-        padded_width = max(bounds.width() + 96.0, 128.0)
-        padded_height = max(bounds.height() + 96.0, 128.0)
-        scale_x = self.width() / padded_width
-        scale_y = self.height() / padded_height
-        self._pixels_per_unit = max(0.1, min(scale_x, scale_y, 4.0))
-        self._view_initialized = True
+        self._fit_view_to_rect(bounds)
 
     def _world_to_screen(self, point: QPointF) -> QPointF:
         return QPointF(
@@ -516,6 +578,30 @@ class SceneCanvasWidget(QWidget):
         top_left = self._world_to_screen(rect.topLeft())
         bottom_right = self._world_to_screen(rect.bottomRight())
         return QRectF(top_left, bottom_right).normalized()
+
+    def _fit_view_to_rect(self, bounds: QRectF) -> None:
+        self._view_center = bounds.center()
+        padded_width = max(bounds.width() + 96.0, 128.0)
+        padded_height = max(bounds.height() + 96.0, 128.0)
+        scale_x = self.width() / padded_width if padded_width > 0.0 else 1.0
+        scale_y = self.height() / padded_height if padded_height > 0.0 else 1.0
+        self._pixels_per_unit = max(0.05, min(scale_x, scale_y, 8.0))
+        self._view_initialized = True
+
+    def _zoom_at(self, screen_point: QPointF, factor: float) -> None:
+        before_world = self._screen_to_world(screen_point)
+        new_scale = max(0.05, min(self._pixels_per_unit * factor, 16.0))
+        if abs(new_scale - self._pixels_per_unit) <= 1e-6:
+            return
+
+        self._pixels_per_unit = new_scale
+        after_world = self._screen_to_world(screen_point)
+        self._view_center = QPointF(
+            self._view_center.x() + before_world.x() - after_world.x(),
+            self._view_center.y() + before_world.y() - after_world.y(),
+        )
+        self._view_initialized = True
+        self.update()
 
     @staticmethod
     def _merge_rect(left: QRectF | None, right: QRectF) -> QRectF:

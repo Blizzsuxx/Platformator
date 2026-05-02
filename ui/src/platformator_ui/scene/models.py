@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import IntEnum
 from typing import Any, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ComponentType(IntEnum):
@@ -117,7 +117,21 @@ class AnimatorComponent(BaseComponentModel):
 
 class CameraComponent(BaseComponentModel):
     type: Literal[ComponentType.CAMERA] = ComponentType.CAMERA
-    camera: RectModel = Field(default_factory=lambda: RectModel(x=0.0, y=0.0, w=640.0, h=480.0))
+    width: float = 640.0
+    height: float = 480.0
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_camera_rect(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        migrated = dict(value)
+        raw_camera = migrated.pop("camera", None)
+        if isinstance(raw_camera, dict):
+            migrated.setdefault("width", raw_camera.get("w", 640.0))
+            migrated.setdefault("height", raw_camera.get("h", 480.0))
+        return migrated
 
 
 class AudioComponent(BaseComponentModel):

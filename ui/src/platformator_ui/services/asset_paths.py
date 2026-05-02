@@ -104,6 +104,12 @@ def normalize_scene_asset_paths(
     scene_path: Path | None = None,
     repo_root: Path | None = None,
 ) -> None:
+    behavior_asset_fields: dict[str, dict[str, AssetKind]] = {}
+    if repo_root is not None:
+        from platformator_ui.services.behavior_catalog import discover_behavior_asset_fields
+
+        behavior_asset_fields = discover_behavior_asset_fields(repo_root.resolve(strict=False))
+
     for game_object in scene_document.iter_objects():
         for component in game_object.components:
             if isinstance(component, SpriteComponent):
@@ -126,7 +132,8 @@ def normalize_scene_asset_paths(
                 )
             elif isinstance(component, ScriptComponentModel):
                 for behavior in component.behaviors:
-                    for field_name, asset_kind in KNOWN_BEHAVIOR_ASSET_FIELDS.items():
+                    asset_field_names = behavior_asset_fields.get(behavior.type, {}).keys() or KNOWN_BEHAVIOR_ASSET_FIELDS.keys()
+                    for field_name in asset_field_names:
                         field_value = getattr(behavior, field_name, None)
                         if isinstance(field_value, str):
                             normalized_value = _normalize_optional_asset_path(

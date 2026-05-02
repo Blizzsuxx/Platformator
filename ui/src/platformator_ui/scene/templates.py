@@ -10,7 +10,6 @@ from .models import (
     CircleColliderComponent,
     ComponentType,
     GameObjectModel,
-    RectModel,
     RigidbodyComponent,
     SceneDocumentModel,
     ScriptComponentModel,
@@ -38,7 +37,8 @@ def create_main_camera_object(allocator: SceneIdAllocator) -> GameObjectModel:
     camera_object.components.append(
         CameraComponent(
             id=allocator.allocate(),
-            camera=RectModel(x=0.0, y=0.0, w=640.0, h=480.0),
+            width=640.0,
+            height=480.0,
         )
     )
     return camera_object
@@ -49,7 +49,7 @@ def create_named_component(component_name: str, allocator: SceneIdAllocator):
     component_id = allocator.allocate()
 
     if component_name == "camera":
-        return CameraComponent(id=component_id, camera=RectModel(x=0.0, y=0.0, w=640.0, h=480.0))
+        return CameraComponent(id=component_id, width=640.0, height=480.0)
     if component_name == "rigidbody":
         return RigidbodyComponent(id=component_id, bodyType=BodyType.DYNAMIC, gravity=True)
     if component_name == "boxcollider":

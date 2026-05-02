@@ -20,6 +20,7 @@ from .scene import (
     AudioComponent,
     SceneIdAllocator,
     SceneSerializer,
+    ScriptComponentModel,
     SpriteComponent,
     add_game_object,
     create_empty_scene,
@@ -140,14 +141,20 @@ class MainWindow(QMainWindow):
         return self.save_scene()
 
     def build_project(self) -> None:
-        self.run_controller.build_only()
+        target_name, _program_path = self._resolve_run_target()
+        self.run_controller.build_only(target_name=target_name)
 
     def run_scene(self) -> None:
         if not self.save_scene():
             return
         if self.current_scene_path is None:
             return
-        self.run_controller.run_scene(self.current_scene_path)
+        target_name, program_path = self._resolve_run_target()
+        self.run_controller.run_scene(
+            self.current_scene_path,
+            target_name=target_name,
+            program_path=program_path,
+        )
 
     def validate_scene(self) -> None:
         issues = validate_scene_document(self.scene_document)
@@ -585,6 +592,30 @@ class MainWindow(QMainWindow):
         scene_name = self.current_scene_path.name if self.current_scene_path is not None else "Untitled"
         dirty_marker = "*" if self._dirty else ""
         self.setWindowTitle(f"{APP_NAME} - {scene_name}{dirty_marker}")
+
+    def _resolve_run_target(self) -> tuple[str, Path]:
+        if self._uses_mario_runtime():
+            return self.project_paths.mario_example_binary.name, self.project_paths.mario_example_binary
+        return self.project_paths.main_binary.name, self.project_paths.main_binary
+
+    def _uses_mario_runtime(self) -> bool:
+        mario_examples_dir = self.project_paths.repo_root / "examples" / "mario"
+        if self.current_scene_path is not None:
+            try:
+                self.current_scene_path.resolve(strict=False).relative_to(mario_examples_dir.resolve(strict=False))
+                return True
+            except ValueError:
+                pass
+
+        for game_object in self.scene_document.iter_objects():
+            for component in game_object.components:
+                if not isinstance(component, ScriptComponentModel):
+                    continue
+                for behavior in component.behaviors:
+                    if behavior.type.startswith("Mario"):
+                        return True
+
+        return False
 
     def _restore_window_state(self) -> None:
         settings = QSettings()

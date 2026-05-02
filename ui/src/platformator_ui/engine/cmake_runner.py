@@ -26,20 +26,30 @@ def create_configure_spec(project_paths: ProjectPaths, preset: str = "debug") ->
     )
 
 
-def create_build_spec(project_paths: ProjectPaths, preset: str = "debug") -> ProcessSpec:
-    target_name = project_paths.main_binary.name
+def create_build_spec(
+    project_paths: ProjectPaths,
+    preset: str = "debug",
+    *,
+    target_name: str | None = None,
+) -> ProcessSpec:
+    resolved_target_name = target_name or project_paths.main_binary.name
     return ProcessSpec(
         label="Build",
         program="cmake",
-        arguments=("--build", "--preset", preset, "--target", target_name),
+        arguments=("--build", "--preset", preset, "--target", resolved_target_name),
         working_directory=project_paths.repo_root,
     )
 
 
-def create_run_spec(project_paths: ProjectPaths, scene_path: Path) -> ProcessSpec:
+def create_run_spec(
+    project_paths: ProjectPaths,
+    scene_path: Path,
+    *,
+    program_path: Path | None = None,
+) -> ProcessSpec:
     return ProcessSpec(
         label="Run",
-        program=str(project_paths.main_binary),
+        program=str(program_path or project_paths.main_binary),
         arguments=(str(scene_path),),
         working_directory=project_paths.repo_root,
     )
@@ -49,9 +59,12 @@ def create_run_pipeline(
     project_paths: ProjectPaths,
     scene_path: Path,
     preset: str = "debug",
+    *,
+    target_name: str | None = None,
+    program_path: Path | None = None,
 ) -> list[ProcessSpec]:
     return [
         create_configure_spec(project_paths, preset=preset),
-        create_build_spec(project_paths, preset=preset),
-        create_run_spec(project_paths, scene_path=scene_path),
+        create_build_spec(project_paths, preset=preset, target_name=target_name),
+        create_run_spec(project_paths, scene_path=scene_path, program_path=program_path),
     ]

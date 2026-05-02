@@ -32,16 +32,31 @@ class RunController(QObject):
     def is_busy(self) -> bool:
         return self._busy
 
-    def build_only(self, preset: str = "debug") -> None:
+    def build_only(self, preset: str = "debug", *, target_name: str | None = None) -> None:
         self._start_pipeline(
             [
                 create_configure_spec(self._project_paths, preset=preset),
-                create_build_spec(self._project_paths, preset=preset),
+                create_build_spec(self._project_paths, preset=preset, target_name=target_name),
             ]
         )
 
-    def run_scene(self, scene_path: Path, preset: str = "debug") -> None:
-        self._start_pipeline(create_run_pipeline(self._project_paths, scene_path=scene_path, preset=preset))
+    def run_scene(
+        self,
+        scene_path: Path,
+        preset: str = "debug",
+        *,
+        target_name: str | None = None,
+        program_path: Path | None = None,
+    ) -> None:
+        self._start_pipeline(
+            create_run_pipeline(
+                self._project_paths,
+                scene_path=scene_path,
+                preset=preset,
+                target_name=target_name,
+                program_path=program_path,
+            )
+        )
 
     def stop(self) -> None:
         self._queued_steps.clear()

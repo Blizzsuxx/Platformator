@@ -63,7 +63,6 @@ add_executable(mario_example
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_coin.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_game.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_goal_flag.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_helpers.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_patrol_enemy.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/mario_player.cpp"
 )

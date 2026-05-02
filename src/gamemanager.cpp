@@ -665,3 +665,13 @@ BaseObject *GameManager::getObjectById(int id) const
     }
     return nullptr;
 }
+
+const Eigen::Vector2f &GameManager::getGravityVector() const
+{
+    return physicsManager->getGravityVector();
+}
+
+const Eigen::Vector2f &GameManager::getGravityVectorNormalized() const
+{
+    return physicsManager->getGravityVectorNormalized();
+}

@@ -13,22 +13,21 @@ namespace mario
 
     void MarioCoin::start()
     {
-        Animator *animator = getAnimator();
-        if (animator != nullptr)
+        this->animatorComponent = getGameObject()->getComponent<Animator>();
+        this->audioComponent = getGameObject()->getComponent<Audio>();
+
+        if (animatorComponent != nullptr)
         {
-            animator->play(spinAnimset.get());
+            animatorComponent->play(spinAnimset.get());
         }
     }
 
     bool MarioCoin::collect()
     {
-        if (!isActive())
+        if (audioComponent != nullptr)
         {
-            return false;
+            audioComponent->play(coinSound.get());
         }
-
-        getGameObject()->setActive(false);
-        playSound(coinSound);
         MarioGame::getInstance().onCoinCollected();
         return true;
     }

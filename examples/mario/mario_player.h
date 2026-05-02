@@ -3,16 +3,18 @@
 #include <SDL3/SDL.h>
 
 #include "behaviorfactoryregistry.h"
-#include "mario_entity.h"
-
-class Animator;
-class Collider;
-class Rigidbody;
-class Sprite;
+#include "jsonhelpers.h"
+#include "behavior.h"
+#include "assetreference.h"
+#include "objectreference.h"
+#include "sprite.h"
+#include "animator.h"
+#include "audio.h"
+#include "rigidbody.h"
 
 namespace mario
 {
-    class MarioPlayer : public MarioEntity
+    class MarioPlayer : public Behavior
     {
     public:
         MarioPlayer();
@@ -34,6 +36,7 @@ namespace mario
         Rigidbody *body;
         Animator *animator;
         Sprite *sprite;
+        Audio *audio;
         float walkSpeed;
         float jumpSpeed;
         float gravity;
@@ -47,8 +50,6 @@ namespace mario
         AssetReference<AudioWrapper> jumpSound;
         AssetReference<AudioWrapper> hurtSound;
         Eigen::Vector2f spawn;
-        Eigen::Vector2f positionBeforePhysics;
-        Eigen::Vector2f velocityBeforePhysics;
         bool jumpWasPressed;
         bool respawnWasPressed;
 

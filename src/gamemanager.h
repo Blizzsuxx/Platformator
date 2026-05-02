@@ -56,6 +56,8 @@ public:
     void saveScene(const Scene &scene);
 
     BaseObject *getObjectById(int id) const;
+    const Eigen::Vector2f &getGravityVector() const;
+    const Eigen::Vector2f &getGravityVectorNormalized() const;
 
 private:
     GameManager();

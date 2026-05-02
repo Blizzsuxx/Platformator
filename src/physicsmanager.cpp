@@ -766,3 +766,13 @@ void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
 
     clearPendingPhysicsEvents();
 }
+
+const Eigen::Vector2f &PhysicsManager::getGravityVector() const
+{
+    return gravityVector;
+}
+
+const Eigen::Vector2f &PhysicsManager::getGravityVectorNormalized() const
+{
+    return gravityVectorNormalized;
+}

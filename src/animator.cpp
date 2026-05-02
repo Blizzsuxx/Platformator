@@ -6,11 +6,11 @@
 #include "texturewrapper.h"
 
 Animator::Animator(GameObject *gameObject)
-    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX)
+    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
 {
 }
 
-Animator::Animator() : Component(ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX)
+Animator::Animator() : Component(ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
 {
 }
 
@@ -217,6 +217,8 @@ void Animator::advanceFrame()
     {
         currentFrameIndex++;
         applyCurrentFrame();
+
+        return;
     }
     else if (clip->getLoop())
     {
@@ -227,6 +229,10 @@ void Animator::advanceFrame()
     {
         accumulatedTime = 0.0;
         playing = false;
+    }
+    for (const auto &callback : onClipEndCallbacks)
+    {
+        callback();
     }
 }
 
@@ -282,4 +288,9 @@ void Animator::setCurrentFrameIndex(size_t frameIndex)
 {
     currentFrameIndex = frameIndex;
     applyCurrentFrame();
+}
+
+void Animator::addOnClipEndCallback(const std::function<void()> &callback)
+{
+    onClipEndCallbacks.push_back(callback);
 }

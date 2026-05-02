@@ -1,11 +1,16 @@
 #pragma once
 
 #include "behaviorfactoryregistry.h"
-#include "mario_entity.h"
+#include "behavior.h"
+#include "assetreference.h"
+#include "objectreference.h"
+#include "jsonhelpers.h"
+#include "animator.h"
+#include "audio.h"
 
 namespace mario
 {
-    class MarioGoalFlag : public MarioEntity
+    class MarioGoalFlag : public Behavior
     {
     public:
         MarioGoalFlag();
@@ -17,6 +22,8 @@ namespace mario
     private:
         AssetReference<AnimationClip> waveAnimset;
         AssetReference<AudioWrapper> winSound;
+        Animator *animator;
+        Audio *audio;
 
         SERIALIZABLE_SCRIPT(
             MarioGoalFlag,

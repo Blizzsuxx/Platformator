@@ -1,7 +1,10 @@
 #pragma once
 
 #include "behaviorfactoryregistry.h"
-#include "mario_entity.h"
+#include "jsonhelpers.h"
+#include "behavior.h"
+#include "assetreference.h"
+#include "objectreference.h"
 
 class Animator;
 class Collider;
@@ -12,26 +15,24 @@ namespace mario
 {
     class MarioPlayer;
 
-    class MarioPatrolEnemy : public MarioEntity
+    class MarioPatrolEnemy : public Behavior
     {
     public:
         MarioPatrolEnemy();
 
         void start() override;
         void fixedUpdate(double timeDelta) override;
-        void handlePlayerContact(MarioPlayer &player);
+        void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta) override;
+        void handlePlayerContact(MarioPlayer *player, const Collision *collision);
 
     private:
         Rigidbody *body;
         Collider *collider;
         Animator *animator;
         Sprite *sprite;
-        float minX;
-        float maxX;
+        Audio *audio;
         float direction;
         float walkSpeed;
-        float stompMinSpeed;
-        float stompTolerance;
         float squashDuration;
         AssetReference<AnimationClip> walkAnimset;
         AssetReference<AnimationClip> squashAnimset;
@@ -41,12 +42,8 @@ namespace mario
 
         SERIALIZABLE_SCRIPT(
             MarioPatrolEnemy,
-            minX,
-            maxX,
             direction,
             walkSpeed,
-            stompMinSpeed,
-            stompTolerance,
             squashDuration,
             walkAnimset,
             squashAnimset,

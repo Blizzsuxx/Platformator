@@ -1,35 +1,35 @@
 #pragma once
 
-#include "mario_entity.h"
+#include "gamemanager.h"
 #include "jsonhelpers.h"
+#include "behavior.h"
+#include "assetreference.h"
 #include "objectreference.h"
-
 class Camera;
 
 namespace mario
 {
     class MarioPlayer;
 
-    class MarioCameraRig : public MarioEntity
+    class MarioCameraRig : public Behavior
     {
     public:
         MarioCameraRig();
 
-        void start() override;
         void lateUpdate(double timeDelta) override;
+        void start() override;
 
     private:
-        Camera *camera;
-        MarioPlayer *player;
+        ObjectReference<Camera> camera;
         ObjectReference<GameObject> target;
+        Rigidbody *targetBody;
         float cameraLead;
-        float levelWidth;
 
         SERIALIZABLE_SCRIPT(
             MarioCameraRig,
+            camera,
             target,
-            cameraLead,
-            levelWidth);
+            cameraLead);
     };
 
 } // namespace mario

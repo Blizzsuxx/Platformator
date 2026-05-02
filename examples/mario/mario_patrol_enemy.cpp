@@ -4,7 +4,6 @@
 #include "collider.h"
 #include "mario_constants.h"
 #include "mario_game.h"
-#include "mario_helpers.h"
 #include "mario_player.h"
 #include "rigidbody.h"
 #include "sprite.h"
@@ -16,16 +15,13 @@ namespace mario
           collider(nullptr),
           animator(nullptr),
           sprite(nullptr),
-          minX(0.0f),
-          maxX(0.0f),
           direction(-1.0f),
           walkSpeed(ENEMY_WALK_SPEED),
-          stompMinSpeed(10.0f),
-          stompTolerance(STOMP_TOLERANCE),
           squashDuration(static_cast<float>(ENEMY_SQUASH_DURATION)),
           walkAnimset(),
           squashAnimset(),
           stompSound(),
+          audio(nullptr),
           defeated(false),
           defeatedTimer(0.0)
     {
@@ -35,24 +31,18 @@ namespace mario
     {
         body = getGameObject()->getComponent<Rigidbody>();
         collider = getGameObject()->getComponent<Collider>();
-        animator = getAnimator();
+        animator = getGameObject()->getComponent<Animator>();
         sprite = getGameObject()->getComponent<Sprite>();
-
-        if (maxX <= minX)
-        {
-            float spawnX = getGameObject()->getX();
-            minX = spawnX - 90.0f;
-            maxX = spawnX + 90.0f;
-        }
+        Eigen::Vector2f velocity = body->getVelocity();
+        velocity.x() = direction * walkSpeed;
+        body->setVelocity(velocity);
+        sprite->setFlip(direction < 0.0f ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
+        animator->play(walkAnimset.get());
+        audio = getGameObject()->getComponent<Audio>();
     }
 
     void MarioPatrolEnemy::fixedUpdate(double timeDelta)
     {
-        if (!isActive())
-        {
-            return;
-        }
-
         if (defeated)
         {
             defeatedTimer -= timeDelta;
@@ -62,75 +52,53 @@ namespace mario
             }
             return;
         }
-
-        if (getGameObject()->getX() <= minX)
-        {
-            direction = 1.0f;
-        }
-        else if (getGameObject()->getX() >= maxX)
-        {
-            direction = -1.0f;
-        }
-
-        Eigen::Vector2f velocity = body->getVelocity();
-        velocity.x() = direction * walkSpeed;
-        body->setVelocity(velocity);
-
-        if (sprite != nullptr)
-        {
-            sprite->setFlip(direction < 0.0f ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
-        }
-
-        if (animator != nullptr)
-        {
-            animator->play(walkAnimset.get());
-        }
     }
 
-    void MarioPatrolEnemy::handlePlayerContact(MarioPlayer &player)
+    void MarioPatrolEnemy::handlePlayerContact(MarioPlayer *player, const Collision *collision)
     {
         MarioGame &game = MarioGame::getInstance();
-        if (game.isGameWon() || !isActive() || defeated)
+        if (game.isGameWon() || defeated)
         {
             return;
         }
 
-        const Bounds playerBounds = getBounds(player.getGameObject());
-        const Bounds enemyBounds = getBounds(getGameObject());
-        const float previousPlayerBottom = player.getPositionBeforePhysics().y() + playerBounds.halfExtents.y();
-        const float enemyTop = enemyBounds.center.y() - enemyBounds.halfExtents.y();
-        const bool stomped = player.getVelocityBeforePhysics().y() > stompMinSpeed && previousPlayerBottom <= enemyTop + stompTolerance;
+        const bool stomped = collision->isVerticalCollision();
 
         if (!stomped)
         {
-            player.defeat();
+            player->defeat();
             return;
         }
 
         defeated = true;
         defeatedTimer = squashDuration;
 
-        if (collider != nullptr)
+        collider->setCollisionMask(0);
+
+        body->setVelocity(Eigen::Vector2f::Zero());
+
+        animator->play(squashAnimset.get());
+
+        player->bounceAfterStomp();
+
+        audio->replay(*stompSound);
+    }
+
+    void MarioPatrolEnemy::onCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
+    {
+        if (defeated)
         {
-            collider->setCollisionMask(0);
+            return;
         }
 
-        if (body != nullptr)
+        // if we hit a wall, turn around
+        if (collision->isHorizontalCollision())
         {
-            body->setVelocity(Eigen::Vector2f::Zero());
+            direction *= -1.0f;
+            Eigen::Vector2f velocity = body->getVelocity();
+            velocity.x() = direction * walkSpeed;
+            body->setVelocity(velocity);
+            sprite->setFlip(direction < 0.0f ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
         }
-
-        if (animator != nullptr)
-        {
-            animator->play(squashAnimset.get());
-        }
-        else
-        {
-            getGameObject()->setActive(false);
-            defeatedTimer = 0.0;
-        }
-
-        player.bounceAfterStomp();
-        playSound(stompSound);
     }
 } // namespace mario

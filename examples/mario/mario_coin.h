@@ -1,11 +1,16 @@
 #pragma once
 
 #include "behaviorfactoryregistry.h"
-#include "mario_entity.h"
+#include "gamemanager.h"
+#include "jsonhelpers.h"
+#include "behavior.h"
+#include "assetreference.h"
+#include "objectreference.h"
+#include "audio.h"
 
 namespace mario
 {
-    class MarioCoin : public MarioEntity
+    class MarioCoin : public Behavior
     {
     public:
         MarioCoin();
@@ -17,6 +22,8 @@ namespace mario
     private:
         AssetReference<AnimationClip> spinAnimset;
         AssetReference<AudioWrapper> coinSound;
+        Audio *audioComponent;
+        Animator *animatorComponent;
 
         SERIALIZABLE_SCRIPT(
             MarioCoin,

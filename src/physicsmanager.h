@@ -52,6 +52,9 @@ public:
     void clearPendingPhysicsEvents();
     void handlePendingPhysicsEvents(double timeDelta);
 
+    const Eigen::Vector2f &getGravityVector() const;
+    const Eigen::Vector2f &getGravityVectorNormalized() const;
+
 private:
     void dequeuePendingColliderComponent(Collider *colliderComponent);
     void dequeuePendingColliderSync(Collider *colliderComponent);

@@ -3,16 +3,11 @@
 #include <algorithm>
 #include <cmath>
 
-#include "animator.h"
-#include "collider.h"
 #include "mario_coin.h"
 #include "mario_constants.h"
 #include "mario_game.h"
 #include "mario_goal_flag.h"
-#include "mario_helpers.h"
 #include "mario_patrol_enemy.h"
-#include "rigidbody.h"
-#include "sprite.h"
 
 namespace mario
 {
@@ -33,8 +28,6 @@ namespace mario
           jumpSound(),
           hurtSound(),
           spawn(Eigen::Vector2f::Zero()),
-          positionBeforePhysics(Eigen::Vector2f::Zero()),
-          velocityBeforePhysics(Eigen::Vector2f::Zero()),
           jumpWasPressed(false),
           respawnWasPressed(false)
     {
@@ -43,11 +36,10 @@ namespace mario
     void MarioPlayer::start()
     {
         body = getGameObject()->getComponent<Rigidbody>();
-        animator = getAnimator();
+        animator = getGameObject()->getComponent<Animator>();
         sprite = getGameObject()->getComponent<Sprite>();
         spawn = getGameObject()->getPosition();
-        positionBeforePhysics = spawn;
-        velocityBeforePhysics = body->getVelocity();
+        audio = getGameObject()->getComponent<Audio>();
     }
 
     void MarioPlayer::fixedUpdate(double timeDelta)
@@ -63,26 +55,15 @@ namespace mario
     void MarioPlayer::respawn()
     {
         getGameObject()->setPosition(spawn);
-        getGameObject()->setRotation(0.0f);
         body->setVelocity(Eigen::Vector2f::Zero());
-        body->setAngularVelocity(0.0f);
-        body->setForce(Eigen::Vector2f::Zero());
-        body->setTorque(0.0f);
-        body->wakeUp();
-        positionBeforePhysics = spawn;
-        velocityBeforePhysics = Eigen::Vector2f::Zero();
         jumpWasPressed = false;
     }
 
     void MarioPlayer::defeat()
     {
         MarioGame &game = MarioGame::getInstance();
-        if (game.isGameWon() || !isActive())
-        {
-            return;
-        }
 
-        playSound(hurtSound);
+        audio->replay(hurtSound.get());
         respawn();
     }
 
@@ -91,13 +72,6 @@ namespace mario
         Eigen::Vector2f velocity = body->getVelocity();
         velocity.y() = -jumpSpeed * stompBounceFactor;
         body->setVelocity(velocity);
-        velocityBeforePhysics = velocity;
-    }
-
-    void MarioPlayer::stopForWin()
-    {
-        body->setVelocity(Eigen::Vector2f::Zero());
-        velocityBeforePhysics = Eigen::Vector2f::Zero();
     }
 
     Rigidbody *MarioPlayer::getBody() const
@@ -105,28 +79,9 @@ namespace mario
         return body;
     }
 
-    const Eigen::Vector2f &MarioPlayer::getPositionBeforePhysics() const
-    {
-        return positionBeforePhysics;
-    }
-
-    const Eigen::Vector2f &MarioPlayer::getVelocityBeforePhysics() const
-    {
-        return velocityBeforePhysics;
-    }
-
     void MarioPlayer::onCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
     {
-        if (!isActive())
-        {
-            return;
-        }
-
         GameObject *otherObject = other->getGameObject();
-        if (!otherObject->getActive())
-        {
-            return;
-        }
 
         if (other->getIsTrigger())
         {
@@ -152,7 +107,7 @@ namespace mario
 
         if (MarioPatrolEnemy *enemy = getBehavior<MarioPatrolEnemy>(otherObject))
         {
-            enemy->handlePlayerContact(*this);
+            enemy->handlePlayerContact(this, collision);
         }
     }
 
@@ -166,7 +121,7 @@ namespace mario
         }
         respawnWasPressed = respawnPressed;
 
-        if (!isActive() || game.isGameWon())
+        if (game.isGameWon())
         {
             return;
         }
@@ -185,15 +140,7 @@ namespace mario
         const bool isGrounded = body->hasSupportContact();
         Eigen::Vector2f velocity = body->getVelocity();
         velocity.x() = horizontalVelocity;
-
-        if (isGrounded)
-        {
-            velocity.y() = std::min(velocity.y(), 0.0f);
-        }
-        else
-        {
-            velocity.y() = std::min(velocity.y() + gravity * static_cast<float>(timeDelta), maxFallSpeed);
-        }
+        velocity.y() = std::min(velocity.y() + gravity * static_cast<float>(timeDelta), maxFallSpeed);
 
         if (sprite != nullptr)
         {
@@ -210,23 +157,16 @@ namespace mario
         if (jumpPressed && !jumpWasPressed && isGrounded)
         {
             velocity.y() = -jumpSpeed;
-            playSound(jumpSound);
+            audio->replay(jumpSound.get());
         }
 
         body->setVelocity(velocity);
-        positionBeforePhysics = getGameObject()->getPosition();
-        velocityBeforePhysics = velocity;
         jumpWasPressed = jumpPressed;
     }
 
     void MarioPlayer::updateAnimation()
     {
         MarioGame &game = MarioGame::getInstance();
-        if (!isActive() || animator == nullptr)
-        {
-            return;
-        }
-
         if (game.isGameWon())
         {
             animator->play(winAnimset.get());

@@ -36,6 +36,7 @@ public:
     const AnimationClip *getCurrentClip() const;
     void setCurrentClip(const AnimationClip *clip);
     void setCurrentFrameIndex(size_t frameIndex);
+    void addOnClipEndCallback(const std::function<void()> &callback);
 
 private:
     const AnimationClip *currentAnimationClip;
@@ -44,6 +45,7 @@ private:
     float playbackSpeed;
     bool playing;
     size_t gameManagerIndex;
+    std::vector<std::function<void()>> onClipEndCallbacks;
 
     double getCurrentFrameDuration() const;
     void applyCurrentFrame() const;

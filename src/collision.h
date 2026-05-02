@@ -38,6 +38,9 @@ public:
     void setReferenceObject(const Collider *colliderA) const;
     void setIncidentObject(const Collider *colliderB) const;
 
+    bool isVerticalCollision() const;
+    bool isHorizontalCollision() const;
+
     bool operator==(const Collision &other) const;
     bool operator!=(const Collision &other) const;
 

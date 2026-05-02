@@ -160,3 +160,23 @@ inline float Clamp(float a, float low, float high)
 {
     return Max(low, Min(a, high));
 }
+
+template <typename T>
+T *getBehavior(GameObject *gameObject)
+{
+    ScriptComponent *scriptComponent = gameObject != nullptr ? gameObject->getComponent<ScriptComponent>() : nullptr;
+    if (scriptComponent == nullptr)
+    {
+        return nullptr;
+    }
+
+    for (Behavior *behavior : scriptComponent->getBehaviors())
+    {
+        if (T *typedBehavior = dynamic_cast<T *>(behavior))
+        {
+            return typedBehavior;
+        }
+    }
+
+    return nullptr;
+}

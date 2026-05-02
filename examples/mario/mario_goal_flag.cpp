@@ -1,6 +1,5 @@
 #include "mario_goal_flag.h"
 
-#include "animator.h"
 #include "mario_game.h"
 
 namespace mario
@@ -13,21 +12,14 @@ namespace mario
 
     void MarioGoalFlag::start()
     {
-        Animator *animator = getAnimator();
-        if (animator != nullptr)
-        {
-            animator->play(waveAnimset.get());
-        }
+        animator = getGameObject()->getComponent<Animator>();
+        audio = getGameObject()->getComponent<Audio>();
+        animator->play(waveAnimset.get());
     }
 
     bool MarioGoalFlag::reach()
     {
-        if (!isActive())
-        {
-            return false;
-        }
-
-        playSound(winSound);
+        audio->play(winSound.get());
         MarioGame::getInstance().winLevel();
         return true;
     }

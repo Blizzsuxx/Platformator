@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include "mario_coin.h"
-#include "mario_helpers.h"
 #include "mario_player.h"
 
 namespace mario

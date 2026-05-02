@@ -55,6 +55,8 @@ class MainWindow(QMainWindow):
         self.behavior_templates: dict[str, dict[str, object]] = {}
         self.behavior_asset_fields = discover_behavior_asset_fields(project_paths.repo_root)
         self.behavior_object_reference_fields = discover_behavior_object_reference_fields(project_paths.repo_root)
+        self._docks: dict[str, QDockWidget] = {}
+        self._dock_areas: dict[str, Qt.DockWidgetArea] = {}
         self._undo_baseline_scene = self.scene_document.model_copy(deep=True)
         self._undo_baseline_selection: int | None = self.current_object_id
         self._restoring_scene_state = False
@@ -210,6 +212,7 @@ class MainWindow(QMainWindow):
         self.zoom_out_action = QAction("Zoom Out", self)
         self.frame_scene_action = QAction("Frame Scene", self)
         self.frame_selection_action = QAction("Frame Selection", self)
+        self.reset_layout_action = QAction("Reset Panels", self)
         self.stop_action = QAction("Stop", self)
         self.stop_action.setEnabled(False)
 
@@ -231,6 +234,16 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self.frame_scene_action)
         view_menu.addAction(self.frame_selection_action)
+        view_menu.addSeparator()
+        view_menu.addAction(self.reset_layout_action)
+        view_menu.addSeparator()
+        for title in ("Hierarchy", "Behaviors", "Inspector", "Assets", "Output"):
+            dock = self._docks.get(title)
+            if dock is None:
+                continue
+            toggle_action = dock.toggleViewAction()
+            toggle_action.setText(title)
+            view_menu.addAction(toggle_action)
 
         run_menu = self.menuBar().addMenu("Run")
         run_menu.addAction(self.validate_action)
@@ -268,6 +281,7 @@ class MainWindow(QMainWindow):
         self.zoom_out_action.triggered.connect(self.scene_canvas.zoom_out)
         self.frame_scene_action.triggered.connect(self.scene_canvas.frame_scene)
         self.frame_selection_action.triggered.connect(self.scene_canvas.frame_selection)
+        self.reset_layout_action.triggered.connect(self._reset_dock_layout)
         self.validate_action.triggered.connect(self.validate_scene)
         self.build_action.triggered.connect(self.build_project)
         self.run_action.triggered.connect(self.run_scene)
@@ -581,8 +595,16 @@ class MainWindow(QMainWindow):
         if state is not None:
             self.restoreState(state)
 
+    def _reset_dock_layout(self) -> None:
+        for title, dock in self._docks.items():
+            dock.setFloating(False)
+            dock.show()
+            self.addDockWidget(self._dock_areas[title], dock)
+
     def _add_dock(self, title: str, widget, area: Qt.DockWidgetArea) -> None:
         dock = QDockWidget(title, self)
         dock.setObjectName(title)
         dock.setWidget(widget)
+        self._docks[title] = dock
+        self._dock_areas[title] = area
         self.addDockWidget(area, dock)

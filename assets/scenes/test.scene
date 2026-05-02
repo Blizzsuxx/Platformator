@@ -1,0 +1,123 @@
+[
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "height": 480.0,
+        "id": 2,
+        "type": 2,
+        "width": 640.0
+      }
+    ],
+    "id": 1,
+    "name": "Main Camera",
+    "position": {
+      "x": 68.4,
+      "y": -7.0
+    },
+    "rotation": 13.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": ""
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "behaviors": [
+          {
+            "fallAnimset": "assets/animations/player_fall.animset",
+            "gravity": 0.0,
+            "hurtSound": "assets/audio/hurt.wav",
+            "idleAnimset": "assets/animations/player.animset",
+            "jumpAnimset": "assets/animations/player_jump.animset",
+            "jumpSound": "assets/audio/jump.wav",
+            "jumpSpeed": 0,
+            "maxFallSpeed": 0,
+            "runAnimset": "assets/animations/player_run.animset",
+            "stompBounceFactor": 0.0,
+            "type": "MarioPlayer",
+            "walkSpeed": 0,
+            "winAnimset": "assets/animations/player_win.animset"
+          }
+        ],
+        "id": 4,
+        "type": 5
+      },
+      {
+        "flip": 0,
+        "height": 32.0,
+        "id": 6,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/player/mario_idle.png",
+        "type": 6,
+        "width": 32.0
+      },
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 1,
+        "height": 32.0,
+        "id": 7,
+        "trigger": false,
+        "type": 3,
+        "width": 32.0
+      }
+    ],
+    "id": 3,
+    "name": "Player",
+    "position": {
+      "x": 225.382,
+      "y": 312.3409
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 3.0,
+      "y": 1.0
+    },
+    "tag": ""
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "flip": 0,
+        "height": 32.0,
+        "id": 8,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/tiles/ground.png",
+        "type": 6,
+        "width": 32.0
+      },
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 1,
+        "height": 32.0,
+        "id": 9,
+        "trigger": false,
+        "type": 3,
+        "width": 32.0
+      }
+    ],
+    "id": 5,
+    "name": "Ground",
+    "position": {
+      "x": 390.56461234486727,
+      "y": 454.4752090572861
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 20.0,
+      "y": 1.0
+    },
+    "tag": ""
+  }
+]

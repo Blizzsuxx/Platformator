@@ -20,7 +20,7 @@ from .services.project_paths import ProjectPaths
 from .services.recent_files import RecentFilesStore
 from .services.undo_stack import EditorUndoStack
 from .settings import APP_NAME, WINDOW_GEOMETRY_KEY, WINDOW_STATE_KEY
-from .widgets import AssetBrowserWidget, ComponentPaletteWidget, InspectorWidget, OutputPanel, SceneTreeWidget
+from .widgets import AssetBrowserWidget, InspectorWidget, OutputPanel, SceneTreeWidget
 
 
 class MainWindow(QMainWindow):
@@ -152,13 +152,11 @@ class MainWindow(QMainWindow):
         self.scene_tree = SceneTreeWidget(self)
         self.inspector = InspectorWidget(self)
         self.asset_browser = AssetBrowserWidget(self.project_paths.assets_dir, self.project_paths.repo_root, self)
-        self.component_palette = ComponentPaletteWidget(self)
         self.output_panel = OutputPanel(self)
 
         self._add_dock("Hierarchy", self.scene_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
         self._add_dock("Inspector", self.inspector, Qt.DockWidgetArea.RightDockWidgetArea)
         self._add_dock("Assets", self.asset_browser, Qt.DockWidgetArea.BottomDockWidgetArea)
-        self._add_dock("Components", self.component_palette, Qt.DockWidgetArea.LeftDockWidgetArea)
         self._add_dock("Output", self.output_panel, Qt.DockWidgetArea.BottomDockWidgetArea)
 
     def _create_actions(self) -> None:
@@ -211,8 +209,8 @@ class MainWindow(QMainWindow):
         self.stop_action.triggered.connect(self.run_controller.stop)
 
         self.scene_tree.objectSelected.connect(self._on_object_selected)
+        self.scene_tree.componentRequested.connect(self._on_component_requested)
         self.inspector.objectChanged.connect(self._on_scene_changed)
-        self.component_palette.componentRequested.connect(self._on_component_requested)
         self.asset_browser.assetActivated.connect(self._on_asset_activated)
 
         self.run_controller.outputReady.connect(self.output_panel.append_text)
@@ -220,10 +218,9 @@ class MainWindow(QMainWindow):
         self.run_controller.busyChanged.connect(self._on_run_busy_changed)
 
     def _reload_scene_views(self, *, select_first: bool = False) -> None:
-        self.scene_tree.set_scene(self.scene_document)
         if select_first and self.scene_document.objects:
             self.current_object_id = self.scene_document.objects[0].id
-        self.scene_tree.select_object(self.current_object_id)
+        self._refresh_scene_tree()
         self._sync_inspector()
         self._reload_json_preview()
         self._update_window_title()
@@ -247,10 +244,15 @@ class MainWindow(QMainWindow):
 
     def _on_scene_changed(self) -> None:
         self._set_dirty(True)
-        self._reload_scene_views(select_first=False)
+        self._refresh_scene_tree()
+        if self.sender() is not self.inspector:
+            self._sync_inspector()
+        self._reload_json_preview()
+        self._update_window_title()
 
-    def _on_component_requested(self, component_name: str) -> None:
-        current_object = self.scene_document.find_object_by_id(self.current_object_id) if self.current_object_id is not None else None
+    def _on_component_requested(self, object_id: int, component_name: str) -> None:
+        self.current_object_id = object_id
+        current_object = self.scene_document.find_object_by_id(object_id)
         if current_object is None:
             QMessageBox.information(self, APP_NAME, "Select a game object before adding a component.")
             return
@@ -350,6 +352,14 @@ class MainWindow(QMainWindow):
             return
         self._dirty = dirty
         self._update_window_title()
+
+    def _refresh_scene_tree(self) -> None:
+        self.scene_tree.blockSignals(True)
+        try:
+            self.scene_tree.set_scene(self.scene_document)
+            self.scene_tree.select_object(self.current_object_id)
+        finally:
+            self.scene_tree.blockSignals(False)
 
     def _update_window_title(self) -> None:
         scene_name = self.current_scene_path.name if self.current_scene_path is not None else "Untitled"

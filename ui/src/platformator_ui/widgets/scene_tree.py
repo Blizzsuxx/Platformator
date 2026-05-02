@@ -1,18 +1,32 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
+from PySide6.QtWidgets import QMenu, QTreeWidget, QTreeWidgetItem
 
 from platformator_ui.scene.models import GameObjectModel, SceneDocumentModel
 
 
 class SceneTreeWidget(QTreeWidget):
     objectSelected = Signal(object)
+    componentRequested = Signal(int, str)
+
+    COMPONENT_ORDER = (
+        "Camera",
+        "Rigidbody",
+        "BoxCollider",
+        "CircleCollider",
+        "Sprite",
+        "Animator",
+        "Audio",
+        "Script",
+    )
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setHeaderLabels(["Scene Objects"])
         self.itemSelectionChanged.connect(self._emit_selection)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
     def set_scene(self, scene_document: SceneDocumentModel) -> None:
         self.clear()
@@ -40,3 +54,27 @@ class SceneTreeWidget(QTreeWidget):
     def _emit_selection(self) -> None:
         current_item = self.currentItem()
         self.objectSelected.emit(current_item.data(0, Qt.ItemDataRole.UserRole) if current_item is not None else None)
+
+    def _show_context_menu(self, position) -> None:
+        item = self.itemAt(position)
+        if item is None:
+            return
+
+        object_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(object_id, int):
+            return
+
+        self.setCurrentItem(item)
+
+        menu = QMenu(self)
+        add_component_menu = menu.addMenu("Add Component")
+        for component_name in self.COMPONENT_ORDER:
+            action = add_component_menu.addAction(component_name)
+            action.triggered.connect(
+                lambda _checked=False, object_id=object_id, component_name=component_name: self.componentRequested.emit(
+                    object_id,
+                    component_name,
+                )
+            )
+
+        menu.exec(self.viewport().mapToGlobal(position))

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from .app import launch_editor
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from platformator_ui.app import launch_editor
+else:
+    from .app import launch_editor
 
 
 def main() -> int:

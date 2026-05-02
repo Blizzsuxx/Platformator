@@ -37,7 +37,7 @@ namespace mario
             return gameObject->getComponent<Audio>();
         }
 
-        void playSound(AssetReference<AudioWrapper> audioAsset) const
+        void playSound(const AssetReference<AudioWrapper> &audioAsset) const
         {
             Audio *audioEmitter = getAudioEmitter();
             if (audioEmitter != nullptr)

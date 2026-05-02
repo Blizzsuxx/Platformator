@@ -22,6 +22,17 @@ public:
     {
     }
 
+    AssetReference(const AssetReference &other) : object(other.object), filePath(other.filePath)
+    {
+        retainObject();
+    }
+
+    AssetReference(AssetReference &&other) noexcept : object(other.object), filePath(std::move(other.filePath))
+    {
+        other.object = nullptr;
+        other.filePath = std::nullopt;
+    }
+
     explicit AssetReference(T *object) : object(nullptr), filePath(std::nullopt)
     {
         set(object);
@@ -29,6 +40,40 @@ public:
 
     explicit AssetReference(const std::string &filePath) : object(nullptr), filePath(filePath)
     {
+    }
+
+    ~AssetReference()
+    {
+        releaseObject();
+    }
+
+    AssetReference &operator=(const AssetReference &other)
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        releaseObject();
+        object = other.object;
+        filePath = other.filePath;
+        retainObject();
+        return *this;
+    }
+
+    AssetReference &operator=(AssetReference &&other) noexcept
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        releaseObject();
+        object = other.object;
+        filePath = std::move(other.filePath);
+        other.object = nullptr;
+        other.filePath = std::nullopt;
+        return *this;
     }
 
     T *get() const
@@ -48,19 +93,28 @@ public:
 
     void set(T *value)
     {
+        if (object == value)
+        {
+            filePath = value == nullptr ? std::nullopt : std::optional<std::string>(value->getFilePath());
+            return;
+        }
+
+        releaseObject();
         object = value;
         filePath = value == nullptr ? std::nullopt : std::optional<std::string>(value->getFilePath());
+        retainObject();
     }
 
     void setFilePath(const std::string &value)
     {
+        releaseObject();
         object = nullptr;
         filePath = value;
     }
 
     void clear()
     {
-        object = nullptr;
+        releaseObject();
         filePath = std::nullopt;
     }
 
@@ -69,11 +123,11 @@ public:
         const std::optional<std::string> filePath = getFilePath();
         if (!filePath.has_value())
         {
-            object = nullptr;
+            releaseObject();
             return nullptr;
         }
 
-        object = loadAsset(gameManager, *filePath);
+        set(loadAsset(gameManager, *filePath));
         return object;
     }
 
@@ -93,6 +147,24 @@ public:
     }
 
 private:
+    void retainObject()
+    {
+        if (object != nullptr)
+        {
+            object->addReference();
+        }
+    }
+
+    void releaseObject()
+    {
+        if (object != nullptr)
+        {
+            T *currentObject = object;
+            object = nullptr;
+            currentObject->removeReferenceAndFreeIfNoReferences();
+        }
+    }
+
     static T *loadAsset(GameManager &gameManager, const std::string &assetPath)
     {
         if constexpr (std::is_same_v<T, TextureWrapper>)

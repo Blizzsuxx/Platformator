@@ -27,10 +27,11 @@ def create_configure_spec(project_paths: ProjectPaths, preset: str = "debug") ->
 
 
 def create_build_spec(project_paths: ProjectPaths, preset: str = "debug") -> ProcessSpec:
+    target_name = project_paths.main_binary.name
     return ProcessSpec(
         label="Build",
         program="cmake",
-        arguments=("--build", "--preset", preset),
+        arguments=("--build", "--preset", preset, "--target", target_name),
         working_directory=project_paths.repo_root,
     )
 

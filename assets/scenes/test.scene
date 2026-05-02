@@ -67,13 +67,32 @@
         "trigger": false,
         "type": 3,
         "width": 32.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 1.0,
+        "gravity": true,
+        "id": 10,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
       }
     ],
     "id": 3,
     "name": "Player",
     "position": {
       "x": 225.382,
-      "y": 312.3409
+      "y": 309.3409
     },
     "rotation": 0.0,
     "scale": {
@@ -105,13 +124,32 @@
         "trigger": false,
         "type": 3,
         "width": 32.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 1.0,
+        "gravity": false,
+        "id": 11,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
       }
     ],
     "id": 5,
     "name": "Ground",
     "position": {
-      "x": 390.56461234486727,
-      "y": 454.4752090572861
+      "x": 390.5646,
+      "y": 454.4752
     },
     "rotation": 0.0,
     "scale": {

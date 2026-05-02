@@ -458,7 +458,7 @@ class InspectorWidget(QWidget):
         if isinstance(value, int):
             spin_box = self._create_int_spin_box(value)
             spin_box.valueChanged.connect(
-                lambda owner=owner, field_name=field_name, spin_box=spin_box: self._assign_value(
+                lambda _value, owner=owner, field_name=field_name, spin_box=spin_box: self._assign_value(
                     owner,
                     field_name,
                     spin_box.value(),
@@ -470,7 +470,7 @@ class InspectorWidget(QWidget):
         if isinstance(value, float):
             spin_box = self._create_double_spin_box(value)
             spin_box.valueChanged.connect(
-                lambda owner=owner, field_name=field_name, spin_box=spin_box: self._assign_value(
+                lambda _value, owner=owner, field_name=field_name, spin_box=spin_box: self._assign_value(
                     owner,
                     field_name,
                     spin_box.value(),
@@ -483,7 +483,7 @@ class InspectorWidget(QWidget):
             line_edit = QLineEdit(self.components_group)
             line_edit.setText(value)
             line_edit.textChanged.connect(
-                lambda owner=owner, field_name=field_name, line_edit=line_edit: self._assign_value(
+                lambda _text, owner=owner, field_name=field_name, line_edit=line_edit: self._assign_value(
                     owner,
                     field_name,
                     line_edit.text(),
@@ -795,7 +795,7 @@ class InspectorWidget(QWidget):
 
     def _parse_asset_reference_drop(self, mime_data: QMimeData, _asset_kind: AssetKind) -> str | None:
         if mime_data.hasFormat(ASSET_REFERENCE_MIME_TYPE):
-            raw_value = bytes(mime_data.data(ASSET_REFERENCE_MIME_TYPE)).decode("utf-8").strip()
+            raw_value = self._decode_mime_payload(mime_data, ASSET_REFERENCE_MIME_TYPE).strip()
             return self._normalize_asset_reference_value(raw_value)
 
         for url in mime_data.urls():
@@ -881,7 +881,7 @@ class InspectorWidget(QWidget):
         descriptor: ObjectReferenceDescriptor,
     ) -> int | None:
         if mime_data.hasFormat(OBJECT_REFERENCE_MIME_TYPE):
-            dropped_value = self._parse_reference_id(bytes(mime_data.data(OBJECT_REFERENCE_MIME_TYPE)).decode("utf-8"))
+            dropped_value = self._parse_reference_id(self._decode_mime_payload(mime_data, OBJECT_REFERENCE_MIME_TYPE))
             if dropped_value is not None and self._is_valid_object_reference(descriptor, dropped_value):
                 return dropped_value
 
@@ -1003,6 +1003,19 @@ class InspectorWidget(QWidget):
             return int(stripped_value)
         except ValueError:
             return None
+
+    @staticmethod
+    def _decode_mime_payload(mime_data: QMimeData, mime_type: str) -> str:
+        payload: Any = mime_data.data(mime_type)
+
+        if hasattr(payload, "toStdString"):
+            return payload.toStdString()
+
+        raw_data = payload.data() if hasattr(payload, "data") else payload
+        if isinstance(raw_data, (bytes, bytearray)):
+            return bytes(raw_data).decode("utf-8", errors="replace")
+
+        return str(raw_data)
 
     def _add_read_only_row(self, form: QFormLayout, label: str, value: str) -> None:
         form.addRow(label, QLabel(value, self.components_group))

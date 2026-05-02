@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.29"]
+build-backend = "hatchling.build"
+
+[project]
+name = "platformator-ui"
+version = "0.1.0"
+description = "Desktop scene editor and launcher for the Platformator engine."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "PySide6>=6.11",
+    "pydantic>=2.13",
+    "orjson>=3.11",
+    "watchdog>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.15",
+]
+
+[project.scripts]
+platformator-ui = "platformator_ui.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/platformator_ui"]
+
+[tool.mypy]
+python_version = "3.14"
+packages = ["platformator_ui"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_optional = true

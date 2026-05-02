@@ -13,8 +13,7 @@ int main(int argc, char *args[])
 
     try
     {
-        gameManager.addScene(Scene(sceneFilePath));
-        Scene &loadedScene = gameManager.getScenes().back();
+        Scene loadedScene = Scene(sceneFilePath);
         gameManager.loadScene(loadedScene);
 
         GameObject *ball = gameManager.getGameObject("Ball");

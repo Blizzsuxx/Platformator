@@ -1,26 +1,77 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import re
 from enum import IntEnum
-from typing import Any, get_args
+from typing import Any, Mapping, get_args
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QScrollArea,
     QSpinBox,
+    QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from pydantic import BaseModel
 
-from platformator_ui.scene.models import BaseComponentModel, GameObjectModel, RectModel, SpriteComponent
+from platformator_ui.scene.models import BaseComponentModel, GameObjectModel, RectModel, ScriptBehaviorModel, ScriptComponentModel, SpriteComponent
+from platformator_ui.scene.mutations import add_behavior, remove_component
+
+from .behavior_library import BEHAVIOR_MIME_TYPE
+
+
+class BehaviorDropLabel(QLabel):
+    behaviorDropped = Signal(str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("Drop a behavior here", parent)
+        self.setAcceptDrops(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumHeight(40)
+        self._apply_style(False)
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasFormat(BEHAVIOR_MIME_TYPE):
+            event.acceptProposedAction()
+            self._apply_style(True)
+            return
+        event.ignore()
+
+    def dragLeaveEvent(self, event) -> None:
+        self._apply_style(False)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        self._apply_style(False)
+        if not event.mimeData().hasFormat(BEHAVIOR_MIME_TYPE):
+            event.ignore()
+            return
+
+        behavior_name = bytes(event.mimeData().data(BEHAVIOR_MIME_TYPE)).decode("utf-8").strip()
+        if not behavior_name:
+            event.ignore()
+            return
+
+        self.behaviorDropped.emit(behavior_name)
+        event.acceptProposedAction()
+
+    def _apply_style(self, highlighted: bool) -> None:
+        border_color = "#3e7cb1" if highlighted else "#6b7280"
+        background = "rgba(62, 124, 177, 0.12)" if highlighted else "rgba(107, 114, 128, 0.08)"
+        self.setStyleSheet(
+            f"border: 1px dashed {border_color}; border-radius: 6px; padding: 8px; background: {background};"
+        )
 
 
 class InspectorWidget(QWidget):
@@ -29,6 +80,7 @@ class InspectorWidget(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._current_object: GameObjectModel | None = None
+        self._behavior_templates: dict[str, dict[str, Any]] = {}
         self._is_updating = False
 
         root_layout = QVBoxLayout(self)
@@ -91,6 +143,14 @@ class InspectorWidget(QWidget):
 
         self.set_object(None)
 
+    def set_behavior_templates(self, behavior_templates: Mapping[str, dict[str, Any]]) -> None:
+        self._behavior_templates = {
+            behavior_name: deepcopy(defaults)
+            for behavior_name, defaults in behavior_templates.items()
+        }
+        if self._current_object is not None:
+            self.set_object(self._current_object)
+
     def set_object(self, game_object: GameObjectModel | None) -> None:
         self._current_object = game_object
         self._is_updating = True
@@ -149,14 +209,27 @@ class InspectorWidget(QWidget):
         self.objectChanged.emit()
 
     def _build_component_group(self, component: BaseComponentModel) -> QGroupBox:
-        group = QGroupBox(f"{component.component_label} #{component.id}", self.components_group)
+        group = QGroupBox(self.components_group)
         layout = QVBoxLayout(group)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(8)
 
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(self._create_section_label(f"{component.component_label} #{component.id}"))
+        header_layout.addStretch(1)
+        header_layout.addWidget(self._create_trash_button(
+            "Remove component",
+            lambda checked=False, component_id=component.id: self._remove_component(component_id),
+        ))
+        layout.addLayout(header_layout)
+
         form = QFormLayout()
         layout.addLayout(form)
         self._add_read_only_row(form, "Id", str(component.id))
+
+        if isinstance(component, ScriptComponentModel):
+            self._populate_script_component_group(layout, form, component)
+            return group
 
         if isinstance(component, SpriteComponent):
             self._populate_sprite_component_form(form, component)
@@ -166,6 +239,68 @@ class InspectorWidget(QWidget):
         if hasattr(component, "colliderType"):
             skip_fields.add("colliderType")
         self._populate_model_form(form, component, skip_fields=skip_fields)
+        return group
+
+    def _populate_script_component_group(
+        self,
+        layout: QVBoxLayout,
+        form: QFormLayout,
+        component: ScriptComponentModel,
+    ) -> None:
+        self._populate_model_form(form, component, skip_fields={"id", "type", "behaviors"})
+
+        behaviors_group = QGroupBox("Behaviors", self.components_group)
+        behaviors_layout = QVBoxLayout(behaviors_group)
+        behaviors_layout.setContentsMargins(6, 6, 6, 6)
+        behaviors_layout.setSpacing(8)
+
+        controls_layout = QHBoxLayout()
+        add_button = QToolButton(behaviors_group)
+        add_button.setText("Add Behavior")
+        add_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        add_button.setMenu(self._create_behavior_menu(component, add_button))
+        controls_layout.addWidget(add_button)
+        controls_layout.addStretch(1)
+        behaviors_layout.addLayout(controls_layout)
+
+        if not component.behaviors:
+            behaviors_layout.addWidget(QLabel("Script component has no behaviors.", behaviors_group))
+        else:
+            for behavior in component.behaviors:
+                behaviors_layout.addWidget(self._build_behavior_group(component, behavior))
+
+        drop_area = BehaviorDropLabel(behaviors_group)
+        drop_area.behaviorDropped.connect(
+            lambda behavior_name, component=component: self._append_behavior(component, behavior_name)
+        )
+        behaviors_layout.addWidget(drop_area)
+
+        layout.addWidget(behaviors_group)
+
+    def _build_behavior_group(
+        self,
+        script_component: ScriptComponentModel,
+        behavior: ScriptBehaviorModel,
+    ) -> QGroupBox:
+        group = QGroupBox(self.components_group)
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(8)
+
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(self._create_section_label(behavior.type or "Behavior"))
+        header_layout.addStretch(1)
+        header_layout.addWidget(self._create_trash_button(
+            "Remove behavior",
+            lambda checked=False, script_component=script_component, behavior=behavior: self._remove_behavior(script_component, behavior),
+        ))
+        layout.addLayout(header_layout)
+
+        form = QFormLayout()
+        layout.addLayout(form)
+        self._populate_model_form(form, behavior, skip_fields={"type"})
+        if form.rowCount() == 0:
+            layout.addWidget(QLabel("No serialized fields.", group))
         return group
 
     def _populate_sprite_component_form(self, form: QFormLayout, component: SpriteComponent) -> None:
@@ -357,6 +492,60 @@ class InspectorWidget(QWidget):
 
         return group
 
+    def _create_behavior_menu(self, component: ScriptComponentModel, parent: QWidget) -> QMenu:
+        menu = QMenu(parent)
+        behavior_names = self._available_behavior_names(component)
+        if not behavior_names:
+            empty_action = menu.addAction("No behaviors discovered")
+            empty_action.setEnabled(False)
+            return menu
+
+        for behavior_name in behavior_names:
+            action = menu.addAction(behavior_name)
+            action.triggered.connect(
+                lambda checked=False, component=component, behavior_name=behavior_name: self._append_behavior(component, behavior_name)
+            )
+        return menu
+
+    def _available_behavior_names(self, component: ScriptComponentModel) -> list[str]:
+        behavior_names = set(self._behavior_templates)
+        behavior_names.update(behavior.type for behavior in component.behaviors if behavior.type)
+        return sorted(behavior_names, key=str.casefold)
+
+    def _append_behavior(self, script_component: ScriptComponentModel, behavior_type: str) -> None:
+        if self._is_updating or self._current_object is None:
+            return
+
+        add_behavior(
+            script_component,
+            behavior_type,
+            initial_values=deepcopy(self._behavior_templates.get(behavior_type, {})),
+        )
+        self.set_object(self._current_object)
+        self.objectChanged.emit()
+
+    def _remove_behavior(self, script_component: ScriptComponentModel, behavior: ScriptBehaviorModel) -> None:
+        if self._is_updating or self._current_object is None:
+            return
+
+        try:
+            script_component.behaviors.remove(behavior)
+        except ValueError:
+            return
+
+        self.set_object(self._current_object)
+        self.objectChanged.emit()
+
+    def _remove_component(self, component_id: int) -> None:
+        if self._is_updating or self._current_object is None:
+            return
+
+        if remove_component(self._current_object, component_id) is None:
+            return
+
+        self.set_object(self._current_object)
+        self.objectChanged.emit()
+
     def _toggle_optional_model(
         self,
         owner: BaseModel,
@@ -402,6 +591,21 @@ class InspectorWidget(QWidget):
     def _add_read_only_row(self, form: QFormLayout, label: str, value: str) -> None:
         form.addRow(label, QLabel(value, self.components_group))
 
+    def _create_section_label(self, text: str) -> QLabel:
+        label = QLabel(text, self.components_group)
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        return label
+
+    def _create_trash_button(self, tooltip: str, callback) -> QToolButton:
+        button = QToolButton(self.components_group)
+        button.setAutoRaise(True)
+        button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+        button.setToolTip(tooltip)
+        button.clicked.connect(callback)
+        return button
+
     @staticmethod
     def _create_double_spin_box(default: float = 0.0) -> QDoubleSpinBox:
         spin_box = QDoubleSpinBox()
@@ -433,7 +637,7 @@ class InspectorWidget(QWidget):
         return spaced.strip().title()
 
     @classmethod
-    def _clear_layout(cls, layout: QVBoxLayout) -> None:
+    def _clear_layout(cls, layout) -> None:
         while layout.count():
             item = layout.takeAt(0)
             child_widget = item.widget()

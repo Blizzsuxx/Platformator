@@ -30,6 +30,8 @@ public:
     float getHeight() const;
     bool hasSourceRect() const;
     const SDL_FRect *getSourceRect() const;
+    float getWidthWithoutScale() const;
+    float getHeightWithoutScale() const;
 
     // Setters
     void setTextureWrapper(TextureWrapper *textureWrapper);

@@ -1,18 +1,14 @@
 #include "camera.h"
 
-Camera::Camera() : Component(ComponentType::CAMERA), camera{0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT}
+Camera::Camera() : Component(ComponentType::CAMERA), width(SCREEN_WIDTH), height(SCREEN_HEIGHT)
 {
 }
 
-Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA), camera{0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT}
+Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA), width(SCREEN_WIDTH), height(SCREEN_HEIGHT)
 {
 }
 
-Camera::Camera(GameObject *gameObject, float w, float h) : Component(gameObject, CAMERA), camera{0.0f, 0.0f, w, h}
-{
-}
-
-Camera::Camera(GameObject *gameObject, float x, float y, float w, float h) : Component(gameObject, CAMERA), camera{x, y, w, h}
+Camera::Camera(GameObject *gameObject, float w, float h) : Component(gameObject, CAMERA), width(w), height(h)
 {
 }
 
@@ -22,21 +18,50 @@ Camera::~Camera()
 
 void Camera::render(Sprite *sprite, SDL_Renderer *renderer)
 {
-    const int cameraX = static_cast<int>(sprite->getGameObject()->getX());
-    const int cameraY = static_cast<int>(sprite->getGameObject()->getY());
-    SDL_FRect renderQuad = {cameraX - camera.x, cameraY - camera.y, sprite->getWidth(), sprite->getHeight()};
+    float renderX = sprite->getGameObject()->getX() - getGameObject()->getX();
+    float renderY = sprite->getGameObject()->getY() - getGameObject()->getY();
 
-    SDL_RenderTextureRotated(renderer, sprite->getTexture(), nullptr, &renderQuad, sprite->getGameObject()->getRotationInDegrees(), nullptr, sprite->getFlip());
+    float renderW = sprite->getWidth();
+    float renderH = sprite->getHeight();
+
+    renderX -= renderW / 2;
+    renderY -= renderH / 2;
+
+    SDL_FRect renderQuad = {renderX, renderY, renderW, renderH};
+    SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad, sprite->getGameObject()->getRotationInDegrees(), nullptr, sprite->getFlip());
 }
 
 // Getters
-const SDL_FRect &Camera::getCamera() const
+SDL_FRect Camera::getCamera() const
 {
-    return camera;
+    SDL_FRect cameraRect = {getGameObject()->getX(), getGameObject()->getY(), width, height};
+    return cameraRect;
 }
 
 // Setters
 void Camera::setCamera(const SDL_FRect &camera)
 {
-    this->camera = camera;
+    getGameObject()->setPosition({camera.x, camera.y});
+    width = camera.w;
+    height = camera.h;
+}
+
+float Camera::getWidth() const
+{
+    return width;
+}
+
+float Camera::getHeight() const
+{
+    return height;
+}
+
+void Camera::setWidth(float width)
+{
+    this->width = width;
+}
+
+void Camera::setHeight(float height)
+{
+    this->height = height;
 }

@@ -192,17 +192,7 @@ void SDLWindow::render()
     {
         if (spriteComponent->getGameObject()->getActive() == true)
         {
-            float renderX = spriteComponent->getGameObject()->getPosition().x() - mainCamera->getCamera().x;
-            float renderY = spriteComponent->getGameObject()->getPosition().y() - mainCamera->getCamera().y;
-
-            float renderW = spriteComponent->getWidth() * spriteComponent->getGameObject()->getScale().x();
-            float renderH = spriteComponent->getHeight() * spriteComponent->getGameObject()->getScale().y();
-
-            renderX -= renderW / 2;
-            renderY -= renderH / 2;
-
-            SDL_FRect renderQuad = {renderX, renderY, renderW, renderH};
-            SDL_RenderTextureRotated(renderer, spriteComponent->getTexture(), spriteComponent->getSourceRect(), &renderQuad, spriteComponent->getGameObject()->getRotationInDegrees(), nullptr, spriteComponent->getFlip());
+            mainCamera->render(spriteComponent, renderer);
 
             Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
             if (collider != nullptr && shouldSimulateFrame())

@@ -2,12 +2,13 @@
 
 void to_json(nlohmann::json &j, const Camera &camera)
 {
-    j = nlohmann::json{{"id", camera.getId()}, {"camera", camera.getCamera()}, {"type", ComponentType::CAMERA}};
+    j = nlohmann::json{{"id", camera.getId()}, {"width", camera.getWidth()}, {"height", camera.getHeight()}, {"type", ComponentType::CAMERA}};
 }
 
 void from_json(const nlohmann::json &j, Camera &camera)
 {
     camera.setId(j.at("id").get<int>());
 
-    camera.setCamera(j.at("camera").get<SDL_FRect>());
+    camera.setWidth(j.at("width").get<float>());
+    camera.setHeight(j.at("height").get<float>());
 }

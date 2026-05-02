@@ -72,10 +72,20 @@ SDL_FlipMode Sprite::getFlip() const
 
 float Sprite::getWidth() const
 {
+    return width * getGameObject()->getScale().x();
+}
+
+float Sprite::getWidthWithoutScale() const
+{
     return width;
 }
 
 float Sprite::getHeight() const
+{
+    return height * getGameObject()->getScale().y();
+}
+
+float Sprite::getHeightWithoutScale() const
 {
     return height;
 }

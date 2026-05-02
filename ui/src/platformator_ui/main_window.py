@@ -9,18 +9,28 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
     QStatusBar,
     QToolBar,
 )
 
 from .engine import RunController
-from .scene import SceneIdAllocator, SceneSerializer, create_empty_scene, create_named_component, validate_scene_document
+from .scene import (
+    SceneIdAllocator,
+    SceneSerializer,
+    add_game_object,
+    create_empty_scene,
+    create_named_component,
+    duplicate_game_object,
+    find_parent_object,
+    remove_game_object,
+    validate_scene_document,
+)
+from .services.behavior_catalog import discover_behavior_templates
 from .services.project_paths import ProjectPaths
 from .services.recent_files import RecentFilesStore
 from .services.undo_stack import EditorUndoStack
 from .settings import APP_NAME, WINDOW_GEOMETRY_KEY, WINDOW_STATE_KEY
-from .widgets import AssetBrowserWidget, InspectorWidget, OutputPanel, SceneTreeWidget
+from .widgets import AssetBrowserWidget, BehaviorLibraryWidget, InspectorWidget, OutputPanel, SceneCanvasWidget, SceneTreeWidget
 
 
 class MainWindow(QMainWindow):
@@ -34,6 +44,7 @@ class MainWindow(QMainWindow):
         self.scene_document = create_empty_scene(include_default_camera=True)
         self.current_scene_path: Path | None = None
         self.current_object_id: int | None = None
+        self.behavior_templates: dict[str, dict[str, object]] = {}
         self._dirty = False
 
         self._create_widgets()
@@ -144,17 +155,17 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setStatusBar(QStatusBar(self))
 
-        self.json_preview = QPlainTextEdit(self)
-        self.json_preview.setReadOnly(True)
-        self.json_preview.setPlaceholderText("Scene JSON preview")
-        self.setCentralWidget(self.json_preview)
+        self.scene_canvas = SceneCanvasWidget(self.project_paths, self)
+        self.setCentralWidget(self.scene_canvas)
 
         self.scene_tree = SceneTreeWidget(self)
         self.inspector = InspectorWidget(self)
+        self.behavior_library = BehaviorLibraryWidget(self)
         self.asset_browser = AssetBrowserWidget(self.project_paths.assets_dir, self.project_paths.repo_root, self)
         self.output_panel = OutputPanel(self)
 
         self._add_dock("Hierarchy", self.scene_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self._add_dock("Behaviors", self.behavior_library, Qt.DockWidgetArea.LeftDockWidgetArea)
         self._add_dock("Inspector", self.inspector, Qt.DockWidgetArea.RightDockWidgetArea)
         self._add_dock("Assets", self.asset_browser, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._add_dock("Output", self.output_panel, Qt.DockWidgetArea.BottomDockWidgetArea)
@@ -209,7 +220,12 @@ class MainWindow(QMainWindow):
         self.stop_action.triggered.connect(self.run_controller.stop)
 
         self.scene_tree.objectSelected.connect(self._on_object_selected)
+        self.scene_tree.objectAddRequested.connect(self._on_object_add_requested)
+        self.scene_tree.objectDeleteRequested.connect(self._on_object_delete_requested)
+        self.scene_tree.objectDuplicateRequested.connect(self._on_object_duplicate_requested)
         self.scene_tree.componentRequested.connect(self._on_component_requested)
+        self.scene_canvas.objectSelected.connect(self._on_object_selected)
+        self.scene_canvas.sceneChanged.connect(self._on_canvas_scene_changed)
         self.inspector.objectChanged.connect(self._on_scene_changed)
         self.asset_browser.assetActivated.connect(self._on_asset_activated)
 
@@ -220,34 +236,44 @@ class MainWindow(QMainWindow):
     def _reload_scene_views(self, *, select_first: bool = False) -> None:
         if select_first and self.scene_document.objects:
             self.current_object_id = self.scene_document.objects[0].id
+        self._refresh_behavior_templates()
         self._refresh_scene_tree()
         self._sync_inspector()
-        self._reload_json_preview()
+        self._sync_scene_canvas(reset_view=True)
         self._update_window_title()
-
-    def _reload_json_preview(self) -> None:
-        self.json_preview.setPlainText(
-            SceneSerializer.to_pretty_string(
-                self.scene_document,
-                source_path=self.current_scene_path,
-                repo_root=self.project_paths.repo_root,
-                canonicalize_assets=False,
-            )
-        )
 
     def _sync_inspector(self) -> None:
         self.inspector.set_object(self.scene_document.find_object_by_id(self.current_object_id) if self.current_object_id is not None else None)
 
+    def _sync_scene_canvas(self, *, reset_view: bool = False) -> None:
+        self.scene_canvas.set_scene(self.scene_document, self.current_scene_path, reset_view=reset_view)
+        self.scene_canvas.set_selected_object(self.current_object_id)
+
     def _on_object_selected(self, object_id: object) -> None:
         self.current_object_id = object_id if isinstance(object_id, int) else None
+        if self.sender() is not self.scene_tree:
+            self.scene_tree.blockSignals(True)
+            try:
+                self.scene_tree.select_object(self.current_object_id)
+            finally:
+                self.scene_tree.blockSignals(False)
+        if self.sender() is not self.scene_canvas:
+            self.scene_canvas.set_selected_object(self.current_object_id)
         self._sync_inspector()
 
     def _on_scene_changed(self) -> None:
         self._set_dirty(True)
-        self._refresh_scene_tree()
+        if self.sender() is not self.scene_tree:
+            self._refresh_scene_tree()
         if self.sender() is not self.inspector:
             self._sync_inspector()
-        self._reload_json_preview()
+        if self.sender() is not self.scene_canvas:
+            self._sync_scene_canvas(reset_view=False)
+        self._update_window_title()
+
+    def _on_canvas_scene_changed(self) -> None:
+        self._set_dirty(True)
+        self._sync_inspector()
         self._update_window_title()
 
     def _on_component_requested(self, object_id: int, component_name: str) -> None:
@@ -269,6 +295,49 @@ class MainWindow(QMainWindow):
 
         current_object.components.append(new_component)
         self.output_panel.append_text(f"\n[Editor] Added {component_name} to {current_object.name}.\n")
+        self._on_scene_changed()
+
+    def _on_object_add_requested(self, parent_id: object) -> None:
+        typed_parent_id = parent_id if isinstance(parent_id, int) else None
+        allocator = SceneIdAllocator.from_scene(self.scene_document)
+        new_object = add_game_object(self.scene_document, allocator, parent_id=typed_parent_id)
+        self.current_object_id = new_object.id
+
+        if typed_parent_id is None:
+            self.output_panel.append_text(f"\n[Editor] Added {new_object.name}.\n")
+        else:
+            parent = self.scene_document.find_object_by_id(typed_parent_id)
+            parent_name = parent.name if parent is not None else "selected parent"
+            self.output_panel.append_text(f"\n[Editor] Added {new_object.name} under {parent_name}.\n")
+
+        self._on_scene_changed()
+
+    def _on_object_duplicate_requested(self, object_id: int) -> None:
+        allocator = SceneIdAllocator.from_scene(self.scene_document)
+        duplicated_object = duplicate_game_object(self.scene_document, object_id, allocator)
+        if duplicated_object is None:
+            return
+
+        self.current_object_id = duplicated_object.id
+        self.output_panel.append_text(f"\n[Editor] Duplicated {duplicated_object.name}.\n")
+        self._on_scene_changed()
+
+    def _on_object_delete_requested(self, object_id: int) -> None:
+        parent = find_parent_object(self.scene_document, object_id)
+        removed_object = remove_game_object(self.scene_document, object_id)
+        if removed_object is None:
+            return
+
+        removed_ids = {removed_object.id, *(child.id for child in removed_object.iter_children_recursive())}
+        if self.current_object_id in removed_ids:
+            if parent is not None:
+                self.current_object_id = parent.id
+            elif self.scene_document.objects:
+                self.current_object_id = self.scene_document.objects[0].id
+            else:
+                self.current_object_id = None
+
+        self.output_panel.append_text(f"\n[Editor] Deleted {removed_object.name}.\n")
         self._on_scene_changed()
 
     def _on_asset_activated(self, asset_path: str) -> None:
@@ -360,6 +429,11 @@ class MainWindow(QMainWindow):
             self.scene_tree.select_object(self.current_object_id)
         finally:
             self.scene_tree.blockSignals(False)
+
+    def _refresh_behavior_templates(self) -> None:
+        self.behavior_templates = discover_behavior_templates(self.project_paths.repo_root, self.scene_document)
+        self.behavior_library.set_behavior_names(list(self.behavior_templates))
+        self.inspector.set_behavior_templates(self.behavior_templates)
 
     def _update_window_title(self) -> None:
         scene_name = self.current_scene_path.name if self.current_scene_path is not None else "Untitled"

@@ -8,8 +8,8 @@ void to_json(nlohmann::json &j, const Sprite &sprite)
     j["id"] = sprite.getId();
     j["textureFilePath"] = sprite.getTextureWrapper() ? sprite.getTextureWrapper()->getFilePath() : "";
     j["flip"] = sprite.getFlip();
-    j["width"] = sprite.getWidth();
-    j["height"] = sprite.getHeight();
+    j["width"] = sprite.getWidthWithoutScale();
+    j["height"] = sprite.getHeightWithoutScale();
     j["sourceRectEnabled"] = sprite.hasSourceRect();
     if (sprite.hasSourceRect())
     {

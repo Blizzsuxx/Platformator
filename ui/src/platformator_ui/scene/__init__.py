@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         UnknownComponentModel,
         Vector2Model,
     )
+    from .mutations import add_behavior, add_game_object, create_unique_object_name, duplicate_game_object, find_parent_object, remove_component, remove_game_object
     from .serializer import SceneSerializationError, SceneSerializer
     from .templates import create_empty_scene, create_game_object, create_main_camera_object, create_named_component
     from .validation import Severity, ValidationIssue, validate_scene_document
@@ -33,11 +34,14 @@ __all__ = [
     "AudioComponent",
     "BaseComponentModel",
     "BodyType",
+    "add_behavior",
+    "add_game_object",
     "BoxColliderComponent",
     "CameraComponent",
     "CircleColliderComponent",
     "ColliderType",
     "ComponentType",
+    "create_unique_object_name",
     "GameObjectModel",
     "RectModel",
     "SceneDocumentModel",
@@ -55,6 +59,10 @@ __all__ = [
     "create_game_object",
     "create_main_camera_object",
     "create_named_component",
+    "duplicate_game_object",
+    "find_parent_object",
+    "remove_component",
+    "remove_game_object",
     "validate_scene_document",
 ]
 
@@ -63,11 +71,14 @@ _EXPORTS = {
     "AudioComponent": (".models", "AudioComponent"),
     "BaseComponentModel": (".models", "BaseComponentModel"),
     "BodyType": (".models", "BodyType"),
+    "add_behavior": (".mutations", "add_behavior"),
+    "add_game_object": (".mutations", "add_game_object"),
     "BoxColliderComponent": (".models", "BoxColliderComponent"),
     "CameraComponent": (".models", "CameraComponent"),
     "CircleColliderComponent": (".models", "CircleColliderComponent"),
     "ColliderType": (".models", "ColliderType"),
     "ComponentType": (".models", "ComponentType"),
+    "create_unique_object_name": (".mutations", "create_unique_object_name"),
     "GameObjectModel": (".models", "GameObjectModel"),
     "RectModel": (".models", "RectModel"),
     "SceneDocumentModel": (".models", "SceneDocumentModel"),
@@ -85,6 +96,10 @@ _EXPORTS = {
     "create_game_object": (".templates", "create_game_object"),
     "create_main_camera_object": (".templates", "create_main_camera_object"),
     "create_named_component": (".templates", "create_named_component"),
+    "duplicate_game_object": (".mutations", "duplicate_game_object"),
+    "find_parent_object": (".mutations", "find_parent_object"),
+    "remove_component": (".mutations", "remove_component"),
+    "remove_game_object": (".mutations", "remove_game_object"),
     "validate_scene_document": (".validation", "validate_scene_document"),
 }
 

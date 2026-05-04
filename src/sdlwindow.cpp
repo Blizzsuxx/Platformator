@@ -303,3 +303,13 @@ Camera *SDLWindow::getMainCamera() const
 {
     return mainCamera;
 }
+
+void SDLWindow::playAndForget(AudioWrapper *audioWrapper)
+{
+    if (audioWrapper == nullptr)
+    {
+        return;
+    }
+
+    MIX_PlayAudio(mixer, audioWrapper->getAudio());
+}

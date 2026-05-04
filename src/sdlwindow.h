@@ -35,6 +35,8 @@ public:
     void clearDebugObjects();
     Camera *getMainCamera() const;
 
+    void playAndForget(AudioWrapper *audioWrapper);
+
 private:
     SDL_Window *window;
     SDL_Renderer *renderer;

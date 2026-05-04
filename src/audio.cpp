@@ -236,3 +236,20 @@ void Audio::setGameManagerIndex(size_t index)
 {
     gameManagerIndex = index;
 }
+
+bool Audio::playAndForget(AudioWrapper *audioWrapper)
+{
+    setAudio(audioWrapper);
+    return playAndForget();
+}
+
+bool Audio::playAndForget()
+{
+    if (audioWrapper == nullptr)
+    {
+        return false;
+    }
+
+    GameManager::getInstance().getWindow()->playAndForget(audioWrapper);
+    return true;
+}

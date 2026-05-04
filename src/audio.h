@@ -31,6 +31,8 @@ public:
     bool play();
     bool play(AudioWrapper *audioWrapper);
     bool replay(AudioWrapper *audioWrapper, Sint64 fadeOutFrames = 0);
+    bool playAndForget(AudioWrapper *audioWrapper);
+    bool playAndForget();
     bool stop(Sint64 fadeOutFrames = 0);
     bool pause();
     bool resume();

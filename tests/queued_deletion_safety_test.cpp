@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
@@ -25,6 +26,12 @@ namespace
         }
     }
 
+    bool containsGameObjectPointer(GameManager &gameManager, const GameObject *gameObject)
+    {
+        const std::vector<GameObject *> &objects = gameManager.getGameObjects();
+        return std::find(objects.begin(), objects.end(), gameObject) != objects.end();
+    }
+
     void configureHeadlessEnvironment()
     {
         setenv("SDL_VIDEODRIVER", "dummy", 1);
@@ -43,7 +50,7 @@ namespace
         {
             for (GameObject *object : objects)
             {
-                if (object != nullptr)
+                if (object != nullptr && containsGameObjectPointer(gameManager, object))
                 {
                     gameManager.destroyGameObject(object);
                 }
@@ -72,7 +79,28 @@ namespace
             ->setPosition(Eigen::Vector2f(x, y));
     }
 
-    class CreateThenDestroyBehavior : public Behavior
+    class TestBehavior : public Behavior
+    {
+    public:
+        std::string getTypeName() const override
+        {
+            return "TestBehavior";
+        }
+
+        void serialize(nlohmann::json &) const override
+        {
+        }
+
+        void deserialize(const nlohmann::json &) override
+        {
+        }
+
+        void resolveReferences() override
+        {
+        }
+    };
+
+    class CreateThenDestroyBehavior : public TestBehavior
     {
     public:
         CreateThenDestroyBehavior() : ran(false)
@@ -101,7 +129,7 @@ namespace
         bool ran;
     };
 
-    class MoveThenDestroyBehavior : public Behavior
+    class MoveThenDestroyBehavior : public TestBehavior
     {
     public:
         MoveThenDestroyBehavior() : ran(false)
@@ -126,7 +154,7 @@ namespace
         bool ran;
     };
 
-    class DestroyOnUpdateBehavior : public Behavior
+    class DestroyOnUpdateBehavior : public TestBehavior
     {
     public:
         DestroyOnUpdateBehavior() : ran(false)
@@ -148,7 +176,29 @@ namespace
         bool ran;
     };
 
-    class CollisionCounterBehavior : public Behavior
+    class DestroyViaGameObjectBehavior : public TestBehavior
+    {
+    public:
+        DestroyViaGameObjectBehavior() : ran(false)
+        {
+        }
+
+        void update(double) override
+        {
+            if (ran)
+            {
+                return;
+            }
+
+            ran = true;
+            getGameObject()->destroy();
+        }
+
+    private:
+        bool ran;
+    };
+
+    class CollisionCounterBehavior : public TestBehavior
     {
     public:
         CollisionCounterBehavior() : enterCount(0), exitCount(0), stayCount(0)
@@ -244,6 +294,25 @@ namespace
         require(survivorCounter->exitCount == 1,
                 "Late-frame exit regression unexpectedly dispatched a duplicate collision exit on the following frame.");
     }
+
+    void testGameObjectDestroyShortcut()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *victim = gameManager.createGameObject()->setName("Destroy Shortcut Victim")->addComponent<ScriptComponent>();
+        sceneScope.add(victim);
+
+        ScriptComponent *scriptComponent = victim->getComponent<ScriptComponent>();
+        require(scriptComponent != nullptr, "Destroy shortcut regression failed to create the victim script component.");
+        scriptComponent->addBehavior(new DestroyViaGameObjectBehavior());
+
+        gameManager.simulateFrame(kTimeStep);
+        require(!containsGameObjectPointer(gameManager, victim),
+                "Destroy shortcut regression expected GameObject::destroy() to remove the object from the GameManager live object list.");
+
+        gameManager.simulateFrame(kTimeStep);
+    }
 } // namespace
 
 int main()
@@ -256,6 +325,7 @@ int main()
         testQueuedAddDeletion();
         testQueuedSyncDeletion();
         testLateFrameExitEventDeletion();
+        testGameObjectDestroyShortcut();
         std::cout << "[PASS] queued_deletion_safety_test\n";
         return 0;
     }

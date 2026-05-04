@@ -24,7 +24,7 @@ namespace mario
 
     bool MarioCoin::collect()
     {
-        audioComponent->play(coinSound.get());
+        audioComponent->playAndForget(coinSound.get());
         MarioGame::getInstance().onCoinCollected();
         getGameObject()->destroy();
         return true;

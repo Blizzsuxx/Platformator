@@ -163,7 +163,7 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 48.0,
+        "height": 20.0,
         "id": 1010,
         "trigger": false,
         "type": 3,
@@ -220,7 +220,7 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 48.0,
+        "height": 20.0,
         "id": 1013,
         "trigger": false,
         "type": 3,
@@ -277,7 +277,7 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 48.0,
+        "height": 20.0,
         "id": 1016,
         "trigger": false,
         "type": 3,
@@ -334,7 +334,7 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 48.0,
+        "height": 20.0,
         "id": 1019,
         "trigger": false,
         "type": 3,
@@ -391,11 +391,68 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 24.0,
+        "height": 20.0,
+        "id": 1090,
+        "trigger": false,
+        "type": 3,
+        "width": 640.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 1.0,
+        "gravity": false,
+        "id": 1091,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 48.0,
+        "id": 1092,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/tiles/ground.png",
+        "type": 6,
+        "width": 640.0
+      }
+    ],
+    "id": 1089,
+    "name": "Ground D Copy",
+    "position": {
+      "x": 2159.8676577831293,
+      "y": 457.08653019973553
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 1,
+        "height": 14.0,
         "id": 1022,
         "trigger": false,
         "type": 3,
-        "width": 128.0
+        "width": 79.0
       },
       {
         "angularVelocity": 0.0,
@@ -448,11 +505,11 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 24.0,
+        "height": 14.0,
         "id": 1025,
         "trigger": false,
         "type": 3,
-        "width": 160.0
+        "width": 97.0
       },
       {
         "angularVelocity": 0.0,
@@ -505,11 +562,11 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 24.0,
+        "height": 14.0,
         "id": 1028,
         "trigger": false,
         "type": 3,
-        "width": 128.0
+        "width": 81.0
       },
       {
         "angularVelocity": 0.0,
@@ -562,11 +619,11 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 96.0,
+        "height": 67.0,
         "id": 1031,
         "trigger": false,
         "type": 3,
-        "width": 72.0
+        "width": 55.0
       },
       {
         "angularVelocity": 0.0,
@@ -619,11 +676,11 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 32.0,
+        "height": 20.0,
         "id": 1034,
         "trigger": false,
         "type": 3,
-        "width": 96.0
+        "width": 60.0
       },
       {
         "angularVelocity": 0.0,
@@ -676,11 +733,11 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 32.0,
+        "height": 20.0,
         "id": 1037,
         "trigger": false,
         "type": 3,
-        "width": 128.0
+        "width": 77.0
       },
       {
         "angularVelocity": 0.0,
@@ -1426,8 +1483,8 @@
     "id": 121,
     "name": "Goal Flag",
     "position": {
-      "x": 2120.0,
-      "y": 336.0
+      "x": 2063.596540032286,
+      "y": 351.6173324087698
     },
     "rotation": 0.0,
     "scale": {

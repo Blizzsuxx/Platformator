@@ -25,6 +25,7 @@ GameManager::~GameManager()
     gameObjects.clear();
 
     deleteMarkedGameObjects();
+    window->clearTransientAudio();
     freeAllAnimationClips();
     freeAllTextures();
     freeAllAudio();
@@ -217,6 +218,7 @@ void GameManager::loop()
             lateUpdateScriptComponents(deltaTime);
         }
 
+        window->updateTransientAudio();
         window->render();
         window->clearAdvanceFrameRequest();
         deleteMarkedGameObjects();
@@ -236,6 +238,7 @@ void GameManager::simulateFrame(double timeDelta)
     updateScriptComponents(timeDelta);
     updateAnimatorComponents(timeDelta);
     lateUpdateScriptComponents(timeDelta);
+    window->updateTransientAudio();
     deleteMarkedGameObjects();
 }
 

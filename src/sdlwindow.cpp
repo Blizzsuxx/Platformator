@@ -1,9 +1,15 @@
 #include "sdlwindow.h"
-#include "gamemanager.h"
+
+#include <algorithm>
 #include <iostream>
 
+#include <SDL3/SDL_properties.h>
+
+#include "audiowrapper.h"
+#include "gamemanager.h"
+
 SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mixer(nullptr), mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners()
+                         mixer(nullptr), mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners(), transientAudioPlaybacks()
 {
     if (!init())
     {
@@ -124,6 +130,8 @@ bool SDLWindow::init()
 
 void SDLWindow::close()
 {
+    clearTransientAudio();
+
     if (mixer != nullptr)
     {
         MIX_DestroyMixer(mixer);
@@ -304,12 +312,86 @@ Camera *SDLWindow::getMainCamera() const
     return mainCamera;
 }
 
-void SDLWindow::playAndForget(AudioWrapper *audioWrapper)
+bool SDLWindow::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount)
 {
-    if (audioWrapper == nullptr)
+    MIX_Track *track = MIX_CreateTrack(mixer);
+
+    if (!MIX_SetTrackAudio(track, audioWrapper->getAudio()))
     {
-        return;
+        MIX_DestroyTrack(track);
+        return false;
     }
 
-    MIX_PlayAudio(mixer, audioWrapper->getAudio());
+    MIX_SetTrackGain(track, std::max(0.0f, gain));
+
+    SDL_PropertiesID options = 0;
+    if (loopCount != 0)
+    {
+        options = SDL_CreateProperties();
+        if (options == 0 || !SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, loopCount))
+        {
+            if (options != 0)
+            {
+                SDL_DestroyProperties(options);
+            }
+
+            MIX_DestroyTrack(track);
+            return false;
+        }
+    }
+
+    const bool played = MIX_PlayTrack(track, options);
+    if (options != 0)
+    {
+        SDL_DestroyProperties(options);
+    }
+
+    if (!played)
+    {
+        MIX_DestroyTrack(track);
+        return false;
+    }
+
+    audioWrapper->addReference();
+    transientAudioPlaybacks.push_back({track, audioWrapper});
+    return true;
+}
+
+void SDLWindow::updateTransientAudio()
+{
+    size_t index = 0;
+    while (index < transientAudioPlaybacks.size())
+    {
+        TransientAudioPlayback &playback = transientAudioPlaybacks[index];
+        MIX_Track *track = playback.track;
+        if (!MIX_TrackPlaying(track))
+        {
+            releaseTransientAudioPlayback(index);
+            continue;
+        }
+
+        index++;
+    }
+}
+
+void SDLWindow::clearTransientAudio()
+{
+    while (!transientAudioPlaybacks.empty())
+    {
+        releaseTransientAudioPlayback(transientAudioPlaybacks.size() - 1);
+    }
+}
+
+void SDLWindow::releaseTransientAudioPlayback(size_t index)
+{
+    TransientAudioPlayback playback = transientAudioPlaybacks[index];
+    size_t lastIndex = transientAudioPlaybacks.size() - 1;
+    if (index != lastIndex)
+    {
+        transientAudioPlaybacks[index] = transientAudioPlaybacks[lastIndex];
+    }
+    transientAudioPlaybacks.pop_back();
+
+    MIX_DestroyTrack(playback.track);
+    playback.audioWrapper->removeReferenceAndFreeIfNoReferences();
 }

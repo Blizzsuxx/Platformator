@@ -9,6 +9,8 @@
 #include "camera.h"
 #include "debugdraw.h"
 
+class AudioWrapper;
+
 class SDLWindow
 {
 public:
@@ -35,9 +37,17 @@ public:
     void clearDebugObjects();
     Camera *getMainCamera() const;
 
-    void playAndForget(AudioWrapper *audioWrapper);
+    bool playAndForget(AudioWrapper *audioWrapper, float gain = 1.0f, int loopCount = 0);
+    void updateTransientAudio();
+    void clearTransientAudio();
 
 private:
+    struct TransientAudioPlayback
+    {
+        MIX_Track *track;
+        AudioWrapper *audioWrapper;
+    };
+
     SDL_Window *window;
     SDL_Renderer *renderer;
     MIX_Mixer *mixer;
@@ -51,7 +61,9 @@ private:
 
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event, double)>> listeners;
+    std::vector<TransientAudioPlayback> transientAudioPlaybacks;
 
     bool init();
     void close();
+    void releaseTransientAudioPlayback(size_t index);
 };

@@ -239,8 +239,13 @@ void Audio::setGameManagerIndex(size_t index)
 
 bool Audio::playAndForget(AudioWrapper *audioWrapper)
 {
-    setAudio(audioWrapper);
-    return playAndForget();
+    if (audioWrapper == nullptr)
+    {
+        return false;
+    }
+
+    SDLWindow *window = GameManager::getInstance().getWindow();
+    return window->playAndForget(audioWrapper, gain, loopCount);
 }
 
 bool Audio::playAndForget()
@@ -250,6 +255,5 @@ bool Audio::playAndForget()
         return false;
     }
 
-    GameManager::getInstance().getWindow()->playAndForget(audioWrapper);
-    return true;
+    return playAndForget(audioWrapper);
 }

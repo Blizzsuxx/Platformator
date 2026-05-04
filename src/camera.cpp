@@ -10,6 +10,11 @@ Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA), width(SC
 {
 }
 
+Camera::Camera(GameObject *gameObject, float x, float y, float w, float h) : Component(gameObject, CAMERA), width(w), height(h)
+{
+    gameObject->setPosition(Eigen::Vector2f(x, y));
+}
+
 Camera::Camera(GameObject *gameObject, float w, float h) : Component(gameObject, CAMERA), width(w), height(h)
 {
 }
@@ -18,7 +23,7 @@ Camera::~Camera()
 {
 }
 
-void Camera::render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight)
+void Camera::render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight, bool keepAspectRatio)
 {
     float renderW = sprite->getWidth();
     float renderH = sprite->getHeight();
@@ -27,26 +32,28 @@ void Camera::render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int
     float renderY = sprite->getGameObject()->getY() - renderH / 2.0f;
 
     SDL_FRect worldRect = {renderX, renderY, renderW, renderH};
-    SDL_FRect renderQuad = worldToScreenRect(worldRect, outputWidth, outputHeight);
+    SDL_FRect renderQuad = worldToScreenRect(worldRect, outputWidth, outputHeight, keepAspectRatio);
     SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad, sprite->getGameObject()->getRotationInDegrees(), nullptr, sprite->getFlip());
 }
 
-Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const
+Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight, bool keepAspectRatio) const
 {
     return Eigen::Vector2f(
-        (worldPoint.x() - getGameObject()->getX()) * getScaleX(outputWidth),
-        (worldPoint.y() - getGameObject()->getY()) * getScaleY(outputHeight));
+        getOffsetX(outputWidth, outputHeight, keepAspectRatio) + (worldPoint.x() - getGameObject()->getX()) * getScaleX(outputWidth, outputHeight, keepAspectRatio),
+        getOffsetY(outputWidth, outputHeight, keepAspectRatio) + (worldPoint.y() - getGameObject()->getY()) * getScaleY(outputWidth, outputHeight, keepAspectRatio));
 }
 
-Eigen::Vector2f Camera::worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight) const
+Eigen::Vector2f Camera::worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight, bool keepAspectRatio) const
 {
-    return Eigen::Vector2f(worldSize.x() * getScaleX(outputWidth), worldSize.y() * getScaleY(outputHeight));
+    return Eigen::Vector2f(
+        worldSize.x() * getScaleX(outputWidth, outputHeight, keepAspectRatio),
+        worldSize.y() * getScaleY(outputWidth, outputHeight, keepAspectRatio));
 }
 
-SDL_FRect Camera::worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight) const
+SDL_FRect Camera::worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight, bool keepAspectRatio) const
 {
-    Eigen::Vector2f screenOrigin = worldToScreenPoint(Eigen::Vector2f(worldRect.x, worldRect.y), outputWidth, outputHeight);
-    Eigen::Vector2f screenSize = worldToScreenSize(Eigen::Vector2f(worldRect.w, worldRect.h), outputWidth, outputHeight);
+    Eigen::Vector2f screenOrigin = worldToScreenPoint(Eigen::Vector2f(worldRect.x, worldRect.y), outputWidth, outputHeight, keepAspectRatio);
+    Eigen::Vector2f screenSize = worldToScreenSize(Eigen::Vector2f(worldRect.w, worldRect.h), outputWidth, outputHeight, keepAspectRatio);
     return SDL_FRect{screenOrigin.x(), screenOrigin.y(), screenSize.x(), screenSize.y()};
 }
 
@@ -85,12 +92,47 @@ void Camera::setHeight(float height)
     this->height = std::max(1.0f, height);
 }
 
-float Camera::getScaleX(int outputWidth) const
+float Camera::getOffsetX(int outputWidth, int outputHeight, bool keepAspectRatio) const
 {
-    return static_cast<float>(outputWidth) / width;
+    if (!keepAspectRatio)
+    {
+        return 0.0f;
+    }
+
+    return (static_cast<float>(outputWidth) - width * getUniformScale(outputWidth, outputHeight)) * 0.5f;
 }
 
-float Camera::getScaleY(int outputHeight) const
+float Camera::getOffsetY(int outputWidth, int outputHeight, bool keepAspectRatio) const
 {
-    return static_cast<float>(outputHeight) / height;
+    if (!keepAspectRatio)
+    {
+        return 0.0f;
+    }
+
+    return (static_cast<float>(outputHeight) - height * getUniformScale(outputWidth, outputHeight)) * 0.5f;
+}
+
+float Camera::getScaleX(int outputWidth, int outputHeight, bool keepAspectRatio) const
+{
+    if (!keepAspectRatio)
+    {
+        return static_cast<float>(outputWidth) / width;
+    }
+
+    return getUniformScale(outputWidth, outputHeight);
+}
+
+float Camera::getScaleY(int outputWidth, int outputHeight, bool keepAspectRatio) const
+{
+    if (!keepAspectRatio)
+    {
+        return static_cast<float>(outputHeight) / height;
+    }
+
+    return getUniformScale(outputWidth, outputHeight);
+}
+
+float Camera::getUniformScale(int outputWidth, int outputHeight) const
+{
+    return std::min(static_cast<float>(outputWidth) / width, static_cast<float>(outputHeight) / height);
 }

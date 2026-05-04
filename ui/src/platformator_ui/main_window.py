@@ -37,9 +37,10 @@ from .services.behavior_catalog import (
 )
 from .services.project_paths import ProjectPaths
 from .services.recent_files import RecentFilesStore
+from .services.run_settings import RunSettingsStore
 from .services.undo_stack import EditorUndoStack, SceneSnapshotCommand
 from .settings import APP_NAME, WINDOW_GEOMETRY_KEY, WINDOW_STATE_KEY
-from .widgets import AssetBrowserWidget, BehaviorLibraryWidget, InspectorWidget, OutputPanel, SceneCanvasWidget, SceneTreeWidget
+from .widgets import AssetBrowserWidget, BehaviorLibraryWidget, InspectorWidget, OutputPanel, RunSettingsDialog, SceneCanvasWidget, SceneTreeWidget
 
 
 class MainWindow(QMainWindow):
@@ -47,6 +48,8 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.project_paths = project_paths
         self.recent_files = RecentFilesStore()
+        self.run_settings_store = RunSettingsStore()
+        self.run_window_settings = self.run_settings_store.load()
         self.undo_stack = EditorUndoStack(self)
         self.run_controller = RunController(project_paths, self)
 
@@ -154,7 +157,18 @@ class MainWindow(QMainWindow):
             self.current_scene_path,
             target_name=target_name,
             program_path=program_path,
+            runtime_arguments=self.run_window_settings.to_cli_args(),
         )
+
+    def edit_run_window_settings(self) -> None:
+        updated_settings = RunSettingsDialog.edit(self.run_window_settings, self)
+        if updated_settings is None:
+            return
+
+        self.run_window_settings = updated_settings
+        self.run_settings_store.save(updated_settings)
+        self.output_panel.append_text(f"\n[Run] Updated window settings: {updated_settings.summary()}.\n")
+        self.statusBar().showMessage("Updated run window settings", 3000)
 
     def validate_scene(self) -> None:
         issues = validate_scene_document(self.scene_document)
@@ -213,6 +227,7 @@ class MainWindow(QMainWindow):
         self.undo_action = self.undo_stack.createUndoAction(self, "Undo")
         self.redo_action = self.undo_stack.createRedoAction(self, "Redo")
         self.validate_action = QAction("Validate", self)
+        self.run_window_settings_action = QAction("Window Settings", self)
         self.build_action = QAction("Build", self)
         self.run_action = QAction("Build && Run", self)
         self.zoom_in_action = QAction("Zoom In", self)
@@ -255,6 +270,8 @@ class MainWindow(QMainWindow):
         run_menu = self.menuBar().addMenu("Run")
         run_menu.addAction(self.validate_action)
         run_menu.addSeparator()
+        run_menu.addAction(self.run_window_settings_action)
+        run_menu.addSeparator()
         run_menu.addAction(self.build_action)
         run_menu.addAction(self.run_action)
         run_menu.addAction(self.stop_action)
@@ -290,6 +307,7 @@ class MainWindow(QMainWindow):
         self.frame_selection_action.triggered.connect(self.scene_canvas.frame_selection)
         self.reset_layout_action.triggered.connect(self._reset_dock_layout)
         self.validate_action.triggered.connect(self.validate_scene)
+        self.run_window_settings_action.triggered.connect(self.edit_run_window_settings)
         self.build_action.triggered.connect(self.build_project)
         self.run_action.triggered.connect(self.run_scene)
         self.stop_action.triggered.connect(self.run_controller.stop)

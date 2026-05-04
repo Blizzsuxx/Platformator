@@ -10,7 +10,18 @@
 #include "scriptcomponent.h"
 #include "texturewrapper.h"
 
-GameManager::GameManager() : window(new SDLWindow()), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+void GameManager::setStartupWindowSettings(const WindowSettings &windowSettings)
+{
+    startupWindowSettings() = windowSettings;
+}
+
+WindowSettings &GameManager::startupWindowSettings()
+{
+    static WindowSettings windowSettings;
+    return windowSettings;
+}
+
+GameManager::GameManager() : window(new SDLWindow(startupWindowSettings())), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();

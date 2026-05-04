@@ -12,14 +12,15 @@ class Camera : public Component
 public:
     Camera();
     Camera(GameObject *gameObject);
+    Camera(GameObject *gameObject, float x, float y, float w, float h);
     Camera(GameObject *gameObject, float w, float h);
 
     ~Camera();
 
-    void render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight);
-    Eigen::Vector2f worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const;
-    Eigen::Vector2f worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight) const;
-    SDL_FRect worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight) const;
+    void render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight, bool keepAspectRatio);
+    Eigen::Vector2f worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight, bool keepAspectRatio) const;
+    Eigen::Vector2f worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight, bool keepAspectRatio) const;
+    SDL_FRect worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight, bool keepAspectRatio) const;
 
     // Getters
     SDL_FRect getCamera() const;
@@ -35,8 +36,11 @@ private:
     float width;
     float height;
 
-    float getScaleX(int outputWidth) const;
-    float getScaleY(int outputHeight) const;
+    float getOffsetX(int outputWidth, int outputHeight, bool keepAspectRatio) const;
+    float getOffsetY(int outputWidth, int outputHeight, bool keepAspectRatio) const;
+    float getScaleX(int outputWidth, int outputHeight, bool keepAspectRatio) const;
+    float getScaleY(int outputWidth, int outputHeight, bool keepAspectRatio) const;
+    float getUniformScale(int outputWidth, int outputHeight) const;
 };
 
 template <>

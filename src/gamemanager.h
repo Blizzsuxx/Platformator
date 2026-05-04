@@ -2,6 +2,7 @@
 
 #include "sdlwindow.h"
 #include "physicsmanager.h"
+#include "windowsettings.h"
 #include <cstdint>
 #include <vector>
 #include "scene.h"
@@ -23,6 +24,8 @@ class GameManager
     friend class ScriptComponent;
 
 public:
+    static void setStartupWindowSettings(const WindowSettings &windowSettings);
+
     static GameManager &getInstance()
     {
         static GameManager instance;
@@ -62,6 +65,7 @@ public:
 private:
     GameManager();
     ~GameManager();
+    static WindowSettings &startupWindowSettings();
 
     SDLWindow *window;
     std::vector<GameObject *> gameObjects;

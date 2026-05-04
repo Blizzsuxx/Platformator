@@ -8,7 +8,7 @@
 #include "audiowrapper.h"
 #include "gamemanager.h"
 
-SDLWindow::SDLWindow()
+SDLWindow::SDLWindow(const WindowSettings &windowSettings)
     : window(nullptr),
       renderer(nullptr),
       mixer(nullptr),
@@ -16,8 +16,9 @@ SDLWindow::SDLWindow()
       sdlEvent(),
       debugDraw(DebugDraw::getInstance()),
       rendererName(nullptr),
-      renderWidth(static_cast<int>(SCREEN_WIDTH)),
-      renderHeight(static_cast<int>(SCREEN_HEIGHT)),
+      windowSettings(windowSettings),
+      renderWidth(windowSettings.width),
+      renderHeight(windowSettings.height),
       quit(false),
       frameAdvanceMode(false),
       advanceFrameRequested(false),
@@ -105,7 +106,7 @@ bool SDLWindow::init()
         return false;
     }
 
-    window = SDL_CreateWindow("Platformator", SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE);
+    window = SDL_CreateWindow("Platformator", windowSettings.width, windowSettings.height, SDL_WINDOW_RESIZABLE);
     if (window == nullptr)
     {
         printf("Window could not be created! SDL_Error: %s", SDL_GetError());
@@ -119,6 +120,17 @@ bool SDLWindow::init()
         printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
         close();
         return false;
+    }
+
+    if (windowSettings.fullscreen)
+    {
+        SDL_SetWindowFullscreen(window, true);
+        SDL_SyncWindow(window);
+    }
+    else if (windowSettings.maximizeOnStartup)
+    {
+        SDL_MaximizeWindow(window);
+        SDL_SyncWindow(window);
     }
 
     updateRenderSize();
@@ -211,7 +223,7 @@ void SDLWindow::render()
             continue;
         }
 
-        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
+        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight, windowSettings.keepAspectRatio);
 
         Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
         if (collider != nullptr && shouldSimulateFrame())
@@ -227,7 +239,7 @@ void SDLWindow::render()
         }
     }
 
-    debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
+    debugDraw.render(renderer, mainCamera, renderWidth, renderHeight, windowSettings.keepAspectRatio);
     SDL_RenderPresent(renderer);
 }
 

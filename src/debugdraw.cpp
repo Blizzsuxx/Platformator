@@ -12,7 +12,7 @@ DebugDraw::~DebugDraw()
 {
 }
 
-void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight)
+void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight, bool keepAspectRatio)
 {
     SDL_BlendMode prevBlend;
     SDL_GetRenderDrawBlendMode(renderer, &prevBlend);
@@ -32,8 +32,8 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, 
                 const Eigen::Vector2f &v1 = vertices[i];
                 const Eigen::Vector2f &v2 = vertices[(i + 1) % vertices.size()];
 
-                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight);
-                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight);
+                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight, keepAspectRatio);
+                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight, keepAspectRatio);
 
                 SDL_RenderLine(renderer, screenV1.x(), screenV1.y(), screenV2.x(), screenV2.y());
             }
@@ -46,8 +46,8 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, 
                 const Eigen::Vector2f &v1 = vertices[i];
                 const Eigen::Vector2f &v2 = vertices[i + 1];
 
-                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight);
-                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight);
+                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight, keepAspectRatio);
+                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight, keepAspectRatio);
 
                 SDL_RenderLine(renderer, screenV1.x(), screenV1.y(), screenV2.x(), screenV2.y());
             }

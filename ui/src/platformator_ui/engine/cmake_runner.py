@@ -46,11 +46,12 @@ def create_run_spec(
     scene_path: Path,
     *,
     program_path: Path | None = None,
+    runtime_arguments: tuple[str, ...] = (),
 ) -> ProcessSpec:
     return ProcessSpec(
         label="Run",
         program=str(program_path or project_paths.main_binary),
-        arguments=(str(scene_path),),
+        arguments=(str(scene_path), *runtime_arguments),
         working_directory=project_paths.repo_root,
     )
 
@@ -62,9 +63,10 @@ def create_run_pipeline(
     *,
     target_name: str | None = None,
     program_path: Path | None = None,
+    runtime_arguments: tuple[str, ...] = (),
 ) -> list[ProcessSpec]:
     return [
         create_configure_spec(project_paths, preset=preset),
         create_build_spec(project_paths, preset=preset, target_name=target_name),
-        create_run_spec(project_paths, scene_path=scene_path, program_path=program_path),
+        create_run_spec(project_paths, scene_path=scene_path, program_path=program_path, runtime_arguments=runtime_arguments),
     ]

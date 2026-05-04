@@ -2,6 +2,7 @@
 #include <iostream>
 #include "gamemanager.h"
 #include "mario_game.h"
+#include "runtimeoptions.h"
 #include "scene.h"
 
 namespace
@@ -19,13 +20,18 @@ namespace
 
 int main(int argc, char *args[])
 {
-    GameManager &gameManager = GameManager::getInstance();
-    SDLWindow *window = gameManager.getWindow();
-    const std::filesystem::path scenePath = argc > 1 ? std::filesystem::path(args[1]) : getDefaultScenePath();
-    Scene loadedScene(scenePath.string());
+    std::filesystem::path scenePath = getDefaultScenePath();
 
     try
     {
+        RuntimeOptions runtimeOptions = parseRuntimeOptions(argc, args, getDefaultScenePath().string());
+        GameManager::setStartupWindowSettings(runtimeOptions.windowSettings);
+
+        GameManager &gameManager = GameManager::getInstance();
+        SDLWindow *window = gameManager.getWindow();
+        scenePath = runtimeOptions.sceneFilePath;
+        Scene loadedScene(scenePath.string());
+
         mario::MarioGame marioGame(gameManager, *window, loadedScene);
         gameManager.loadScene(loadedScene);
         marioGame.initializeScene();

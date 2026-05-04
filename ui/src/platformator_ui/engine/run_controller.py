@@ -47,6 +47,7 @@ class RunController(QObject):
         *,
         target_name: str | None = None,
         program_path: Path | None = None,
+        runtime_arguments: tuple[str, ...] = (),
     ) -> None:
         self._start_pipeline(
             create_run_pipeline(
@@ -55,6 +56,7 @@ class RunController(QObject):
                 preset=preset,
                 target_name=target_name,
                 program_path=program_path,
+                runtime_arguments=runtime_arguments,
             )
         )
 

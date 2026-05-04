@@ -10,13 +10,14 @@
 
 #include "camera.h"
 #include "debugdraw.h"
+#include "windowsettings.h"
 
 class AudioWrapper;
 
 class SDLWindow
 {
 public:
-    SDLWindow();
+    SDLWindow(const WindowSettings &windowSettings);
     ~SDLWindow();
 
     void handleSDLEvents(double deltaTime);
@@ -59,6 +60,7 @@ private:
     SDL_Event sdlEvent;
     DebugDraw &debugDraw;
     const char *rendererName;
+    WindowSettings windowSettings;
     int renderWidth;
     int renderHeight;
     bool quit;

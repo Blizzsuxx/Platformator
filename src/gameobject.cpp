@@ -345,3 +345,11 @@ void GameObject::removeComponentsFromGameManager()
         }
     }
 }
+
+void GameObject::destroy()
+{
+    if (!getIsMarkedForDeletion())
+    {
+        GameManager::getInstance().startDeletingGameObject(this);
+    }
+}

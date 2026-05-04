@@ -24,11 +24,9 @@ namespace mario
 
     bool MarioCoin::collect()
     {
-        if (audioComponent != nullptr)
-        {
-            audioComponent->play(coinSound.get());
-        }
+        audioComponent->play(coinSound.get());
         MarioGame::getInstance().onCoinCollected();
+        getGameObject()->destroy();
         return true;
     }
 } // namespace mario

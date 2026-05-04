@@ -98,6 +98,7 @@ public:
     void addChild(GameObject *child);
     bool removeChild(GameObject *child);
     bool getIsMarkedForDeletion() const;
+    void destroy();
 
 private:
     GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag);

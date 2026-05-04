@@ -567,6 +567,10 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath)
 
 void GameManager::freeAudio(AudioWrapper *audioWrapper)
 {
+    if (ENABLE_LOGGING)
+    {
+        printf("Freeing audio: %s\n", audioWrapper->getFilePath().c_str());
+    }
     auto it = audioCache.find(audioWrapper->getFilePath());
     if (it != audioCache.end())
     {

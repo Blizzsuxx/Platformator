@@ -114,6 +114,12 @@ bool SDLWindow::init()
         return false;
     }
 
+    if (windowSettings.keepAspectRatio)
+    {
+        const float aspectRatio = static_cast<float>(windowSettings.width) / static_cast<float>(windowSettings.height);
+        SDL_SetWindowAspectRatio(window, aspectRatio, aspectRatio);
+    }
+
     renderer = SDL_CreateRenderer(window, nullptr);
     if (renderer == nullptr)
     {
@@ -223,7 +229,7 @@ void SDLWindow::render()
             continue;
         }
 
-        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight, windowSettings.keepAspectRatio);
+        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
 
         Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
         if (collider != nullptr && shouldSimulateFrame())
@@ -239,7 +245,7 @@ void SDLWindow::render()
         }
     }
 
-    debugDraw.render(renderer, mainCamera, renderWidth, renderHeight, windowSettings.keepAspectRatio);
+    debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
     SDL_RenderPresent(renderer);
 }
 

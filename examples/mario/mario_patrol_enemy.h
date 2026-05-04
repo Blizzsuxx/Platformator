@@ -46,6 +46,7 @@ namespace mario
         AssetReference<AudioWrapper> stompSound;
         bool defeated;
         double defeatedTimer;
+        float maxFallSpeed;
 
         SERIALIZABLE_SCRIPT(
             MarioPatrolEnemy,

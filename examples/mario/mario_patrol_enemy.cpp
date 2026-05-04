@@ -23,7 +23,8 @@ namespace mario
           stompSound(),
           audio(nullptr),
           defeated(false),
-          defeatedTimer(0.0)
+          defeatedTimer(0.0),
+          maxFallSpeed(PLAYER_MAX_FALL_SPEED)
     {
     }
 
@@ -35,6 +36,7 @@ namespace mario
         sprite = getGameObject()->getComponent<Sprite>();
         Eigen::Vector2f velocity = body->getVelocity();
         velocity.x() = direction * walkSpeed;
+        velocity.y() = maxFallSpeed;
         body->setVelocity(velocity);
         sprite->setFlip(direction < 0.0f ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
         animator->play(walkAnimset.get());

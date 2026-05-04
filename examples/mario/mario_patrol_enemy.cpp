@@ -48,7 +48,7 @@ namespace mario
             defeatedTimer -= timeDelta;
             if (defeatedTimer <= 0.0)
             {
-                getGameObject()->setActive(false);
+                getGameObject()->destroy();
             }
             return;
         }

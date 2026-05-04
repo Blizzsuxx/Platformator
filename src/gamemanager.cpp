@@ -275,6 +275,11 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath)
 
 void GameManager::freeTexture(TextureWrapper *textureWrapper)
 {
+    if (ENABLE_LOGGING)
+    {
+        printf("Freeing texture: %s\n", textureWrapper->getFilePath().c_str());
+    }
+
     auto it = textureCache.find(textureWrapper->getFilePath());
     if (it != textureCache.end())
     {
@@ -623,9 +628,9 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
 
 void GameManager::freeAnimationClip(AnimationClip *animationClip)
 {
-    if (animationClip == nullptr)
+    if (ENABLE_LOGGING)
     {
-        return;
+        printf("Freeing animation clip: %s\n", animationClip->getFilePath().c_str());
     }
 
     auto it = animationClipCache.find(animationClip->getFilePath());

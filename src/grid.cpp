@@ -46,6 +46,11 @@ void Grid::removeColliderInternal(Collider *collider)
 {
     const GridCellRange &range = collider->getGridCellRange();
 
+    if constexpr (ENABLE_LOGGING)
+    {
+        printf("Removing collider %s from grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), range.minX, range.minY, range.maxX, range.maxY);
+    }
+
     range.forEachCell([&](const GridCellKey &key)
                       {
         auto iterator = cells.find(key);

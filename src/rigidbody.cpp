@@ -419,5 +419,5 @@ bool Rigidbody::qualifiesAsSupportContact(const Eigen::Vector2f &contactDirectio
         return false;
     }
 
-    return std::abs(contactDirectionNormal.dot(-gravityVectorNormal)) >= SUPPORT_NORMAL_THRESHOLD;
+    return contactDirectionNormal.dot(-gravityVectorNormal) >= SUPPORT_NORMAL_THRESHOLD;
 }

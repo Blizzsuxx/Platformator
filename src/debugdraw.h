@@ -56,7 +56,7 @@ private:
     DebugDraw();
     ~DebugDraw();
 
-    void render(SDL_Renderer *renderer, Camera *camera);
+    void render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight);
 
     void drawBoxCollider(SDL_Renderer *renderer, Camera *camera, const BoxCollider *collider);
     void drawCircleCollider(SDL_Renderer *renderer, Camera *camera, const CircleCollider *collider);

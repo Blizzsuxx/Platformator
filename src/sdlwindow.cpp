@@ -8,8 +8,22 @@
 #include "audiowrapper.h"
 #include "gamemanager.h"
 
-SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
-                         mixer(nullptr), mainCamera(nullptr), sdlEvent(), debugDraw(DebugDraw::getInstance()), rendererName(nullptr), quit(false), frameAdvanceMode(false), advanceFrameRequested(false), spriteComponents(), listeners(), transientAudioPlaybacks()
+SDLWindow::SDLWindow()
+    : window(nullptr),
+      renderer(nullptr),
+      mixer(nullptr),
+      mainCamera(nullptr),
+      sdlEvent(),
+      debugDraw(DebugDraw::getInstance()),
+      rendererName(nullptr),
+      renderWidth(static_cast<int>(SCREEN_WIDTH)),
+      renderHeight(static_cast<int>(SCREEN_HEIGHT)),
+      quit(false),
+      frameAdvanceMode(false),
+      advanceFrameRequested(false),
+      spriteComponents(),
+      listeners(),
+      transientAudioPlaybacks()
 {
     if (!init())
     {
@@ -18,39 +32,41 @@ SDLWindow::SDLWindow() : window(nullptr), renderer(nullptr),
         return;
     }
 
-    listeners.push_back([this](SDL_Event event, double deltaTime)
+    listeners.push_back([this](SDL_Event event, double)
                         {
-        if (event.type == SDL_EVENT_KEY_DOWN)
+        if (event.type != SDL_EVENT_KEY_DOWN)
         {
-            switch (event.key.key)
+            return;
+        }
+
+        switch (event.key.key)
+        {
+        case SDLK_F1:
+            debugDraw.toggleShowColliders();
+            break;
+        case SDLK_F2:
+            debugDraw.toggleShowCollisionPoints();
+            break;
+        case SDLK_F3:
+            debugDraw.toggleShowCollisionNormals();
+            break;
+        case SDLK_F4:
+            debugDraw.toggleShowGridCells();
+            break;
+        case SDLK_F5:
+            frameAdvanceMode = !frameAdvanceMode;
+            advanceFrameRequested = false;
+            printf("Frame advance mode: %s\n", frameAdvanceMode ? "enabled" : "disabled");
+            break;
+        case SDLK_F6:
+            if (frameAdvanceMode)
             {
-            case SDLK_F1:
-                debugDraw.toggleShowColliders();
-                break;
-            case SDLK_F2:
-                debugDraw.toggleShowCollisionPoints();
-                break;
-            case SDLK_F3:
-                debugDraw.toggleShowCollisionNormals();
-                break;
-            case SDLK_F4:
-                debugDraw.toggleShowGridCells();
-                break;
-            case SDLK_F5:
-                frameAdvanceMode = !frameAdvanceMode;
-                advanceFrameRequested = false;
-                printf("Frame advance mode: %s\n", frameAdvanceMode ? "enabled" : "disabled");
-                break;
-            case SDLK_F6:
-                if (frameAdvanceMode)
-                {
-                    advanceFrameRequested = true;
-                    printf("Advancing one frame\n");
-                }
-                break;
-            default:
-                break;
+                advanceFrameRequested = true;
+                printf("Advancing one frame\n");
             }
+            break;
+        default:
+            break;
         } });
 }
 
@@ -61,7 +77,6 @@ SDLWindow::~SDLWindow()
 
 bool SDLWindow::init()
 {
-    // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
     {
         printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
@@ -83,12 +98,6 @@ bool SDLWindow::init()
         return false;
     }
 
-    // if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
-    // {
-    //     printf("SDL_image could not initialize! SDL_image Error: %s", IMG_GetError());
-    //     return false;
-    // }
-
     if (TTF_Init() == -1)
     {
         printf("SDL_ttf could not initialize! SDL_ttf Error: %s", SDL_GetError());
@@ -96,8 +105,7 @@ bool SDLWindow::init()
         return false;
     }
 
-    // Create window
-    window = SDL_CreateWindow("Platformator", SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_MAXIMIZED);
+    window = SDL_CreateWindow("Platformator", SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE);
     if (window == nullptr)
     {
         printf("Window could not be created! SDL_Error: %s", SDL_GetError());
@@ -105,15 +113,15 @@ bool SDLWindow::init()
         return false;
     }
 
-    // Get window surface
     renderer = SDL_CreateRenderer(window, nullptr);
-
     if (renderer == nullptr)
     {
         printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
         close();
         return false;
     }
+
+    updateRenderSize();
 
     rendererName = SDL_GetRendererName(renderer);
     if (rendererName == nullptr)
@@ -122,7 +130,6 @@ bool SDLWindow::init()
     }
 
     printf("Renderer Used: %s\n", rendererName);
-
     SDL_SetWindowTitle(window, ("Platformator: " + std::string(rendererName)).c_str());
 
     return true;
@@ -150,12 +157,9 @@ void SDLWindow::close()
         window = nullptr;
     }
 
-    // Destroy window
     mainCamera = nullptr;
     rendererName = nullptr;
 
-    // Quit SDL subsystems
-    // IMG_Quit();
     MIX_Quit();
     TTF_Quit();
     SDL_Quit();
@@ -163,13 +167,17 @@ void SDLWindow::close()
 
 void SDLWindow::handleSDLEvents(double deltaTime)
 {
-    // Handle events on queue
     while (SDL_PollEvent(&sdlEvent) != 0)
     {
         if (sdlEvent.type == SDL_EVENT_QUIT)
         {
             quit = true;
         }
+        else if (sdlEvent.type == SDL_EVENT_WINDOW_RESIZED || sdlEvent.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
+        {
+            updateRenderSize();
+        }
+
         for (const auto &listener : listeners)
         {
             listener(sdlEvent, deltaTime);
@@ -198,27 +206,28 @@ void SDLWindow::render()
 
     for (Sprite *spriteComponent : spriteComponents)
     {
-        if (spriteComponent->getGameObject()->getActive() == true)
+        if (!spriteComponent->getGameObject()->getActive())
         {
-            mainCamera->render(spriteComponent, renderer);
+            continue;
+        }
 
-            Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
-            if (collider != nullptr && shouldSimulateFrame())
+        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
+
+        Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
+        if (collider != nullptr && shouldSimulateFrame())
+        {
+            if (collider->getColliderType() == ColliderType::BoxCollider)
             {
-                if (collider->getColliderType() == ColliderType::BoxCollider)
-                {
-                    debugDraw.addBoxColliderDebugObject(*(BoxCollider *)collider);
-                }
-                else if (collider->getColliderType() == ColliderType::CircleCollider)
-                {
-                    debugDraw.addCircleColliderDebugObject(*(CircleCollider *)collider);
-                }
+                debugDraw.addBoxColliderDebugObject(*(BoxCollider *)collider);
+            }
+            else if (collider->getColliderType() == ColliderType::CircleCollider)
+            {
+                debugDraw.addCircleColliderDebugObject(*(CircleCollider *)collider);
             }
         }
     }
 
-    debugDraw.render(renderer, mainCamera);
-
+    debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
     SDL_RenderPresent(renderer);
 }
 
@@ -242,6 +251,16 @@ MIX_Mixer *SDLWindow::getMixer() const
     return mixer;
 }
 
+int SDLWindow::getRenderWidth() const
+{
+    return renderWidth;
+}
+
+int SDLWindow::getRenderHeight() const
+{
+    return renderHeight;
+}
+
 bool SDLWindow::isRunning() const
 {
     return !quit;
@@ -254,8 +273,7 @@ bool SDLWindow::getIsFrameAdvanceMode() const
 
 bool SDLWindow::shouldSimulateFrame() const
 {
-    bool value = !frameAdvanceMode || advanceFrameRequested;
-    return value;
+    return !frameAdvanceMode || advanceFrameRequested;
 }
 
 void SDLWindow::clearAdvanceFrameRequest()
@@ -312,6 +330,22 @@ Camera *SDLWindow::getMainCamera() const
     return mainCamera;
 }
 
+void SDLWindow::updateRenderSize()
+{
+    if (renderer != nullptr && SDL_GetRenderOutputSize(renderer, &renderWidth, &renderHeight))
+    {
+        renderWidth = std::max(1, renderWidth);
+        renderHeight = std::max(1, renderHeight);
+        return;
+    }
+
+    if (window != nullptr && SDL_GetWindowSizeInPixels(window, &renderWidth, &renderHeight))
+    {
+        renderWidth = std::max(1, renderWidth);
+        renderHeight = std::max(1, renderHeight);
+    }
+}
+
 bool SDLWindow::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount)
 {
     MIX_Track *track = MIX_CreateTrack(mixer);
@@ -362,8 +396,7 @@ void SDLWindow::updateTransientAudio()
     size_t index = 0;
     while (index < transientAudioPlaybacks.size())
     {
-        TransientAudioPlayback &playback = transientAudioPlaybacks[index];
-        MIX_Track *track = playback.track;
+        MIX_Track *track = transientAudioPlaybacks[index].track;
         if (!MIX_TrackPlaying(track))
         {
             releaseTransientAudioPlayback(index);

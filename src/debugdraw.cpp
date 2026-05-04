@@ -12,7 +12,7 @@ DebugDraw::~DebugDraw()
 {
 }
 
-void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
+void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight)
 {
     SDL_BlendMode prevBlend;
     SDL_GetRenderDrawBlendMode(renderer, &prevBlend);
@@ -21,8 +21,6 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
     for (const DebugObject &debugObject : debugObjectsBuffer)
     {
         const std::vector<Eigen::Vector2f> &vertices = debugObject.vertices;
-        int camX = camera->getCamera().x;
-        int camY = camera->getCamera().y;
 
         SDL_SetRenderDrawColor(renderer, debugObject.r, debugObject.g, debugObject.b, debugObject.a);
 
@@ -34,13 +32,10 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
                 const Eigen::Vector2f &v1 = vertices[i];
                 const Eigen::Vector2f &v2 = vertices[(i + 1) % vertices.size()];
 
-                int x1 = static_cast<int>(v1.x()) - camX;
-                int y1 = static_cast<int>(v1.y()) - camY;
-                int x2 = static_cast<int>(v2.x()) - camX;
-                int y2 = static_cast<int>(v2.y()) - camY;
+                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight);
+                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight);
 
-                // Draw 3px thick by offsetting
-                SDL_RenderLine(renderer, x1, y1, x2, y2);
+                SDL_RenderLine(renderer, screenV1.x(), screenV1.y(), screenV2.x(), screenV2.y());
             }
         }
         else
@@ -51,12 +46,10 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera)
                 const Eigen::Vector2f &v1 = vertices[i];
                 const Eigen::Vector2f &v2 = vertices[i + 1];
 
-                int x1 = static_cast<int>(v1.x()) - camX;
-                int y1 = static_cast<int>(v1.y()) - camY;
-                int x2 = static_cast<int>(v2.x()) - camX;
-                int y2 = static_cast<int>(v2.y()) - camY;
+                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight);
+                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight);
 
-                SDL_RenderLine(renderer, x1, y1, x2, y2);
+                SDL_RenderLine(renderer, screenV1.x(), screenV1.y(), screenV2.x(), screenV2.y());
             }
         }
     }

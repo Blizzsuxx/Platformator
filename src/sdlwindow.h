@@ -4,8 +4,10 @@
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_mixer/SDL_mixer.h>
 #include <SDL3_ttf/SDL_ttf.h>
+
 #include <functional>
 #include <vector>
+
 #include "camera.h"
 #include "debugdraw.h"
 
@@ -26,6 +28,8 @@ public:
     SDL_Window *getWindow() const;
     SDL_Renderer *getRenderer() const;
     MIX_Mixer *getMixer() const;
+    int getRenderWidth() const;
+    int getRenderHeight() const;
 
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);
@@ -55,6 +59,8 @@ private:
     SDL_Event sdlEvent;
     DebugDraw &debugDraw;
     const char *rendererName;
+    int renderWidth;
+    int renderHeight;
     bool quit;
     bool frameAdvanceMode;
     bool advanceFrameRequested;
@@ -65,5 +71,6 @@ private:
 
     bool init();
     void close();
+    void updateRenderSize();
     void releaseTransientAudioPlayback(size_t index);
 };

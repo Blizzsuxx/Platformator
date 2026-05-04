@@ -6,8 +6,17 @@
 
 #include <json.hpp>
 
+#include "animationclip.h"
+#include "audiowrapper.h"
 #include "baseobject.h"
-#include "gamemanager.h"
+#include "texturewrapper.h"
+
+class GameManager;
+
+GameManager &getGameManagerInstance();
+TextureWrapper *loadTextureAssetReference(GameManager &gameManager, const std::string &assetPath);
+AudioWrapper *loadAudioAssetReference(GameManager &gameManager, const std::string &assetPath);
+AnimationClip *loadAnimationClipAssetReference(GameManager &gameManager, const std::string &assetPath);
 
 template <typename T>
 inline constexpr bool always_false_asset_reference_v = false;
@@ -118,7 +127,7 @@ public:
         filePath = std::nullopt;
     }
 
-    T *resolve(GameManager &gameManager = GameManager::getInstance())
+    T *resolve(GameManager &gameManager = getGameManagerInstance())
     {
         const std::optional<std::string> filePath = getFilePath();
         if (!filePath.has_value())
@@ -169,17 +178,17 @@ private:
     {
         if constexpr (std::is_same_v<T, TextureWrapper>)
         {
-            return gameManager.loadTexture(assetPath);
+            return loadTextureAssetReference(gameManager, assetPath);
         }
 
         else if constexpr (std::is_same_v<T, AudioWrapper>)
         {
-            return gameManager.loadAudio(assetPath);
+            return loadAudioAssetReference(gameManager, assetPath);
         }
 
         else if constexpr (std::is_same_v<T, AnimationClip>)
         {
-            return gameManager.loadAnimationClip(assetPath);
+            return loadAnimationClipAssetReference(gameManager, assetPath);
         }
 
         else

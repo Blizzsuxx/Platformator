@@ -81,7 +81,7 @@ namespace mario
 
         player->bounceAfterStomp();
 
-        audio->replay(*stompSound);
+        audio->replay(stompSound.get());
     }
 
     void MarioPatrolEnemy::onCollisionEnter(const Collision *collision, Collider *other, double timeDelta)

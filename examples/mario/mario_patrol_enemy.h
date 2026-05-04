@@ -5,6 +5,13 @@
 #include "behavior.h"
 #include "assetreference.h"
 #include "objectreference.h"
+#include "animator.h"
+#include "collider.h"
+#include "rigidbody.h"
+#include "sprite.h"
+#include "helpers.h"
+#include "audio.h"
+#include "audiowrapper.h"
 
 class Animator;
 class Collider;

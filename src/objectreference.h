@@ -5,7 +5,12 @@
 
 #include <json.hpp>
 
-#include "gamemanager.h"
+#include "baseobject.h"
+
+class GameManager;
+
+GameManager &getGameManagerInstance();
+BaseObject *resolveObjectReference(GameManager &gameManager, int objectId);
 
 template <typename T>
 class ObjectReference
@@ -59,7 +64,7 @@ public:
         objectId = std::nullopt;
     }
 
-    T *resolve(GameManager &gameManager = GameManager::getInstance())
+    T *resolve(GameManager &gameManager = getGameManagerInstance())
     {
         const std::optional<int> referenceId = getReferencedId();
         if (!referenceId.has_value())
@@ -68,7 +73,7 @@ public:
             return nullptr;
         }
 
-        BaseObject *resolvedObject = gameManager.getObjectById(*referenceId);
+        BaseObject *resolvedObject = resolveObjectReference(gameManager, *referenceId);
         object = resolvedObject == nullptr ? nullptr : static_cast<T *>(resolvedObject);
         return object;
     }

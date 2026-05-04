@@ -4,6 +4,8 @@
 #include <Eigen/Dense>
 #include <array>
 #include <cstddef>
+#include "scriptcomponent.h"
+#include "gameobject.h"
 
 inline float cross2D(const Eigen::Vector2f &a, const Eigen::Vector2f &b)
 {
@@ -163,6 +165,7 @@ inline float Clamp(float a, float low, float high)
 
 template <typename T>
 T *getBehavior(GameObject *gameObject)
+
 {
     ScriptComponent *scriptComponent = gameObject != nullptr ? gameObject->getComponent<ScriptComponent>() : nullptr;
     if (scriptComponent == nullptr)

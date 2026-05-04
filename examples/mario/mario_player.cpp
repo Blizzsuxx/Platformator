@@ -74,6 +74,17 @@ namespace mario
         body->setVelocity(velocity);
     }
 
+    void MarioPlayer::stopForWin()
+    {
+        if (body != nullptr)
+        {
+            body->setVelocity(Eigen::Vector2f::Zero());
+        }
+
+        jumpWasPressed = false;
+        respawnWasPressed = false;
+    }
+
     Rigidbody *MarioPlayer::getBody() const
     {
         return body;

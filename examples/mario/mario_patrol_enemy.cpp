@@ -73,14 +73,9 @@ namespace mario
         defeated = true;
         defeatedTimer = squashDuration;
 
-        collider->setCollisionMask(0);
-
         body->setVelocity(Eigen::Vector2f::Zero());
-
         animator->play(squashAnimset.get());
-
         player->bounceAfterStomp();
-
         audio->replay(stompSound.get());
     }
 

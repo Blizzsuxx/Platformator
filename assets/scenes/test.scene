@@ -64,6 +64,10 @@
         "collisionMask": 1,
         "height": 32.0,
         "id": 7,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
         "width": 32.0
@@ -121,6 +125,10 @@
         "collisionMask": 1,
         "height": 32.0,
         "id": 9,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
         "width": 32.0

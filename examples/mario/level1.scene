@@ -71,13 +71,13 @@
         "collisionMask": 1,
         "height": 32.0,
         "id": 1004,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 28.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 28.0
       },
       {
         "angularVelocity": 0.0,
@@ -169,13 +169,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1010,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 320.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 320.0
       },
       {
         "angularVelocity": 0.0,
@@ -230,13 +230,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1013,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 320.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 320.0
       },
       {
         "angularVelocity": 0.0,
@@ -291,13 +291,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1016,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 560.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 560.0
       },
       {
         "angularVelocity": 0.0,
@@ -352,13 +352,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1019,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 640.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 640.0
       },
       {
         "angularVelocity": 0.0,
@@ -413,13 +413,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1090,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 640.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 640.0
       },
       {
         "angularVelocity": 0.0,
@@ -474,13 +474,13 @@
         "collisionMask": 1,
         "height": 14.0,
         "id": 1022,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 79.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 79.0
       },
       {
         "angularVelocity": 0.0,
@@ -515,8 +515,8 @@
     "id": 107,
     "name": "Platform A",
     "position": {
-      "x": 504.37901503739323,
-      "y": 363.67552587355453
+      "x": 504.73275389579794,
+      "y": 372.87273619207764
     },
     "rotation": 0.0,
     "scale": {
@@ -535,13 +535,13 @@
         "collisionMask": 1,
         "height": 14.0,
         "id": 1025,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 97.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 97.0
       },
       {
         "angularVelocity": 0.0,
@@ -596,13 +596,13 @@
         "collisionMask": 1,
         "height": 14.0,
         "id": 1028,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 81.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 81.0
       },
       {
         "angularVelocity": 0.0,
@@ -655,15 +655,15 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 67.0,
+        "height": 73.0,
         "id": 1031,
+        "offset": {
+          "x": 0.0,
+          "y": 5.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 55.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 55.0
       },
       {
         "angularVelocity": 0.0,
@@ -718,13 +718,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1034,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 60.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 60.0
       },
       {
         "angularVelocity": 0.0,
@@ -779,13 +779,13 @@
         "collisionMask": 1,
         "height": 20.0,
         "id": 1037,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 77.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 77.0
       },
       {
         "angularVelocity": 0.0,
@@ -840,13 +840,13 @@
         "collisionMask": 1,
         "height": 160.0,
         "id": 1040,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": true,
         "type": 3,
-        "width": 2600.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 2600.0
       },
       {
         "angularVelocity": 0.0,
@@ -890,13 +890,13 @@
         "collisionGroup": 1,
         "collisionMask": 1,
         "id": 1042,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "radius": 10.0,
         "trigger": true,
-        "type": 3,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "type": 3
       },
       {
         "angularVelocity": 0.0,
@@ -977,13 +977,13 @@
         "collisionGroup": 1,
         "collisionMask": 1,
         "id": 1048,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "radius": 10.0,
         "trigger": true,
-        "type": 3,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "type": 3
       },
       {
         "angularVelocity": 0.0,
@@ -1064,13 +1064,13 @@
         "collisionGroup": 1,
         "collisionMask": 1,
         "id": 1054,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "radius": 10.0,
         "trigger": true,
-        "type": 3,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "type": 3
       },
       {
         "angularVelocity": 0.0,
@@ -1151,13 +1151,13 @@
         "collisionGroup": 1,
         "collisionMask": 1,
         "id": 1060,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "radius": 10.0,
         "trigger": true,
-        "type": 3,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "type": 3
       },
       {
         "angularVelocity": 0.0,
@@ -1238,13 +1238,13 @@
         "collisionGroup": 1,
         "collisionMask": 1,
         "id": 1066,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "radius": 10.0,
         "trigger": true,
-        "type": 3,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "type": 3
       },
       {
         "angularVelocity": 0.0,
@@ -1326,13 +1326,13 @@
         "collisionMask": 1,
         "height": 28.0,
         "id": 1072,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 28.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 28.0
       },
       {
         "angularVelocity": 0.0,
@@ -1422,13 +1422,13 @@
         "collisionMask": 1,
         "height": 28.0,
         "id": 1078,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "trigger": false,
         "type": 3,
-        "width": 28.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 28.0
       },
       {
         "angularVelocity": 0.0,
@@ -1516,15 +1516,15 @@
         "colliderType": 1,
         "collisionGroup": 1,
         "collisionMask": 1,
-        "height": 190.0,
+        "height": 164.0,
         "id": 1084,
+        "offset": {
+          "x": 6.0,
+          "y": 12.0
+        },
         "trigger": true,
         "type": 3,
-        "width": 32.0,
-        "offset": {
-"x": 0.0,
-"y": 0.0
-}
+        "width": 17.0
       },
       {
         "flip": 0,

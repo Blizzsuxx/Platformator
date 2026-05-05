@@ -6,7 +6,7 @@ from pathlib import Path
 
 import orjson
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from platformator_ui.scene.models import (
@@ -45,6 +45,19 @@ class SpritePreview:
     flip: FlipMode
 
 
+@dataclass(frozen=True)
+class CanvasObjectState:
+    game_object: GameObjectModel
+    world_position: QPointF
+    parent_world_position: QPointF
+
+
+@dataclass(frozen=True)
+class CanvasDragTarget:
+    object_id: int
+    kind: str
+
+
 class SceneCanvasWidget(QWidget):
     objectSelected = Signal(object)
     sceneChanged = Signal()
@@ -56,8 +69,9 @@ class SceneCanvasWidget(QWidget):
         self._scene_document: SceneDocumentModel | None = None
         self._scene_path: Path | None = None
         self._selected_object_id: int | None = None
-        self._drag_object_id: int | None = None
-        self._drag_start_position = QPointF()
+        self._selected_target_kind = "object"
+        self._drag_target: CanvasDragTarget | None = None
+        self._drag_start_value = QPointF()
         self._drag_offset = QPointF()
         self._pan_active = False
         self._pan_last_position = QPointF()
@@ -88,6 +102,7 @@ class SceneCanvasWidget(QWidget):
         if self._selected_object_id == object_id:
             return
         self._selected_object_id = object_id
+        self._selected_target_kind = "object"
         self.update()
 
     def zoom_in(self) -> None:
@@ -105,12 +120,12 @@ class SceneCanvasWidget(QWidget):
             self.frame_scene()
             return
 
-        selected_object = self._scene_document.find_object_by_id(self._selected_object_id)
-        if selected_object is None:
+        object_state = self._find_object_state(self._selected_object_id)
+        if object_state is None:
             self.frame_scene()
             return
 
-        self._fit_view_to_rect(self._object_bounds(selected_object))
+        self._fit_view_to_rect(self._object_bounds(object_state))
         self.update()
 
     def resizeEvent(self, event) -> None:
@@ -127,9 +142,8 @@ class SceneCanvasWidget(QWidget):
         if self._scene_document is None:
             return
 
-        objects = self._scene_document.iter_objects()
-        for game_object in objects:
-            self._draw_game_object(painter, game_object)
+        for object_state in self._iter_object_states():
+            self._draw_game_object(painter, object_state)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.MiddleButton:
@@ -142,23 +156,48 @@ class SceneCanvasWidget(QWidget):
             super().mousePressEvent(event)
             return
 
-        clicked_object = self._pick_object(event.position())
-        if clicked_object is None:
-            self._drag_object_id = None
+        clicked_target = self._pick_target(event.position())
+        if clicked_target is None:
+            self._drag_target = None
             self._selected_object_id = None
+            self._selected_target_kind = "object"
             self.objectSelected.emit(None)
             self.update()
             return
 
-        self._selected_object_id = clicked_object.id
-        self._drag_object_id = clicked_object.id
-        self._drag_start_position = QPointF(clicked_object.position.x, clicked_object.position.y)
+        object_state = self._find_object_state(clicked_target.object_id)
+        if object_state is None:
+            self._drag_target = None
+            return
+
+        self._selected_object_id = clicked_target.object_id
+        self._selected_target_kind = clicked_target.kind
+        self._drag_target = clicked_target
         world_position = self._screen_to_world(event.position())
+
+        drag_reference = object_state.world_position
+        if clicked_target.kind == "object":
+            self._drag_start_value = QPointF(object_state.game_object.position.x, object_state.game_object.position.y)
+        elif clicked_target.kind == "box_collider":
+            box_collider = object_state.game_object.find_component(BoxColliderComponent)
+            if box_collider is None:
+                self._drag_target = None
+                return
+            drag_reference = self._collider_world_center(object_state, box_collider.offset.x, box_collider.offset.y)
+            self._drag_start_value = QPointF(box_collider.offset.x, box_collider.offset.y)
+        else:
+            circle_collider = object_state.game_object.find_component(CircleColliderComponent)
+            if circle_collider is None:
+                self._drag_target = None
+                return
+            drag_reference = self._collider_world_center(object_state, circle_collider.offset.x, circle_collider.offset.y)
+            self._drag_start_value = QPointF(circle_collider.offset.x, circle_collider.offset.y)
+
         self._drag_offset = QPointF(
-            clicked_object.position.x - world_position.x(),
-            clicked_object.position.y - world_position.y(),
+            drag_reference.x() - world_position.x(),
+            drag_reference.y() - world_position.y(),
         )
-        self.objectSelected.emit(clicked_object.id)
+        self.objectSelected.emit(clicked_target.object_id)
         self.update()
 
     def mouseMoveEvent(self, event) -> None:
@@ -173,18 +212,41 @@ class SceneCanvasWidget(QWidget):
             self.update()
             return
 
-        if self._scene_document is None or self._drag_object_id is None or not (event.buttons() & Qt.MouseButton.LeftButton):
+        if self._scene_document is None or self._drag_target is None or not (event.buttons() & Qt.MouseButton.LeftButton):
             super().mouseMoveEvent(event)
             return
 
-        dragged_object = self._scene_document.find_object_by_id(self._drag_object_id)
-        if dragged_object is None:
-            self._drag_object_id = None
+        object_state = self._find_object_state(self._drag_target.object_id)
+        if object_state is None:
+            self._drag_target = None
             return
 
         world_position = self._screen_to_world(event.position())
-        dragged_object.position.x = world_position.x() + self._drag_offset.x()
-        dragged_object.position.y = world_position.y() + self._drag_offset.y()
+        target_world_position = QPointF(world_position.x() + self._drag_offset.x(), world_position.y() + self._drag_offset.y())
+
+        if self._drag_target.kind == "object":
+            object_state.game_object.position.x = target_world_position.x() - object_state.parent_world_position.x()
+            object_state.game_object.position.y = target_world_position.y() - object_state.parent_world_position.y()
+        else:
+            offset_world_x = target_world_position.x() - object_state.world_position.x()
+            offset_world_y = target_world_position.y() - object_state.world_position.y()
+            sin_rotation = math.sin(object_state.game_object.rotation)
+            cos_rotation = math.cos(object_state.game_object.rotation)
+            offset_x = offset_world_x * cos_rotation + offset_world_y * sin_rotation
+            offset_y = -offset_world_x * sin_rotation + offset_world_y * cos_rotation
+
+            if self._drag_target.kind == "box_collider":
+                collider = object_state.game_object.find_component(BoxColliderComponent)
+            else:
+                collider = object_state.game_object.find_component(CircleColliderComponent)
+
+            if collider is None:
+                self._drag_target = None
+                return
+
+            collider.offset.x = offset_x
+            collider.offset.y = offset_y
+
         self.sceneChanged.emit()
         self.update()
 
@@ -195,16 +257,24 @@ class SceneCanvasWidget(QWidget):
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
-            moved_object_id = self._drag_object_id
-            started_at = QPointF(self._drag_start_position)
-            self._drag_object_id = None
-            self._drag_start_position = QPointF()
-            if self._scene_document is not None and moved_object_id is not None:
-                moved_object = self._scene_document.find_object_by_id(moved_object_id)
+            drag_target = self._drag_target
+            started_at = QPointF(self._drag_start_value)
+            self._drag_target = None
+            self._drag_start_value = QPointF()
+            if self._scene_document is not None and drag_target is not None:
+                moved_object = self._scene_document.find_object_by_id(drag_target.object_id)
                 if moved_object is not None:
-                    ended_at = QPointF(moved_object.position.x, moved_object.position.y)
+                    if drag_target.kind == "object":
+                        ended_at = QPointF(moved_object.position.x, moved_object.position.y)
+                    elif drag_target.kind == "box_collider":
+                        collider = moved_object.find_component(BoxColliderComponent)
+                        ended_at = QPointF(collider.offset.x, collider.offset.y) if collider is not None else started_at
+                    else:
+                        collider = moved_object.find_component(CircleColliderComponent)
+                        ended_at = QPointF(collider.offset.x, collider.offset.y) if collider is not None else started_at
+
                     if started_at != ended_at:
-                        self.objectMoveFinished.emit(moved_object_id)
+                        self.objectMoveFinished.emit(drag_target.object_id)
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event) -> None:
@@ -243,32 +313,34 @@ class SceneCanvasWidget(QWidget):
         painter.drawLine(QPointF(0.0, origin.y()), QPointF(float(self.width()), origin.y()))
         painter.restore()
 
-    def _draw_game_object(self, painter: QPainter, game_object: GameObjectModel) -> None:
+    def _draw_game_object(self, painter: QPainter, object_state: CanvasObjectState) -> None:
+        game_object = object_state.game_object
         sprite_preview = self._resolve_sprite_preview(game_object)
         camera_component = game_object.find_component(CameraComponent)
         box_collider = game_object.find_component(BoxColliderComponent)
         circle_collider = game_object.find_component(CircleColliderComponent)
 
         if sprite_preview is not None:
-            self._draw_sprite(painter, game_object, sprite_preview)
+            self._draw_sprite(painter, object_state, sprite_preview)
 
         if camera_component is not None:
-            self._draw_camera_bounds(painter, game_object, camera_component)
+            self._draw_camera_bounds(painter, object_state, camera_component)
 
         if box_collider is not None:
-            self._draw_box_collider(painter, game_object, box_collider)
+            self._draw_box_collider(painter, object_state, box_collider)
         if circle_collider is not None:
-            self._draw_circle_collider(painter, game_object, circle_collider)
+            self._draw_circle_collider(painter, object_state, circle_collider)
 
         if sprite_preview is None and camera_component is None and box_collider is None and circle_collider is None:
-            self._draw_placeholder(painter, game_object)
+            self._draw_placeholder(painter, object_state)
 
         if game_object.id == self._selected_object_id:
-            self._draw_selection_outline(painter, game_object)
+            self._draw_selection_outline(painter, object_state)
+            self._draw_origin_handle(painter, object_state)
 
-    def _draw_sprite(self, painter: QPainter, game_object: GameObjectModel, preview: SpritePreview) -> None:
-        position = QPointF(game_object.position.x, game_object.position.y)
-        screen_position = self._world_to_screen(position)
+    def _draw_sprite(self, painter: QPainter, object_state: CanvasObjectState, preview: SpritePreview) -> None:
+        game_object = object_state.game_object
+        screen_position = self._world_to_screen(object_state.world_position)
         scale_x = max(abs(game_object.scale.x), 0.001)
         scale_y = max(abs(game_object.scale.y), 0.001)
         draw_width = preview.width * scale_x * self._pixels_per_unit
@@ -290,10 +362,10 @@ class SceneCanvasWidget(QWidget):
         painter.drawPixmap(target_rect, preview.pixmap, source_rect)
         painter.restore()
 
-    def _draw_camera_bounds(self, painter: QPainter, game_object: GameObjectModel, camera_component: CameraComponent) -> None:
+    def _draw_camera_bounds(self, painter: QPainter, object_state: CanvasObjectState, camera_component: CameraComponent) -> None:
         world_rect = QRectF(
-            game_object.position.x,
-            game_object.position.y,
+            object_state.world_position.x(),
+            object_state.world_position.y(),
             camera_component.width,
             camera_component.height,
         )
@@ -306,8 +378,9 @@ class SceneCanvasWidget(QWidget):
         painter.drawRect(screen_rect)
         painter.restore()
 
-    def _draw_box_collider(self, painter: QPainter, game_object: GameObjectModel, collider: BoxColliderComponent) -> None:
-        position = self._world_to_screen(QPointF(game_object.position.x, game_object.position.y))
+    def _draw_box_collider(self, painter: QPainter, object_state: CanvasObjectState, collider: BoxColliderComponent) -> None:
+        game_object = object_state.game_object
+        position = self._world_to_screen(self._collider_world_center(object_state, collider.offset.x, collider.offset.y))
         width = collider.width * max(abs(game_object.scale.x), 0.001) * self._pixels_per_unit
         height = collider.height * max(abs(game_object.scale.y), 0.001) * self._pixels_per_unit
 
@@ -321,8 +394,9 @@ class SceneCanvasWidget(QWidget):
         painter.drawRect(QRectF(-width / 2, -height / 2, width, height))
         painter.restore()
 
-    def _draw_circle_collider(self, painter: QPainter, game_object: GameObjectModel, collider: CircleColliderComponent) -> None:
-        position = self._world_to_screen(QPointF(game_object.position.x, game_object.position.y))
+    def _draw_circle_collider(self, painter: QPainter, object_state: CanvasObjectState, collider: CircleColliderComponent) -> None:
+        game_object = object_state.game_object
+        position = self._world_to_screen(self._collider_world_center(object_state, collider.offset.x, collider.offset.y))
         radius = collider.radius * max(abs(game_object.scale.x), abs(game_object.scale.y), 0.001) * self._pixels_per_unit
 
         painter.save()
@@ -333,8 +407,8 @@ class SceneCanvasWidget(QWidget):
         painter.drawEllipse(position, radius, radius)
         painter.restore()
 
-    def _draw_placeholder(self, painter: QPainter, game_object: GameObjectModel) -> None:
-        center = self._world_to_screen(QPointF(game_object.position.x, game_object.position.y))
+    def _draw_placeholder(self, painter: QPainter, object_state: CanvasObjectState) -> None:
+        center = self._world_to_screen(object_state.world_position)
         painter.save()
         pen = QPen(QColor("#7a6a58"))
         pen.setWidth(2)
@@ -344,28 +418,63 @@ class SceneCanvasWidget(QWidget):
         painter.drawLine(QPointF(center.x(), center.y() - size), QPointF(center.x(), center.y() + size))
         painter.restore()
 
-    def _draw_selection_outline(self, painter: QPainter, game_object: GameObjectModel) -> None:
-        bounds = self._object_bounds(game_object)
-        screen_rect = self._world_rect_to_screen(bounds)
+    def _draw_selection_outline(self, painter: QPainter, object_state: CanvasObjectState) -> None:
+        box_collider = object_state.game_object.find_component(BoxColliderComponent)
+        circle_collider = object_state.game_object.find_component(CircleColliderComponent)
+
         painter.save()
         pen = QPen(QColor("#c94927"))
         pen.setWidth(2)
         pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(screen_rect.adjusted(-4.0, -4.0, 4.0, 4.0))
+
+        if self._selected_target_kind == "box_collider" and box_collider is not None:
+            painter.drawPolygon(self._screen_box_collider_polygon(object_state, box_collider))
+        elif self._selected_target_kind == "circle_collider" and circle_collider is not None:
+            center = self._world_to_screen(self._collider_world_center(object_state, circle_collider.offset.x, circle_collider.offset.y))
+            radius = circle_collider.radius * max(abs(object_state.game_object.scale.x), abs(object_state.game_object.scale.y), 0.001) * self._pixels_per_unit
+            painter.drawEllipse(center, radius + 4.0, radius + 4.0)
+        else:
+            bounds = self._object_bounds(object_state)
+            screen_rect = self._world_rect_to_screen(bounds)
+            painter.drawRect(screen_rect.adjusted(-4.0, -4.0, 4.0, 4.0))
+
         painter.restore()
 
-    def _pick_object(self, screen_position: QPointF) -> GameObjectModel | None:
+    def _draw_origin_handle(self, painter: QPainter, object_state: CanvasObjectState) -> None:
+        center = self._world_to_screen(object_state.world_position)
+        painter.save()
+        painter.setPen(QPen(QColor("#c94927"), 2))
+        painter.setBrush(QColor("#f5efe7"))
+        painter.drawEllipse(center, 5.0, 5.0)
+        painter.restore()
+
+    def _pick_target(self, screen_position: QPointF) -> CanvasDragTarget | None:
         if self._scene_document is None:
             return None
 
-        for game_object in reversed(self._scene_document.iter_objects()):
-            if self._world_rect_to_screen(self._object_bounds(game_object)).contains(screen_position):
-                return game_object
+        for object_state in reversed(self._iter_object_states()):
+            if self._origin_handle_rect(object_state).contains(screen_position):
+                return CanvasDragTarget(object_state.game_object.id, "object")
+
+            box_collider = object_state.game_object.find_component(BoxColliderComponent)
+            if box_collider is not None and self._screen_box_collider_polygon(object_state, box_collider).containsPoint(screen_position, Qt.FillRule.OddEvenFill):
+                return CanvasDragTarget(object_state.game_object.id, "box_collider")
+
+            circle_collider = object_state.game_object.find_component(CircleColliderComponent)
+            if circle_collider is not None:
+                center = self._world_to_screen(self._collider_world_center(object_state, circle_collider.offset.x, circle_collider.offset.y))
+                radius = circle_collider.radius * max(abs(object_state.game_object.scale.x), abs(object_state.game_object.scale.y), 0.001) * self._pixels_per_unit
+                if (center.x() - screen_position.x()) ** 2 + (center.y() - screen_position.y()) ** 2 <= radius ** 2:
+                    return CanvasDragTarget(object_state.game_object.id, "circle_collider")
+
+            if self._world_rect_to_screen(self._object_bounds(object_state)).contains(screen_position):
+                return CanvasDragTarget(object_state.game_object.id, "object")
         return None
 
-    def _object_bounds(self, game_object: GameObjectModel) -> QRectF:
+    def _object_bounds(self, object_state: CanvasObjectState) -> QRectF:
+        game_object = object_state.game_object
         bounds: QRectF | None = None
 
         sprite_component = game_object.find_component(SpriteComponent)
@@ -374,8 +483,8 @@ class SceneCanvasWidget(QWidget):
             width = sprite_preview.width if sprite_preview is not None else max(sprite_component.width, 16.0)
             height = sprite_preview.height if sprite_preview is not None else max(sprite_component.height, 16.0)
             sprite_rect = QRectF(
-                game_object.position.x - (width * max(abs(game_object.scale.x), 0.001)) / 2,
-                game_object.position.y - (height * max(abs(game_object.scale.y), 0.001)) / 2,
+                object_state.world_position.x() - (width * max(abs(game_object.scale.x), 0.001)) / 2,
+                object_state.world_position.y() - (height * max(abs(game_object.scale.y), 0.001)) / 2,
                 width * max(abs(game_object.scale.x), 0.001),
                 height * max(abs(game_object.scale.y), 0.001),
             )
@@ -384,8 +493,8 @@ class SceneCanvasWidget(QWidget):
         camera_component = game_object.find_component(CameraComponent)
         if camera_component is not None:
             camera_rect = QRectF(
-                game_object.position.x,
-                game_object.position.y,
+                object_state.world_position.x(),
+                object_state.world_position.y(),
                 camera_component.width,
                 camera_component.height,
             )
@@ -393,34 +502,26 @@ class SceneCanvasWidget(QWidget):
 
         box_collider = game_object.find_component(BoxColliderComponent)
         if box_collider is not None:
-            bounds = self._merge_rect(bounds, self._box_collider_bounds(game_object, box_collider))
+            bounds = self._merge_rect(bounds, self._box_collider_bounds(object_state, box_collider))
 
         circle_collider = game_object.find_component(CircleColliderComponent)
         if circle_collider is not None:
             radius = circle_collider.radius * max(abs(game_object.scale.x), abs(game_object.scale.y), 0.001)
+            center = self._collider_world_center(object_state, circle_collider.offset.x, circle_collider.offset.y)
             circle_rect = QRectF(
-                game_object.position.x - radius,
-                game_object.position.y - radius,
+                center.x() - radius,
+                center.y() - radius,
                 radius * 2.0,
                 radius * 2.0,
             )
             bounds = self._merge_rect(bounds, circle_rect)
 
         if bounds is None:
-            bounds = QRectF(game_object.position.x - 12.0, game_object.position.y - 12.0, 24.0, 24.0)
+            bounds = QRectF(object_state.world_position.x() - 12.0, object_state.world_position.y() - 12.0, 24.0, 24.0)
         return bounds
 
-    def _box_collider_bounds(self, game_object: GameObjectModel, collider: BoxColliderComponent) -> QRectF:
-        half_width = collider.width * max(abs(game_object.scale.x), 0.001) / 2.0
-        half_height = collider.height * max(abs(game_object.scale.y), 0.001) / 2.0
-        sin_rotation = math.sin(game_object.rotation)
-        cos_rotation = math.cos(game_object.rotation)
-
-        world_points: list[QPointF] = []
-        for local_x, local_y in ((-half_width, -half_height), (half_width, -half_height), (half_width, half_height), (-half_width, half_height)):
-            rotated_x = local_x * cos_rotation - local_y * sin_rotation
-            rotated_y = local_x * sin_rotation + local_y * cos_rotation
-            world_points.append(QPointF(game_object.position.x + rotated_x, game_object.position.y + rotated_y))
+    def _box_collider_bounds(self, object_state: CanvasObjectState, collider: BoxColliderComponent) -> QRectF:
+        world_points = self._box_collider_world_points(object_state, collider)
 
         min_x = min(point.x() for point in world_points)
         max_x = max(point.x() for point in world_points)
@@ -551,8 +652,8 @@ class SceneCanvasWidget(QWidget):
             return
 
         bounds: QRectF | None = None
-        for game_object in self._scene_document.iter_objects():
-            bounds = self._merge_rect(bounds, self._object_bounds(game_object))
+        for object_state in self._iter_object_states():
+            bounds = self._merge_rect(bounds, self._object_bounds(object_state))
 
         if bounds is None:
             self._view_center = QPointF(0.0, 0.0)
@@ -606,3 +707,73 @@ class SceneCanvasWidget(QWidget):
     @staticmethod
     def _merge_rect(left: QRectF | None, right: QRectF) -> QRectF:
         return right if left is None else left.united(right)
+
+    def _origin_handle_rect(self, object_state: CanvasObjectState) -> QRectF:
+        center = self._world_to_screen(object_state.world_position)
+        return QRectF(center.x() - 8.0, center.y() - 8.0, 16.0, 16.0)
+
+    def _screen_box_collider_polygon(self, object_state: CanvasObjectState, collider: BoxColliderComponent) -> QPolygonF:
+        return QPolygonF([self._world_to_screen(point) for point in self._box_collider_world_points(object_state, collider)])
+
+    def _box_collider_world_points(self, object_state: CanvasObjectState, collider: BoxColliderComponent) -> list[QPointF]:
+        game_object = object_state.game_object
+        half_width = collider.width * max(abs(game_object.scale.x), 0.001) / 2.0
+        half_height = collider.height * max(abs(game_object.scale.y), 0.001) / 2.0
+        center = self._collider_world_center(object_state, collider.offset.x, collider.offset.y)
+        sin_rotation = math.sin(game_object.rotation)
+        cos_rotation = math.cos(game_object.rotation)
+
+        world_points: list[QPointF] = []
+        for local_x, local_y in ((-half_width, -half_height), (half_width, -half_height), (half_width, half_height), (-half_width, half_height)):
+            rotated_x = local_x * cos_rotation - local_y * sin_rotation
+            rotated_y = local_x * sin_rotation + local_y * cos_rotation
+            world_points.append(QPointF(center.x() + rotated_x, center.y() + rotated_y))
+
+        return world_points
+
+    def _collider_world_center(self, object_state: CanvasObjectState, offset_x: float, offset_y: float) -> QPointF:
+        sin_rotation = math.sin(object_state.game_object.rotation)
+        cos_rotation = math.cos(object_state.game_object.rotation)
+        return QPointF(
+            object_state.world_position.x() + offset_x * cos_rotation - offset_y * sin_rotation,
+            object_state.world_position.y() + offset_x * sin_rotation + offset_y * cos_rotation,
+        )
+
+    def _iter_object_states(self) -> list[CanvasObjectState]:
+        if self._scene_document is None:
+            return []
+
+        states: list[CanvasObjectState] = []
+        self._append_object_states(self._scene_document.objects, QPointF(0.0, 0.0), states)
+        return states
+
+    def _append_object_states(self, objects: list[GameObjectModel], parent_world_position: QPointF, states: list[CanvasObjectState]) -> None:
+        for game_object in objects:
+            world_position = QPointF(parent_world_position.x() + game_object.position.x, parent_world_position.y() + game_object.position.y)
+            object_state = CanvasObjectState(game_object=game_object, world_position=world_position, parent_world_position=parent_world_position)
+            states.append(object_state)
+            self._append_object_states(game_object.children, world_position, states)
+
+    def _find_object_state(self, object_id: int) -> CanvasObjectState | None:
+        if self._scene_document is None:
+            return None
+
+        for game_object in self._scene_document.objects:
+            object_state = self._find_object_state_recursive(game_object, QPointF(0.0, 0.0), object_id)
+            if object_state is not None:
+                return object_state
+
+        return None
+
+    def _find_object_state_recursive(self, game_object: GameObjectModel, parent_world_position: QPointF, object_id: int) -> CanvasObjectState | None:
+        world_position = QPointF(parent_world_position.x() + game_object.position.x, parent_world_position.y() + game_object.position.y)
+        object_state = CanvasObjectState(game_object=game_object, world_position=world_position, parent_world_position=parent_world_position)
+        if game_object.id == object_id:
+            return object_state
+
+        for child in game_object.children:
+            child_state = self._find_object_state_recursive(child, world_position, object_id)
+            if child_state is not None:
+                return child_state
+
+        return None

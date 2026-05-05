@@ -591,6 +591,7 @@ namespace
                                                     {"gravity", false}});
             loadedBallJson["components"].push_back({{"id", 1102},
                                                     {"radius", 12.0f},
+                                                    {"offset", makeVectorJson(-3.0f, 4.0f)},
                                                     {"trigger", false},
                                                     {"collisionGroup", 3},
                                                     {"type", static_cast<int>(ComponentType::COLLIDER)},
@@ -606,8 +607,10 @@ namespace
 
             nlohmann::json loadedCameraJson = makeGameObjectJson(1200, "Loaded Camera");
             loadedCameraJson["components"].push_back({{"id", 1201},
-                                                      {"camera", makeRectJson(5.0f, 10.0f, 320.0f, 240.0f)},
+                                                      {"width", 320.0f},
+                                                      {"height", 240.0f},
                                                       {"type", static_cast<int>(ComponentType::CAMERA)}});
+            loadedCameraJson["position"] = makeVectorJson(5.0f, 10.0f);
 
             writeJsonFile(scenePath, nlohmann::json::array({loadedBallJson, loadedCameraJson}),
                           "Scene loading regression failed to create the temporary scene file.");
@@ -646,6 +649,8 @@ namespace
                     "Scene loading regression failed to load the circle collider radius.");
             require(circleCollider->getCollisionGroup() == 3 && circleCollider->getCollisionMask() == 5 && !circleCollider->getIsTrigger(),
                     "Scene loading regression failed to load the circle collider filter settings.");
+            require(std::abs(circleCollider->getOffset().x() + 3.0f) <= 1e-5f && std::abs(circleCollider->getOffset().y() - 4.0f) <= 1e-5f,
+                    "Scene loading regression failed to load the circle collider offset.");
 
             Sprite *sprite = loadedBall->getComponent<Sprite>();
             require(sprite != nullptr, "Scene loading regression failed to load the sprite component.");
@@ -729,6 +734,7 @@ namespace
 
             CircleCollider *circleCollider = roundtripBall->getComponent<CircleCollider>();
             require(circleCollider != nullptr, "Scene round-trip regression failed to create the source circle collider.");
+            circleCollider->setOffset(Eigen::Vector2f(6.0f, -8.0f));
             circleCollider->setIsTrigger(true);
             circleCollider->setCollisionGroup(7);
             circleCollider->setCollisionMask(11);
@@ -752,6 +758,12 @@ namespace
             const nlohmann::json *savedSprite = findSavedComponent(savedBall->at("components"), ComponentType::SPRITE);
             require(savedSprite != nullptr && savedSprite->at("textureFilePath").get<std::string>() == expectedSavedSpritePath,
                     "Scene round-trip regression failed to save sprite paths relative to the scene file.");
+            const nlohmann::json *savedCollider = findSavedComponent(savedBall->at("components"), ComponentType::COLLIDER);
+            require(savedCollider != nullptr,
+                    "Scene round-trip regression failed to save the collider component.");
+            require(std::abs(savedCollider->at("offset").at("x").get<float>() - 6.0f) <= 1e-5f &&
+                        std::abs(savedCollider->at("offset").at("y").get<float>() + 8.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to save the collider offset.");
 
             destroyNamedObject(gameManager, window, "Roundtrip Ball");
             destroyNamedObject(gameManager, window, "Roundtrip Camera");
@@ -790,6 +802,9 @@ namespace
                     "Scene round-trip regression failed to preserve the circle collider radius.");
             require(loadedCircleCollider->getIsTrigger() && loadedCircleCollider->getCollisionGroup() == 7 && loadedCircleCollider->getCollisionMask() == 11,
                     "Scene round-trip regression failed to preserve the circle collider filter settings.");
+            require(std::abs(loadedCircleCollider->getOffset().x() - 6.0f) <= 1e-5f &&
+                        std::abs(loadedCircleCollider->getOffset().y() + 8.0f) <= 1e-5f,
+                    "Scene round-trip regression failed to preserve the collider offset.");
 
             Sprite *loadedSprite = loadedBall->getComponent<Sprite>();
             require(loadedSprite != nullptr, "Scene round-trip regression failed to reload the sprite.");

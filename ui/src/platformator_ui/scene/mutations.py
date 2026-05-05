@@ -25,9 +25,7 @@ def add_game_object(
             raise ValueError(f"Parent object {parent_id} was not found.")
 
         if position is None:
-            game_object.position = parent.position.model_copy(deep=True)
-            game_object.position.x += 32.0
-            game_object.position.y += 32.0
+            game_object.position = Vector2Model(x=32.0, y=32.0)
         parent.children.append(game_object)
         return game_object
 

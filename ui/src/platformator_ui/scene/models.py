@@ -70,6 +70,7 @@ class BoxColliderComponent(BaseComponentModel):
     colliderType: Literal[ColliderType.BOX] = ColliderType.BOX
     width: float = 32.0
     height: float = 32.0
+    offset: Vector2Model = Field(default_factory=Vector2Model)
     trigger: bool = False
     collisionGroup: int = 1
     collisionMask: int = 1
@@ -79,6 +80,7 @@ class CircleColliderComponent(BaseComponentModel):
     type: Literal[ComponentType.COLLIDER] = ComponentType.COLLIDER
     colliderType: Literal[ColliderType.CIRCLE] = ColliderType.CIRCLE
     radius: float = 16.0
+    offset: Vector2Model = Field(default_factory=Vector2Model)
     trigger: bool = False
     collisionGroup: int = 1
     collisionMask: int = 1

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from platformator_ui.scene import SceneSerializer, ScriptComponentModel, SpriteComponent
+from platformator_ui.scene import BoxColliderComponent, SceneSerializer, ScriptComponentModel, SpriteComponent
 from platformator_ui.scene.models import UnknownComponentModel
 
 
@@ -19,7 +19,31 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
             "scale": {"x": 1.0, "y": 1.0},
             "name": "Player",
             "tag": "Hero",
-            "children": [],
+            "children": [
+                {
+                    "id": 101,
+                    "rotation": 0.0,
+                    "active": True,
+                    "position": {"x": 5.0, "y": -6.0},
+                    "scale": {"x": 1.0, "y": 1.0},
+                    "name": "Player Hitbox",
+                    "tag": "",
+                    "children": [],
+                    "components": [
+                        {
+                            "id": 203,
+                            "type": 3,
+                            "colliderType": 1,
+                            "width": 48.0,
+                            "height": 20.0,
+                            "offset": {"x": 2.5, "y": -4.5},
+                            "trigger": False,
+                            "collisionGroup": 1,
+                            "collisionMask": 1,
+                        }
+                    ],
+                }
+            ],
             "components": [
                 {
                     "id": 200,
@@ -68,6 +92,15 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
     assert behavior.idleClip == "assets/animations/player.animset"
     assert behavior.sound == "assets/audio/jump.wav"
 
+    child = player.children[0]
+    assert child.position.x == 5.0
+    assert child.position.y == -6.0
+
+    child_collider = child.find_component(BoxColliderComponent)
+    assert child_collider is not None
+    assert child_collider.offset.x == 2.5
+    assert child_collider.offset.y == -4.5
+
     unknown_component = next(component for component in player.components if isinstance(component, UnknownComponentModel))
     assert unknown_component.customField == "preserve-me"
 
@@ -79,3 +112,5 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
     assert saved_components[1]["behaviors"][0]["icon"] == "assets/ui/player.png"
     assert saved_components[1]["behaviors"][0]["sound"] == "assets/audio/jump.wav"
     assert saved_components[2]["customField"] == "preserve-me"
+    assert saved_document[0]["children"][0]["position"] == {"x": 5.0, "y": -6.0}
+    assert saved_document[0]["children"][0]["components"][0]["offset"] == {"x": 2.5, "y": -4.5}

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
         UnknownComponentModel,
         Vector2Model,
     )
-    from .mutations import add_behavior, add_game_object, create_unique_object_name, duplicate_game_object, find_parent_object, remove_component, remove_game_object
+    from .mutations import add_behavior, add_game_object, create_unique_object_name, duplicate_game_object, find_parent_object, remove_component, remove_game_object, synchronize_behavior_fields
     from .serializer import SceneSerializationError, SceneSerializer
     from .templates import create_empty_scene, create_game_object, create_main_camera_object, create_named_component
     from .validation import Severity, ValidationIssue, validate_scene_document
@@ -63,6 +63,7 @@ __all__ = [
     "find_parent_object",
     "remove_component",
     "remove_game_object",
+    "synchronize_behavior_fields",
     "validate_scene_document",
 ]
 
@@ -100,6 +101,7 @@ _EXPORTS = {
     "find_parent_object": (".mutations", "find_parent_object"),
     "remove_component": (".mutations", "remove_component"),
     "remove_game_object": (".mutations", "remove_game_object"),
+    "synchronize_behavior_fields": (".mutations", "synchronize_behavior_fields"),
     "validate_scene_document": (".validation", "validate_scene_document"),
 }
 

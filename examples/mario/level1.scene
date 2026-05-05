@@ -1584,7 +1584,10 @@
       {
         "behaviors": [
           {
+            "bgm": 1002,
+            "collectedCoins": 0,
             "player": 102,
+            "totalCoins": 5,
             "type": "MarioGame"
           }
         ],

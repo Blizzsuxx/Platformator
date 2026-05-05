@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 
 from .ids import SceneIdAllocator
@@ -86,6 +87,48 @@ def add_behavior(
     behavior = ScriptBehaviorModel.model_validate(payload)
     script_component.behaviors.append(behavior)
     return behavior
+
+
+def synchronize_behavior_fields(
+    scene_document: SceneDocumentModel,
+    behavior_templates: Mapping[str, Mapping[str, object]],
+) -> bool:
+    changed = False
+
+    for game_object in scene_document.iter_objects():
+        for component in game_object.components:
+            if not isinstance(component, ScriptComponentModel):
+                continue
+
+            for behavior in component.behaviors:
+                template_defaults = behavior_templates.get(behavior.type)
+                if template_defaults is None:
+                    continue
+                changed = _synchronize_behavior_model(behavior, template_defaults) or changed
+
+    return changed
+
+
+def _synchronize_behavior_model(
+    behavior: ScriptBehaviorModel,
+    template_defaults: Mapping[str, object],
+) -> bool:
+    changed = False
+    extra_fields = behavior.model_extra or {}
+
+    for field_name in list(extra_fields):
+        if field_name == "type" or field_name in template_defaults:
+            continue
+        del extra_fields[field_name]
+        changed = True
+
+    for field_name, default_value in template_defaults.items():
+        if field_name in extra_fields:
+            continue
+        setattr(behavior, field_name, deepcopy(default_value))
+        changed = True
+
+    return changed
 
 
 def create_unique_object_name(scene_document: SceneDocumentModel, base_name: str) -> str:

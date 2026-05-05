@@ -43,6 +43,49 @@ class ObjectReferenceDescriptor:
     target_type_name: str | None = None
 
 
+BOOLEAN_TYPE_NAMES = {"bool"}
+INTEGER_TYPE_NAMES = {
+    "char",
+    "short",
+    "short int",
+    "int",
+    "long",
+    "long int",
+    "long long",
+    "long long int",
+    "signed",
+    "signed char",
+    "signed short",
+    "signed short int",
+    "signed int",
+    "signed long",
+    "signed long int",
+    "signed long long",
+    "signed long long int",
+    "unsigned",
+    "unsigned char",
+    "unsigned short",
+    "unsigned short int",
+    "unsigned int",
+    "unsigned long",
+    "unsigned long int",
+    "unsigned long long",
+    "unsigned long long int",
+    "size_t",
+    "std::size_t",
+    "uint8_t",
+    "uint16_t",
+    "uint32_t",
+    "uint64_t",
+    "int8_t",
+    "int16_t",
+    "int32_t",
+    "int64_t",
+}
+FLOATING_POINT_TYPE_NAMES = {"float", "double"}
+STRING_TYPE_NAMES = {"std::string", "string"}
+
+
 def discover_behavior_templates(
     repo_root: Path,
     scene_document: SceneDocumentModel | None = None,
@@ -51,6 +94,27 @@ def discover_behavior_templates(
     if scene_document is not None:
         _merge_behavior_samples(templates, _collect_scene_behavior_samples(scene_document))
     return dict(sorted(templates.items(), key=lambda item: item[0].casefold()))
+
+
+def clear_behavior_discovery_caches() -> None:
+    discover_behavior_asset_fields.cache_clear()
+    discover_behavior_object_reference_fields.cache_clear()
+    _discover_workspace_behavior_templates.cache_clear()
+
+
+def snapshot_behavior_source_state(repo_root: Path) -> tuple[tuple[str, int, int], ...]:
+    source_state: list[tuple[str, int, int]] = []
+    resolved_repo_root = repo_root.resolve(strict=False)
+
+    for file_path in _iter_source_files(resolved_repo_root):
+        try:
+            stats = file_path.stat()
+        except OSError:
+            continue
+        source_state.append((file_path.relative_to(resolved_repo_root).as_posix(), stats.st_mtime_ns, stats.st_size))
+
+    source_state.sort()
+    return tuple(source_state)
 
 
 @lru_cache(maxsize=4)
@@ -67,32 +131,57 @@ def discover_behavior_object_reference_fields(repo_root: Path) -> dict[str, dict
 
 @lru_cache(maxsize=4)
 def _discover_workspace_behavior_templates(repo_root: Path) -> dict[str, dict[str, Any]]:
-    declared_fields = _scan_serializable_script_fields(repo_root)
     scene_samples = _scan_scene_behavior_samples(repo_root)
-    _, object_reference_fields = _scan_serializable_script_reference_fields(repo_root)
 
     templates: dict[str, dict[str, Any]] = {}
-    for behavior_name in sorted(set(declared_fields) | set(scene_samples), key=str.casefold):
-        field_names = declared_fields.get(behavior_name, ())
-        sample = scene_samples.get(behavior_name, {})
-        reference_fields = object_reference_fields.get(behavior_name, {})
-        template_defaults: dict[str, Any] = {}
+    discovered_behaviors: set[str] = set(scene_samples)
 
-        for field_name in field_names:
-            if field_name in reference_fields:
-                template_defaults[field_name] = None
-                continue
-            if field_name in sample:
-                template_defaults[field_name] = _neutralize_value(sample[field_name])
+    for file_path in _iter_source_files(repo_root):
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
 
-        for field_name, sample_value in sample.items():
-            if field_name not in template_defaults:
-                if field_name in reference_fields:
-                    template_defaults[field_name] = None
+        asset_declarations = _scan_asset_reference_declarations(content)
+        object_declarations = _scan_object_reference_declarations(content)
+
+        for match in SERIALIZABLE_SCRIPT_RE.finditer(content):
+            behavior_name = match.group(1).strip()
+            field_block = match.group(2) or ""
+            field_names = tuple(
+                field_name.strip()
+                for field_name in field_block.replace("\n", " ").split(",")
+                if field_name.strip()
+            )
+            sample = scene_samples.get(behavior_name, {})
+            declared_defaults = _scan_declared_field_defaults(
+                content,
+                match.start(),
+                field_names,
+                asset_declarations,
+                object_declarations,
+            )
+            template_defaults: dict[str, Any] = {}
+
+            for field_name in field_names:
+                if field_name in declared_defaults:
+                    template_defaults[field_name] = deepcopy(declared_defaults[field_name])
                     continue
-                template_defaults[field_name] = _neutralize_value(sample_value)
+                if field_name in sample:
+                    template_defaults[field_name] = _neutralize_value(sample[field_name])
 
-        templates[behavior_name] = template_defaults
+            for field_name, sample_value in sample.items():
+                if field_name not in template_defaults:
+                    template_defaults[field_name] = _neutralize_value(sample_value)
+
+            templates[behavior_name] = template_defaults
+            discovered_behaviors.add(behavior_name)
+
+    for behavior_name in sorted(set(scene_samples) - discovered_behaviors, key=str.casefold):
+        templates[behavior_name] = {
+            field_name: _neutralize_value(sample_value)
+            for field_name, sample_value in scene_samples[behavior_name].items()
+        }
 
     return templates
 
@@ -200,6 +289,70 @@ def _scan_object_reference_declarations(content: str) -> dict[str, ObjectReferen
         declarations[match.group(2)] = _object_reference_descriptor_for_type(match.group(1))
 
     return declarations
+
+
+def _scan_declared_field_defaults(
+    content: str,
+    declaration_limit: int,
+    field_names: tuple[str, ...],
+    asset_declarations: dict[str, AssetKind],
+    object_declarations: dict[str, ObjectReferenceDescriptor],
+) -> dict[str, Any]:
+    searchable_content = content[:declaration_limit]
+    declared_defaults: dict[str, Any] = {}
+
+    for field_name in field_names:
+        if field_name in object_declarations:
+            declared_defaults[field_name] = None
+            continue
+
+        if field_name in asset_declarations:
+            declared_defaults[field_name] = ""
+            continue
+
+        declared_type = _find_declared_field_type(searchable_content, field_name)
+        if declared_type is None:
+            continue
+
+        default_value = _default_value_for_declared_type(declared_type)
+        if default_value is not None:
+            declared_defaults[field_name] = default_value
+
+    return declared_defaults
+
+
+def _find_declared_field_type(content: str, field_name: str) -> str | None:
+    declaration_re = re.compile(
+        rf"^\s*(?:mutable\s+)?(?P<type>[A-Za-z_:][A-Za-z0-9_:<>,\s*&]*)\s+{re.escape(field_name)}\s*(?:=\s*[^;]+)?;",
+        re.MULTILINE,
+    )
+    matches = list(declaration_re.finditer(content))
+    if not matches:
+        return None
+    return matches[-1].group("type").strip()
+
+
+def _default_value_for_declared_type(type_name: str) -> Any:
+    normalized_type = _normalize_declared_type_name(type_name)
+    if not normalized_type or "(" in normalized_type or ")" in normalized_type:
+        return None
+
+    if normalized_type in BOOLEAN_TYPE_NAMES:
+        return False
+    if normalized_type in INTEGER_TYPE_NAMES:
+        return 0
+    if normalized_type in FLOATING_POINT_TYPE_NAMES:
+        return 0.0
+    if normalized_type in STRING_TYPE_NAMES:
+        return ""
+    return None
+
+
+def _normalize_declared_type_name(type_name: str) -> str:
+    normalized = type_name.replace("const", " ").replace("volatile", " ")
+    normalized = normalized.replace("&", " ").replace("*", " ")
+    normalized = " ".join(normalized.split())
+    return normalized.strip()
 
 
 def _asset_kind_for_type(type_name: str) -> AssetKind:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QEvent, QSettings, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,12 +28,15 @@ from .scene import (
     duplicate_game_object,
     find_parent_object,
     remove_game_object,
+    synchronize_behavior_fields,
     validate_scene_document,
 )
 from .services.behavior_catalog import (
+    clear_behavior_discovery_caches,
     discover_behavior_asset_fields,
     discover_behavior_object_reference_fields,
     discover_behavior_templates,
+    snapshot_behavior_source_state,
 )
 from .services.project_paths import ProjectPaths
 from .services.recent_files import RecentFilesStore
@@ -60,6 +63,7 @@ class MainWindow(QMainWindow):
         self.behavior_templates: dict[str, dict[str, object]] = {}
         self.behavior_asset_fields = discover_behavior_asset_fields(project_paths.repo_root)
         self.behavior_object_reference_fields = discover_behavior_object_reference_fields(project_paths.repo_root)
+        self._behavior_source_state = snapshot_behavior_source_state(project_paths.repo_root)
         self._docks: dict[str, QDockWidget] = {}
         self._dock_areas: dict[str, Qt.DockWidgetArea] = {}
         self._undo_baseline_scene = self.scene_document.model_copy(deep=True)
@@ -75,6 +79,11 @@ class MainWindow(QMainWindow):
         self._restore_startup_scene(startup_scene_path, restore_last_scene)
         self._reload_scene_views(select_first=True)
         self._reset_undo_history()
+
+    def event(self, event) -> bool:
+        if event.type() == QEvent.Type.WindowActivate:
+            self._maybe_refresh_behavior_metadata()
+        return super().event(event)
 
     def new_scene(self) -> None:
         if not self._confirm_discard_changes():
@@ -572,10 +581,25 @@ class MainWindow(QMainWindow):
         finally:
             self.scene_tree.blockSignals(False)
 
-    def _refresh_behavior_templates(self) -> None:
+    def _refresh_behavior_templates(self, *, reload_schema: bool = False) -> None:
+        if reload_schema:
+            clear_behavior_discovery_caches()
+            self.behavior_asset_fields = discover_behavior_asset_fields(self.project_paths.repo_root)
+            self.behavior_object_reference_fields = discover_behavior_object_reference_fields(self.project_paths.repo_root)
+
         self.behavior_templates = discover_behavior_templates(self.project_paths.repo_root, self.scene_document)
+        synchronize_behavior_fields(self.scene_document, self.behavior_templates)
         self.behavior_library.set_behavior_names(list(self.behavior_templates))
+        self.inspector.set_behavior_reference_fields(self.behavior_asset_fields, self.behavior_object_reference_fields)
         self.inspector.set_behavior_templates(self.behavior_templates)
+
+    def _maybe_refresh_behavior_metadata(self) -> None:
+        source_state = snapshot_behavior_source_state(self.project_paths.repo_root)
+        if source_state == self._behavior_source_state:
+            return
+
+        self._behavior_source_state = source_state
+        self._refresh_behavior_templates(reload_schema=True)
 
     def _current_inspector_merge_key(self) -> str | None:
         focus_widget = QApplication.focusWidget()

@@ -239,6 +239,22 @@ class InspectorWidget(QWidget):
         if self._current_object is not None:
             self.set_selection(self._current_object, self._selected_component_id)
 
+    def set_behavior_reference_fields(
+        self,
+        behavior_asset_fields: Mapping[str, Mapping[str, AssetKind]],
+        behavior_object_reference_fields: Mapping[str, Mapping[str, ObjectReferenceDescriptor]],
+    ) -> None:
+        self._behavior_asset_fields = {
+            behavior_name: dict(field_map)
+            for behavior_name, field_map in behavior_asset_fields.items()
+        }
+        self._behavior_object_reference_fields = {
+            behavior_name: dict(field_map)
+            for behavior_name, field_map in behavior_object_reference_fields.items()
+        }
+        if self._current_object is not None:
+            self.set_selection(self._current_object, self._selected_component_id)
+
     def set_object(self, game_object: GameObjectModel | None) -> None:
         self.set_selection(game_object)
 

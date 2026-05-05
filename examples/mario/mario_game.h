@@ -8,6 +8,12 @@
 #include "gamemanager.h"
 #include "scene.h"
 #include "sdlwindow.h"
+#include "behaviorfactoryregistry.h"
+#include "jsonhelpers.h"
+#include "behavior.h"
+#include "assetreference.h"
+#include "objectreference.h"
+#include "audio.h"
 
 namespace mario
 {

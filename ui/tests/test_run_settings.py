@@ -37,6 +37,7 @@ def test_run_window_settings_to_cli_args_includes_enabled_flags() -> None:
 
 def test_run_window_settings_to_cli_args_includes_debug_draw_override_for_subset() -> None:
     run_window_settings = RunWindowSettings(
+        debug_start_paused=True,
         debug_draw_colliders=True,
         debug_draw_collision_points=False,
         debug_draw_collision_normals=True,
@@ -50,12 +51,14 @@ def test_run_window_settings_to_cli_args_includes_debug_draw_override_for_subset
         "480",
         "--debug-draw",
         "colliders,collision-normals",
+        "--start-paused",
     )
 
 
 def test_run_window_settings_to_cli_args_omits_debug_draw_for_production() -> None:
     run_window_settings = RunWindowSettings(
         build_preset="production",
+        debug_start_paused=True,
         debug_draw_colliders=False,
         debug_draw_collision_points=False,
         debug_draw_collision_normals=False,

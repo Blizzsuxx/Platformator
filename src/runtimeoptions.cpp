@@ -109,10 +109,10 @@ namespace
 
         if (normalizedValue == "none")
         {
-            return {false, false, false, false};
+            return {false, false, false, false, false};
         }
 
-        DebugSettings debugSettings{false, false, false, false};
+        DebugSettings debugSettings{false, false, false, false, false};
         size_t tokenStart = 0;
 
         while (tokenStart <= value.size())
@@ -187,6 +187,12 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
         if (argument == "--debug-draw")
         {
             runtimeOptions.debugSettings = parseDebugDrawSettings(requireArgumentValue(argc, args, index, argument));
+            continue;
+        }
+
+        if (argument == "--start-paused")
+        {
+            runtimeOptions.debugSettings.startPaused = true;
             continue;
         }
 

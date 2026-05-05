@@ -38,8 +38,8 @@ public:
 
     void addSdlListener(const std::function<void(SDL_Event, double)> &listener);
     bool shouldSimulateFrame() const;
+    bool shouldUseFixedStepDelta() const;
     void clearAdvanceFrameRequest();
-    bool getIsFrameAdvanceMode() const;
     void clearDebugObjects();
     Camera *getMainCamera() const;
 
@@ -65,7 +65,7 @@ private:
     int renderWidth;
     int renderHeight;
     bool quit;
-    bool frameAdvanceMode;
+    bool paused;
     bool advanceFrameRequested;
 
     std::vector<Sprite *> spriteComponents;

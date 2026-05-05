@@ -10,7 +10,7 @@
             "name": "default",
             "displayName": "Default",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/bin",
+            "binaryDir": "${sourceDir}/bin/default",
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
@@ -19,6 +19,7 @@
             "name": "debug",
             "displayName": "Debug",
             "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON"
@@ -28,6 +29,7 @@
             "name": "production",
             "displayName": "Production",
             "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/production",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF"
@@ -37,6 +39,7 @@
             "name": "relwithdebinfo",
             "displayName": "RelWithDebInfo",
             "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/relwithdebinfo",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON"

@@ -20,7 +20,7 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
       renderWidth(windowSettings.width),
       renderHeight(windowSettings.height),
       quit(false),
-      frameAdvanceMode(false),
+      paused(debugSettings.startPaused),
       advanceFrameRequested(false),
       spriteComponents(),
       listeners(),
@@ -62,12 +62,12 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
             debugDraw.toggleShowGridCells();
             break;
         case SDLK_F5:
-            frameAdvanceMode = !frameAdvanceMode;
+            paused = !paused;
             advanceFrameRequested = false;
-            PLATFORMATOR_LOG("Frame advance mode: %s\n", frameAdvanceMode ? "enabled" : "disabled");
+            PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
             break;
         case SDLK_F6:
-            if (frameAdvanceMode)
+            if (paused)
             {
                 advanceFrameRequested = true;
                 PLATFORMATOR_LOG("Advancing one frame\n");
@@ -300,10 +300,10 @@ bool SDLWindow::isRunning() const
     return !quit;
 }
 
-bool SDLWindow::getIsFrameAdvanceMode() const
+bool SDLWindow::shouldUseFixedStepDelta() const
 {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    return frameAdvanceMode;
+    return paused;
 #else
     return false;
 #endif
@@ -312,7 +312,7 @@ bool SDLWindow::getIsFrameAdvanceMode() const
 bool SDLWindow::shouldSimulateFrame() const
 {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    return !frameAdvanceMode || advanceFrameRequested;
+    return !paused || advanceFrameRequested;
 #else
     return true;
 #endif

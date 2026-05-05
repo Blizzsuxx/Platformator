@@ -34,6 +34,9 @@ class RunSettingsDialog(QDialog):
         if selected_index >= 0:
             self.build_preset_combo_box.setCurrentIndex(selected_index)
 
+        self.debug_start_paused_check_box = QCheckBox(self)
+        self.debug_start_paused_check_box.setChecked(run_window_settings.debug_start_paused)
+
         self.debug_draw_colliders_check_box = QCheckBox(self)
         self.debug_draw_colliders_check_box.setChecked(run_window_settings.debug_draw_colliders)
 
@@ -53,6 +56,7 @@ class RunSettingsDialog(QDialog):
         form_layout.addRow("Fullscreen", self.fullscreen_check_box)
         form_layout.addRow("Maximize On Startup", self.maximized_check_box)
         form_layout.addRow("Keep Aspect Ratio", self.keep_aspect_ratio_check_box)
+        form_layout.addRow("Pause On Launch", self.debug_start_paused_check_box)
         form_layout.addRow("Draw Colliders", self.debug_draw_colliders_check_box)
         form_layout.addRow("Draw Collision Points", self.debug_draw_collision_points_check_box)
         form_layout.addRow("Draw Collision Normals", self.debug_draw_collision_normals_check_box)
@@ -66,15 +70,16 @@ class RunSettingsDialog(QDialog):
         layout.addLayout(form_layout)
         layout.addWidget(button_box)
 
-        self.build_preset_combo_box.currentIndexChanged.connect(self._update_debug_draw_controls)
-        self._update_debug_draw_controls()
+        self.build_preset_combo_box.currentIndexChanged.connect(self._update_debug_controls)
+        self._update_debug_controls()
 
     def _selected_build_preset(self) -> str:
         build_preset = self.build_preset_combo_box.currentData()
         return build_preset if isinstance(build_preset, str) else "debug"
 
-    def _update_debug_draw_controls(self) -> None:
+    def _update_debug_controls(self) -> None:
         debug_controls_enabled = self._selected_build_preset() != "production"
+        self.debug_start_paused_check_box.setEnabled(debug_controls_enabled)
         self.debug_draw_colliders_check_box.setEnabled(debug_controls_enabled)
         self.debug_draw_collision_points_check_box.setEnabled(debug_controls_enabled)
         self.debug_draw_collision_normals_check_box.setEnabled(debug_controls_enabled)
@@ -88,6 +93,7 @@ class RunSettingsDialog(QDialog):
             maximize_on_startup=self.maximized_check_box.isChecked(),
             keep_aspect_ratio=self.keep_aspect_ratio_check_box.isChecked(),
             build_preset=self._selected_build_preset(),
+            debug_start_paused=self.debug_start_paused_check_box.isChecked(),
             debug_draw_colliders=self.debug_draw_colliders_check_box.isChecked(),
             debug_draw_collision_points=self.debug_draw_collision_points_check_box.isChecked(),
             debug_draw_collision_normals=self.debug_draw_collision_normals_check_box.isChecked(),

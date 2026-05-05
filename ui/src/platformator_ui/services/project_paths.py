@@ -16,6 +16,15 @@ class ProjectPaths:
     mario_example_binary: Path
     default_scene: Path
 
+    def build_dir_for_preset(self, preset: str) -> Path:
+        return self.repo_root / "bin" / preset
+
+    def main_binary_for_preset(self, preset: str) -> Path:
+        return self.build_dir_for_preset(preset) / self.main_binary.name
+
+    def mario_example_binary_for_preset(self, preset: str) -> Path:
+        return self.build_dir_for_preset(preset) / self.mario_example_binary.name
+
     @classmethod
     def discover(cls, start: Path | None = None) -> "ProjectPaths":
         search_root = (start or Path.cwd()).resolve()
@@ -27,7 +36,7 @@ class ProjectPaths:
             assets_dir = candidate / "assets"
             if cmake_presets.exists() and assets_dir.exists():
                 ui_root = candidate / "ui"
-                build_dir = candidate / "bin"
+                build_dir = candidate / "bin" / "debug"
                 scenes_dir = assets_dir / "scenes"
                 return cls(
                     repo_root=candidate,

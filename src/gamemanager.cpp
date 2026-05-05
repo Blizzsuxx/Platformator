@@ -267,7 +267,7 @@ void GameManager::loop()
         {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
             window->clearDebugObjects();
-            if (window->getIsFrameAdvanceMode())
+            if (window->shouldUseFixedStepDelta())
             {
                 deltaTime = FRAME_TIME;
             }

@@ -151,7 +151,7 @@ class MainWindow(QMainWindow):
         return self.save_scene()
 
     def build_project(self) -> None:
-        target_name, _program_path = self._resolve_run_target()
+        target_name, _program_path = self._resolve_run_target(self.run_window_settings.build_preset)
         self.run_controller.build_only(self.run_window_settings.build_preset, target_name=target_name)
 
     def run_scene(self) -> None:
@@ -159,7 +159,7 @@ class MainWindow(QMainWindow):
             return
         if self.current_scene_path is None:
             return
-        target_name, program_path = self._resolve_run_target()
+        target_name, program_path = self._resolve_run_target(self.run_window_settings.build_preset)
         self.run_controller.run_scene(
             self.current_scene_path,
             preset=self.run_window_settings.build_preset,
@@ -704,10 +704,13 @@ class MainWindow(QMainWindow):
 
         return previous_selection != (self.current_object_id, self.current_component_id)
 
-    def _resolve_run_target(self) -> tuple[str, Path]:
+    def _resolve_run_target(self, preset: str) -> tuple[str, Path]:
         if self._uses_mario_runtime():
-            return self.project_paths.mario_example_binary.name, self.project_paths.mario_example_binary
-        return self.project_paths.main_binary.name, self.project_paths.main_binary
+            mario_binary = self.project_paths.mario_example_binary_for_preset(preset)
+            return mario_binary.name, mario_binary
+
+        main_binary = self.project_paths.main_binary_for_preset(preset)
+        return main_binary.name, main_binary
 
     def _uses_mario_runtime(self) -> bool:
         mario_examples_dir = self.project_paths.repo_root / "examples" / "mario"

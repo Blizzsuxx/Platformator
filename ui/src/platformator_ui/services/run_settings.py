@@ -6,6 +6,7 @@ from PySide6.QtCore import QSettings
 
 from platformator_ui.settings import (
     DEFAULT_RUN_BUILD_PRESET,
+    DEFAULT_RUN_DEBUG_START_PAUSED,
     DEFAULT_RUN_DEBUG_DRAW_COLLIDERS,
     DEFAULT_RUN_DEBUG_DRAW_COLLISION_NORMALS,
     DEFAULT_RUN_DEBUG_DRAW_COLLISION_POINTS,
@@ -16,6 +17,7 @@ from platformator_ui.settings import (
     DEFAULT_RUN_WINDOW_HEIGHT,
     DEFAULT_RUN_WINDOW_WIDTH,
     RUN_BUILD_PRESET_KEY,
+    RUN_DEBUG_START_PAUSED_KEY,
     RUN_DEBUG_DRAW_COLLIDERS_KEY,
     RUN_DEBUG_DRAW_COLLISION_NORMALS_KEY,
     RUN_DEBUG_DRAW_COLLISION_POINTS_KEY,
@@ -69,6 +71,7 @@ class RunWindowSettings:
     maximize_on_startup: bool = DEFAULT_RUN_MAXIMIZED
     keep_aspect_ratio: bool = DEFAULT_RUN_KEEP_ASPECT_RATIO
     build_preset: str = DEFAULT_RUN_BUILD_PRESET
+    debug_start_paused: bool = DEFAULT_RUN_DEBUG_START_PAUSED
     debug_draw_colliders: bool = DEFAULT_RUN_DEBUG_DRAW_COLLIDERS
     debug_draw_collision_points: bool = DEFAULT_RUN_DEBUG_DRAW_COLLISION_POINTS
     debug_draw_collision_normals: bool = DEFAULT_RUN_DEBUG_DRAW_COLLISION_NORMALS
@@ -123,6 +126,8 @@ class RunWindowSettings:
         debug_draw_override = self._debug_draw_override()
         if debug_draw_override is not None:
             arguments.extend(("--debug-draw", debug_draw_override))
+        if self.build_preset != "production" and self.debug_start_paused:
+            arguments.append("--start-paused")
 
         return tuple(arguments)
 
@@ -137,7 +142,9 @@ class RunWindowSettings:
             categories = self._debug_draw_categories()
             debug_draw = "debug draw default" if len(categories) == 4 else f"debug draw {', '.join(categories) if categories else 'none'}"
 
-        return f"{build_profile}, {self.window_width}x{self.window_height}, {mode}, {aspect_ratio}, {debug_draw}"
+        pause_state = ", paused on launch" if self.build_preset != "production" and self.debug_start_paused else ""
+
+        return f"{build_profile}, {self.window_width}x{self.window_height}, {mode}, {aspect_ratio}, {debug_draw}{pause_state}"
 
 
 class RunSettingsStore:
@@ -152,6 +159,7 @@ class RunSettingsStore:
             maximize_on_startup=_read_bool(self._settings.value(RUN_MAXIMIZED_KEY), DEFAULT_RUN_MAXIMIZED),
             keep_aspect_ratio=_read_bool(self._settings.value(RUN_KEEP_ASPECT_RATIO_KEY), DEFAULT_RUN_KEEP_ASPECT_RATIO),
             build_preset=_read_build_preset(self._settings.value(RUN_BUILD_PRESET_KEY), DEFAULT_RUN_BUILD_PRESET),
+            debug_start_paused=_read_bool(self._settings.value(RUN_DEBUG_START_PAUSED_KEY), DEFAULT_RUN_DEBUG_START_PAUSED),
             debug_draw_colliders=_read_bool(self._settings.value(RUN_DEBUG_DRAW_COLLIDERS_KEY), DEFAULT_RUN_DEBUG_DRAW_COLLIDERS),
             debug_draw_collision_points=_read_bool(self._settings.value(RUN_DEBUG_DRAW_COLLISION_POINTS_KEY), DEFAULT_RUN_DEBUG_DRAW_COLLISION_POINTS),
             debug_draw_collision_normals=_read_bool(self._settings.value(RUN_DEBUG_DRAW_COLLISION_NORMALS_KEY), DEFAULT_RUN_DEBUG_DRAW_COLLISION_NORMALS),
@@ -165,6 +173,7 @@ class RunSettingsStore:
         self._settings.setValue(RUN_MAXIMIZED_KEY, run_window_settings.maximize_on_startup)
         self._settings.setValue(RUN_KEEP_ASPECT_RATIO_KEY, run_window_settings.keep_aspect_ratio)
         self._settings.setValue(RUN_BUILD_PRESET_KEY, run_window_settings.build_preset)
+        self._settings.setValue(RUN_DEBUG_START_PAUSED_KEY, run_window_settings.debug_start_paused)
         self._settings.setValue(RUN_DEBUG_DRAW_COLLIDERS_KEY, run_window_settings.debug_draw_colliders)
         self._settings.setValue(RUN_DEBUG_DRAW_COLLISION_POINTS_KEY, run_window_settings.debug_draw_collision_points)
         self._settings.setValue(RUN_DEBUG_DRAW_COLLISION_NORMALS_KEY, run_window_settings.debug_draw_collision_normals)

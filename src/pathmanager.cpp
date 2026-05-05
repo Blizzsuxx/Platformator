@@ -1,5 +1,7 @@
 #include "pathmanager.h"
 
+#include <SDL3/SDL_filesystem.h>
+
 #include "buildconfig.h"
 
 #include <algorithm>
@@ -10,6 +12,99 @@
 
 namespace
 {
+    bool isValidAssetsDirectory(const std::filesystem::path &assetsDirectory)
+    {
+        static const std::filesystem::path requiredAssetPaths[] = {
+            std::filesystem::path("textures") / "missing.png",
+            std::filesystem::path("audio") / "missing.wav",
+            std::filesystem::path("animations") / "missing.animset",
+            std::filesystem::path("models") / "default_cube.obj",
+        };
+
+        if (!std::filesystem::is_directory(assetsDirectory))
+        {
+            return false;
+        }
+
+        for (const std::filesystem::path &requiredAssetPath : requiredAssetPaths)
+        {
+            if (!std::filesystem::is_regular_file(assetsDirectory / requiredAssetPath))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    std::filesystem::path findAssetsDirectory(std::filesystem::path startDirectory)
+    {
+        if (startDirectory.empty())
+        {
+            return {};
+        }
+
+        startDirectory = std::filesystem::absolute(startDirectory).lexically_normal();
+
+        while (true)
+        {
+            const std::filesystem::path assetsDirectory = startDirectory / "assets";
+            if (isValidAssetsDirectory(assetsDirectory))
+            {
+                return assetsDirectory.lexically_normal();
+            }
+
+            const std::filesystem::path parentDirectory = startDirectory.parent_path();
+            if (parentDirectory.empty() || parentDirectory == startDirectory)
+            {
+                break;
+            }
+
+            startDirectory = parentDirectory;
+        }
+
+        return {};
+    }
+
+    const std::filesystem::path &getExecutableRuntimeRootDirectory()
+    {
+        static const std::filesystem::path executableRuntimeRootDirectory = []()
+        {
+            const char *basePath = SDL_GetBasePath();
+            if (basePath == nullptr)
+            {
+                return std::filesystem::path();
+            }
+
+            const std::filesystem::path assetsDirectory = findAssetsDirectory(std::filesystem::path(basePath));
+            if (assetsDirectory.empty())
+            {
+                return std::filesystem::path();
+            }
+
+            return assetsDirectory.parent_path().lexically_normal();
+        }();
+
+        return executableRuntimeRootDirectory;
+    }
+
+    std::filesystem::path getRuntimeRootDirectory()
+    {
+        const std::filesystem::path &executableRuntimeRootDirectory = getExecutableRuntimeRootDirectory();
+        if (!executableRuntimeRootDirectory.empty())
+        {
+            return executableRuntimeRootDirectory;
+        }
+
+        const std::filesystem::path assetsDirectory = findAssetsDirectory(std::filesystem::current_path());
+        if (!assetsDirectory.empty())
+        {
+            return assetsDirectory.parent_path().lexically_normal();
+        }
+
+        return std::filesystem::current_path().lexically_normal();
+    }
+
     std::vector<std::string> splitPathComponents(const std::string &path)
     {
         std::vector<std::string> components;
@@ -116,7 +211,7 @@ std::string PathManager::canonicalizeAssetPath(const std::string &rawPath) const
 
 std::string PathManager::getAssetsRootAbsolutePath() const
 {
-    return (std::filesystem::current_path() / "assets").lexically_normal().generic_string();
+    return (getRuntimeRootDirectory() / "assets").lexically_normal().generic_string();
 }
 
 std::string PathManager::getFallbackAssetPath(AssetPathType assetPathType) const
@@ -196,7 +291,7 @@ ResolvedAssetPath PathManager::makeResolvedPath(const std::string &requestedPath
 {
     return ResolvedAssetPath{requestedPath,
                              canonicalPath,
-                             (std::filesystem::current_path() / canonicalPath).lexically_normal().generic_string(),
+                             (getRuntimeRootDirectory() / canonicalPath).lexically_normal().generic_string(),
                              usedFallback};
 }
 

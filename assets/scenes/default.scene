@@ -74,7 +74,7 @@
             },
             {
                 "id": 1003,
-                "textureFilePath": "../ball.png",
+                "textureFilePath": "assets/ball.png",
                 "flip": 0,
                 "width": 50.0,
                 "height": 50.0,
@@ -134,7 +134,7 @@
             },
             {
                 "id": 1006,
-                "textureFilePath": "../wall.png",
+                "textureFilePath": "assets/wall.png",
                 "flip": 0,
                 "width": 640.0,
                 "height": 50.0,
@@ -194,7 +194,7 @@
             },
             {
                 "id": 1009,
-                "textureFilePath": "../wall.png",
+                "textureFilePath": "assets/wall.png",
                 "flip": 0,
                 "width": 640.0,
                 "height": 50.0,
@@ -254,7 +254,7 @@
             },
             {
                 "id": 1012,
-                "textureFilePath": "../wall.png",
+                "textureFilePath": "assets/wall.png",
                 "flip": 0,
                 "width": 50.0,
                 "height": 480.0,
@@ -314,7 +314,7 @@
             },
             {
                 "id": 1015,
-                "textureFilePath": "../wall.png",
+                "textureFilePath": "assets/wall.png",
                 "flip": 0,
                 "width": 50.0,
                 "height": 480.0,

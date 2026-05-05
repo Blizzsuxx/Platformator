@@ -77,6 +77,47 @@ add_executable(mario_example
 )
 target_link_libraries(mario_example PRIVATE platformator_engine)
 
+if(APPLE)
+    set(PLATFORMATOR_INSTALL_RPATH "@loader_path/../lib")
+elseif(UNIX)
+    set(PLATFORMATOR_INSTALL_RPATH "$ORIGIN/../lib")
+endif()
+
+if(DEFINED PLATFORMATOR_INSTALL_RPATH)
+    set_target_properties(main mario_example PROPERTIES
+        INSTALL_RPATH "${PLATFORMATOR_INSTALL_RPATH}"
+    )
+endif()
+
+set(PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
+foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-shared SDL3_ttf-shared tbb)
+    if(TARGET ${platformator_runtime_target})
+        list(APPEND PLATFORMATOR_RUNTIME_LIBRARY_TARGETS ${platformator_runtime_target})
+    endif()
+endforeach()
+
+install(TARGETS main mario_example
+    RUNTIME DESTINATION bin
+    BUNDLE DESTINATION bin
+)
+
+if(PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
+    install(TARGETS ${PLATFORMATOR_RUNTIME_LIBRARY_TARGETS}
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+    )
+endif()
+
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/"
+    DESTINATION assets
+    PATTERN "test_runtime" EXCLUDE
+)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/level1.scene"
+    DESTINATION assets/scenes
+    RENAME mario_example.scene
+)
+
 enable_testing()
 
 add_executable(platformator_regression_tests

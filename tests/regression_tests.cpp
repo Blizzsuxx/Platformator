@@ -100,6 +100,23 @@ namespace
         std::vector<GameObject *> objects;
     };
 
+    class WorkingDirectoryScope
+    {
+    public:
+        explicit WorkingDirectoryScope(std::filesystem::path originalWorkingDirectory)
+            : originalWorkingDirectory(std::move(originalWorkingDirectory))
+        {
+        }
+
+        ~WorkingDirectoryScope()
+        {
+            std::filesystem::current_path(originalWorkingDirectory);
+        }
+
+    private:
+        std::filesystem::path originalWorkingDirectory;
+    };
+
     GameObject *createStaticBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height)
     {
         return gameManager
@@ -201,7 +218,12 @@ namespace
 
     std::filesystem::path makeRuntimeAssetPath(const std::string &fileName)
     {
-        return (std::filesystem::path("assets") / "test_runtime" / fileName).lexically_normal();
+        return (std::filesystem::path(PathManager::getInstance().getAssetsRootAbsolutePath()) / "test_runtime" / fileName).lexically_normal();
+    }
+
+    std::string canonicalAssetPathForTest(const std::filesystem::path &assetPath)
+    {
+        return PathManager::getInstance().canonicalizeAssetPath(assetPath.generic_string());
     }
 
     std::filesystem::path createTemporaryBmpAsset(const std::string &fileName, Uint8 red, Uint8 green, Uint8 blue)
@@ -935,6 +957,8 @@ namespace
 
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animator_frame_a_regression.bmp", 255, 0, 0);
         const std::filesystem::path frameBPath = createTemporaryBmpAsset("animator_frame_b_regression.bmp", 0, 255, 0);
+        const std::string canonicalFrameAPath = canonicalAssetPathForTest(frameAPath);
+        const std::string canonicalFrameBPath = canonicalAssetPathForTest(frameBPath);
 
         auto cleanupFiles = [&]()
         {
@@ -969,15 +993,15 @@ namespace
             const AnimationClip blinkAnimationClip(blinkFrames, 10.0f, true, 8.0f, 8.0f, "blink");
 
             require(animator->play(&blinkAnimationClip), "Animator regression failed to start the test animation clip.");
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalFrameAPath,
                     "Animator regression failed to apply the initial clip frame.");
 
             simulateFrames(gameManager, 4);
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalFrameAPath,
                     "Animator regression failed to respect the animation clip playback speed.");
 
             simulateFrames(gameManager, 9);
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameBPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalFrameBPath,
                     "Animator regression failed to advance to the second frame.");
 
             require(animator->play(&blinkAnimationClip), "Animator regression restarted instead of reusing the current animation clip.");
@@ -985,7 +1009,7 @@ namespace
                     "Animator regression reset the current frame when asked to play the already active animation clip.");
 
             simulateFrames(gameManager, 12);
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalFrameAPath,
                     "Animator regression failed to loop back to the first frame.");
 
             cleanupFiles();
@@ -1003,6 +1027,8 @@ namespace
 
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animator_advanced_idle_regression.bmp", 255, 0, 0);
         const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animator_advanced_sheet_regression.bmp");
+        const std::string canonicalFrameAPath = canonicalAssetPathForTest(frameAPath);
+        const std::string canonicalSheetPath = canonicalAssetPathForTest(sheetPath);
 
         auto cleanupFiles = [&]()
         {
@@ -1041,19 +1067,19 @@ namespace
 
             require(animator->play(&stripAnimationClip), "Advanced animator regression failed to start one-shot playback.");
 
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalSheetPath,
                     "Advanced animator regression failed to apply the strip texture.");
             require(sprite->getSourceRect() != nullptr && std::abs(sprite->getSourceRect()->x - 0.0f) <= 1e-5f,
                     "Advanced animator regression failed to apply the first strip source rectangle.");
 
             simulateFrames(gameManager, 7);
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalSheetPath,
                     "Advanced animator regression unexpectedly changed the strip texture mid-clip.");
             require(sprite->getSourceRect() != nullptr && std::abs(sprite->getSourceRect()->x - 4.0f) <= 1e-5f,
                     "Advanced animator regression failed to advance to the second strip frame.");
 
             simulateFrames(gameManager, 7);
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == sheetPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalSheetPath,
                     "Advanced animator regression failed to keep the final one-shot frame active after playback completed.");
             require(sprite->getSourceRect() != nullptr && std::abs(sprite->getSourceRect()->x - 4.0f) <= 1e-5f,
                     "Advanced animator regression failed to stop on the final one-shot frame.");
@@ -1061,7 +1087,7 @@ namespace
                     "Advanced animator regression failed to stop playback when a non-looping animation finished.");
 
             require(animator->play(&idleAnimationClip), "Advanced animator regression failed to switch to a replacement animation clip.");
-            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == frameAPath.string(),
+            require(sprite->getTextureWrapper() != nullptr && sprite->getTextureWrapper()->getFilePath() == canonicalFrameAPath,
                     "Advanced animator regression failed to switch to the idle animation clip.");
             require(sprite->getSourceRect() == nullptr,
                     "Advanced animator regression failed to clear the sprite source rectangle when switching to a full-frame animation clip.");
@@ -1082,6 +1108,8 @@ namespace
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animationclip_roundtrip_idle_regression.bmp", 255, 0, 0);
         const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animationclip_roundtrip_sheet_regression.bmp");
         const std::filesystem::path clipPath = makeRuntimeAssetPath("animationclip_roundtrip_regression.animset");
+        const std::string canonicalFrameAPath = canonicalAssetPathForTest(frameAPath);
+        const std::string canonicalSheetPath = canonicalAssetPathForTest(sheetPath);
 
         auto cleanupFiles = [&]()
         {
@@ -1124,11 +1152,11 @@ namespace
             const AnimationFrame &loadedIdleFrame = loadedClip.getFrames()[0];
             const AnimationFrame &loadedStripFrame = loadedClip.getFrames()[1];
 
-            require(loadedIdleFrame.textureWrapper != nullptr && loadedIdleFrame.textureWrapper->getFilePath() == frameAPath.string(),
+            require(loadedIdleFrame.textureWrapper != nullptr && loadedIdleFrame.textureWrapper->getFilePath() == canonicalFrameAPath,
                     "Animation clip file round-trip regression lost the first frame texture path.");
             require(!loadedIdleFrame.hasSourceRect,
                     "Animation clip file round-trip regression added an unexpected source rectangle to the first frame.");
-            require(loadedStripFrame.textureWrapper != nullptr && loadedStripFrame.textureWrapper->getFilePath() == sheetPath.string(),
+            require(loadedStripFrame.textureWrapper != nullptr && loadedStripFrame.textureWrapper->getFilePath() == canonicalSheetPath,
                     "Animation clip file round-trip regression lost the second frame texture path.");
             require(loadedStripFrame.hasSourceRect,
                     "Animation clip file round-trip regression lost the strip frame source rectangle.");
@@ -1218,6 +1246,39 @@ namespace
                 "PathManager regression returned the wrong model fallback path.");
         require(std::filesystem::is_regular_file(missingModelPath.absolutePath),
                 "PathManager regression resolved the model fallback to a missing file.");
+    }
+
+    void testPathManagerLookupDoesNotDependOnCurrentWorkingDirectory()
+    {
+        PathManager &pathManager = PathManager::getInstance();
+        const std::filesystem::path temporaryWorkingDirectory = std::filesystem::temp_directory_path() / "platformator_pathmanager_cwd_regression";
+        WorkingDirectoryScope workingDirectoryScope(std::filesystem::current_path());
+
+        std::filesystem::create_directories(temporaryWorkingDirectory);
+        std::filesystem::current_path(temporaryWorkingDirectory);
+
+        const ResolvedAssetPath resolvedTexturePath = pathManager.resolveAssetPath("assets/ball.png", AssetPathType::Texture);
+
+        require(!resolvedTexturePath.usedFallback,
+                "PathManager regression unexpectedly used a fallback when resolving an asset after changing the working directory.");
+        require(resolvedTexturePath.canonicalPath == "assets/ball.png",
+                "PathManager regression changed the canonical asset path after the working directory changed.");
+        require(std::filesystem::is_regular_file(resolvedTexturePath.absolutePath),
+                "PathManager regression failed to find a real asset using executable-relative lookup.");
+    }
+
+    void testSceneLookupDoesNotDependOnCurrentWorkingDirectory()
+    {
+        const std::filesystem::path temporaryWorkingDirectory = std::filesystem::temp_directory_path() / "platformator_scene_cwd_regression";
+        WorkingDirectoryScope workingDirectoryScope(std::filesystem::current_path());
+
+        std::filesystem::create_directories(temporaryWorkingDirectory);
+        std::filesystem::current_path(temporaryWorkingDirectory);
+
+        Scene scene("assets/scenes/default.scene");
+        std::vector<GameObject *> loadedObjects = scene.loadScene();
+        require(!loadedObjects.empty(),
+                "Scene path regression failed to load the default scene after changing the working directory.");
     }
 
     void testRotatedBoxSupportEdgeSelection()
@@ -1382,6 +1443,8 @@ int main()
         {"animationclip_file_round_trip", testAnimationClipFileRoundTrip},
         {"audio_component_controls", testAudioComponentControls},
         {"path_manager_canonicalization_and_fallback", testPathManagerCanonicalizationAndFallback},
+        {"path_manager_lookup_does_not_depend_on_current_working_directory", testPathManagerLookupDoesNotDependOnCurrentWorkingDirectory},
+        {"scene_lookup_does_not_depend_on_current_working_directory", testSceneLookupDoesNotDependOnCurrentWorkingDirectory},
         {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
         {"parent_child_relative_movement", testParentChildRelativeMovement},
         {"collider_offset_affects_geometry", testColliderOffsetAffectsGeometry},

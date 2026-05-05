@@ -12,7 +12,8 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/bin/default",
             "cacheVariables": {
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/default"
             }
         },
         {
@@ -22,7 +23,8 @@
             "binaryDir": "${sourceDir}/bin/debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON"
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/debug"
             }
         },
         {
@@ -32,7 +34,8 @@
             "binaryDir": "${sourceDir}/bin/production",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF"
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/production"
             }
         },
         {
@@ -42,7 +45,8 @@
             "binaryDir": "${sourceDir}/bin/relwithdebinfo",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON"
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/relwithdebinfo"
             }
         }
     ],

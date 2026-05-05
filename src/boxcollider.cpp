@@ -145,16 +145,17 @@ void BoxCollider::generateVertices()
 {
     float scaledWidth = getWidth();
     float scaledHeight = getHeight();
+    Eigen::Vector2f center = getWorldPosition();
 
     // top left, top right, bottom right, bottom left
-    vertices[0] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[1] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() - scaledHeight / 2);
-    vertices[2] = Eigen::Vector2f(getGameObject()->getPosition().x() + scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
-    vertices[3] = Eigen::Vector2f(getGameObject()->getPosition().x() - scaledWidth / 2, getGameObject()->getPosition().y() + scaledHeight / 2);
+    vertices[0] = Eigen::Vector2f(center.x() - scaledWidth / 2, center.y() - scaledHeight / 2);
+    vertices[1] = Eigen::Vector2f(center.x() + scaledWidth / 2, center.y() - scaledHeight / 2);
+    vertices[2] = Eigen::Vector2f(center.x() + scaledWidth / 2, center.y() + scaledHeight / 2);
+    vertices[3] = Eigen::Vector2f(center.x() - scaledWidth / 2, center.y() + scaledHeight / 2);
 
     // Rotate the extreme points
-    float xOrigin = getGameObject()->getPosition().x();
-    float yOrigin = getGameObject()->getPosition().y();
+    float xOrigin = center.x();
+    float yOrigin = center.y();
 
     for (size_t i = 0; i < vertices.size(); i++)
     {

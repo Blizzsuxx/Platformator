@@ -1,14 +1,19 @@
 #include "gameobject.h"
+
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
 #include "collider.h"
 #include "gamemanager.h"
 #include "rigidbody.h"
 
-GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(IS_ACTIVE))
+GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), localPosition(Eigen::Vector2f::Zero()), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(IS_ACTIVE))
 {
 }
 
 GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : GAME_OBJECT_NONE))
+    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), parent(nullptr), localPosition(position), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : GAME_OBJECT_NONE))
 {
 }
 
@@ -47,6 +52,11 @@ bool GameObject::getActive() const
     return flags & IS_ACTIVE;
 }
 
+const Eigen::Vector2f &GameObject::getLocalPosition() const
+{
+    return localPosition;
+}
+
 const Eigen::Vector2f &GameObject::getPosition() const
 {
     return position;
@@ -75,6 +85,11 @@ const std::string &GameObject::getName() const
 const std::string &GameObject::getTag() const
 {
     return tag;
+}
+
+GameObject *GameObject::getParent() const
+{
+    return parent;
 }
 
 Component *GameObject::getComponent(const ComponentType &componentType) const
@@ -144,11 +159,35 @@ GameObject *GameObject::setActive(const bool active)
     return this;
 }
 
-GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
+GameObject *GameObject::setLocalPosition(const Eigen::Vector2f &position)
 {
-    this->position = position;
+    localPosition = position;
+
+    const Eigen::Vector2f worldPosition = parent != nullptr ? parent->getPosition() + localPosition : localPosition;
+    const Eigen::Vector2f delta = worldPosition - this->position;
+    this->position = worldPosition;
 
     updateCollider();
+    for (GameObject *child : children)
+    {
+        child->translateSubtree(delta);
+    }
+
+    return this;
+}
+
+GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
+{
+    const Eigen::Vector2f delta = position - this->position;
+    this->position = position;
+    localPosition = parent != nullptr ? this->position - parent->getPosition() : this->position;
+
+    updateCollider();
+    for (GameObject *child : children)
+    {
+        child->translateSubtree(delta);
+    }
+
     return this;
 }
 
@@ -158,6 +197,17 @@ void GameObject::updateCollider()
     if (colliderComponent != nullptr)
     {
         static_cast<Collider *>(colliderComponent)->scheduleSync();
+    }
+}
+
+void GameObject::translateSubtree(const Eigen::Vector2f &delta)
+{
+    position += delta;
+    updateCollider();
+
+    for (GameObject *child : children)
+    {
+        child->translateSubtree(delta);
     }
 }
 
@@ -261,7 +311,37 @@ void GameObject::addChild(GameObject *child)
         throw std::invalid_argument("Child cannot be null");
     }
 
+    if (child == this)
+    {
+        throw std::invalid_argument("Child cannot be self");
+    }
+
+    for (GameObject *ancestor = this; ancestor != nullptr; ancestor = ancestor->parent)
+    {
+        if (ancestor == child)
+        {
+            throw std::invalid_argument("Cannot add an ancestor as a child");
+        }
+    }
+
+    if (child->parent == this)
+    {
+        return;
+    }
+
+    if (child->parent != nullptr)
+    {
+        child->parent->removeChild(child);
+    }
+
+    child->parent = this;
+    child->localPosition = child->position - position;
     children.push_back(child);
+
+    if (getIsRegisteredInGameManager() != child->getIsRegisteredInGameManager())
+    {
+        throw std::logic_error("Parent and child must share the same registration state");
+    }
 }
 
 bool GameObject::removeChild(GameObject *child)
@@ -274,6 +354,8 @@ bool GameObject::removeChild(GameObject *child)
     auto it = std::find(children.begin(), children.end(), child);
     if (it != children.end())
     {
+        child->parent = nullptr;
+        child->localPosition = child->position;
         children.erase(it);
         return true;
     }

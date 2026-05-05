@@ -84,6 +84,8 @@ private:
     double lastUpdateTime;
 
     void createMainCameraIfNoMainCameraExists();
+    void addStartedBehaviorsRecursive(GameObject *gameObject);
+    void registerGameObjectSubtree(GameObject *gameObject);
     void startDeletingGameObject(GameObject *gameObject);
     void updateDeltaTime();
     void delay();

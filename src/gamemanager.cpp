@@ -57,28 +57,24 @@ void GameManager::loadScene(Scene &scene)
 
     for (GameObject *gameObject : loadedObjects)
     {
-        if (!gameObject->getActive())
-        {
-            continue;
-        }
-
-        ScriptComponent *scriptComponent = gameObject->getComponent<ScriptComponent>();
-        if (scriptComponent == nullptr)
-        {
-            continue;
-        }
-
-        for (Behavior *behavior : scriptComponent->getBehaviors())
-        {
-            behavior->resolveReferences();
-            addStartedBehavior(behavior);
-        }
+        addStartedBehaviorsRecursive(gameObject);
     }
 }
 
 void GameManager::saveScene(const Scene &scene)
 {
-    scene.saveScene(gameObjects);
+    std::vector<GameObject *> rootObjects;
+    rootObjects.reserve(gameObjects.size());
+
+    for (GameObject *gameObject : gameObjects)
+    {
+        if (gameObject->getParent() == nullptr)
+        {
+            rootObjects.push_back(gameObject);
+        }
+    }
+
+    scene.saveScene(rootObjects);
 }
 
 void GameManager::createMainCameraIfNoMainCameraExists()
@@ -97,8 +93,42 @@ void GameManager::createMainCameraIfNoMainCameraExists()
     window->setMainCamera(mainCameraComponent);
 }
 
+void GameManager::addStartedBehaviorsRecursive(GameObject *gameObject)
+{
+    if (!gameObject->getActive())
+    {
+        return;
+    }
+
+    ScriptComponent *scriptComponent = gameObject->getComponent<ScriptComponent>();
+    if (scriptComponent != nullptr)
+    {
+        for (Behavior *behavior : scriptComponent->getBehaviors())
+        {
+            behavior->resolveReferences();
+            addStartedBehavior(behavior);
+        }
+    }
+
+    for (GameObject *child : gameObject->getChildren())
+    {
+        addStartedBehaviorsRecursive(child);
+    }
+}
+
 GameObject *GameManager::addGameObject(GameObject *gameObject)
 {
+    registerGameObjectSubtree(gameObject);
+    return gameObject;
+}
+
+void GameManager::registerGameObjectSubtree(GameObject *gameObject)
+{
+    if (gameObject == nullptr || gameObject->getIsRegisteredInGameManager())
+    {
+        return;
+    }
+
     gameObject->setGameManagerIteratorIndex(gameObjects.size());
     gameObjects.push_back(gameObject);
     gameObject->setIsRegisteredInGameManager(true);
@@ -107,7 +137,10 @@ GameObject *GameManager::addGameObject(GameObject *gameObject)
 
     gameObject->addComponentsToGameManager();
 
-    return gameObject;
+    for (GameObject *child : gameObject->getChildren())
+    {
+        registerGameObjectSubtree(child);
+    }
 }
 
 void GameManager::removeGameObject(GameObject *gameObject)
@@ -115,6 +148,16 @@ void GameManager::removeGameObject(GameObject *gameObject)
     if (gameObject->getIsMarkedForDeletion() || !gameObject->getIsRegisteredInGameManager())
     {
         return;
+    }
+
+    while (!gameObject->getChildren().empty())
+    {
+        removeGameObject(gameObject->getChildren().back());
+    }
+
+    if (gameObject->getParent() != nullptr)
+    {
+        gameObject->getParent()->removeChild(gameObject);
     }
 
     size_t lastIndex = gameObjects.size() - 1;
@@ -553,6 +596,17 @@ void GameManager::updateAnimatorComponents(double timeDelta)
     }
 }
 
+void GameManager::triggerStartedBehaviors()
+{
+    std::vector<Behavior *> behaviorsToStart = startedBehaviors;
+    startedBehaviors.clear();
+
+    for (Behavior *behavior : behaviorsToStart)
+    {
+        behavior->start();
+    }
+}
+
 AudioWrapper *GameManager::loadAudio(const std::string &filePath)
 {
     if (filePath.empty())
@@ -670,13 +724,14 @@ void GameManager::removeStartedBehavior(Behavior *behavior)
     }
 }
 
-void GameManager::triggerStartedBehaviors()
+const Eigen::Vector2f &GameManager::getGravityVector() const
 {
-    for (Behavior *behavior : startedBehaviors)
-    {
-        behavior->start();
-    }
-    startedBehaviors.clear();
+    return physicsManager->getGravityVector();
+}
+
+const Eigen::Vector2f &GameManager::getGravityVectorNormalized() const
+{
+    return physicsManager->getGravityVectorNormalized();
 }
 
 BaseObject *GameManager::getObjectById(int id) const
@@ -686,15 +741,6 @@ BaseObject *GameManager::getObjectById(int id) const
     {
         return it->second;
     }
+
     return nullptr;
-}
-
-const Eigen::Vector2f &GameManager::getGravityVector() const
-{
-    return physicsManager->getGravityVector();
-}
-
-const Eigen::Vector2f &GameManager::getGravityVectorNormalized() const
-{
-    return physicsManager->getGravityVectorNormalized();
 }

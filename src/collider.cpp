@@ -7,11 +7,11 @@
 #include "collision.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
 {
 }
 
-Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
+Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
 {
 }
 
@@ -32,6 +32,30 @@ BoundingRadiusProjectionAxis *Collider::getYProjections()
 bool Collider::getIsTrigger() const
 {
     return (flags & IS_TRIGGER) != 0;
+}
+
+const Eigen::Vector2f &Collider::getOffset() const
+{
+    return offset;
+}
+
+void Collider::setOffset(const Eigen::Vector2f &offset)
+{
+    this->offset = offset;
+
+    if (getGameObject() != nullptr)
+    {
+        scheduleSync();
+    }
+}
+
+Eigen::Vector2f Collider::getWorldPosition() const
+{
+    GameObject *gameObject = getGameObject();
+    const float rotatedOffsetX = offset.x() * gameObject->getCosRotation() - offset.y() * gameObject->getSinRotation();
+    const float rotatedOffsetY = offset.x() * gameObject->getSinRotation() + offset.y() * gameObject->getCosRotation();
+
+    return gameObject->getPosition() + Eigen::Vector2f(rotatedOffsetX, rotatedOffsetY);
 }
 
 void Collider::setIsTrigger(const bool isTrigger)

@@ -49,7 +49,7 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) c
 {
     std::vector<Eigen::Vector2f> normals(1);
 
-    normals[0] = other->getGameObject()->getPosition() - getGameObject()->getPosition();
+    normals[0] = other->getWorldPosition() - getWorldPosition();
 
     if (normals[0].squaredNorm() <= 1e-12f)
     {
@@ -65,7 +65,7 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) c
 
 Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis) const
 {
-    float value = axis.dot(getGameObject()->getPosition());
+    float value = axis.dot(getWorldPosition());
     float scaledRadius = getRadius();
 
     return Eigen::Vector2f(value - scaledRadius, value + scaledRadius);
@@ -73,20 +73,19 @@ Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis) con
 
 void CircleCollider::generateProjections()
 {
-    float x = getGameObject()->getPosition().x();
-    float y = getGameObject()->getPosition().y();
+    Eigen::Vector2f position = getWorldPosition();
     float scaledRadius = getRadius();
 
-    xProjections.getMin()->setProjectedPosition(x - scaledRadius);
+    xProjections.getMin()->setProjectedPosition(position.x() - scaledRadius);
     repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
 
-    xProjections.getMax()->setProjectedPosition(x + scaledRadius);
+    xProjections.getMax()->setProjectedPosition(position.x() + scaledRadius);
     repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
 
-    yProjections.getMin()->setProjectedPosition(y - scaledRadius);
+    yProjections.getMin()->setProjectedPosition(position.y() - scaledRadius);
     repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
 
-    yProjections.getMax()->setProjectedPosition(y + scaledRadius);
+    yProjections.getMax()->setProjectedPosition(position.y() + scaledRadius);
     repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
 }
 
@@ -107,7 +106,7 @@ Edge CircleCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
         direction.normalize();
     }
 
-    Eigen::Vector2f supportPoint = getGameObject()->getPosition() + direction * getRadius();
+    Eigen::Vector2f supportPoint = getWorldPosition() + direction * getRadius();
     return Edge(supportPoint, supportPoint, supportPoint);
 }
 

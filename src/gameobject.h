@@ -55,9 +55,9 @@ class GameObject : public BaseObject
 {
     friend class GameManager;
     friend class Scene;
+    friend void from_json(const nlohmann::json &j, GameObject &gameObject);
 
 public:
-    GameObject();
     GameObject(GameObject &) = delete;
     GameObject &operator=(const GameObject &) = delete;
 
@@ -68,12 +68,14 @@ public:
     float getSinRotation() const;
 
     bool getActive() const;
+    const Eigen::Vector2f &getLocalPosition() const;
     const Eigen::Vector2f &getPosition() const;
     float getX() const;
     float getY() const;
     const Eigen::Vector2f &getScale() const;
     const std::string &getName() const;
     const std::string &getTag() const;
+    GameObject *getParent() const;
 
     Component *getComponent(const ComponentType &componentType) const;
     Component *const *getComponents() const;
@@ -88,6 +90,7 @@ public:
     // Setters
     GameObject *setRotation(const float rotation);
     GameObject *setActive(const bool active);
+    GameObject *setLocalPosition(const Eigen::Vector2f &position);
     GameObject *setPosition(const Eigen::Vector2f &position);
     GameObject *setScale(const Eigen::Vector2f &scale);
     GameObject *setName(const std::string &name);
@@ -101,6 +104,7 @@ public:
     void destroy();
 
 private:
+    GameObject();
     GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag);
 
     ~GameObject();
@@ -110,6 +114,8 @@ private:
     float sinRotation;
     float cosRotation;
 
+    GameObject *parent;
+    Eigen::Vector2f localPosition;
     Eigen::Vector2f position;
     Eigen::Vector2f scale;
     std::string name;
@@ -121,6 +127,7 @@ private:
     uint8_t flags;
 
     void updateCollider();
+    void translateSubtree(const Eigen::Vector2f &delta);
     void addComponentInternal(Component *component);
     GameObject *setIsMarkedForDeletion(const bool markedForDeletion);
     GameObject *setIsRegisteredInGameManager(const bool isRegisteredInGameManager);

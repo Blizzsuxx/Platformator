@@ -1248,6 +1248,99 @@ namespace
         verifySupportEdge(-normals[1], "-y face normal");
     }
 
+    void testParentChildRelativeMovement()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *parent = gameManager.createGameObject()->setName("Parent");
+        sceneScope.add(parent);
+
+        GameObject *child = gameManager.createGameObject();
+        sceneScope.add(child);
+        child->setName("Child");
+        child->addComponent<BoxCollider>(20.0f, 10.0f);
+
+        parent->addChild(child);
+        require(gameManager.getObjectById(child->getId()) == child,
+                "Parent-child regression expected manager-created children to remain registered after parenting.");
+
+        child->setLocalPosition(Eigen::Vector2f(15.0f, -8.0f));
+        parent->setPosition(Eigen::Vector2f(120.0f, 64.0f));
+
+        require((child->getPosition() - Eigen::Vector2f(135.0f, 56.0f)).squaredNorm() <= 1e-6f,
+                "Parent-child regression expected child world position to follow parent movement while preserving local offset.");
+
+        BoxCollider *childCollider = child->getComponent<BoxCollider>();
+        require(childCollider != nullptr, "Parent-child regression lost the child box collider.");
+        childCollider->applySync();
+
+        Eigen::Vector2f colliderCenter = Eigen::Vector2f::Zero();
+        for (const Eigen::Vector2f &vertex : childCollider->getVertices())
+        {
+            colliderCenter += vertex;
+        }
+        colliderCenter /= 4.0f;
+
+        require((colliderCenter - child->getPosition()).squaredNorm() <= 1e-6f,
+                "Parent-child regression expected the child collider center to move with the child transform.");
+    }
+
+    void testColliderOffsetAffectsGeometry()
+    {
+        GameManager &gameManager = GameManager::getInstance();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *boxObject = createStaticBox(gameManager, "Offset Box", 200.0f, 120.0f, 40.0f, 20.0f);
+        sceneScope.add(boxObject);
+
+        BoxCollider *boxCollider = boxObject->getComponent<BoxCollider>();
+        require(boxCollider != nullptr, "Collider offset regression lost the box collider.");
+
+        boxCollider->setOffset(Eigen::Vector2f(10.0f, -5.0f));
+        boxCollider->applySync();
+
+        Eigen::Vector2f boxCenter = Eigen::Vector2f::Zero();
+        for (const Eigen::Vector2f &vertex : boxCollider->getVertices())
+        {
+            boxCenter += vertex;
+        }
+        boxCenter /= 4.0f;
+
+        require((boxCenter - Eigen::Vector2f(210.0f, 115.0f)).squaredNorm() <= 1e-6f,
+                "Collider offset regression expected an unrotated box collider to shift by its offset.");
+
+        boxObject->setRotation(static_cast<float>(M_PI_2));
+        boxCollider->applySync();
+
+        boxCenter = Eigen::Vector2f::Zero();
+        for (const Eigen::Vector2f &vertex : boxCollider->getVertices())
+        {
+            boxCenter += vertex;
+        }
+        boxCenter /= 4.0f;
+
+        require((boxCenter - Eigen::Vector2f(205.0f, 130.0f)).squaredNorm() <= 1e-5f,
+                "Collider offset regression expected the offset to rotate with the owning game object.");
+
+        GameObject *circleObject = createDynamicCircle(gameManager, "Offset Circle", 80.0f, 90.0f, 12.0f);
+        sceneScope.add(circleObject);
+
+        CircleCollider *circleCollider = circleObject->getComponent<CircleCollider>();
+        require(circleCollider != nullptr, "Collider offset regression lost the circle collider.");
+
+        circleCollider->setOffset(Eigen::Vector2f(-6.0f, 4.0f));
+        circleCollider->applySync();
+
+        Eigen::Vector2f xProjection = circleCollider->projectOntoAxis(X_AXIS);
+        Eigen::Vector2f yProjection = circleCollider->projectOntoAxis(Y_AXIS);
+
+        require(std::abs((xProjection.x() + xProjection.y()) * 0.5f - 74.0f) <= 1e-6f,
+                "Collider offset regression expected the circle collider X projection center to include its offset.");
+        require(std::abs((yProjection.x() + yProjection.y()) * 0.5f - 94.0f) <= 1e-6f,
+                "Collider offset regression expected the circle collider Y projection center to include its offset.");
+    }
+
     struct TestCase
     {
         const char *name;
@@ -1275,6 +1368,8 @@ int main()
         {"audio_component_controls", testAudioComponentControls},
         {"path_manager_canonicalization_and_fallback", testPathManagerCanonicalizationAndFallback},
         {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
+        {"parent_child_relative_movement", testParentChildRelativeMovement},
+        {"collider_offset_affects_geometry", testColliderOffsetAffectsGeometry},
     };
 
     GameManager::getInstance();

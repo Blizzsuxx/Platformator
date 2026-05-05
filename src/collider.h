@@ -150,6 +150,10 @@ public:
     bool getIsTrigger() const;
     void setIsTrigger(const bool isTrigger);
 
+    const Eigen::Vector2f &getOffset() const;
+    void setOffset(const Eigen::Vector2f &offset);
+    Eigen::Vector2f getWorldPosition() const;
+
     bool getIsQueuedForAdd() const;
     void markQueuedForAdd();
     void clearQueuedForAdd();
@@ -176,6 +180,7 @@ protected:
     uint64_t collisionMask;
 
     uint64_t stateVersion;
+    Eigen::Vector2f offset;
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;

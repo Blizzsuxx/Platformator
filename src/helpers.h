@@ -1,5 +1,7 @@
 #pragma once
 
+#include "buildconfig.h"
+
 #include <cstdio>
 #include <Eigen/Dense>
 #include <array>
@@ -55,7 +57,7 @@ struct ClipPoints
         }
         else
         {
-            printf("Warning: ClipPoints overflow, point not added\n");
+            PLATFORMATOR_LOG("Warning: ClipPoints overflow, point not added\n");
         }
     }
 

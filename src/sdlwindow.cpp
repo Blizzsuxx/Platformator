@@ -8,7 +8,7 @@
 #include "audiowrapper.h"
 #include "gamemanager.h"
 
-SDLWindow::SDLWindow(const WindowSettings &windowSettings)
+SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
     : window(nullptr),
       renderer(nullptr),
       mixer(nullptr),
@@ -26,6 +26,12 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings)
       listeners(),
       transientAudioPlaybacks()
 {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    debugDraw.setSettings(debugSettings);
+#else
+    (void)debugSettings;
+#endif
+
     if (!init())
     {
         printf("Failed to initialize SDLWindow!");
@@ -33,6 +39,7 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings)
         return;
     }
 
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     listeners.push_back([this](SDL_Event event, double)
                         {
         if (event.type != SDL_EVENT_KEY_DOWN)
@@ -57,18 +64,19 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings)
         case SDLK_F5:
             frameAdvanceMode = !frameAdvanceMode;
             advanceFrameRequested = false;
-            printf("Frame advance mode: %s\n", frameAdvanceMode ? "enabled" : "disabled");
+            PLATFORMATOR_LOG("Frame advance mode: %s\n", frameAdvanceMode ? "enabled" : "disabled");
             break;
         case SDLK_F6:
             if (frameAdvanceMode)
             {
                 advanceFrameRequested = true;
-                printf("Advancing one frame\n");
+                PLATFORMATOR_LOG("Advancing one frame\n");
             }
             break;
         default:
             break;
         } });
+#endif
 }
 
 SDLWindow::~SDLWindow()
@@ -147,7 +155,7 @@ bool SDLWindow::init()
         rendererName = "Unknown Renderer";
     }
 
-    printf("Renderer Used: %s\n", rendererName);
+    PLATFORMATOR_LOG("Renderer Used: %s\n", rendererName);
     SDL_SetWindowTitle(window, ("Platformator: " + std::string(rendererName)).c_str());
 
     return true;
@@ -213,6 +221,7 @@ void SDLWindow::render()
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(renderer);
 
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
     if (shouldSimulateFrame())
     {
@@ -221,6 +230,7 @@ void SDLWindow::render()
             debugDraw.addGridCellDebugObject(cellEntry.first);
         }
     }
+#endif
 
     for (Sprite *spriteComponent : spriteComponents)
     {
@@ -231,6 +241,7 @@ void SDLWindow::render()
 
         mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
 
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
         if (collider != nullptr && shouldSimulateFrame())
         {
@@ -243,15 +254,20 @@ void SDLWindow::render()
                 debugDraw.addCircleColliderDebugObject(*(CircleCollider *)collider);
             }
         }
+#endif
     }
 
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
+#endif
     SDL_RenderPresent(renderer);
 }
 
 void SDLWindow::clearDebugObjects()
 {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     debugDraw.clearDebugObjects();
+#endif
 }
 
 SDL_Window *SDLWindow::getWindow() const
@@ -286,17 +302,27 @@ bool SDLWindow::isRunning() const
 
 bool SDLWindow::getIsFrameAdvanceMode() const
 {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     return frameAdvanceMode;
+#else
+    return false;
+#endif
 }
 
 bool SDLWindow::shouldSimulateFrame() const
 {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     return !frameAdvanceMode || advanceFrameRequested;
+#else
+    return true;
+#endif
 }
 
 void SDLWindow::clearAdvanceFrameRequest()
 {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     advanceFrameRequested = false;
+#endif
 }
 
 void SDLWindow::addSpriteComponent(Sprite *spriteComponent)

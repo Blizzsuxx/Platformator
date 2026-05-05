@@ -245,7 +245,9 @@ void PhysicsManager::narrowPhase()
         if (pair->getCollision() != nullptr)
         {
             activeCollisions.push_back(pair->getCollision());
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
             DebugDraw::getInstance().addCollisionDebugObject(*pair->getCollision());
+#endif
         }
     }
 
@@ -396,7 +398,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (cp.count < 2)
     {
         collision->setContactPoints(ClipPoints());
-        printf("Clipping failed at first reference vertex\n");
+        PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
         return;
     }
 
@@ -410,7 +412,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (cp.count < 2)
     {
         collision->setContactPoints(ClipPoints());
-        printf("Clipping failed at second reference vertex\n");
+        PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
         return;
     }
 

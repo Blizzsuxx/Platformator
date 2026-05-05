@@ -15,13 +15,24 @@ void GameManager::setStartupWindowSettings(const WindowSettings &windowSettings)
     startupWindowSettings() = windowSettings;
 }
 
+void GameManager::setStartupDebugSettings(const DebugSettings &debugSettings)
+{
+    startupDebugSettings() = debugSettings;
+}
+
 WindowSettings &GameManager::startupWindowSettings()
 {
     static WindowSettings windowSettings;
     return windowSettings;
 }
 
-GameManager::GameManager() : window(new SDLWindow(startupWindowSettings())), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+DebugSettings &GameManager::startupDebugSettings()
+{
+    static DebugSettings debugSettings;
+    return debugSettings;
+}
+
+GameManager::GameManager() : window(new SDLWindow(startupWindowSettings(), startupDebugSettings())), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -252,13 +263,15 @@ void GameManager::loop()
         updateDeltaTime();
         window->handleSDLEvents(deltaTime);
 
-        if (window->shouldSimulateFrame())
+        auto simulateCurrentFrame = [this]()
         {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
             window->clearDebugObjects();
             if (window->getIsFrameAdvanceMode())
             {
                 deltaTime = FRAME_TIME;
             }
+#endif
 
             triggerStartedBehaviors();
             fixedUpdateScriptComponents(deltaTime);
@@ -270,7 +283,16 @@ void GameManager::loop()
             updateScriptComponents(deltaTime);
             updateAnimatorComponents(deltaTime);
             lateUpdateScriptComponents(deltaTime);
+        };
+
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+        if (window->shouldSimulateFrame())
+        {
+            simulateCurrentFrame();
         }
+#else
+        simulateCurrentFrame();
+#endif
 
         window->updateTransientAudio();
         window->render();
@@ -329,10 +351,7 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath)
 
 void GameManager::freeTexture(TextureWrapper *textureWrapper)
 {
-    if (ENABLE_LOGGING)
-    {
-        printf("Freeing texture: %s\n", textureWrapper->getFilePath().c_str());
-    }
+    PLATFORMATOR_LOG("Freeing texture: %s\n", textureWrapper->getFilePath().c_str());
 
     auto it = textureCache.find(textureWrapper->getFilePath());
     if (it != textureCache.end())
@@ -640,10 +659,7 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath)
 
 void GameManager::freeAudio(AudioWrapper *audioWrapper)
 {
-    if (ENABLE_LOGGING)
-    {
-        printf("Freeing audio: %s\n", audioWrapper->getFilePath().c_str());
-    }
+    PLATFORMATOR_LOG("Freeing audio: %s\n", audioWrapper->getFilePath().c_str());
     auto it = audioCache.find(audioWrapper->getFilePath());
     if (it != audioCache.end())
     {
@@ -693,10 +709,7 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
 
 void GameManager::freeAnimationClip(AnimationClip *animationClip)
 {
-    if (ENABLE_LOGGING)
-    {
-        printf("Freeing animation clip: %s\n", animationClip->getFilePath().c_str());
-    }
+    PLATFORMATOR_LOG("Freeing animation clip: %s\n", animationClip->getFilePath().c_str());
 
     auto it = animationClipCache.find(animationClip->getFilePath());
     if (it != animationClipCache.end())

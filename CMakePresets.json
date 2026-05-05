@@ -20,7 +20,17 @@
             "displayName": "Debug",
             "inherits": "default",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON"
+            }
+        },
+        {
+            "name": "production",
+            "displayName": "Production",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF"
             }
         },
         {
@@ -28,7 +38,8 @@
             "displayName": "RelWithDebInfo",
             "inherits": "default",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON"
             }
         }
     ],
@@ -42,6 +53,11 @@
             "name": "debug",
             "displayName": "Debug",
             "configurePreset": "debug"
+        },
+        {
+            "name": "production",
+            "displayName": "Production",
+            "configurePreset": "production"
         },
         {
             "name": "relwithdebinfo",

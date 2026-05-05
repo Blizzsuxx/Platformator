@@ -152,7 +152,7 @@ class MainWindow(QMainWindow):
 
     def build_project(self) -> None:
         target_name, _program_path = self._resolve_run_target()
-        self.run_controller.build_only(target_name=target_name)
+        self.run_controller.build_only(self.run_window_settings.build_preset, target_name=target_name)
 
     def run_scene(self) -> None:
         if not self.save_scene():
@@ -162,6 +162,7 @@ class MainWindow(QMainWindow):
         target_name, program_path = self._resolve_run_target()
         self.run_controller.run_scene(
             self.current_scene_path,
+            preset=self.run_window_settings.build_preset,
             target_name=target_name,
             program_path=program_path,
             runtime_arguments=self.run_window_settings.to_cli_args(),

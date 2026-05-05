@@ -1,5 +1,6 @@
 #include "segmentedintervallist.h"
 #include "aabb.h"
+#include "buildconfig.h"
 
 SegmentedIntervalList::SegmentedIntervalList(AABB *owner, Axis axis, bool isPrimary)
     : chunks(), owner(owner), axis(axis), isPrimary(isPrimary)
@@ -33,7 +34,7 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
 
     if (chunkWhereItWasInserted == nullptr || chunkWhereItWasInserted2 == nullptr || indexInsideChunkWhereItWasInserted == SIZE_MAX || indexInsideChunkWhereItWasInserted2 == SIZE_MAX)
     {
-        printf("Error: trying to add a projection axis with stale proxy state, chunkWhereItWasInserted: %p, chunkWhereItWasInserted2: %p, indexInsideChunkWhereItWasInserted: %zu, indexInsideChunkWhereItWasInserted2: %zu\n", chunkWhereItWasInserted, chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted, indexInsideChunkWhereItWasInserted2);
+        PLATFORMATOR_LOG("Error: trying to add a projection axis with stale proxy state, chunkWhereItWasInserted: %p, chunkWhereItWasInserted2: %p, indexInsideChunkWhereItWasInserted: %zu, indexInsideChunkWhereItWasInserted2: %zu\n", chunkWhereItWasInserted, chunkWhereItWasInserted2, indexInsideChunkWhereItWasInserted, indexInsideChunkWhereItWasInserted2);
         return;
     }
 
@@ -58,7 +59,7 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
 
     if (axisProxy == nullptr)
     {
-        printf("Error: trying to remove a projection axis that is not in the list\n");
+        PLATFORMATOR_LOG("Error: trying to remove a projection axis that is not in the list\n");
         return;
     }
 
@@ -70,7 +71,7 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
 
     if (currentChunk == nullptr || upperChunk == nullptr || indexInsideChunkWhereItWillBeRemoved == SIZE_MAX || indexInsideChunkWhereItWillBeRemoved2 == SIZE_MAX)
     {
-        printf("Error: trying to remove a projection axis with stale proxy state, currentChunk: %p, upperChunk: %p, indexInsideChunkWhereItWillBeRemoved: %zu, indexInsideChunkWhereItWillBeRemoved2: %zu\n", currentChunk, upperChunk, indexInsideChunkWhereItWillBeRemoved, indexInsideChunkWhereItWillBeRemoved2);
+        PLATFORMATOR_LOG("Error: trying to remove a projection axis with stale proxy state, currentChunk: %p, upperChunk: %p, indexInsideChunkWhereItWillBeRemoved: %zu, indexInsideChunkWhereItWillBeRemoved2: %zu\n", currentChunk, upperChunk, indexInsideChunkWhereItWillBeRemoved, indexInsideChunkWhereItWillBeRemoved2);
         return;
     }
 
@@ -104,21 +105,21 @@ void SegmentedIntervalList::repairProjection(BoundingRadiusProjectionProxy *proj
 {
     if (projection == nullptr)
     {
-        printf("Error: trying to repair a null projection\n");
+        PLATFORMATOR_LOG("Error: trying to repair a null projection\n");
         return;
     }
 
     LocalSortArray *chunk = projection->getChunk();
     if (chunk == nullptr)
     {
-        printf("Error: trying to repair a projection that is not in any chunk, projection: %p\n", projection);
+        PLATFORMATOR_LOG("Error: trying to repair a projection that is not in any chunk, projection: %p\n", projection);
         return;
     }
 
     size_t index = projection->getChunkIndex();
     if (index >= chunk->getSize() || chunk->get(index) != projection)
     {
-        printf("Error: trying to repair a projection that is in the chunk but has an invalid index, projection: %p, chunk: %p, index: %zu\n", projection, chunk, index);
+        PLATFORMATOR_LOG("Error: trying to repair a projection that is in the chunk but has an invalid index, projection: %p, chunk: %p, index: %zu\n", projection, chunk, index);
         return;
     }
 
@@ -145,7 +146,7 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::getPreviousIndex(Loca
             return {leftChunk, leftChunk->getSize() - 1};
         }
 
-        printf("Warning: found an empty chunk while looking for the previous index, leftChunk: %p\n", leftChunk);
+        PLATFORMATOR_LOG("Warning: found an empty chunk while looking for the previous index, leftChunk: %p\n", leftChunk);
         leftChunk = leftChunk->getLeftChunk();
     }
 
@@ -172,7 +173,7 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::getNextIndex(LocalSor
             return {rightChunk, 0};
         }
 
-        printf("Warning: found an empty chunk while looking for the next index, rightChunk: %p\n", rightChunk);
+        PLATFORMATOR_LOG("Warning: found an empty chunk while looking for the next index, rightChunk: %p\n", rightChunk);
         rightChunk = rightChunk->getRightChunk();
     }
 
@@ -373,7 +374,7 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::find(BoundingRadiusPr
         }
         else
         {
-            printf("Error: trying to find an element that is not in the chunk it should be in, chunk: %p, element: %p\n", chunk, element);
+            PLATFORMATOR_LOG("Error: trying to find an element that is not in the chunk it should be in, chunk: %p, element: %p\n", chunk, element);
         }
     }
 

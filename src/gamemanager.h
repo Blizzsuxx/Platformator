@@ -1,5 +1,6 @@
 #pragma once
 
+#include "debugsettings.h"
 #include "sdlwindow.h"
 #include "physicsmanager.h"
 #include "windowsettings.h"
@@ -25,6 +26,7 @@ class GameManager
 
 public:
     static void setStartupWindowSettings(const WindowSettings &windowSettings);
+    static void setStartupDebugSettings(const DebugSettings &debugSettings);
 
     static GameManager &getInstance()
     {
@@ -66,6 +68,7 @@ private:
     GameManager();
     ~GameManager();
     static WindowSettings &startupWindowSettings();
+    static DebugSettings &startupDebugSettings();
 
     SDLWindow *window;
     std::vector<GameObject *> gameObjects;

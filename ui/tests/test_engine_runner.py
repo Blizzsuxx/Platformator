@@ -12,7 +12,7 @@ def test_run_pipeline_targets_debug_build_and_main_binary() -> None:
     assert len(pipeline) == 3
     assert pipeline[0].program == "cmake"
     assert pipeline[0].arguments == ("--preset", "debug")
-    assert pipeline[1].arguments == ("--build", "--preset", "debug")
+    assert pipeline[1].arguments == ("--build", "--preset", "debug", "--target", project_paths.main_binary.name)
     assert pipeline[2].program.endswith("/bin/main")
     assert pipeline[2].arguments == (str(project_paths.default_scene),)
 
@@ -43,3 +43,11 @@ def test_run_pipeline_appends_window_settings_arguments() -> None:
         "--maximized",
         "--keep-aspect-ratio",
     )
+
+
+def test_run_pipeline_can_target_production_preset() -> None:
+    project_paths = ProjectPaths.discover(Path(__file__).resolve())
+    pipeline = create_run_pipeline(project_paths, scene_path=project_paths.default_scene, preset="production")
+
+    assert pipeline[0].arguments == ("--preset", "production")
+    assert pipeline[1].arguments == ("--build", "--preset", "production", "--target", project_paths.main_binary.name)

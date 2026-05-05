@@ -3,6 +3,8 @@
 #include "gridcell.h"
 #include <cmath>
 
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+
 DebugDraw::DebugDraw()
     : debugObjectsBuffer(), showColliders(true), showCollisionPoints(true), showCollisionNormals(true), showGridCells(true)
 {
@@ -10,6 +12,14 @@ DebugDraw::DebugDraw()
 
 DebugDraw::~DebugDraw()
 {
+}
+
+void DebugDraw::setSettings(const DebugSettings &debugSettings)
+{
+    showColliders = debugSettings.showColliders;
+    showCollisionPoints = debugSettings.showCollisionPoints;
+    showCollisionNormals = debugSettings.showCollisionNormals;
+    showGridCells = debugSettings.showGridCells;
 }
 
 void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight)
@@ -388,3 +398,5 @@ DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g
 DebugObject::~DebugObject()
 {
 }
+
+#endif

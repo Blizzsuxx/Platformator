@@ -1,0 +1,13 @@
+#pragma once
+
+#include <cstdio>
+
+#cmakedefine01 PLATFORMATOR_ENABLE_DEBUG_TOOLS
+
+#define ENABLE_LOGGING PLATFORMATOR_ENABLE_DEBUG_TOOLS
+
+#if ENABLE_LOGGING
+#define PLATFORMATOR_LOG(...) std::printf(__VA_ARGS__)
+#else
+#define PLATFORMATOR_LOG(...) ((void)0)
+#endif

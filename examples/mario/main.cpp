@@ -24,6 +24,7 @@ int main(int argc, char *args[])
 
     RuntimeOptions runtimeOptions = parseRuntimeOptions(argc, args, getDefaultScenePath().string());
     GameManager::setStartupWindowSettings(runtimeOptions.windowSettings);
+    GameManager::setStartupDebugSettings(runtimeOptions.debugSettings);
 
     GameManager &gameManager = GameManager::getInstance();
     SDLWindow *window = gameManager.getWindow();

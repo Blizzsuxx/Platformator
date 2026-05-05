@@ -1,6 +1,7 @@
 #include "localsortarray.h"
 #include "swapcallback.h"
 #include "segmentedintervallist.h"
+#include "buildconfig.h"
 
 LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
     : size(0), array(), checkpoints(), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
@@ -248,7 +249,7 @@ size_t LocalSortArray::find(BoundingRadiusProjectionProxy *element)
         return cachedIndex;
     }
 
-    printf("Warning: element's cached index is invalid for some reason\n");
+    PLATFORMATOR_LOG("Warning: element's cached index is invalid for some reason\n");
 
     return SIZE_MAX;
 }

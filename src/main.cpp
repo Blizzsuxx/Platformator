@@ -9,6 +9,7 @@ int main(int argc, char *args[])
 {
     RuntimeOptions runtimeOptions = parseRuntimeOptions(argc, args, "assets/scenes/default.scene");
     GameManager::setStartupWindowSettings(runtimeOptions.windowSettings);
+    GameManager::setStartupDebugSettings(runtimeOptions.debugSettings);
 
     GameManager &gameManager = GameManager::getInstance();
     Scene loadedScene(runtimeOptions.sceneFilePath);

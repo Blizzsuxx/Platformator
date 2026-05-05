@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "camera.h"
+#include "debugsettings.h"
 #include "debugdraw.h"
 #include "windowsettings.h"
 
@@ -17,7 +18,7 @@ class AudioWrapper;
 class SDLWindow
 {
 public:
-    SDLWindow(const WindowSettings &windowSettings);
+    SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
     ~SDLWindow();
 
     void handleSDLEvents(double deltaTime);

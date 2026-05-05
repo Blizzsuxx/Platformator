@@ -1,5 +1,7 @@
 #include "pathmanager.h"
 
+#include "buildconfig.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -202,8 +204,8 @@ void PathManager::logFallbackWarning(const std::string &requestedPath,
                                      const std::string &reason,
                                      const std::string &fallbackPath) const
 {
-    printf("[PathManager][Warning] requested='%s' reason='%s' fallback='%s'\n",
-           requestedPath.c_str(),
-           reason.c_str(),
-           fallbackPath.c_str());
+    PLATFORMATOR_LOG("[PathManager][Warning] requested='%s' reason='%s' fallback='%s'\n",
+                     requestedPath.c_str(),
+                     reason.c_str(),
+                     fallbackPath.c_str());
 }

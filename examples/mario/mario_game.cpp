@@ -9,6 +9,17 @@ namespace mario
 {
     MarioGame *MarioGame::instance = nullptr;
 
+    MarioGame::MarioGame()
+        : gameManager(GameManager::getInstance()),
+          window(*gameManager.getWindow()),
+          player(),
+          playerScript(nullptr),
+          totalCoins(0),
+          collectedCoins(0),
+          gameWon(false)
+    {
+    }
+
     MarioGame::~MarioGame()
     {
         if (instance == this)
@@ -24,6 +35,7 @@ namespace mario
 
     void MarioGame::start()
     {
+        instance = this;
         playerScript = getBehavior<MarioPlayer>(player.get());
         updateWindowTitle();
     }

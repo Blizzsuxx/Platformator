@@ -22,26 +22,16 @@ int main(int argc, char *args[])
 {
     std::filesystem::path scenePath = getDefaultScenePath();
 
-    try
-    {
-        RuntimeOptions runtimeOptions = parseRuntimeOptions(argc, args, getDefaultScenePath().string());
-        GameManager::setStartupWindowSettings(runtimeOptions.windowSettings);
+    RuntimeOptions runtimeOptions = parseRuntimeOptions(argc, args, getDefaultScenePath().string());
+    GameManager::setStartupWindowSettings(runtimeOptions.windowSettings);
 
-        GameManager &gameManager = GameManager::getInstance();
-        SDLWindow *window = gameManager.getWindow();
-        scenePath = runtimeOptions.sceneFilePath;
-        Scene loadedScene(scenePath.string());
+    GameManager &gameManager = GameManager::getInstance();
+    SDLWindow *window = gameManager.getWindow();
+    scenePath = runtimeOptions.sceneFilePath;
+    Scene loadedScene(scenePath.string());
 
-        mario::MarioGame marioGame(gameManager, *window, loadedScene);
-        gameManager.loadScene(loadedScene);
-        marioGame.initializeScene();
-        gameManager.loop();
-    }
-    catch (const std::exception &exception)
-    {
-        std::cerr << "Failed to load Mario example scene '" << scenePath.string() << "': " << exception.what() << '\n';
-        return 1;
-    }
+    gameManager.loadScene(loadedScene);
+    gameManager.loop();
 
     return 0;
 }

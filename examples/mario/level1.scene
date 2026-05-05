@@ -1576,5 +1576,33 @@
       "y": 1.0
     },
     "tag": "goal"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "behaviors": [
+          {
+            "player": 102,
+            "type": "MarioGame"
+          }
+        ],
+        "id": 1094,
+        "type": 5
+      }
+    ],
+    "id": 1093,
+    "name": "manager",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": ""
   }
 ]

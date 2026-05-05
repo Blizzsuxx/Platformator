@@ -13,15 +13,16 @@ namespace mario
 {
     class MarioPlayer;
 
-    class MarioGame
+    class MarioGame : public Behavior
     {
     public:
-        MarioGame(GameManager &gameManager, SDLWindow &window, Scene &scene);
+        MarioGame();
         ~MarioGame();
 
         static MarioGame &getInstance();
 
-        void initializeScene();
+        void start() override;
+
         bool isGameWon() const;
         size_t getCoinCount() const;
         size_t getCollectedCoinCount() const;
@@ -35,15 +36,18 @@ namespace mario
 
         GameManager &gameManager;
         SDLWindow &window;
-        Scene &scene;
-        MarioPlayer *player;
+        ObjectReference<GameObject> player;
+        MarioPlayer *playerScript;
         size_t totalCoins;
         size_t collectedCoins;
         bool gameWon;
 
-        void registerEventHooks();
-        void handleSdlKeyDown(SDL_Keycode key);
-        void saveScene() const;
         void updateWindowTitle();
+
+        SERIALIZABLE_SCRIPT(
+            MarioGame,
+            totalCoins,
+            collectedCoins,
+            player);
     };
 } // namespace mario

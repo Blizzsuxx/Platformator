@@ -23,7 +23,7 @@ from platformator_ui.services.asset_paths import normalize_scene_editor_asset_pa
 from platformator_ui.services.project_paths import ProjectPaths
 
 
-GRID_SPACING_UNITS = 64.0
+GRID_SPACING_UNITS = 16.0
 
 
 @dataclass(frozen=True)

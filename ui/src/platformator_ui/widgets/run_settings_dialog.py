@@ -8,7 +8,7 @@ from platformator_ui.services.run_settings import RunWindowSettings
 class RunSettingsDialog(QDialog):
     def __init__(self, run_window_settings: RunWindowSettings, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Run Window Settings")
+        self.setWindowTitle("Project Settings")
 
         self.window_width_spin_box = QSpinBox(self)
         self.window_width_spin_box.setRange(1, 16384)

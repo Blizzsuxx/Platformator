@@ -23,10 +23,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 def launch_editor(scene_path: Path | None = None) -> int:
     app = create_application()
     project_paths = ProjectPaths.discover(Path(__file__).resolve())
-    window = MainWindow(project_paths=project_paths)
+    window = MainWindow(project_paths=project_paths, startup_scene_path=scene_path)
     window.show()
-
-    if scene_path is not None:
-        window.open_scene(scene_path)
 
     return app.exec()

@@ -44,7 +44,7 @@ from .widgets import AssetBrowserWidget, BehaviorLibraryWidget, InspectorWidget,
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, project_paths: ProjectPaths, parent=None) -> None:
+    def __init__(self, project_paths: ProjectPaths, startup_scene_path: Path | None = None, restore_last_scene: bool = True, parent=None) -> None:
         super().__init__(parent)
         self.project_paths = project_paths
         self.recent_files = RecentFilesStore()
@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self._create_menus_and_toolbars()
         self._connect_signals()
         self._restore_window_state()
+        self._restore_startup_scene(startup_scene_path, restore_last_scene)
         self._reload_scene_views(select_first=True)
         self._reset_undo_history()
 
@@ -94,11 +95,7 @@ class MainWindow(QMainWindow):
         if chosen_path is None:
             return
 
-        self.scene_document = SceneSerializer.load(chosen_path, repo_root=self.project_paths.repo_root)
-        self.current_scene_path = chosen_path
-        self.current_object_id = None
-        self.recent_files.add_file(chosen_path)
-        self._set_dirty(False)
+        self._load_scene(chosen_path)
         self.statusBar().showMessage(f"Opened {chosen_path}", 4000)
         self.output_panel.append_text(f"\n[Editor] Opened scene {chosen_path}.\n")
         self._reload_scene_views(select_first=True)
@@ -160,15 +157,15 @@ class MainWindow(QMainWindow):
             runtime_arguments=self.run_window_settings.to_cli_args(),
         )
 
-    def edit_run_window_settings(self) -> None:
+    def edit_project_settings(self) -> None:
         updated_settings = RunSettingsDialog.edit(self.run_window_settings, self)
         if updated_settings is None:
             return
 
         self.run_window_settings = updated_settings
         self.run_settings_store.save(updated_settings)
-        self.output_panel.append_text(f"\n[Run] Updated window settings: {updated_settings.summary()}.\n")
-        self.statusBar().showMessage("Updated run window settings", 3000)
+        self.output_panel.append_text(f"\n[Settings] Updated project settings: {updated_settings.summary()}.\n")
+        self.statusBar().showMessage("Updated project settings", 3000)
 
     def validate_scene(self) -> None:
         issues = validate_scene_document(self.scene_document)
@@ -227,7 +224,7 @@ class MainWindow(QMainWindow):
         self.undo_action = self.undo_stack.createUndoAction(self, "Undo")
         self.redo_action = self.undo_stack.createRedoAction(self, "Redo")
         self.validate_action = QAction("Validate", self)
-        self.run_window_settings_action = QAction("Window Settings", self)
+        self.project_settings_action = QAction("Project Settings", self)
         self.build_action = QAction("Build", self)
         self.run_action = QAction("Build && Run", self)
         self.zoom_in_action = QAction("Zoom In", self)
@@ -267,10 +264,11 @@ class MainWindow(QMainWindow):
             toggle_action.setText(title)
             view_menu.addAction(toggle_action)
 
+        settings_menu = self.menuBar().addMenu("Settings")
+        settings_menu.addAction(self.project_settings_action)
+
         run_menu = self.menuBar().addMenu("Run")
         run_menu.addAction(self.validate_action)
-        run_menu.addSeparator()
-        run_menu.addAction(self.run_window_settings_action)
         run_menu.addSeparator()
         run_menu.addAction(self.build_action)
         run_menu.addAction(self.run_action)
@@ -307,7 +305,7 @@ class MainWindow(QMainWindow):
         self.frame_selection_action.triggered.connect(self.scene_canvas.frame_selection)
         self.reset_layout_action.triggered.connect(self._reset_dock_layout)
         self.validate_action.triggered.connect(self.validate_scene)
-        self.run_window_settings_action.triggered.connect(self.edit_run_window_settings)
+        self.project_settings_action.triggered.connect(self.edit_project_settings)
         self.build_action.triggered.connect(self.build_project)
         self.run_action.triggered.connect(self.run_scene)
         self.stop_action.triggered.connect(self.run_controller.stop)
@@ -321,6 +319,7 @@ class MainWindow(QMainWindow):
         self.scene_canvas.sceneChanged.connect(self._on_canvas_scene_changed)
         self.scene_canvas.objectMoveFinished.connect(self._on_canvas_object_move_finished)
         self.inspector.objectChanged.connect(self._on_scene_changed)
+        self.inspector.componentRequested.connect(self._on_component_requested)
         self.asset_browser.assetActivated.connect(self._on_asset_activated)
 
         self.run_controller.outputReady.connect(self.output_panel.append_text)
@@ -610,6 +609,21 @@ class MainWindow(QMainWindow):
         scene_name = self.current_scene_path.name if self.current_scene_path is not None else "Untitled"
         dirty_marker = "*" if self._dirty else ""
         self.setWindowTitle(f"{APP_NAME} - {scene_name}{dirty_marker}")
+
+    def _load_scene(self, scene_path: Path) -> None:
+        self.scene_document = SceneSerializer.load(scene_path, repo_root=self.project_paths.repo_root)
+        self.current_scene_path = scene_path
+        self.current_object_id = None
+        self.recent_files.add_file(scene_path)
+        self._set_dirty(False)
+
+    def _restore_startup_scene(self, startup_scene_path: Path | None, restore_last_scene: bool) -> None:
+        scene_path = startup_scene_path
+        if scene_path is None and restore_last_scene:
+            scene_path = self.recent_files.most_recent_file()
+
+        if scene_path is not None:
+            self._load_scene(scene_path)
 
     def _resolve_run_target(self) -> tuple[str, Path]:
         if self._uses_mario_runtime():

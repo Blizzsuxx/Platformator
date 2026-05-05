@@ -298,7 +298,7 @@ def _neutralize_value(value: Any) -> Any:
 
 def _iter_source_files(repo_root: Path) -> list[Path]:
     source_files: list[Path] = []
-    for relative_root in ("src", "tests", "examples"):
+    for relative_root in ("src", "examples"):
         base_dir = repo_root / relative_root
         if not base_dir.exists():
             continue

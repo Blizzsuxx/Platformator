@@ -46,7 +46,7 @@ from platformator_ui.services.behavior_catalog import ObjectReferenceDescriptor,
 
 from .asset_browser import ASSET_REFERENCE_MIME_TYPE
 from .behavior_library import BEHAVIOR_MIME_TYPE
-from .scene_tree import OBJECT_REFERENCE_MIME_TYPE
+from .scene_tree import COMPONENT_ORDER, OBJECT_REFERENCE_MIME_TYPE
 
 
 class BehaviorDropLabel(QLabel):
@@ -122,8 +122,25 @@ class DropValueLineEdit(QLineEdit):
         event.acceptProposedAction()
 
 
+class ScrollFriendlyDoubleSpinBox(QDoubleSpinBox):
+    def wheelEvent(self, event) -> None:
+        if self.hasFocus():
+            super().wheelEvent(event)
+            return
+        event.ignore()
+
+
+class ScrollFriendlySpinBox(QSpinBox):
+    def wheelEvent(self, event) -> None:
+        if self.hasFocus():
+            super().wheelEvent(event)
+            return
+        event.ignore()
+
+
 class InspectorWidget(QWidget):
     objectChanged = Signal()
+    componentRequested = Signal(int, str)
 
     def __init__(
         self,
@@ -256,6 +273,7 @@ class InspectorWidget(QWidget):
             self.rotation.setValue(game_object.rotation)
 
             self.components_group.setTitle(f"Components ({len(game_object.components)})")
+            self.components_layout.addWidget(self._build_component_toolbar(game_object.id))
             if not game_object.components:
                 self.components_layout.addWidget(QLabel("Selected object has no components.", self.components_group))
             else:
@@ -277,6 +295,22 @@ class InspectorWidget(QWidget):
         self._current_object.scale.y = self.scale_y.value()
         self._current_object.rotation = self.rotation.value()
         self.objectChanged.emit()
+
+    def _build_component_toolbar(self, object_id: int) -> QWidget:
+        container = QWidget(self.components_group)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addStretch(1)
+
+        add_button = QToolButton(container)
+        add_button.setObjectName("inspectorAddComponentButton")
+        add_button.setText("Add Component")
+        add_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        add_button.setMenu(self._create_component_menu(object_id, add_button))
+        layout.addWidget(add_button)
+
+        return container
 
     def _build_component_group(self, component: BaseComponentModel) -> QGroupBox:
         group = QGroupBox(self.components_group)
@@ -689,6 +723,18 @@ class InspectorWidget(QWidget):
             )
         return menu
 
+    def _create_component_menu(self, object_id: int, parent: QWidget) -> QMenu:
+        menu = QMenu(parent)
+        for component_name in COMPONENT_ORDER:
+            action = menu.addAction(component_name)
+            action.triggered.connect(
+                lambda checked=False, object_id=object_id, component_name=component_name: self.componentRequested.emit(
+                    object_id,
+                    component_name,
+                )
+            )
+        return menu
+
     def _available_behavior_names(self, component: ScriptComponentModel) -> list[str]:
         behavior_names = set(self._behavior_templates)
         behavior_names.update(behavior.type for behavior in component.behaviors if behavior.type)
@@ -1037,16 +1083,18 @@ class InspectorWidget(QWidget):
 
     @staticmethod
     def _create_double_spin_box(default: float = 0.0) -> QDoubleSpinBox:
-        spin_box = QDoubleSpinBox()
+        spin_box = ScrollFriendlyDoubleSpinBox()
         spin_box.setRange(-1000000.0, 1000000.0)
         spin_box.setDecimals(4)
+        spin_box.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         spin_box.setValue(default)
         return spin_box
 
     @staticmethod
     def _create_int_spin_box(default: int = 0) -> QSpinBox:
-        spin_box = QSpinBox()
+        spin_box = ScrollFriendlySpinBox()
         spin_box.setRange(-2147483648, 2147483647)
+        spin_box.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         spin_box.setValue(default)
         return spin_box
 

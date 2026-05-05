@@ -23,3 +23,9 @@ class RecentFilesStore:
         recent_files = [entry for entry in recent_files if entry != normalized]
         recent_files.insert(0, normalized)
         self._settings.setValue(RECENT_FILES_KEY, recent_files[:MAX_RECENT_FILES])
+
+    def most_recent_file(self) -> Path | None:
+        for path in self.list_files():
+            if path.exists():
+                return path
+        return None

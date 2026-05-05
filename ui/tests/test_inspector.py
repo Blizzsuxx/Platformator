@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QApplication
 
-from platformator_ui.scene import SceneIdAllocator, add_game_object, create_empty_scene
+from platformator_ui.scene import SceneIdAllocator, SpriteComponent, add_game_object, create_empty_scene
 from platformator_ui.widgets.inspector import InspectorWidget
 
 
@@ -28,4 +28,20 @@ def test_inspector_add_component_button_matches_context_menu() -> None:
     sprite_action.trigger()
 
     assert captured == [(game_object.id, "Sprite")]
+    inspector.close()
+
+
+def test_inspector_can_show_only_selected_component_attributes() -> None:
+    app = QApplication.instance() or QApplication([])
+    scene_document = create_empty_scene(include_default_camera=False)
+    allocator = SceneIdAllocator.from_scene(scene_document)
+    game_object = add_game_object(scene_document, allocator, name="Player")
+    sprite = SpriteComponent(id=allocator.allocate(), width=32.0, height=32.0)
+    game_object.components.append(sprite)
+
+    inspector = InspectorWidget(scene_document_provider=lambda: scene_document)
+    inspector.set_selection(game_object, sprite.id)
+
+    assert inspector.object_group.isHidden()
+    assert inspector.components_group.title() == "Sprite"
     inspector.close()

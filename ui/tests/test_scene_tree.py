@@ -8,7 +8,7 @@ from platformator_ui.scene import SceneIdAllocator, SpriteComponent, add_game_ob
 from platformator_ui.widgets.scene_tree import COMPONENT_ITEM_KIND, ITEM_KIND_ROLE, OBJECT_ITEM_KIND, SceneTreeWidget
 
 
-def test_scene_tree_shows_components_and_keeps_selection_object_based() -> None:
+def test_scene_tree_shows_components_and_emits_component_selection() -> None:
     app = QApplication.instance() or QApplication([])
     scene_document = create_empty_scene(include_default_camera=False)
     allocator = SceneIdAllocator.from_scene(scene_document)
@@ -28,10 +28,10 @@ def test_scene_tree_shows_components_and_keeps_selection_object_based() -> None:
     assert component_item.text(0) == f"Sprite ({game_object.components[0].id})"
     assert not component_item.icon(0).isNull()
 
-    selected_ids: list[int] = []
-    tree.objectSelected.connect(selected_ids.append)
+    selected_ids: list[tuple[int | None, int | None]] = []
+    tree.editorSelectionChanged.connect(lambda object_id, component_id: selected_ids.append((object_id, component_id)))
     tree.setCurrentItem(component_item)
 
-    assert selected_ids[-1] == game_object.id
-    assert tree.currentItem() is object_item
+    assert selected_ids[-1] == (game_object.id, game_object.components[0].id)
+    assert tree.currentItem() is component_item
     tree.close()

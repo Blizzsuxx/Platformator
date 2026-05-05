@@ -75,6 +75,10 @@ class BoxColliderComponent(BaseComponentModel):
     collisionGroup: int = 1
     collisionMask: int = 1
 
+    @property
+    def component_label(self) -> str:
+        return "Box Collider"
+
 
 class CircleColliderComponent(BaseComponentModel):
     type: Literal[ComponentType.COLLIDER] = ComponentType.COLLIDER
@@ -84,6 +88,10 @@ class CircleColliderComponent(BaseComponentModel):
     trigger: bool = False
     collisionGroup: int = 1
     collisionMask: int = 1
+
+    @property
+    def component_label(self) -> str:
+        return "Circle Collider"
 
 
 class RigidbodyComponent(BaseComponentModel):
@@ -231,6 +239,12 @@ class GameObjectModel(SceneModel):
     def find_component_by_kind(self, component_kind: ComponentType) -> BaseComponentModel | None:
         for component in self.components:
             if component.type == component_kind:
+                return component
+        return None
+
+    def find_component_by_id(self, component_id: int) -> BaseComponentModel | None:
+        for component in self.components:
+            if component.id == component_id:
                 return component
         return None
 

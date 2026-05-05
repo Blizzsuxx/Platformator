@@ -155,6 +155,7 @@ class InspectorWidget(QWidget):
     ) -> None:
         super().__init__(parent)
         self._current_object: GameObjectModel | None = None
+        self._selected_component_id: int | None = None
         self._behavior_templates: dict[str, dict[str, Any]] = {}
         self._assets_dir = assets_dir
         self._repo_root = repo_root
@@ -236,19 +237,26 @@ class InspectorWidget(QWidget):
             for behavior_name, defaults in behavior_templates.items()
         }
         if self._current_object is not None:
-            self.set_object(self._current_object)
+            self.set_selection(self._current_object, self._selected_component_id)
 
     def set_object(self, game_object: GameObjectModel | None) -> None:
+        self.set_selection(game_object)
+
+    def set_selection(self, game_object: GameObjectModel | None, component_id: int | None = None) -> None:
         self._current_object = game_object
+        selected_component = game_object.find_component_by_id(component_id) if game_object is not None and component_id is not None else None
+        self._selected_component_id = selected_component.id if selected_component is not None else None
         self._is_updating = True
         try:
             enabled = game_object is not None
             self.object_group.setEnabled(enabled)
             self.components_group.setEnabled(enabled)
+            self.object_group.setVisible(selected_component is None)
 
             self._clear_layout(self.components_layout)
 
             if game_object is None:
+                self.object_group.setVisible(True)
                 self.object_id_label.setText("-")
                 self.active_checkbox.setChecked(False)
                 self.name_edit.setText("")
@@ -272,9 +280,11 @@ class InspectorWidget(QWidget):
             self.scale_y.setValue(game_object.scale.y)
             self.rotation.setValue(game_object.rotation)
 
-            self.components_group.setTitle(f"Components ({len(game_object.components)})")
+            self.components_group.setTitle(selected_component.component_label if selected_component is not None else f"Components ({len(game_object.components)})")
             self.components_layout.addWidget(self._build_component_toolbar(game_object.id))
-            if not game_object.components:
+            if selected_component is not None:
+                self.components_layout.addWidget(self._build_component_group(selected_component))
+            elif not game_object.components:
                 self.components_layout.addWidget(QLabel("Selected object has no components.", self.components_group))
             else:
                 for component in game_object.components:

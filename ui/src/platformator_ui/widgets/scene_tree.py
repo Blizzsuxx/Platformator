@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtWidgets import QAbstractItemView, QMenu, QStyle, QTreeWidget, QTreeWidgetItem
 
@@ -9,6 +11,7 @@ from platformator_ui.scene.models import BaseComponentModel, GameObjectModel, Sc
 OBJECT_REFERENCE_MIME_TYPE = "application/x-platformator-object-reference"
 OBJECT_ID_ROLE = int(Qt.ItemDataRole.UserRole)
 ITEM_KIND_ROLE = OBJECT_ID_ROLE + 1
+COMPONENT_ID_ROLE = OBJECT_ID_ROLE + 2
 OBJECT_ITEM_KIND = "object"
 COMPONENT_ITEM_KIND = "component"
 
@@ -25,7 +28,7 @@ COMPONENT_ORDER = (
 
 
 class SceneTreeWidget(QTreeWidget):
-    objectSelected = Signal(object)
+    editorSelectionChanged = Signal(object, object)
     objectAddRequested = Signal(object)
     objectDeleteRequested = Signal(int)
     objectDuplicateRequested = Signal(int)
@@ -40,9 +43,19 @@ class SceneTreeWidget(QTreeWidget):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         self._object_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirClosedIcon)
-        self._component_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        self._component_icons = {
+            "CameraComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+            "RigidbodyComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload),
+            "BoxColliderComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_TitleBarMaxButton),
+            "CircleColliderComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_DialogResetButton),
+            "SpriteComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+            "AnimatorComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
+            "AudioComponent": self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume),
+            "ScriptComponentModel": self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
+            "UnknownComponentModel": self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon),
+        }
 
-    def mimeData(self, items: list[QTreeWidgetItem]) -> QMimeData:
+    def mimeData(self, items: Sequence[QTreeWidgetItem]) -> QMimeData:
         mime_data = QMimeData()
         if not items:
             return mime_data
@@ -69,13 +82,20 @@ class SceneTreeWidget(QTreeWidget):
             self.addTopLevelItem(self._build_item(game_object))
         self.expandAll()
 
-    def select_object(self, object_id: int | None) -> None:
+    def select_selection(self, object_id: int | None, component_id: int | None = None) -> None:
         if object_id is None:
             self.clearSelection()
             return
 
         for item in self.findItems("", Qt.MatchFlag.MatchContains | Qt.MatchFlag.MatchRecursive, 0):
-            if item.data(0, ITEM_KIND_ROLE) == OBJECT_ITEM_KIND and item.data(0, OBJECT_ID_ROLE) == object_id:
+            if item.data(0, OBJECT_ID_ROLE) != object_id:
+                continue
+
+            if component_id is None and item.data(0, ITEM_KIND_ROLE) == OBJECT_ITEM_KIND:
+                self.setCurrentItem(item)
+                return
+
+            if component_id is not None and item.data(0, ITEM_KIND_ROLE) == COMPONENT_ITEM_KIND and item.data(0, COMPONENT_ID_ROLE) == component_id:
                 self.setCurrentItem(item)
                 return
 
@@ -93,27 +113,22 @@ class SceneTreeWidget(QTreeWidget):
         return item
 
     def _build_component_item(self, object_id: int, component: BaseComponentModel) -> QTreeWidgetItem:
-        item = QTreeWidgetItem([f"{type(component).__name__.removesuffix('Component')} ({component.id})"])
+        item = QTreeWidgetItem([f"{component.component_label} ({component.id})"])
         item.setData(0, OBJECT_ID_ROLE, object_id)
         item.setData(0, ITEM_KIND_ROLE, COMPONENT_ITEM_KIND)
-        item.setIcon(0, self._component_icon)
+        item.setData(0, COMPONENT_ID_ROLE, component.id)
+        item.setIcon(0, self._component_icon_for(component))
         return item
 
     def _emit_selection(self) -> None:
         current_item = self.currentItem()
         if current_item is None:
-            self.objectSelected.emit(None)
+            self.editorSelectionChanged.emit(None, None)
             return
 
         object_id = current_item.data(0, OBJECT_ID_ROLE)
-        if current_item.data(0, ITEM_KIND_ROLE) == COMPONENT_ITEM_KIND and isinstance(object_id, int):
-            self.blockSignals(True)
-            try:
-                self.select_object(object_id)
-            finally:
-                self.blockSignals(False)
-
-        self.objectSelected.emit(object_id)
+        component_id = current_item.data(0, COMPONENT_ID_ROLE) if current_item.data(0, ITEM_KIND_ROLE) == COMPONENT_ITEM_KIND else None
+        self.editorSelectionChanged.emit(object_id, component_id)
 
     def _show_context_menu(self, position) -> None:
         item = self.itemAt(position)
@@ -154,3 +169,6 @@ class SceneTreeWidget(QTreeWidget):
             )
 
         menu.exec(self.viewport().mapToGlobal(position))
+
+    def _component_icon_for(self, component: BaseComponentModel):
+        return self._component_icons.get(type(component).__name__, self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -56,13 +56,14 @@ class MainWindow(QMainWindow):
         self.scene_document = create_empty_scene(include_default_camera=True)
         self.current_scene_path: Path | None = None
         self.current_object_id: int | None = None
+        self.current_component_id: int | None = None
         self.behavior_templates: dict[str, dict[str, object]] = {}
         self.behavior_asset_fields = discover_behavior_asset_fields(project_paths.repo_root)
         self.behavior_object_reference_fields = discover_behavior_object_reference_fields(project_paths.repo_root)
         self._docks: dict[str, QDockWidget] = {}
         self._dock_areas: dict[str, Qt.DockWidgetArea] = {}
         self._undo_baseline_scene = self.scene_document.model_copy(deep=True)
-        self._undo_baseline_selection: int | None = self.current_object_id
+        self._undo_baseline_selection = (self.current_object_id, self.current_component_id)
         self._restoring_scene_state = False
         self._dirty = False
 
@@ -218,21 +219,36 @@ class MainWindow(QMainWindow):
 
     def _create_actions(self) -> None:
         self.new_action = QAction("New Scene", self)
+        self.new_action.setShortcuts(QKeySequence.StandardKey.New)
         self.open_action = QAction("Open Scene", self)
+        self.open_action.setShortcuts(QKeySequence.StandardKey.Open)
         self.save_action = QAction("Save", self)
+        self.save_action.setShortcuts(QKeySequence.StandardKey.Save)
         self.save_as_action = QAction("Save As", self)
+        self.save_as_action.setShortcuts(QKeySequence.StandardKey.SaveAs)
         self.undo_action = self.undo_stack.createUndoAction(self, "Undo")
+        self.undo_action.setShortcuts(QKeySequence.StandardKey.Undo)
         self.redo_action = self.undo_stack.createRedoAction(self, "Redo")
+        self.redo_action.setShortcuts(QKeySequence.StandardKey.Redo)
         self.validate_action = QAction("Validate", self)
+        self.validate_action.setShortcut(QKeySequence("F6"))
         self.project_settings_action = QAction("Project Settings", self)
+        self.project_settings_action.setShortcut(QKeySequence("Ctrl+,"))
         self.build_action = QAction("Build", self)
+        self.build_action.setShortcut(QKeySequence("Ctrl+B"))
         self.run_action = QAction("Build && Run", self)
+        self.run_action.setShortcut(QKeySequence("F5"))
         self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcuts(QKeySequence.StandardKey.ZoomIn)
         self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcuts(QKeySequence.StandardKey.ZoomOut)
         self.frame_scene_action = QAction("Frame Scene", self)
+        self.frame_scene_action.setShortcut(QKeySequence("F"))
         self.frame_selection_action = QAction("Frame Selection", self)
+        self.frame_selection_action.setShortcut(QKeySequence("Shift+F"))
         self.reset_layout_action = QAction("Reset Panels", self)
         self.stop_action = QAction("Stop", self)
+        self.stop_action.setShortcut(QKeySequence("Shift+F5"))
         self.stop_action.setEnabled(False)
 
     def _create_menus_and_toolbars(self) -> None:
@@ -310,12 +326,12 @@ class MainWindow(QMainWindow):
         self.run_action.triggered.connect(self.run_scene)
         self.stop_action.triggered.connect(self.run_controller.stop)
 
-        self.scene_tree.objectSelected.connect(self._on_object_selected)
+        self.scene_tree.editorSelectionChanged.connect(self._on_selection_changed)
         self.scene_tree.objectAddRequested.connect(self._on_object_add_requested)
         self.scene_tree.objectDeleteRequested.connect(self._on_object_delete_requested)
         self.scene_tree.objectDuplicateRequested.connect(self._on_object_duplicate_requested)
         self.scene_tree.componentRequested.connect(self._on_component_requested)
-        self.scene_canvas.objectSelected.connect(self._on_object_selected)
+        self.scene_canvas.editorSelectionChanged.connect(self._on_selection_changed)
         self.scene_canvas.sceneChanged.connect(self._on_canvas_scene_changed)
         self.scene_canvas.objectMoveFinished.connect(self._on_canvas_object_move_finished)
         self.inspector.objectChanged.connect(self._on_scene_changed)
@@ -330,6 +346,12 @@ class MainWindow(QMainWindow):
     def _reload_scene_views(self, *, select_first: bool = False) -> None:
         if select_first and self.scene_document.objects:
             self.current_object_id = self.scene_document.objects[0].id
+            self.current_component_id = None
+        elif select_first:
+            self.current_object_id = None
+            self.current_component_id = None
+
+        self._coerce_selection()
         self._refresh_behavior_templates()
         self._refresh_scene_tree()
         self._sync_inspector()
@@ -337,29 +359,35 @@ class MainWindow(QMainWindow):
         self._update_window_title()
 
     def _sync_inspector(self) -> None:
-        self.inspector.set_object(self.scene_document.find_object_by_id(self.current_object_id) if self.current_object_id is not None else None)
+        self.inspector.set_selection(
+            self.scene_document.find_object_by_id(self.current_object_id) if self.current_object_id is not None else None,
+            self.current_component_id,
+        )
 
     def _sync_scene_canvas(self, *, reset_view: bool = False) -> None:
         self.scene_canvas.set_scene(self.scene_document, self.current_scene_path, reset_view=reset_view)
-        self.scene_canvas.set_selected_object(self.current_object_id)
+        self.scene_canvas.set_selected_item(self.current_object_id, self.current_component_id)
 
-    def _on_object_selected(self, object_id: object) -> None:
+    def _on_selection_changed(self, object_id: object, component_id: object) -> None:
         self.current_object_id = object_id if isinstance(object_id, int) else None
+        self.current_component_id = component_id if isinstance(component_id, int) else None
+        self._coerce_selection()
         if self.sender() is not self.scene_tree:
             self.scene_tree.blockSignals(True)
             try:
-                self.scene_tree.select_object(self.current_object_id)
+                self.scene_tree.select_selection(self.current_object_id, self.current_component_id)
             finally:
                 self.scene_tree.blockSignals(False)
         if self.sender() is not self.scene_canvas:
-            self.scene_canvas.set_selected_object(self.current_object_id)
+            self.scene_canvas.set_selected_item(self.current_object_id, self.current_component_id)
         self._sync_inspector()
 
     def _on_scene_changed(self) -> None:
         sender = self.sender()
         self._set_dirty(True)
+        selection_changed = self._coerce_selection()
         self._refresh_scene_tree()
-        if sender is not self.inspector:
+        if sender is not self.inspector or selection_changed:
             self._sync_inspector()
         self._sync_scene_canvas(reset_view=False)
         self._update_window_title()
@@ -368,6 +396,7 @@ class MainWindow(QMainWindow):
 
     def _on_canvas_scene_changed(self) -> None:
         self._set_dirty(True)
+        self._coerce_selection()
         self._sync_inspector()
         self._update_window_title()
 
@@ -378,6 +407,7 @@ class MainWindow(QMainWindow):
 
     def _on_component_requested(self, object_id: int, component_name: str) -> None:
         self.current_object_id = object_id
+        self.current_component_id = None
         current_object = self.scene_document.find_object_by_id(object_id)
         if current_object is None:
             QMessageBox.information(self, APP_NAME, "Select a game object before adding a component.")
@@ -394,6 +424,7 @@ class MainWindow(QMainWindow):
                 return
 
         current_object.components.append(new_component)
+        self.current_component_id = new_component.id
         self.output_panel.append_text(f"\n[Editor] Added {component_name} to {current_object.name}.\n")
         self._on_scene_changed()
         self._record_scene_snapshot(f"Add {component_name}")
@@ -403,6 +434,7 @@ class MainWindow(QMainWindow):
         allocator = SceneIdAllocator.from_scene(self.scene_document)
         new_object = add_game_object(self.scene_document, allocator, parent_id=typed_parent_id)
         self.current_object_id = new_object.id
+        self.current_component_id = None
 
         if typed_parent_id is None:
             self.output_panel.append_text(f"\n[Editor] Added {new_object.name}.\n")
@@ -421,6 +453,7 @@ class MainWindow(QMainWindow):
             return
 
         self.current_object_id = duplicated_object.id
+        self.current_component_id = None
         self.output_panel.append_text(f"\n[Editor] Duplicated {duplicated_object.name}.\n")
         self._on_scene_changed()
         self._record_scene_snapshot("Duplicate Object")
@@ -439,6 +472,7 @@ class MainWindow(QMainWindow):
                 self.current_object_id = self.scene_document.objects[0].id
             else:
                 self.current_object_id = None
+            self.current_component_id = None
 
         self.output_panel.append_text(f"\n[Editor] Deleted {removed_object.name}.\n")
         self._on_scene_changed()
@@ -534,7 +568,7 @@ class MainWindow(QMainWindow):
         self.scene_tree.blockSignals(True)
         try:
             self.scene_tree.set_scene(self.scene_document)
-            self.scene_tree.select_object(self.current_object_id)
+            self.scene_tree.select_selection(self.current_object_id, self.current_component_id)
         finally:
             self.scene_tree.blockSignals(False)
 
@@ -552,10 +586,10 @@ class MainWindow(QMainWindow):
         if class_name not in {"QLineEdit", "QSpinBox", "QDoubleSpinBox", "QComboBox"}:
             return None
 
-        return f"inspector:{self.current_object_id}:{id(focus_widget)}"
+        return f"inspector:{self.current_object_id}:{self.current_component_id}:{id(focus_widget)}"
 
     def _capture_scene_snapshot(self):
-        return self.scene_document.model_copy(deep=True), self.current_object_id
+        return self.scene_document.model_copy(deep=True), (self.current_object_id, self.current_component_id)
 
     def _sync_undo_baseline(self) -> None:
         self._undo_baseline_scene, self._undo_baseline_selection = self._capture_scene_snapshot()
@@ -591,11 +625,12 @@ class MainWindow(QMainWindow):
         self._undo_baseline_scene = after_scene.model_copy(deep=True)
         self._undo_baseline_selection = after_selection
 
-    def _apply_scene_snapshot(self, scene_snapshot, selection: int | None) -> None:
+    def _apply_scene_snapshot(self, scene_snapshot, selection) -> None:
         self._restoring_scene_state = True
         try:
             self.scene_document = scene_snapshot.model_copy(deep=True)
-            self.current_object_id = selection
+            self.current_object_id, self.current_component_id = selection
+            self._coerce_selection()
             self._refresh_behavior_templates()
             self._refresh_scene_tree()
             self._sync_inspector()
@@ -614,6 +649,7 @@ class MainWindow(QMainWindow):
         self.scene_document = SceneSerializer.load(scene_path, repo_root=self.project_paths.repo_root)
         self.current_scene_path = scene_path
         self.current_object_id = None
+        self.current_component_id = None
         self.recent_files.add_file(scene_path)
         self._set_dirty(False)
 
@@ -624,6 +660,24 @@ class MainWindow(QMainWindow):
 
         if scene_path is not None:
             self._load_scene(scene_path)
+
+    def _coerce_selection(self) -> bool:
+        previous_selection = (self.current_object_id, self.current_component_id)
+
+        if self.current_object_id is None:
+            self.current_component_id = None
+            return previous_selection != (self.current_object_id, self.current_component_id)
+
+        game_object = self.scene_document.find_object_by_id(self.current_object_id)
+        if game_object is None:
+            self.current_object_id = None
+            self.current_component_id = None
+            return previous_selection != (self.current_object_id, self.current_component_id)
+
+        if self.current_component_id is not None and game_object.find_component_by_id(self.current_component_id) is None:
+            self.current_component_id = None
+
+        return previous_selection != (self.current_object_id, self.current_component_id)
 
     def _resolve_run_target(self) -> tuple[str, Path]:
         if self._uses_mario_runtime():

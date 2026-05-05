@@ -5,16 +5,19 @@ from typing import Callable
 from PySide6.QtGui import QUndoCommand, QUndoStack
 
 
+SelectionState = tuple[int | None, int | None]
+
+
 class SceneSnapshotCommand(QUndoCommand):
     def __init__(
         self,
         text: str,
         *,
         before_scene,
-        before_selection: int | None,
+        before_selection: SelectionState,
         after_scene,
-        after_selection: int | None,
-        apply_state: Callable[[object, int | None], None],
+        after_selection: SelectionState,
+        apply_state: Callable[[object, SelectionState], None],
         merge_key: str | None = None,
     ) -> None:
         super().__init__(text)

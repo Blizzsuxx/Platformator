@@ -37,6 +37,7 @@ namespace mario
         GameManager &gameManager;
         SDLWindow &window;
         ObjectReference<GameObject> player;
+        ObjectReference<Audio> bgm;
         MarioPlayer *playerScript;
         size_t totalCoins;
         size_t collectedCoins;
@@ -48,6 +49,7 @@ namespace mario
             MarioGame,
             totalCoins,
             collectedCoins,
-            player);
+            player,
+            bgm);
     };
 } // namespace mario

@@ -16,7 +16,8 @@ namespace mario
           playerScript(nullptr),
           totalCoins(0),
           collectedCoins(0),
-          gameWon(false)
+          gameWon(false),
+          bgm()
     {
     }
 
@@ -69,6 +70,7 @@ namespace mario
     void MarioGame::winLevel()
     {
         gameWon = true;
+        bgm.get()->stop();
         playerScript->stopForWin();
     }
 

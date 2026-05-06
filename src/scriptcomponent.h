@@ -53,3 +53,17 @@ struct ComponentTypeFor<ScriptComponent>
 
 void to_json(nlohmann::json &j, const ScriptComponent &scriptComponent);
 void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent);
+
+template <typename T>
+T *ScriptComponent::getBehavior() const
+{
+    for (Behavior *behavior : behaviors)
+    {
+        if (T *castedBehavior = dynamic_cast<T *>(behavior))
+        {
+            return castedBehavior;
+        }
+    }
+
+    return nullptr;
+}

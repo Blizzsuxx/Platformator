@@ -9,7 +9,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../player/fall.png"
+            "textureWrapperFilePath": "assets/player/fall.png"
         }
     ],
     "framesPerSecond": 1.0,

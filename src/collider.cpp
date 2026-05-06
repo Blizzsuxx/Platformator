@@ -2,6 +2,7 @@
 #include "gamemanager.h"
 #include "localsortarray.h"
 #include "gridcell.h"
+#include "runtimeaccess.h"
 #include "segmentedintervallist.h"
 #include "scriptcomponent.h"
 #include "collision.h"
@@ -109,7 +110,7 @@ void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection 
 
 void Collider::scheduleSync()
 {
-    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
     if (physicsManager != nullptr && !(flags & IS_QUEUED_FOR_SYNC) && hasValidGridCellRange())
     {
         physicsManager->queueColliderSync(this);
@@ -166,7 +167,7 @@ void Collider::setCollisionGroup(const uint64_t collisionGroup)
         return;
     }
 
-    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
     if (physicsManager != nullptr)
     {
         physicsManager->refreshColliderComponent(this);
@@ -192,7 +193,7 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
         return;
     }
 
-    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
     if (physicsManager != nullptr)
     {
         physicsManager->refreshColliderComponent(this);

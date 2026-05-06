@@ -2,6 +2,7 @@
 #include "objectreference.h"
 
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 GameManager &getGameManagerInstance()
 {

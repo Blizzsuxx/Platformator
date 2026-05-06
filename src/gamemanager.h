@@ -14,8 +14,14 @@ class ScriptComponent;
 class Behavior;
 class AnimationClip;
 
+namespace platformator
+{
+    class Runtime;
+}
+
 class GameManager
 {
+    friend class platformator::Runtime;
     friend class GameObject;
     friend class Component;
     friend class Collider;
@@ -25,17 +31,13 @@ class GameManager
     friend class ScriptComponent;
 
 public:
-    static void setStartupWindowSettings(const WindowSettings &windowSettings);
-    static void setStartupDebugSettings(const DebugSettings &debugSettings);
-
-    static GameManager &getInstance()
-    {
-        static GameManager instance;
-        return instance;
-    }
+    static GameManager &getInstance();
 
     GameManager(GameManager &) = delete;
     GameManager &operator=(const GameManager &) = delete;
+
+    GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
+    ~GameManager();
 
     GameObject *getGameObject(std::string name);
     GameObject *createGameObject();
@@ -65,10 +67,9 @@ public:
     const Eigen::Vector2f &getGravityVectorNormalized() const;
 
 private:
-    GameManager();
-    ~GameManager();
-    static WindowSettings &startupWindowSettings();
-    static DebugSettings &startupDebugSettings();
+    static void setCurrentInstance(GameManager *gameManager);
+    static GameManager *tryGetCurrentInstance();
+    static GameManager *&currentInstance();
 
     SDLWindow *window;
     std::vector<GameObject *> gameObjects;

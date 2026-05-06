@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <stdexcept>
 
 #include "animator.h"
 #include "animationclip.h"
@@ -10,29 +11,19 @@
 #include "scriptcomponent.h"
 #include "texturewrapper.h"
 
-void GameManager::setStartupWindowSettings(const WindowSettings &windowSettings)
+GameManager &GameManager::getInstance()
 {
-    startupWindowSettings() = windowSettings;
+    GameManager *gameManager = tryGetCurrentInstance();
+    if (gameManager == nullptr)
+    {
+        throw std::logic_error("Platformator runtime is not active.");
+    }
+
+    return *gameManager;
 }
 
-void GameManager::setStartupDebugSettings(const DebugSettings &debugSettings)
-{
-    startupDebugSettings() = debugSettings;
-}
-
-WindowSettings &GameManager::startupWindowSettings()
-{
-    static WindowSettings windowSettings;
-    return windowSettings;
-}
-
-DebugSettings &GameManager::startupDebugSettings()
-{
-    static DebugSettings debugSettings;
-    return debugSettings;
-}
-
-GameManager::GameManager() : window(new SDLWindow(startupWindowSettings(), startupDebugSettings())), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+GameManager::GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
+    : window(new SDLWindow(windowSettings, debugSettings)), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     // initializeMainCamera();
@@ -54,6 +45,22 @@ GameManager::~GameManager()
 
     delete physicsManager;
     delete window;
+}
+
+void GameManager::setCurrentInstance(GameManager *gameManager)
+{
+    currentInstance() = gameManager;
+}
+
+GameManager *GameManager::tryGetCurrentInstance()
+{
+    return currentInstance();
+}
+
+GameManager *&GameManager::currentInstance()
+{
+    static GameManager *gameManager = nullptr;
+    return gameManager;
 }
 
 void GameManager::loadScene(Scene &scene)
@@ -188,6 +195,12 @@ void GameManager::removeGameObject(GameObject *gameObject)
 
 void GameManager::startDeletingGameObject(GameObject *gameObject)
 {
+    Camera *camera = gameObject->getComponent<Camera>();
+    if (camera != nullptr && window->getMainCamera() == camera)
+    {
+        window->setMainCamera(nullptr);
+    }
+
     gameObject->setIsMarkedForDeletion(true);
     gameObject->removeComponentsFromGameManager();
     gameObject->setIsRegisteredInGameManager(false);

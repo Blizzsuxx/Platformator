@@ -7,6 +7,7 @@
 
 #include "audiowrapper.h"
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
     : window(nullptr),
@@ -222,7 +223,7 @@ void SDLWindow::render()
     SDL_RenderClear(renderer);
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    PhysicsManager *physicsManager = GameManager::getInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
     if (shouldSimulateFrame())
     {
         for (const auto &cellEntry : physicsManager->getGrid().getCells())

@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 AnimationFrame::AnimationFrame()
     : textureWrapper(nullptr), duration(0.0f), sourceRect{0.0f, 0.0f, 0.0f, 0.0f}, hasSourceRect(false)
@@ -159,7 +160,7 @@ bool AnimationClip::removeReferenceAndFreeIfNoReferences()
     }
     if (referenceCount == 0 && !getFilePath().empty())
     {
-        GameManager::getInstance().freeAnimationClip(this);
+        getGameManagerInstance().freeAnimationClip(this);
         return true;
     }
 

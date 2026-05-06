@@ -9,7 +9,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../player/idle_0.png"
+            "textureWrapperFilePath": "assets/player/idle_0.png"
         },
         {
             "duration": 0.0,
@@ -20,7 +20,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../player/idle_1.png"
+            "textureWrapperFilePath": "assets/player/idle_1.png"
         }
     ],
     "framesPerSecond": 4.0,

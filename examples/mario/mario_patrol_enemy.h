@@ -1,17 +1,13 @@
 #pragma once
 
-#include "behaviorfactoryregistry.h"
-#include "jsonhelpers.h"
-#include "behavior.h"
-#include "assetreference.h"
-#include "objectreference.h"
-#include "animator.h"
-#include "collider.h"
-#include "rigidbody.h"
-#include "sprite.h"
-#include "helpers.h"
-#include "audio.h"
-#include "audiowrapper.h"
+#include "platformator/animator.h"
+#include "platformator/assetreference.h"
+#include "platformator/audio.h"
+#include "platformator/behavior.h"
+#include "platformator/collider.h"
+#include "platformator/rigidbody.h"
+#include "platformator/scriptregistration.h"
+#include "platformator/sprite.h"
 
 class Animator;
 class Collider;

@@ -9,7 +9,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../items/flag.png"
+            "textureWrapperFilePath": "assets/items/flag.png"
         }
     ],
     "framesPerSecond": 5.0,

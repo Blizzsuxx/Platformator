@@ -2,6 +2,8 @@
 
 #include <filesystem>
 
+#include "platformator/runtime.h"
+
 #include "animationclip.h"
 #include "collision.h"
 #include "gamemanager.h"
@@ -14,6 +16,11 @@ Behavior::Behavior() : gameObject(nullptr)
 GameObject *Behavior::getGameObject() const
 {
     return gameObject;
+}
+
+platformator::Runtime &Behavior::getRuntime() const
+{
+    return platformator::Runtime::current();
 }
 
 void Behavior::setGameObject(GameObject *gameObject)

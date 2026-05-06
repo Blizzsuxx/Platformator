@@ -3,6 +3,7 @@
 #include "helpers.h"
 #include "rigidbody.h"
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr), supportState(SupportState::NONE_SUPPORT)
 {
@@ -266,7 +267,7 @@ void Collision::setSupportsIncidentBody(bool supports) const
 
 bool Collision::isVerticalCollision() const
 {
-    const Eigen::Vector2f &gravityVectorNormalized = GameManager::getInstance().getGravityVectorNormalized();
+    const Eigen::Vector2f &gravityVectorNormalized = getGameManagerInstance().getGravityVectorNormalized();
     return std::abs(normal.dot(-gravityVectorNormalized)) >= SUPPORT_NORMAL_THRESHOLD;
 }
 

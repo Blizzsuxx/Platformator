@@ -13,6 +13,11 @@
 class Collision;
 class Collider;
 
+namespace platformator
+{
+    class Runtime;
+}
+
 class Behavior
 {
     friend class ScriptComponent;
@@ -24,6 +29,9 @@ public:
     virtual ~Behavior() = default;
 
     GameObject *getGameObject() const;
+    platformator::Runtime &getRuntime() const;
+    template <typename T>
+    T *getBehavior(GameObject *gameObject) const;
     void setGameObject(GameObject *gameObject);
 
     virtual void start();

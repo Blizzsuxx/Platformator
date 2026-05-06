@@ -2,6 +2,7 @@
 
 #include "collider.h"
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 ScriptComponent::ScriptComponent() : Component(ComponentType::SCRIPT), behaviors(), gameManagerIndex(SIZE_MAX)
 {
@@ -22,19 +23,6 @@ const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
     return behaviors;
 }
 
-template <typename T>
-T *ScriptComponent::getBehavior() const
-{
-    for (Behavior *behavior : behaviors)
-    {
-        if (T *castedBehavior = dynamic_cast<T *>(behavior))
-        {
-            return castedBehavior;
-        }
-    }
-    return nullptr;
-}
-
 Behavior *ScriptComponent::addBehavior(Behavior *behavior)
 {
     behaviors.push_back(behavior);
@@ -42,7 +30,7 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
     if (gameManagerIndex != SIZE_MAX && getGameObject() != nullptr && getGameObject()->getActive() &&
         !getGameObject()->getIsMarkedForDeletion())
     {
-        GameManager::getInstance().addStartedBehavior(behavior);
+        getGameManagerInstance().addStartedBehavior(behavior);
     }
 
     return behavior;
@@ -100,7 +88,7 @@ void ScriptComponent::destroyBehaviors()
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        GameManager::getInstance().removeStartedBehavior(behavior);
+        getGameManagerInstance().removeStartedBehavior(behavior);
         behavior->onDestroy();
 
         delete behavior;

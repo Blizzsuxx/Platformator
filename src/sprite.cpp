@@ -1,5 +1,6 @@
 #include "sprite.h"
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 #include "texturewrapper.h"
 
 Sprite::Sprite() : Component(ComponentType::SPRITE), textureWrapper(nullptr), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
@@ -30,7 +31,7 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
 {
     if (filePath != nullptr)
     {
-        GameManager &gameManager = GameManager::getInstance();
+        GameManager &gameManager = getGameManagerInstance();
         TextureWrapper *newTextureWrapper = gameManager.loadTexture(filePath);
         setTextureWrapper(newTextureWrapper);
     }

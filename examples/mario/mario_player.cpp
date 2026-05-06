@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "platformator/behaviorquery.h"
+
 #include "mario_coin.h"
 #include "mario_constants.h"
 #include "mario_game.h"

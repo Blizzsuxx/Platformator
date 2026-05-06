@@ -1,6 +1,7 @@
 #include "colliderpair.h"
 #include "aabb.h"
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCount(0)
 {
@@ -109,7 +110,7 @@ void ColliderPair::queueCollisionEnter() const
         objectBOrMaybeNull = objectB;
     }
 
-    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectAOrMaybeNull, objectBOrMaybeNull});
+    getGameManagerInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionStay() const
@@ -126,7 +127,7 @@ void ColliderPair::queueCollisionStay() const
         objectBOrMaybeNull = objectB;
     }
 
-    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectAOrMaybeNull, objectBOrMaybeNull});
+    getGameManagerInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionExit() const
@@ -143,7 +144,7 @@ void ColliderPair::queueCollisionExit() const
         objectBOrMaybeNull = objectB;
     }
 
-    GameManager::getInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectAOrMaybeNull, objectBOrMaybeNull});
+    getGameManagerInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)

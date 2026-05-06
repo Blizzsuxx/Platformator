@@ -5,15 +5,11 @@
 
 #include <SDL3/SDL.h>
 
-#include "gamemanager.h"
-#include "scene.h"
-#include "sdlwindow.h"
-#include "behaviorfactoryregistry.h"
-#include "jsonhelpers.h"
-#include "behavior.h"
-#include "assetreference.h"
-#include "objectreference.h"
-#include "audio.h"
+#include "platformator/audio.h"
+#include "platformator/behavior.h"
+#include "platformator/objectreference.h"
+#include "platformator/runtime.h"
+#include "platformator/scriptregistration.h"
 
 namespace mario
 {
@@ -40,8 +36,7 @@ namespace mario
     private:
         static MarioGame *instance;
 
-        GameManager &gameManager;
-        SDLWindow &window;
+        SDL_Window *window;
         ObjectReference<GameObject> player;
         ObjectReference<Audio> bgm;
         MarioPlayer *playerScript;

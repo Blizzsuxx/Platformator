@@ -10,12 +10,14 @@
 
 #include "boxcollider.h"
 #include "constants.h"
-#include "gamemanager.h"
+#include "platformator/runtime.h"
 #include "rigidbody.h"
 #include "scriptcomponent.h"
 
 namespace
 {
+    using platformator::Runtime;
+
     constexpr double kTimeStep = FRAME_TIME;
 
     void require(bool condition, const std::string &message)
@@ -26,10 +28,9 @@ namespace
         }
     }
 
-    bool containsGameObjectPointer(GameManager &gameManager, const GameObject *gameObject)
+    bool containsGameObjectPointer(Runtime &gameManager, const GameObject *gameObject)
     {
-        const std::vector<GameObject *> &objects = gameManager.getGameObjects();
-        return std::find(objects.begin(), objects.end(), gameObject) != objects.end();
+        return gameObject != nullptr && gameManager.getObjectById(gameObject->getId()) == gameObject;
     }
 
     void configureHeadlessEnvironment()
@@ -42,7 +43,7 @@ namespace
     class SceneScope
     {
     public:
-        explicit SceneScope(GameManager &gameManager) : gameManager(gameManager), objects()
+        explicit SceneScope(Runtime &gameManager) : gameManager(gameManager), objects()
         {
         }
 
@@ -65,11 +66,11 @@ namespace
         }
 
     private:
-        GameManager &gameManager;
+        Runtime &gameManager;
         std::vector<GameObject *> objects;
     };
 
-    GameObject *createStaticBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height)
+    GameObject *createStaticBox(Runtime &gameManager, const std::string &name, float x, float y, float width, float height)
     {
         return gameManager
             .createGameObject()
@@ -116,7 +117,7 @@ namespace
 
             ran = true;
 
-            GameManager &gameManager = GameManager::getInstance();
+            Runtime &gameManager = getRuntime();
             GameObject *temporaryObject = gameManager
                                               .createGameObject()
                                               ->setName("Queued Add Victim")
@@ -147,7 +148,7 @@ namespace
 
             GameObject *gameObject = getGameObject();
             gameObject->setPosition(gameObject->getPosition() + Eigen::Vector2f(15.0f, 0.0f));
-            GameManager::getInstance().destroyGameObject(gameObject);
+            getRuntime().destroyGameObject(gameObject);
         }
 
     private:
@@ -169,7 +170,7 @@ namespace
             }
 
             ran = true;
-            GameManager::getInstance().destroyGameObject(getGameObject());
+            getRuntime().destroyGameObject(getGameObject());
         }
 
     private:
@@ -227,7 +228,7 @@ namespace
 
     void testQueuedAddDeletion()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *driver = gameManager.createGameObject()->setName("Queued Add Driver")->addComponent<ScriptComponent>();
@@ -246,7 +247,7 @@ namespace
 
     void testQueuedSyncDeletion()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *victim = createStaticBox(gameManager, "Queued Sync Victim", 120.0f, 120.0f, 40.0f, 40.0f)->addComponent<ScriptComponent>();
@@ -265,7 +266,7 @@ namespace
 
     void testLateFrameExitEventDeletion()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *survivor = createStaticBox(gameManager, "Exit Survivor", 200.0f, 120.0f, 40.0f, 40.0f)->addComponent<ScriptComponent>();
@@ -297,7 +298,7 @@ namespace
 
     void testGameObjectDestroyShortcut()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *victim = gameManager.createGameObject()->setName("Destroy Shortcut Victim")->addComponent<ScriptComponent>();
@@ -318,7 +319,7 @@ namespace
 int main()
 {
     configureHeadlessEnvironment();
-    GameManager::getInstance();
+    platformator::Runtime runtime;
 
     try
     {

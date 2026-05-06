@@ -2,6 +2,7 @@
 #include "sprite.h"
 #include <algorithm>
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath) : Asset(filePath), texture(texture), referenceCount(0)
 {
@@ -30,7 +31,7 @@ bool TextureWrapper::removeReferenceAndFreeIfNoReferences()
     }
     if (referenceCount == 0 && !getFilePath().empty())
     {
-        GameManager::getInstance().freeTexture(this);
+        getGameManagerInstance().freeTexture(this);
         return true;
     }
     return false;

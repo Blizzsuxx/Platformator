@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "platformator/behaviorquery.h"
+
 #include "mario_coin.h"
 #include "mario_player.h"
 
@@ -10,8 +12,7 @@ namespace mario
     MarioGame *MarioGame::instance = nullptr;
 
     MarioGame::MarioGame()
-        : gameManager(GameManager::getInstance()),
-          window(*gameManager.getWindow()),
+        : window(nullptr),
           player(),
           playerScript(nullptr),
           totalCoins(0),
@@ -37,6 +38,7 @@ namespace mario
     void MarioGame::start()
     {
         instance = this;
+        window = getRuntime().getWindowHandle();
         playerScript = getBehavior<MarioPlayer>(player.get());
         updateWindowTitle();
     }
@@ -82,6 +84,6 @@ namespace mario
             title += " - Level Clear";
         }
 
-        SDL_SetWindowTitle(window.getWindow(), title.c_str());
+        SDL_SetWindowTitle(window, title.c_str());
     }
 } // namespace mario

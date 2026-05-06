@@ -7,6 +7,7 @@
 #include "collider.h"
 #include "gamemanager.h"
 #include "rigidbody.h"
+#include "runtimeaccess.h"
 
 GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), localPosition(Eigen::Vector2f::Zero()), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(IS_ACTIVE))
 {
@@ -144,7 +145,6 @@ GameObject *GameObject::setActive(const bool active)
         flags &= ~IS_ACTIVE;
     }
 
-    GameManager *gameManager = &GameManager::getInstance();
     ComponentType managedComponents[] = {ComponentType::COLLIDER, ComponentType::RIGID_BODY, ComponentType::SPRITE, ComponentType::CAMERA};
 
     if (active)
@@ -243,7 +243,7 @@ void GameObject::addComponent(Component *component)
 
     if (getIsRegisteredInGameManager())
     {
-        GameManager::getInstance().notifyComponentAdded(component);
+        getGameManagerInstance().notifyComponentAdded(component);
     }
 }
 
@@ -287,7 +287,7 @@ bool GameObject::removeComponent(const ComponentType &componentType)
 
     if (getIsRegisteredInGameManager())
     {
-        GameManager::getInstance().notifyComponentRemoved(components[componentType]);
+        getGameManagerInstance().notifyComponentRemoved(components[componentType]);
     }
     delete components[componentType];
     components[componentType] = nullptr;
@@ -412,7 +412,7 @@ void GameObject::addComponentsToGameManager()
     {
         if (component != nullptr)
         {
-            GameManager::getInstance().notifyComponentAdded(component);
+            getGameManagerInstance().notifyComponentAdded(component);
         }
     }
 }
@@ -423,12 +423,12 @@ void GameObject::removeComponentsFromGameManager()
     {
         if (component != nullptr)
         {
-            GameManager::getInstance().notifyComponentRemoved(component);
+            getGameManagerInstance().notifyComponentRemoved(component);
         }
     }
 }
 
 void GameObject::destroy()
 {
-    GameManager::getInstance().removeGameObject(this);
+    getGameManagerInstance().removeGameObject(this);
 }

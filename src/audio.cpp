@@ -5,18 +5,19 @@
 #include <SDL3/SDL_properties.h>
 
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 #include "sdlwindow.h"
 
 Audio::Audio(GameObject *gameObject)
     : Audio(gameObject, (AudioWrapper *)nullptr, 1.0f, false)
 {
-    SDLWindow *window = GameManager::getInstance().getWindow();
+    SDLWindow *window = getGameManagerInstance().getWindow();
     track = MIX_CreateTrack(window->getMixer());
 }
 
 Audio::Audio() : Component(ComponentType::AUDIO), audioWrapper(nullptr), track(nullptr), gain(1.0f), loopCount(0), autoPlay(false), gameManagerIndex(SIZE_MAX)
 {
-    SDLWindow *window = GameManager::getInstance().getWindow();
+    SDLWindow *window = getGameManagerInstance().getWindow();
     track = MIX_CreateTrack(window->getMixer());
 }
 
@@ -25,10 +26,10 @@ Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool auto
 {
     if (filePath != nullptr)
     {
-        GameManager &gameManager = GameManager::getInstance();
+        GameManager &gameManager = getGameManagerInstance();
         AudioWrapper *newAudioWrapper = gameManager.loadAudio(filePath);
 
-        SDLWindow *window = GameManager::getInstance().getWindow();
+        SDLWindow *window = getGameManagerInstance().getWindow();
         track = MIX_CreateTrack(window->getMixer());
         setAudio(newAudioWrapper);
         setGain(gain);
@@ -45,7 +46,7 @@ Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, boo
 {
     if (audioWrapper != nullptr)
     {
-        SDLWindow *window = GameManager::getInstance().getWindow();
+        SDLWindow *window = getGameManagerInstance().getWindow();
         track = MIX_CreateTrack(window->getMixer());
         setAudio(audioWrapper);
         setGain(gain);
@@ -244,7 +245,7 @@ bool Audio::playAndForget(AudioWrapper *audioWrapper)
         return false;
     }
 
-    SDLWindow *window = GameManager::getInstance().getWindow();
+    SDLWindow *window = getGameManagerInstance().getWindow();
     return window->playAndForget(audioWrapper, gain, loopCount);
 }
 

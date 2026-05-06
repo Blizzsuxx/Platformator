@@ -16,8 +16,9 @@
 #include "boxcollider.h"
 #include "camera.h"
 #include "constants.h"
-#include "gamemanager.h"
 #include "jsonhelpers.h"
+#include "platformator/runtime.h"
+#include "rigidbody.h"
 #include "scene.h"
 #include "scriptcomponent.h"
 
@@ -32,6 +33,8 @@ namespace scene_roundtrip_test_support
 
 namespace
 {
+    using platformator::Runtime;
+
     void require(bool condition, const std::string &message)
     {
         if (!condition)
@@ -71,17 +74,9 @@ namespace
         throw std::runtime_error("Scene round-trip test could not locate resource '" + relativePath.generic_string() + "'.");
     }
 
-    void cleanupAllGameObjects(GameManager &gameManager)
+    void cleanupAllGameObjects(Runtime &gameManager)
     {
-        while (!gameManager.getGameObjects().empty())
-        {
-            std::vector<GameObject *> snapshot = gameManager.getGameObjects();
-            for (GameObject *gameObject : snapshot)
-            {
-                gameManager.destroyGameObject(gameObject);
-            }
-            gameManager.simulateFrame(FRAME_TIME);
-        }
+        gameManager.clearScene();
     }
 
     class AnnotatedSceneBehavior : public Behavior
@@ -206,7 +201,7 @@ namespace
 
     void testSceneVersion2RoundTrip()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
         cleanupAllGameObjects(gameManager);
 
         const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_roundtrip.scene";
@@ -253,7 +248,8 @@ namespace
 
             nlohmann::json mainCameraJson = makeGameObjectJson(101, "Main Camera");
             mainCameraJson["components"].push_back({{"id", 200},
-                                                    {"camera", makeRectJson(0.0f, 0.0f, 640.0f, 480.0f)},
+                                                    {"width", 640.0f},
+                                                    {"height", 480.0f},
                                                     {"type", static_cast<int>(ComponentType::CAMERA)}});
 
             nlohmann::json spriteOnlyJson = makeGameObjectJson(103, "Sprite Only");
@@ -417,7 +413,7 @@ namespace
 
     void testSceneVersion2RejectsInvalidIds()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
         cleanupAllGameObjects(gameManager);
 
         const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_invalid_ids.scene";
@@ -487,7 +483,7 @@ namespace
 
     void testUnknownBehaviorTypesAreIgnored()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
         cleanupAllGameObjects(gameManager);
 
         const std::filesystem::path scenePath = std::filesystem::current_path() / "scene_v2_failed_load.scene";
@@ -538,7 +534,7 @@ namespace
 
     void testSceneVersion1StillLoads()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
         cleanupAllGameObjects(gameManager);
 
         try
@@ -574,7 +570,7 @@ namespace
 int main()
 {
     configureHeadlessEnvironment();
-    GameManager::getInstance();
+    platformator::Runtime runtime;
 
     static const TestCase testCases[] = {
         {"scene_version2_round_trip", testSceneVersion2RoundTrip},

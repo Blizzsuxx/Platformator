@@ -2,11 +2,10 @@
 
 #include <algorithm>
 
-#include "camera.h"
-#include "gamemanager.h"
+#include "platformator/camera.h"
+
 #include "mario_constants.h"
 #include "mario_player.h"
-#include "rigidbody.h"
 
 namespace mario
 {

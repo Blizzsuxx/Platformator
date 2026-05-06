@@ -1,6 +1,7 @@
 #include "audio.h"
 
 #include "gamemanager.h"
+#include "runtimeaccess.h"
 
 void to_json(nlohmann::json &j, const Audio &audio)
 {
@@ -23,7 +24,7 @@ void from_json(const nlohmann::json &j, Audio &audio)
 
     if (!filePath.empty())
     {
-        AudioWrapper *audioWrapper = GameManager::getInstance().loadAudio(filePath);
+        AudioWrapper *audioWrapper = getGameManagerInstance().loadAudio(filePath);
         audio.setAudio(audioWrapper);
     }
     else

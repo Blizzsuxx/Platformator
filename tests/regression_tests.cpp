@@ -23,18 +23,20 @@
 #include "grid.h"
 #include "aabb.h"
 #include "audio.h"
-#include "gamemanager.h"
 #include "localsortarray.h"
 #include "pathmanager.h"
 #include "physicsmanager.h"
 #include "rigidbody.h"
 #include "scene.h"
 #include "scriptcomponent.h"
+#include "platformator/runtime.h"
 #include "sprite.h"
 #include "texturewrapper.h"
 
 namespace
 {
+    using platformator::Runtime;
+
     constexpr double kTimeStep = FRAME_TIME;
 
     void require(bool condition, const std::string &message)
@@ -52,7 +54,7 @@ namespace
         setenv("SDL_RENDER_DRIVER", "software", 1);
     }
 
-    void simulateFrames(GameManager &gameManager, int frameCount)
+    void simulateFrames(Runtime &gameManager, int frameCount)
     {
         for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
         {
@@ -60,12 +62,12 @@ namespace
         }
     }
 
-    void drainPhysicsQueuesAndDeleteMarkedObjects(GameManager &gameManager)
+    void drainPhysicsQueuesAndDeleteMarkedObjects(Runtime &gameManager)
     {
         gameManager.simulateFrame(kTimeStep);
     }
 
-    void destroyObjects(GameManager &gameManager, const std::vector<GameObject *> &objects)
+    void destroyObjects(Runtime &gameManager, const std::vector<GameObject *> &objects)
     {
         for (GameObject *object : objects)
         {
@@ -81,7 +83,7 @@ namespace
     class SceneScope
     {
     public:
-        explicit SceneScope(GameManager &gameManager) : gameManager(gameManager), objects()
+        explicit SceneScope(Runtime &gameManager) : gameManager(gameManager), objects()
         {
         }
 
@@ -96,7 +98,7 @@ namespace
         }
 
     private:
-        GameManager &gameManager;
+        Runtime &gameManager;
         std::vector<GameObject *> objects;
     };
 
@@ -117,7 +119,7 @@ namespace
         std::filesystem::path originalWorkingDirectory;
     };
 
-    GameObject *createStaticBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height)
+    GameObject *createStaticBox(Runtime &gameManager, const std::string &name, float x, float y, float width, float height)
     {
         return gameManager
             .createGameObject()
@@ -127,7 +129,7 @@ namespace
             ->setPosition(Eigen::Vector2f(x, y));
     }
 
-    GameObject *createDynamicCircle(GameManager &gameManager, const std::string &name, float x, float y, float radius)
+    GameObject *createDynamicCircle(Runtime &gameManager, const std::string &name, float x, float y, float radius)
     {
         GameObject *object = gameManager
                                  .createGameObject()
@@ -144,7 +146,7 @@ namespace
         return object;
     }
 
-    GameObject *createDynamicBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height)
+    GameObject *createDynamicBox(Runtime &gameManager, const std::string &name, float x, float y, float width, float height)
     {
         GameObject *object = gameManager
                                  .createGameObject()
@@ -161,7 +163,7 @@ namespace
         return object;
     }
 
-    GameObject *createKinematicBox(GameManager &gameManager, const std::string &name, float x, float y, float width, float height, bool gravity)
+    GameObject *createKinematicBox(Runtime &gameManager, const std::string &name, float x, float y, float width, float height, bool gravity)
     {
         return gameManager
             .createGameObject()
@@ -286,7 +288,7 @@ namespace
 
     void testCircleCollisionStability()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *floor = createStaticBox(gameManager, "Regression Floor", 200.0f, 300.0f, 400.0f, 40.0f);
@@ -306,7 +308,7 @@ namespace
 
     void testSleepingOnSupport()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *floor = createStaticBox(gameManager, "Sleep Floor", 320.0f, 340.0f, 420.0f, 40.0f);
@@ -324,7 +326,7 @@ namespace
 
     void testBroadPhasePairTracking()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *boxA = createStaticBox(gameManager, "Pair A", 120.0f, 120.0f, 40.0f, 40.0f);
@@ -358,7 +360,7 @@ namespace
 
     void testCheckpointFastMotionCancellation()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *box = createStaticBox(gameManager, "Checkpoint Box", 120.0f, 120.0f, 40.0f, 40.0f);
@@ -388,7 +390,7 @@ namespace
 
     void testSegmentedIntervalListFastMotionAcrossChunks()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         Grid localGrid;
@@ -553,7 +555,7 @@ namespace
         file << document.dump(4);
     }
 
-    void destroyNamedObject(GameManager &gameManager, SDLWindow *window, const std::string &name)
+    void destroyNamedObject(Runtime &gameManager, const std::string &name)
     {
         GameObject *gameObject = gameManager.getGameObject(name);
         if (gameObject == nullptr)
@@ -561,20 +563,13 @@ namespace
             return;
         }
 
-        Camera *camera = gameObject->getComponent<Camera>();
-        if (camera != nullptr && window != nullptr && window->getMainCamera() == camera)
-        {
-            window->setMainCamera(nullptr);
-        }
-
         gameManager.destroyGameObject(gameObject);
     }
 
     void testSceneLoading()
     {
-        GameManager &gameManager = GameManager::getInstance();
-        SDLWindow *window = gameManager.getWindow();
-        require(window != nullptr, "Scene loading regression requires an SDLWindow.");
+        Runtime &gameManager = Runtime::current();
+        require(gameManager.getWindowHandle() != nullptr, "Scene loading regression requires an SDLWindow.");
 
         std::filesystem::path scenePath = std::filesystem::current_path() / "scene_loading_regression.scene";
         std::filesystem::path wallTexturePath = findRegressionAsset("wall.png");
@@ -582,8 +577,8 @@ namespace
 
         auto cleanup = [&]()
         {
-            destroyNamedObject(gameManager, window, "Loaded Ball");
-            destroyNamedObject(gameManager, window, "Loaded Camera");
+            destroyNamedObject(gameManager, "Loaded Ball");
+            destroyNamedObject(gameManager, "Loaded Camera");
 
             drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
 
@@ -679,7 +674,7 @@ namespace
             require(sprite->getTexture() != nullptr, "Scene loading regression failed to load the sprite texture.");
             require(sprite->getFlip() == SDL_FLIP_HORIZONTAL,
                     "Scene loading regression failed to load the sprite flip mode.");
-            require(std::abs(sprite->getWidth() - 32.0f) <= 1e-5f && std::abs(sprite->getHeight() - 48.0f) <= 1e-5f,
+            require(std::abs(sprite->getWidthWithoutScale() - 32.0f) <= 1e-5f && std::abs(sprite->getHeightWithoutScale() - 48.0f) <= 1e-5f,
                     "Scene loading regression failed to load the sprite size.");
 
             GameObject *loadedCameraObject = gameManager.getGameObject("Loaded Camera");
@@ -687,7 +682,7 @@ namespace
 
             Camera *camera = loadedCameraObject->getComponent<Camera>();
             require(camera != nullptr, "Scene loading regression failed to load the camera component.");
-            require(window->getMainCamera() == camera,
+            require(gameManager.getMainCamera() == camera,
                     "Scene loading regression failed to register the loaded camera as the main camera.");
             const SDL_FRect &cameraRect = camera->getCamera();
             require(std::abs(cameraRect.x - 5.0f) <= 1e-5f && std::abs(cameraRect.y - 10.0f) <= 1e-5f &&
@@ -705,9 +700,8 @@ namespace
 
     void testSceneSavingRoundTrip()
     {
-        GameManager &gameManager = GameManager::getInstance();
-        SDLWindow *window = gameManager.getWindow();
-        require(window != nullptr, "Scene round-trip regression requires an SDLWindow.");
+        Runtime &gameManager = Runtime::current();
+        require(gameManager.getWindowHandle() != nullptr, "Scene round-trip regression requires an SDLWindow.");
 
         std::filesystem::path scenePath = std::filesystem::current_path() / "scene_roundtrip_regression.scene";
         std::filesystem::path wallTexturePath = findRegressionAsset("wall.png");
@@ -716,8 +710,8 @@ namespace
 
         auto cleanup = [&]()
         {
-            destroyNamedObject(gameManager, window, "Roundtrip Ball");
-            destroyNamedObject(gameManager, window, "Roundtrip Camera");
+            destroyNamedObject(gameManager, "Roundtrip Ball");
+            destroyNamedObject(gameManager, "Roundtrip Camera");
 
             drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
 
@@ -787,8 +781,8 @@ namespace
                         std::abs(savedCollider->at("offset").at("y").get<float>() + 8.0f) <= 1e-5f,
                     "Scene round-trip regression failed to save the collider offset.");
 
-            destroyNamedObject(gameManager, window, "Roundtrip Ball");
-            destroyNamedObject(gameManager, window, "Roundtrip Camera");
+            destroyNamedObject(gameManager, "Roundtrip Ball");
+            destroyNamedObject(gameManager, "Roundtrip Camera");
             drainPhysicsQueuesAndDeleteMarkedObjects(gameManager);
 
             gameManager.loadScene(scene);
@@ -833,14 +827,14 @@ namespace
             require(loadedSprite->getTexture() != nullptr, "Scene round-trip regression failed to reload the sprite texture.");
             require(loadedSprite->getFlip() == SDL_FLIP_VERTICAL,
                     "Scene round-trip regression failed to preserve the sprite flip mode.");
-            require(std::abs(loadedSprite->getWidth() - 32.0f) <= 1e-5f && std::abs(loadedSprite->getHeight() - 48.0f) <= 1e-5f,
+            require(std::abs(loadedSprite->getWidthWithoutScale() - 32.0f) <= 1e-5f && std::abs(loadedSprite->getHeightWithoutScale() - 48.0f) <= 1e-5f,
                     "Scene round-trip regression failed to preserve the sprite size.");
 
             GameObject *loadedCameraObject = gameManager.getGameObject("Roundtrip Camera");
             require(loadedCameraObject != nullptr, "Scene round-trip regression failed to recreate the saved camera.");
             Camera *loadedCamera = loadedCameraObject->getComponent<Camera>();
             require(loadedCamera != nullptr, "Scene round-trip regression failed to reload the camera component.");
-            require(window->getMainCamera() == loadedCamera,
+            require(gameManager.getMainCamera() == loadedCamera,
                     "Scene round-trip regression failed to register the reloaded camera as the main camera.");
             const SDL_FRect &loadedCameraRect = loadedCamera->getCamera();
             require(std::abs(loadedCameraRect.x - 3.0f) <= 1e-5f && std::abs(loadedCameraRect.y - 4.0f) <= 1e-5f &&
@@ -858,7 +852,7 @@ namespace
 
     void testRestitutionBounce()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *floor = createStaticBox(gameManager, "Bounce Floor", 220.0f, 320.0f, 400.0f, 40.0f);
@@ -890,7 +884,7 @@ namespace
 
     void testKinematicBodySemantics()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         {
             SceneScope sceneScope(gameManager);
@@ -953,7 +947,7 @@ namespace
 
     void testAnimatorComponentPlayback()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animator_frame_a_regression.bmp", 255, 0, 0);
         const std::filesystem::path frameBPath = createTemporaryBmpAsset("animator_frame_b_regression.bmp", 0, 255, 0);
@@ -1023,7 +1017,7 @@ namespace
 
     void testAnimatorAdvancedPlayback()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animator_advanced_idle_regression.bmp", 255, 0, 0);
         const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animator_advanced_sheet_regression.bmp");
@@ -1103,7 +1097,7 @@ namespace
 
     void testAnimationClipFileRoundTrip()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         const std::filesystem::path frameAPath = createTemporaryBmpAsset("animationclip_roundtrip_idle_regression.bmp", 255, 0, 0);
         const std::filesystem::path sheetPath = createTemporaryStripBmpAsset("animationclip_roundtrip_sheet_regression.bmp");
@@ -1177,10 +1171,8 @@ namespace
 
     void testAudioComponentControls()
     {
-        GameManager &gameManager = GameManager::getInstance();
-        SDLWindow *window = gameManager.getWindow();
-        require(window != nullptr, "Audio regression requires an SDLWindow.");
-        require(window->getMixer() != nullptr, "Audio regression requires an active mixer device.");
+        Runtime &gameManager = Runtime::current();
+        require(gameManager.getWindowHandle() != nullptr, "Audio regression requires an SDLWindow.");
 
         const std::filesystem::path audioPath = findRegressionAudioAsset("jump.wav");
         const std::string audioPathString = audioPath.string();
@@ -1283,7 +1275,7 @@ namespace
 
     void testRotatedBoxSupportEdgeSelection()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *boxObject = createStaticBox(gameManager, "Rotated Support Box", 240.0f, 180.0f, 80.0f, 40.0f);
@@ -1326,7 +1318,7 @@ namespace
 
     void testParentChildRelativeMovement()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *parent = gameManager.createGameObject()->setName("Parent");
@@ -1364,7 +1356,7 @@ namespace
 
     void testColliderOffsetAffectsGeometry()
     {
-        GameManager &gameManager = GameManager::getInstance();
+        Runtime &gameManager = Runtime::current();
 
         SceneScope sceneScope(gameManager);
         GameObject *boxObject = createStaticBox(gameManager, "Offset Box", 200.0f, 120.0f, 40.0f, 20.0f);
@@ -1427,6 +1419,7 @@ namespace
 int main()
 {
     configureHeadlessEnvironment();
+    platformator::Runtime runtime;
 
     static const TestCase testCases[] = {
         {"circle_collision_stability", testCircleCollisionStability},
@@ -1449,8 +1442,6 @@ int main()
         {"parent_child_relative_movement", testParentChildRelativeMovement},
         {"collider_offset_affects_geometry", testColliderOffsetAffectsGeometry},
     };
-
-    GameManager::getInstance();
 
     size_t failureCount = 0;
     for (const TestCase &testCase : testCases)

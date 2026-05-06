@@ -1,12 +1,15 @@
 #include "mario_patrol_enemy.h"
 
-#include "animator.h"
-#include "collider.h"
+#include "platformator/animator.h"
+#include "platformator/behaviorquery.h"
+#include "platformator/collision.h"
+#include "platformator/collider.h"
+#include "platformator/rigidbody.h"
+#include "platformator/sprite.h"
+
 #include "mario_constants.h"
 #include "mario_game.h"
 #include "mario_player.h"
-#include "rigidbody.h"
-#include "sprite.h"
 
 namespace mario
 {

@@ -1,6 +1,7 @@
 #include "mario_coin.h"
 
-#include "animator.h"
+#include "platformator/animator.h"
+
 #include "mario_game.h"
 
 namespace mario

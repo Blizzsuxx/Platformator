@@ -9,7 +9,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../player/run_0.png"
+            "textureWrapperFilePath": "assets/player/run_0.png"
         },
         {
             "duration": 0.0,
@@ -20,7 +20,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../player/run_1.png"
+            "textureWrapperFilePath": "assets/player/run_1.png"
         },
         {
             "duration": 0.0,
@@ -31,7 +31,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../player/run_2.png"
+            "textureWrapperFilePath": "assets/player/run_2.png"
         }
     ],
     "framesPerSecond": 12.0,

@@ -2,15 +2,13 @@
 
 #include <SDL3/SDL.h>
 
-#include "behaviorfactoryregistry.h"
-#include "jsonhelpers.h"
-#include "behavior.h"
-#include "assetreference.h"
-#include "objectreference.h"
-#include "sprite.h"
-#include "animator.h"
-#include "audio.h"
-#include "rigidbody.h"
+#include "platformator/assetreference.h"
+#include "platformator/audio.h"
+#include "platformator/animator.h"
+#include "platformator/behavior.h"
+#include "platformator/rigidbody.h"
+#include "platformator/scriptregistration.h"
+#include "platformator/sprite.h"
 
 namespace mario
 {

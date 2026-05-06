@@ -1,12 +1,10 @@
 #pragma once
 
-#include "behaviorfactoryregistry.h"
-#include "gamemanager.h"
-#include "jsonhelpers.h"
-#include "behavior.h"
-#include "assetreference.h"
-#include "objectreference.h"
-#include "audio.h"
+#include "platformator/animator.h"
+#include "platformator/assetreference.h"
+#include "platformator/audio.h"
+#include "platformator/behavior.h"
+#include "platformator/scriptregistration.h"
 
 namespace mario
 {

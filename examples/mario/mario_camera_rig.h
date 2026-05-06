@@ -1,10 +1,11 @@
 #pragma once
 
-#include "gamemanager.h"
-#include "jsonhelpers.h"
-#include "behavior.h"
-#include "assetreference.h"
-#include "objectreference.h"
+#include "platformator/behavior.h"
+#include "platformator/camera.h"
+#include "platformator/objectreference.h"
+#include "platformator/rigidbody.h"
+#include "platformator/scriptregistration.h"
+
 class Camera;
 
 namespace mario

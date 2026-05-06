@@ -1,20 +1,6 @@
-#include <exception>
-#include <iostream>
-#include <string>
-
-#include "gamemanager.h"
-#include "runtimeoptions.h"
+#include "platformator/runner.h"
 
 int main(int argc, char *args[])
 {
-    RuntimeOptions runtimeOptions = parseRuntimeOptions(argc, args, "assets/scenes/default.scene");
-    GameManager::setStartupWindowSettings(runtimeOptions.windowSettings);
-    GameManager::setStartupDebugSettings(runtimeOptions.debugSettings);
-
-    GameManager &gameManager = GameManager::getInstance();
-    Scene loadedScene(runtimeOptions.sceneFilePath);
-    gameManager.loadScene(loadedScene);
-    gameManager.loop();
-
-    return 0;
+    return platformator::run(argc, args, "assets/scenes/default.scene");
 }

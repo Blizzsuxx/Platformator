@@ -9,7 +9,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../enemies/walk_0.png"
+            "textureWrapperFilePath": "assets/enemies/walk_0.png"
         },
         {
             "duration": 0.0,
@@ -20,7 +20,7 @@
                 "h": 0.0
             },
             "hasSourceRect": false,
-            "textureWrapperFilePath": "../enemies/walk_1.png"
+            "textureWrapperFilePath": "assets/enemies/walk_1.png"
         }
     ],
     "framesPerSecond": 6.0,

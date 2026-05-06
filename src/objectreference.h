@@ -6,10 +6,8 @@
 #include <json.hpp>
 
 #include "baseobject.h"
+#include "runtimeaccess.h"
 
-class GameManager;
-
-GameManager &getGameManagerInstance();
 BaseObject *resolveObjectReference(GameManager &gameManager, int objectId);
 
 template <typename T>

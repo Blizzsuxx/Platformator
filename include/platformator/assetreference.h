@@ -6,9 +6,9 @@
 
 #include <json.hpp>
 
+#include "platformator/baseobject.h"
 #include "platformator/detail/animationclip.h"
 #include "platformator/detail/audiowrapper.h"
-#include "platformator/detail/baseobject.h"
 #include "platformator/detail/texturewrapper.h"
 #include "platformator/runtime.h"
 

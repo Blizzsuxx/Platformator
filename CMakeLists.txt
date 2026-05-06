@@ -81,9 +81,12 @@ set_target_properties(platformator_engine PROPERTIES
 
 target_include_directories(platformator_engine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+target_include_directories(platformator_engine PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 
 target_link_libraries(platformator_engine PUBLIC
@@ -146,6 +149,17 @@ if(PLATFORMATOR_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_recreation_test.cpp"
     )
     target_link_libraries(platformator_runtime_recreation_test PRIVATE Platformator::platformator)
+
+    foreach(platformator_test_target
+        platformator_regression_tests
+        platformator_scene_script_roundtrip_test
+        platformator_queued_deletion_safety_test
+        platformator_runtime_recreation_test
+    )
+        target_include_directories(${platformator_test_target} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        )
+    endforeach()
 
     add_test(
         NAME platformator_regression_tests

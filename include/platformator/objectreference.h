@@ -5,7 +5,7 @@
 
 #include <json.hpp>
 
-#include "platformator/detail/baseobject.h"
+#include "platformator/baseobject.h"
 #include "platformator/runtime.h"
 
 namespace platformator_detail

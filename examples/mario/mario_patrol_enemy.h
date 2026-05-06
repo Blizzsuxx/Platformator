@@ -37,9 +37,9 @@ namespace mario
         float direction;
         float walkSpeed;
         float squashDuration;
-        AssetReference<AnimationClip> walkAnimset;
-        AssetReference<AnimationClip> squashAnimset;
-        AssetReference<AudioWrapper> stompSound;
+        platformator::AnimationClipRef walkAnimset;
+        platformator::AnimationClipRef squashAnimset;
+        platformator::AudioAssetRef stompSound;
         bool defeated;
         double defeatedTimer;
         float maxFallSpeed;

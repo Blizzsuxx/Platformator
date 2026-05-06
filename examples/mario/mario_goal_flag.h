@@ -18,8 +18,8 @@ namespace mario
         bool reach();
 
     private:
-        AssetReference<AnimationClip> waveAnimset;
-        AssetReference<AudioWrapper> winSound;
+        platformator::AnimationClipRef waveAnimset;
+        platformator::AudioAssetRef winSound;
         Animator *animator;
         Audio *audio;
 

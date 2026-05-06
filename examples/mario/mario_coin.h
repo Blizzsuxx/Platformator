@@ -18,8 +18,8 @@ namespace mario
         bool collect();
 
     private:
-        AssetReference<AnimationClip> spinAnimset;
-        AssetReference<AudioWrapper> coinSound;
+        platformator::AnimationClipRef spinAnimset;
+        platformator::AudioAssetRef coinSound;
         Audio *audioComponent;
         Animator *animatorComponent;
 

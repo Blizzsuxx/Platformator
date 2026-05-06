@@ -1,5 +1,7 @@
 #include "scriptcomponent.h"
 
+#include "platformator/scriptregistration.h"
+
 void to_json(nlohmann::json &j, const ScriptComponent &scriptComponent)
 {
     j["id"] = scriptComponent.getId();
@@ -20,7 +22,7 @@ void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent)
     for (const auto &behaviorJson : j.at("behaviors"))
     {
         std::string type = behaviorJson.at("type").get<std::string>();
-        Behavior *behavior = BehaviorFactoryRegistry::getInstance().createBehavior(type);
+        Behavior *behavior = platformator::createRegisteredBehavior(type);
         if (behavior != nullptr)
         {
             behavior->deserialize(behaviorJson);

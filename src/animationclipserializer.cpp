@@ -1,5 +1,4 @@
 #include "animationclip.h"
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 void to_json(nlohmann::json &j, const AnimationFrame &frame)
@@ -19,7 +18,7 @@ void from_json(const nlohmann::json &j, AnimationFrame &frame)
     j.at("textureWrapperFilePath").get_to(textureWrapperFilePath);
     if (!textureWrapperFilePath.empty())
     {
-        frame.setTextureWrapper(getGameManagerInstance().loadTexture(textureWrapperFilePath));
+        frame.setTextureWrapper(platformator_detail::RuntimeAccess::loadTexture(textureWrapperFilePath));
     }
     else
     {

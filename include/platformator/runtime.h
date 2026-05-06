@@ -16,6 +16,11 @@ class AnimationClip;
 class AudioWrapper;
 class TextureWrapper;
 
+namespace platformator_detail
+{
+    class RuntimeAccess;
+}
+
 namespace platformator
 {
     class Runtime
@@ -49,7 +54,10 @@ namespace platformator
         SDL_Renderer *getRenderer() const;
 
     private:
+        friend class platformator_detail::RuntimeAccess;
+
         static Runtime *&activeRuntime();
+        GameManager &getGameManager() const;
 
         std::unique_ptr<GameManager> gameManager;
         std::string currentSceneFilePath;

@@ -2,7 +2,6 @@
 
 #include <utility>
 
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 AnimationFrame::AnimationFrame()
@@ -160,7 +159,7 @@ bool AnimationClip::removeReferenceAndFreeIfNoReferences()
     }
     if (referenceCount == 0 && !getFilePath().empty())
     {
-        getGameManagerInstance().freeAnimationClip(this);
+        platformator_detail::RuntimeAccess::freeAnimationClip(this);
         return true;
     }
 

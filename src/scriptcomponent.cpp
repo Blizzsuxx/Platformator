@@ -30,7 +30,7 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
     if (gameManagerIndex != SIZE_MAX && getGameObject() != nullptr && getGameObject()->getActive() &&
         !getGameObject()->getIsMarkedForDeletion())
     {
-        getGameManagerInstance().addStartedBehavior(behavior);
+        platformator_detail::RuntimeAccess::gameManager().addStartedBehavior(behavior);
     }
 
     return behavior;
@@ -88,7 +88,7 @@ void ScriptComponent::destroyBehaviors()
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-        getGameManagerInstance().removeStartedBehavior(behavior);
+        platformator_detail::RuntimeAccess::gameManager().removeStartedBehavior(behavior);
         behavior->onDestroy();
 
         delete behavior;

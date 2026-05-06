@@ -163,4 +163,9 @@ namespace platformator
         static Runtime *runtime = nullptr;
         return runtime;
     }
+
+    GameManager &Runtime::getGameManager() const
+    {
+        return *gameManager;
+    }
 } // namespace platformator

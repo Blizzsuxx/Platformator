@@ -223,7 +223,7 @@ void SDLWindow::render()
     SDL_RenderClear(renderer);
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
     if (shouldSimulateFrame())
     {
         for (const auto &cellEntry : physicsManager->getGrid().getCells())

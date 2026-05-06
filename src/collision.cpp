@@ -267,7 +267,7 @@ void Collision::setSupportsIncidentBody(bool supports) const
 
 bool Collision::isVerticalCollision() const
 {
-    const Eigen::Vector2f &gravityVectorNormalized = getGameManagerInstance().getGravityVectorNormalized();
+    const Eigen::Vector2f &gravityVectorNormalized = platformator_detail::RuntimeAccess::gameManager().getGravityVectorNormalized();
     return std::abs(normal.dot(-gravityVectorNormalized)) >= SUPPORT_NORMAL_THRESHOLD;
 }
 

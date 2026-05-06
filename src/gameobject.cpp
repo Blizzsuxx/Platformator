@@ -243,7 +243,7 @@ void GameObject::addComponent(Component *component)
 
     if (getIsRegisteredInGameManager())
     {
-        getGameManagerInstance().notifyComponentAdded(component);
+        platformator_detail::RuntimeAccess::gameManager().notifyComponentAdded(component);
     }
 }
 
@@ -287,7 +287,7 @@ bool GameObject::removeComponent(const ComponentType &componentType)
 
     if (getIsRegisteredInGameManager())
     {
-        getGameManagerInstance().notifyComponentRemoved(components[componentType]);
+        platformator_detail::RuntimeAccess::gameManager().notifyComponentRemoved(components[componentType]);
     }
     delete components[componentType];
     components[componentType] = nullptr;
@@ -412,7 +412,7 @@ void GameObject::addComponentsToGameManager()
     {
         if (component != nullptr)
         {
-            getGameManagerInstance().notifyComponentAdded(component);
+            platformator_detail::RuntimeAccess::gameManager().notifyComponentAdded(component);
         }
     }
 }
@@ -423,12 +423,12 @@ void GameObject::removeComponentsFromGameManager()
     {
         if (component != nullptr)
         {
-            getGameManagerInstance().notifyComponentRemoved(component);
+            platformator_detail::RuntimeAccess::gameManager().notifyComponentRemoved(component);
         }
     }
 }
 
 void GameObject::destroy()
 {
-    getGameManagerInstance().removeGameObject(this);
+    platformator_detail::RuntimeAccess::gameManager().removeGameObject(this);
 }

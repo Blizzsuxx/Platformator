@@ -1,5 +1,4 @@
 #include "audiowrapper.h"
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 AudioWrapper::AudioWrapper(MIX_Audio *audio, const std::string &filePath) : Asset(filePath), audio(audio), referenceCount(0)
@@ -29,7 +28,7 @@ bool AudioWrapper::removeReferenceAndFreeIfNoReferences()
     }
     if (referenceCount == 0 && !getFilePath().empty())
     {
-        getGameManagerInstance().freeAudio(this);
+        platformator_detail::RuntimeAccess::freeAudio(this);
         return true;
     }
     return false;

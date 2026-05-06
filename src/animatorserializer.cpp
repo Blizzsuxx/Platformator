@@ -1,6 +1,5 @@
 #include "animator.h"
 #include "animationclip.h"
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 void to_json(nlohmann::json &j, const Animator &animator)
@@ -24,7 +23,7 @@ void from_json(const nlohmann::json &j, Animator &animator)
     j.at("animationClipFilePath").get_to(animationClipFilePath);
     if (!animationClipFilePath.empty())
     {
-        const AnimationClip *clip = getGameManagerInstance().loadAnimationClip(animationClipFilePath);
+        const AnimationClip *clip = platformator_detail::RuntimeAccess::loadAnimationClip(animationClipFilePath);
         animator.setCurrentClip(clip);
     }
 

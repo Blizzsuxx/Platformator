@@ -1,6 +1,5 @@
 #include "audio.h"
 
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 void to_json(nlohmann::json &j, const Audio &audio)
@@ -24,7 +23,7 @@ void from_json(const nlohmann::json &j, Audio &audio)
 
     if (!filePath.empty())
     {
-        AudioWrapper *audioWrapper = getGameManagerInstance().loadAudio(filePath);
+        AudioWrapper *audioWrapper = platformator_detail::RuntimeAccess::loadAudio(filePath);
         audio.setAudio(audioWrapper);
     }
     else

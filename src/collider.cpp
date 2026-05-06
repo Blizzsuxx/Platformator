@@ -110,7 +110,7 @@ void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection 
 
 void Collider::scheduleSync()
 {
-    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
     if (physicsManager != nullptr && !(flags & IS_QUEUED_FOR_SYNC) && hasValidGridCellRange())
     {
         physicsManager->queueColliderSync(this);
@@ -167,7 +167,7 @@ void Collider::setCollisionGroup(const uint64_t collisionGroup)
         return;
     }
 
-    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
     if (physicsManager != nullptr)
     {
         physicsManager->refreshColliderComponent(this);
@@ -193,7 +193,7 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
         return;
     }
 
-    PhysicsManager *physicsManager = getGameManagerInstance().getPhysicsManager();
+    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
     if (physicsManager != nullptr)
     {
         physicsManager->refreshColliderComponent(this);

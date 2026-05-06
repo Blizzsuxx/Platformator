@@ -1,7 +1,6 @@
 #include "texturewrapper.h"
 #include "sprite.h"
 #include <algorithm>
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath) : Asset(filePath), texture(texture), referenceCount(0)
@@ -31,7 +30,7 @@ bool TextureWrapper::removeReferenceAndFreeIfNoReferences()
     }
     if (referenceCount == 0 && !getFilePath().empty())
     {
-        getGameManagerInstance().freeTexture(this);
+        platformator_detail::RuntimeAccess::freeTexture(this);
         return true;
     }
     return false;

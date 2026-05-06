@@ -1,5 +1,4 @@
 #include "sprite.h"
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 #include "texturewrapper.h"
 
@@ -31,8 +30,7 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
 {
     if (filePath != nullptr)
     {
-        GameManager &gameManager = getGameManagerInstance();
-        TextureWrapper *newTextureWrapper = gameManager.loadTexture(filePath);
+        TextureWrapper *newTextureWrapper = platformator_detail::RuntimeAccess::loadTexture(filePath);
         setTextureWrapper(newTextureWrapper);
     }
 }

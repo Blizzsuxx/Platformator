@@ -1,14 +1,7 @@
 #include "assetreference.h"
 #include "objectreference.h"
 
-#include "gamemanager.h"
 #include "platformator/runtime.h"
-#include "runtimeaccess.h"
-
-GameManager &getGameManagerInstance()
-{
-    return GameManager::getInstance();
-}
 
 namespace platformator_detail
 {

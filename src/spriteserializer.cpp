@@ -1,6 +1,5 @@
 #include "sprite.h"
 
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 #include "texturewrapper.h"
 
@@ -26,7 +25,7 @@ void from_json(const nlohmann::json &j, Sprite &sprite)
     std::string filePath = j.at("textureFilePath").get<std::string>();
     if (!filePath.empty())
     {
-        sprite.setTextureWrapper(getGameManagerInstance().loadTexture(filePath));
+        sprite.setTextureWrapper(platformator_detail::RuntimeAccess::loadTexture(filePath));
     }
 
     sprite.setFlip(j.at("flip").get<SDL_FlipMode>());

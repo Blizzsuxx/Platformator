@@ -110,7 +110,7 @@ void ColliderPair::queueCollisionEnter() const
         objectBOrMaybeNull = objectB;
     }
 
-    getGameManagerInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectAOrMaybeNull, objectBOrMaybeNull});
+    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionStay() const
@@ -127,7 +127,7 @@ void ColliderPair::queueCollisionStay() const
         objectBOrMaybeNull = objectB;
     }
 
-    getGameManagerInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectAOrMaybeNull, objectBOrMaybeNull});
+    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionExit() const
@@ -144,7 +144,7 @@ void ColliderPair::queueCollisionExit() const
         objectBOrMaybeNull = objectB;
     }
 
-    getGameManagerInstance().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectAOrMaybeNull, objectBOrMaybeNull});
+    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)

@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include <debugsettings.h>
-#include <windowsettings.h>
+#include "platformator/debugsettings.h"
+#include "platformator/windowsettings.h"
 
 struct RuntimeOptions
 {

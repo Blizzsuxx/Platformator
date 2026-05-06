@@ -55,6 +55,20 @@ configure_file(
     @ONLY
 )
 
+file(GLOB_RECURSE PLATFORMATOR_HEADER_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+)
+
+foreach(platformator_header IN LISTS PLATFORMATOR_HEADER_SOURCES)
+    file(RELATIVE_PATH platformator_header_relative "${CMAKE_CURRENT_SOURCE_DIR}/src" "${platformator_header}")
+    get_filename_component(platformator_header_output_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/platformator/detail/${platformator_header_relative}" DIRECTORY)
+    file(RELATIVE_PATH platformator_header_include_path "${platformator_header_output_dir}" "${platformator_header}")
+    file(MAKE_DIRECTORY "${platformator_header_output_dir}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/platformator/detail/${platformator_header_relative}"
+        "#pragma once\n\n#include \"${platformator_header_include_path}\"\n"
+    )
+endforeach()
+
 set(PLATFORMATOR_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}")
 
@@ -70,7 +84,6 @@ target_include_directories(platformator_engine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/platformator/detail>
 )
 
 target_link_libraries(platformator_engine PUBLIC

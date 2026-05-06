@@ -33,7 +33,7 @@ if(NOT TARGET Platformator::platformator)
     set_target_properties(Platformator::platformator PROPERTIES
         IMPORTED_LOCATION "${_platformator_library}"
         INTERFACE_COMPILE_FEATURES "cxx_std_20"
-        INTERFACE_INCLUDE_DIRECTORIES "${_platformator_includedir};${_platformator_includedir}/platformator/detail"
+        INTERFACE_INCLUDE_DIRECTORIES "${_platformator_includedir}"
         INTERFACE_LINK_LIBRARIES "${_platformator_dependency_libraries}"
     )
 endif()

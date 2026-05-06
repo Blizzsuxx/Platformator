@@ -2,6 +2,7 @@
 #include "objectreference.h"
 
 #include "gamemanager.h"
+#include "platformator/runtime.h"
 #include "runtimeaccess.h"
 
 GameManager &getGameManagerInstance()
@@ -9,22 +10,25 @@ GameManager &getGameManagerInstance()
     return GameManager::getInstance();
 }
 
-TextureWrapper *loadTextureAssetReference(GameManager &gameManager, const std::string &assetPath)
+namespace platformator_detail
 {
-    return gameManager.loadTexture(assetPath);
-}
+    TextureWrapper *loadTextureAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
+    {
+        return runtime.loadTexture(assetPath);
+    }
 
-AudioWrapper *loadAudioAssetReference(GameManager &gameManager, const std::string &assetPath)
-{
-    return gameManager.loadAudio(assetPath);
-}
+    AudioWrapper *loadAudioAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
+    {
+        return runtime.loadAudio(assetPath);
+    }
 
-AnimationClip *loadAnimationClipAssetReference(GameManager &gameManager, const std::string &assetPath)
-{
-    return gameManager.loadAnimationClip(assetPath);
-}
+    AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
+    {
+        return runtime.loadAnimationClip(assetPath);
+    }
 
-BaseObject *resolveObjectReference(GameManager &gameManager, int objectId)
-{
-    return gameManager.getObjectById(objectId);
-}
+    BaseObject *resolveObjectReference(platformator::Runtime &runtime, int objectId)
+    {
+        return runtime.getObjectById(objectId);
+    }
+} // namespace platformator_detail

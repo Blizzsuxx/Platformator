@@ -1,3 +1,3 @@
 #pragma once
 
-#include <rigidbody.h>
+#include "platformator/detail/rigidbody.h"

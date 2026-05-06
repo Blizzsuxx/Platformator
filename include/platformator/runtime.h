@@ -13,6 +13,7 @@ class GameManager;
 class GameObject;
 class Scene;
 class AnimationClip;
+class AudioWrapper;
 class TextureWrapper;
 
 namespace platformator
@@ -35,6 +36,7 @@ namespace platformator
         BaseObject *getObjectById(int id) const;
         Camera *getMainCamera() const;
         AnimationClip *loadAnimationClip(const std::string &filePath) const;
+        AudioWrapper *loadAudio(const std::string &filePath) const;
         void loadScene(Scene &scene);
         void loadScene(const std::string &sceneFilePath);
         TextureWrapper *loadTexture(const std::string &filePath) const;

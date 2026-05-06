@@ -1,3 +1,3 @@
 #pragma once
 
-#include <animator.h>
+#include "platformator/detail/animator.h"

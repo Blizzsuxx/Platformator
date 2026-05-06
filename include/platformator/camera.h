@@ -1,3 +1,3 @@
 #pragma once
 
-#include <camera.h>
+#include "platformator/detail/camera.h"

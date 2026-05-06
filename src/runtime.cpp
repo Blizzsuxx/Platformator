@@ -92,6 +92,11 @@ namespace platformator
         return gameManager->loadAnimationClip(filePath);
     }
 
+    AudioWrapper *Runtime::loadAudio(const std::string &filePath) const
+    {
+        return gameManager->loadAudio(filePath);
+    }
+
     void Runtime::loadScene(Scene &scene)
     {
         currentSceneFilePath = scene.filePath;

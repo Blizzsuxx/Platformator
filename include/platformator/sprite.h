@@ -1,3 +1,3 @@
 #pragma once
 
-#include <sprite.h>
+#include "platformator/detail/sprite.h"

@@ -1,3 +1,3 @@
 #pragma once
 
-#include <scriptcomponent.h>
+#include "platformator/detail/scriptcomponent.h"

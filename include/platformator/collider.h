@@ -1,3 +1,3 @@
 #pragma once
 
-#include <collider.h>
+#include "platformator/detail/collider.h"

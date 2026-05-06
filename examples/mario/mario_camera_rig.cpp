@@ -22,7 +22,7 @@ namespace mario
     void MarioCameraRig::lateUpdate(double)
     {
         SDL_FRect cameraRect = camera.get()->getCamera();
-        float targetX = target.get()->getX() - SCREEN_WIDTH * 0.5f;
+        float targetX = target.get()->getX() - cameraRect.w * 0.5f;
 
         cameraRect.x = std::max(0.0f, targetX);
         camera.get()->setCamera(cameraRect);

@@ -1,3 +1,3 @@
 #pragma once
 
-#include <behavior.h>
+#include "platformator/detail/behavior.h"

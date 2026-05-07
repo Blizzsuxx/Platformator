@@ -7,6 +7,7 @@
 #include "animator.h"
 #include "animationclip.h"
 #include "audio.h"
+#include "constants.h"
 #include "pathmanager.h"
 #include "scriptcomponent.h"
 #include "texturewrapper.h"

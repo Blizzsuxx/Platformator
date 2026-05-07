@@ -1,4 +1,6 @@
 #include "gameobject.h"
+
+#include "jsonhelpers.h"
 #include "collider.h"
 #include "boxcollider.h"
 #include "circlecollider.h"

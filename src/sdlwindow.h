@@ -14,6 +14,7 @@
 #include "windowsettings.h"
 
 class AudioWrapper;
+class Sprite;
 
 class SDLWindow
 {

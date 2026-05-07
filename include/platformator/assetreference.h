@@ -7,10 +7,10 @@
 #include <json.hpp>
 
 #include "platformator/baseobject.h"
-#include "platformator/detail/animationclip.h"
-#include "platformator/detail/audiowrapper.h"
-#include "platformator/detail/texturewrapper.h"
+#include "platformator/animationclip.h"
+#include "platformator/audiowrapper.h"
 #include "platformator/runtime.h"
+#include "platformator/texturewrapper.h"
 
 namespace platformator_detail
 {

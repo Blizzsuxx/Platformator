@@ -1,5 +1,7 @@
 #include "circlecollider.h"
 
+#include "jsonhelpers.h"
+
 void to_json(nlohmann::json &j, const CircleCollider &circleCollider)
 {
     float radius = circleCollider.getRadiusWithoutScale();

@@ -1,4 +1,6 @@
 #include "physicsmanager.h"
+
+#include "constants.h"
 #include "debugdraw.h"
 #include "oneapi/tbb.h"
 

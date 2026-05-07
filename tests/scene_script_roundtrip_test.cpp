@@ -17,10 +17,13 @@
 #include "camera.h"
 #include "constants.h"
 #include "jsonhelpers.h"
+#include "platformator/assetreference.h"
+#include "platformator/objectreference.h"
 #include "platformator/runtime.h"
 #include "rigidbody.h"
 #include "scene.h"
 #include "scriptcomponent.h"
+#include "sprite.h"
 
 namespace scene_roundtrip_test_support
 {

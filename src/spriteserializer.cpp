@@ -1,5 +1,7 @@
 #include "sprite.h"
 
+#include "jsonhelpers.h"
+
 #include "runtimeaccess.h"
 #include "texturewrapper.h"
 

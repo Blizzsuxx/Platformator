@@ -1,5 +1,7 @@
 #include "boxcollider.h"
 
+#include "jsonhelpers.h"
+
 void to_json(nlohmann::json &j, const BoxCollider &boxCollider)
 {
     float width = boxCollider.getWidthWithoutScale();

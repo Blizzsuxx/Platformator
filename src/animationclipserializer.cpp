@@ -1,4 +1,6 @@
 #include "animationclip.h"
+
+#include "jsonhelpers.h"
 #include "runtimeaccess.h"
 
 void to_json(nlohmann::json &j, const AnimationFrame &frame)

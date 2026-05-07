@@ -1,4 +1,6 @@
 #include "collider.h"
+
+#include "constants.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
 #include "gridcell.h"

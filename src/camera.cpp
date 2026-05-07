@@ -2,6 +2,9 @@
 
 #include <algorithm>
 
+#include "constants.h"
+#include "sprite.h"
+
 Camera::Camera() : Component(ComponentType::CAMERA), width(SCREEN_WIDTH), height(SCREEN_HEIGHT)
 {
 }

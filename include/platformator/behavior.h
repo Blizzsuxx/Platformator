@@ -4,9 +4,7 @@
 
 #include <json.hpp>
 
-#include "platformator/assetreference.h"
 #include "platformator/gameobject.h"
-#include "platformator/objectreference.h"
 
 class Collision;
 class Collider;

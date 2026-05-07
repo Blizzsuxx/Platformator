@@ -4,15 +4,20 @@
 #include "sdlwindow.h"
 #include "physicsmanager.h"
 #include "windowsettings.h"
+
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
+#include "animationclip.h"
 #include "scene.h"
 #include "audiowrapper.h"
+#include "texturewrapper.h"
 
 class Animator;
 class ScriptComponent;
 class Behavior;
-class AnimationClip;
 
 namespace platformator
 {

@@ -8,6 +8,7 @@
 #include "audiowrapper.h"
 #include "gamemanager.h"
 #include "runtimeaccess.h"
+#include "sprite.h"
 
 SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
     : window(nullptr),

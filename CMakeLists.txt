@@ -81,12 +81,12 @@ set_target_properties(platformator_engine PROPERTIES
 
 target_include_directories(platformator_engine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 target_include_directories(platformator_engine PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
 )
 
 target_link_libraries(platformator_engine PUBLIC
@@ -158,6 +158,7 @@ if(PLATFORMATOR_BUILD_TESTS)
     )
         target_include_directories(${platformator_test_target} PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_BINARY_DIR}/generated"
         )
     endforeach()
 
@@ -211,15 +212,6 @@ if(PLATFORMATOR_INSTALL)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/platformator/"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/platformator"
         FILES_MATCHING PATTERN "*.h"
-    )
-
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/platformator/detail"
-        FILES_MATCHING PATTERN "*.h"
-    )
-
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/buildconfig.h"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/platformator/detail"
     )
 
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3-3.4.2/include/SDL3"

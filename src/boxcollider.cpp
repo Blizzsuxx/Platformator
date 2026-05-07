@@ -1,4 +1,6 @@
 #include "boxcollider.h"
+
+#include "constants.h"
 #include "helpers.h"
 #include "rigidbody.h"
 

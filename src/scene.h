@@ -1,19 +1,3 @@
 #pragma once
 
-#include <string>
-#include <vector>
-
-#include "animationclip.h"
-#include "gameobject.h"
-
-class Scene
-{
-public:
-    Scene(std::string filepath);
-    ~Scene();
-    std::string filePath;
-
-    std::vector<GameObject *> loadScene();
-
-    void saveScene(const std::vector<GameObject *> &gameObjects) const;
-};
+#include "platformator/scene.h"

@@ -1,5 +1,7 @@
 #include "rigidbody.h"
 
+#include "jsonhelpers.h"
+
 void to_json(nlohmann::json &j, const Rigidbody &rigidbody)
 {
     j = nlohmann::json{{"id", rigidbody.getId()},

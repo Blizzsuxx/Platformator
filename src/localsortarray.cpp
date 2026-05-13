@@ -64,7 +64,7 @@ LocalSortArray::~LocalSortArray()
 size_t LocalSortArray::add(BoundingRadiusProjectionProxy *element)
 {
     // find the index where the element should be inserted using binary search
-    if (size == MAX_SIZE)
+    if (size == MAX_CHUNK_SIZE)
     {
         return SIZE_MAX;
     }
@@ -282,4 +282,44 @@ SegmentedIntervalList *LocalSortArray::getOwner() const
 void LocalSortArray::setOwner(SegmentedIntervalList *owner)
 {
     this->owner = owner;
+}
+
+LocalSortArray *LocalSortArray::tryMergeWithRightChunk()
+{
+    if (rightChunk != nullptr && size + rightChunk->size <= MAX_CHUNK_SIZE)
+    {
+        for (size_t i = 0; i < rightChunk->size; i++)
+        {
+            BoundingRadiusProjectionProxy *element = rightChunk->array[i];
+            element->setChunk(this);
+            element->setChunkIndex(size + i);
+            array[size + i] = element;
+        }
+        size += rightChunk->size;
+        checkpoints = std::move(rightChunk->checkpoints);
+        checkpointCache = std::move(rightChunk->checkpointCache);
+
+        LocalSortArray *oldRightChunk = rightChunk;
+        LocalSortArray *newRightChunk = rightChunk->getRightChunk();
+        setRightChunk(newRightChunk);
+        if (newRightChunk != nullptr)
+        {
+            newRightChunk->setLeftChunk(this);
+        }
+
+        return oldRightChunk;
+    }
+
+    return nullptr;
+}
+
+LocalSortArray *LocalSortArray::tryMergeWithLeftChunk()
+{
+    LocalSortArray *leftChunk = getLeftChunk();
+    if (leftChunk != nullptr)
+    {
+        return leftChunk->tryMergeWithRightChunk();
+    }
+
+    return nullptr;
 }

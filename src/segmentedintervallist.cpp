@@ -337,8 +337,9 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(LocalSortArray
     }
 
     array->remove(index);
+    size_t chunkSize = array->getSize();
 
-    if (array->getSize() == 0 && chunks.size() > 1)
+    if (chunkSize == 0 && chunks.size() > 1)
     {
         LocalSortArray *leftChunk = array->getLeftChunk();
         LocalSortArray *rightChunk = array->getRightChunk();
@@ -357,6 +358,21 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(LocalSortArray
         delete array;
 
         return {rightChunk != nullptr ? rightChunk : leftChunk, index};
+    }
+
+    LocalSortArray *chunkToDelete = array->tryMergeWithLeftChunk();
+    if (chunkToDelete != nullptr)
+    {
+        array = array->getLeftChunk();
+
+        chunks.erase(std::remove(chunks.begin(), chunks.end(), chunkToDelete), chunks.end());
+        delete chunkToDelete;
+    }
+    chunkToDelete = array->tryMergeWithRightChunk();
+    if (chunkToDelete != nullptr)
+    {
+        chunks.erase(std::remove(chunks.begin(), chunks.end(), chunkToDelete), chunks.end());
+        delete chunkToDelete;
     }
 
     return {array, index};

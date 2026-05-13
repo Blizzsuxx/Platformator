@@ -4,8 +4,7 @@
 #include <vector>
 #include <unordered_set>
 #include "collider.h"
-
-const int MAX_SIZE = 32;
+#include "constants.h"
 
 class SwapCallback;
 class SegmentedIntervalList;
@@ -44,13 +43,16 @@ public:
     SegmentedIntervalList *getOwner() const;
     void setOwner(SegmentedIntervalList *owner);
 
+    LocalSortArray *tryMergeWithLeftChunk();
+    LocalSortArray *tryMergeWithRightChunk();
+
 private:
     size_t binarySearch(BoundingRadiusProjectionProxy *element);
     void addCheckpointInternal(Collider *element);
     std::size_t removeCheckpointInternal(Collider *element);
 
     size_t size;
-    BoundingRadiusProjectionProxy *array[MAX_SIZE];
+    BoundingRadiusProjectionProxy *array[MAX_CHUNK_SIZE];
 
     // The ‘checkpoints’ set contains the set of object id’s which
     // overlap with the ‘trailing edge’ of the chunk (AABBs whose min-

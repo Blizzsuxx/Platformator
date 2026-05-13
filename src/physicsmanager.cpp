@@ -1,5 +1,6 @@
 #include "physicsmanager.h"
 
+#include "boxcollider.h"
 #include "constants.h"
 #include "debugdraw.h"
 #include "oneapi/tbb.h"
@@ -330,7 +331,6 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 
 void PhysicsManager::calculateContactPoint(Collision *collision)
 {
-    // Approximate contact point as the midpoint of the incident projection on the collision normal
     const Collider *referenceCollider = collision->getReferenceObject();
     const Collider *incidentCollider = collision->getIncidentObject();
     const Eigen::Vector2f &normal = collision->getNormal();
@@ -344,8 +344,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (incidentType == ColliderType::CircleCollider)
     {
         ClipPoints cp;
-        cp.points[0] = incidentEdge.max;
-        cp.count = 1;
+        cp.add(incidentEdge.max, makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
         collision->setContactPoints(cp);
         float max = normal.dot(referenceEdge.max);
         float separation = normal.dot(incidentEdge.max) - max;
@@ -366,8 +365,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
         }
 
         const Eigen::Vector2f closestPoint = incidentEdge.v1 + t * edgeVector;
-        cp.points[0] = closestPoint;
-        cp.count = 1;
+        cp.add(closestPoint, makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
         collision->setContactPoints(cp);
 
         const float max = normal.dot(referenceEdge.max);
@@ -376,28 +374,21 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
         return;
     }
 
-    // bool flipped = false;
-    // float dotBetweenReferenceAndNormal = abs(referenceEdge.direction.dot(normal));
-    // float dotBetweenIncidentAndNormal = abs(incidentEdge.direction.dot(normal));
-
-    // // not sure if this is even needed
-    // if (dotBetweenIncidentAndNormal < dotBetweenReferenceAndNormal)
-    // {
-    //     std::swap(referenceEdge, incidentEdge);
-    //     flipped = true;
-    //     printf("Flipped edges for contact point calculation\n");
-    // }
-
     // the edge vector
     Eigen::Vector2f referenceEdgeVector = referenceEdge.getEdgeVector();
     referenceEdgeVector.normalize();
 
+    ClipVertex incidentVertices[2];
+
+    incidentVertices[0] = ClipVertex(incidentEdge.v1, makeContactFeature(NO_EDGE, NO_EDGE, getStartVertexAdjacentEdge(incidentEdge.edgeNumber), incidentEdge.edgeNumber));
+    incidentVertices[1] = ClipVertex(incidentEdge.v2, makeContactFeature(NO_EDGE, NO_EDGE, getEndVertexAdjacentEdge(incidentEdge.edgeNumber), incidentEdge.edgeNumber));
+
+    ClipVertex clippedVertices1[2];
+    ClipVertex clippedVertices2[2];
+
     double o1 = referenceEdgeVector.dot(referenceEdge.v1);
-    // clip the incident edge by the first
-    // vertex of the reference edge
-    ClipPoints cp = clip(incidentEdge.v1, incidentEdge.v2, referenceEdgeVector, o1);
-    // if we dont have 2 points left then fail
-    if (cp.count < 2)
+    int clippedCount = clipSegmentToLine(clippedVertices1, incidentVertices, referenceEdgeVector, o1, getStartVertexAdjacentEdge(referenceEdge.edgeNumber));
+    if (clippedCount < 2)
     {
         collision->setContactPoints(ClipPoints());
         PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
@@ -408,35 +399,25 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     // second vertex of the reference edge
     // but we need to clip in the opposite direction
     // so we flip the direction and offset
-    double o2 = (referenceEdgeVector.dot(referenceEdge.v2));
-    cp = clip(cp.points[0], cp.points[1], -referenceEdgeVector, -o2);
-    // if we dont have 2 points left then fail
-    if (cp.count < 2)
+    double o2 = referenceEdgeVector.dot(referenceEdge.v2);
+    clippedCount = clipSegmentToLine(clippedVertices2, clippedVertices1, -referenceEdgeVector, -o2, getEndVertexAdjacentEdge(referenceEdge.edgeNumber));
+    if (clippedCount < 2)
     {
         collision->setContactPoints(ClipPoints());
         PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
         return;
     }
 
-    // get the reference edge normal
-    // Vector2 refNorm = ref.cross(-1.0);
-    // if we had to flip the incident and reference edges
-    // then we need to flip the reference edge normal to
-    // clip properly
-    // get the largest depth
     double max = normal.dot(referenceEdge.max);
-    // make sure the final points are not past this maximum
 
-    size_t indexForRemoval = 0;
-    if (normal.dot(cp.points[indexForRemoval]) - max > 0.0)
+    ClipPoints cp;
+    for (int i = 0; i < clippedCount; ++i)
     {
-        cp.remove(indexForRemoval);
-        indexForRemoval--;
-    }
-    indexForRemoval++;
-    if (normal.dot(cp.points[indexForRemoval]) - max > 0.0)
-    {
-        cp.remove(indexForRemoval);
+        float separation = normal.dot(clippedVertices2[i].point) - max;
+        if (separation <= 0.0f)
+        {
+            cp.add(clippedVertices2[i]);
+        }
     }
 
     collision->setContactPoints(cp);
@@ -444,7 +425,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     ClipPointsWithData &contactPoints = collision->getContactPoints();
     for (size_t i = 0; i < contactPoints.count; i++)
     {
-        float separation = normal.dot(cp.points[i]) - max;
+        float separation = normal.dot(cp.points[i].point) - max;
         contactPoints.points[i].separation = separation;
     }
 }
@@ -514,8 +495,8 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
 
     for (size_t i = 0; i < contactPoints.count; i++)
     {
-        Eigen::Vector2f rA = contactPoints.points[i].point - positionA;
-        Eigen::Vector2f rB = contactPoints.points[i].point - positionB;
+        Eigen::Vector2f rA = contactPoints.points[i].point.point - positionA;
+        Eigen::Vector2f rB = contactPoints.points[i].point.point - positionB;
         float rnA = rA.dot(normal);
         float rnB = rB.dot(normal);
         float kNormal = inverseMassSum + invInertiaA * (rA.dot(rA) - rnA * rnA) + invInertiaB * (rB.dot(rB) - rnB * rnB);
@@ -575,8 +556,8 @@ void PhysicsManager::resolveCollision(const Collision *collision)
     // or not
     for (size_t i = 0; i < contactPoints.count; i++)
     {
-        Eigen::Vector2f rA = contactPoints.points[i].point - positionA;
-        Eigen::Vector2f rB = contactPoints.points[i].point - positionB;
+        Eigen::Vector2f rA = contactPoints.points[i].point.point - positionA;
+        Eigen::Vector2f rB = contactPoints.points[i].point.point - positionB;
 
         Eigen::Vector2f relativeVelocity = (rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB)) - (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA));
 

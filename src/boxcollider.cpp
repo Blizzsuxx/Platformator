@@ -178,34 +178,23 @@ void BoxCollider::updateCollider()
 
 Edge BoxCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
 {
-    float maxDot = -std::numeric_limits<float>::infinity();
-    size_t bestEdgeIndex = 0;
+    float projectionOnLocalX = normal.dot(normals[0]);
+    float projectionOnLocalY = normal.dot(normals[1]);
 
-    for (size_t i = 0; i < vertices.size(); i++)
+    if (std::abs(projectionOnLocalX) > std::abs(projectionOnLocalY))
     {
-        float dot = vertices[i].dot(normal);
-        if (dot > maxDot)
+        if (projectionOnLocalX > 0.0f)
         {
-            maxDot = dot;
-            bestEdgeIndex = i;
+            return Edge(vertices[1], vertices[1], vertices[2], EDGE4);
         }
+
+        return Edge(vertices[3], vertices[3], vertices[0], EDGE2);
     }
 
-    size_t nextVertexIndex = (bestEdgeIndex + 1) % vertices.size();
-    size_t previousVertexIndex = (bestEdgeIndex + vertices.size() - 1) % vertices.size();
-
-    Eigen::Vector2f left = vertices[bestEdgeIndex] - vertices[nextVertexIndex];
-    Eigen::Vector2f right = vertices[bestEdgeIndex] - vertices[previousVertexIndex];
-
-    left.normalize();
-    right.normalize();
-
-    if (right.dot(normal) <= left.dot(normal))
+    if (projectionOnLocalY > 0.0f)
     {
-        return Edge(vertices[bestEdgeIndex], vertices[previousVertexIndex], vertices[bestEdgeIndex]);
+        return Edge(vertices[2], vertices[2], vertices[3], EDGE3);
     }
-    else
-    {
-        return Edge(vertices[bestEdgeIndex], vertices[bestEdgeIndex], vertices[nextVertexIndex]);
-    }
+
+    return Edge(vertices[0], vertices[0], vertices[1], EDGE1);
 }

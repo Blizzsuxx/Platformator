@@ -17,38 +17,41 @@ inline Eigen::Vector2f crossSV(float s, const Eigen::Vector2f &v)
     return Eigen::Vector2f(-s * v.y(), s * v.x());
 }
 
-// clips the line segment points v1, v2
-// if they are past o along n
-inline ClipPoints clip(const Eigen::Vector2f &v1, const Eigen::Vector2f &v2, const Eigen::Vector2f &n, float o)
+inline int clipSegmentToLine(ClipVertex output[2], const ClipVertex input[2], const Eigen::Vector2f &normal, float offset, EdgeNumber clipEdge)
 {
-    ClipPoints cp;
-    double d1 = n.dot(v1) - o;
-    double d2 = n.dot(v2) - o;
-    // if either point is past o along n
-    // then we can keep the point
-    if (d1 >= 0.0)
-        cp.add(v1);
-    if (d2 >= 0.0)
-        cp.add(v2);
-    // finally we need to check if they
-    // are on opposing sides so that we can
-    // compute the correct point
-    if (d1 * d2 < 0.0)
+    int outputCount = 0;
+    float distance0 = normal.dot(input[0].point) - offset;
+    float distance1 = normal.dot(input[1].point) - offset;
+
+    if (distance0 >= 0.0f)
     {
-        // if they are on different sides of the
-        // offset, d1 and d2 will be a (+) * (-)
-        // and will yield a (-) and therefore be
-        // less than zero
-        // get the vector for the edge we are clipping
-        Eigen::Vector2f e = v2 - v1;
-        // compute the location along e
-        double u = d1 / (d1 - d2);
-        e *= u;
-        e += v1;
-        // add the point
-        cp.add(e);
+        output[outputCount++] = input[0];
     }
-    return cp;
+    if (distance1 >= 0.0f)
+    {
+        output[outputCount++] = input[1];
+    }
+
+    if (distance0 * distance1 < 0.0f)
+    {
+        float interpolation = distance0 / (distance0 - distance1);
+        ContactFeature feature = distance0 < 0.0f ? input[0].feature : input[1].feature;
+
+        if (distance0 < 0.0f)
+        {
+            feature.e.inEdge1 = static_cast<uint8_t>(clipEdge);
+            feature.e.outEdge1 = static_cast<uint8_t>(NO_EDGE);
+        }
+        else
+        {
+            feature.e.inEdge1 = static_cast<uint8_t>(NO_EDGE);
+            feature.e.outEdge1 = static_cast<uint8_t>(clipEdge);
+        }
+
+        output[outputCount++] = ClipVertex(input[0].point + interpolation * (input[1].point - input[0].point), feature);
+    }
+
+    return outputCount;
 }
 
 inline float Min(float a, float b)
@@ -85,4 +88,40 @@ T *getBehavior(GameObject *gameObject)
     }
 
     return nullptr;
+}
+
+inline constexpr EdgeNumber getStartVertexAdjacentEdge(EdgeNumber edgeNumber)
+{
+    switch (edgeNumber)
+    {
+    case EDGE1:
+        return EDGE2;
+    case EDGE2:
+        return EDGE3;
+    case EDGE3:
+        return EDGE4;
+    case EDGE4:
+        return EDGE1;
+    case NO_EDGE:
+    default:
+        return NO_EDGE;
+    }
+}
+
+inline constexpr EdgeNumber getEndVertexAdjacentEdge(EdgeNumber edgeNumber)
+{
+    switch (edgeNumber)
+    {
+    case EDGE1:
+        return EDGE4;
+    case EDGE2:
+        return EDGE1;
+    case EDGE3:
+        return EDGE2;
+    case EDGE4:
+        return EDGE3;
+    case NO_EDGE:
+    default:
+        return NO_EDGE;
+    }
 }

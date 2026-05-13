@@ -107,7 +107,7 @@ Edge CircleCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
     }
 
     Eigen::Vector2f supportPoint = getWorldPosition() + direction * getRadius();
-    return Edge(supportPoint, supportPoint, supportPoint);
+    return Edge(supportPoint, supportPoint, supportPoint, NO_EDGE);
 }
 
 float CircleCollider::getRadiusWithoutScale() const

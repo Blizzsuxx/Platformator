@@ -306,6 +306,85 @@ namespace
                 "Circle stability regression drifted too far from the expected resting height.");
     }
 
+    void testWarmStartFeatureReuse()
+    {
+        Collision collision;
+
+        const ContactFeature featureA = makeContactFeature(EDGE1, NO_EDGE, EDGE2, EDGE3);
+        const ContactFeature featureB = makeContactFeature(NO_EDGE, EDGE4, EDGE4, EDGE1);
+        const ContactFeature featureC = makeContactFeature(EDGE2, NO_EDGE, EDGE3, EDGE4);
+
+        ClipPoints initialContacts;
+        initialContacts.add(Eigen::Vector2f(10.0f, 20.0f), featureA);
+        initialContacts.add(Eigen::Vector2f(30.0f, 40.0f), featureB);
+        collision.setContactPoints(initialContacts);
+
+        ClipPointsWithData &cachedContacts = collision.getContactPoints();
+        cachedContacts.points[0].accumulatedNormalImpulse = 1.25f;
+        cachedContacts.points[0].accumulatedTangentImpulse = -0.5f;
+        cachedContacts.points[0].accumulatedNormalImpulseBias = 0.2f;
+        cachedContacts.points[1].accumulatedNormalImpulse = 2.5f;
+        cachedContacts.points[1].accumulatedTangentImpulse = 0.75f;
+        cachedContacts.points[1].accumulatedNormalImpulseBias = 0.4f;
+
+        ClipPoints reorderedContacts;
+        reorderedContacts.add(Eigen::Vector2f(31.0f, 41.0f), featureB);
+        reorderedContacts.add(Eigen::Vector2f(11.0f, 21.0f), featureA);
+        collision.setContactPoints(reorderedContacts);
+
+        const ClipPointsWithData &remappedContacts = collision.getContactPoints();
+        require(remappedContacts.count == 2,
+                "Warm-start feature regression expected both contacts to survive remapping.");
+        require(remappedContacts.points[0].point.feature.key == featureB.key &&
+                    std::abs(remappedContacts.points[0].accumulatedNormalImpulse - 2.5f) <= 1e-6f &&
+                    std::abs(remappedContacts.points[0].accumulatedTangentImpulse - 0.75f) <= 1e-6f &&
+                    std::abs(remappedContacts.points[0].accumulatedNormalImpulseBias - 0.4f) <= 1e-6f,
+                "Warm-start feature regression failed to remap the first contact by feature id.");
+        require(remappedContacts.points[1].point.feature.key == featureA.key &&
+                    std::abs(remappedContacts.points[1].accumulatedNormalImpulse - 1.25f) <= 1e-6f &&
+                    std::abs(remappedContacts.points[1].accumulatedTangentImpulse + 0.5f) <= 1e-6f &&
+                    std::abs(remappedContacts.points[1].accumulatedNormalImpulseBias - 0.2f) <= 1e-6f,
+                "Warm-start feature regression failed to remap the second contact by feature id.");
+
+        ClipPoints partiallyNewContacts;
+        partiallyNewContacts.add(Eigen::Vector2f(32.0f, 42.0f), featureB);
+        partiallyNewContacts.add(Eigen::Vector2f(50.0f, 60.0f), featureC);
+        collision.setContactPoints(partiallyNewContacts);
+
+        const ClipPointsWithData &updatedContacts = collision.getContactPoints();
+        require(updatedContacts.points[0].point.feature.key == featureB.key &&
+                    std::abs(updatedContacts.points[0].accumulatedNormalImpulse - 2.5f) <= 1e-6f,
+                "Warm-start feature regression failed to preserve the cached impulse for a stable feature.");
+        require(updatedContacts.points[1].point.feature.key == featureC.key &&
+                    std::abs(updatedContacts.points[1].accumulatedNormalImpulse) <= 1e-6f &&
+                    std::abs(updatedContacts.points[1].accumulatedTangentImpulse) <= 1e-6f &&
+                    std::abs(updatedContacts.points[1].accumulatedNormalImpulseBias) <= 1e-6f,
+                "Warm-start feature regression expected a new feature to start without cached impulses.");
+    }
+
+    void testClipSegmentFeaturePropagation()
+    {
+        ClipVertex input[2] = {
+            ClipVertex(Eigen::Vector2f(-2.0f, 0.0f), makeContactFeature(NO_EDGE, NO_EDGE, EDGE2, EDGE1)),
+            ClipVertex(Eigen::Vector2f(2.0f, 0.0f), makeContactFeature(NO_EDGE, NO_EDGE, EDGE1, EDGE4))};
+        ClipVertex output[2];
+
+        int outputCount = clipSegmentToLine(output, input, Eigen::Vector2f(1.0f, 0.0f), 0.0f, EDGE3);
+
+        require(outputCount == 2,
+                "Clip feature regression expected one retained endpoint and one clipped intersection.");
+        require((output[0].point - input[1].point).squaredNorm() <= 1e-6f &&
+                    output[0].feature.key == input[1].feature.key,
+                "Clip feature regression failed to preserve the feature of the retained endpoint.");
+        require(std::abs(output[1].point.x()) <= 1e-6f && std::abs(output[1].point.y()) <= 1e-6f,
+                "Clip feature regression expected the clipped intersection to land on the clipping plane.");
+        require(output[1].feature.e.inEdge1 == static_cast<uint8_t>(EDGE3) &&
+                    output[1].feature.e.outEdge1 == static_cast<uint8_t>(NO_EDGE) &&
+                    output[1].feature.e.inEdge2 == input[0].feature.e.inEdge2 &&
+                    output[1].feature.e.outEdge2 == input[0].feature.e.outEdge2,
+                "Clip feature regression failed to stamp the clipping edge onto the intersection feature.");
+    }
+
     void testSleepingOnSupport()
     {
         Runtime &gameManager = Runtime::current();
@@ -1423,6 +1502,8 @@ int main()
 
     static const TestCase testCases[] = {
         {"circle_collision_stability", testCircleCollisionStability},
+        {"warm_start_feature_reuse", testWarmStartFeatureReuse},
+        {"clip_segment_feature_propagation", testClipSegmentFeaturePropagation},
         {"sleeping_on_support", testSleepingOnSupport},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},

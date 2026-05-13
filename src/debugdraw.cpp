@@ -123,8 +123,8 @@ void DebugDraw::drawContactPoint(SDL_Renderer *renderer, Camera *camera, const C
 
     for (size_t i = 0; i < contactPoints.count; ++i)
     {
-        int cx = static_cast<int>(contactPoints.points[i].point.x()) - camera->getCamera().x;
-        int cy = static_cast<int>(contactPoints.points[i].point.y()) - camera->getCamera().y;
+        int cx = static_cast<int>(contactPoints.points[i].point.point.x()) - camera->getCamera().x;
+        int cy = static_cast<int>(contactPoints.points[i].point.point.y()) - camera->getCamera().y;
         drawCross(renderer, cx, cy, 5);
     }
 }
@@ -142,7 +142,7 @@ void DebugDraw::drawNormal(SDL_Renderer *renderer, Camera *camera, const Collisi
     Eigen::Vector2f anchor = Eigen::Vector2f::Zero();
     for (size_t i = 0; i < contactPoints.count; ++i)
     {
-        anchor += contactPoints.points[i].point;
+        anchor += contactPoints.points[i].point.point;
     }
     anchor /= static_cast<float>(contactPoints.count);
 
@@ -297,7 +297,7 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
         float size = 6.0f;
         for (size_t i = 0; i < contactPoints.count; ++i)
         {
-            const Eigen::Vector2f &contactPoint = contactPoints.points[i].point;
+            const Eigen::Vector2f &contactPoint = contactPoints.points[i].point.point;
             addDebugObject(
                 std::vector<Eigen::Vector2f>{contactPoint + Eigen::Vector2f(-size, -size), contactPoint + Eigen::Vector2f(size, size),
                                              contactPoint + Eigen::Vector2f(-size, size), contactPoint + Eigen::Vector2f(size, -size)},
@@ -315,7 +315,7 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
         Eigen::Vector2f contactPoint = Eigen::Vector2f::Zero();
         for (size_t i = 0; i < contactPoints.count; ++i)
         {
-            contactPoint += contactPoints.points[i].point;
+            contactPoint += contactPoints.points[i].point.point;
         }
         contactPoint /= static_cast<float>(contactPoints.count);
 

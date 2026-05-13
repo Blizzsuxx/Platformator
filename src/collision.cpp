@@ -57,13 +57,13 @@ void Collision::setContactPoints(const ClipPoints &newContactPoints) const
     ClipPointsWithData contactPointsWithData;
     for (size_t i = 0; i < newContactPoints.count; ++i)
     {
-        size_t index = contactPoints.findIndex(newContactPoints.points[i]);
+        size_t index = contactPoints.findIndex(newContactPoints.points[i].feature);
         if (index != SIZE_MAX)
         {
+            contactPointsWithData.points[i] = ClipPointWithData(newContactPoints.points[i]);
             contactPointsWithData.points[i].accumulatedNormalImpulse = contactPoints.points[index].accumulatedNormalImpulse;
             contactPointsWithData.points[i].accumulatedTangentImpulse = contactPoints.points[index].accumulatedTangentImpulse;
             contactPointsWithData.points[i].accumulatedNormalImpulseBias = contactPoints.points[index].accumulatedNormalImpulseBias;
-            contactPointsWithData.points[i].point = newContactPoints.points[i];
         }
         else
         {

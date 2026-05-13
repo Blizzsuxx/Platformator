@@ -199,6 +199,37 @@ namespace
         bool ran;
     };
 
+    class DestroyTargetsBehavior : public TestBehavior
+    {
+    public:
+        explicit DestroyTargetsBehavior(const std::vector<GameObject *> &targets) : ran(false), targets(targets)
+        {
+        }
+
+        void update(double) override
+        {
+            if (ran)
+            {
+                return;
+            }
+
+            ran = true;
+
+            Runtime &gameManager = getRuntime();
+            for (GameObject *target : targets)
+            {
+                if (containsGameObjectPointer(gameManager, target))
+                {
+                    gameManager.destroyGameObject(target);
+                }
+            }
+        }
+
+    private:
+        bool ran;
+        std::vector<GameObject *> targets;
+    };
+
     class CollisionCounterBehavior : public TestBehavior
     {
     public:
@@ -314,6 +345,58 @@ namespace
 
         gameManager.simulateFrame(kTimeStep);
     }
+
+    void testSharedAdjacencyDeletion()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *anchor = createStaticBox(gameManager, "Adjacency Anchor", 200.0f, 120.0f, 180.0f, 80.0f)->addComponent<ScriptComponent>();
+        sceneScope.add(anchor);
+
+        ScriptComponent *anchorScriptComponent = anchor->getComponent<ScriptComponent>();
+        require(anchorScriptComponent != nullptr,
+                "Shared adjacency deletion regression failed to create the anchor script component.");
+
+        auto *anchorCounter = new CollisionCounterBehavior();
+        anchorScriptComponent->addBehavior(anchorCounter);
+
+        std::vector<GameObject *> victims;
+        for (size_t victimIndex = 0; victimIndex < 4; ++victimIndex)
+        {
+            float victimX = 140.0f + static_cast<float>(victimIndex) * 40.0f;
+            GameObject *victim = createStaticBox(
+                gameManager,
+                "Adjacency Victim " + std::to_string(victimIndex),
+                victimX,
+                120.0f,
+                20.0f,
+                20.0f);
+            sceneScope.add(victim);
+            victims.push_back(victim);
+        }
+
+        GameObject *driver = gameManager.createGameObject()->setName("Adjacency Destroy Driver")->addComponent<ScriptComponent>();
+        sceneScope.add(driver);
+
+        ScriptComponent *driverScriptComponent = driver->getComponent<ScriptComponent>();
+        require(driverScriptComponent != nullptr,
+                "Shared adjacency deletion regression failed to create the destroy driver script component.");
+        driverScriptComponent->addBehavior(new DestroyTargetsBehavior(victims));
+
+        gameManager.simulateFrame(kTimeStep);
+        require(anchorCounter->enterCount == victims.size(),
+                "Shared adjacency deletion regression expected one enter event per overlapping victim before destruction.");
+        for (GameObject *victim : victims)
+        {
+            require(!containsGameObjectPointer(gameManager, victim),
+                    "Shared adjacency deletion regression expected every victim to be removed during late-frame deletion.");
+        }
+
+        gameManager.simulateFrame(kTimeStep);
+        require(anchorCounter->exitCount == victims.size(),
+                "Shared adjacency deletion regression expected one exit event per destroyed victim on the following frame.");
+    }
 } // namespace
 
 int main()
@@ -327,6 +410,7 @@ int main()
         testQueuedSyncDeletion();
         testLateFrameExitEventDeletion();
         testGameObjectDestroyShortcut();
+        testSharedAdjacencyDeletion();
         std::cout << "[PASS] queued_deletion_safety_test\n";
         return 0;
     }

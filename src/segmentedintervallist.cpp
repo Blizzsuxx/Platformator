@@ -534,7 +534,7 @@ void SegmentedIntervalList::processProjectionCollisions(
     {
         for (Collider *checkpoint : *lowerChunk->getCheckpoints())
         {
-            if (lowerChunk != upperChunk || !containsMinimaSeenAfterUpper(checkpoint))
+            if (checkpoint != collider && (lowerChunk != upperChunk || !containsMinimaSeenAfterUpper(checkpoint)))
             {
                 emit(collider, checkpoint);
             }

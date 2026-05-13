@@ -22,6 +22,7 @@ public:
 
     bool getIsPrimary() const;
     bool getIsEmpty() const;
+    size_t getChunkCount() const;
 
 private:
     template <typename EmitFn>

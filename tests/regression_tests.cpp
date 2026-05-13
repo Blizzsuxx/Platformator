@@ -514,6 +514,76 @@ namespace
                 "Fast-motion regression expected the probe pair to be removed after the fast bridge moved away.");
     }
 
+    void testSegmentedIntervalListMergesUnderfullChunks()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        Grid localGrid;
+        AABB localAabb(&localGrid);
+        SegmentedIntervalList *xIntervalList = localAabb.getIntervalListX();
+
+        require(xIntervalList->getChunkCount() == 1,
+                "Chunk-merge regression expected a fresh segmented interval list to start with one chunk.");
+
+        std::vector<Collider *> fillerColliders;
+        fillerColliders.reserve(static_cast<size_t>(MAX_CHUNK_SIZE / 2) + 1);
+
+        for (int index = 0; index < static_cast<int>(MAX_CHUNK_SIZE / 2) + 1; ++index)
+        {
+            GameObject *filler = createStaticBox(
+                gameManager,
+                "Merge Filler " + std::to_string(index),
+                10.0f + static_cast<float>(index) * 20.0f,
+                0.0f,
+                2.0f,
+                2.0f);
+            sceneScope.add(filler);
+
+            Collider *fillerCollider = filler->getComponent<Collider>();
+            fillerColliders.push_back(fillerCollider);
+            addColliderToLocalAabb(localAabb, fillerCollider);
+        }
+
+        require(xIntervalList->getChunkCount() > 1,
+                "Chunk-merge regression expected enough colliders to split the segmented interval list into multiple chunks.");
+        require(localGrid.getCandidatePairCount() == 0,
+                "Chunk-merge regression expected the split fillers to remain non-overlapping.");
+
+        for (size_t index = 0; index < 3; ++index)
+        {
+            localAabb.remove(fillerColliders[index]);
+        }
+
+        require(xIntervalList->getChunkCount() == 1,
+                "Chunk-merge regression expected removing enough colliders to merge neighboring underfull chunks back into one chunk.");
+        require(localGrid.getCandidatePairCount() == 0,
+                "Chunk-merge regression expected no broad-phase pairs before the post-merge overlap check.");
+
+        GameObject *bridge = createStaticBox(gameManager, "Merged Bridge", 145.0f, 100.0f, 80.0f, 20.0f);
+        sceneScope.add(bridge);
+        Collider *bridgeCollider = bridge->getComponent<Collider>();
+        addColliderToLocalAabb(localAabb, bridgeCollider);
+
+        GameObject *probe = createStaticBox(gameManager, "Merged Probe", 145.0f, 100.0f, 2.0f, 20.0f);
+        sceneScope.add(probe);
+        Collider *probeCollider = probe->getComponent<Collider>();
+        addColliderToLocalAabb(localAabb, probeCollider);
+
+        require(xIntervalList->getChunkCount() == 1,
+                "Chunk-merge regression expected the merged list to stay within one chunk during the post-merge overlap scenario.");
+        require(localGrid.getCandidatePairCount() == 1,
+                "Chunk-merge regression expected the post-merge bridge and probe to produce one broad-phase pair.");
+
+        bridge->setPosition(Eigen::Vector2f(250.0f, 100.0f));
+        bridgeCollider->applySync();
+
+        require(xIntervalList->getChunkCount() == 1,
+                "Chunk-merge regression expected the list to remain merged after the post-merge bridge moved away.");
+        require(localGrid.getCandidatePairCount() == 0,
+                "Chunk-merge regression expected the post-merge bridge pair to be removed after separation.");
+    }
+
     std::filesystem::path findWorkspaceRelativePath(const std::filesystem::path &relativePath)
     {
         std::filesystem::path searchDirectory = std::filesystem::current_path();
@@ -1412,7 +1482,7 @@ namespace
         require(gameManager.getObjectById(child->getId()) == child,
                 "Parent-child regression expected manager-created children to remain registered after parenting.");
 
-        child->setLocalPosition(Eigen::Vector2f(15.0f, -8.0f));
+        child->setPosition(Eigen::Vector2f(15.0f, -8.0f));
         parent->setPosition(Eigen::Vector2f(120.0f, 64.0f));
 
         require((child->getPosition() - Eigen::Vector2f(135.0f, 56.0f)).squaredNorm() <= 1e-6f,
@@ -1508,6 +1578,7 @@ int main()
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
         {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},
+        {"segmented_interval_merges_underfull_chunks", testSegmentedIntervalListMergesUnderfullChunks},
         {"scene_loading", testSceneLoading},
         {"scene_saving_round_trip", testSceneSavingRoundTrip},
         {"restitution_bounce", testRestitutionBounce},

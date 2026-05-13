@@ -307,7 +307,7 @@ void GameObject::addChild(GameObject *child)
     }
 
     child->parent = this;
-    child->position = child->position - parent->getPosition();
+    child->position = child->position - getPosition();
     children.push_back(child);
 
     if (getIsRegisteredInGameManager() != child->getIsRegisteredInGameManager())
@@ -327,7 +327,7 @@ bool GameObject::removeChild(GameObject *child)
     if (it != children.end())
     {
         child->parent = nullptr;
-        child->position = child->position + position;
+        child->position = child->position + getPosition();
         children.erase(it);
         return true;
     }

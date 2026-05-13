@@ -517,7 +517,7 @@ void SegmentedIntervalList::processProjectionCollisions(
     LocalSortArray *upperChunk = upperProjection->getChunk();
     Collider *collider = lowerProjection->getCollider();
 
-    std::array<Collider *, MAX_SIZE> minimaSeenAfterUpper{};
+    std::array<Collider *, MAX_CHUNK_SIZE> minimaSeenAfterUpper{};
     size_t minimaSeenAfterUpperCount = 0;
     bool hasReachedUpper = (lowerChunk != upperChunk);
 
@@ -613,4 +613,9 @@ bool SegmentedIntervalList::getIsPrimary() const
 bool SegmentedIntervalList::getIsEmpty() const
 {
     return chunks.size() == 1 && chunks[0]->getSize() == 0;
+}
+
+size_t SegmentedIntervalList::getChunkCount() const
+{
+    return chunks.size();
 }

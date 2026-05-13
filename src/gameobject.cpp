@@ -9,12 +9,12 @@
 #include "rigidbody.h"
 #include "runtimeaccess.h"
 
-GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), localPosition(Eigen::Vector2f::Zero()), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(IS_ACTIVE))
+GameObject::GameObject() : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), position(Eigen::Vector2f::Zero()), scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(IS_ACTIVE))
 {
 }
 
 GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), parent(nullptr), localPosition(position), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : GAME_OBJECT_NONE))
+    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), parent(nullptr), position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0), flags(static_cast<uint8_t>(active ? IS_ACTIVE : GAME_OBJECT_NONE))
 {
 }
 
@@ -53,24 +53,23 @@ bool GameObject::getActive() const
     return flags & IS_ACTIVE;
 }
 
-const Eigen::Vector2f &GameObject::getLocalPosition() const
+Eigen::Vector2f GameObject::getPosition() const
 {
-    return localPosition;
-}
-
-const Eigen::Vector2f &GameObject::getPosition() const
-{
+    if (parent != nullptr)
+    {
+        return position + parent->getPosition();
+    }
     return position;
 }
 
 float GameObject::getX() const
 {
-    return position.x();
+    return getPosition().x();
 }
 
 float GameObject::getY() const
 {
-    return position.y();
+    return getPosition().y();
 }
 
 const Eigen::Vector2f &GameObject::getScale() const
@@ -159,34 +158,18 @@ GameObject *GameObject::setActive(const bool active)
     return this;
 }
 
-GameObject *GameObject::setLocalPosition(const Eigen::Vector2f &position)
-{
-    localPosition = position;
-
-    const Eigen::Vector2f worldPosition = parent != nullptr ? parent->getPosition() + localPosition : localPosition;
-    const Eigen::Vector2f delta = worldPosition - this->position;
-    this->position = worldPosition;
-
-    updateCollider();
-    for (GameObject *child : children)
-    {
-        child->translateSubtree(delta);
-    }
-
-    return this;
-}
-
 GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
 {
-    const Eigen::Vector2f delta = position - this->position;
-    this->position = position;
-    localPosition = parent != nullptr ? this->position - parent->getPosition() : this->position;
+    if (parent != nullptr)
+    {
+        this->position = position - parent->getPosition();
+    }
+    else
+    {
+        this->position = position;
+    }
 
     updateCollider();
-    for (GameObject *child : children)
-    {
-        child->translateSubtree(delta);
-    }
 
     return this;
 }
@@ -197,17 +180,6 @@ void GameObject::updateCollider()
     if (colliderComponent != nullptr)
     {
         static_cast<Collider *>(colliderComponent)->scheduleSync();
-    }
-}
-
-void GameObject::translateSubtree(const Eigen::Vector2f &delta)
-{
-    position += delta;
-    updateCollider();
-
-    for (GameObject *child : children)
-    {
-        child->translateSubtree(delta);
     }
 }
 
@@ -335,7 +307,7 @@ void GameObject::addChild(GameObject *child)
     }
 
     child->parent = this;
-    child->localPosition = child->position - position;
+    child->position = child->position - parent->getPosition();
     children.push_back(child);
 
     if (getIsRegisteredInGameManager() != child->getIsRegisteredInGameManager())
@@ -355,7 +327,7 @@ bool GameObject::removeChild(GameObject *child)
     if (it != children.end())
     {
         child->parent = nullptr;
-        child->localPosition = child->position;
+        child->position = child->position + position;
         children.erase(it);
         return true;
     }

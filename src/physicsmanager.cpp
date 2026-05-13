@@ -485,8 +485,8 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
     float invInertiaA = rbA->getInverseMomentOfInertia();
     float invInertiaB = rbB->getInverseMomentOfInertia();
 
-    const Eigen::Vector2f &positionA = rbA->getGameObject()->getPosition();
-    const Eigen::Vector2f &positionB = rbB->getGameObject()->getPosition();
+    Eigen::Vector2f positionA = rbA->getGameObject()->getPosition();
+    Eigen::Vector2f positionB = rbB->getGameObject()->getPosition();
 
     const Eigen::Vector2f &normal = collision->getNormal();
     Eigen::Vector2f tangent = crossSV(1.0f, normal);
@@ -540,8 +540,8 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         return;
     }
 
-    const Eigen::Vector2f &positionA = gameObjectA->getPosition();
-    const Eigen::Vector2f &positionB = gameObjectB->getPosition();
+    Eigen::Vector2f positionA = gameObjectA->getPosition();
+    Eigen::Vector2f positionB = gameObjectB->getPosition();
 
     float invMassA = rbA->getInverseMass();
     float invMassB = rbB->getInverseMass();

@@ -72,8 +72,7 @@ public:
     float getSinRotation() const;
 
     bool getActive() const;
-    const Eigen::Vector2f &getLocalPosition() const;
-    const Eigen::Vector2f &getPosition() const;
+    Eigen::Vector2f getPosition() const;
     float getX() const;
     float getY() const;
     const Eigen::Vector2f &getScale() const;
@@ -94,7 +93,6 @@ public:
 
     GameObject *setRotation(float rotation);
     GameObject *setActive(bool active);
-    GameObject *setLocalPosition(const Eigen::Vector2f &position);
     GameObject *setPosition(const Eigen::Vector2f &position);
     GameObject *setScale(const Eigen::Vector2f &scale);
     GameObject *setName(const std::string &name);
@@ -117,7 +115,6 @@ private:
     float cosRotation;
 
     GameObject *parent;
-    Eigen::Vector2f localPosition;
     Eigen::Vector2f position;
     Eigen::Vector2f scale;
     std::string name;
@@ -129,7 +126,6 @@ private:
     uint8_t flags;
 
     void updateCollider();
-    void translateSubtree(const Eigen::Vector2f &delta);
     void addComponentInternal(Component *component);
     GameObject *setIsMarkedForDeletion(bool markedForDeletion);
     GameObject *setIsRegisteredInGameManager(bool isRegisteredInGameManager);

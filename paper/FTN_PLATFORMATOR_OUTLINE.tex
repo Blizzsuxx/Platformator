@@ -1,0 +1,154 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[serbian,english]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{booktabs}
+
+\onehalfspacing
+
+\begin{document}
+
+\begin{titlepage}
+\begin{center}
+UNIVERZITET U NOVOM SADU \\
+FAKULTET TEHNIČKIH NAUKA U NOVOM SADU
+
+\vfill
+
+{\Large [Ime i prezime kandidata]}
+
+\vfill
+
+{\Large \textbf{Razvoj 2D gejm endžina sa editorom scena i optimizovanom detekcijom kolizija zasnovanom na segmentisanoj sweep-and-prune metodi}}
+
+\vfill
+
+Diplomski rad \\
+Osnovne akademske studije
+
+\vfill
+
+Novi Sad, [2026.]
+\end{center}
+\end{titlepage}
+
+\chapter*{Zadatak rada}
+
+Student: [Ime i prezime] \\
+Broj indeksa: [SW xx/20xx] \\
+Mentor: [Ime i prezime, zvanje]
+
+\begin{enumerate}
+  \item Analizirati stanje u oblasti 2D gejm endžina, editora scena i broad-phase detekcije kolizija.
+  \item Definisati arhitekturu sistema koja obuhvata runtime jezgro, fizički podsistem i editor scena.
+  \item Implementirati softversko rešenje i demonstracioni primer igre.
+  \item Izvršiti funkcionalnu i, po mogućnosti, kvantitativnu evaluaciju sistema.
+  \item Dokumentovati rezultate, ograničenja i pravce daljeg razvoja.
+\end{enumerate}
+
+\tableofcontents
+
+\chapter{Uvod}
+
+U ovom poglavlju treba predstaviti problem rada, motivaciju, ciljeve, doprinose i strukturu rada. Kao osnovu je moguće iskoristiti tekst iz fajla \texttt{paper/UVOD\_FORMALNI\_PLATFORMATOR.md}.
+
+\chapter{Pregled stanja u oblasti}
+
+U ovom poglavlju treba obraditi:
+
+\begin{itemize}
+  \item broad-phase algoritme za detekciju kolizija,
+  \item sweep-and-prune i inkrementalne pristupe,
+  \item segmentisane intervalne liste iz rada Tracy, Buss i Woods,
+  \item komponentnu arhitekturu u savremenim gejm endžinima,
+  \item Unity i Godot kao referentne alate za tok rada sa scenama.
+\end{itemize}
+
+\chapter{Teorijske osnove}
+
+U ovom poglavlju treba opisati komponentnu arhitekturu, AABB omotače, grid-subdiviziju, segmentisane intervalne liste, SAT pristup i impulsno rešavanje kontakata.
+
+\chapter{Projektovanje i implementacija sistema}
+
+U ovom poglavlju treba obraditi sledeće celine:
+
+\begin{itemize}
+  \item arhitekturu runtime jezgra,
+  \item GameManager, GameObject i sistem komponenti,
+  \item PhysicsManager, grid i AABB strukture,
+  \item segmentisane intervalne liste i checkpoint mehanizam,
+  \item SAT i impulsni solver,
+  \item editor scena i njegov korisnički interfejs,
+  \item Mario primer kao potrošača biblioteke.
+\end{itemize}
+
+\chapter{Evaluacija i rezultati}
+
+Ovo poglavlje treba da sadrži opis test scenarija, funkcionalnu validaciju, pregled izvršenih projektnih testova, diskusiju rezultata i posebnu tabelu sa benchmark merenjima broad-phase podsistema kada ta merenja budu dostupna.
+
+\chapter{Demonstracija sistema}
+
+Ovde treba opisati tok demonstracije editora, runtime scene i Mario primera, sa fokusom na ono što komisija može direktno da vidi tokom odbrane.
+
+\chapter{Zaključak}
+
+Zaključak treba da sumira ostvarene ciljeve, doprinos rada, ograničenja implementacije i pravce budućeg razvoja.
+
+\begin{thebibliography}{10}
+
+\bibitem{tracy2009}
+Tracy, D. J., Buss, S. R., Woods, B. M.
+Efficient Large-Scale Sweep and Prune Methods with AABB Insertion and Removal.
+IEEE Virtual Reality Conference, 2009.
+
+\bibitem{baraff1992}
+Baraff, D.
+Dynamic Simulation of Non-Penetrating Rigid Bodies.
+Cornell University, 1992.
+
+\bibitem{cohen1995}
+Cohen, J. D., Lin, M. C., Manocha, D., Ponamgi, M. K.
+I-COLLIDE: An Interactive and Exact Collision Detection System for Large-Scale Environments.
+Symposium on Interactive 3D Graphics, 1995.
+
+\bibitem{bergen2003}
+van den Bergen, G.
+Collision Detection in Interactive 3D Environments.
+Morgan Kaufmann, 2003.
+
+\bibitem{unity}
+Unity Technologies.
+Unity Manual.
+\url{https://docs.unity3d.com/Manual/}
+
+\bibitem{godot}
+Godot Engine.
+Official Documentation.
+\url{https://docs.godotengine.org/}
+
+\end{thebibliography}
+
+\chapter*{Biografija}
+
+[Ovde uneti biografiju kandidata u skladu sa FTN smernicama.]
+
+\chapter*{Ključna dokumentacijska informacija}
+
+Autor: [Ime i prezime kandidata] \\
+Mentor: [Ime i prezime mentora, zvanje] \\
+Naslov rada: Razvoj 2D gejm endžina sa editorom scena i optimizovanom detekcijom kolizija zasnovanom na segmentisanoj sweep-and-prune metodi \\
+Ključne reči: gejm endžin, detekcija kolizija, sweep and prune, editor scena, komponentna arhitektura
+
+\chapter*{Key words documentation}
+
+Author: [Candidate full name] \\
+Mentor: [Mentor full name, title] \\
+Title: Development of a 2D Game Engine with a Scene Editor and Optimized Collision Detection Based on the Segmented Sweep-and-Prune Method \\
+Keywords: game engine, collision detection, sweep and prune, scene editor, component-based architecture
+
+\end{document}

@@ -170,11 +170,11 @@ void Collider::setCollisionGroup(const uint64_t collisionGroup)
         return;
     }
 
-    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
-    if (physicsManager != nullptr)
-    {
-        physicsManager->refreshColliderComponent(this);
-    }
+    // PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
+    // if (physicsManager != nullptr)
+    // {
+    //     physicsManager->refreshColliderComponent(this);
+    // }
 }
 
 uint64_t Collider::getCollisionGroup() const
@@ -196,11 +196,11 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
         return;
     }
 
-    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
-    if (physicsManager != nullptr)
-    {
-        physicsManager->refreshColliderComponent(this);
-    }
+    // PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
+    // if (physicsManager != nullptr)
+    // {
+    //     physicsManager->refreshColliderComponent(this);
+    // }
 }
 
 void Collider::removeSync()

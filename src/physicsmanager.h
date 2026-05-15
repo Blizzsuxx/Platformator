@@ -41,7 +41,7 @@ public:
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
-    void refreshColliderComponent(Collider *colliderComponent);
+    // void refreshColliderComponent(Collider *colliderComponent);
     void queueColliderSync(Collider *colliderComponent);
 
     void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);

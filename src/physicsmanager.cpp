@@ -61,18 +61,18 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     pendingColliderComponents.push_back(colliderComponent);
 }
 
-void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
-{
-    if (!colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
-    {
-        return;
-    }
+// void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
+// {
+//     if (!colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
+//     {
+//         return;
+//     }
 
-    grid.removeCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(false);
-    grid.addCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(true);
-}
+//     grid.removeCollider(colliderComponent);
+//     colliderComponent->setIsRegisteredInGrid(false);
+//     grid.addCollider(colliderComponent);
+//     colliderComponent->setIsRegisteredInGrid(true);
+// }
 
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {

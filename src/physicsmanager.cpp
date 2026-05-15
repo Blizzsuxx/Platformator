@@ -167,21 +167,19 @@ void PhysicsManager::flushPendingColliderSyncs()
         return;
     }
 
-    for (Collider *colliderComponent : pendingColliderSyncs)
-    {
-        if (colliderComponent == nullptr)
-        {
-            continue;
-        }
+    tbb::parallel_for(size_t(0), pendingColliderSyncs.size(), [&](size_t i)
+                      {
+                     Collider *colliderComponent = pendingColliderSyncs[i];
+                         grid.syncCollider(colliderComponent); });
 
-        colliderComponent->setPendingSyncQueueIndex(SIZE_MAX);
-        if (!colliderComponent->getIsQueuedForSync())
-        {
-            continue;
-        }
+    grid.flushPendingCellUpdates();
 
-        grid.syncCollider(colliderComponent);
-    }
+    tbb::parallel_for(size_t(0), pendingColliderSyncs.size(), [&](size_t i)
+                      {
+                     Collider *colliderComponent = pendingColliderSyncs[i];
+                         grid.tryQueuePairsForCollider(colliderComponent); });
+
+    // TODO: add touching pairs of synced colliders to pending narrow phase pairs
 
     pendingColliderSyncs.clear();
 }

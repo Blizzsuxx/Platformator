@@ -3,7 +3,7 @@
 #include <cstdio>
 
 Grid::Grid()
-    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency()
+    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations()
 {
 }
 
@@ -18,7 +18,7 @@ void Grid::removeGridCellIfEmpty(GridCell *cell)
         return;
     }
 
-    cells.erase(cell->getCellKey());
+    cells.unsafe_erase(cell->getCellKey());
 }
 
 void Grid::addColliderInternal(Collider *collider)
@@ -33,7 +33,7 @@ void Grid::addColliderInternal(Collider *collider)
         auto iterator = cells.find(key);
         if (iterator == cells.end())
         {
-            auto [newIterator, inserted] = cells.try_emplace(key, key, this);
+            auto [newIterator, inserted] = cells.emplace(key, key, this);
             iterator = newIterator;
         }
         iterator->second.addCollider(collider); });
@@ -248,7 +248,7 @@ void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
     removePair(pair);
 }
 
-const std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &Grid::getCells() const
+const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &Grid::getCells() const
 {
     return cells;
 }
@@ -265,29 +265,25 @@ void Grid::syncCollider(Collider *collider)
         return;
     }
 
-    GridCellRange oldGridCellRange = collider->getGridCellRange();
+    collider->setPendingSyncQueueIndex(SIZE_MAX);
+    if (!collider->getIsQueuedForSync())
+    {
+        return;
+    }
 
     collider->applySync();
 
-    const GridCellRange &newGridCellRange = collider->getGridCellRange();
-    if constexpr (ENABLE_LOGGING)
-    {
-        // printf(
-        //     "Syncing collider %s with grid cells in range (%d, %d) to (%d, %d)\n",
-        //     collider->getGameObject()->getName().c_str(),
-        //     newGridCellRange.minX,
-        //     newGridCellRange.minY,
-        //     newGridCellRange.maxX,
-        //     newGridCellRange.maxY);
-    }
+    const GridCellRange &oldGridCellRange = collider->getGridCellRange();
+    const GridCellRange &newGridCellRange = collider->getGridCellRangeCache();
 
     oldGridCellRange.forEachDifference(newGridCellRange, [&](const GridCellKey &key)
                                        {
         auto iterator = cells.find(key);
         if (iterator != cells.end())
         {
-            iterator->second.removeCollider(collider);
-            removeGridCellIfEmpty(&iterator->second);
+            iterator->second.queueRemoveCollider(collider);
+            queueForEmptyCheck(&iterator->second);
+            queueForOperations(&iterator->second);
         } });
 
     newGridCellRange.forEachDifference(oldGridCellRange, [&](const GridCellKey &key)
@@ -295,10 +291,60 @@ void Grid::syncCollider(Collider *collider)
         auto iterator = cells.find(key);
         if (iterator == cells.end())
         {
-            auto [newIterator, inserted] = cells.try_emplace(key, key, this);
+            auto [newIterator, inserted] = cells.emplace(key, key, this);
             iterator = newIterator;
         }
-        iterator->second.addCollider(collider); });
+        iterator->second.queueAddCollider(collider); 
+        queueForOperations(&iterator->second); });
 
-    queuePairsForCollider(collider);
+    newGridCellRange.forEachSame(oldGridCellRange, [&](const GridCellKey &key)
+                                 {
+        auto iterator = cells.find(key);
+        if (iterator != cells.end())
+        {
+            iterator->second.queueSyncCollider(collider);
+            queueForOperations(&iterator->second);
+        } });
+
+    collider->updateGridCellRange();
+
+    // queuePairsForCollider(collider);
+}
+
+void Grid::queueForEmptyCheck(GridCell *cell)
+{
+    if (cell->getIsQueuedForEmpty())
+    {
+        return;
+    }
+
+    cell->setIsQueuedForEmpty(true);
+    potentiallyEmptyCells.push_back(cell);
+}
+
+void Grid::flushPendingCellUpdates()
+{
+    tbb::parallel_for(size_t(0), cellsWithOperations.size(), [&](size_t i)
+                      {
+        GridCell *cell = cellsWithOperations[i];
+        cell->flushPendingOperations(); });
+
+    cellsWithOperations.clear();
+
+    for (GridCell *cell : potentiallyEmptyCells)
+    {
+        removeGridCellIfEmpty(cell);
+    }
+
+    potentiallyEmptyCells.clear();
+}
+
+void Grid::queueForOperations(GridCell *cell)
+{
+    if (cell->getIsQueuedForOperations())
+    {
+        return;
+    }
+
+    cellsWithOperations.push_back(cell);
 }

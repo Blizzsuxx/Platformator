@@ -129,18 +129,18 @@ void BoxCollider::generateProjections()
     Eigen::Vector2f xAxis = projectOntoAxis(X_AXIS);
 
     xProjections.getMin()->setProjectedPosition(xAxis.x());
-    repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
+    // repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
 
     xProjections.getMax()->setProjectedPosition(xAxis.y());
-    repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
+    // repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
 
     Eigen::Vector2f yAxis = projectOntoAxis(Y_AXIS);
 
     yProjections.getMin()->setProjectedPosition(yAxis.x());
-    repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
+    // repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
 
     yProjections.getMax()->setProjectedPosition(yAxis.y());
-    repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
+    // repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
 }
 
 void BoxCollider::generateVertices()

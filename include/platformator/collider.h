@@ -13,6 +13,7 @@ class LocalSortArray;
 class GridCell;
 class SegmentedIntervalList;
 class Collision;
+class Grid;
 
 class BoundingRadiusProjection
 {
@@ -51,16 +52,16 @@ public:
 	BoundingRadiusProjection *getProjection() const;
 	LocalSortArray *getChunk() const;
 	size_t getChunkIndex() const;
-	bool getIsDirty() const;
 
 	void setBoundingProjection(BoundingRadiusProjection *projection);
 	void setChunk(LocalSortArray *chunk);
 	void setChunkIndex(size_t chunkIndex);
-	void setIsDirty(bool dirty);
+	void updateCachedProjectedPosition();
 
 	Collider *getCollider();
 	float getProjectedPosition() const;
 	bool getIsMaxima() const;
+	float getCachedProjectedPosition() const;
 
 	bool operator==(const BoundingRadiusProjectionProxy &other) const;
 	bool operator!=(const BoundingRadiusProjectionProxy &other) const;
@@ -73,7 +74,7 @@ private:
 	BoundingRadiusProjection *projection;
 	LocalSortArray *chunk;
 	size_t chunkIndex;
-	bool isDirty;
+	float cachedProjectedPosition;
 };
 
 struct BoundingRadiusProjectionAxisProxy
@@ -126,6 +127,7 @@ class Collider : public Component
 {
 	friend class GameObject;
 	friend class PhysicsManager;
+	friend class Grid;
 
 public:
 	Collider(GameObject *gameObject, ComponentType type);
@@ -168,8 +170,8 @@ public:
 	uint64_t getStateVersion() const;
 
 	const GridCellRange &getGridCellRange() const;
-	GridCellRange calculateGridCellRange();
-	void setGridCellRange(const GridCellRange &range);
+	void calculateGridCellRange();
+	const GridCellRange &getGridCellRangeCache() const;
 	bool hasValidGridCellRange() const;
 
 	bool getIsRegisteredInGrid() const;
@@ -191,9 +193,10 @@ protected:
 	ColliderFlags flags;
 	size_t pendingAddQueueIndex;
 	size_t pendingSyncQueueIndex;
+	GridCellRange gridCellRangeCache;
 
-	void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
-	void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
+	// void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
+	// void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
 	void updateGridCellRange();
 
 	void setPendingAddQueueIndex(size_t index);

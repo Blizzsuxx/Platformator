@@ -77,16 +77,16 @@ void CircleCollider::generateProjections()
     float scaledRadius = getRadius();
 
     xProjections.getMin()->setProjectedPosition(position.x() - scaledRadius);
-    repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
+    // repairMinProjectionProxiesForProjection(xProjections.getMin(), &xProjections);
 
     xProjections.getMax()->setProjectedPosition(position.x() + scaledRadius);
-    repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
+    // repairMaxProjectionProxiesForProjection(xProjections.getMax(), &xProjections);
 
     yProjections.getMin()->setProjectedPosition(position.y() - scaledRadius);
-    repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
+    // repairMinProjectionProxiesForProjection(yProjections.getMin(), &yProjections);
 
     yProjections.getMax()->setProjectedPosition(position.y() + scaledRadius);
-    repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
+    // repairMaxProjectionProxiesForProjection(yProjections.getMax(), &yProjections);
 }
 
 void CircleCollider::updateCollider()

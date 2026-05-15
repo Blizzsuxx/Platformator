@@ -10,11 +10,11 @@
 #include "collision.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX), gridCellRangeCache()
 {
 }
 
-Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX)
+Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX), gridCellRangeCache()
 {
 }
 
@@ -88,27 +88,27 @@ void Collider::clearQueuedForAdd()
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_ADD);
 }
 
-void Collider::repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
-{
-    for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
-    {
-        if (proxy->minProxy.getProjection() == projection)
-        {
-            proxy->ownerList->repairProjection(&proxy->minProxy);
-        }
-    }
-}
+// void Collider::repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
+// {
+//     for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
+//     {
+//         if (proxy->minProxy.getProjection() == projection)
+//         {
+//             proxy->ownerList->repairProjection(&proxy->minProxy);
+//         }
+//     }
+// }
 
-void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
-{
-    for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
-    {
-        if (proxy->maxProxy.getProjection() == projection)
-        {
-            proxy->ownerList->repairProjection(&proxy->maxProxy);
-        }
-    }
-}
+// void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
+// {
+//     for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
+//     {
+//         if (proxy->maxProxy.getProjection() == projection)
+//         {
+//             proxy->ownerList->repairProjection(&proxy->maxProxy);
+//         }
+//     }
+// }
 
 void Collider::scheduleSync()
 {
@@ -123,7 +123,7 @@ void Collider::scheduleSync()
 void Collider::applySync()
 {
     updateCollider();
-    updateGridCellRange();
+    calculateGridCellRange();
     stateVersion++;
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
 }
@@ -219,7 +219,7 @@ uint64_t Collider::getStateVersion() const
 
 void Collider::updateGridCellRange()
 {
-    gridCellRange = calculateGridCellRange();
+    gridCellRange = gridCellRangeCache;
 }
 
 const GridCellRange &Collider::getGridCellRange() const
@@ -227,19 +227,14 @@ const GridCellRange &Collider::getGridCellRange() const
     return gridCellRange;
 }
 
-void Collider::setGridCellRange(const GridCellRange &range)
-{
-    gridCellRange = range;
-}
-
-GridCellRange Collider::calculateGridCellRange()
+void Collider::calculateGridCellRange()
 {
     int minX = static_cast<int>(std::floor(xProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
     int maxX = static_cast<int>(std::floor(xProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
     int minY = static_cast<int>(std::floor(yProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
     int maxY = static_cast<int>(std::floor(yProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
 
-    return GridCellRange(minX, maxX, minY, maxY);
+    gridCellRangeCache = GridCellRange(minX, maxX, minY, maxY);
 }
 
 bool Collider::getIsQueuedForSync() const
@@ -287,4 +282,9 @@ void Collider::setPendingSyncQueueIndex(size_t index)
 size_t Collider::getPendingSyncQueueIndex() const
 {
     return pendingSyncQueueIndex;
+}
+
+const GridCellRange &Collider::getGridCellRangeCache() const
+{
+    return gridCellRangeCache;
 }

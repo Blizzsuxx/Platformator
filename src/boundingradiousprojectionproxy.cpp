@@ -1,7 +1,7 @@
 #include "collider.h"
 #include <cstddef>
 
-BoundingRadiusProjectionProxy::BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk) : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX), isDirty(false)
+BoundingRadiusProjectionProxy::BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk) : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX), cachedProjectedPosition(projection->getProjectedPosition())
 {
 }
 
@@ -24,11 +24,6 @@ size_t BoundingRadiusProjectionProxy::getChunkIndex() const
     return chunkIndex;
 }
 
-bool BoundingRadiusProjectionProxy::getIsDirty() const
-{
-    return isDirty;
-}
-
 void BoundingRadiusProjectionProxy::setBoundingProjection(BoundingRadiusProjection *projection)
 {
     this->projection = projection;
@@ -48,14 +43,9 @@ void BoundingRadiusProjectionProxy::setChunkIndex(size_t chunkIndex)
     this->chunkIndex = chunkIndex;
 }
 
-void BoundingRadiusProjectionProxy::setIsDirty(bool dirty)
-{
-    isDirty = dirty;
-}
-
 bool BoundingRadiusProjectionProxy::operator==(const BoundingRadiusProjectionProxy &other) const
 {
-    return *this->projection == *other.projection;
+    return this->cachedProjectedPosition == other.cachedProjectedPosition && this->projection->getIsMaxima() == other.projection->getIsMaxima();
 }
 
 bool BoundingRadiusProjectionProxy::operator!=(const BoundingRadiusProjectionProxy &other) const
@@ -65,12 +55,12 @@ bool BoundingRadiusProjectionProxy::operator!=(const BoundingRadiusProjectionPro
 
 bool BoundingRadiusProjectionProxy::operator<(const BoundingRadiusProjectionProxy &other) const
 {
-    return *this->projection < *other.projection;
+    return cachedProjectedPosition < other.cachedProjectedPosition || (cachedProjectedPosition == other.cachedProjectedPosition && !projection->getIsMaxima() && other.projection->getIsMaxima());
 }
 
 bool BoundingRadiusProjectionProxy::operator>(const BoundingRadiusProjectionProxy &other) const
 {
-    return *this->projection > *other.projection;
+    return cachedProjectedPosition > other.cachedProjectedPosition || (cachedProjectedPosition == other.cachedProjectedPosition && projection->getIsMaxima() && !other.projection->getIsMaxima());
 }
 
 bool BoundingRadiusProjectionProxy::operator<=(const BoundingRadiusProjectionProxy &other) const
@@ -96,4 +86,14 @@ float BoundingRadiusProjectionProxy::getProjectedPosition() const
 bool BoundingRadiusProjectionProxy::getIsMaxima() const
 {
     return projection->getIsMaxima();
+}
+
+void BoundingRadiusProjectionProxy::updateCachedProjectedPosition()
+{
+    cachedProjectedPosition = projection->getProjectedPosition();
+}
+
+float BoundingRadiusProjectionProxy::getCachedProjectedPosition() const
+{
+    return cachedProjectedPosition;
 }

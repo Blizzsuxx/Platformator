@@ -1,7 +1,7 @@
 #include "gridcell.h"
 
 GridCell::GridCell(GridCellKey key, Grid *owner)
-    : aabb(owner), key(key), flags(0), collidersToAdd(), collidersToRemove(), collidersToSync()
+    : aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), collidersToRemove(), collidersToSync()
 {
 }
 
@@ -29,9 +29,24 @@ const GridCellKey &GridCell::getCellKey() const
     return key;
 }
 
-bool GridCell::getIsQueuedForEmpty() const
+bool GridCell::markQueuedForEmpty()
 {
-    return (flags & GridCellFlags::QueuedForEmpty) != 0;
+    return !queuedForEmpty.exchange(true, std::memory_order_acq_rel);
+}
+
+void GridCell::clearQueuedForEmpty()
+{
+    queuedForEmpty.store(false, std::memory_order_release);
+}
+
+bool GridCell::markQueuedForOperations()
+{
+    return !queuedForOperations.exchange(true, std::memory_order_acq_rel);
+}
+
+void GridCell::clearQueuedForOperations()
+{
+    queuedForOperations.store(false, std::memory_order_release);
 }
 
 void GridCell::queueRemoveCollider(Collider *collider)
@@ -47,35 +62,6 @@ void GridCell::queueAddCollider(Collider *collider)
 void GridCell::queueSyncCollider(Collider *collider)
 {
     collidersToSync.push_back(collider);
-}
-
-void GridCell::setIsQueuedForEmpty(bool isQueuedForEmpty)
-{
-    if (isQueuedForEmpty)
-    {
-        flags |= GridCellFlags::QueuedForEmpty;
-    }
-    else
-    {
-        flags &= ~GridCellFlags::QueuedForEmpty;
-    }
-}
-
-bool GridCell::getIsQueuedForOperations() const
-{
-    return (flags & GridCellFlags::QueuedForOperations) != 0;
-}
-
-void GridCell::setIsQueuedForOperations(bool isQueuedForOperations)
-{
-    if (isQueuedForOperations)
-    {
-        flags |= GridCellFlags::QueuedForOperations;
-    }
-    else
-    {
-        flags &= ~GridCellFlags::QueuedForOperations;
-    }
 }
 
 void GridCell::flushPendingOperations()
@@ -97,4 +83,6 @@ void GridCell::flushPendingOperations()
         addCollider(collider);
     }
     collidersToAdd.clear();
+
+    clearQueuedForOperations();
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include "gridcell.h"
@@ -7,33 +9,45 @@
 
 class Grid
 {
+    friend class AABB;
+
 public:
     Grid();
     ~Grid();
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
-    void createCollisionPair(Collider *colliderA, Collider *colliderB);
-    void removeCollisionPair(Collider *colliderA, Collider *colliderB);
     const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &getCells() const;
     size_t getCandidatePairCount() const;
 
     void clearPendingNarrowPhasePairs();
     const std::vector<const ColliderPair *> *getPendingNarrowPhasePairs() const;
     void syncCollider(Collider *collider);
+    void finishColliderSync(Collider *collider);
     void flushPendingCellUpdates();
 
 private:
+    struct PairDelta
+    {
+        Collider *colliderA;
+        Collider *colliderB;
+        int delta;
+    };
+
     void addColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     void removeGridCellIfEmpty(GridCell *cell);
-    void removePair(const ColliderPair &pair);
     void dequeuePairFromNarrowPhase(const ColliderPair *pair);
     void queuePairForNarrowPhase(const ColliderPair *pair);
     void queuePairsForCollider(Collider *collider);
     const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
+    GridCell *findCell(const GridCellKey &key);
+    GridCell &getOrCreateCell(const GridCellKey &key);
     void queueForEmptyCheck(GridCell *cell);
     void queueForOperations(GridCell *cell);
+    void recordPairDelta(Collider *colliderA, Collider *colliderB, int delta);
+    void applyPendingPairDeltas();
+    void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
 
     tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash>
         cells;
@@ -42,4 +56,6 @@ private:
     std::unordered_map<Collider *, std::vector<const ColliderPair *>> pairAdjacency;
     tbb::concurrent_vector<GridCell *> potentiallyEmptyCells;
     tbb::concurrent_vector<GridCell *> cellsWithOperations;
+    tbb::concurrent_vector<PairDelta> pendingPairDeltas;
+    std::atomic_bool deferPairDeltas;
 };

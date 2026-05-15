@@ -88,28 +88,6 @@ void Collider::clearQueuedForAdd()
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_ADD);
 }
 
-// void Collider::repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
-// {
-//     for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
-//     {
-//         if (proxy->minProxy.getProjection() == projection)
-//         {
-//             proxy->ownerList->repairProjection(&proxy->minProxy);
-//         }
-//     }
-// }
-
-// void Collider::repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis)
-// {
-//     for (BoundingRadiusProjectionAxisProxy *proxy : axis->getProxies())
-//     {
-//         if (proxy->maxProxy.getProjection() == projection)
-//         {
-//             proxy->ownerList->repairProjection(&proxy->maxProxy);
-//         }
-//     }
-// }
-
 void Collider::scheduleSync()
 {
     PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
@@ -120,12 +98,35 @@ void Collider::scheduleSync()
     }
 }
 
-void Collider::applySync()
+void Collider::prepareSync()
 {
     updateCollider();
     calculateGridCellRange();
     stateVersion++;
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
+}
+
+void Collider::repairProjectionsForCell(GridCell *cell)
+{
+    AABB *cellAabb = cell->getAABB();
+    SegmentedIntervalList *listX = cellAabb->getIntervalListX();
+    SegmentedIntervalList *listY = cellAabb->getIntervalListY();
+
+    BoundingRadiusProjectionAxisProxy *proxy = xProjections.getProxyForList(listX);
+
+    proxy->minProxy.updateCachedProjectedPosition();
+    listX->repairProjection(&proxy->minProxy);
+
+    proxy->maxProxy.updateCachedProjectedPosition();
+    listX->repairProjection(&proxy->maxProxy);
+
+    proxy = yProjections.getProxyForList(listY);
+
+    proxy->minProxy.updateCachedProjectedPosition();
+    listY->repairProjection(&proxy->minProxy);
+
+    proxy->maxProxy.updateCachedProjectedPosition();
+    listY->repairProjection(&proxy->maxProxy);
 }
 
 void Collider::triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const

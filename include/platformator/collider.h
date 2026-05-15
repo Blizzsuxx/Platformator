@@ -128,6 +128,7 @@ class Collider : public Component
 	friend class GameObject;
 	friend class PhysicsManager;
 	friend class Grid;
+	friend class GridCell;
 
 public:
 	Collider(GameObject *gameObject, ComponentType type);
@@ -166,7 +167,7 @@ public:
 	bool getIsQueuedForSync() const;
 	void removeSync();
 
-	void applySync();
+	void prepareSync();
 	uint64_t getStateVersion() const;
 
 	const GridCellRange &getGridCellRange() const;
@@ -195,9 +196,8 @@ protected:
 	size_t pendingSyncQueueIndex;
 	GridCellRange gridCellRangeCache;
 
-	// void repairMinProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
-	// void repairMaxProjectionProxiesForProjection(BoundingRadiusProjection *projection, BoundingRadiusProjectionAxis *axis);
 	void updateGridCellRange();
+	void repairProjectionsForCell(GridCell *cell);
 
 	void setPendingAddQueueIndex(size_t index);
 	size_t getPendingAddQueueIndex() const;

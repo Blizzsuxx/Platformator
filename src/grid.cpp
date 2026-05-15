@@ -1,9 +1,10 @@
 #include "grid.h"
+#include <algorithm>
 #include "constants.h"
 #include <cstdio>
 
 Grid::Grid()
-    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations()
+    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations(), pendingPairDeltas(), deferPairDeltas(false)
 {
 }
 
@@ -13,7 +14,7 @@ Grid::~Grid()
 
 void Grid::removeGridCellIfEmpty(GridCell *cell)
 {
-    if (cell == nullptr || !cell->getAABB()->getIsEmpty())
+    if (!cell->getAABB()->getIsEmpty())
     {
         return;
     }
@@ -21,22 +22,38 @@ void Grid::removeGridCellIfEmpty(GridCell *cell)
     cells.unsafe_erase(cell->getCellKey());
 }
 
+GridCell *Grid::findCell(const GridCellKey &key)
+{
+    auto iterator = cells.find(key);
+    if (iterator == cells.end())
+    {
+        return nullptr;
+    }
+
+    return &iterator->second;
+}
+
+GridCell &Grid::getOrCreateCell(const GridCellKey &key)
+{
+    auto [iterator, inserted] = cells.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(key),
+        std::forward_as_tuple(key, this));
+    return iterator->second;
+}
+
 void Grid::addColliderInternal(Collider *collider)
 {
-    collider->applySync();
+    collider->prepareSync();
+    collider->updateGridCellRange();
     const GridCellRange &cachedRange = collider->getGridCellRange();
 
     PLATFORMATOR_LOG("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), cachedRange.minX, cachedRange.minY, cachedRange.maxX, cachedRange.maxY);
 
     cachedRange.forEachCell([&](const GridCellKey &key)
-                            {
-        auto iterator = cells.find(key);
-        if (iterator == cells.end())
-        {
-            auto [newIterator, inserted] = cells.emplace(key, key, this);
-            iterator = newIterator;
-        }
-        iterator->second.addCollider(collider); });
+                            { getOrCreateCell(key).addCollider(collider); });
+
+    applyPendingPairDeltas();
 }
 
 void Grid::removeColliderInternal(Collider *collider)
@@ -47,12 +64,13 @@ void Grid::removeColliderInternal(Collider *collider)
 
     range.forEachCell([&](const GridCellKey &key)
                       {
-        auto iterator = cells.find(key);
-        if (iterator != cells.end())
+        if (GridCell *cell = findCell(key))
         {
-            iterator->second.removeCollider(collider);
-            removeGridCellIfEmpty(&iterator->second);
+            cell->removeCollider(collider);
+            removeGridCellIfEmpty(cell);
         } });
+
+    applyPendingPairDeltas();
 }
 
 void Grid::addCollider(Collider *collider)
@@ -63,80 +81,6 @@ void Grid::addCollider(Collider *collider)
 void Grid::removeCollider(Collider *collider)
 {
     removeColliderInternal(collider);
-}
-
-void Grid::removePair(const ColliderPair &pair)
-{
-    auto iterator = candidateCollisions.find(pair);
-    if (iterator == candidateCollisions.end())
-    {
-        return;
-    }
-
-    const ColliderPair *storedPair = &(*iterator);
-
-    storedPair->decrementWitnessCount();
-    if (storedPair->getWitnessCount() == 0)
-    {
-        Collider *objectA = storedPair->getObjectA();
-        Collider *objectB = storedPair->getObjectB();
-
-        dequeuePairFromNarrowPhase(storedPair);
-        storedPair->clearCollision();
-
-        auto adjacencyA = pairAdjacency.find(objectA);
-        if (adjacencyA != pairAdjacency.end())
-        {
-            std::vector<const ColliderPair *> &pairsA = adjacencyA->second;
-            size_t removeIndexA = storedPair->getAdjacencyIndexA();
-            size_t lastIndexA = pairsA.size() - 1;
-            if (removeIndexA != lastIndexA)
-            {
-                const ColliderPair *movedPair = pairsA[lastIndexA];
-                pairsA[removeIndexA] = movedPair;
-                if (movedPair->getObjectA() == objectA)
-                {
-                    movedPair->setAdjacencyIndexA(removeIndexA);
-                }
-                else
-                {
-                    movedPair->setAdjacencyIndexB(removeIndexA);
-                }
-            }
-            pairsA.pop_back();
-            if (pairsA.empty())
-            {
-                pairAdjacency.erase(adjacencyA);
-            }
-        }
-
-        auto adjacencyB = pairAdjacency.find(objectB);
-        if (adjacencyB != pairAdjacency.end())
-        {
-            std::vector<const ColliderPair *> &pairsB = adjacencyB->second;
-            size_t removeIndexB = storedPair->getAdjacencyIndexB();
-            size_t lastIndexB = pairsB.size() - 1;
-            if (removeIndexB != lastIndexB)
-            {
-                const ColliderPair *movedPair = pairsB[lastIndexB];
-                pairsB[removeIndexB] = movedPair;
-                if (movedPair->getObjectA() == objectB)
-                {
-                    movedPair->setAdjacencyIndexA(removeIndexB);
-                }
-                else
-                {
-                    movedPair->setAdjacencyIndexB(removeIndexB);
-                }
-            }
-            pairsB.pop_back();
-            if (pairsB.empty())
-            {
-                pairAdjacency.erase(adjacencyB);
-            }
-        }
-        candidateCollisions.erase(iterator);
-    }
 }
 
 void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
@@ -208,11 +152,31 @@ void Grid::clearPendingNarrowPhasePairs()
     pendingNarrowPhasePairs.clear();
 }
 
-void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
+void Grid::recordPairDelta(Collider *colliderA, Collider *colliderB, int delta)
 {
-    const ColliderPair *pair;
+    if (!deferPairDeltas.load(std::memory_order_acquire))
+    {
+        applyPairWitnessDelta(colliderA, colliderB, delta);
+        return;
+    }
+
+    pendingPairDeltas.push_back(PairDelta{colliderA, colliderB, delta});
+}
+
+void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta)
+{
+    if (delta == 0)
+    {
+        return;
+    }
 
     auto iteratorPair = candidateCollisions.find(ColliderPair(colliderA, colliderB));
+    if (iteratorPair == candidateCollisions.end() && delta < 0)
+    {
+        return;
+    }
+
+    const ColliderPair *pair;
     if (iteratorPair == candidateCollisions.end())
     {
         auto [it, in] = candidateCollisions.emplace(colliderA, colliderB);
@@ -223,9 +187,15 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
         pair = &(*iteratorPair);
     }
 
-    pair->incrementWitnessCount();
-    if (pair->getWitnessCount() == 1)
+    int previousWitnessCount = pair->getWitnessCount();
+    if (delta > 0)
     {
+        pair->addToWitnessCount(delta);
+
+        if (previousWitnessCount != 0)
+        {
+            return;
+        }
 
         Collider *objectA = pair->getObjectA();
         Collider *objectB = pair->getObjectB();
@@ -239,13 +209,101 @@ void Grid::createCollisionPair(Collider *colliderA, Collider *colliderB)
         adjacencyB.push_back(pair);
 
         queuePairForNarrowPhase(pair);
+        return;
+    }
+    else
+    {
+
+        pair->addToWitnessCount(delta);
+
+        if (pair->getWitnessCount() > 0)
+        {
+            return;
+        }
+
+        Collider *objectA = pair->getObjectA();
+        Collider *objectB = pair->getObjectB();
+
+        dequeuePairFromNarrowPhase(pair);
+        pair->clearCollision();
+
+        auto adjacencyA = pairAdjacency.find(objectA);
+        if (adjacencyA != pairAdjacency.end())
+        {
+            std::vector<const ColliderPair *> &pairsA = adjacencyA->second;
+            size_t removeIndexA = pair->getAdjacencyIndexA();
+            size_t lastIndexA = pairsA.size() - 1;
+            if (removeIndexA != lastIndexA)
+            {
+                const ColliderPair *movedPair = pairsA[lastIndexA];
+                pairsA[removeIndexA] = movedPair;
+                if (movedPair->getObjectA() == objectA)
+                {
+                    movedPair->setAdjacencyIndexA(removeIndexA);
+                }
+                else
+                {
+                    movedPair->setAdjacencyIndexB(removeIndexA);
+                }
+            }
+            pairsA.pop_back();
+            if (pairsA.empty())
+            {
+                pairAdjacency.erase(adjacencyA);
+            }
+        }
+
+        auto adjacencyB = pairAdjacency.find(objectB);
+        if (adjacencyB != pairAdjacency.end())
+        {
+            std::vector<const ColliderPair *> &pairsB = adjacencyB->second;
+            size_t removeIndexB = pair->getAdjacencyIndexB();
+            size_t lastIndexB = pairsB.size() - 1;
+            if (removeIndexB != lastIndexB)
+            {
+                const ColliderPair *movedPair = pairsB[lastIndexB];
+                pairsB[removeIndexB] = movedPair;
+                if (movedPair->getObjectA() == objectB)
+                {
+                    movedPair->setAdjacencyIndexA(removeIndexB);
+                }
+                else
+                {
+                    movedPair->setAdjacencyIndexB(removeIndexB);
+                }
+            }
+            pairsB.pop_back();
+            if (pairsB.empty())
+            {
+                pairAdjacency.erase(adjacencyB);
+            }
+        }
+
+        candidateCollisions.erase(candidateCollisions.find(ColliderPair(colliderA, colliderB)));
     }
 }
 
-void Grid::removeCollisionPair(Collider *colliderA, Collider *colliderB)
+void Grid::applyPendingPairDeltas()
 {
-    ColliderPair pair(colliderA, colliderB);
-    removePair(pair);
+    if (pendingPairDeltas.empty())
+    {
+        return;
+    }
+
+    std::unordered_map<ColliderPair, int, ColliderPair::HashFunction> pairDeltaTotals;
+    pairDeltaTotals.reserve(pendingPairDeltas.size());
+
+    for (const PairDelta &pairDelta : pendingPairDeltas)
+    {
+        pairDeltaTotals[ColliderPair(pairDelta.colliderA, pairDelta.colliderB)] += pairDelta.delta;
+    }
+
+    pendingPairDeltas.clear();
+
+    for (const auto &[pair, delta] : pairDeltaTotals)
+    {
+        applyPairWitnessDelta(pair.getObjectA(), pair.getObjectB(), delta);
+    }
 }
 
 const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &Grid::getCells() const
@@ -260,79 +318,86 @@ size_t Grid::getCandidatePairCount() const
 
 void Grid::syncCollider(Collider *collider)
 {
-    if (collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
-    {
-        return;
-    }
-
     collider->setPendingSyncQueueIndex(SIZE_MAX);
     if (!collider->getIsQueuedForSync())
     {
         return;
     }
 
-    collider->applySync();
+    if (collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+    {
+        collider->removeSync();
+        return;
+    }
+
+    collider->prepareSync();
 
     const GridCellRange &oldGridCellRange = collider->getGridCellRange();
     const GridCellRange &newGridCellRange = collider->getGridCellRangeCache();
 
     oldGridCellRange.forEachDifference(newGridCellRange, [&](const GridCellKey &key)
                                        {
-        auto iterator = cells.find(key);
-        if (iterator != cells.end())
+        if (GridCell *cell = findCell(key))
         {
-            iterator->second.queueRemoveCollider(collider);
-            queueForEmptyCheck(&iterator->second);
-            queueForOperations(&iterator->second);
+            cell->queueRemoveCollider(collider);
+            queueForEmptyCheck(cell);
+            queueForOperations(cell);
         } });
 
     newGridCellRange.forEachDifference(oldGridCellRange, [&](const GridCellKey &key)
                                        {
-        auto iterator = cells.find(key);
-        if (iterator == cells.end())
-        {
-            auto [newIterator, inserted] = cells.emplace(key, key, this);
-            iterator = newIterator;
-        }
-        iterator->second.queueAddCollider(collider); 
-        queueForOperations(&iterator->second); });
+        GridCell &cell = getOrCreateCell(key);
+        cell.queueAddCollider(collider);
+        queueForOperations(&cell); });
 
     newGridCellRange.forEachSame(oldGridCellRange, [&](const GridCellKey &key)
                                  {
-        auto iterator = cells.find(key);
-        if (iterator != cells.end())
+        if (GridCell *cell = findCell(key))
         {
-            iterator->second.queueSyncCollider(collider);
-            queueForOperations(&iterator->second);
+            cell->queueSyncCollider(collider);
+            queueForOperations(cell);
         } });
-
-    collider->updateGridCellRange();
-
-    // queuePairsForCollider(collider);
 }
 
-void Grid::queueForEmptyCheck(GridCell *cell)
+void Grid::finishColliderSync(Collider *collider)
 {
-    if (cell->getIsQueuedForEmpty())
+    if (collider == nullptr || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
     {
         return;
     }
 
-    cell->setIsQueuedForEmpty(true);
+    collider->updateGridCellRange();
+    queuePairsForCollider(collider);
+}
+
+void Grid::queueForEmptyCheck(GridCell *cell)
+{
+    if (!cell->markQueuedForEmpty())
+    {
+        return;
+    }
+
     potentiallyEmptyCells.push_back(cell);
 }
 
 void Grid::flushPendingCellUpdates()
 {
+    deferPairDeltas.store(true, std::memory_order_release);
+
     tbb::parallel_for(size_t(0), cellsWithOperations.size(), [&](size_t i)
                       {
         GridCell *cell = cellsWithOperations[i];
         cell->flushPendingOperations(); });
 
+    deferPairDeltas.store(false, std::memory_order_release);
+
     cellsWithOperations.clear();
+
+    applyPendingPairDeltas();
 
     for (GridCell *cell : potentiallyEmptyCells)
     {
+        cell->clearQueuedForEmpty();
         removeGridCellIfEmpty(cell);
     }
 
@@ -341,7 +406,7 @@ void Grid::flushPendingCellUpdates()
 
 void Grid::queueForOperations(GridCell *cell)
 {
-    if (cell->getIsQueuedForOperations())
+    if (!cell->markQueuedForOperations())
     {
         return;
     }

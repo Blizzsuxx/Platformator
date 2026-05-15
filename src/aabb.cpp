@@ -61,7 +61,7 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
         }
 
         // Both axes are now overlapping in this cell, so this cell contributes one witness.
-        owner->createCollisionPair(colliderA, colliderB);
+        owner->recordPairDelta(colliderA, colliderB, 1);
     }
 }
 
@@ -86,7 +86,7 @@ void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 
     if (previousAxisOverlap == Axis::ALL_AXES && currentAxisOverlap != Axis::ALL_AXES)
     {
-        owner->removeCollisionPair(colliderA, colliderB);
+        owner->recordPairDelta(colliderA, colliderB, -1);
     }
 }
 
@@ -117,7 +117,7 @@ void AABB::overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB)
         }
 
         // Both axes are now overlapping in this cell, so this cell contributes one witness.
-        owner->createCollisionPair(colliderA, colliderB);
+        owner->recordPairDelta(colliderA, colliderB, 1);
     }
 }
 
@@ -139,7 +139,7 @@ void AABB::overlapEndCheckpoint(Collider *colliderA, Collider *colliderB)
 
     if (previousAxisOverlap == Axis::ALL_AXES && currentAxisOverlap != Axis::ALL_AXES)
     {
-        owner->removeCollisionPair(colliderA, colliderB);
+        owner->recordPairDelta(colliderA, colliderB, -1);
     }
 }
 

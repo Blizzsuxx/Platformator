@@ -40,7 +40,8 @@ public:
 
     void incrementWitnessCount() const;
     void decrementWitnessCount() const;
-    size_t getWitnessCount() const;
+    int getWitnessCount() const;
+    void addToWitnessCount(int delta) const;
 
     bool operator==(const ColliderPair &other) const;
 
@@ -75,5 +76,5 @@ private:
     mutable size_t narrowPhaseQueueIndex;
     mutable size_t adjacencyIndexA;
     mutable size_t adjacencyIndexB;
-    mutable size_t witnessCount;
+    mutable int witnessCount;
 };

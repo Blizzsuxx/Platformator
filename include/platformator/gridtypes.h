@@ -130,4 +130,16 @@ struct GridCellRange
         emitBand(overlap.minX, overlap.maxX, minY, overlap.minY - 1);
         emitBand(overlap.minX, overlap.maxX, overlap.maxY + 1, maxY);
     }
+
+    template <typename Fn>
+    void forEachSame(const GridCellRange &other, Fn &&fn) const
+    {
+        GridCellRange overlap = intersection(other);
+        if (!overlap.getIsValid())
+        {
+            return;
+        }
+
+        overlap.forEachCell(std::forward<Fn>(fn));
+    }
 };

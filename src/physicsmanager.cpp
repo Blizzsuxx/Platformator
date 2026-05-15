@@ -170,16 +170,17 @@ void PhysicsManager::flushPendingColliderSyncs()
     tbb::parallel_for(size_t(0), pendingColliderSyncs.size(), [&](size_t i)
                       {
                      Collider *colliderComponent = pendingColliderSyncs[i];
-                         grid.syncCollider(colliderComponent); });
+                         if (colliderComponent != nullptr)
+                         {
+                             grid.syncCollider(colliderComponent);
+                         } });
 
     grid.flushPendingCellUpdates();
 
-    tbb::parallel_for(size_t(0), pendingColliderSyncs.size(), [&](size_t i)
-                      {
-                     Collider *colliderComponent = pendingColliderSyncs[i];
-                         grid.tryQueuePairsForCollider(colliderComponent); });
-
-    // TODO: add touching pairs of synced colliders to pending narrow phase pairs
+    for (Collider *colliderComponent : pendingColliderSyncs)
+    {
+        grid.finishColliderSync(colliderComponent);
+    }
 
     pendingColliderSyncs.clear();
 }

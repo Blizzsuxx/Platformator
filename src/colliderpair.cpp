@@ -195,13 +195,15 @@ void ColliderPair::incrementWitnessCount() const
 
 void ColliderPair::decrementWitnessCount() const
 {
-    if (witnessCount > 0)
-    {
-        witnessCount--;
-    }
+    witnessCount--;
 }
 
-size_t ColliderPair::getWitnessCount() const
+int ColliderPair::getWitnessCount() const
 {
     return witnessCount;
+}
+
+void ColliderPair::addToWitnessCount(int delta) const
+{
+    witnessCount += delta;
 }

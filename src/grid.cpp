@@ -166,7 +166,7 @@ void Grid::recordPairDelta(Collider *colliderA, Collider *colliderB, int delta)
         return;
     }
 
-    pendingPairDeltas.push_back(PairDelta{colliderA, colliderB, delta});
+    pendingPairDeltas.emplace_back(colliderA, colliderB, delta);
 }
 
 void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta)

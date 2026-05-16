@@ -4,7 +4,7 @@
 #include <cstdio>
 
 Grid::Grid()
-    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations(), pendingPairDeltas(), pendingColliderOperations(), deferPairDeltas(false)
+    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations(), pendingColliderOperations(), activePairDeltaCollector()
 {
 }
 
@@ -160,13 +160,12 @@ void Grid::clearPendingNarrowPhasePairs()
 
 void Grid::recordPairDelta(Collider *colliderA, Collider *colliderB, int delta)
 {
-    if (!deferPairDeltas.load(std::memory_order_acquire))
+    if (delta == 0)
     {
-        applyPairWitnessDelta(colliderA, colliderB, delta);
         return;
     }
 
-    pendingPairDeltas.emplace_back(colliderA, colliderB, delta);
+    activePairDeltaCollector.record(colliderA, colliderB, delta);
 }
 
 void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta)
@@ -289,26 +288,37 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
     }
 }
 
-void Grid::applyPendingPairDeltas()
+void Grid::applyCollectedPairDeltas()
 {
-    if (pendingPairDeltas.empty())
+    size_t totalDeltaCount = 0;
+    for (const std::vector<PairDelta> &localPairDeltas : activePairDeltaCollector.localPairDeltas)
+    {
+        totalDeltaCount += localPairDeltas.size();
+    }
+
+    if (totalDeltaCount == 0)
     {
         return;
     }
 
     std::unordered_map<ColliderPair, int, ColliderPair::HashFunction> pairDeltaTotals;
-    pairDeltaTotals.reserve(pendingPairDeltas.size());
 
-    for (const PairDelta &pairDelta : pendingPairDeltas)
+    for (const std::vector<PairDelta> &localPairDeltas : activePairDeltaCollector.localPairDeltas)
     {
-        pairDeltaTotals[ColliderPair(pairDelta.colliderA, pairDelta.colliderB)] += pairDelta.delta;
+        for (const PairDelta &pairDelta : localPairDeltas)
+        {
+            pairDeltaTotals[ColliderPair(pairDelta.colliderA, pairDelta.colliderB)] += pairDelta.delta;
+        }
     }
-
-    pendingPairDeltas.clear();
 
     for (const auto &[pair, delta] : pairDeltaTotals)
     {
         applyPairWitnessDelta(pair.getObjectA(), pair.getObjectB(), delta);
+    }
+
+    for (std::vector<PairDelta> &localPairDeltas : activePairDeltaCollector.localPairDeltas)
+    {
+        localPairDeltas.clear();
     }
 }
 
@@ -405,17 +415,14 @@ void Grid::flushPendingCellUpdates()
             break;
         } });
 
-    deferPairDeltas.store(true, std::memory_order_release);
-
     tbb::parallel_for(size_t(0), cellsWithOperations.size(), [&](size_t i)
                       {
         GridCell *cell = cellsWithOperations[i];
         cell->flushPendingOperations(); });
 
-    deferPairDeltas.store(false, std::memory_order_release);
     cellsWithOperations.clear();
 
-    applyPendingPairDeltas();
+    applyCollectedPairDeltas();
 
     for (GridCell *cell : potentiallyEmptyCells)
     {

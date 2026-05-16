@@ -20,6 +20,23 @@ struct ColliderOperation
     Collider *collider;
 };
 
+struct PairDelta
+{
+    Collider *colliderA;
+    Collider *colliderB;
+    int delta;
+};
+
+struct PairDeltaCollector
+{
+    tbb::enumerable_thread_specific<std::vector<PairDelta>> localPairDeltas;
+
+    void record(Collider *colliderA, Collider *colliderB, int delta)
+    {
+        localPairDeltas.local().emplace_back(colliderA, colliderB, delta);
+    }
+};
+
 class Grid
 {
     friend class AABB;
@@ -45,13 +62,6 @@ public:
     void flushPendingCellUpdates();
 
 private:
-    struct PairDelta
-    {
-        Collider *colliderA;
-        Collider *colliderB;
-        int delta;
-    };
-
     void addColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     void removeGridCellIfEmpty(GridCell *cell);
@@ -64,7 +74,7 @@ private:
     void queueForEmptyCheck(GridCell *cell);
     void queueForOperations(GridCell *cell);
     void recordPairDelta(Collider *colliderA, Collider *colliderB, int delta);
-    void applyPendingPairDeltas();
+    void applyCollectedPairDeltas();
     void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
 
     tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash>
@@ -74,7 +84,6 @@ private:
     std::unordered_map<Collider *, std::vector<const ColliderPair *>> pairAdjacency;
     tbb::concurrent_vector<GridCell *> potentiallyEmptyCells;
     tbb::concurrent_vector<GridCell *> cellsWithOperations;
-    tbb::concurrent_vector<PairDelta> pendingPairDeltas;
     tbb::concurrent_vector<ColliderOperation> pendingColliderOperations;
-    std::atomic_bool deferPairDeltas;
+    PairDeltaCollector activePairDeltaCollector;
 };

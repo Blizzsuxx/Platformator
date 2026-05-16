@@ -70,6 +70,7 @@
         "y": true,
         "./bin/debug/platformator_regression_tests": true,
         "./build/debug/platformator_queued_deletion_safety_test": true,
-        "./bin/platformator_queued_deletion_safety_test": true
+        "./bin/platformator_queued_deletion_safety_test": true,
+        "gdb": true
     }
 }

@@ -75,7 +75,8 @@ foreach(platformator_header IN LISTS PLATFORMATOR_HEADER_SOURCES)
 endforeach()
 
 set(PLATFORMATOR_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
-list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}")
+set(PLATFORMATOR_BENCHMARK_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark_main.cpp")
+list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}" "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}")
 
 add_library(platformator_engine STATIC ${PLATFORMATOR_SOURCES})
 add_library(Platformator::platformator ALIAS platformator_engine)
@@ -118,6 +119,21 @@ if(PLATFORMATOR_BUILD_RUNNER)
         set_target_properties(main PROPERTIES
             INSTALL_RPATH "${PLATFORMATOR_INSTALL_RPATH}"
         )
+    endif()
+
+    if(PLATFORMATOR_ENABLE_BENCHMARKS)
+        add_executable(platformator_benchmark_runner "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}")
+        target_link_libraries(platformator_benchmark_runner PRIVATE Platformator::platformator)
+        target_include_directories(platformator_benchmark_runner PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_BINARY_DIR}/generated"
+        )
+
+        if(DEFINED PLATFORMATOR_INSTALL_RPATH)
+            set_target_properties(platformator_benchmark_runner PROPERTIES
+                INSTALL_RPATH "${PLATFORMATOR_INSTALL_RPATH}"
+            )
+        endif()
     endif()
 endif()
 

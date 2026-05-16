@@ -1,6 +1,7 @@
 #include "physicsmanager.h"
 
 #include "boxcollider.h"
+#include "benchmark.h"
 #include "constants.h"
 #include "debugdraw.h"
 #include "oneapi/tbb.h"
@@ -106,11 +107,18 @@ void PhysicsManager::flushPendingColliderOperations()
 
 void PhysicsManager::broadPhase()
 {
+    PLATFORMATOR_BENCH_SCOPE(BroadPhase);
+
     flushPendingColliderOperations();
+
+    PLATFORMATOR_BENCH_SET_COUNTER(OccupiedCellCount, grid.getCells().size());
+    PLATFORMATOR_BENCH_SET_COUNTER(CandidatePairCount, grid.getCandidatePairCount());
 }
 
 void PhysicsManager::narrowPhase()
 {
+    PLATFORMATOR_BENCH_SCOPE(NarrowPhase);
+
     activeCollisions.clear();
 
     const std::vector<const ColliderPair *> &pendingPairs = *grid.getPendingNarrowPhasePairs();
@@ -161,8 +169,54 @@ void PhysicsManager::narrowPhase()
     }
 #endif
 
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    PLATFORMATOR_BENCH_SET_COUNTER(PendingNarrowPhasePairCount, pendingPairs.size());
+    PLATFORMATOR_BENCH_SET_COUNTER(ActiveCollisionCount, activeCollisions.size());
+
+    int64_t enterCount = 0;
+    int64_t stayCount = 0;
+    int64_t exitCount = 0;
+
+    for (const PhysicsEvent &event : pendingPhysicsEvents)
+    {
+        switch (event.type)
+        {
+        case PhysicsEvent::COLLISION_ENTER:
+            enterCount++;
+            break;
+        case PhysicsEvent::COLLISION_STAY:
+            stayCount++;
+            break;
+        case PhysicsEvent::COLLISION_EXIT:
+            exitCount++;
+            break;
+        }
+    }
+
+    PLATFORMATOR_BENCH_SET_COUNTER(CollisionEnterEventCount, enterCount);
+    PLATFORMATOR_BENCH_SET_COUNTER(CollisionStayEventCount, stayCount);
+    PLATFORMATOR_BENCH_SET_COUNTER(CollisionExitEventCount, exitCount);
+#endif
+
     grid.clearPendingNarrowPhasePairs();
 }
+
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+size_t PhysicsManager::countAwakeDynamicBodies() const
+{
+    size_t awakeDynamicBodyCount = 0;
+
+    for (Rigidbody *rigidBodyComponent : rigidBodyComponents)
+    {
+        if (rigidBodyComponent->getBodyType() == BodyType::DYNAMIC && rigidBodyComponent->getGameObject()->getActive() && !rigidBodyComponent->getIsSleeping())
+        {
+            awakeDynamicBodyCount++;
+        }
+    }
+
+    return awakeDynamicBodyCount;
+}
+#endif
 
 void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair, std::vector<Collision *> &localCollisions, std::vector<PhysicsEvent> &localEvents)
 {
@@ -396,6 +450,8 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
 
 void PhysicsManager::resolveCollisions(double timeDelta)
 {
+    PLATFORMATOR_BENCH_SCOPE(ResolveCollisions);
+
     float inverseTimeDelta = timeDelta > 0.0 ? static_cast<float>(1.0 / timeDelta) : 0.0f;
     std::vector<Collision *> dynamicCollisions;
 
@@ -432,6 +488,10 @@ void PhysicsManager::resolveCollisions(double timeDelta)
     }
 
     updateSleepingStates(timeDelta);
+
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    PLATFORMATOR_BENCH_SET_COUNTER(AwakeDynamicBodyCount, countAwakeDynamicBodies());
+#endif
 }
 
 void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDelta)

@@ -73,6 +73,7 @@
         "./bin/platformator_queued_deletion_safety_test": true,
         "gdb": true,
         "true": true,
-        "tee": true
+        "tee": true,
+        "./build/benchmark-debug/platformator_regression_tests": true
     }
 }

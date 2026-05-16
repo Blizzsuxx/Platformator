@@ -95,6 +95,7 @@ private:
     void createMainCameraIfNoMainCameraExists();
     void addStartedBehaviorsRecursive(GameObject *gameObject);
     void registerGameObjectSubtree(GameObject *gameObject);
+    void runSimulationStep(double timeDelta);
     void startDeletingGameObject(GameObject *gameObject);
     void updateDeltaTime();
     void delay();

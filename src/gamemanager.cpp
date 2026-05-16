@@ -7,6 +7,7 @@
 #include "animator.h"
 #include "animationclip.h"
 #include "audio.h"
+#include "benchmark.h"
 #include "constants.h"
 #include "pathmanager.h"
 #include "scriptcomponent.h"
@@ -27,6 +28,7 @@ GameManager::GameManager(const WindowSettings &windowSettings, const DebugSettin
     : window(new SDLWindow(windowSettings, debugSettings)), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
 {
     lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
+    PLATFORMATOR_BENCH_RESET();
     // initializeMainCamera();
 }
 
@@ -54,6 +56,8 @@ GameManager::~GameManager()
 
     delete physicsManager;
     delete window;
+
+    PLATFORMATOR_BENCH_PRINT_SUMMARY();
 }
 
 void GameManager::setCurrentInstance(GameManager *gameManager)
@@ -278,6 +282,25 @@ void GameManager::delay()
     }
 }
 
+void GameManager::runSimulationStep(const double timeDelta)
+{
+    PLATFORMATOR_BENCH_FRAME_BEGIN();
+
+    triggerStartedBehaviors();
+    fixedUpdateScriptComponents(timeDelta);
+    physicsManager->checkForCollisions();
+    physicsManager->applyPhysics(timeDelta);
+    physicsManager->resolveCollisions(timeDelta);
+    physicsManager->applyMovement(timeDelta);
+    physicsManager->handlePendingPhysicsEvents(timeDelta);
+    updateScriptComponents(timeDelta);
+    updateAnimatorComponents(timeDelta);
+    lateUpdateScriptComponents(timeDelta);
+
+    PLATFORMATOR_BENCH_SET_COUNTER(ObjectCount, gameObjects.size());
+    PLATFORMATOR_BENCH_FRAME_END();
+}
+
 void GameManager::loop()
 {
     while (window->isRunning())
@@ -295,16 +318,7 @@ void GameManager::loop()
             }
 #endif
 
-            triggerStartedBehaviors();
-            fixedUpdateScriptComponents(deltaTime);
-            physicsManager->checkForCollisions();
-            physicsManager->applyPhysics(deltaTime);
-            physicsManager->resolveCollisions(deltaTime);
-            physicsManager->applyMovement(deltaTime);
-            physicsManager->handlePendingPhysicsEvents(deltaTime);
-            updateScriptComponents(deltaTime);
-            updateAnimatorComponents(deltaTime);
-            lateUpdateScriptComponents(deltaTime);
+            runSimulationStep(deltaTime);
         };
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
@@ -326,16 +340,7 @@ void GameManager::loop()
 
 void GameManager::simulateFrame(double timeDelta)
 {
-    triggerStartedBehaviors();
-    fixedUpdateScriptComponents(timeDelta);
-    physicsManager->checkForCollisions();
-    physicsManager->applyPhysics(timeDelta);
-    physicsManager->resolveCollisions(timeDelta);
-    physicsManager->applyMovement(timeDelta);
-    physicsManager->handlePendingPhysicsEvents(timeDelta);
-    updateScriptComponents(timeDelta);
-    updateAnimatorComponents(timeDelta);
-    lateUpdateScriptComponents(timeDelta);
+    runSimulationStep(timeDelta);
     window->updateTransientAudio();
     deleteMarkedGameObjects();
 }

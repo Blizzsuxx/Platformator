@@ -12,6 +12,7 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
 endif()
 
 option(PLATFORMATOR_ENABLE_DEBUG_TOOLS "Enable debug-only logging, overlays, and frame advance controls." ON)
+option(PLATFORMATOR_ENABLE_BENCHMARKS "Enable compile-time benchmark instrumentation and runtime summaries." OFF)
 option(PLATFORMATOR_BUILD_RUNNER "Build the stock Platformator desktop runner." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_EXAMPLES "Build standalone Platformator example projects." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_TESTS "Build Platformator test executables." ${PLATFORMATOR_IS_TOP_LEVEL})
@@ -48,6 +49,10 @@ target_include_directories(nlohmann_json INTERFACE
 file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
+
+if(NOT PLATFORMATOR_ENABLE_BENCHMARKS)
+    list(REMOVE_ITEM PLATFORMATOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark.cpp")
+endif()
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/src/buildconfig.h.in"

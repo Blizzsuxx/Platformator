@@ -1,4 +1,5 @@
 #include "grid.h"
+#include "benchmark.h"
 #include <algorithm>
 #include "constants.h"
 #include <cstdio>
@@ -466,6 +467,7 @@ void Grid::queueAddCollider(Collider *collider)
 
     collider->markQueuedForAdd();
     pendingColliderOperations.push_back(ColliderOperation{ColliderOperation::OperationType::ADD, collider});
+    PLATFORMATOR_BENCH_ADD_COUNTER(QueuedAddCount, 1);
 }
 
 void Grid::queueRemoveCollider(Collider *collider)
@@ -477,6 +479,7 @@ void Grid::queueRemoveCollider(Collider *collider)
 
     collider->markQueuedForRemove();
     pendingColliderOperations.push_back(ColliderOperation{ColliderOperation::OperationType::REMOVE, collider});
+    PLATFORMATOR_BENCH_ADD_COUNTER(QueuedRemoveCount, 1);
 }
 
 void Grid::queueSyncCollider(Collider *collider)
@@ -488,4 +491,5 @@ void Grid::queueSyncCollider(Collider *collider)
     }
 
     pendingColliderOperations.push_back(ColliderOperation{ColliderOperation::OperationType::SYNC, collider});
+    PLATFORMATOR_BENCH_ADD_COUNTER(QueuedSyncCount, 1);
 }

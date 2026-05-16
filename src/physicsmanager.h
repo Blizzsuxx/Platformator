@@ -66,6 +66,9 @@ private:
     void broadPhase();
     void narrowPhase();
     void processNarrowPhasePair(const ColliderPair *pair, std::vector<Collision *> &localCollisions, std::vector<PhysicsEvent> &localEvents);
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    size_t countAwakeDynamicBodies() const;
+#endif
 
     void satCreateCollision(const ColliderPair &pair);
 

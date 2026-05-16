@@ -28,6 +28,18 @@
             }
         },
         {
+            "name": "benchmark-debug",
+            "displayName": "Benchmark Debug",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/benchmark-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
+                "PLATFORMATOR_ENABLE_BENCHMARKS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark-debug"
+            }
+        },
+        {
             "name": "production",
             "displayName": "Production",
             "inherits": "default",
@@ -60,6 +72,11 @@
             "name": "debug",
             "displayName": "Debug",
             "configurePreset": "debug"
+        },
+        {
+            "name": "benchmark-debug",
+            "displayName": "Benchmark Debug",
+            "configurePreset": "benchmark-debug"
         },
         {
             "name": "production",

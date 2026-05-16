@@ -1,0 +1,407 @@
+[
+  {
+    "id": 1,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Main Camera",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2, "width": 640.0, "height": 480.0, "type": 2 }
+    ]
+  },
+  {
+    "id": 10,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -125.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Column 00",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2000, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 26.0, "height": 360.0 },
+      { "id": 2001, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 11,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -75.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Column 01",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2002, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 26.0, "height": 360.0 },
+      { "id": 2003, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 12,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -25.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Column 02",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2004, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 26.0, "height": 360.0 },
+      { "id": 2005, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 13,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 25.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Column 03",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2006, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 26.0, "height": 360.0 },
+      { "id": 2007, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 14,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 75.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Column 04",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2008, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 26.0, "height": 360.0 },
+      { "id": 2009, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 15,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 125.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Column 05",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2010, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 26.0, "height": 360.0 },
+      { "id": 2011, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 20,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -125.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Row 00",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2012, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 26.0 },
+      { "id": 2013, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 21,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -75.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Row 01",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2014, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 26.0 },
+      { "id": 2015, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 22,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -25.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Row 02",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2016, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 26.0 },
+      { "id": 2017, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 23,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 25.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Row 03",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2018, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 26.0 },
+      { "id": 2019, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 24,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 75.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Row 04",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2020, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 26.0 },
+      { "id": 2021, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 25,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 125.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Trigger Row 05",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 2022, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 26.0 },
+      { "id": 2023, "velocity": { "x": 0.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 1, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 100,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -140.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 00",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3000, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3001, "velocity": { "x": 0.0, "y": 20.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 101,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -100.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 01",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3002, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3003, "velocity": { "x": 0.0, "y": -20.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 102,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -60.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 02",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3004, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3005, "velocity": { "x": 0.0, "y": 24.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 103,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": -20.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 03",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3006, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3007, "velocity": { "x": 0.0, "y": -24.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 104,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 20.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 04",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3008, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3009, "velocity": { "x": 0.0, "y": 20.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 105,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 60.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 05",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3010, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3011, "velocity": { "x": 0.0, "y": -20.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 106,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 100.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 06",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3012, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3013, "velocity": { "x": 0.0, "y": 24.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 107,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 0.0, "y": 140.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Horizontal Band 07",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 3014, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 360.0, "height": 18.0 },
+      { "id": 3015, "velocity": { "x": 0.0, "y": -24.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 200,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -140.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 00",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4000, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4001, "velocity": { "x": 20.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 201,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -100.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 01",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4002, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4003, "velocity": { "x": -20.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 202,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -60.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 02",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4004, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4005, "velocity": { "x": 24.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 203,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": -20.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 03",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4006, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4007, "velocity": { "x": -24.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 204,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 20.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 04",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4008, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4009, "velocity": { "x": 20.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 205,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 60.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 05",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4010, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4011, "velocity": { "x": -20.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 206,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 100.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 06",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4012, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4013, "velocity": { "x": 24.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  },
+  {
+    "id": 207,
+    "rotation": 0.0,
+    "active": true,
+    "position": { "x": 140.0, "y": 0.0 },
+    "scale": { "x": 1.0, "y": 1.0 },
+    "name": "Vertical Band 07",
+    "tag": "",
+    "children": [],
+    "components": [
+      { "id": 4014, "collisionGroup": 1, "type": 3, "colliderType": 1, "collisionMask": 1, "offset": { "x": 0.0, "y": 0.0 }, "trigger": true, "width": 18.0, "height": 360.0 },
+      { "id": 4015, "velocity": { "x": -24.0, "y": 0.0 }, "force": { "x": 0.0, "y": 0.0 }, "mass": 1.0, "angularVelocity": 0.0, "torque": 0.0, "friction": 0.0, "restitution": 0.0, "bodyType": 2, "type": 4, "gravity": false }
+    ]
+  }
+]

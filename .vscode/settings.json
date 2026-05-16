@@ -75,6 +75,7 @@
         "true": true,
         "tee": true,
         "./build/benchmark-debug/platformator_regression_tests": true,
-        "./build/benchmark-debug/platformator_benchmark_runner": true
+        "./build/benchmark-debug/platformator_benchmark_runner": true,
+        "./bin/benchmark-debug/platformator_benchmark_runner": true
     }
 }

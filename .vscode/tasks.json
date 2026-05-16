@@ -16,6 +16,19 @@
         },
         {
             "type": "shell",
+            "label": "Configure Platformator Benchmark Debug",
+            "command": "/usr/bin/cmake",
+            "args": [
+                "--preset",
+                "benchmark-debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "type": "shell",
             "label": "Build Platformator Debug",
             "command": "/usr/bin/cmake",
             "args": [
@@ -41,6 +54,29 @@
         },
         {
             "type": "shell",
+            "label": "Build Platformator Benchmark Runner",
+            "command": "/usr/bin/cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "benchmark-debug",
+                "--target",
+                "platformator_benchmark_runner"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "Configure Platformator Benchmark Debug"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Configure and build the benchmark runner into bin/benchmark-debug/."
+        },
+        {
+            "type": "shell",
             "label": "Build Mario Example Debug",
             "command": "/usr/bin/cmake",
             "args": [
@@ -61,6 +97,50 @@
                 "$gcc"
             ],
             "detail": "Configure and build only the Mario example target into bin/."
+        },
+        {
+            "type": "shell",
+            "label": "Benchmark Broad Phase Churn Baseline",
+            "command": "${workspaceFolder}/bin/benchmark-debug/platformator_benchmark_runner",
+            "args": [
+                "--scene",
+                "assets/scenes/benchmarks/broad_phase_churn.scene",
+                "--warmup-frames",
+                "120",
+                "--measure-frames",
+                "600"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "Build Platformator Benchmark Runner"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [],
+            "detail": "Run the broad-phase churn benchmark baseline."
+        },
+        {
+            "type": "shell",
+            "label": "Benchmark Narrow Phase Saturation Baseline",
+            "command": "${workspaceFolder}/bin/benchmark-debug/platformator_benchmark_runner",
+            "args": [
+                "--scene",
+                "assets/scenes/benchmarks/narrow_phase_saturation.scene",
+                "--warmup-frames",
+                "120",
+                "--measure-frames",
+                "600"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "Build Platformator Benchmark Runner"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [],
+            "detail": "Run the narrow-phase saturation benchmark baseline."
         }
     ]
 }

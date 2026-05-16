@@ -30,3 +30,4 @@ constexpr float COLLISION_ALLOWED_PENETRATION = 0.01f;
 constexpr float COLLISION_BIAS_FACTOR = 0.2f;
 constexpr float RESTITUTION_VELOCITY_THRESHOLD = 1.0f;
 constexpr size_t MAX_CHUNK_SIZE = 32;
+constexpr size_t NARROW_PHASE_PARALLEL_THRESHOLD = 64;

@@ -279,18 +279,27 @@ namespace
         return filePath;
     }
 
-    void addColliderToLocalAabb(AABB &aabb, Collider *collider)
+    void addColliderToLocalAabb(Grid &grid, AABB &aabb, Collider *collider)
     {
         require(collider != nullptr, "Local AABB regression received a null collider.");
         collider->prepareSync();
         aabb.add(collider);
+        grid.flushDeferredPairDeltas();
     }
 
-    void syncColliderInLocalAabb(AABB &aabb, Collider *collider)
+    void syncColliderInLocalAabb(Grid &grid, AABB &aabb, Collider *collider)
     {
         require(collider != nullptr, "Local AABB regression received a null collider for repair.");
         collider->prepareSync();
         aabb.repair(collider);
+        grid.flushDeferredPairDeltas();
+    }
+
+    void removeColliderFromLocalAabb(Grid &grid, AABB &aabb, Collider *collider)
+    {
+        require(collider != nullptr, "Local AABB regression received a null collider for removal.");
+        aabb.remove(collider);
+        grid.flushDeferredPairDeltas();
     }
 
     void testCircleCollisionStability()
@@ -474,6 +483,98 @@ namespace
                 "Checkpoint regression failed to remove an existing checkpoint cleanly.");
     }
 
+    void testParallelBroadAndNarrowPhaseStress()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        constexpr int rowCount = 12;
+        constexpr int columnCount = 12;
+        constexpr int pairCount = rowCount * columnCount;
+        constexpr float columnSpacing = 160.0f;
+        constexpr float rowSpacing = 120.0f;
+        constexpr float overlapOffsetX = 12.0f;
+        constexpr float stayOffsetX = 6.0f;
+        constexpr float separationOffsetX = 96.0f;
+
+        std::vector<GameObject *> probes;
+        probes.reserve(pairCount);
+
+        std::vector<CollisionEventCounterBehavior *> counters;
+        counters.reserve(pairCount);
+
+        for (int row = 0; row < rowCount; ++row)
+        {
+            for (int column = 0; column < columnCount; ++column)
+            {
+                const float baseX = 120.0f + static_cast<float>(column) * columnSpacing;
+                const float baseY = 120.0f + static_cast<float>(row) * rowSpacing;
+
+                GameObject *anchor = createStaticBox(
+                    gameManager,
+                    "Parallel Anchor " + std::to_string(row) + "-" + std::to_string(column),
+                    baseX,
+                    baseY,
+                    40.0f,
+                    40.0f);
+                GameObject *probe = createStaticBox(
+                    gameManager,
+                    "Parallel Probe " + std::to_string(row) + "-" + std::to_string(column),
+                    baseX + overlapOffsetX,
+                    baseY,
+                    40.0f,
+                    40.0f);
+
+                sceneScope.add(anchor);
+                sceneScope.add(probe);
+                probes.push_back(probe);
+
+                probe->addComponent<ScriptComponent>();
+                ScriptComponent *scriptComponent = probe->getComponent<ScriptComponent>();
+                require(scriptComponent != nullptr,
+                        "Parallel broad/narrow regression failed to create a script component for a probe collider.");
+
+                auto *collisionCounter = new CollisionEventCounterBehavior();
+                scriptComponent->addBehavior(collisionCounter);
+                counters.push_back(collisionCounter);
+            }
+        }
+
+        gameManager.simulateFrame(kTimeStep);
+
+        for (const CollisionEventCounterBehavior *counter : counters)
+        {
+            require(counter->enterCount == 1 && counter->stayCount == 0 && counter->exitCount == 0,
+                    "Parallel broad/narrow regression expected exactly one enter event for each overlapping pair after the first frame.");
+        }
+
+        for (GameObject *probe : probes)
+        {
+            probe->setPosition(probe->getPosition() + Eigen::Vector2f(stayOffsetX, 0.0f));
+        }
+
+        gameManager.simulateFrame(kTimeStep);
+
+        for (const CollisionEventCounterBehavior *counter : counters)
+        {
+            require(counter->enterCount == 1 && counter->stayCount == 1 && counter->exitCount == 0,
+                    "Parallel broad/narrow regression expected exactly one stay event for each pair after an in-overlap sync.");
+        }
+
+        for (GameObject *probe : probes)
+        {
+            probe->setPosition(probe->getPosition() + Eigen::Vector2f(separationOffsetX, 0.0f));
+        }
+
+        gameManager.simulateFrame(kTimeStep);
+
+        for (const CollisionEventCounterBehavior *counter : counters)
+        {
+            require(counter->enterCount == 1 && counter->stayCount == 1 && counter->exitCount == 1,
+                    "Parallel broad/narrow regression expected exactly one exit event for each pair after separation.");
+        }
+    }
+
     void testSegmentedIntervalListFastMotionAcrossChunks()
     {
         Runtime &gameManager = Runtime::current();
@@ -492,30 +593,30 @@ namespace
                 2.0f,
                 2.0f);
             sceneScope.add(filler);
-            addColliderToLocalAabb(localAabb, filler->getComponent<Collider>());
+            addColliderToLocalAabb(localGrid, localAabb, filler->getComponent<Collider>());
         }
 
         GameObject *bridge = createStaticBox(gameManager, "Fast Bridge", 110.0f, 100.0f, 80.0f, 20.0f);
         sceneScope.add(bridge);
         Collider *bridgeCollider = bridge->getComponent<Collider>();
-        addColliderToLocalAabb(localAabb, bridgeCollider);
+        addColliderToLocalAabb(localGrid, localAabb, bridgeCollider);
 
         require(localGrid.getCandidatePairCount() == 0,
                 "Fast-motion regression expected no broad-phase pairs before adding the probe collider.");
 
         bridge->setPosition(Eigen::Vector2f(170.0f, 100.0f));
-        syncColliderInLocalAabb(localAabb, bridgeCollider);
+        syncColliderInLocalAabb(localGrid, localAabb, bridgeCollider);
 
         GameObject *probe = createStaticBox(gameManager, "Checkpoint Probe", 145.0f, 100.0f, 2.0f, 20.0f);
         sceneScope.add(probe);
         Collider *probeCollider = probe->getComponent<Collider>();
-        addColliderToLocalAabb(localAabb, probeCollider);
+        addColliderToLocalAabb(localGrid, localAabb, probeCollider);
 
         require(localGrid.getCandidatePairCount() == 1,
                 "Fast-motion regression expected the probe to overlap the fast bridge through real chunk checkpoint handling.");
 
         bridge->setPosition(Eigen::Vector2f(250.0f, 100.0f));
-        syncColliderInLocalAabb(localAabb, bridgeCollider);
+        syncColliderInLocalAabb(localGrid, localAabb, bridgeCollider);
 
         require(localGrid.getCandidatePairCount() == 0,
                 "Fast-motion regression expected the probe pair to be removed after the fast bridge moved away.");
@@ -549,7 +650,7 @@ namespace
 
             Collider *fillerCollider = filler->getComponent<Collider>();
             fillerColliders.push_back(fillerCollider);
-            addColliderToLocalAabb(localAabb, fillerCollider);
+            addColliderToLocalAabb(localGrid, localAabb, fillerCollider);
         }
 
         require(xIntervalList->getChunkCount() > 1,
@@ -559,7 +660,7 @@ namespace
 
         for (size_t index = 0; index < 3; ++index)
         {
-            localAabb.remove(fillerColliders[index]);
+            removeColliderFromLocalAabb(localGrid, localAabb, fillerColliders[index]);
         }
 
         require(xIntervalList->getChunkCount() == 1,
@@ -570,12 +671,12 @@ namespace
         GameObject *bridge = createStaticBox(gameManager, "Merged Bridge", 145.0f, 100.0f, 80.0f, 20.0f);
         sceneScope.add(bridge);
         Collider *bridgeCollider = bridge->getComponent<Collider>();
-        addColliderToLocalAabb(localAabb, bridgeCollider);
+        addColliderToLocalAabb(localGrid, localAabb, bridgeCollider);
 
         GameObject *probe = createStaticBox(gameManager, "Merged Probe", 145.0f, 100.0f, 2.0f, 20.0f);
         sceneScope.add(probe);
         Collider *probeCollider = probe->getComponent<Collider>();
-        addColliderToLocalAabb(localAabb, probeCollider);
+        addColliderToLocalAabb(localGrid, localAabb, probeCollider);
 
         require(xIntervalList->getChunkCount() == 1,
                 "Chunk-merge regression expected the merged list to stay within one chunk during the post-merge overlap scenario.");
@@ -583,7 +684,7 @@ namespace
                 "Chunk-merge regression expected the post-merge bridge and probe to produce one broad-phase pair.");
 
         bridge->setPosition(Eigen::Vector2f(250.0f, 100.0f));
-        syncColliderInLocalAabb(localAabb, bridgeCollider);
+        syncColliderInLocalAabb(localGrid, localAabb, bridgeCollider);
 
         require(xIntervalList->getChunkCount() == 1,
                 "Chunk-merge regression expected the list to remain merged after the post-merge bridge moved away.");
@@ -1584,6 +1685,7 @@ int main()
         {"sleeping_on_support", testSleepingOnSupport},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
+        {"parallel_broad_and_narrow_phase_stress", testParallelBroadAndNarrowPhaseStress},
         {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},
         {"segmented_interval_merges_underfull_chunks", testSegmentedIntervalListMergesUnderfullChunks},
         {"scene_loading", testSceneLoading},

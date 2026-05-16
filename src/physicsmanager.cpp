@@ -113,42 +113,112 @@ void PhysicsManager::narrowPhase()
 {
     activeCollisions.clear();
 
-    for (const ColliderPair *pair : *grid.getPendingNarrowPhasePairs())
+    const std::vector<const ColliderPair *> &pendingPairs = *grid.getPendingNarrowPhasePairs();
+
+    if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
     {
-        pair->setIsQueuedForNarrowPhase(false);
-        pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+        NarrowPhaseLocalResults localResults;
+        localResults.activeCollisions.reserve(pendingPairs.size());
+        localResults.physicsEvents.reserve(pendingPairs.size());
 
-        Collider *objectA = pair->getObjectA();
-        Collider *objectB = pair->getObjectB();
-
-        if (objectA->getGameObject()->getIsMarkedForDeletion() || objectB->getGameObject()->getIsMarkedForDeletion())
+        for (const ColliderPair *pair : pendingPairs)
         {
-            continue;
-        }
-        if (!objectA->getGameObject()->getActive() || !objectB->getGameObject()->getActive())
-        {
-            continue;
+            processNarrowPhasePair(pair, localResults.activeCollisions, localResults.physicsEvents);
         }
 
-        if (!pair->shouldUpdate())
+        activeCollisions = std::move(localResults.activeCollisions);
+        pendingPhysicsEvents.insert(pendingPhysicsEvents.end(), localResults.physicsEvents.begin(), localResults.physicsEvents.end());
+    }
+    else
+    {
+        tbb::enumerable_thread_specific<NarrowPhaseLocalResults> localResults;
+
+        tbb::parallel_for(size_t(0), pendingPairs.size(), [&](size_t i)
+                          { processNarrowPhasePair(pendingPairs[i], localResults.local().activeCollisions, localResults.local().physicsEvents); });
+
+        size_t totalCollisionCount = 0;
+        size_t totalEventCount = 0;
+        for (NarrowPhaseLocalResults &results : localResults)
         {
-            pair->queueCollisionStay();
-        }
-        else
-        {
-            satCreateCollision(*pair);
+            totalCollisionCount += results.activeCollisions.size();
+            totalEventCount += results.physicsEvents.size();
         }
 
-        if (pair->getCollision() != nullptr)
+        activeCollisions.reserve(totalCollisionCount);
+        pendingPhysicsEvents.reserve(pendingPhysicsEvents.size() + totalEventCount);
+
+        for (NarrowPhaseLocalResults &results : localResults)
         {
-            activeCollisions.push_back(pair->getCollision());
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-            DebugDraw::getInstance().addCollisionDebugObject(*pair->getCollision());
-#endif
+            activeCollisions.insert(activeCollisions.end(), results.activeCollisions.begin(), results.activeCollisions.end());
+            pendingPhysicsEvents.insert(pendingPhysicsEvents.end(), results.physicsEvents.begin(), results.physicsEvents.end());
         }
     }
 
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    for (Collision *collision : activeCollisions)
+    {
+        DebugDraw::getInstance().addCollisionDebugObject(*collision);
+    }
+#endif
+
     grid.clearPendingNarrowPhasePairs();
+}
+
+void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair, std::vector<Collision *> &localCollisions, std::vector<PhysicsEvent> &localEvents)
+{
+    pair->setIsQueuedForNarrowPhase(false);
+    pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+
+    Collider *objectA = pair->getObjectA();
+    Collider *objectB = pair->getObjectB();
+
+    if (objectA->getGameObject()->getIsMarkedForDeletion() || objectB->getGameObject()->getIsMarkedForDeletion())
+    {
+        return;
+    }
+    if (!objectA->getGameObject()->getActive() || !objectB->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    Collision *existingCollision = pair->getCollision();
+
+    if (!pair->shouldUpdate())
+    {
+        localEvents.emplace_back(makePhysicsEvent(PhysicsEvent::COLLISION_STAY, pair, existingCollision));
+
+        if (existingCollision != nullptr)
+        {
+            localCollisions.push_back(existingCollision);
+        }
+
+        return;
+    }
+
+    const bool hadCollision = existingCollision != nullptr;
+    satCreateCollision(*pair);
+
+    Collision *updatedCollision = pair->getCollision();
+
+    if (hadCollision)
+    {
+        if (updatedCollision == nullptr)
+        {
+            localEvents.emplace_back(makePhysicsEvent(PhysicsEvent::COLLISION_EXIT, pair, nullptr));
+            return;
+        }
+
+        localEvents.emplace_back(makePhysicsEvent(PhysicsEvent::COLLISION_STAY, pair, updatedCollision));
+    }
+    else if (updatedCollision != nullptr)
+    {
+        localEvents.emplace_back(makePhysicsEvent(PhysicsEvent::COLLISION_ENTER, pair, updatedCollision));
+    }
+
+    if (updatedCollision != nullptr)
+    {
+        localCollisions.push_back(updatedCollision);
+    }
 }
 
 bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normals, const Collider *referenceCollider, const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal, const Collider *&realIncidentCollider)
@@ -190,7 +260,7 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
     std::vector<Eigen::Vector2f> normals = referenceCollider->getNormals(incidentCollider);
     if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, realIncidentCollider) == false)
     {
-        pair.clearCollision();
+        pair.clearCollisionNoEvent();
         return;
     }
 
@@ -198,11 +268,11 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
 
     if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, realIncidentCollider) == false)
     {
-        pair.clearCollision();
+        pair.clearCollisionNoEvent();
         return;
     }
 
-    Collision *collision = pair.getOrCreateCollision();
+    Collision *collision = pair.getOrCreateCollisionNoEvent();
 
     collision->clearSupportState();
 
@@ -654,4 +724,9 @@ const Eigen::Vector2f &PhysicsManager::getGravityVector() const
 const Eigen::Vector2f &PhysicsManager::getGravityVectorNormalized() const
 {
     return gravityVectorNormalized;
+}
+
+PhysicsEvent PhysicsManager::makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair, Collision *collision)
+{
+    return PhysicsEvent{type, collision, pair->getObjectA(), pair->getObjectB()};
 }

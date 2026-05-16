@@ -1,6 +1,5 @@
 #pragma once
 
-#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -59,6 +58,7 @@ public:
 
     void syncCollider(Collider *collider);
     void finishColliderSync(Collider *collider);
+    void flushDeferredPairDeltas();
     void flushPendingCellUpdates();
 
 private:

@@ -13,10 +13,12 @@ public:
     ~ColliderPair();
 
     Collision *getCollision() const;
+    Collision *getOrCreateCollisionNoEvent() const;
     Collision *getOrCreateCollision() const;
 
     void updateCachedCollisionVersions() const;
     bool shouldUpdate() const;
+    void clearCollisionNoEvent() const;
     void clearCollision() const;
 
     bool getIsQueuedForNarrowPhase() const;
@@ -28,8 +30,6 @@ public:
     size_t getAdjacencyIndexB() const;
     void setAdjacencyIndexB(size_t index) const;
 
-    void queueCollisionEnter() const;
-    void queueCollisionStay() const;
     void queueCollisionExit() const;
 
     void setObjectA(Collider *colliderA);

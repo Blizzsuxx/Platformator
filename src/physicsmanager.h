@@ -65,6 +65,7 @@ private:
     void updateSleepingStates(double timeDelta);
     void broadPhase();
     void narrowPhase();
+    void processNarrowPhasePair(const ColliderPair *pair, std::vector<Collision *> &localCollisions, std::vector<PhysicsEvent> &localEvents);
 
     void satCreateCollision(const ColliderPair &pair);
 
@@ -74,6 +75,7 @@ private:
     void resolveKinematicCollision(const Collision *collision);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal, float correctionDistance);
     void calculateContactPoint(Collision *collision);
+    PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair, Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Collision *> activeCollisions;
@@ -82,4 +84,10 @@ private:
 
     Eigen::Vector2f gravityVector;
     Eigen::Vector2f gravityVectorNormalized;
+};
+
+struct NarrowPhaseLocalResults
+{
+    std::vector<Collision *> activeCollisions;
+    std::vector<PhysicsEvent> physicsEvents;
 };

@@ -230,7 +230,6 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
         Collider *objectB = pair->getObjectB();
 
         dequeuePairFromNarrowPhase(pair);
-        pair->clearCollision();
 
         auto adjacencyA = pairAdjacency.find(objectA);
         if (adjacencyA != pairAdjacency.end())
@@ -330,6 +329,11 @@ const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &G
 size_t Grid::getCandidatePairCount() const
 {
     return candidateCollisions.size();
+}
+
+void Grid::flushDeferredPairDeltas()
+{
+    applyCollectedPairDeltas();
 }
 
 void Grid::syncCollider(Collider *collider)

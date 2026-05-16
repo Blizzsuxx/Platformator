@@ -28,16 +28,11 @@ Collision *ColliderPair::getCollision() const
     return collision;
 }
 
-Collision *ColliderPair::getOrCreateCollision() const
+Collision *ColliderPair::getOrCreateCollisionNoEvent() const
 {
     if (collision == nullptr)
     {
         collision = new Collision(objectA, objectB);
-        queueCollisionEnter();
-    }
-    else
-    {
-        queueCollisionStay();
     }
 
     updateCachedCollisionVersions();
@@ -45,15 +40,25 @@ Collision *ColliderPair::getOrCreateCollision() const
     return collision;
 }
 
+void ColliderPair::clearCollisionNoEvent() const
+{
+    if (collision != nullptr)
+    {
+        delete collision;
+        collision = nullptr;
+    }
+
+    updateCachedCollisionVersions();
+}
+
 void ColliderPair::clearCollision() const
 {
     if (collision != nullptr)
     {
         queueCollisionExit();
-        delete collision;
-        collision = nullptr;
     }
-    updateCachedCollisionVersions();
+
+    clearCollisionNoEvent();
 }
 
 bool ColliderPair::getIsQueuedForNarrowPhase() const
@@ -94,40 +99,6 @@ size_t ColliderPair::getAdjacencyIndexB() const
 void ColliderPair::setAdjacencyIndexB(size_t index) const
 {
     adjacencyIndexB = index;
-}
-
-void ColliderPair::queueCollisionEnter() const
-{
-    Collider *objectAOrMaybeNull = nullptr;
-    Collider *objectBOrMaybeNull = nullptr;
-
-    if (objectA != nullptr && !objectA->getGameObject()->getIsMarkedForDeletion())
-    {
-        objectAOrMaybeNull = objectA;
-    }
-    if (objectB != nullptr && !objectB->getGameObject()->getIsMarkedForDeletion())
-    {
-        objectBOrMaybeNull = objectB;
-    }
-
-    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_ENTER, collision, objectAOrMaybeNull, objectBOrMaybeNull});
-}
-
-void ColliderPair::queueCollisionStay() const
-{
-    Collider *objectAOrMaybeNull = nullptr;
-    Collider *objectBOrMaybeNull = nullptr;
-
-    if (objectA != nullptr && !objectA->getGameObject()->getIsMarkedForDeletion())
-    {
-        objectAOrMaybeNull = objectA;
-    }
-    if (objectB != nullptr && !objectB->getGameObject()->getIsMarkedForDeletion())
-    {
-        objectBOrMaybeNull = objectB;
-    }
-
-    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_STAY, collision, objectAOrMaybeNull, objectBOrMaybeNull});
 }
 
 void ColliderPair::queueCollisionExit() const

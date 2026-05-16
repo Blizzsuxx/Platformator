@@ -11,6 +11,8 @@
 #include "helpers.h"
 #include "grid.h"
 
+class GameManager;
+
 struct PhysicsEvent
 {
     enum EventType
@@ -28,6 +30,8 @@ struct PhysicsEvent
 
 class PhysicsManager
 {
+    friend class GameManager;
+
 public:
     PhysicsManager();
     ~PhysicsManager();

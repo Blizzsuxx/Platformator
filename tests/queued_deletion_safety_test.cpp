@@ -397,20 +397,43 @@ namespace
         require(anchorCounter->exitCount == victims.size(),
                 "Shared adjacency deletion regression expected one exit event per destroyed victim on the following frame.");
     }
+
+    void testRuntimeShutdownWithActiveCollision()
+    {
+        Runtime runtime;
+
+        GameObject *left = createStaticBox(runtime, "Shutdown Left", 200.0f, 120.0f, 40.0f, 40.0f)->addComponent<ScriptComponent>();
+        GameObject *right = createStaticBox(runtime, "Shutdown Right", 210.0f, 120.0f, 40.0f, 40.0f);
+
+        ScriptComponent *leftScriptComponent = left->getComponent<ScriptComponent>();
+        require(leftScriptComponent != nullptr,
+                "Shutdown regression failed to create the overlap listener script component.");
+
+        auto *counter = new CollisionCounterBehavior();
+        leftScriptComponent->addBehavior(counter);
+
+        runtime.simulateFrame(kTimeStep);
+        require(counter->enterCount == 1,
+                "Shutdown regression expected an active collision before runtime teardown.");
+    }
 } // namespace
 
 int main()
 {
     configureHeadlessEnvironment();
-    platformator::Runtime runtime;
 
     try
     {
-        testQueuedAddDeletion();
-        testQueuedSyncDeletion();
-        testLateFrameExitEventDeletion();
-        testGameObjectDestroyShortcut();
-        testSharedAdjacencyDeletion();
+        {
+            platformator::Runtime runtime;
+            testQueuedAddDeletion();
+            testQueuedSyncDeletion();
+            testLateFrameExitEventDeletion();
+            testGameObjectDestroyShortcut();
+            testSharedAdjacencyDeletion();
+        }
+
+        testRuntimeShutdownWithActiveCollision();
         std::cout << "[PASS] queued_deletion_safety_test\n";
         return 0;
     }

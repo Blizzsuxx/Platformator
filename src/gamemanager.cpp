@@ -38,6 +38,14 @@ GameManager::~GameManager()
     }
     gameObjects.clear();
 
+    if (physicsManager != nullptr)
+    {
+        // Drain queued collider removals before destroying game objects so the grid
+        // cannot retain stale ColliderPair entries into PhysicsManager teardown.
+        physicsManager->flushPendingColliderOperations();
+        physicsManager->clearPendingPhysicsEvents();
+    }
+
     deleteMarkedGameObjects();
     window->clearTransientAudio();
     freeAllAnimationClips();

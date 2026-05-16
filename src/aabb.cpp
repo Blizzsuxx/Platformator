@@ -5,6 +5,7 @@ AABB::AABB(Grid *owner)
     : intervalListX(this, Axis::X, true),
       intervalListY(this, Axis::Y, false),
       pairsWithAtLeastOneAxisOverlapping(),
+      colliderBindings(),
       owner(owner)
 {
     pairsWithAtLeastOneAxisOverlapping.reserve(8);
@@ -16,14 +17,76 @@ AABB::~AABB()
 
 void AABB::add(Collider *element)
 {
-    intervalListX.add(element->getXProjections());
-    intervalListY.add(element->getYProjections());
+    // auto iterator = colliderBindings.find(element);
+    // if (iterator != colliderBindings.end())
+    // {
+    //     PLATFORMATOR_LOG("Warning: trying to add a collider to AABB that is already in it, collider: %s\n", element->getGameObject()->getName().c_str());
+    //     return;
+    // }
+    auto result = colliderBindings.try_emplace(element, element);
+    ColliderBinding *binding = &result.first->second;
+    intervalListX.add(&binding->xBinding);
+    intervalListY.add(&binding->yBinding);
 }
 
 void AABB::remove(Collider *element)
 {
-    intervalListX.remove(element->getXProjections());
-    intervalListY.remove(element->getYProjections());
+    ColliderBinding *binding = getBinding(element);
+    if (binding == nullptr)
+    {
+        return;
+    }
+
+    remove(binding);
+}
+
+void AABB::remove(ColliderBinding *binding)
+{
+    if (binding == nullptr)
+    {
+        return;
+    }
+
+    intervalListX.remove(&binding->xBinding);
+    intervalListY.remove(&binding->yBinding);
+    colliderBindings.erase(binding->collider);
+}
+
+void AABB::repair(Collider *element)
+{
+    ColliderBinding *binding = getBinding(element);
+    if (binding == nullptr)
+    {
+        return;
+    }
+
+    repair(binding);
+}
+
+void AABB::repair(ColliderBinding *binding)
+{
+    binding->xBinding.minProxy.updateCachedProjectedPosition();
+    intervalListX.repairProjection(&binding->xBinding.minProxy);
+
+    binding->xBinding.maxProxy.updateCachedProjectedPosition();
+    intervalListX.repairProjection(&binding->xBinding.maxProxy);
+
+    binding->yBinding.minProxy.updateCachedProjectedPosition();
+    intervalListY.repairProjection(&binding->yBinding.minProxy);
+
+    binding->yBinding.maxProxy.updateCachedProjectedPosition();
+    intervalListY.repairProjection(&binding->yBinding.maxProxy);
+}
+
+AABB::ColliderBinding *AABB::getBinding(Collider *element)
+{
+    auto iterator = colliderBindings.find(element);
+    if (iterator == colliderBindings.end())
+    {
+        return nullptr;
+    }
+
+    return &iterator->second;
 }
 
 SegmentedIntervalList *AABB::getIntervalListX()

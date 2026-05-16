@@ -25,9 +25,9 @@ public:
     void clearQueuedForEmpty();
     bool markQueuedForOperations();
     void clearQueuedForOperations();
-    void queueRemoveCollider(Collider *collider);
+    void queueRemoveBinding(AABB::ColliderBinding *binding);
     void queueAddCollider(Collider *collider);
-    void queueSyncCollider(Collider *collider);
+    void queueSyncBinding(AABB::ColliderBinding *binding);
     void flushPendingOperations();
 
 private:
@@ -37,6 +37,6 @@ private:
     std::atomic_bool queuedForOperations;
 
     tbb::concurrent_vector<Collider *> collidersToAdd;
-    tbb::concurrent_vector<Collider *> collidersToRemove;
-    tbb::concurrent_vector<Collider *> collidersToSync;
+    tbb::concurrent_vector<AABB::ColliderBinding *> bindingsToRemove;
+    tbb::concurrent_vector<AABB::ColliderBinding *> bindingsToSync;
 };

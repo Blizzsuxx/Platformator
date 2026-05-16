@@ -10,11 +10,11 @@
 #include "collision.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX), gridCellRangeCache()
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
 {
 }
 
-Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), pendingAddQueueIndex(SIZE_MAX), pendingSyncQueueIndex(SIZE_MAX), gridCellRangeCache()
+Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
 {
 }
 
@@ -104,29 +104,6 @@ void Collider::prepareSync()
     calculateGridCellRange();
     stateVersion++;
     flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_SYNC);
-}
-
-void Collider::repairProjectionsForCell(GridCell *cell)
-{
-    AABB *cellAabb = cell->getAABB();
-    SegmentedIntervalList *listX = cellAabb->getIntervalListX();
-    SegmentedIntervalList *listY = cellAabb->getIntervalListY();
-
-    BoundingRadiusProjectionAxisProxy *proxy = xProjections.getProxyForList(listX);
-
-    proxy->minProxy.updateCachedProjectedPosition();
-    listX->repairProjection(&proxy->minProxy);
-
-    proxy->maxProxy.updateCachedProjectedPosition();
-    listX->repairProjection(&proxy->maxProxy);
-
-    proxy = yProjections.getProxyForList(listY);
-
-    proxy->minProxy.updateCachedProjectedPosition();
-    listY->repairProjection(&proxy->minProxy);
-
-    proxy->maxProxy.updateCachedProjectedPosition();
-    listY->repairProjection(&proxy->maxProxy);
 }
 
 void Collider::triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const
@@ -265,27 +242,27 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     }
 }
 
-void Collider::setPendingAddQueueIndex(size_t index)
-{
-    pendingAddQueueIndex = index;
-}
-
-size_t Collider::getPendingAddQueueIndex() const
-{
-    return pendingAddQueueIndex;
-}
-
-void Collider::setPendingSyncQueueIndex(size_t index)
-{
-    pendingSyncQueueIndex = index;
-}
-
-size_t Collider::getPendingSyncQueueIndex() const
-{
-    return pendingSyncQueueIndex;
-}
-
 const GridCellRange &Collider::getGridCellRangeCache() const
 {
     return gridCellRangeCache;
+}
+
+void Collider::markQueuedForRemove()
+{
+    flags = static_cast<ColliderFlags>(flags | IS_QUEUED_FOR_REMOVE);
+}
+
+void Collider::clearQueuedForRemove()
+{
+    flags = static_cast<ColliderFlags>(flags & ~IS_QUEUED_FOR_REMOVE);
+}
+
+bool Collider::getIsQueuedForRemove() const
+{
+    return (flags & IS_QUEUED_FOR_REMOVE) != 0;
+}
+
+bool Collider::getIsQueuedForAnything() const
+{
+    return (flags & (IS_QUEUED_FOR_ADD | IS_QUEUED_FOR_SYNC | IS_QUEUED_FOR_REMOVE)) != 0;
 }

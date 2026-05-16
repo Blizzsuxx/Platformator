@@ -1,5 +1,7 @@
 #pragma once
 
+#include <deque>
+#include <unordered_map>
 #include <vector>
 #include "segmentedintervallist.h"
 #include "collider.h"
@@ -59,11 +61,34 @@ public:
 class AABB
 {
 public:
+    struct ColliderBinding
+    {
+        Collider *collider;
+        BoundingRadiusProjectionAxisBinding xBinding;
+        BoundingRadiusProjectionAxisBinding yBinding;
+
+        explicit ColliderBinding(Collider *collider)
+            : collider(collider), xBinding(collider->getXProjections()), yBinding(collider->getYProjections())
+        {
+        }
+
+        void bind(Collider *newCollider)
+        {
+            collider = newCollider;
+            xBinding.bind(newCollider->getXProjections());
+            yBinding.bind(newCollider->getYProjections());
+        }
+    };
+
     AABB(Grid *owner);
     ~AABB();
 
     void add(Collider *element);
     void remove(Collider *element);
+    void remove(ColliderBinding *binding);
+    void repair(Collider *element);
+    void repair(ColliderBinding *binding);
+    ColliderBinding *getBinding(Collider *element);
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
     // sort the array with insertion sort, sort from lowest to highest
@@ -75,10 +100,13 @@ private:
     void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);
     void overlapEndCheckpoint(Collider *colliderA, Collider *colliderB);
     uint8_t checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const;
+    ColliderBinding *allocateBinding(Collider *element);
+    void recycleBinding(ColliderBinding *binding);
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
     std::unordered_set<AABBPair, AABBPair::HashFunction> pairsWithAtLeastOneAxisOverlapping;
+    std::unordered_map<Collider *, ColliderBinding> colliderBindings;
     Grid *owner;
 
     friend class SegmentedIntervalList;

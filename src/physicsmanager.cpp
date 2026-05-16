@@ -6,7 +6,7 @@
 #include "oneapi/tbb.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), pendingColliderComponents(), pendingColliderSyncs(), activeCollisions(), pendingPhysicsEvents(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
+    : rigidBodyComponents(), activeCollisions(), pendingPhysicsEvents(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
 }
 
@@ -51,14 +51,7 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
-    if (colliderComponent == nullptr || !colliderComponent->getGameObject()->getActive() || colliderComponent->getIsQueuedForAdd() || colliderComponent->getIsRegisteredInGrid())
-    {
-        return;
-    }
-
-    colliderComponent->markQueuedForAdd();
-    colliderComponent->setPendingAddQueueIndex(pendingColliderComponents.size());
-    pendingColliderComponents.push_back(colliderComponent);
+    grid.queueAddCollider(colliderComponent);
 }
 
 // void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
@@ -76,52 +69,7 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {
-    if (colliderComponent->getIsQueuedForSync())
-    {
-        return;
-    }
-
-    auto iterator = pendingColliderSyncs.push_back(colliderComponent);
-    colliderComponent->pendingSyncQueueIndex = static_cast<size_t>(iterator - pendingColliderSyncs.begin());
-}
-
-void PhysicsManager::dequeuePendingColliderComponent(Collider *colliderComponent)
-{
-    if (!colliderComponent->getIsQueuedForAdd())
-    {
-        return;
-    }
-
-    size_t removeIndex = colliderComponent->getPendingAddQueueIndex();
-    colliderComponent->setPendingAddQueueIndex(SIZE_MAX);
-    colliderComponent->clearQueuedForAdd();
-
-    size_t lastIndex = pendingColliderComponents.size() - 1;
-    if (removeIndex != lastIndex)
-    {
-        Collider *movedCollider = pendingColliderComponents[lastIndex];
-        pendingColliderComponents[removeIndex] = movedCollider;
-        movedCollider->setPendingAddQueueIndex(removeIndex);
-    }
-
-    pendingColliderComponents.pop_back();
-}
-
-void PhysicsManager::dequeuePendingColliderSync(Collider *colliderComponent)
-{
-    if (!colliderComponent->getIsQueuedForSync())
-    {
-        return;
-    }
-
-    size_t removeIndex = colliderComponent->getPendingSyncQueueIndex();
-    colliderComponent->setPendingSyncQueueIndex(SIZE_MAX);
-    colliderComponent->removeSync();
-
-    if (removeIndex < pendingColliderSyncs.size())
-    {
-        pendingColliderSyncs[removeIndex] = nullptr;
-    }
+    grid.queueSyncCollider(colliderComponent);
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -148,70 +96,17 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
-    dequeuePendingColliderComponent(colliderComponent);
-    dequeuePendingColliderSync(colliderComponent);
-
-    if (!colliderComponent->getIsRegisteredInGrid())
-    {
-        return;
-    }
-
-    grid.removeCollider(colliderComponent);
-    colliderComponent->setIsRegisteredInGrid(false);
+    grid.queueRemoveCollider(colliderComponent);
 }
 
-void PhysicsManager::flushPendingColliderSyncs()
+void PhysicsManager::flushPendingColliderOperations()
 {
-    if (pendingColliderSyncs.empty())
-    {
-        return;
-    }
-
-    tbb::parallel_for(size_t(0), pendingColliderSyncs.size(), [&](size_t i)
-                      {
-                     Collider *colliderComponent = pendingColliderSyncs[i];
-                         if (colliderComponent != nullptr)
-                         {
-                             grid.syncCollider(colliderComponent);
-                         } });
-
     grid.flushPendingCellUpdates();
-
-    for (Collider *colliderComponent : pendingColliderSyncs)
-    {
-        grid.finishColliderSync(colliderComponent);
-    }
-
-    pendingColliderSyncs.clear();
-}
-
-void PhysicsManager::flushPendingColliderComponents()
-{
-    if (pendingColliderComponents.empty())
-    {
-        return;
-    }
-
-    for (Collider *colliderComponent : pendingColliderComponents)
-    {
-        colliderComponent->setPendingAddQueueIndex(SIZE_MAX);
-        if (!colliderComponent->getIsQueuedForAdd())
-        {
-            continue;
-        }
-
-        colliderComponent->clearQueuedForAdd();
-        grid.addCollider(colliderComponent);
-        colliderComponent->setIsRegisteredInGrid(true);
-    }
-
-    pendingColliderComponents.clear();
 }
 
 void PhysicsManager::broadPhase()
 {
-    flushPendingColliderSyncs();
-    flushPendingColliderComponents();
+    flushPendingColliderOperations();
 }
 
 void PhysicsManager::narrowPhase()

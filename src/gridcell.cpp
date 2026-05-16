@@ -1,7 +1,7 @@
 #include "gridcell.h"
 
 GridCell::GridCell(GridCellKey key, Grid *owner)
-    : aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), collidersToRemove(), collidersToSync()
+    : aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), bindingsToRemove(), bindingsToSync()
 {
 }
 
@@ -49,9 +49,12 @@ void GridCell::clearQueuedForOperations()
     queuedForOperations.store(false, std::memory_order_release);
 }
 
-void GridCell::queueRemoveCollider(Collider *collider)
+void GridCell::queueRemoveBinding(AABB::ColliderBinding *binding)
 {
-    collidersToRemove.push_back(collider);
+    if (binding != nullptr)
+    {
+        bindingsToRemove.push_back(binding);
+    }
 }
 
 void GridCell::queueAddCollider(Collider *collider)
@@ -59,24 +62,27 @@ void GridCell::queueAddCollider(Collider *collider)
     collidersToAdd.push_back(collider);
 }
 
-void GridCell::queueSyncCollider(Collider *collider)
+void GridCell::queueSyncBinding(AABB::ColliderBinding *binding)
 {
-    collidersToSync.push_back(collider);
+    if (binding != nullptr)
+    {
+        bindingsToSync.push_back(binding);
+    }
 }
 
 void GridCell::flushPendingOperations()
 {
-    for (Collider *collider : collidersToRemove)
+    for (AABB::ColliderBinding *binding : bindingsToRemove)
     {
-        removeCollider(collider);
+        aabb.remove(binding);
     }
-    collidersToRemove.clear();
+    bindingsToRemove.clear();
 
-    for (Collider *collider : collidersToSync)
+    for (AABB::ColliderBinding *binding : bindingsToSync)
     {
-        collider->repairProjectionsForCell(this);
+        aabb.repair(binding);
     }
-    collidersToSync.clear();
+    bindingsToSync.clear();
 
     for (Collider *collider : collidersToAdd)
     {

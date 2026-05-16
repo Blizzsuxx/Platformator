@@ -65,5 +65,9 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "unordered_set": "cpp"
+    },
+    "chat.tools.terminal.autoApprove": {
+        "y": true,
+        "./bin/debug/platformator_regression_tests": true
     }
 }

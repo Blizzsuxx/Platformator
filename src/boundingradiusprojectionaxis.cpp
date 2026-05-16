@@ -2,18 +2,12 @@
 
 BoundingRadiusProjectionAxis::BoundingRadiusProjectionAxis(Collider *collider, float min, float max)
     : min(BoundingRadiusProjection(collider, min, false)),
-      max(BoundingRadiusProjection(collider, max, true)),
-      proxies()
+      max(BoundingRadiusProjection(collider, max, true))
 {
 }
 
 BoundingRadiusProjectionAxis::~BoundingRadiusProjectionAxis()
 {
-    for (BoundingRadiusProjectionAxisProxy *proxy : proxies)
-    {
-        delete proxy;
-    }
-    proxies.clear();
 }
 
 BoundingRadiusProjection *BoundingRadiusProjectionAxis::getMin()
@@ -36,58 +30,21 @@ bool BoundingRadiusProjectionAxis::operator!=(const BoundingRadiusProjectionAxis
     return !(*this == other);
 }
 
-BoundingRadiusProjectionAxisProxy *BoundingRadiusProjectionAxis::createProxyForList(SegmentedIntervalList *list)
+BoundingRadiusProjectionAxisBinding::BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis)
+    : minProxy(axis->getMin(), nullptr),
+      maxProxy(axis->getMax(), nullptr)
 {
-    BoundingRadiusProjectionAxisProxy *proxy = new BoundingRadiusProjectionAxisProxy{BoundingRadiusProjectionProxy(&min, nullptr), BoundingRadiusProjectionProxy(&max, nullptr), list, proxies.size()};
-    proxies.push_back(proxy);
-    return proxy;
 }
 
-BoundingRadiusProjectionAxisProxy *BoundingRadiusProjectionAxis::getProxyForList(SegmentedIntervalList *list)
+void BoundingRadiusProjectionAxisBinding::bind(BoundingRadiusProjectionAxis *axis)
 {
-    for (BoundingRadiusProjectionAxisProxy *proxy : proxies)
-    {
-        if (proxy->ownerList == list)
-        {
-            return proxy;
-        }
-    }
+    minProxy.setBoundingProjection(axis->getMin());
+    minProxy.setChunk(nullptr);
+    minProxy.setChunkIndex(SIZE_MAX);
+    minProxy.updateCachedProjectedPosition();
 
-    return nullptr;
-}
-
-void BoundingRadiusProjectionAxis::removeProxy(SegmentedIntervalList *list)
-{
-    for (size_t i = 0; i < proxies.size(); i++)
-    {
-        if (proxies[i]->ownerList == list)
-        {
-            removeProxy(proxies[i]);
-            return;
-        }
-    }
-}
-
-void BoundingRadiusProjectionAxis::removeProxy(BoundingRadiusProjectionAxisProxy *proxy)
-{
-    if (proxy == nullptr)
-    {
-        return;
-    }
-
-    size_t lastIndex = proxies.size() - 1;
-    size_t proxyIndex = proxy->colliderProxyIndex;
-
-    BoundingRadiusProjectionAxisProxy *movedProxy = proxies[lastIndex];
-    proxies[proxyIndex] = movedProxy;
-    movedProxy->colliderProxyIndex = proxyIndex;
-
-    proxies.pop_back();
-    delete proxy;
-    return;
-}
-
-std::vector<BoundingRadiusProjectionAxisProxy *> &BoundingRadiusProjectionAxis::getProxies()
-{
-    return proxies;
+    maxProxy.setBoundingProjection(axis->getMax());
+    maxProxy.setChunk(nullptr);
+    maxProxy.setChunkIndex(SIZE_MAX);
+    maxProxy.updateCachedProjectedPosition();
 }

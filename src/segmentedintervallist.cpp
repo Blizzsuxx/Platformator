@@ -13,16 +13,14 @@ SegmentedIntervalList::~SegmentedIntervalList()
     clear();
 }
 
-void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
+void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
 {
-    BoundingRadiusProjection *lowerProjection = axis->getMin();
-    BoundingRadiusProjection *upperProjection = axis->getMax();
+    BoundingRadiusProjection *lowerProjection = binding->minProxy.getProjection();
+    BoundingRadiusProjection *upperProjection = binding->maxProxy.getProjection();
     Collider *collider = lowerProjection->getCollider();
 
-    BoundingRadiusProjectionAxisProxy *axisProxy = axis->createProxyForList(this);
-
-    BoundingRadiusProjectionProxy *lowerProxy = &axisProxy->minProxy;
-    BoundingRadiusProjectionProxy *upperProxy = &axisProxy->maxProxy;
+    BoundingRadiusProjectionProxy *lowerProxy = &binding->minProxy;
+    BoundingRadiusProjectionProxy *upperProxy = &binding->maxProxy;
 
     add(lowerProxy);
     add(upperProxy);
@@ -52,19 +50,11 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxis *axis)
     addCollisionsForNewlyAddedProjection(lowerProxy, indexInsideChunkWhereItWasInserted, upperProxy, indexInsideChunkWhereItWasInserted2);
 }
 
-void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
+void SegmentedIntervalList::remove(BoundingRadiusProjectionAxisBinding *binding)
 {
-    Collider *collider = axis->getMin()->getCollider();
-    BoundingRadiusProjectionAxisProxy *axisProxy = axis->getProxyForList(this);
-
-    if (axisProxy == nullptr)
-    {
-        PLATFORMATOR_LOG("Error: trying to remove a projection axis that is not in the list\n");
-        return;
-    }
-
-    BoundingRadiusProjectionProxy *lowerProxy = &axisProxy->minProxy;
-    BoundingRadiusProjectionProxy *upperProxy = &axisProxy->maxProxy;
+    Collider *collider = binding->minProxy.getCollider();
+    BoundingRadiusProjectionProxy *lowerProxy = &binding->minProxy;
+    BoundingRadiusProjectionProxy *upperProxy = &binding->maxProxy;
 
     auto [currentChunk, indexInsideChunkWhereItWillBeRemoved] = find(lowerProxy);
     auto [upperChunk, indexInsideChunkWhereItWillBeRemoved2] = find(upperProxy);
@@ -88,8 +78,6 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxis *axis)
 
     remove(lowerProxy);
     remove(upperProxy);
-
-    axis->removeProxy(axisProxy);
 }
 
 void SegmentedIntervalList::clear()

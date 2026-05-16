@@ -56,10 +56,8 @@ public:
     const Eigen::Vector2f &getGravityVectorNormalized() const;
 
 private:
-    void dequeuePendingColliderComponent(Collider *colliderComponent);
-    void dequeuePendingColliderSync(Collider *colliderComponent);
-    void flushPendingColliderSyncs();
-    void flushPendingColliderComponents();
+    void flushPendingColliderOperations();
+
     void updateSleepingStates(double timeDelta);
     void broadPhase();
     void narrowPhase();
@@ -74,8 +72,6 @@ private:
     void calculateContactPoint(Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;
-    std::vector<Collider *> pendingColliderComponents;
-    tbb::concurrent_vector<Collider *> pendingColliderSyncs;
     std::vector<Collision *> activeCollisions;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
     Grid grid;

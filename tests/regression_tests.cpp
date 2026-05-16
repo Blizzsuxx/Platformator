@@ -282,8 +282,15 @@ namespace
     void addColliderToLocalAabb(AABB &aabb, Collider *collider)
     {
         require(collider != nullptr, "Local AABB regression received a null collider.");
-        collider->applySync();
+        collider->prepareSync();
         aabb.add(collider);
+    }
+
+    void syncColliderInLocalAabb(AABB &aabb, Collider *collider)
+    {
+        require(collider != nullptr, "Local AABB regression received a null collider for repair.");
+        collider->prepareSync();
+        aabb.repair(collider);
     }
 
     void testCircleCollisionStability()
@@ -497,7 +504,7 @@ namespace
                 "Fast-motion regression expected no broad-phase pairs before adding the probe collider.");
 
         bridge->setPosition(Eigen::Vector2f(170.0f, 100.0f));
-        bridgeCollider->applySync();
+        syncColliderInLocalAabb(localAabb, bridgeCollider);
 
         GameObject *probe = createStaticBox(gameManager, "Checkpoint Probe", 145.0f, 100.0f, 2.0f, 20.0f);
         sceneScope.add(probe);
@@ -508,7 +515,7 @@ namespace
                 "Fast-motion regression expected the probe to overlap the fast bridge through real chunk checkpoint handling.");
 
         bridge->setPosition(Eigen::Vector2f(250.0f, 100.0f));
-        bridgeCollider->applySync();
+        syncColliderInLocalAabb(localAabb, bridgeCollider);
 
         require(localGrid.getCandidatePairCount() == 0,
                 "Fast-motion regression expected the probe pair to be removed after the fast bridge moved away.");
@@ -576,7 +583,7 @@ namespace
                 "Chunk-merge regression expected the post-merge bridge and probe to produce one broad-phase pair.");
 
         bridge->setPosition(Eigen::Vector2f(250.0f, 100.0f));
-        bridgeCollider->applySync();
+        syncColliderInLocalAabb(localAabb, bridgeCollider);
 
         require(xIntervalList->getChunkCount() == 1,
                 "Chunk-merge regression expected the list to remain merged after the post-merge bridge moved away.");
@@ -1435,7 +1442,7 @@ namespace
         BoxCollider *boxCollider = boxObject->getComponent<BoxCollider>();
         require(boxCollider != nullptr, "Rotated support-edge regression lost the box collider.");
 
-        boxCollider->applySync();
+        boxCollider->prepareSync();
 
         const auto &vertices = boxCollider->getVertices();
 
@@ -1490,7 +1497,7 @@ namespace
 
         BoxCollider *childCollider = child->getComponent<BoxCollider>();
         require(childCollider != nullptr, "Parent-child regression lost the child box collider.");
-        childCollider->applySync();
+        childCollider->prepareSync();
 
         Eigen::Vector2f colliderCenter = Eigen::Vector2f::Zero();
         for (const Eigen::Vector2f &vertex : childCollider->getVertices())
@@ -1515,7 +1522,7 @@ namespace
         require(boxCollider != nullptr, "Collider offset regression lost the box collider.");
 
         boxCollider->setOffset(Eigen::Vector2f(10.0f, -5.0f));
-        boxCollider->applySync();
+        boxCollider->prepareSync();
 
         Eigen::Vector2f boxCenter = Eigen::Vector2f::Zero();
         for (const Eigen::Vector2f &vertex : boxCollider->getVertices())
@@ -1528,7 +1535,7 @@ namespace
                 "Collider offset regression expected an unrotated box collider to shift by its offset.");
 
         boxObject->setRotation(static_cast<float>(M_PI_2));
-        boxCollider->applySync();
+        boxCollider->prepareSync();
 
         boxCenter = Eigen::Vector2f::Zero();
         for (const Eigen::Vector2f &vertex : boxCollider->getVertices())
@@ -1547,7 +1554,7 @@ namespace
         require(circleCollider != nullptr, "Collider offset regression lost the circle collider.");
 
         circleCollider->setOffset(Eigen::Vector2f(-6.0f, 4.0f));
-        circleCollider->applySync();
+        circleCollider->prepareSync();
 
         Eigen::Vector2f xProjection = circleCollider->projectOntoAxis(X_AXIS);
         Eigen::Vector2f yProjection = circleCollider->projectOntoAxis(Y_AXIS);

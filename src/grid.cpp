@@ -4,7 +4,7 @@
 #include <cstdio>
 
 Grid::Grid()
-    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations(), pendingPairDeltas(), deferPairDeltas(false)
+    : cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(), cellsWithOperations(), pendingPairDeltas(), pendingColliderOperations(), deferPairDeltas(false)
 {
 }
 
@@ -51,9 +51,13 @@ void Grid::addColliderInternal(Collider *collider)
     PLATFORMATOR_LOG("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n", collider->getGameObject()->getName().c_str(), cachedRange.minX, cachedRange.minY, cachedRange.maxX, cachedRange.maxY);
 
     cachedRange.forEachCell([&](const GridCellKey &key)
-                            { getOrCreateCell(key).addCollider(collider); });
+                            {
+                                GridCell &cell = getOrCreateCell(key);
+                                cell.queueAddCollider(collider);
+                                queueForOperations(&cell); });
 
-    applyPendingPairDeltas();
+    collider->clearQueuedForAdd();
+    collider->setIsRegisteredInGrid(true);
 }
 
 void Grid::removeColliderInternal(Collider *collider)
@@ -66,11 +70,13 @@ void Grid::removeColliderInternal(Collider *collider)
                       {
         if (GridCell *cell = findCell(key))
         {
-            cell->removeCollider(collider);
-            removeGridCellIfEmpty(cell);
+            cell->queueRemoveBinding(cell->getAABB()->getBinding(collider));
+            queueForEmptyCheck(cell);
+            queueForOperations(cell);
         } });
 
-    applyPendingPairDeltas();
+    collider->clearQueuedForRemove();
+    collider->setIsRegisteredInGrid(false);
 }
 
 void Grid::addCollider(Collider *collider)
@@ -318,28 +324,22 @@ size_t Grid::getCandidatePairCount() const
 
 void Grid::syncCollider(Collider *collider)
 {
-    collider->setPendingSyncQueueIndex(SIZE_MAX);
-    if (!collider->getIsQueuedForSync())
+    if (!collider->getIsQueuedForSync() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
     {
-        return;
-    }
-
-    if (collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
-    {
-        collider->removeSync();
         return;
     }
 
     collider->prepareSync();
 
-    const GridCellRange &oldGridCellRange = collider->getGridCellRange();
-    const GridCellRange &newGridCellRange = collider->getGridCellRangeCache();
+    const GridCellRange oldGridCellRange = collider->getGridCellRange();
+    const GridCellRange newGridCellRange = collider->getGridCellRangeCache();
+    collider->updateGridCellRange();
 
     oldGridCellRange.forEachDifference(newGridCellRange, [&](const GridCellKey &key)
                                        {
         if (GridCell *cell = findCell(key))
         {
-            cell->queueRemoveCollider(collider);
+            cell->queueRemoveBinding(cell->getAABB()->getBinding(collider));
             queueForEmptyCheck(cell);
             queueForOperations(cell);
         } });
@@ -354,9 +354,11 @@ void Grid::syncCollider(Collider *collider)
                                  {
         if (GridCell *cell = findCell(key))
         {
-            cell->queueSyncCollider(collider);
+            cell->queueSyncBinding(cell->getAABB()->getBinding(collider));
             queueForOperations(cell);
         } });
+
+    collider->removeSync();
 }
 
 void Grid::finishColliderSync(Collider *collider)
@@ -366,7 +368,6 @@ void Grid::finishColliderSync(Collider *collider)
         return;
     }
 
-    collider->updateGridCellRange();
     queuePairsForCollider(collider);
 }
 
@@ -382,6 +383,28 @@ void Grid::queueForEmptyCheck(GridCell *cell)
 
 void Grid::flushPendingCellUpdates()
 {
+    tbb::parallel_for(size_t(0), pendingColliderOperations.size(), [&](size_t i)
+                      {
+        const ColliderOperation &operation = pendingColliderOperations[i];
+        switch (operation.type)
+        {
+        case ColliderOperation::OperationType::ADD:
+            if (!operation.collider->getIsQueuedForRemove())
+            {
+                addColliderInternal(operation.collider);
+            }
+            break;
+        case ColliderOperation::OperationType::REMOVE:
+            removeColliderInternal(operation.collider);
+            break;
+        case ColliderOperation::OperationType::SYNC:
+            if (!operation.collider->getIsQueuedForRemove())
+            {
+                syncCollider(operation.collider);
+            }
+            break;
+        } });
+
     deferPairDeltas.store(true, std::memory_order_release);
 
     tbb::parallel_for(size_t(0), cellsWithOperations.size(), [&](size_t i)
@@ -390,7 +413,6 @@ void Grid::flushPendingCellUpdates()
         cell->flushPendingOperations(); });
 
     deferPairDeltas.store(false, std::memory_order_release);
-
     cellsWithOperations.clear();
 
     applyPendingPairDeltas();
@@ -402,6 +424,16 @@ void Grid::flushPendingCellUpdates()
     }
 
     potentiallyEmptyCells.clear();
+
+    for (const ColliderOperation &operation : pendingColliderOperations)
+    {
+        if (operation.type == ColliderOperation::OperationType::SYNC)
+        {
+            finishColliderSync(operation.collider);
+        }
+    }
+
+    pendingColliderOperations.clear();
 }
 
 void Grid::queueForOperations(GridCell *cell)
@@ -412,4 +444,37 @@ void Grid::queueForOperations(GridCell *cell)
     }
 
     cellsWithOperations.push_back(cell);
+}
+
+void Grid::queueAddCollider(Collider *collider)
+{
+    if (collider->getIsQueuedForAnything() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    collider->markQueuedForAdd();
+    pendingColliderOperations.push_back(ColliderOperation{ColliderOperation::OperationType::ADD, collider});
+}
+
+void Grid::queueRemoveCollider(Collider *collider)
+{
+    if (collider->getIsQueuedForRemove())
+    {
+        return;
+    }
+
+    collider->markQueuedForRemove();
+    pendingColliderOperations.push_back(ColliderOperation{ColliderOperation::OperationType::REMOVE, collider});
+}
+
+void Grid::queueSyncCollider(Collider *collider)
+{
+    if (
+        collider->getIsQueuedForAnything() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    pendingColliderOperations.push_back(ColliderOperation{ColliderOperation::OperationType::SYNC, collider});
 }

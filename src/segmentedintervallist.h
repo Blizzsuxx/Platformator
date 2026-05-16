@@ -16,8 +16,8 @@ public:
     ~SegmentedIntervalList();
 
     void clear();
-    void add(BoundingRadiusProjectionAxis *axis);
-    void remove(BoundingRadiusProjectionAxis *axis);
+    void add(BoundingRadiusProjectionAxisBinding *binding);
+    void remove(BoundingRadiusProjectionAxisBinding *binding);
     void repairProjection(BoundingRadiusProjectionProxy *projection);
 
     bool getIsPrimary() const;

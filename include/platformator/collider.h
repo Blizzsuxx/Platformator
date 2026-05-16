@@ -77,14 +77,6 @@ private:
 	float cachedProjectedPosition;
 };
 
-struct BoundingRadiusProjectionAxisProxy
-{
-	BoundingRadiusProjectionProxy minProxy;
-	BoundingRadiusProjectionProxy maxProxy;
-	SegmentedIntervalList *ownerList;
-	size_t colliderProxyIndex;
-};
-
 class BoundingRadiusProjectionAxis
 {
 public:
@@ -94,19 +86,21 @@ public:
 	BoundingRadiusProjection *getMin();
 	BoundingRadiusProjection *getMax();
 
-	BoundingRadiusProjectionAxisProxy *createProxyForList(SegmentedIntervalList *list);
-	BoundingRadiusProjectionAxisProxy *getProxyForList(SegmentedIntervalList *list);
-	std::vector<BoundingRadiusProjectionAxisProxy *> &getProxies();
-	void removeProxy(SegmentedIntervalList *list);
-	void removeProxy(BoundingRadiusProjectionAxisProxy *proxy);
-
 	bool operator==(const BoundingRadiusProjectionAxis &other) const;
 	bool operator!=(const BoundingRadiusProjectionAxis &other) const;
 
 private:
 	BoundingRadiusProjection min;
 	BoundingRadiusProjection max;
-	std::vector<BoundingRadiusProjectionAxisProxy *> proxies;
+};
+
+struct BoundingRadiusProjectionAxisBinding
+{
+	BoundingRadiusProjectionProxy minProxy;
+	BoundingRadiusProjectionProxy maxProxy;
+
+	explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis);
+	void bind(BoundingRadiusProjectionAxis *axis);
 };
 
 enum class ColliderType
@@ -120,7 +114,8 @@ enum ColliderFlags : uint8_t
 	IS_TRIGGER = 1 << 0,
 	IS_QUEUED_FOR_ADD = 1 << 1,
 	IS_QUEUED_FOR_SYNC = 1 << 2,
-	IS_REGISTERED_IN_GRID = 1 << 3
+	IS_QUEUED_FOR_REMOVE = 1 << 3,
+	IS_REGISTERED_IN_GRID = 1 << 4
 };
 
 class Collider : public Component
@@ -163,9 +158,15 @@ public:
 	void markQueuedForAdd();
 	void clearQueuedForAdd();
 
-	void scheduleSync();
 	bool getIsQueuedForSync() const;
+	void scheduleSync();
 	void removeSync();
+
+	bool getIsQueuedForRemove() const;
+	void markQueuedForRemove();
+	void clearQueuedForRemove();
+
+	bool getIsQueuedForAnything() const;
 
 	void prepareSync();
 	uint64_t getStateVersion() const;
@@ -192,18 +193,9 @@ protected:
 
 	GridCellRange gridCellRange;
 	ColliderFlags flags;
-	size_t pendingAddQueueIndex;
-	size_t pendingSyncQueueIndex;
 	GridCellRange gridCellRangeCache;
 
 	void updateGridCellRange();
-	void repairProjectionsForCell(GridCell *cell);
-
-	void setPendingAddQueueIndex(size_t index);
-	size_t getPendingAddQueueIndex() const;
-
-	void setPendingSyncQueueIndex(size_t index);
-	size_t getPendingSyncQueueIndex() const;
 
 	virtual void updateCollider() = 0;
 };

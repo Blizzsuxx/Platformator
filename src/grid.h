@@ -7,6 +7,19 @@
 #include "gridcell.h"
 #include "oneapi/tbb.h"
 
+struct ColliderOperation
+{
+    enum OperationType
+    {
+        ADD,
+        SYNC,
+        REMOVE
+    };
+
+    OperationType type;
+    Collider *collider;
+};
+
 class Grid
 {
     friend class AABB;
@@ -22,6 +35,11 @@ public:
 
     void clearPendingNarrowPhasePairs();
     const std::vector<const ColliderPair *> *getPendingNarrowPhasePairs() const;
+
+    void queueSyncCollider(Collider *collider);
+    void queueRemoveCollider(Collider *collider);
+    void queueAddCollider(Collider *collider);
+
     void syncCollider(Collider *collider);
     void finishColliderSync(Collider *collider);
     void flushPendingCellUpdates();
@@ -57,5 +75,6 @@ private:
     tbb::concurrent_vector<GridCell *> potentiallyEmptyCells;
     tbb::concurrent_vector<GridCell *> cellsWithOperations;
     tbb::concurrent_vector<PairDelta> pendingPairDeltas;
+    tbb::concurrent_vector<ColliderOperation> pendingColliderOperations;
     std::atomic_bool deferPairDeltas;
 };

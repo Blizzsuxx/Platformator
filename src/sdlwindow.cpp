@@ -88,7 +88,13 @@ SDLWindow::~SDLWindow()
 
 bool SDLWindow::init()
 {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
+    SDL_InitFlags initFlags = SDL_INIT_AUDIO;
+    if (!windowSettings.headless)
+    {
+        initFlags = static_cast<SDL_InitFlags>(initFlags | SDL_INIT_VIDEO);
+    }
+
+    if (SDL_Init(initFlags) < 0)
     {
         printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
         return false;
@@ -107,6 +113,14 @@ bool SDLWindow::init()
         printf("SDL_mixer could not create a mixer device! SDL_mixer Error: %s", SDL_GetError());
         close();
         return false;
+    }
+
+    if (windowSettings.headless)
+    {
+        rendererName = "Headless";
+        renderWidth = std::max(1, windowSettings.width);
+        renderHeight = std::max(1, windowSettings.height);
+        return true;
     }
 
     if (TTF_Init() == -1)
@@ -189,12 +203,20 @@ void SDLWindow::close()
     rendererName = nullptr;
 
     MIX_Quit();
-    TTF_Quit();
+    if (TTF_WasInit() != 0)
+    {
+        TTF_Quit();
+    }
     SDL_Quit();
 }
 
 void SDLWindow::handleSDLEvents(double deltaTime)
 {
+    if (windowSettings.headless)
+    {
+        return;
+    }
+
     while (SDL_PollEvent(&sdlEvent) != 0)
     {
         if (sdlEvent.type == SDL_EVENT_QUIT)
@@ -299,6 +321,11 @@ int SDLWindow::getRenderHeight() const
     return renderHeight;
 }
 
+bool SDLWindow::isHeadless() const
+{
+    return windowSettings.headless;
+}
+
 bool SDLWindow::isRunning() const
 {
     return !quit;
@@ -396,6 +423,11 @@ void SDLWindow::updateRenderSize()
 
 bool SDLWindow::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount)
 {
+    if (audioWrapper == nullptr || mixer == nullptr)
+    {
+        return false;
+    }
+
     MIX_Track *track = MIX_CreateTrack(mixer);
 
     if (!MIX_SetTrackAudio(track, audioWrapper->getAudio()))

@@ -7,4 +7,5 @@ struct WindowSettings
     bool fullscreen = false;
     bool maximizeOnStartup = false;
     bool keepAspectRatio = false;
+    bool headless = false;
 };

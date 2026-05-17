@@ -352,6 +352,11 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath)
         return nullptr;
     }
 
+    if (window == nullptr || window->getRenderer() == nullptr)
+    {
+        throw std::runtime_error("Cannot load textures while Platformator is running in headless mode.");
+    }
+
     const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Texture);
 
     auto it = textureCache.find(resolvedPath.canonicalPath);
@@ -658,6 +663,11 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath)
     if (filePath.empty())
     {
         return nullptr;
+    }
+
+    if (window == nullptr || window->getMixer() == nullptr)
+    {
+        throw std::runtime_error("Cannot load audio without an initialized SDL mixer.");
     }
 
     const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Audio);

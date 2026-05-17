@@ -33,6 +33,7 @@ public:
     MIX_Mixer *getMixer() const;
     int getRenderWidth() const;
     int getRenderHeight() const;
+    bool isHeadless() const;
 
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);

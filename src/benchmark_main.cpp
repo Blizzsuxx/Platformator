@@ -13,6 +13,13 @@ namespace
 {
     constexpr const char *DEFAULT_SCENE_PATH = "assets/scenes/default.scene";
 
+    RuntimeOptions makeDefaultBenchmarkRuntimeOptions()
+    {
+        RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, false, false, false, false}};
+        runtimeOptions.windowSettings.headless = true;
+        return runtimeOptions;
+    }
+
     enum class BenchmarkScenario
     {
         None,
@@ -22,7 +29,7 @@ namespace
 
     struct BenchmarkRunnerOptions
     {
-        RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, false, false, false, false}};
+        RuntimeOptions runtimeOptions = makeDefaultBenchmarkRuntimeOptions();
         BenchmarkScenario scenario = BenchmarkScenario::None;
         int warmupFrameCount = 120;
         int measureFrameCount = 600;

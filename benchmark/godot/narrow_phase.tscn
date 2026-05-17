@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://d3527odxg0qbm"]
+
+[ext_resource type="Script" uid="uid://cl2gxnp0tp2h7" path="res://narrow_phase.gd" id="1_42jxu"]
+
+[node name="narrow_phase" type="Node2D" unique_id=566313661]
+script = ExtResource("1_42jxu")

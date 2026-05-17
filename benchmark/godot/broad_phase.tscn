@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cctqltp5jwo0j"]
+
+[ext_resource type="Script" uid="uid://dgtaxe4lb4nj4" path="res://broad_phase.gd" id="1_wtcfe"]
+
+[node name="broad_phase" type="Node2D" unique_id=802796330]
+script = ExtResource("1_wtcfe")

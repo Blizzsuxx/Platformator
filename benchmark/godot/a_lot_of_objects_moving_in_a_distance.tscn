@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://1uew25vctxpu"]
+
+[ext_resource type="Script" uid="uid://swaq3886pu3p" path="res://a_lot_of_objects_moving_in_a_distance.gd" id="1_vxmhb"]
+
+[node name="a_lot_of_objects_moving_in_a_distance" type="Node2D" unique_id=937881953]
+script = ExtResource("1_vxmhb")

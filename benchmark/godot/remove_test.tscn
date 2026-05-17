@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bo66m5xo6fic3"]
+
+[ext_resource type="Script" uid="uid://dcxsbqryjjhl5" path="res://remove_test.gd" id="1_ds5bx"]
+
+[node name="remove_test" type="Node2D" unique_id=530169865]
+script = ExtResource("1_ds5bx")

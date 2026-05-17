@@ -16,6 +16,37 @@ namespace
         return component != path.end() && *component == "assets";
     }
 
+    std::filesystem::path findExistingAssetsRelativePath(
+        const std::filesystem::path &assetsRelativePath,
+        std::filesystem::path startDirectory)
+    {
+        if (startDirectory.empty())
+        {
+            return {};
+        }
+
+        startDirectory = std::filesystem::absolute(startDirectory).lexically_normal();
+
+        while (true)
+        {
+            const std::filesystem::path candidatePath = (startDirectory / assetsRelativePath).lexically_normal();
+            if (std::filesystem::is_regular_file(candidatePath))
+            {
+                return candidatePath;
+            }
+
+            const std::filesystem::path parentDirectory = startDirectory.parent_path();
+            if (parentDirectory.empty() || parentDirectory == startDirectory)
+            {
+                break;
+            }
+
+            startDirectory = parentDirectory;
+        }
+
+        return {};
+    }
+
     std::filesystem::path resolveSceneFilePath(const std::string &rawFilePath)
     {
         std::filesystem::path scenePath(rawFilePath);
@@ -28,7 +59,24 @@ namespace
         if (isAssetsRelativePath(scenePath))
         {
             const std::filesystem::path runtimeRoot = std::filesystem::path(PathManager::getInstance().getAssetsRootAbsolutePath()).parent_path();
-            return (runtimeRoot / scenePath).lexically_normal();
+            const std::filesystem::path runtimeRootResolvedPath = findExistingAssetsRelativePath(scenePath, runtimeRoot);
+            if (!runtimeRootResolvedPath.empty())
+            {
+                return runtimeRootResolvedPath;
+            }
+
+            const std::filesystem::path currentWorkingDirectoryResolvedPath = findExistingAssetsRelativePath(scenePath, std::filesystem::current_path());
+            if (!currentWorkingDirectoryResolvedPath.empty())
+            {
+                return currentWorkingDirectoryResolvedPath;
+            }
+
+            if (!runtimeRoot.empty())
+            {
+                return (runtimeRoot / scenePath).lexically_normal();
+            }
+
+            return (std::filesystem::current_path() / scenePath).lexically_normal();
         }
 
         return (std::filesystem::current_path() / scenePath).lexically_normal();

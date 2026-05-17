@@ -1530,6 +1530,20 @@ namespace
                 "Scene path regression failed to load the default scene after changing the working directory.");
     }
 
+    void testSceneLookupFallsBackToAncestorAssetsDirectoryWhenNearestAssetsTreeIsIncomplete()
+    {
+        const std::filesystem::path temporaryWorkingDirectory = std::filesystem::temp_directory_path() / "platformator_scene_benchmark_path_regression";
+        WorkingDirectoryScope workingDirectoryScope(std::filesystem::current_path());
+
+        std::filesystem::create_directories(temporaryWorkingDirectory);
+        std::filesystem::current_path(temporaryWorkingDirectory);
+
+        Scene scene("assets/scenes/benchmarks/broad_phase_churn.scene");
+        std::vector<GameObject *> loadedObjects = scene.loadScene();
+        require(!loadedObjects.empty(),
+                "Scene path regression failed to load a benchmark scene when the nearest executable-relative assets tree was incomplete.");
+    }
+
     void testRotatedBoxSupportEdgeSelection()
     {
         Runtime &gameManager = Runtime::current();
@@ -1699,6 +1713,7 @@ int main()
         {"path_manager_canonicalization_and_fallback", testPathManagerCanonicalizationAndFallback},
         {"path_manager_lookup_does_not_depend_on_current_working_directory", testPathManagerLookupDoesNotDependOnCurrentWorkingDirectory},
         {"scene_lookup_does_not_depend_on_current_working_directory", testSceneLookupDoesNotDependOnCurrentWorkingDirectory},
+        {"scene_lookup_falls_back_to_ancestor_assets_directory_when_nearest_assets_tree_is_incomplete", testSceneLookupFallsBackToAncestorAssetsDirectoryWhenNearestAssetsTreeIsIncomplete},
         {"rotated_box_support_edge_selection", testRotatedBoxSupportEdgeSelection},
         {"parent_child_relative_movement", testParentChildRelativeMovement},
         {"collider_offset_affects_geometry", testColliderOffsetAffectsGeometry},

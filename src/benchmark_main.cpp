@@ -103,13 +103,13 @@ namespace
 
     void buildBroadPhaseScenario(platformator::Runtime &runtime)
     {
-        constexpr size_t laneCount = 32;
+        constexpr size_t laneCount = 128;
         constexpr float laneStartY = -1240.0f;
         constexpr float laneStepY = 80.0f;
         constexpr float laneWidth = 48.0f;
         constexpr float laneHeight = 48.0f;
-        constexpr std::array<float, 4> startXPattern = {-1400.0f, 1470.0f, -1540.0f, 1610.0f};
-        constexpr std::array<float, 4> velocityXPattern = {420.0f, -500.0f, 580.0f, -660.0f};
+        constexpr std::array<float, 16> startXPattern = {-1400.0f, 1470.0f, -1540.0f, 1610.0f, -1680.0f, 1750.0f, -1820.0f, 1890.0f, -1960.0f, 2030.0f, -2100.0f, 2170.0f, -2240.0f, 2310.0f, -2380.0f, 2450.0f};
+        constexpr std::array<float, 16> velocityXPattern = {420.0f, -500.0f, 580.0f, -660.0f, 740.0f, -820.0f, 900.0f, -980.0f, 1060.0f, -1140.0f, 1220.0f, -1300.0f, 1380.0f, -1460.0f, 1540.0f, -1620.0f};
 
         for (size_t laneIndex = 0; laneIndex < laneCount; ++laneIndex)
         {

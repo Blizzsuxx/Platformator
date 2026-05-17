@@ -1,12 +1,12 @@
 extends "res://benchmark_case.gd"
 
-const LANE_COUNT := 32
+const LANE_COUNT := 128
 const LANE_START_Y := -1240.0
 const LANE_STEP_Y := 80.0
 const LANE_WIDTH := 48.0
 const LANE_HEIGHT := 48.0
-const START_X_PATTERN := [-1400.0, 1470.0, -1540.0, 1610.0]
-const VELOCITY_X_PATTERN := [420.0, -500.0, 580.0, -660.0]
+const START_X_PATTERN := [-1400.0, 1470.0, -1540.0, 1610.0, -1680.0, 1750.0, -1820.0, 1890.0, -1960.0, 2030.0, -2100.0, 2170.0, -2240.0, 2310.0, -2380.0, 2450.0]
+const VELOCITY_X_PATTERN := [420.0, -500.0, 580.0, -660.0, 740.0, -820.0, 900.0, -980.0, 1060.0, -1140.0, 1220.0, -1300.0, 1380.0, -1460.0, 1540.0, -1620.0]
 
 var _moving_areas: Array[Area2D] = []
 var _velocities: Array[Vector2] = []

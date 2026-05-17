@@ -40,6 +40,27 @@
             }
         },
         {
+            "name": "benchmark",
+            "displayName": "Benchmark",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/benchmark",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
+                "PLATFORMATOR_ENABLE_BENCHMARKS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark"
+            }
+        },
+        {
+            "name": "benchmark-release",
+            "displayName": "Benchmark Release",
+            "inherits": "benchmark",
+            "binaryDir": "${sourceDir}/bin/benchmark-release",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark-release"
+            }
+        },
+        {
             "name": "production",
             "displayName": "Production",
             "inherits": "default",
@@ -77,6 +98,16 @@
             "name": "benchmark-debug",
             "displayName": "Benchmark Debug",
             "configurePreset": "benchmark-debug"
+        },
+        {
+            "name": "benchmark",
+            "displayName": "Benchmark",
+            "configurePreset": "benchmark"
+        },
+        {
+            "name": "benchmark-release",
+            "displayName": "Benchmark Release",
+            "configurePreset": "benchmark-release"
         },
         {
             "name": "production",

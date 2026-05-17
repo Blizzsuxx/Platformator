@@ -234,17 +234,9 @@ void SDLWindow::render()
     }
 #endif
 
-    for (Sprite *spriteComponent : spriteComponents)
-    {
-        if (!spriteComponent->getGameObject()->getActive())
-        {
-            continue;
-        }
-
-        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
-
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-        Collider *collider = (Collider *)spriteComponent->getGameObject()->getComponent(ComponentType::COLLIDER);
+    for (Collider *collider : physicsManager->getColliders())
+    {
         if (collider != nullptr && shouldSimulateFrame())
         {
             if (collider->getColliderType() == ColliderType::BoxCollider)
@@ -256,7 +248,17 @@ void SDLWindow::render()
                 debugDraw.addCircleColliderDebugObject(*(CircleCollider *)collider);
             }
         }
+    }
 #endif
+
+    for (Sprite *spriteComponent : spriteComponents)
+    {
+        if (!spriteComponent->getGameObject()->getActive())
+        {
+            continue;
+        }
+
+        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
     }
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS

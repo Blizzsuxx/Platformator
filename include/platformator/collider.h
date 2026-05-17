@@ -115,7 +115,8 @@ enum ColliderFlags : uint8_t
 	IS_QUEUED_FOR_ADD = 1 << 1,
 	IS_QUEUED_FOR_SYNC = 1 << 2,
 	IS_QUEUED_FOR_REMOVE = 1 << 3,
-	IS_REGISTERED_IN_GRID = 1 << 4
+	IS_REGISTERED_IN_GRID = 1 << 4,
+	IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 5
 };
 
 class Collider : public Component
@@ -178,6 +179,10 @@ public:
 
 	bool getIsRegisteredInGrid() const;
 	void setIsRegisteredInGrid(bool isRegisteredInGrid);
+	bool getIsRegisteredInPhysicsManager() const;
+	void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
+	size_t getPhysicsManagerIndex() const;
+	void setPhysicsManagerIndex(size_t physicsManagerIndex);
 
 	virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
@@ -190,6 +195,7 @@ protected:
 
 	BoundingRadiusProjectionAxis xProjections;
 	BoundingRadiusProjectionAxis yProjections;
+	size_t physicsManagerIndex;
 
 	GridCellRange gridCellRange;
 	ColliderFlags flags;

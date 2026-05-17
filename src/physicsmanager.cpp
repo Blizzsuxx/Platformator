@@ -7,7 +7,7 @@
 #include "oneapi/tbb.h"
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), activeCollisions(), pendingPhysicsEvents(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
+    : rigidBodyComponents(), colliderComponents(), activeCollisions(), pendingPhysicsEvents(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
 }
 
@@ -38,6 +38,11 @@ const Grid &PhysicsManager::getGrid() const
     return grid;
 }
 
+const std::vector<Collider *> &PhysicsManager::getColliders() const
+{
+    return colliderComponents;
+}
+
 void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 {
     if (rigidBodyComponent == nullptr || rigidBodyComponent->getIsRegisteredInPhysicsManager() || !rigidBodyComponent->getGameObject()->getActive())
@@ -52,6 +57,15 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::addColliderComponent(Collider *colliderComponent)
 {
+    if (colliderComponent == nullptr || colliderComponent->getIsRegisteredInPhysicsManager() || !colliderComponent->getGameObject()->getActive())
+    {
+        return;
+    }
+
+    colliderComponent->setPhysicsManagerIndex(colliderComponents.size());
+    colliderComponent->setIsRegisteredInPhysicsManager(true);
+    colliderComponents.push_back(colliderComponent);
+
     grid.queueAddCollider(colliderComponent);
 }
 
@@ -97,6 +111,25 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
 
 void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 {
+    if (colliderComponent == nullptr || !colliderComponent->getIsRegisteredInPhysicsManager())
+    {
+        return;
+    }
+
+    size_t removeIndex = colliderComponent->getPhysicsManagerIndex();
+    size_t lastIndex = colliderComponents.size() - 1;
+
+    if (removeIndex != lastIndex)
+    {
+        Collider *movedCollider = colliderComponents[lastIndex];
+        colliderComponents[removeIndex] = movedCollider;
+        movedCollider->setPhysicsManagerIndex(removeIndex);
+    }
+
+    colliderComponents.pop_back();
+    colliderComponent->setPhysicsManagerIndex(SIZE_MAX);
+    colliderComponent->setIsRegisteredInPhysicsManager(false);
+
     grid.queueRemoveCollider(colliderComponent);
 }
 

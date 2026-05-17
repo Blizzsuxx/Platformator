@@ -10,11 +10,11 @@
 #include "collision.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
+    : Component(gameObject, type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), physicsManagerIndex(SIZE_MAX), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
 {
 }
 
-Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
+Collider::Collider(ComponentType type) : Component(type), collisionGroup(1), collisionMask(1), stateVersion(0), offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f), physicsManagerIndex(SIZE_MAX), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
 {
 }
 
@@ -230,6 +230,11 @@ bool Collider::getIsRegisteredInGrid() const
     return (flags & IS_REGISTERED_IN_GRID) != 0;
 }
 
+bool Collider::getIsRegisteredInPhysicsManager() const
+{
+    return (flags & IS_REGISTERED_IN_PHYSICS_MANAGER) != 0;
+}
+
 void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
 {
     if (isRegisteredInGrid)
@@ -240,6 +245,28 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     {
         flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
     }
+}
+
+void Collider::setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
+{
+    if (isRegisteredInPhysicsManager)
+    {
+        flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_PHYSICS_MANAGER);
+    }
+    else
+    {
+        flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_PHYSICS_MANAGER);
+    }
+}
+
+size_t Collider::getPhysicsManagerIndex() const
+{
+    return physicsManagerIndex;
+}
+
+void Collider::setPhysicsManagerIndex(size_t physicsManagerIndex)
+{
+    this->physicsManagerIndex = physicsManagerIndex;
 }
 
 const GridCellRange &Collider::getGridCellRangeCache() const

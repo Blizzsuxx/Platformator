@@ -42,6 +42,7 @@ public:
     void checkForCollisions();
     void resolveCollisions(double timeDelta);
     const Grid &getGrid() const;
+    const std::vector<Collider *> &getColliders() const;
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
@@ -81,6 +82,7 @@ private:
     PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair, Collision *collision);
 
     std::vector<Rigidbody *> rigidBodyComponents;
+    std::vector<Collider *> colliderComponents;
     std::vector<Collision *> activeCollisions;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
     Grid grid;

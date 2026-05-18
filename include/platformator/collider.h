@@ -127,11 +127,11 @@ class Collider : public Component
 	friend class GridCell;
 
 public:
-	Collider(GameObject *gameObject, ComponentType type);
-	Collider(ComponentType type);
+	Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType);
+	Collider(ComponentType type, ColliderType colliderType);
 	~Collider();
 
-	virtual ColliderType getColliderType() const = 0;
+	ColliderType getColliderType() const;
 	virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
 	virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
@@ -190,6 +190,7 @@ protected:
 	uint64_t collisionGroup;
 	uint64_t collisionMask;
 
+	ColliderType colliderType;
 	uint64_t stateVersion;
 	Eigen::Vector2f offset;
 

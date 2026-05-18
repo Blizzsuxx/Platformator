@@ -2,21 +2,16 @@
 #include "helpers.h"
 #include "rigidbody.h"
 
-CircleCollider::CircleCollider() : Collider(ComponentType::COLLIDER), radius(0.0f)
+CircleCollider::CircleCollider() : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(0.0f)
 {
 }
 
-CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER), radius(radius)
+CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER, ColliderType::CircleCollider), radius(radius)
 {
 }
 
 CircleCollider::~CircleCollider()
 {
-}
-
-ColliderType CircleCollider::getColliderType() const
-{
-    return ColliderType::CircleCollider;
 }
 
 // Getters

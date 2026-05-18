@@ -32,8 +32,8 @@ namespace
         float minimumInteriorWidth = 1600.0f;
         float minimumInteriorHeight = 900.0f;
         float cameraMargin = 160.0f;
-        float friction = 0.45f;
-        float restitution = 0.08f;
+        float friction = 1.0f;
+        float restitution = 0.00f;
     };
 
     struct RigidBodyContainerLayout

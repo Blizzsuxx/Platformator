@@ -1,7 +1,7 @@
 #include "localsortarray.h"
-#include "swapcallback.h"
-#include "segmentedintervallist.h"
+
 #include "buildconfig.h"
+#include "segmentedintervallist.h"
 
 LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
     : size(0), array(), checkpoints(), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
@@ -125,21 +125,6 @@ size_t LocalSortArray::remove(BoundingRadiusProjectionProxy *element)
     }
 
     return SIZE_MAX;
-}
-
-void LocalSortArray::sort(SwapCallback *callback)
-{
-    // sort the array with insertion sort, sort from lowest to highest
-    for (size_t i = 1; i < size; i++)
-    {
-        size_t j = i;
-
-        while (j > 0 && *array[j - 1] > *array[j])
-        {
-            callback->swap(array[j - 1], j - 1, array[j], j);
-            j--;
-        }
-    }
 }
 
 BoundingRadiusProjectionProxy *LocalSortArray::get(size_t index)

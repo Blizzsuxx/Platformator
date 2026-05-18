@@ -1,12 +1,11 @@
 #pragma once
 
 #include <algorithm>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 #include "collider.h"
 #include "constants.h"
 
-class SwapCallback;
 class SegmentedIntervalList;
 
 class LocalSortArray
@@ -20,7 +19,6 @@ public:
     BoundingRadiusProjectionProxy *pop();
     BoundingRadiusProjectionProxy *remove(size_t index);
     size_t remove(BoundingRadiusProjectionProxy *element);
-    void sort(SwapCallback *callback);
 
     BoundingRadiusProjectionProxy *get(size_t index);
     BoundingRadiusProjectionProxy *operator[](size_t index);

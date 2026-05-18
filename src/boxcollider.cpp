@@ -5,21 +5,16 @@
 #include "rigidbody.h"
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
-    : Collider(gameObject, ComponentType::COLLIDER), width(width), height(height), vertices(), normals(2)
+    : Collider(gameObject, ComponentType::COLLIDER, ColliderType::BoxCollider), width(width), height(height), vertices(), normals(2)
 {
 }
 
-BoxCollider::BoxCollider() : Collider(ComponentType::COLLIDER), width(0.0f), height(0.0f), vertices(), normals(2)
+BoxCollider::BoxCollider() : Collider(ComponentType::COLLIDER, ColliderType::BoxCollider), width(0.0f), height(0.0f), vertices(), normals(2)
 {
 }
 
 BoxCollider::~BoxCollider()
 {
-}
-
-ColliderType BoxCollider::getColliderType() const
-{
-    return ColliderType::BoxCollider;
 }
 
 const std::array<Eigen::Vector2f, 4> &BoxCollider::getVertices() const

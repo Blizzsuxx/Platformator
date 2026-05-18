@@ -13,7 +13,6 @@ public:
     BoxCollider();
     ~BoxCollider();
 
-    ColliderType getColliderType() const override;
     Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const override;
 
     float getWidth() const;

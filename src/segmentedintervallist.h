@@ -3,14 +3,16 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+
 #include "localsortarray.h"
-#include "swapcallback.h"
 
 class AABB;
 enum Axis : uint8_t;
 
-class SegmentedIntervalList : public SwapCallback
+class SegmentedIntervalList
 {
+    friend class LocalSortArray;
+
 public:
     SegmentedIntervalList(AABB *owner, Axis axis, bool isPrimary);
     ~SegmentedIntervalList();
@@ -50,7 +52,7 @@ private:
 
     void emitCollision(Collider *colliderA, Collider *colliderB);
     void removeCollision(Collider *colliderA, Collider *colliderB);
-    void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex) override;
+    void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
 
     std::vector<LocalSortArray *> chunks;
     AABB *owner;

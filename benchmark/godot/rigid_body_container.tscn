@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cjm8g7yqlwcyv"]
+
+[ext_resource type="Script" uid="uid://f2c700algysw" path="res://rigid_body_container.gd" id="1_6cfr4"]
+
+[node name="rigid_body_container" type="Node2D" unique_id=1758301567]
+script = ExtResource("1_6cfr4")

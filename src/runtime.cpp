@@ -153,6 +153,11 @@ namespace platformator
         gameManager->simulateFrame(timeDelta);
     }
 
+    bool Runtime::simulateAndRenderFrame(double timeDelta)
+    {
+        return gameManager->simulateAndRenderFrame(timeDelta);
+    }
+
     SDL_Window *Runtime::getWindowHandle() const
     {
         return gameManager->getWindow()->getWindow();

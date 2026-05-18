@@ -6,6 +6,8 @@
 #include "debugdraw.h"
 #include "oneapi/tbb.h"
 
+#include <limits>
+
 PhysicsManager::PhysicsManager()
     : rigidBodyComponents(), colliderComponents(), activeCollisions(), pendingPhysicsEvents(), grid(), gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
@@ -441,7 +443,6 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     int clippedCount = clipSegmentToLine(clippedVertices1, incidentVertices, referenceEdgeVector, o1, getStartVertexAdjacentEdge(referenceEdge.edgeNumber));
     if (clippedCount < 2)
     {
-        collision->setContactPoints(ClipPoints());
         PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
         return;
     }
@@ -454,7 +455,6 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     clippedCount = clipSegmentToLine(clippedVertices2, clippedVertices1, -referenceEdgeVector, -o2, getEndVertexAdjacentEdge(referenceEdge.edgeNumber));
     if (clippedCount < 2)
     {
-        collision->setContactPoints(ClipPoints());
         PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
         return;
     }

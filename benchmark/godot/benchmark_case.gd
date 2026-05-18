@@ -27,11 +27,11 @@ func _ready() -> void:
 	Engine.max_fps = 0
 	set_physics_process(true)
 
-	_frame_time_samples.resize(measure_frames)
-	_physics_time_samples.resize(measure_frames)
-	_object_count_samples.resize(measure_frames)
-	_node_count_samples.resize(measure_frames)
-	_collision_pair_samples.resize(measure_frames)
+	_frame_time_samples.clear()
+	_physics_time_samples.clear()
+	_object_count_samples.clear()
+	_node_count_samples.clear()
+	_collision_pair_samples.clear()
 
 	_setup_benchmark()
 
@@ -45,6 +45,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_advance_benchmark(delta)
+	_post_step_benchmark()
 	_tick_index += 1
 
 
@@ -53,6 +54,10 @@ func _setup_benchmark() -> void:
 
 
 func _advance_benchmark(_delta: float) -> void:
+	pass
+
+
+func _post_step_benchmark() -> void:
 	pass
 
 
@@ -67,6 +72,10 @@ func _spawned_object_count() -> int:
 
 func _moving_object_count() -> int:
 	return 0
+
+
+func _parse_custom_argument(_arguments: PackedStringArray, _index: int, _argument: String) -> int:
+	return -1
 
 
 func _parse_command_line() -> bool:
@@ -92,9 +101,13 @@ func _parse_command_line() -> bool:
 				if physics_ticks_per_second < 0:
 					return false
 			_:
-				push_error("Unknown benchmark argument: %s" % argument)
-				get_tree().quit(1)
-				return false
+				var custom_index := _parse_custom_argument(arguments, index, argument)
+				if custom_index >= 0:
+					index = custom_index
+				else:
+					push_error("Unknown benchmark argument: %s" % argument)
+					get_tree().quit(1)
+					return false
 
 		index += 1
 
@@ -123,11 +136,11 @@ func _capture_sample() -> void:
 	if _tick_index < warmup_frames:
 		return
 
-	_frame_time_samples[_measure_index] = Performance.get_monitor(Performance.TIME_PROCESS)
-	_physics_time_samples[_measure_index] = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
-	_object_count_samples[_measure_index] = Performance.get_monitor(Performance.OBJECT_COUNT)
-	_node_count_samples[_measure_index] = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
-	_collision_pair_samples[_measure_index] = Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)
+	_frame_time_samples.append(Performance.get_monitor(Performance.TIME_PROCESS))
+	_physics_time_samples.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS))
+	_object_count_samples.append(Performance.get_monitor(Performance.OBJECT_COUNT))
+	_node_count_samples.append(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	_collision_pair_samples.append(Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS))
 	_measure_index += 1
 
 

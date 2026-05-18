@@ -338,6 +338,36 @@ void GameManager::simulateFrame(double timeDelta)
     deleteMarkedGameObjects();
 }
 
+bool GameManager::simulateAndRenderFrame(double timeDelta)
+{
+    if (!window->isRunning())
+    {
+        return false;
+    }
+
+    window->handleSDLEvents(timeDelta);
+    if (!window->isRunning())
+    {
+        return false;
+    }
+
+    if (window->shouldSimulateFrame())
+    {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+        window->clearDebugObjects();
+#endif
+        runSimulationStep(timeDelta);
+    }
+
+    window->updateTransientAudio();
+    window->render();
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    window->clearAdvanceFrameRequest();
+#endif
+    deleteMarkedGameObjects();
+    return window->isRunning();
+}
+
 TextureWrapper *GameManager::loadTexture(const std::string &filePath)
 {
     if (filePath.empty())

@@ -51,6 +51,7 @@ namespace platformator
         void saveScene(const std::string &sceneFilePath);
         void run();
         void simulateFrame(double timeDelta);
+        bool simulateAndRenderFrame(double timeDelta);
         SDL_Window *getWindowHandle() const;
         SDL_Renderer *getRenderer() const;
 

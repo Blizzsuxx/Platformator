@@ -54,6 +54,7 @@ public:
 
     void loop();
     void simulateFrame(double timeDelta);
+    bool simulateAndRenderFrame(double timeDelta);
     TextureWrapper *loadTexture(const std::string &filePath);
     void freeTexture(TextureWrapper *textureWrapper);
     void freeAllTextures();

@@ -1,18 +1,50 @@
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <stdexcept>
-#include <array>
 #include <string>
 
 #include "benchmark.h"
 #include "constants.h"
 #include "platformator/boxcollider.h"
 #include "platformator/camera.h"
+#include "platformator/circlecollider.h"
 #include "platformator/rigidbody.h"
 #include "platformator/runtime.h"
 
 namespace
 {
     constexpr const char *DEFAULT_SCENE_PATH = "assets/scenes/default.scene";
+    constexpr int DEFAULT_CONTAINER_BOX_COUNT = 400;
+    constexpr int DEFAULT_CONTAINER_CIRCLE_COUNT = 400;
+
+    struct RigidBodyContainerScenarioSettings
+    {
+        int boxCount = DEFAULT_CONTAINER_BOX_COUNT;
+        int circleCount = DEFAULT_CONTAINER_CIRCLE_COUNT;
+        float boxWidth = 28.0f;
+        float boxHeight = 28.0f;
+        float circleRadius = 14.0f;
+        float wallThickness = 64.0f;
+        float spawnMargin = 80.0f;
+        float cellPadding = 8.0f;
+        float minimumInteriorWidth = 1600.0f;
+        float minimumInteriorHeight = 900.0f;
+        float cameraMargin = 160.0f;
+        float friction = 0.45f;
+        float restitution = 0.08f;
+    };
+
+    struct RigidBodyContainerLayout
+    {
+        size_t totalBodyCount = 0;
+        size_t columnCount = 1;
+        float cellSize = 0.0f;
+        float interiorWidth = 0.0f;
+        float interiorHeight = 0.0f;
+        float left = 0.0f;
+        float top = 0.0f;
+    };
 
     RuntimeOptions makeDefaultBenchmarkRuntimeOptions()
     {
@@ -20,7 +52,7 @@ namespace
         // runtimeOptions.windowSettings.headless = false;
         // runtimeOptions.windowSettings.fullscreen = true;
 
-        RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, false, false, false, false}};
+        RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {true, true, true, true, true}};
         runtimeOptions.windowSettings.headless = true;
         return runtimeOptions;
     }
@@ -30,6 +62,7 @@ namespace
         None,
         BroadPhase,
         NarrowPhase,
+        RigidBodyContainer,
     };
 
     struct BenchmarkRunnerOptions
@@ -39,6 +72,9 @@ namespace
         int warmupFrameCount = 120;
         int measureFrameCount = 600;
         double timeDelta = FRAME_TIME;
+        int boxCount = DEFAULT_CONTAINER_BOX_COUNT;
+        int circleCount = DEFAULT_CONTAINER_CIRCLE_COUNT;
+        bool renderFrames = false;
     };
 
     BenchmarkScenario parseScenario(const std::string &value)
@@ -53,6 +89,11 @@ namespace
             return BenchmarkScenario::NarrowPhase;
         }
 
+        if (value == "rigid_body_container" || value == "rigid-body-container" || value == "rigidbody_container" || value == "rigidbody-container" || value == "container")
+        {
+            return BenchmarkScenario::RigidBodyContainer;
+        }
+
         throw std::runtime_error("Unknown benchmark scenario: " + value);
     }
 
@@ -64,6 +105,8 @@ namespace
             return "broad_phase";
         case BenchmarkScenario::NarrowPhase:
             return "narrow_phase";
+        case BenchmarkScenario::RigidBodyContainer:
+            return "rigid_body_container";
         case BenchmarkScenario::None:
             return "scene";
         }
@@ -88,7 +131,10 @@ namespace
         const BodyType bodyType,
         const bool gravity,
         const Eigen::Vector2f &velocity,
-        const bool isTrigger)
+        const bool isTrigger,
+        const float friction = 0.0f,
+        const float restitution = 0.0f,
+        const float angularVelocity = 0.0f)
     {
         GameObject *object = runtime
                                  .createGameObject()
@@ -99,11 +145,181 @@ namespace
 
         object->getComponent<Rigidbody>()
             ->setVelocity(velocity)
-            ->setFriction(0.0f)
-            ->setRestitution(0.0f);
+            ->setAngularVelocity(angularVelocity)
+            ->setFriction(friction)
+            ->setRestitution(restitution);
 
         object->getComponent<BoxCollider>()->setIsTrigger(isTrigger);
         return object;
+    }
+
+    GameObject *createBenchmarkCircle(
+        platformator::Runtime &runtime,
+        const std::string &name,
+        const float x,
+        const float y,
+        const float radius,
+        const BodyType bodyType,
+        const bool gravity,
+        const Eigen::Vector2f &velocity,
+        const bool isTrigger,
+        const float friction = 0.0f,
+        const float restitution = 0.0f,
+        const float angularVelocity = 0.0f)
+    {
+        GameObject *object = runtime
+                                 .createGameObject()
+                                 ->setName(name)
+                                 ->addComponent<Rigidbody>(bodyType, gravity)
+                                 ->addComponent<CircleCollider>(radius)
+                                 ->setPosition(Eigen::Vector2f(x, y));
+
+        object->getComponent<Rigidbody>()
+            ->setVelocity(velocity)
+            ->setAngularVelocity(angularVelocity)
+            ->setFriction(friction)
+            ->setRestitution(restitution);
+
+        object->getComponent<CircleCollider>()->setIsTrigger(isTrigger);
+        return object;
+    }
+
+    RigidBodyContainerScenarioSettings makeRigidBodyContainerScenarioSettings(const BenchmarkRunnerOptions &options)
+    {
+        RigidBodyContainerScenarioSettings settings;
+        settings.boxCount = options.boxCount;
+        settings.circleCount = options.circleCount;
+        return settings;
+    }
+
+    RigidBodyContainerLayout calculateRigidBodyContainerLayout(const BenchmarkRunnerOptions &options)
+    {
+        const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
+        const size_t totalBodyCount = static_cast<size_t>(settings.boxCount + settings.circleCount);
+        const float maxBodyExtent = std::max({settings.boxWidth, settings.boxHeight, settings.circleRadius * 2.0f});
+        const float cellSize = maxBodyExtent + settings.cellPadding;
+        const float usableWidth = std::max(settings.minimumInteriorWidth - 2.0f * settings.spawnMargin, cellSize);
+        const size_t columnCount = std::max<size_t>(1, static_cast<size_t>(usableWidth / cellSize));
+        const size_t rowCount = std::max<size_t>(1, (totalBodyCount + columnCount - 1) / columnCount);
+        const float interiorWidth = std::max(settings.minimumInteriorWidth, static_cast<float>(columnCount) * cellSize + 2.0f * settings.spawnMargin);
+        const float interiorHeight = std::max(settings.minimumInteriorHeight, static_cast<float>(rowCount) * cellSize + 2.0f * settings.spawnMargin);
+
+        return RigidBodyContainerLayout{
+            totalBodyCount,
+            columnCount,
+            cellSize,
+            interiorWidth,
+            interiorHeight,
+            -0.5f * interiorWidth,
+            -0.5f * interiorHeight,
+        };
+    }
+
+    Eigen::Vector2f calculateRigidBodyContainerSpawnPosition(const RigidBodyContainerLayout &layout, const RigidBodyContainerScenarioSettings &settings, const size_t spawnIndex)
+    {
+        const size_t columnIndex = spawnIndex % layout.columnCount;
+        const size_t rowIndex = spawnIndex / layout.columnCount;
+        const float x = layout.left + settings.spawnMargin + (static_cast<float>(columnIndex) + 0.5f) * layout.cellSize;
+        const float y = layout.top + settings.spawnMargin + (static_cast<float>(rowIndex) + 0.5f) * layout.cellSize;
+        const float xJitter = static_cast<float>(static_cast<int>(spawnIndex % 3) - 1) * 2.0f;
+        const float yJitter = static_cast<float>(static_cast<int>(spawnIndex % 4) - 1) * 1.5f;
+        return Eigen::Vector2f(x + xJitter, y + yJitter);
+    }
+
+    Eigen::Vector2f calculateRigidBodyContainerInitialVelocity(const size_t spawnIndex)
+    {
+        constexpr std::array<float, 8> horizontalVelocityPattern = {-48.0f, 36.0f, -28.0f, 44.0f, -40.0f, 24.0f, -32.0f, 52.0f};
+        constexpr std::array<float, 6> verticalVelocityPattern = {0.0f, -18.0f, -12.0f, 8.0f, -6.0f, 14.0f};
+        return Eigen::Vector2f(
+            horizontalVelocityPattern[spawnIndex % horizontalVelocityPattern.size()],
+            verticalVelocityPattern[spawnIndex % verticalVelocityPattern.size()]);
+    }
+
+    float calculateRigidBodyContainerAngularVelocity(const size_t spawnIndex)
+    {
+        constexpr std::array<float, 8> angularVelocityPattern = {-1.4f, 0.9f, -0.7f, 1.1f, -1.2f, 0.8f, -0.6f, 1.3f};
+        return angularVelocityPattern[spawnIndex % angularVelocityPattern.size()];
+    }
+
+    void createRigidBodyContainerWalls(
+        platformator::Runtime &runtime,
+        const RigidBodyContainerScenarioSettings &settings,
+        const RigidBodyContainerLayout &layout)
+    {
+        const float halfWidth = layout.interiorWidth * 0.5f;
+        const float halfHeight = layout.interiorHeight * 0.5f;
+        const float wallThickness = settings.wallThickness;
+        const float horizontalWallWidth = layout.interiorWidth + 2.0f * wallThickness;
+        const float verticalWallHeight = layout.interiorHeight + 2.0f * wallThickness;
+
+        createBenchmarkBox(
+            runtime,
+            "Container Floor",
+            0.0f,
+            halfHeight + wallThickness * 0.5f + 20.0f, // Add a small margin to prevent initial overlaps with spawned bodies
+            horizontalWallWidth,
+            wallThickness,
+            STATIC,
+            false,
+            Eigen::Vector2f::Zero(),
+            false,
+            settings.friction,
+            settings.restitution);
+
+        createBenchmarkBox(
+            runtime,
+            "Container Ceiling",
+            0.0f,
+            -halfHeight - wallThickness * 0.5f,
+            horizontalWallWidth,
+            wallThickness,
+            STATIC,
+            false,
+            Eigen::Vector2f::Zero(),
+            false,
+            settings.friction,
+            settings.restitution);
+
+        createBenchmarkBox(
+            runtime,
+            "Container Left Wall",
+            -halfWidth - wallThickness * 0.5f,
+            0.0f,
+            wallThickness,
+            verticalWallHeight,
+            STATIC,
+            false,
+            Eigen::Vector2f::Zero(),
+            false,
+            settings.friction,
+            settings.restitution);
+
+        createBenchmarkBox(
+            runtime,
+            "Container Right Wall",
+            halfWidth + wallThickness * 0.5f,
+            0.0f,
+            wallThickness,
+            verticalWallHeight,
+            STATIC,
+            false,
+            Eigen::Vector2f::Zero(),
+            false,
+            settings.friction,
+            settings.restitution);
+    }
+
+    void printRigidBodyContainerScenarioDetails(
+        const RigidBodyContainerScenarioSettings &settings,
+        const RigidBodyContainerLayout &layout)
+    {
+        std::fprintf(
+            stdout,
+            "[Benchmark][Scenario] box_count=%d circle_count=%d container_width=%.1f container_height=%.1f\n",
+            settings.boxCount,
+            settings.circleCount,
+            layout.interiorWidth,
+            layout.interiorHeight);
     }
 
     void buildBroadPhaseScenario(platformator::Runtime &runtime)
@@ -201,9 +417,70 @@ namespace
         }
     }
 
-    void buildScenario(platformator::Runtime &runtime, const BenchmarkScenario scenario)
+    void buildRigidBodyContainerScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
     {
-        switch (scenario)
+        const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
+        const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
+
+        createRigidBodyContainerWalls(runtime, settings, layout);
+        printRigidBodyContainerScenarioDetails(settings, layout);
+
+        int spawnedBoxCount = 0;
+        int spawnedCircleCount = 0;
+        size_t spawnIndex = 0;
+        while (spawnedBoxCount < settings.boxCount || spawnedCircleCount < settings.circleCount)
+        {
+            const bool shouldSpawnBox =
+                spawnedBoxCount < settings.boxCount &&
+                (spawnedCircleCount >= settings.circleCount || spawnIndex % 2 == 0);
+
+            const Eigen::Vector2f position = calculateRigidBodyContainerSpawnPosition(layout, settings, spawnIndex);
+            const Eigen::Vector2f velocity = calculateRigidBodyContainerInitialVelocity(spawnIndex);
+            const float angularVelocity = calculateRigidBodyContainerAngularVelocity(spawnIndex);
+
+            if (shouldSpawnBox)
+            {
+                createBenchmarkBox(
+                    runtime,
+                    formatIndexedName("Container Box", static_cast<size_t>(spawnedBoxCount)),
+                    position.x(),
+                    position.y(),
+                    settings.boxWidth,
+                    settings.boxHeight,
+                    DYNAMIC,
+                    true,
+                    velocity,
+                    false,
+                    settings.friction,
+                    settings.restitution,
+                    angularVelocity);
+                spawnedBoxCount++;
+            }
+            else
+            {
+                createBenchmarkCircle(
+                    runtime,
+                    formatIndexedName("Container Circle", static_cast<size_t>(spawnedCircleCount)),
+                    position.x(),
+                    position.y(),
+                    settings.circleRadius,
+                    DYNAMIC,
+                    true,
+                    velocity,
+                    false,
+                    settings.friction,
+                    settings.restitution,
+                    angularVelocity);
+                spawnedCircleCount++;
+            }
+
+            spawnIndex++;
+        }
+    }
+
+    void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+    {
+        switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
             buildBroadPhaseScenario(runtime);
@@ -211,12 +488,15 @@ namespace
         case BenchmarkScenario::NarrowPhase:
             buildNarrowPhaseScenario(runtime);
             return;
+        case BenchmarkScenario::RigidBodyContainer:
+            buildRigidBodyContainerScenario(runtime, options);
+            return;
         case BenchmarkScenario::None:
             return;
         }
     }
 
-    void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkScenario scenario)
+    void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
     {
         runtime.createMainCameraIfNoMainCameraExists();
         Camera *mainCamera = runtime.getMainCamera();
@@ -225,7 +505,7 @@ namespace
             return;
         }
 
-        switch (scenario)
+        switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
             mainCamera->setCamera(SDL_FRect{-2500.0f, -1360.0f, 5200.0f, 10400.0f});
@@ -233,6 +513,15 @@ namespace
         case BenchmarkScenario::NarrowPhase:
             mainCamera->setCamera(SDL_FRect{-200.0f, -200.0f, 400.0f, 400.0f});
             return;
+        case BenchmarkScenario::RigidBodyContainer:
+        {
+            const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
+            const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
+            const float cameraWidth = layout.interiorWidth + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
+            const float cameraHeight = layout.interiorHeight + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
+            mainCamera->setCamera(SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight});
+            return;
+        }
         case BenchmarkScenario::None:
             return;
         }
@@ -332,6 +621,33 @@ namespace
                 continue;
             }
 
+            if (argument == "--box-count")
+            {
+                options.boxCount = parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--circle-count")
+            {
+                options.circleCount = parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--render")
+            {
+                options.renderFrames = true;
+                options.runtimeOptions.windowSettings.headless = false;
+                options.runtimeOptions.windowSettings.width = 1600;
+                options.runtimeOptions.windowSettings.height = 900;
+                options.runtimeOptions.windowSettings.keepAspectRatio = true;
+                options.runtimeOptions.debugSettings.startPaused = false;
+                options.runtimeOptions.debugSettings.showColliders = true;
+                options.runtimeOptions.debugSettings.showCollisionPoints = true;
+                options.runtimeOptions.debugSettings.showCollisionNormals = true;
+                options.runtimeOptions.debugSettings.showGridCells = true;
+                continue;
+            }
+
             if (!argument.starts_with("--") && !scenePathSpecified && options.scenario == BenchmarkScenario::None)
             {
                 options.runtimeOptions.sceneFilePath = argument;
@@ -341,6 +657,18 @@ namespace
 
             throw std::runtime_error("Unknown benchmark argument: " + argument);
         }
+
+        if (options.scenario == BenchmarkScenario::RigidBodyContainer && options.boxCount + options.circleCount <= 0)
+        {
+            throw std::runtime_error("rigid_body_container requires at least one box or circle.");
+        }
+
+#if !PLATFORMATOR_ENABLE_DEBUG_TOOLS
+        if (options.renderFrames && options.scenario == BenchmarkScenario::RigidBodyContainer)
+        {
+            throw std::runtime_error("--render for rigid_body_container requires a benchmark build with PLATFORMATOR_ENABLE_DEBUG_TOOLS=ON.");
+        }
+#endif
 
         return options;
     }
@@ -356,11 +684,17 @@ namespace
         else
         {
             std::fprintf(stdout, "[Benchmark] scenario=%s\n", scenarioName(options.scenario));
-            buildScenario(runtime, options.scenario);
+            buildScenario(runtime, options);
         }
 
-        // configureScenarioCamera(runtime, options.scenario);
-        // runtime.run();
+        configureScenarioCamera(runtime, options);
+
+        if (options.renderFrames)
+        {
+            runtime.run();
+
+            return;
+        }
 
         for (int frameIndex = 0; frameIndex < options.warmupFrameCount; frameIndex++)
         {
@@ -379,7 +713,7 @@ namespace
     {
         std::fprintf(
             output,
-            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase] [--warmup-frames N] [--measure-frames N] [--dt seconds]\n");
+            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--render]\n");
     }
 }
 

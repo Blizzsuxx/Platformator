@@ -308,7 +308,7 @@ void GameManager::loop()
         updateDeltaTime();
         window->handleSDLEvents(deltaTime);
 
-        auto simulateCurrentFrame = [this]()
+        if (window->shouldSimulateFrame())
         {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
             window->clearDebugObjects();
@@ -319,20 +319,13 @@ void GameManager::loop()
 #endif
 
             runSimulationStep(deltaTime);
-        };
-
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-        if (window->shouldSimulateFrame())
-        {
-            simulateCurrentFrame();
         }
-#else
-        simulateCurrentFrame();
-#endif
 
         window->updateTransientAudio();
         window->render();
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         window->clearAdvanceFrameRequest();
+#endif
         deleteMarkedGameObjects();
         delay();
     }

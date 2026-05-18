@@ -40,6 +40,7 @@ namespace platformator
         GameObject *getGameObject(const std::string &name) const;
         BaseObject *getObjectById(int id) const;
         Camera *getMainCamera() const;
+        void createMainCameraIfNoMainCameraExists();
         AnimationClip *loadAnimationClip(const std::string &filePath) const;
         AudioWrapper *loadAudio(const std::string &filePath) const;
         void loadScene(Scene &scene);

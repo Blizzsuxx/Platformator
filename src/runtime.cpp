@@ -87,6 +87,11 @@ namespace platformator
         return gameManager->getWindow()->getMainCamera();
     }
 
+    void Runtime::createMainCameraIfNoMainCameraExists()
+    {
+        gameManager->createMainCameraIfNoMainCameraExists();
+    }
+
     AnimationClip *Runtime::loadAnimationClip(const std::string &filePath) const
     {
         return gameManager->loadAnimationClip(filePath);

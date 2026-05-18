@@ -6,6 +6,7 @@
 #include "benchmark.h"
 #include "constants.h"
 #include "platformator/boxcollider.h"
+#include "platformator/camera.h"
 #include "platformator/rigidbody.h"
 #include "platformator/runtime.h"
 
@@ -15,6 +16,10 @@ namespace
 
     RuntimeOptions makeDefaultBenchmarkRuntimeOptions()
     {
+        // RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, true, true, true, true}};
+        // runtimeOptions.windowSettings.headless = false;
+        // runtimeOptions.windowSettings.fullscreen = true;
+
         RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, false, false, false, false}};
         runtimeOptions.windowSettings.headless = true;
         return runtimeOptions;
@@ -211,6 +216,28 @@ namespace
         }
     }
 
+    void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkScenario scenario)
+    {
+        runtime.createMainCameraIfNoMainCameraExists();
+        Camera *mainCamera = runtime.getMainCamera();
+        if (mainCamera == nullptr)
+        {
+            return;
+        }
+
+        switch (scenario)
+        {
+        case BenchmarkScenario::BroadPhase:
+            mainCamera->setCamera(SDL_FRect{-2500.0f, -1360.0f, 5200.0f, 10400.0f});
+            return;
+        case BenchmarkScenario::NarrowPhase:
+            mainCamera->setCamera(SDL_FRect{-200.0f, -200.0f, 400.0f, 400.0f});
+            return;
+        case BenchmarkScenario::None:
+            return;
+        }
+    }
+
     int parseNonNegativeInteger(const std::string &value, const std::string &argumentName)
     {
         const int parsedValue = std::stoi(value);
@@ -331,6 +358,9 @@ namespace
             std::fprintf(stdout, "[Benchmark] scenario=%s\n", scenarioName(options.scenario));
             buildScenario(runtime, options.scenario);
         }
+
+        // configureScenarioCamera(runtime, options.scenario);
+        // runtime.run();
 
         for (int frameIndex = 0; frameIndex < options.warmupFrameCount; frameIndex++)
         {

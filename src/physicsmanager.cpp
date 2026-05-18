@@ -315,8 +315,8 @@ bool PhysicsManager::checkProjections(const std::vector<Eigen::Vector2f> &normal
     for (long unsigned int i = 0; i < normals.size(); i++)
     {
         const Eigen::Vector2f &normal = normals[i];
-        auto projections1 = referenceCollider->projectOntoAxis(normal); // we are using the index on the owner of the normal to further optimize projection
-        auto projections2 = incidentCollider->projectOntoAxis(normal);  // TODO: see if it's better to approximate from the perspective of the incident or reference object
+        Eigen::Vector2f projections1 = referenceCollider->projectOntoAxis(normal); // we are using the index on the owner of the normal to further optimize projection
+        Eigen::Vector2f projections2 = incidentCollider->projectOntoAxis(normal);  // TODO: see if it's better to approximate from the perspective of the incident or reference object
 
         if (projections1.y() < projections2.x() || projections2.y() < projections1.x())
         {

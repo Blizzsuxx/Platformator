@@ -6,8 +6,12 @@
 
 #include "platformator/collider.h"
 
+class PhysicsManager;
+
 class Collision
 {
+	friend class PhysicsManager;
+
 public:
 	enum CollisionType
 	{
@@ -83,4 +87,5 @@ private:
 	bool getSupportsIncidentBody() const;
 	void setSupportsReferenceBody(bool supports) const;
 	void setSupportsIncidentBody(bool supports) const;
+	void generateFallbackContactPoint();
 };

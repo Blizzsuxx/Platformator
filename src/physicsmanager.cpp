@@ -444,6 +444,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (clippedCount < 2)
     {
         PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
+        collision->generateFallbackContactPoint();
         return;
     }
 
@@ -456,6 +457,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (clippedCount < 2)
     {
         PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
+        collision->generateFallbackContactPoint();
         return;
     }
 

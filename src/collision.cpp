@@ -275,3 +275,16 @@ bool Collision::isHorizontalCollision() const
 {
     return !isVerticalCollision();
 }
+
+void Collision::generateFallbackContactPoint()
+{
+    // As a fallback, we can use the midpoint between the two objects as the contact point, with a penetration of 0.
+    Eigen::Vector2f positionA = referenceObject->getGameObject()->getPosition();
+    Eigen::Vector2f positionB = incidentObject->getGameObject()->getPosition();
+    Eigen::Vector2f midpoint = (positionA + positionB) * 0.5f;
+
+    ClipVertex fallbackContactPoint(midpoint, ContactFeature());
+    ClipPoints fallbackClipPoints;
+    fallbackClipPoints.add(fallbackContactPoint);
+    setContactPoints(fallbackClipPoints);
+}

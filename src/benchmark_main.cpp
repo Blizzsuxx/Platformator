@@ -52,7 +52,7 @@ namespace
         // runtimeOptions.windowSettings.headless = false;
         // runtimeOptions.windowSettings.fullscreen = true;
 
-        RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {true, true, true, true, true}};
+        RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, false, false, false, false}};
         runtimeOptions.windowSettings.headless = true;
         return runtimeOptions;
     }

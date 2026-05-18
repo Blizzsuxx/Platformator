@@ -14,11 +14,19 @@ Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper) : Sprite(
 {
 }
 
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float width, float height) : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE, width, height)
+{
+}
+
 Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip) : Sprite(gameObject, textureWrapper, flip, 0, 0)
 {
 }
 
 Sprite::Sprite(GameObject *gameObject, const char *filePath) : Sprite(gameObject, filePath, SDL_FLIP_NONE)
+{
+}
+
+Sprite::Sprite(GameObject *gameObject, const char *filePath, float width, float height) : Sprite(gameObject, filePath, SDL_FLIP_NONE, width, height)
 {
 }
 

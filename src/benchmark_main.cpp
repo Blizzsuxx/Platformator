@@ -11,6 +11,7 @@
 #include "platformator/circlecollider.h"
 #include "platformator/rigidbody.h"
 #include "platformator/runtime.h"
+#include "platformator/sprite.h"
 
 namespace
 {
@@ -141,6 +142,7 @@ namespace
                                  ->setName(name)
                                  ->addComponent<Rigidbody>(bodyType, gravity)
                                  ->addComponent<BoxCollider>(width, height)
+                                 ->addComponent<Sprite>("assets/textures/black_square.png", width, height)
                                  ->setPosition(Eigen::Vector2f(x, y));
 
         object->getComponent<Rigidbody>()
@@ -172,6 +174,7 @@ namespace
                                  ->setName(name)
                                  ->addComponent<Rigidbody>(bodyType, gravity)
                                  ->addComponent<CircleCollider>(radius)
+                                 ->addComponent<Sprite>("assets/textures/red_circle.png", radius * 2.0f, radius * 2.0f)
                                  ->setPosition(Eigen::Vector2f(x, y));
 
         object->getComponent<Rigidbody>()
@@ -496,6 +499,36 @@ namespace
         }
     }
 
+    SDL_FRect fitCameraRectToWindowAspect(const SDL_FRect &cameraRect, const WindowSettings &windowSettings)
+    {
+        const float renderWidth = static_cast<float>(std::max(1, windowSettings.width));
+        const float renderHeight = static_cast<float>(std::max(1, windowSettings.height));
+        const float targetAspectRatio = renderWidth / renderHeight;
+
+        if (cameraRect.w <= 0.0f || cameraRect.h <= 0.0f || targetAspectRatio <= 0.0f)
+        {
+            return cameraRect;
+        }
+
+        SDL_FRect adjustedRect = cameraRect;
+        const float cameraAspectRatio = cameraRect.w / cameraRect.h;
+
+        if (cameraAspectRatio < targetAspectRatio)
+        {
+            const float adjustedWidth = cameraRect.h * targetAspectRatio;
+            adjustedRect.x -= 0.5f * (adjustedWidth - cameraRect.w);
+            adjustedRect.w = adjustedWidth;
+        }
+        else if (cameraAspectRatio > targetAspectRatio)
+        {
+            const float adjustedHeight = cameraRect.w / targetAspectRatio;
+            adjustedRect.y -= 0.5f * (adjustedHeight - cameraRect.h);
+            adjustedRect.h = adjustedHeight;
+        }
+
+        return adjustedRect;
+    }
+
     void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
     {
         runtime.createMainCameraIfNoMainCameraExists();
@@ -508,10 +541,14 @@ namespace
         switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
-            mainCamera->setCamera(SDL_FRect{-2500.0f, -1360.0f, 5200.0f, 10400.0f});
+            mainCamera->setCamera(fitCameraRectToWindowAspect(
+                SDL_FRect{-2500.0f, -1360.0f, 5200.0f, 10400.0f},
+                options.runtimeOptions.windowSettings));
             return;
         case BenchmarkScenario::NarrowPhase:
-            mainCamera->setCamera(SDL_FRect{-200.0f, -200.0f, 400.0f, 400.0f});
+            mainCamera->setCamera(fitCameraRectToWindowAspect(
+                SDL_FRect{-200.0f, -200.0f, 400.0f, 400.0f},
+                options.runtimeOptions.windowSettings));
             return;
         case BenchmarkScenario::RigidBodyContainer:
         {
@@ -519,7 +556,9 @@ namespace
             const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
             const float cameraWidth = layout.interiorWidth + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
             const float cameraHeight = layout.interiorHeight + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
-            mainCamera->setCamera(SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight});
+            mainCamera->setCamera(fitCameraRectToWindowAspect(
+                SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
+                options.runtimeOptions.windowSettings));
             return;
         }
         case BenchmarkScenario::None:
@@ -640,11 +679,11 @@ namespace
                 options.runtimeOptions.windowSettings.width = 1600;
                 options.runtimeOptions.windowSettings.height = 900;
                 options.runtimeOptions.windowSettings.keepAspectRatio = true;
-                options.runtimeOptions.debugSettings.startPaused = false;
-                options.runtimeOptions.debugSettings.showColliders = true;
-                options.runtimeOptions.debugSettings.showCollisionPoints = true;
-                options.runtimeOptions.debugSettings.showCollisionNormals = true;
-                options.runtimeOptions.debugSettings.showGridCells = true;
+                // options.runtimeOptions.debugSettings.startPaused = false;
+                // options.runtimeOptions.debugSettings.showColliders = true;
+                // options.runtimeOptions.debugSettings.showCollisionPoints = true;
+                // options.runtimeOptions.debugSettings.showCollisionNormals = true;
+                // options.runtimeOptions.debugSettings.showGridCells = true;
                 continue;
             }
 
@@ -662,13 +701,6 @@ namespace
         {
             throw std::runtime_error("rigid_body_container requires at least one box or circle.");
         }
-
-#if !PLATFORMATOR_ENABLE_DEBUG_TOOLS
-        if (options.renderFrames && options.scenario == BenchmarkScenario::RigidBodyContainer)
-        {
-            throw std::runtime_error("--render for rigid_body_container requires a benchmark build with PLATFORMATOR_ENABLE_DEBUG_TOOLS=ON.");
-        }
-#endif
 
         return options;
     }

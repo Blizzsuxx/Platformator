@@ -16,9 +16,11 @@ public:
 	Sprite(GameObject *gameObject);
 	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper);
 	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip);
+	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float width, float height);
 	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height);
 	Sprite(GameObject *gameObject, const char *filePath);
 	Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip);
+	Sprite(GameObject *gameObject, const char *filePath, float width, float height);
 	Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height);
 	~Sprite();
 

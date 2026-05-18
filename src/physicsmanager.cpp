@@ -369,7 +369,7 @@ void PhysicsManager::satCreateCollision(const ColliderPair &pair)
     collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
 
     // Ensure the normal points from reference toward incident
-    auto directionVector = collision->getIncidentObject()->getGameObject()->getPosition() - collision->getReferenceObject()->getGameObject()->getPosition();
+    Eigen::Vector2f directionVector = collision->getIncidentObject()->getGameObject()->getPosition() - collision->getReferenceObject()->getGameObject()->getPosition();
     if (minNormal.dot(directionVector) < 0)
     {
         minNormal = -minNormal;

@@ -1,7 +1,7 @@
 extends "res://benchmark_case.gd"
 
-const DEFAULT_BOX_COUNT := 1000
-const DEFAULT_CIRCLE_COUNT := 1000
+const DEFAULT_BOX_COUNT := 0
+const DEFAULT_CIRCLE_COUNT := 3000
 
 const BOX_SIZE := Vector2(28.0, 28.0)
 const CIRCLE_RADIUS := 14.0

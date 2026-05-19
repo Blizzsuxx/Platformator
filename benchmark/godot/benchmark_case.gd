@@ -3,7 +3,7 @@ extends Node2D
 class_name BenchmarkCase
 
 const DEFAULT_WARMUP_FRAMES := 120
-const DEFAULT_MEASURE_FRAMES := 600
+const DEFAULT_MEASURE_FRAMES := 6000
 const DEFAULT_PHYSICS_TICKS_PER_SECOND := 120
 
 var warmup_frames := DEFAULT_WARMUP_FRAMES

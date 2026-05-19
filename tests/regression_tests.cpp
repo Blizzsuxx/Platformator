@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -97,6 +98,11 @@ namespace
             objects.push_back(object);
         }
 
+        void forget(GameObject *object)
+        {
+            objects.erase(std::remove(objects.begin(), objects.end(), object), objects.end());
+        }
+
     private:
         Runtime &gameManager;
         std::vector<GameObject *> objects;
@@ -161,6 +167,70 @@ namespace
             ->setRestitution(0.0f);
 
         return object;
+    }
+
+    std::vector<GameObject *> createDynamicBoxColumn(
+        Runtime &gameManager,
+        SceneScope &sceneScope,
+        const std::string &namePrefix,
+        float x,
+        float bottomY,
+        size_t boxCount,
+        float width = 40.0f,
+        float height = 40.0f,
+        float verticalSpacing = 60.0f)
+    {
+        std::vector<GameObject *> boxes;
+        boxes.reserve(boxCount);
+
+        for (size_t index = 0; index < boxCount; ++index)
+        {
+            GameObject *box = createDynamicBox(
+                gameManager,
+                namePrefix + " " + std::to_string(index),
+                x,
+                bottomY - static_cast<float>(index) * verticalSpacing,
+                width,
+                height);
+            sceneScope.add(box);
+            boxes.push_back(box);
+        }
+
+        return boxes;
+    }
+
+    std::vector<Eigen::Vector2f> capturePositions(const std::vector<GameObject *> &objects)
+    {
+        std::vector<Eigen::Vector2f> positions;
+        positions.reserve(objects.size());
+
+        for (GameObject *object : objects)
+        {
+            positions.push_back(object->getPosition());
+        }
+
+        return positions;
+    }
+
+    void requireAllSleeping(const std::vector<GameObject *> &objects, const std::string &message)
+    {
+        for (GameObject *object : objects)
+        {
+            Rigidbody *rigidbody = object->getComponent<Rigidbody>();
+            require(rigidbody != nullptr, message + " (missing rigidbody).");
+            require(rigidbody->getIsSleeping(), message);
+        }
+    }
+
+    void requirePositionsStable(const std::vector<GameObject *> &objects, const std::vector<Eigen::Vector2f> &positionsBefore, float tolerance, const std::string &message)
+    {
+        require(objects.size() == positionsBefore.size(), message + " (position snapshot mismatch).");
+
+        const float toleranceSquared = tolerance * tolerance;
+        for (size_t index = 0; index < objects.size(); ++index)
+        {
+            require((objects[index]->getPosition() - positionsBefore[index]).squaredNorm() <= toleranceSquared, message);
+        }
     }
 
     GameObject *createKinematicBox(Runtime &gameManager, const std::string &name, float x, float y, float width, float height, bool gravity)
@@ -417,6 +487,127 @@ namespace
         require(rigidbody != nullptr, "Sleeping regression lost the box rigidbody.");
         require(rigidbody->hasSupportContact(), "Sleeping regression ended without a support contact.");
         require(rigidbody->getIsSleeping(), "Supported dynamic body failed to enter sleep state.");
+    }
+
+    void testSleepingStackStaysAsleep()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *floor = createStaticBox(gameManager, "Sleep Stack Floor", 320.0f, 340.0f, 420.0f, 40.0f);
+        GameObject *bottomBox = createDynamicBox(gameManager, "Sleep Stack Bottom", 320.0f, 180.0f, 40.0f, 40.0f);
+        GameObject *middleBox = createDynamicBox(gameManager, "Sleep Stack Middle", 320.0f, 120.0f, 40.0f, 40.0f);
+        GameObject *topBox = createDynamicBox(gameManager, "Sleep Stack Top", 320.0f, 60.0f, 40.0f, 40.0f);
+        sceneScope.add(floor);
+        sceneScope.add(bottomBox);
+        sceneScope.add(middleBox);
+        sceneScope.add(topBox);
+
+        simulateFrames(gameManager, 720);
+
+        Rigidbody *bottomBody = bottomBox->getComponent<Rigidbody>();
+        Rigidbody *middleBody = middleBox->getComponent<Rigidbody>();
+        Rigidbody *topBody = topBox->getComponent<Rigidbody>();
+        require(bottomBody != nullptr && middleBody != nullptr && topBody != nullptr,
+                "Sleeping stack regression lost one of the rigidbodies.");
+
+        require(bottomBody->getIsSleeping() && middleBody->getIsSleeping() && topBody->getIsSleeping(),
+                "Sleeping stack regression expected the settled stack to fall asleep.");
+
+        const float bottomYBefore = bottomBox->getPosition().y();
+        const float middleYBefore = middleBox->getPosition().y();
+        const float topYBefore = topBox->getPosition().y();
+
+        simulateFrames(gameManager, 240);
+
+        require(bottomBody->getIsSleeping() && middleBody->getIsSleeping() && topBody->getIsSleeping(),
+                "Sleeping stack regression expected the settled stack to remain asleep.");
+        require(std::abs(bottomBox->getPosition().y() - bottomYBefore) <= 1.0f &&
+                    std::abs(middleBox->getPosition().y() - middleYBefore) <= 1.0f &&
+                    std::abs(topBox->getPosition().y() - topYBefore) <= 1.0f,
+                "Sleeping stack regression expected the resting stack to remain stable after sleeping.");
+    }
+
+    void testSleepingTallStackStaysAsleep()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *floor = createStaticBox(gameManager, "Tall Sleep Stack Floor", 320.0f, 340.0f, 420.0f, 40.0f);
+        sceneScope.add(floor);
+
+        std::vector<GameObject *> boxes = createDynamicBoxColumn(gameManager, sceneScope, "Tall Sleep Stack Box", 320.0f, 180.0f, 6);
+
+        simulateFrames(gameManager, 960);
+
+        requireAllSleeping(boxes, "Tall sleeping stack regression expected every box in the settled stack to be asleep.");
+
+        const std::vector<Eigen::Vector2f> positionsBefore = capturePositions(boxes);
+
+        simulateFrames(gameManager, 480);
+
+        requireAllSleeping(boxes, "Tall sleeping stack regression expected the settled stack to stay asleep over a long idle period.");
+        requirePositionsStable(boxes, positionsBefore, 1.0f,
+                               "Tall sleeping stack regression expected the resting stack to stay positionally stable over a long idle period.");
+    }
+
+    void testSleepingWidePileStaysAsleep()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *floor = createStaticBox(gameManager, "Wide Sleep Pile Floor", 320.0f, 340.0f, 520.0f, 40.0f);
+        sceneScope.add(floor);
+
+        std::vector<GameObject *> leftColumn = createDynamicBoxColumn(gameManager, sceneScope, "Wide Sleep Pile Left", 300.0f, 180.0f, 3);
+        std::vector<GameObject *> rightColumn = createDynamicBoxColumn(gameManager, sceneScope, "Wide Sleep Pile Right", 340.0f, 180.0f, 3);
+
+        std::vector<GameObject *> boxes;
+        boxes.reserve(leftColumn.size() + rightColumn.size());
+        boxes.insert(boxes.end(), leftColumn.begin(), leftColumn.end());
+        boxes.insert(boxes.end(), rightColumn.begin(), rightColumn.end());
+
+        simulateFrames(gameManager, 960);
+
+        requireAllSleeping(boxes, "Wide sleeping pile regression expected the settled pile to fall asleep.");
+
+        const std::vector<Eigen::Vector2f> positionsBefore = capturePositions(boxes);
+
+        simulateFrames(gameManager, 360);
+
+        requireAllSleeping(boxes, "Wide sleeping pile regression expected the settled pile to remain asleep.");
+        requirePositionsStable(boxes, positionsBefore, 1.0f,
+                               "Wide sleeping pile regression expected the resting pile to remain stable after sleeping.");
+    }
+
+    void testSleepingBodyWakesAfterSupportRemoved()
+    {
+        Runtime &gameManager = Runtime::current();
+
+        SceneScope sceneScope(gameManager);
+        GameObject *floor = createStaticBox(gameManager, "Support Removal Floor", 320.0f, 340.0f, 420.0f, 40.0f);
+        GameObject *box = createDynamicBox(gameManager, "Support Removal Box", 320.0f, 180.0f, 40.0f, 40.0f);
+        sceneScope.add(floor);
+        sceneScope.add(box);
+
+        simulateFrames(gameManager, 720);
+
+        Rigidbody *rigidbody = box->getComponent<Rigidbody>();
+        require(rigidbody != nullptr, "Support removal sleeping regression lost the box rigidbody.");
+        require(rigidbody->getIsSleeping(), "Support removal sleeping regression expected the body to be asleep before removing support.");
+        require(rigidbody->hasSupportContact(), "Support removal sleeping regression expected the body to have support before removing the floor.");
+
+        gameManager.destroyGameObject(floor);
+        sceneScope.forget(floor);
+        simulateFrames(gameManager, static_cast<int>(std::ceil(SUPPORT_LOSS_WAKE_DELAY / kTimeStep)) + 2);
+
+        require(!rigidbody->getIsSleeping(), "Support removal sleeping regression expected the body to wake once support was gone long enough.");
+
+        const float yBeforeFall = box->getPosition().y();
+        simulateFrames(gameManager, 60);
+
+        require(box->getPosition().y() > yBeforeFall + 5.0f,
+                "Support removal sleeping regression expected the body to start falling after waking.");
     }
 
     void testBroadPhasePairTracking()
@@ -1697,6 +1888,10 @@ int main()
         {"warm_start_feature_reuse", testWarmStartFeatureReuse},
         {"clip_segment_feature_propagation", testClipSegmentFeaturePropagation},
         {"sleeping_on_support", testSleepingOnSupport},
+        {"sleeping_stack_stays_asleep", testSleepingStackStaysAsleep},
+        {"sleeping_tall_stack_stays_asleep", testSleepingTallStackStaysAsleep},
+        {"sleeping_wide_pile_stays_asleep", testSleepingWidePileStaysAsleep},
+        {"sleeping_body_wakes_after_support_removed", testSleepingBodyWakesAfterSupportRemoved},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
         {"parallel_broad_and_narrow_phase_stress", testParallelBroadAndNarrowPhaseStress},

@@ -27,8 +27,8 @@ namespace
         float boxHeight = 28.0f;
         float circleRadius = 14.0f;
         float wallThickness = 64.0f;
-        float spawnMargin = 80.0f;
-        float cellPadding = 8.0f;
+        float spawnMargin = 10.0f;
+        float cellPadding = 10.0f;
         float minimumInteriorWidth = 1600.0f;
         float minimumInteriorHeight = 900.0f;
         float cameraMargin = 160.0f;
@@ -135,15 +135,20 @@ namespace
         const bool isTrigger,
         const float friction = 0.0f,
         const float restitution = 0.0f,
-        const float angularVelocity = 0.0f)
+        const float angularVelocity = 0.0f,
+        const bool attachSprite = false)
     {
         GameObject *object = runtime
                                  .createGameObject()
                                  ->setName(name)
                                  ->addComponent<Rigidbody>(bodyType, gravity)
                                  ->addComponent<BoxCollider>(width, height)
-                                 ->addComponent<Sprite>("assets/textures/black_square.png", width, height)
                                  ->setPosition(Eigen::Vector2f(x, y));
+
+        if (attachSprite)
+        {
+            object->addComponent<Sprite>("assets/textures/black_square.png", width, height);
+        }
 
         object->getComponent<Rigidbody>()
             ->setVelocity(velocity)
@@ -167,15 +172,20 @@ namespace
         const bool isTrigger,
         const float friction = 0.0f,
         const float restitution = 0.0f,
-        const float angularVelocity = 0.0f)
+        const float angularVelocity = 0.0f,
+        const bool attachSprite = false)
     {
         GameObject *object = runtime
                                  .createGameObject()
                                  ->setName(name)
                                  ->addComponent<Rigidbody>(bodyType, gravity)
                                  ->addComponent<CircleCollider>(radius)
-                                 ->addComponent<Sprite>("assets/textures/red_circle.png", radius * 2.0f, radius * 2.0f)
                                  ->setPosition(Eigen::Vector2f(x, y));
+
+        if (attachSprite)
+        {
+            object->addComponent<Sprite>("assets/textures/red_circle.png", radius * 2.0f, radius * 2.0f);
+        }
 
         object->getComponent<Rigidbody>()
             ->setVelocity(velocity)
@@ -247,7 +257,8 @@ namespace
     void createRigidBodyContainerWalls(
         platformator::Runtime &runtime,
         const RigidBodyContainerScenarioSettings &settings,
-        const RigidBodyContainerLayout &layout)
+        const RigidBodyContainerLayout &layout,
+        const bool attachSprites)
     {
         const float halfWidth = layout.interiorWidth * 0.5f;
         const float halfHeight = layout.interiorHeight * 0.5f;
@@ -267,7 +278,9 @@ namespace
             Eigen::Vector2f::Zero(),
             false,
             settings.friction,
-            settings.restitution);
+            settings.restitution,
+            0.0f,
+            attachSprites);
 
         createBenchmarkBox(
             runtime,
@@ -281,7 +294,9 @@ namespace
             Eigen::Vector2f::Zero(),
             false,
             settings.friction,
-            settings.restitution);
+            settings.restitution,
+            0.0f,
+            attachSprites);
 
         createBenchmarkBox(
             runtime,
@@ -295,7 +310,9 @@ namespace
             Eigen::Vector2f::Zero(),
             false,
             settings.friction,
-            settings.restitution);
+            settings.restitution,
+            0.0f,
+            attachSprites);
 
         createBenchmarkBox(
             runtime,
@@ -309,7 +326,9 @@ namespace
             Eigen::Vector2f::Zero(),
             false,
             settings.friction,
-            settings.restitution);
+            settings.restitution,
+            0.0f,
+            attachSprites);
     }
 
     void printRigidBodyContainerScenarioDetails(
@@ -325,7 +344,7 @@ namespace
             layout.interiorHeight);
     }
 
-    void buildBroadPhaseScenario(platformator::Runtime &runtime)
+    void buildBroadPhaseScenario(platformator::Runtime &runtime, const bool attachSprites)
     {
         constexpr size_t laneCount = 128;
         constexpr float laneStartY = -1240.0f;
@@ -348,11 +367,15 @@ namespace
                 KINEMATIC,
                 false,
                 Eigen::Vector2f(velocityXPattern[patternIndex], 0.0f),
-                false);
+                false,
+                0.0f,
+                0.0f,
+                0.0f,
+                attachSprites);
         }
     }
 
-    void buildNarrowPhaseScenario(platformator::Runtime &runtime)
+    void buildNarrowPhaseScenario(platformator::Runtime &runtime, const bool attachSprites)
     {
         constexpr std::array<float, 6> columnPositions = {-125.0f, -75.0f, -25.0f, 25.0f, 75.0f, 125.0f};
         constexpr std::array<float, 6> rowPositions = {-125.0f, -75.0f, -25.0f, 25.0f, 75.0f, 125.0f};
@@ -371,7 +394,11 @@ namespace
                 STATIC,
                 false,
                 Eigen::Vector2f::Zero(),
-                true);
+                true,
+                0.0f,
+                0.0f,
+                0.0f,
+                attachSprites);
         }
 
         for (size_t index = 0; index < rowPositions.size(); ++index)
@@ -386,7 +413,11 @@ namespace
                 STATIC,
                 false,
                 Eigen::Vector2f::Zero(),
-                true);
+                true,
+                0.0f,
+                0.0f,
+                0.0f,
+                attachSprites);
         }
 
         for (size_t index = 0; index < bandPositions.size(); ++index)
@@ -401,7 +432,11 @@ namespace
                 KINEMATIC,
                 false,
                 Eigen::Vector2f(0.0f, bandSpeeds[index]),
-                true);
+                true,
+                0.0f,
+                0.0f,
+                0.0f,
+                attachSprites);
         }
 
         for (size_t index = 0; index < bandPositions.size(); ++index)
@@ -416,7 +451,11 @@ namespace
                 KINEMATIC,
                 false,
                 Eigen::Vector2f(bandSpeeds[index], 0.0f),
-                true);
+                true,
+                0.0f,
+                0.0f,
+                0.0f,
+                attachSprites);
         }
     }
 
@@ -424,8 +463,9 @@ namespace
     {
         const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
         const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
+        const bool attachSprites = options.renderFrames;
 
-        createRigidBodyContainerWalls(runtime, settings, layout);
+        createRigidBodyContainerWalls(runtime, settings, layout, attachSprites);
         printRigidBodyContainerScenarioDetails(settings, layout);
 
         int spawnedBoxCount = 0;
@@ -456,7 +496,8 @@ namespace
                     false,
                     settings.friction,
                     settings.restitution,
-                    angularVelocity);
+                    angularVelocity,
+                    attachSprites);
                 spawnedBoxCount++;
             }
             else
@@ -473,7 +514,8 @@ namespace
                     false,
                     settings.friction,
                     settings.restitution,
-                    angularVelocity);
+                    angularVelocity,
+                    attachSprites);
                 spawnedCircleCount++;
             }
 
@@ -486,10 +528,10 @@ namespace
         switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
-            buildBroadPhaseScenario(runtime);
+            buildBroadPhaseScenario(runtime, options.renderFrames);
             return;
         case BenchmarkScenario::NarrowPhase:
-            buildNarrowPhaseScenario(runtime);
+            buildNarrowPhaseScenario(runtime, options.renderFrames);
             return;
         case BenchmarkScenario::RigidBodyContainer:
             buildRigidBodyContainerScenario(runtime, options);

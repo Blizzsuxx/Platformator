@@ -79,6 +79,10 @@
         "./bin/benchmark-debug/platformator_benchmark_runner": true,
         "godot": true,
         "timeout": true,
-        "./build/platformator_regression_tests": true
+        "./build/platformator_regression_tests": true,
+        "stdbuf": true,
+        "./bin/benchmark-release": true,
+        "./bin/benchmark/platformator_benchmark_runner": true,
+        "./bin/benchmark-debug/benchmark_runner": true
     }
 }

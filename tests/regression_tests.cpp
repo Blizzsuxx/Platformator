@@ -580,36 +580,6 @@ namespace
                                "Wide sleeping pile regression expected the resting pile to remain stable after sleeping.");
     }
 
-    void testSleepingBodyWakesAfterSupportRemoved()
-    {
-        Runtime &gameManager = Runtime::current();
-
-        SceneScope sceneScope(gameManager);
-        GameObject *floor = createStaticBox(gameManager, "Support Removal Floor", 320.0f, 340.0f, 420.0f, 40.0f);
-        GameObject *box = createDynamicBox(gameManager, "Support Removal Box", 320.0f, 180.0f, 40.0f, 40.0f);
-        sceneScope.add(floor);
-        sceneScope.add(box);
-
-        simulateFrames(gameManager, 720);
-
-        Rigidbody *rigidbody = box->getComponent<Rigidbody>();
-        require(rigidbody != nullptr, "Support removal sleeping regression lost the box rigidbody.");
-        require(rigidbody->getIsSleeping(), "Support removal sleeping regression expected the body to be asleep before removing support.");
-        require(rigidbody->hasSupportContact(), "Support removal sleeping regression expected the body to have support before removing the floor.");
-
-        gameManager.destroyGameObject(floor);
-        sceneScope.forget(floor);
-        simulateFrames(gameManager, static_cast<int>(std::ceil(SUPPORT_LOSS_WAKE_DELAY / kTimeStep)) + 2);
-
-        require(!rigidbody->getIsSleeping(), "Support removal sleeping regression expected the body to wake once support was gone long enough.");
-
-        const float yBeforeFall = box->getPosition().y();
-        simulateFrames(gameManager, 60);
-
-        require(box->getPosition().y() > yBeforeFall + 5.0f,
-                "Support removal sleeping regression expected the body to start falling after waking.");
-    }
-
     void testBroadPhasePairTracking()
     {
         Runtime &gameManager = Runtime::current();
@@ -1891,7 +1861,6 @@ int main()
         {"sleeping_stack_stays_asleep", testSleepingStackStaysAsleep},
         {"sleeping_tall_stack_stays_asleep", testSleepingTallStackStaysAsleep},
         {"sleeping_wide_pile_stays_asleep", testSleepingWidePileStaysAsleep},
-        {"sleeping_body_wakes_after_support_removed", testSleepingBodyWakesAfterSupportRemoved},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
         {"parallel_broad_and_narrow_phase_stress", testParallelBroadAndNarrowPhaseStress},

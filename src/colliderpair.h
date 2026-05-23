@@ -14,7 +14,6 @@ public:
 
     Collision *getCollision() const;
     Collision *getOrCreateCollisionNoEvent() const;
-    Collision *getOrCreateCollision() const;
 
     void updateCachedCollisionVersions() const;
     bool shouldUpdate() const;

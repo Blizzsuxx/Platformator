@@ -68,7 +68,7 @@
                 "torque": 0.0,
                 "friction": 1.0,
                 "restitution": 0.0,
-                "bodyType": 0,
+                "bodyType": 2,
                 "type": 4,
                 "gravity": true
             },
@@ -318,6 +318,66 @@
                 "flip": 0,
                 "width": 50.0,
                 "height": 480.0,
+                "sourceRectEnabled": false,
+                "type": 6
+            }
+        ]
+    },
+    {
+        "id": 106,
+        "rotation": 0.0,
+        "active": true,
+        "position": {
+            "x": 450.0,
+            "y": 300.0
+        },
+        "scale": {
+            "x": 1.0,
+            "y": 1.0
+        },
+        "name": "Dynamic Box",
+        "tag": "",
+        "children": [],
+        "components": [
+            {
+                "id": 1016,
+                "collisionGroup": 1,
+                "type": 3,
+                "colliderType": 1,
+                "collisionMask": 1,
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "trigger": false,
+                "width": 40.0,
+                "height": 40.0
+            },
+            {
+                "id": 1017,
+                "velocity": {
+                    "x": -150.0,
+                    "y": -50.0
+                },
+                "force": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "mass": 5.0,
+                "angularVelocity": 2.0,
+                "torque": 0.0,
+                "friction": 0.5,
+                "restitution": 0.6,
+                "bodyType": 0,
+                "type": 4,
+                "gravity": true
+            },
+            {
+                "id": 1018,
+                "textureFilePath": "assets/wall.png",
+                "flip": 0,
+                "width": 40.0,
+                "height": 40.0,
                 "sourceRectEnabled": false,
                 "type": 6
             }

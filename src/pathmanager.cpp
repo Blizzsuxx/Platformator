@@ -14,11 +14,17 @@ namespace
 {
     bool isValidAssetsDirectory(const std::filesystem::path &assetsDirectory)
     {
-        static const std::filesystem::path requiredAssetPaths[] = {
-            std::filesystem::path("textures") / "missing.png",
-            std::filesystem::path("audio") / "missing.wav",
-            std::filesystem::path("animations") / "missing.animset",
-            std::filesystem::path("models") / "default_cube.obj",
+        // Treat a directory as a valid runtime assets root if it has the core
+        // content folders and the default scene entrypoint.
+        static const std::filesystem::path requiredAssetDirectories[] = {
+            std::filesystem::path("textures"),
+            std::filesystem::path("audio"),
+            std::filesystem::path("animations"),
+            std::filesystem::path("scenes"),
+        };
+
+        static const std::filesystem::path requiredAssetFiles[] = {
+            std::filesystem::path("scenes") / "default.scene",
         };
 
         if (!std::filesystem::is_directory(assetsDirectory))
@@ -26,9 +32,17 @@ namespace
             return false;
         }
 
-        for (const std::filesystem::path &requiredAssetPath : requiredAssetPaths)
+        for (const std::filesystem::path &requiredAssetDirectory : requiredAssetDirectories)
         {
-            if (!std::filesystem::is_regular_file(assetsDirectory / requiredAssetPath))
+            if (!std::filesystem::is_directory(assetsDirectory / requiredAssetDirectory))
+            {
+                return false;
+            }
+        }
+
+        for (const std::filesystem::path &requiredAssetFile : requiredAssetFiles)
+        {
+            if (!std::filesystem::is_regular_file(assetsDirectory / requiredAssetFile))
             {
                 return false;
             }

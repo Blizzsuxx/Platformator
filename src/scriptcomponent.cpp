@@ -114,7 +114,6 @@ void ScriptComponent::dispatchCollisionExit(Collider *other, double timeDelta)
     for (size_t index = 0; index < behaviorCount; ++index)
     {
         Behavior *behavior = behaviors[index];
-
         behavior->onCollisionExit(other, timeDelta);
     }
 }

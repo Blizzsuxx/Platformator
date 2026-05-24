@@ -103,19 +103,12 @@ void ColliderPair::setAdjacencyIndexB(size_t index) const
 
 void ColliderPair::queueCollisionExit() const
 {
-    Collider *objectAOrMaybeNull = nullptr;
-    Collider *objectBOrMaybeNull = nullptr;
-
-    if (objectA != nullptr && !objectA->getGameObject()->getIsMarkedForDeletion())
+    if (objectA == nullptr || objectA->getGameObject()->getIsMarkedForDeletion() || objectB == nullptr || objectB->getGameObject()->getIsMarkedForDeletion())
     {
-        objectAOrMaybeNull = objectA;
-    }
-    if (objectB != nullptr && !objectB->getGameObject()->getIsMarkedForDeletion())
-    {
-        objectBOrMaybeNull = objectB;
+        return;
     }
 
-    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectAOrMaybeNull, objectBOrMaybeNull});
+    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)

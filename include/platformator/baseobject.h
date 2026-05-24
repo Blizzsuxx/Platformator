@@ -1,19 +1,18 @@
 #pragma once
 
-#include <limits>
-#include <random>
-#include <string>
-#include <utility>
+#include <atomic>
+#include <algorithm>
 
 class BaseObject
 {
 protected:
-    BaseObject() : id(generateId())
+    BaseObject() : id(next_id++)
     {
     }
 
-    BaseObject(int id) : id(id)
+    BaseObject(int loaded_id) : id(loaded_id)
     {
+        updateCounter(loaded_id);
     }
 
 public:
@@ -25,17 +24,27 @@ public:
     void setId(int value)
     {
         id = value;
+        updateCounter(value); // Also protect manually changed IDs
     }
 
 protected:
     int id;
 
 private:
-    static int generateId()
+    static inline std::atomic<int> next_id{1}; 
+
+    static void updateCounter(int loaded_id)
     {
-        thread_local std::mt19937_64 generator(std::random_device{}());
-        std::uniform_int_distribution<int> distribution(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
-        return distribution(generator);
+        int current = next_id.load();
+        
+        // Loop ensures safety if multiple threads load data simultaneously
+        while (loaded_id >= current)
+        {
+            if (next_id.compare_exchange_weak(current, loaded_id + 1))
+            {
+                break; // Successfully updated!
+            }
+        }
     }
 };
 

@@ -274,10 +274,9 @@ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair, std::vecto
 
     if (!pair->shouldUpdate())
     {
-        localEvents.emplace_back(makePhysicsEvent(PhysicsEvent::COLLISION_STAY, pair, existingCollision));
-
         if (existingCollision != nullptr)
         {
+            localEvents.emplace_back(makePhysicsEvent(PhysicsEvent::COLLISION_STAY, pair, existingCollision));
             localCollisions.push_back(existingCollision);
         }
 

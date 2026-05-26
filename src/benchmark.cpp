@@ -3,6 +3,8 @@
 #if PLATFORMATOR_ENABLE_BENCHMARKS
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <cmath>
 
 namespace
@@ -81,7 +83,7 @@ namespace platformator_detail
     }
 
     BenchmarkRecorder::BenchmarkRecorder()
-        : frameActive(false), frameStartTime(), currentFrame(), frames()
+        : frameActive(false), frameStartTime(), currentFrame(), frames(), csvOutputPath()
     {
     }
 
@@ -142,6 +144,16 @@ namespace platformator_detail
         currentFrame.counters[static_cast<size_t>(counterId)] += delta;
     }
 
+    void BenchmarkRecorder::setCsvOutputPath(const std::string &path)
+    {
+        csvOutputPath = path;
+    }
+
+    void BenchmarkRecorder::clearCsvOutputPath()
+    {
+        csvOutputPath.clear();
+    }
+
     void BenchmarkRecorder::printSummary(FILE *output) const
     {
         if (frames.empty())
@@ -168,15 +180,21 @@ namespace platformator_detail
 
             const uint64_t medianSample = samples[samples.size() / 2];
             const uint64_t p95Sample = samples[percentileIndex(samples.size(), 0.95)];
+            const uint64_t p99Sample = samples[percentileIndex(samples.size(), 0.99)];
+            const uint64_t minimumSample = samples.front();
+            const uint64_t maximumSample = samples.back();
             const double averageMilliseconds = static_cast<double>(totalNanoseconds / static_cast<long double>(frames.size())) / 1000000.0;
 
             std::fprintf(
                 output,
-                "[Benchmark][Scope] %s avg_ms=%.3f median_ms=%.3f p95_ms=%.3f\n",
+                "[Benchmark][Scope] %s avg_ms=%.6f median_ms=%.6f p95_ms=%.6f p99_ms=%.6f min_ms=%.6f max_ms=%.6f\n",
                 scopeName(static_cast<BenchmarkScopeId>(scopeIndex)),
                 averageMilliseconds,
                 nanosecondsToMilliseconds(medianSample),
-                nanosecondsToMilliseconds(p95Sample));
+                nanosecondsToMilliseconds(p95Sample),
+                nanosecondsToMilliseconds(p99Sample),
+                nanosecondsToMilliseconds(minimumSample),
+                nanosecondsToMilliseconds(maximumSample));
         }
 
         for (size_t counterIndex = 0; counterIndex < BENCHMARK_COUNTER_COUNT; ++counterIndex)
@@ -202,6 +220,85 @@ namespace platformator_detail
                 averageValue,
                 static_cast<long long>(minimumValue),
                 static_cast<long long>(maximumValue));
+        }
+
+        if (!csvOutputPath.empty())
+        {
+            FILE *csvFile = std::fopen(csvOutputPath.c_str(), "w");
+            if (csvFile == nullptr)
+            {
+                std::fprintf(
+                    stderr,
+                    "[Benchmark][Warning] Failed to open CSV output '%s': %s\n",
+                    csvOutputPath.c_str(),
+                    std::strerror(errno));
+                return;
+            }
+
+            std::fprintf(csvFile, "category,name,avg,median,p95,p99,min,max,unit\n");
+            std::fprintf(csvFile, "meta,frame_count,%zu,,,,,,frames\n", frames.size());
+
+            for (size_t scopeIndex = 0; scopeIndex < BENCHMARK_SCOPE_COUNT; ++scopeIndex)
+            {
+                std::vector<uint64_t> samples;
+                samples.reserve(frames.size());
+
+                long double totalNanoseconds = 0.0;
+                for (const BenchmarkFrameStats &frame : frames)
+                {
+                    const uint64_t sample = frame.scopeDurationsNanoseconds[scopeIndex];
+                    samples.push_back(sample);
+                    totalNanoseconds += static_cast<long double>(sample);
+                }
+
+                std::sort(samples.begin(), samples.end());
+
+                const uint64_t medianSample = samples[samples.size() / 2];
+                const uint64_t p95Sample = samples[percentileIndex(samples.size(), 0.95)];
+                const uint64_t p99Sample = samples[percentileIndex(samples.size(), 0.99)];
+                const uint64_t minimumSample = samples.front();
+                const uint64_t maximumSample = samples.back();
+                const double averageMilliseconds = static_cast<double>(totalNanoseconds / static_cast<long double>(frames.size())) / 1000000.0;
+
+                std::fprintf(
+                    csvFile,
+                    "scope,%s,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,ms\n",
+                    scopeName(static_cast<BenchmarkScopeId>(scopeIndex)),
+                    averageMilliseconds,
+                    nanosecondsToMilliseconds(medianSample),
+                    nanosecondsToMilliseconds(p95Sample),
+                    nanosecondsToMilliseconds(p99Sample),
+                    nanosecondsToMilliseconds(minimumSample),
+                    nanosecondsToMilliseconds(maximumSample));
+            }
+
+            for (size_t counterIndex = 0; counterIndex < BENCHMARK_COUNTER_COUNT; ++counterIndex)
+            {
+                int64_t minimumValue = frames.front().counters[counterIndex];
+                int64_t maximumValue = minimumValue;
+                long double totalValue = 0.0;
+
+                for (const BenchmarkFrameStats &frame : frames)
+                {
+                    const int64_t sample = frame.counters[counterIndex];
+                    minimumValue = std::min(minimumValue, sample);
+                    maximumValue = std::max(maximumValue, sample);
+                    totalValue += static_cast<long double>(sample);
+                }
+
+                const double averageValue = static_cast<double>(totalValue / static_cast<long double>(frames.size()));
+
+                std::fprintf(
+                    csvFile,
+                    "counter,%s,%.9f,,,,%lld,%lld,count\n",
+                    counterName(static_cast<BenchmarkCounterId>(counterIndex)),
+                    averageValue,
+                    static_cast<long long>(minimumValue),
+                    static_cast<long long>(maximumValue));
+            }
+
+            std::fclose(csvFile);
+            std::fprintf(output, "[Benchmark] csv_output=%s\n", csvOutputPath.c_str());
         }
     }
 

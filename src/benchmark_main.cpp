@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "benchmark.h"
 #include "constants.h"
@@ -18,6 +19,8 @@ namespace
     constexpr const char *DEFAULT_SCENE_PATH = "assets/scenes/default.scene";
     constexpr int DEFAULT_CONTAINER_BOX_COUNT = 400;
     constexpr int DEFAULT_CONTAINER_CIRCLE_COUNT = 400;
+    constexpr int DEFAULT_BROAD_PHASE_ELEMENT_COUNT = 128;
+    constexpr int DEFAULT_NARROW_PHASE_ELEMENT_COUNT = 8;
 
     struct RigidBodyContainerScenarioSettings
     {
@@ -75,7 +78,10 @@ namespace
         double timeDelta = FRAME_TIME;
         int boxCount = DEFAULT_CONTAINER_BOX_COUNT;
         int circleCount = DEFAULT_CONTAINER_CIRCLE_COUNT;
+        int broadPhaseElementCount = DEFAULT_BROAD_PHASE_ELEMENT_COUNT;
+        int narrowPhaseElementCount = DEFAULT_NARROW_PHASE_ELEMENT_COUNT;
         bool renderFrames = false;
+        std::string csvOutputPath;
     };
 
     BenchmarkScenario parseScenario(const std::string &value)
@@ -344,22 +350,24 @@ namespace
             layout.interiorHeight);
     }
 
-    void buildBroadPhaseScenario(platformator::Runtime &runtime, const bool attachSprites)
+    void buildBroadPhaseScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
     {
-        constexpr size_t laneCount = 128;
-        constexpr float laneStartY = -1240.0f;
+        const int laneCount = std::max(1, options.broadPhaseElementCount);
         constexpr float laneStepY = 80.0f;
         constexpr float laneWidth = 48.0f;
         constexpr float laneHeight = 48.0f;
         constexpr std::array<float, 16> startXPattern = {-1400.0f, 1470.0f, -1540.0f, 1610.0f, -1680.0f, 1750.0f, -1820.0f, 1890.0f, -1960.0f, 2030.0f, -2100.0f, 2170.0f, -2240.0f, 2310.0f, -2380.0f, 2450.0f};
         constexpr std::array<float, 16> velocityXPattern = {420.0f, -500.0f, 580.0f, -660.0f, 740.0f, -820.0f, 900.0f, -980.0f, 1060.0f, -1140.0f, 1220.0f, -1300.0f, 1380.0f, -1460.0f, 1540.0f, -1620.0f};
+        const float laneStartY = -0.5f * static_cast<float>(laneCount - 1) * laneStepY;
 
-        for (size_t laneIndex = 0; laneIndex < laneCount; ++laneIndex)
+        std::fprintf(stdout, "[Benchmark][Scenario] lane_count=%d\n", laneCount);
+
+        for (int laneIndex = 0; laneIndex < laneCount; ++laneIndex)
         {
-            const size_t patternIndex = laneIndex % startXPattern.size();
+            const size_t patternIndex = static_cast<size_t>(laneIndex) % startXPattern.size();
             createBenchmarkBox(
                 runtime,
-                formatIndexedName("Lane Mover", laneIndex),
+                formatIndexedName("Lane Mover", static_cast<size_t>(laneIndex)),
                 startXPattern[patternIndex],
                 laneStartY + static_cast<float>(laneIndex) * laneStepY,
                 laneWidth,
@@ -371,16 +379,40 @@ namespace
                 0.0f,
                 0.0f,
                 0.0f,
-                attachSprites);
+                options.renderFrames);
         }
     }
 
-    void buildNarrowPhaseScenario(platformator::Runtime &runtime, const bool attachSprites)
+    std::vector<float> generateEvenlySpacedAxisPositions(const int count, const float extent)
     {
-        constexpr std::array<float, 6> columnPositions = {-125.0f, -75.0f, -25.0f, 25.0f, 75.0f, 125.0f};
-        constexpr std::array<float, 6> rowPositions = {-125.0f, -75.0f, -25.0f, 25.0f, 75.0f, 125.0f};
-        constexpr std::array<float, 8> bandPositions = {-140.0f, -100.0f, -60.0f, -20.0f, 20.0f, 60.0f, 100.0f, 140.0f};
-        constexpr std::array<float, 8> bandSpeeds = {20.0f, -20.0f, 24.0f, -24.0f, 20.0f, -20.0f, 24.0f, -24.0f};
+        std::vector<float> positions;
+        positions.reserve(static_cast<size_t>(count));
+
+        if (count <= 1)
+        {
+            positions.push_back(0.0f);
+            return positions;
+        }
+
+        const float step = (2.0f * extent) / static_cast<float>(count - 1);
+        const float start = -extent;
+        for (int index = 0; index < count; ++index)
+        {
+            positions.push_back(start + static_cast<float>(index) * step);
+        }
+
+        return positions;
+    }
+
+    void buildNarrowPhaseScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+    {
+        const int elementCount = std::max(1, options.narrowPhaseElementCount);
+        const std::vector<float> columnPositions = generateEvenlySpacedAxisPositions(elementCount, 125.0f);
+        const std::vector<float> rowPositions = generateEvenlySpacedAxisPositions(elementCount, 125.0f);
+        const std::vector<float> bandPositions = generateEvenlySpacedAxisPositions(elementCount, 140.0f);
+        constexpr std::array<float, 8> bandSpeedPattern = {20.0f, -20.0f, 24.0f, -24.0f, 20.0f, -20.0f, 24.0f, -24.0f};
+
+        std::fprintf(stdout, "[Benchmark][Scenario] narrow_element_count=%d\n", elementCount);
 
         for (size_t index = 0; index < columnPositions.size(); ++index)
         {
@@ -398,7 +430,7 @@ namespace
                 0.0f,
                 0.0f,
                 0.0f,
-                attachSprites);
+                options.renderFrames);
         }
 
         for (size_t index = 0; index < rowPositions.size(); ++index)
@@ -417,7 +449,7 @@ namespace
                 0.0f,
                 0.0f,
                 0.0f,
-                attachSprites);
+                options.renderFrames);
         }
 
         for (size_t index = 0; index < bandPositions.size(); ++index)
@@ -431,12 +463,12 @@ namespace
                 18.0f,
                 KINEMATIC,
                 false,
-                Eigen::Vector2f(0.0f, bandSpeeds[index]),
+                Eigen::Vector2f(0.0f, bandSpeedPattern[index % bandSpeedPattern.size()]),
                 true,
                 0.0f,
                 0.0f,
                 0.0f,
-                attachSprites);
+                options.renderFrames);
         }
 
         for (size_t index = 0; index < bandPositions.size(); ++index)
@@ -450,12 +482,12 @@ namespace
                 360.0f,
                 KINEMATIC,
                 false,
-                Eigen::Vector2f(bandSpeeds[index], 0.0f),
+                Eigen::Vector2f(bandSpeedPattern[index % bandSpeedPattern.size()], 0.0f),
                 true,
                 0.0f,
                 0.0f,
                 0.0f,
-                attachSprites);
+                options.renderFrames);
         }
     }
 
@@ -528,10 +560,10 @@ namespace
         switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
-            buildBroadPhaseScenario(runtime, options.renderFrames);
+            buildBroadPhaseScenario(runtime, options);
             return;
         case BenchmarkScenario::NarrowPhase:
-            buildNarrowPhaseScenario(runtime, options.renderFrames);
+            buildNarrowPhaseScenario(runtime, options);
             return;
         case BenchmarkScenario::RigidBodyContainer:
             buildRigidBodyContainerScenario(runtime, options);
@@ -583,15 +615,23 @@ namespace
         switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
+        {
+            const float laneStepY = 80.0f;
+            const float laneCount = static_cast<float>(std::max(1, options.broadPhaseElementCount));
+            const float cameraHeight = std::max(600.0f, laneCount * laneStepY + 320.0f);
             mainCamera->setCamera(fitCameraRectToWindowAspect(
-                SDL_FRect{-2500.0f, -1360.0f, 5200.0f, 10400.0f},
+                SDL_FRect{-2600.0f, -0.5f * cameraHeight, 5200.0f, cameraHeight},
                 options.runtimeOptions.windowSettings));
             return;
+        }
         case BenchmarkScenario::NarrowPhase:
+        {
+            const float span = std::max(200.0f, 50.0f * static_cast<float>(std::max(1, options.narrowPhaseElementCount)));
             mainCamera->setCamera(fitCameraRectToWindowAspect(
-                SDL_FRect{-200.0f, -200.0f, 400.0f, 400.0f},
+                SDL_FRect{-span, -span, 2.0f * span, 2.0f * span},
                 options.runtimeOptions.windowSettings));
             return;
+        }
         case BenchmarkScenario::RigidBodyContainer:
         {
             const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
@@ -714,6 +754,24 @@ namespace
                 continue;
             }
 
+            if (argument == "--broad-count")
+            {
+                options.broadPhaseElementCount = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--narrow-count")
+            {
+                options.narrowPhaseElementCount = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--csv-output" || argument == "--csv")
+            {
+                options.csvOutputPath = requireArgumentValue(argc, args, index, argument);
+                continue;
+            }
+
             if (argument == "--render")
             {
                 options.renderFrames = true;
@@ -749,10 +807,33 @@ namespace
 
     void runBenchmark(const BenchmarkRunnerOptions &options)
     {
+        if (options.csvOutputPath.empty())
+        {
+            PLATFORMATOR_BENCH_CLEAR_CSV_OUTPUT_PATH();
+        }
+        else
+        {
+            PLATFORMATOR_BENCH_SET_CSV_OUTPUT_PATH(options.csvOutputPath);
+        }
+
         platformator::Runtime runtime(options.runtimeOptions);
+
+        std::fprintf(
+            stdout,
+            "[Benchmark] render=%s warmup_frames=%d measure_frames=%d dt=%.6f\n",
+            options.renderFrames ? "true" : "false",
+            options.warmupFrameCount,
+            options.measureFrameCount,
+            options.timeDelta);
+
+        if (!options.csvOutputPath.empty())
+        {
+            std::fprintf(stdout, "[Benchmark] csv_output=%s\n", options.csvOutputPath.c_str());
+        }
 
         if (options.scenario == BenchmarkScenario::None)
         {
+            std::fprintf(stdout, "[Benchmark] scene=%s\n", options.runtimeOptions.sceneFilePath.c_str());
             runtime.loadScene(options.runtimeOptions.sceneFilePath);
         }
         else
@@ -787,7 +868,7 @@ namespace
     {
         std::fprintf(
             output,
-            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--render]\n");
+            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--csv-output path] [--render]\n");
     }
 }
 

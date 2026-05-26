@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 namespace platformator_detail
@@ -58,6 +59,8 @@ namespace platformator_detail
         void addScopeDuration(BenchmarkScopeId scopeId, uint64_t elapsedNanoseconds);
         void setCounter(BenchmarkCounterId counterId, int64_t value);
         void addCounter(BenchmarkCounterId counterId, int64_t delta);
+        void setCsvOutputPath(const std::string &path);
+        void clearCsvOutputPath();
         void printSummary(FILE *output = stdout) const;
 
     private:
@@ -67,6 +70,7 @@ namespace platformator_detail
         std::chrono::steady_clock::time_point frameStartTime;
         BenchmarkFrameStats currentFrame;
         std::vector<BenchmarkFrameStats> frames;
+        std::string csvOutputPath;
     };
 
     class BenchmarkScopeTimer
@@ -89,6 +93,8 @@ namespace platformator_detail
 #define PLATFORMATOR_BENCH_SET_COUNTER(counterId, value) platformator_detail::BenchmarkRecorder::getInstance().setCounter(platformator_detail::BenchmarkCounterId::counterId, static_cast<int64_t>(value))
 #define PLATFORMATOR_BENCH_ADD_COUNTER(counterId, delta) platformator_detail::BenchmarkRecorder::getInstance().addCounter(platformator_detail::BenchmarkCounterId::counterId, static_cast<int64_t>(delta))
 #define PLATFORMATOR_BENCH_RESET() platformator_detail::BenchmarkRecorder::getInstance().reset()
+#define PLATFORMATOR_BENCH_SET_CSV_OUTPUT_PATH(path) platformator_detail::BenchmarkRecorder::getInstance().setCsvOutputPath(path)
+#define PLATFORMATOR_BENCH_CLEAR_CSV_OUTPUT_PATH() platformator_detail::BenchmarkRecorder::getInstance().clearCsvOutputPath()
 #define PLATFORMATOR_BENCH_PRINT_SUMMARY() platformator_detail::BenchmarkRecorder::getInstance().printSummary()
 
 #else
@@ -99,6 +105,8 @@ namespace platformator_detail
 #define PLATFORMATOR_BENCH_SET_COUNTER(counterId, value) ((void)0)
 #define PLATFORMATOR_BENCH_ADD_COUNTER(counterId, delta) ((void)0)
 #define PLATFORMATOR_BENCH_RESET() ((void)0)
+#define PLATFORMATOR_BENCH_SET_CSV_OUTPUT_PATH(path) ((void)0)
+#define PLATFORMATOR_BENCH_CLEAR_CSV_OUTPUT_PATH() ((void)0)
 #define PLATFORMATOR_BENCH_PRINT_SUMMARY() ((void)0)
 
 #endif

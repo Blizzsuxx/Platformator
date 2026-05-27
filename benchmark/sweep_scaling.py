@@ -85,8 +85,8 @@ def apply_count_argument(base_command: List[str], scenario: str, count: int) -> 
     elif scenario == "narrow_phase":
         command.extend(["--narrow-count", str(count)])
     elif scenario == "rigid_body_container":
-        # For rigid body scaling, we vary only box count and keep circles at zero.
-        command.extend(["--box-count", str(count), "--circle-count", "0"])
+        half_count = count // 2
+        command.extend(["--box-count", str(half_count), "--circle-count", str(half_count)])
     else:
         raise ValueError(f"Unsupported scenario: {scenario}")
 

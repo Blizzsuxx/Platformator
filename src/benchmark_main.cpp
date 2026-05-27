@@ -605,6 +605,11 @@ namespace
 
     void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
     {
+        if (options.renderFrames == false)
+        {
+            return;
+        }
+        
         runtime.createMainCameraIfNoMainCameraExists();
         Camera *mainCamera = runtime.getMainCamera();
         if (mainCamera == nullptr)

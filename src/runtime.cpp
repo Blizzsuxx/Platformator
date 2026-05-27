@@ -153,6 +153,11 @@ namespace platformator
         gameManager->simulateFrame(timeDelta);
     }
 
+    void Runtime::simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback)
+    {
+        gameManager->simulateFrameWithCustomCallback(preRenderCallback, timeDelta);
+    }
+
     bool Runtime::simulateAndRenderFrame(double timeDelta)
     {
         return gameManager->simulateAndRenderFrame(timeDelta);
@@ -177,5 +182,10 @@ namespace platformator
     GameManager &Runtime::getGameManager() const
     {
         return *gameManager;
+    }
+
+    const std::vector<GameObject *> &Runtime::getAllGameObjects() const
+    {
+        return gameManager->getGameObjects();
     }
 } // namespace platformator

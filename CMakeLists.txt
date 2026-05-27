@@ -171,11 +171,17 @@ if(PLATFORMATOR_BUILD_TESTS)
     )
     target_link_libraries(platformator_runtime_recreation_test PRIVATE Platformator::platformator)
 
+    add_executable(platformator_collider_pair_cleanup_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/collider_pair_cleanup_test.cpp"
+    )
+    target_link_libraries(platformator_collider_pair_cleanup_test PRIVATE Platformator::platformator)
+
     foreach(platformator_test_target
         platformator_regression_tests
         platformator_scene_script_roundtrip_test
         platformator_queued_deletion_safety_test
         platformator_runtime_recreation_test
+        platformator_collider_pair_cleanup_test
     )
         target_include_directories(${platformator_test_target} PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -201,6 +207,11 @@ if(PLATFORMATOR_BUILD_TESTS)
     add_test(
         NAME platformator_runtime_recreation_test
         COMMAND platformator_runtime_recreation_test
+    )
+
+    add_test(
+        NAME platformator_collider_pair_cleanup_test
+        COMMAND platformator_collider_pair_cleanup_test
     )
 endif()
 

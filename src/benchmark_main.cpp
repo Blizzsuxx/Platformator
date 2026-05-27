@@ -67,6 +67,7 @@ namespace
         BroadPhase,
         NarrowPhase,
         RigidBodyContainer,
+        AddAndRemove,
     };
 
     struct BenchmarkRunnerOptions
@@ -101,6 +102,11 @@ namespace
             return BenchmarkScenario::RigidBodyContainer;
         }
 
+        if (value == "add_and_remove" || value == "add-and-remove" || value == "addandremove")
+        {
+            return BenchmarkScenario::AddAndRemove;
+        }
+
         throw std::runtime_error("Unknown benchmark scenario: " + value);
     }
 
@@ -114,6 +120,8 @@ namespace
             return "narrow_phase";
         case BenchmarkScenario::RigidBodyContainer:
             return "rigid_body_container";
+        case BenchmarkScenario::AddAndRemove:
+            return "add_and_remove";
         case BenchmarkScenario::None:
             return "scene";
         }
@@ -568,6 +576,9 @@ namespace
         case BenchmarkScenario::RigidBodyContainer:
             buildRigidBodyContainerScenario(runtime, options);
             return;
+        case BenchmarkScenario::AddAndRemove:
+            buildRigidBodyContainerScenario(runtime, options);
+            return;
         case BenchmarkScenario::None:
             return;
         }
@@ -609,7 +620,7 @@ namespace
         {
             return;
         }
-        
+
         runtime.createMainCameraIfNoMainCameraExists();
         Camera *mainCamera = runtime.getMainCamera();
         if (mainCamera == nullptr)
@@ -638,6 +649,17 @@ namespace
             return;
         }
         case BenchmarkScenario::RigidBodyContainer:
+        {
+            const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
+            const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
+            const float cameraWidth = layout.interiorWidth + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
+            const float cameraHeight = layout.interiorHeight + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
+            mainCamera->setCamera(fitCameraRectToWindowAspect(
+                SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
+                options.runtimeOptions.windowSettings));
+            return;
+        }
+        case BenchmarkScenario::AddAndRemove:
         {
             const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
             const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
@@ -802,12 +824,82 @@ namespace
             throw std::runtime_error("Unknown benchmark argument: " + argument);
         }
 
-        if (options.scenario == BenchmarkScenario::RigidBodyContainer && options.boxCount + options.circleCount <= 0)
+        if ((options.scenario == BenchmarkScenario::RigidBodyContainer || options.scenario == BenchmarkScenario::AddAndRemove) && options.boxCount + options.circleCount <= 0)
         {
-            throw std::runtime_error("rigid_body_container requires at least one box or circle.");
+            throw std::runtime_error("rigid_body_container and add_and_remove scenarios require at least one box or circle.");
         }
 
         return options;
+    }
+
+    void deleteSomeGameObjects(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+    {
+        if (options.scenario != BenchmarkScenario::AddAndRemove)
+        {
+            return;
+        }
+
+        const std::vector<GameObject *> &gameObjects = runtime.getAllGameObjects();
+        size_t deleteCount = static_cast<size_t>(gameObjects.size()) / 20; // Delete 5% of game objects each frame
+        for (size_t index = 0; index < deleteCount && !gameObjects.empty(); index++)
+        {
+            size_t randomIndex = static_cast<size_t>(std::rand()) % gameObjects.size();
+            GameObject *objectToDelete = gameObjects[randomIndex];
+            runtime.destroyGameObject(objectToDelete);
+        }
+    }
+
+    void addGameObjects(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+    {
+        if (options.scenario != BenchmarkScenario::AddAndRemove)
+        {
+            return;
+        }
+
+        size_t addCount = static_cast<size_t>(options.boxCount + options.circleCount) / 20; // Add game objects equal to 5% of total box and circle count each frame
+        for (size_t index = 0; index < addCount; index++)
+        {
+            const bool shouldAddBox = (std::rand() % 2 == 0);
+            const float x = static_cast<float>((std::rand() % 200) - 100);
+            const float y = static_cast<float>((std::rand() % 200) - 100);
+            const float size = static_cast<float>((std::rand() % 20) + 10);
+
+            if (shouldAddBox)
+            {
+                createBenchmarkBox(
+                    runtime,
+                    "Added Box",
+                    x,
+                    y,
+                    size,
+                    size,
+                    DYNAMIC,
+                    true,
+                    Eigen::Vector2f::Zero(),
+                    false,
+                    0.5f,
+                    0.5f,
+                    0.0f,
+                    options.renderFrames);
+            }
+            else
+            {
+                createBenchmarkCircle(
+                    runtime,
+                    "Added Circle",
+                    x,
+                    y,
+                    size * 0.5f,
+                    DYNAMIC,
+                    true,
+                    Eigen::Vector2f::Zero(),
+                    false,
+                    0.5f,
+                    0.5f,
+                    0.0f,
+                    options.renderFrames);
+            }
+        }
     }
 
     void runBenchmark(const BenchmarkRunnerOptions &options)
@@ -851,7 +943,19 @@ namespace
 
         if (options.renderFrames)
         {
-            runtime.run();
+            for (int frameIndex = 0; frameIndex < options.warmupFrameCount; frameIndex++)
+            {
+                runtime.simulateAndRenderFrame(options.timeDelta);
+            }
+
+            PLATFORMATOR_BENCH_RESET();
+
+            for (int frameIndex = 0; frameIndex < options.measureFrameCount; frameIndex++)
+            {
+                deleteSomeGameObjects(runtime, options);
+                addGameObjects(runtime, options);
+                runtime.simulateAndRenderFrame(options.timeDelta);
+            }
 
             return;
         }
@@ -865,7 +969,12 @@ namespace
 
         for (int frameIndex = 0; frameIndex < options.measureFrameCount; frameIndex++)
         {
-            runtime.simulateFrame(options.timeDelta);
+            deleteSomeGameObjects(runtime, options);
+            addGameObjects(runtime, options);
+            runtime.simulateFrameWithCustomCallback(options.timeDelta, [&](double timeDelta) {
+                deleteSomeGameObjects(runtime, options);
+                addGameObjects(runtime, options);
+            });
         }
     }
 

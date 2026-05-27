@@ -4,11 +4,11 @@
 AABB::AABB(Grid *owner)
     : intervalListX(this, Axis::X, true),
       intervalListY(this, Axis::Y, false),
-      pairsWithAtLeastOneAxisOverlapping(),
+      pairsWithBothAxisOverlapping(),
       colliderBindings(),
       owner(owner)
 {
-    pairsWithAtLeastOneAxisOverlapping.reserve(8);
+    pairsWithBothAxisOverlapping.reserve(8);
 }
 
 AABB::~AABB()
@@ -101,126 +101,62 @@ SegmentedIntervalList *AABB::getIntervalListY()
 
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
-    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
+    bool isOverlappingOnBothAxes = checkOverlapOnAxis(colliderA, colliderB);
+
+    if (!isOverlappingOnBothAxes)
     {
-        auto result = pairsWithAtLeastOneAxisOverlapping.insert(AABBPair(colliderA, colliderB));
-        iterator = result.first;
+        return;
     }
 
-    uint8_t previousAxisOverlap = iterator->axisOverlap;
-    const AABBPair &pair = (*iterator);
-    pair.axisOverlap |= axis;
-
-    if (pair.axisOverlap == Axis::ALL_AXES && previousAxisOverlap != Axis::ALL_AXES)
+    AABBPair pair(colliderA, colliderB);
+    auto iterator = pairsWithBothAxisOverlapping.find(pair);
+    if (iterator != pairsWithBothAxisOverlapping.end())
     {
-        if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
-        {
-            return;
-        }
-        if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
-        {
-            return;
-        }
-
-        // Both axes are now overlapping in this cell, so this cell contributes one witness.
-        owner->recordPairDelta(colliderA, colliderB, 1);
+        return;
     }
+
+    if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
+    {
+        return;
+    }
+    if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
+    {
+        return;
+    }
+
+    pairsWithBothAxisOverlapping.insert(pair);
+    owner->recordPairDelta(colliderA, colliderB, 1);
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 {
-    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
-    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
+    AABBPair pair(colliderA, colliderB);
+    auto iterator = pairsWithBothAxisOverlapping.find(pair);
+    if (iterator == pairsWithBothAxisOverlapping.end())
     {
         return;
     }
+    pairsWithBothAxisOverlapping.erase(iterator);
 
-    uint8_t previousAxisOverlap = iterator->axisOverlap;
-    const AABBPair &pair = (*iterator);
-    pair.axisOverlap &= ~axis;
-    uint8_t currentAxisOverlap = pair.axisOverlap;
-
-    if (currentAxisOverlap == 0)
-    {
-        // no axes are overlapping anymore, we can remove the collision
-        pairsWithAtLeastOneAxisOverlapping.erase(iterator);
-    }
-
-    if (previousAxisOverlap == Axis::ALL_AXES && currentAxisOverlap != Axis::ALL_AXES)
-    {
-        owner->recordPairDelta(colliderA, colliderB, -1);
-    }
+    owner->recordPairDelta(colliderA, colliderB, -1);
 }
 
 void AABB::overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB)
 {
-    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
-    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
-    {
-        auto result = pairsWithAtLeastOneAxisOverlapping.insert(AABBPair(colliderA, colliderB));
-        iterator = result.first;
-    }
-
-    uint8_t previousAxisOverlap = iterator->axisOverlap;
-    const AABBPair &pair = (*iterator);
-
-    uint8_t onWhatAxisAreThereOverlaps = checkOverlapOnAxis(colliderA, colliderB);
-    pair.axisOverlap |= onWhatAxisAreThereOverlaps;
-
-    if (pair.axisOverlap == Axis::ALL_AXES && previousAxisOverlap != Axis::ALL_AXES)
-    {
-        if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
-        {
-            return;
-        }
-        if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
-        {
-            return;
-        }
-
-        // Both axes are now overlapping in this cell, so this cell contributes one witness.
-        owner->recordPairDelta(colliderA, colliderB, 1);
-    }
+    axisOverlapBegin(colliderA, colliderB, Axis::ALL_AXES);
 }
 
 void AABB::overlapEndCheckpoint(Collider *colliderA, Collider *colliderB)
 {
-    auto iterator = pairsWithAtLeastOneAxisOverlapping.find(AABBPair(colliderA, colliderB));
-    if (iterator == pairsWithAtLeastOneAxisOverlapping.end())
-    {
-        return;
-    }
-
-    uint8_t previousAxisOverlap = iterator->axisOverlap;
-    const AABBPair &pair = (*iterator);
-    pair.axisOverlap &= Axis::NONE;
-    uint8_t currentAxisOverlap = pair.axisOverlap;
-
-    // no axes are overlapping anymore, we can remove the collision
-    pairsWithAtLeastOneAxisOverlapping.erase(iterator);
-
-    if (previousAxisOverlap == Axis::ALL_AXES && currentAxisOverlap != Axis::ALL_AXES)
-    {
-        owner->recordPairDelta(colliderA, colliderB, -1);
-    }
+    axisOverlapEnd(colliderA, colliderB, Axis::ALL_AXES);
 }
 
-uint8_t AABB::checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const
+bool AABB::checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const
 {
-    uint8_t overlap = Axis::NONE;
+    bool xOverlap = (*colliderA->getXProjections()->getMax() >= *colliderB->getXProjections()->getMin() && *colliderA->getXProjections()->getMin() <= *colliderB->getXProjections()->getMax());
+    bool yOverlap = (*colliderA->getYProjections()->getMax() >= *colliderB->getYProjections()->getMin() && *colliderA->getYProjections()->getMin() <= *colliderB->getYProjections()->getMax());
 
-    if (*colliderA->getXProjections()->getMax() >= *colliderB->getXProjections()->getMin() && *colliderA->getXProjections()->getMin() <= *colliderB->getXProjections()->getMax())
-    {
-        overlap |= Axis::X;
-    }
-
-    if (*colliderA->getYProjections()->getMax() >= *colliderB->getYProjections()->getMin() && *colliderA->getYProjections()->getMin() <= *colliderB->getYProjections()->getMax())
-    {
-        overlap |= Axis::Y;
-    }
-
-    return overlap;
+    return xOverlap && yOverlap;
 }
 
 bool AABB::getIsEmpty() const

@@ -293,6 +293,31 @@ void GameManager::runSimulationStep(const double timeDelta)
     PLATFORMATOR_BENCH_FRAME_END();
 }
 
+void GameManager::runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta)
+{
+    PLATFORMATOR_BENCH_FRAME_BEGIN();
+
+    triggerStartedBehaviors();
+    fixedUpdateScriptComponents(timeDelta);
+    physicsManager->checkForCollisions();
+    physicsManager->applyPhysics(timeDelta);
+    physicsManager->resolveCollisions(timeDelta);
+    physicsManager->applyMovement(timeDelta);
+    physicsManager->handlePendingPhysicsEvents(timeDelta);
+
+    if (customCallback)
+    {
+        customCallback(timeDelta);
+    }
+
+    updateScriptComponents(timeDelta);
+    updateAnimatorComponents(timeDelta);
+    lateUpdateScriptComponents(timeDelta);
+
+    PLATFORMATOR_BENCH_SET_COUNTER(ObjectCount, gameObjects.size());
+    PLATFORMATOR_BENCH_FRAME_END();
+}
+
 void GameManager::loop()
 {
     while (window->isRunning())
@@ -326,6 +351,13 @@ void GameManager::loop()
 void GameManager::simulateFrame(double timeDelta)
 {
     runSimulationStep(timeDelta);
+    window->updateTransientAudio();
+    deleteMarkedGameObjects();
+}
+
+void GameManager::simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta)
+{
+    runSimulationStepWithCustomCallback(customCallback, timeDelta);
     window->updateTransientAudio();
     deleteMarkedGameObjects();
 }

@@ -21,7 +21,7 @@ enum Axis : uint8_t
 class AABBPair
 {
 public:
-    AABBPair(Collider *a, Collider *b) : a(a), b(b), axisOverlap(0)
+    AABBPair(Collider *a, Collider *b) : a(a), b(b)
     {
     }
 
@@ -55,7 +55,6 @@ public:
 
     Collider *a;
     Collider *b;
-    mutable uint8_t axisOverlap; // bitfield of Axis values
 };
 
 class AABB
@@ -99,13 +98,11 @@ private:
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
     void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);
     void overlapEndCheckpoint(Collider *colliderA, Collider *colliderB);
-    uint8_t checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const;
-    ColliderBinding *allocateBinding(Collider *element);
-    void recycleBinding(ColliderBinding *binding);
+    bool checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const;
 
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
-    std::unordered_set<AABBPair, AABBPair::HashFunction> pairsWithAtLeastOneAxisOverlapping;
+    std::unordered_set<AABBPair, AABBPair::HashFunction> pairsWithBothAxisOverlapping;
     std::unordered_map<Collider *, ColliderBinding> colliderBindings;
     Grid *owner;
 

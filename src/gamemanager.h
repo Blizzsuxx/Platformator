@@ -48,7 +48,6 @@ public:
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
 
-    std::vector<GameObject *> &getGameObjects();
 
     SDLWindow *getWindow() const;
 
@@ -127,4 +126,7 @@ private:
 
     void addStartedBehavior(Behavior *behavior);
     void removeStartedBehavior(Behavior *behavior);
+    std::vector<GameObject *> &getGameObjects();
+    void simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
+    void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
 };

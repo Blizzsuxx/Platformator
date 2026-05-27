@@ -2,8 +2,9 @@
 
 #include <memory>
 #include <string>
-
+#include <vector>
 #include <SDL3/SDL.h>
+#include <functional>
 
 #include "platformator/runtimeoptions.h"
 
@@ -54,6 +55,8 @@ namespace platformator
         bool simulateAndRenderFrame(double timeDelta);
         SDL_Window *getWindowHandle() const;
         SDL_Renderer *getRenderer() const;
+        const std::vector<GameObject *> &getAllGameObjects() const;
+        void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback);
 
     private:
         friend class platformator_detail::RuntimeAccess;

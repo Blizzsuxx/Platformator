@@ -83,6 +83,8 @@
         "stdbuf": true,
         "./bin/benchmark-release": true,
         "./bin/benchmark/platformator_benchmark_runner": true,
-        "./bin/benchmark-debug/benchmark_runner": true
+        "./bin/benchmark-debug/benchmark_runner": true,
+        "cmake": true,
+        "./bin/debug/platformator_collider_pair_cleanup_test": true
     }
 }

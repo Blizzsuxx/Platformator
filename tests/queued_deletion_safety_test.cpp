@@ -416,6 +416,7 @@ namespace
         require(counter->enterCount == 1,
                 "Shutdown regression expected an active collision before runtime teardown.");
     }
+
 } // namespace
 
 int main()

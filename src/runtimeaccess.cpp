@@ -21,6 +21,11 @@ namespace platformator_detail
         return GameManager::getInstance();
     }
 
+    PhysicsManager *RuntimeAccess::physicsManager()
+    {
+        return gameManager().getPhysicsManager();
+    }
+
     SDLWindow *RuntimeAccess::window()
     {
         return gameManager().getWindow();

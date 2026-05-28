@@ -24,9 +24,15 @@ namespace platformator
     class Runtime;
 }
 
+namespace platformator_detail
+{
+    class RuntimeAccess;
+}
+
 class GameManager
 {
     friend class platformator::Runtime;
+    friend class platformator_detail::RuntimeAccess;
     friend class GameObject;
     friend class Component;
     friend class Collider;

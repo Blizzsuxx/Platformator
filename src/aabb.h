@@ -106,5 +106,6 @@ private:
     std::unordered_map<Collider *, ColliderBinding> colliderBindings;
     Grid *owner;
 
+    friend class Grid;
     friend class SegmentedIntervalList;
 };

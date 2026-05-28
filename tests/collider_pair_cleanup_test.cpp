@@ -10,7 +10,9 @@
 #include "circlecollider.h"
 #include "constants.h"
 #include "platformator/runtime.h"
+#include "physicsmanager.h"
 #include "rigidbody.h"
+#include "runtimeaccess.h"
 #include "scriptcomponent.h"
 
 namespace
@@ -34,9 +36,9 @@ namespace
         setenv("SDL_RENDER_DRIVER", "software", 1);
     }
 
-    bool containsGameObjectPointer(Runtime &runtime, const GameObject *gameObject)
+    bool containsObjectId(Runtime &runtime, int objectId)
     {
-        return gameObject != nullptr && runtime.getObjectById(gameObject->getId()) == gameObject;
+        return runtime.getObjectById(objectId) != nullptr;
     }
 
     class TestBehavior : public Behavior
@@ -139,18 +141,14 @@ namespace
             ->addComponent<CircleCollider>(radius)
             ->setPosition(Eigen::Vector2f(x, y));
     }
-}
 
-int main()
-{
-    configureHeadlessEnvironment();
-
-    try
+    void runDestroyedVictimCleanupScenario()
     {
         Runtime runtime;
 
         GameObject *survivor = createDynamicCircle(runtime, "Deletion Sync Survivor", 0.0f, 0.0f, 20.0f)->addComponent<ScriptComponent>();
         GameObject *victim = createStaticBox(runtime, "Deletion Sync Victim", 0.0f, 0.0f, 40.0f, 40.0f)->addComponent<ScriptComponent>();
+        const int victimId = victim->getId();
 
         ScriptComponent *survivorScriptComponent = survivor->getComponent<ScriptComponent>();
         ScriptComponent *victimScriptComponent = victim->getComponent<ScriptComponent>();
@@ -165,7 +163,7 @@ int main()
         runtime.simulateFrame(kTimeStep);
         require(survivorCounter->enterCount == 1,
             "Collider pair cleanup regression expected an initial collision enter before the victim was destroyed.");
-        require(!containsGameObjectPointer(runtime, victim),
+        require(!containsObjectId(runtime, victimId),
             "Collider pair cleanup regression expected the victim to be removed from the GameManager immediately.");
 
         for (int frameIndex = 0; frameIndex < 8; ++frameIndex)
@@ -175,6 +173,53 @@ int main()
 
         require(survivorCounter->exitCount <= 1,
             "Collider pair cleanup regression observed duplicate collision exits after the victim was destroyed.");
+    }
+
+    void runNonPrimaryRemovalCoverageScenario()
+    {
+        Runtime runtime;
+
+        GameObject *covering = createStaticBox(runtime, "Coverage Long", 20.0f, 100.0f, 8.0f, 180.0f);
+        GameObject *victim = createStaticBox(runtime, "Coverage Victim", 20.0f, 100.0f, 8.0f, 8.0f)->addComponent<ScriptComponent>();
+        const int coveringId = covering->getId();
+        const int victimId = victim->getId();
+        BoxCollider *coveringCollider = covering->getComponent<BoxCollider>();
+        BoxCollider *victimCollider = victim->getComponent<BoxCollider>();
+        ScriptComponent *victimScriptComponent = victim->getComponent<ScriptComponent>();
+        require(coveringCollider != nullptr && victimCollider != nullptr && victimScriptComponent != nullptr,
+            "Coverage removal scenario failed to create the required collider state.");
+
+        for (int index = 0; index < 31; ++index)
+        {
+            const float x = 110.0f + static_cast<float>(index % 3) * 8.0f;
+            const float y = 8.0f + static_cast<float>(index) * 5.5f;
+            createStaticBox(runtime, "Coverage Filler " + std::to_string(index), x, y, 4.0f, 4.0f);
+        }
+
+        runtime.simulateFrame(kTimeStep);
+        require(platformator_detail::RuntimeAccess::physicsManager()->getGrid().containsCellPair(coveringCollider, victimCollider),
+            "Coverage removal scenario expected an initial same-cell full-overlap pair before deletion.");
+
+        victimScriptComponent->addBehavior(new DestroyOnUpdateBehavior());
+        runtime.simulateFrame(kTimeStep);
+
+        require(!containsObjectId(runtime, victimId),
+            "Coverage removal scenario expected the victim to be removed from the GameManager immediately.");
+        require(containsObjectId(runtime, coveringId),
+            "Coverage removal scenario unexpectedly removed the covering collider.");
+        require(!platformator_detail::RuntimeAccess::physicsManager()->getGrid().containsCellPair(coveringCollider, victimCollider),
+            "Coverage removal scenario left a stale same-cell pair witness for the removed victim.");
+    }
+}
+
+int main()
+{
+    configureHeadlessEnvironment();
+
+    try
+    {
+        runDestroyedVictimCleanupScenario();
+        runNonPrimaryRemovalCoverageScenario();
 
         std::cout << "[PASS] collider_pair_cleanup_test\n";
         return 0;

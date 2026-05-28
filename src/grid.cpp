@@ -338,6 +338,22 @@ const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &G
     return cells;
 }
 
+bool Grid::containsCellPair(Collider *colliderA, Collider *colliderB) const
+{
+    const AABBPair pair(colliderA, colliderB);
+
+    for (const auto &cellEntry : cells)
+    {
+        const AABB *aabb = cellEntry.second.getAABB();
+        if (aabb->pairsWithBothAxisOverlapping.find(pair) != aabb->pairsWithBothAxisOverlapping.end())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 size_t Grid::getCandidatePairCount() const
 {
     return candidateCollisions.size();

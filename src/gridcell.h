@@ -20,6 +20,7 @@ public:
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
     AABB *getAABB();
+    const AABB *getAABB() const;
     const GridCellKey &getCellKey() const;
     bool markQueuedForEmpty();
     void clearQueuedForEmpty();

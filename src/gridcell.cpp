@@ -24,6 +24,11 @@ AABB *GridCell::getAABB()
     return &aabb;
 }
 
+const AABB *GridCell::getAABB() const
+{
+    return &aabb;
+}
+
 const GridCellKey &GridCell::getCellKey() const
 {
     return key;

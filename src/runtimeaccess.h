@@ -5,6 +5,7 @@
 class AnimationClip;
 class AudioWrapper;
 class GameManager;
+class PhysicsManager;
 class SDLWindow;
 class TextureWrapper;
 
@@ -20,6 +21,7 @@ namespace platformator_detail
     public:
         static platformator::Runtime &runtime();
         static GameManager &gameManager();
+        static PhysicsManager *physicsManager();
         static SDLWindow *window();
         static TextureWrapper *loadTexture(const std::string &filePath);
         static AudioWrapper *loadAudio(const std::string &filePath);

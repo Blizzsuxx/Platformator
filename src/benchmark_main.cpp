@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <deque>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -21,6 +22,8 @@ namespace
     constexpr int DEFAULT_CONTAINER_CIRCLE_COUNT = 400;
     constexpr int DEFAULT_BROAD_PHASE_ELEMENT_COUNT = 128;
     constexpr int DEFAULT_NARROW_PHASE_ELEMENT_COUNT = 8;
+    constexpr int DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT = 1000;
+    constexpr int DEFAULT_ADD_REMOVE_CHURN_COUNT = 10;
 
     struct RigidBodyContainerScenarioSettings
     {
@@ -48,6 +51,53 @@ namespace
         float interiorHeight = 0.0f;
         float left = 0.0f;
         float top = 0.0f;
+    };
+
+    struct AddRemoveScenarioSettings
+    {
+        int steadyBodyCount = DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT;
+        int addCountPerFrame = DEFAULT_ADD_REMOVE_CHURN_COUNT;
+        int removeCountPerFrame = DEFAULT_ADD_REMOVE_CHURN_COUNT;
+        int steadyBoxCount = DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT / 2;
+        int steadyCircleCount = DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT / 2;
+        float boxWidth = 28.0f;
+        float boxHeight = 28.0f;
+        float circleRadius = 14.0f;
+        float spawnMargin = 24.0f;
+        float cellPadding = 20.0f;
+        float minimumWidth = 1800.0f;
+        float minimumHeight = 1000.0f;
+        float cameraMargin = 160.0f;
+        float friction = 0.0f;
+        float restitution = 0.0f;
+    };
+
+    struct AddRemoveScenarioLayout
+    {
+        size_t totalSlotCount = 0;
+        size_t columnCount = 1;
+        float cellSize = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+        float left = 0.0f;
+        float top = 0.0f;
+    };
+
+    struct AddRemoveManagedBody
+    {
+        GameObject *object = nullptr;
+        size_t slotIndex = 0;
+    };
+
+    struct AddRemoveScenarioState
+    {
+        AddRemoveScenarioSettings settings;
+        AddRemoveScenarioLayout layout;
+        std::vector<bool> slotUsesBox;
+        std::deque<AddRemoveManagedBody> activeBodies;
+        std::vector<size_t> freeSlotIndices;
+        size_t spawnedBoxCount = 0;
+        size_t spawnedCircleCount = 0;
     };
 
     RuntimeOptions makeDefaultBenchmarkRuntimeOptions()
@@ -81,6 +131,9 @@ namespace
         int circleCount = DEFAULT_CONTAINER_CIRCLE_COUNT;
         int broadPhaseElementCount = DEFAULT_BROAD_PHASE_ELEMENT_COUNT;
         int narrowPhaseElementCount = DEFAULT_NARROW_PHASE_ELEMENT_COUNT;
+        int addRemoveSteadyCount = DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT;
+        int addRemoveAddCount = DEFAULT_ADD_REMOVE_CHURN_COUNT;
+        int addRemoveRemoveCount = DEFAULT_ADD_REMOVE_CHURN_COUNT;
         bool renderFrames = false;
         std::string csvOutputPath;
     };
@@ -219,6 +272,29 @@ namespace
         return settings;
     }
 
+    AddRemoveScenarioSettings makeAddRemoveScenarioSettings(const BenchmarkRunnerOptions &options)
+    {
+        AddRemoveScenarioSettings settings;
+        settings.steadyBodyCount = options.addRemoveSteadyCount;
+        settings.addCountPerFrame = options.addRemoveAddCount;
+        settings.removeCountPerFrame = options.addRemoveRemoveCount;
+
+        const int compositionTotal = options.boxCount + options.circleCount;
+        if (compositionTotal <= 0)
+        {
+            settings.steadyBoxCount = settings.steadyBodyCount / 2;
+        }
+        else
+        {
+            const int64_t scaledBoxCount = static_cast<int64_t>(settings.steadyBodyCount) * static_cast<int64_t>(options.boxCount);
+            settings.steadyBoxCount = static_cast<int>(scaledBoxCount / compositionTotal);
+        }
+
+        settings.steadyBoxCount = std::clamp(settings.steadyBoxCount, 0, settings.steadyBodyCount);
+        settings.steadyCircleCount = settings.steadyBodyCount - settings.steadyBoxCount;
+        return settings;
+    }
+
     RigidBodyContainerLayout calculateRigidBodyContainerLayout(const BenchmarkRunnerOptions &options)
     {
         const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
@@ -242,6 +318,29 @@ namespace
         };
     }
 
+    AddRemoveScenarioLayout calculateAddRemoveScenarioLayout(const BenchmarkRunnerOptions &options)
+    {
+        const AddRemoveScenarioSettings settings = makeAddRemoveScenarioSettings(options);
+        const size_t totalSlotCount = static_cast<size_t>(settings.steadyBodyCount);
+        const float maxBodyExtent = std::max({settings.boxWidth, settings.boxHeight, settings.circleRadius * 2.0f});
+        const float cellSize = maxBodyExtent + settings.cellPadding;
+        const float usableWidth = std::max(settings.minimumWidth - 2.0f * settings.spawnMargin, cellSize);
+        const size_t columnCount = std::max<size_t>(1, static_cast<size_t>(usableWidth / cellSize));
+        const size_t rowCount = std::max<size_t>(1, (totalSlotCount + columnCount - 1) / columnCount);
+        const float width = std::max(settings.minimumWidth, static_cast<float>(columnCount) * cellSize + 2.0f * settings.spawnMargin);
+        const float height = std::max(settings.minimumHeight, static_cast<float>(rowCount) * cellSize + 2.0f * settings.spawnMargin);
+
+        return AddRemoveScenarioLayout{
+            totalSlotCount,
+            columnCount,
+            cellSize,
+            width,
+            height,
+            -0.5f * width,
+            -0.5f * height,
+        };
+    }
+
     Eigen::Vector2f calculateRigidBodyContainerSpawnPosition(const RigidBodyContainerLayout &layout, const RigidBodyContainerScenarioSettings &settings, const size_t spawnIndex)
     {
         const size_t columnIndex = spawnIndex % layout.columnCount;
@@ -251,6 +350,35 @@ namespace
         const float xJitter = static_cast<float>(static_cast<int>(spawnIndex % 3) - 1) * 2.0f;
         const float yJitter = static_cast<float>(static_cast<int>(spawnIndex % 4) - 1) * 1.5f;
         return Eigen::Vector2f(x + xJitter, y + yJitter);
+    }
+
+    Eigen::Vector2f calculateAddRemoveSpawnPosition(const AddRemoveScenarioLayout &layout, const AddRemoveScenarioSettings &settings, const size_t slotIndex)
+    {
+        const size_t columnIndex = slotIndex % layout.columnCount;
+        const size_t rowIndex = slotIndex / layout.columnCount;
+        const float x = layout.left + settings.spawnMargin + (static_cast<float>(columnIndex) + 0.5f) * layout.cellSize;
+        const float y = layout.top + settings.spawnMargin + (static_cast<float>(rowIndex) + 0.5f) * layout.cellSize;
+        return Eigen::Vector2f(x, y);
+    }
+
+    std::vector<bool> buildAddRemoveSlotShapeMap(const AddRemoveScenarioSettings &settings)
+    {
+        std::vector<bool> slotUsesBox(static_cast<size_t>(settings.steadyBodyCount), false);
+        size_t assignedBoxCount = 0;
+
+        for (size_t slotIndex = 0; slotIndex < slotUsesBox.size(); ++slotIndex)
+        {
+            const size_t expectedBoxCount = (static_cast<size_t>(slotIndex + 1) * static_cast<size_t>(settings.steadyBoxCount)) /
+                static_cast<size_t>(std::max(1, settings.steadyBodyCount));
+            const bool useBox = assignedBoxCount < expectedBoxCount;
+            slotUsesBox[slotIndex] = useBox;
+            if (useBox)
+            {
+                assignedBoxCount++;
+            }
+        }
+
+        return slotUsesBox;
     }
 
     Eigen::Vector2f calculateRigidBodyContainerInitialVelocity(const size_t spawnIndex)
@@ -356,6 +484,22 @@ namespace
             settings.circleCount,
             layout.interiorWidth,
             layout.interiorHeight);
+    }
+
+    void printAddRemoveScenarioDetails(
+        const AddRemoveScenarioSettings &settings,
+        const AddRemoveScenarioLayout &layout)
+    {
+        std::fprintf(
+            stdout,
+            "[Benchmark][Scenario] steady_count=%d add_count=%d remove_count=%d steady_box_count=%d steady_circle_count=%d grid_width=%.1f grid_height=%.1f body_type=static\n",
+            settings.steadyBodyCount,
+            settings.addCountPerFrame,
+            settings.removeCountPerFrame,
+            settings.steadyBoxCount,
+            settings.steadyCircleCount,
+            layout.width,
+            layout.height);
     }
 
     void buildBroadPhaseScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
@@ -563,7 +707,97 @@ namespace
         }
     }
 
-    void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+    AddRemoveManagedBody spawnAddRemoveManagedBody(
+        platformator::Runtime &runtime,
+        AddRemoveScenarioState &state,
+        const size_t slotIndex,
+        const bool attachSprites)
+    {
+        const AddRemoveScenarioSettings &settings = state.settings;
+        const Eigen::Vector2f position = calculateAddRemoveSpawnPosition(state.layout, settings, slotIndex);
+        const bool useBox = state.slotUsesBox[slotIndex];
+
+        if (useBox)
+        {
+            return AddRemoveManagedBody{
+                createBenchmarkBox(
+                    runtime,
+                    formatIndexedName("Churn Box", state.spawnedBoxCount++),
+                    position.x(),
+                    position.y(),
+                    settings.boxWidth,
+                    settings.boxHeight,
+                    STATIC,
+                    false,
+                    Eigen::Vector2f::Zero(),
+                    false,
+                    settings.friction,
+                    settings.restitution,
+                    0.0f,
+                    attachSprites),
+                slotIndex,
+            };
+        }
+
+        return AddRemoveManagedBody{
+            createBenchmarkCircle(
+                runtime,
+                formatIndexedName("Churn Circle", state.spawnedCircleCount++),
+                position.x(),
+                position.y(),
+                settings.circleRadius,
+                STATIC,
+                false,
+                Eigen::Vector2f::Zero(),
+                false,
+                settings.friction,
+                settings.restitution,
+                0.0f,
+                attachSprites),
+            slotIndex,
+        };
+    }
+
+    void buildAddRemoveScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options, AddRemoveScenarioState &state)
+    {
+        state.settings = makeAddRemoveScenarioSettings(options);
+        state.layout = calculateAddRemoveScenarioLayout(options);
+        state.slotUsesBox = buildAddRemoveSlotShapeMap(state.settings);
+        state.activeBodies.clear();
+        state.freeSlotIndices.clear();
+        state.spawnedBoxCount = 0;
+        state.spawnedCircleCount = 0;
+
+        const bool attachSprites = options.renderFrames;
+        printAddRemoveScenarioDetails(state.settings, state.layout);
+
+        for (size_t slotIndex = 0; slotIndex < static_cast<size_t>(state.settings.steadyBodyCount); ++slotIndex)
+        {
+            state.activeBodies.push_back(spawnAddRemoveManagedBody(runtime, state, slotIndex, attachSprites));
+        }
+    }
+
+    void applyAddRemoveScenarioChurn(platformator::Runtime &runtime, AddRemoveScenarioState &state, const bool attachSprites)
+    {
+        const size_t removeCount = std::min(static_cast<size_t>(state.settings.removeCountPerFrame), state.activeBodies.size());
+        for (size_t index = 0; index < removeCount; ++index)
+        {
+            const AddRemoveManagedBody removedBody = state.activeBodies.front();
+            state.activeBodies.pop_front();
+            runtime.destroyGameObject(removedBody.object);
+            state.freeSlotIndices.push_back(removedBody.slotIndex);
+        }
+
+        const size_t addCount = std::min(static_cast<size_t>(state.settings.addCountPerFrame), state.freeSlotIndices.size());
+        for (size_t index = 0; index < addCount; ++index)
+        {
+            const size_t slotIndex = state.freeSlotIndices.back();
+            state.freeSlotIndices.pop_back();
+            state.activeBodies.push_back(spawnAddRemoveManagedBody(runtime, state, slotIndex, attachSprites));
+        }
+    }
+
+    void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options, AddRemoveScenarioState *addRemoveState)
     {
         switch (options.scenario)
         {
@@ -577,7 +811,11 @@ namespace
             buildRigidBodyContainerScenario(runtime, options);
             return;
         case BenchmarkScenario::AddAndRemove:
-            buildRigidBodyContainerScenario(runtime, options);
+            if (addRemoveState == nullptr)
+            {
+                throw std::runtime_error("add_and_remove scenario requires add/remove state.");
+            }
+            buildAddRemoveScenario(runtime, options, *addRemoveState);
             return;
         case BenchmarkScenario::None:
             return;
@@ -614,7 +852,7 @@ namespace
         return adjustedRect;
     }
 
-    void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+    void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options, const AddRemoveScenarioState *addRemoveState)
     {
         if (options.renderFrames == false)
         {
@@ -661,10 +899,15 @@ namespace
         }
         case BenchmarkScenario::AddAndRemove:
         {
-            const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
-            const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
-            const float cameraWidth = layout.interiorWidth + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
-            const float cameraHeight = layout.interiorHeight + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
+            if (addRemoveState == nullptr)
+            {
+                return;
+            }
+
+            const AddRemoveScenarioSettings &settings = addRemoveState->settings;
+            const AddRemoveScenarioLayout &layout = addRemoveState->layout;
+            const float cameraWidth = layout.width + 2.0f * settings.cameraMargin;
+            const float cameraHeight = layout.height + 2.0f * settings.cameraMargin;
             mainCamera->setCamera(fitCameraRectToWindowAspect(
                 SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
                 options.runtimeOptions.windowSettings));
@@ -793,6 +1036,32 @@ namespace
                 continue;
             }
 
+            if (argument == "--steady-count")
+            {
+                options.addRemoveSteadyCount = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--add-count")
+            {
+                options.addRemoveAddCount = parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--remove-count")
+            {
+                options.addRemoveRemoveCount = parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
+                continue;
+            }
+
+            if (argument == "--churn-count")
+            {
+                const int churnCount = parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
+                options.addRemoveAddCount = churnCount;
+                options.addRemoveRemoveCount = churnCount;
+                continue;
+            }
+
             if (argument == "--csv-output" || argument == "--csv")
             {
                 options.csvOutputPath = requireArgumentValue(argc, args, index, argument);
@@ -824,82 +1093,25 @@ namespace
             throw std::runtime_error("Unknown benchmark argument: " + argument);
         }
 
-        if ((options.scenario == BenchmarkScenario::RigidBodyContainer || options.scenario == BenchmarkScenario::AddAndRemove) && options.boxCount + options.circleCount <= 0)
+        if (options.scenario == BenchmarkScenario::RigidBodyContainer && options.boxCount + options.circleCount <= 0)
         {
-            throw std::runtime_error("rigid_body_container and add_and_remove scenarios require at least one box or circle.");
+            throw std::runtime_error("rigid_body_container scenario requires at least one box or circle.");
+        }
+
+        if (options.scenario == BenchmarkScenario::AddAndRemove)
+        {
+            if (options.boxCount + options.circleCount <= 0)
+            {
+                throw std::runtime_error("add_and_remove scenario requires at least one box or circle to define the steady-state shape mix.");
+            }
+
+            if (options.addRemoveAddCount != options.addRemoveRemoveCount)
+            {
+                throw std::runtime_error("add_and_remove scenario requires matching --add-count and --remove-count values so the active population stays stable. Use --churn-count for the common case.");
+            }
         }
 
         return options;
-    }
-
-    void deleteSomeGameObjects(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
-    {
-        if (options.scenario != BenchmarkScenario::AddAndRemove)
-        {
-            return;
-        }
-
-        const std::vector<GameObject *> &gameObjects = runtime.getAllGameObjects();
-        size_t deleteCount = static_cast<size_t>(gameObjects.size()) / 20; // Delete 5% of game objects each frame
-        for (size_t index = 0; index < deleteCount && !gameObjects.empty(); index++)
-        {
-            size_t randomIndex = static_cast<size_t>(std::rand()) % gameObjects.size();
-            GameObject *objectToDelete = gameObjects[randomIndex];
-            runtime.destroyGameObject(objectToDelete);
-        }
-    }
-
-    void addGameObjects(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
-    {
-        if (options.scenario != BenchmarkScenario::AddAndRemove)
-        {
-            return;
-        }
-
-        size_t addCount = static_cast<size_t>(options.boxCount + options.circleCount) / 20; // Add game objects equal to 5% of total box and circle count each frame
-        for (size_t index = 0; index < addCount; index++)
-        {
-            const bool shouldAddBox = (std::rand() % 2 == 0);
-            const float x = static_cast<float>((std::rand() % 200) - 100);
-            const float y = static_cast<float>((std::rand() % 200) - 100);
-            const float size = static_cast<float>((std::rand() % 20) + 10);
-
-            if (shouldAddBox)
-            {
-                createBenchmarkBox(
-                    runtime,
-                    "Added Box",
-                    x,
-                    y,
-                    size,
-                    size,
-                    DYNAMIC,
-                    true,
-                    Eigen::Vector2f::Zero(),
-                    false,
-                    0.5f,
-                    0.5f,
-                    0.0f,
-                    options.renderFrames);
-            }
-            else
-            {
-                createBenchmarkCircle(
-                    runtime,
-                    "Added Circle",
-                    x,
-                    y,
-                    size * 0.5f,
-                    DYNAMIC,
-                    true,
-                    Eigen::Vector2f::Zero(),
-                    false,
-                    0.5f,
-                    0.5f,
-                    0.0f,
-                    options.renderFrames);
-            }
-        }
     }
 
     void runBenchmark(const BenchmarkRunnerOptions &options)
@@ -914,6 +1126,8 @@ namespace
         }
 
         platformator::Runtime runtime(options.runtimeOptions);
+        AddRemoveScenarioState addRemoveState;
+        std::function<void(double)> frameCallback;
 
         std::fprintf(
             stdout,
@@ -936,25 +1150,45 @@ namespace
         else
         {
             std::fprintf(stdout, "[Benchmark] scenario=%s\n", scenarioName(options.scenario));
-            buildScenario(runtime, options);
+            buildScenario(runtime, options, options.scenario == BenchmarkScenario::AddAndRemove ? &addRemoveState : nullptr);
         }
 
-        configureScenarioCamera(runtime, options);
+        configureScenarioCamera(runtime, options, options.scenario == BenchmarkScenario::AddAndRemove ? &addRemoveState : nullptr);
+
+        if (options.scenario == BenchmarkScenario::AddAndRemove)
+        {
+            frameCallback = [&](double)
+            {
+                applyAddRemoveScenarioChurn(runtime, addRemoveState, options.renderFrames);
+            };
+        }
 
         if (options.renderFrames)
         {
             for (int frameIndex = 0; frameIndex < options.warmupFrameCount; frameIndex++)
             {
-                runtime.simulateAndRenderFrame(options.timeDelta);
+                if (frameCallback)
+                {
+                    runtime.simulateAndRenderFrameWithCustomCallback(options.timeDelta, frameCallback);
+                }
+                else
+                {
+                    runtime.simulateAndRenderFrame(options.timeDelta);
+                }
             }
 
             PLATFORMATOR_BENCH_RESET();
 
             for (int frameIndex = 0; frameIndex < options.measureFrameCount; frameIndex++)
             {
-                deleteSomeGameObjects(runtime, options);
-                addGameObjects(runtime, options);
-                runtime.simulateAndRenderFrame(options.timeDelta);
+                if (frameCallback)
+                {
+                    runtime.simulateAndRenderFrameWithCustomCallback(options.timeDelta, frameCallback);
+                }
+                else
+                {
+                    runtime.simulateAndRenderFrame(options.timeDelta);
+                }
             }
 
             return;
@@ -962,19 +1196,28 @@ namespace
 
         for (int frameIndex = 0; frameIndex < options.warmupFrameCount; frameIndex++)
         {
-            runtime.simulateFrame(options.timeDelta);
+            if (frameCallback)
+            {
+                runtime.simulateFrameWithCustomCallback(options.timeDelta, frameCallback);
+            }
+            else
+            {
+                runtime.simulateFrame(options.timeDelta);
+            }
         }
 
         PLATFORMATOR_BENCH_RESET();
 
         for (int frameIndex = 0; frameIndex < options.measureFrameCount; frameIndex++)
         {
-            deleteSomeGameObjects(runtime, options);
-            addGameObjects(runtime, options);
-            runtime.simulateFrameWithCustomCallback(options.timeDelta, [&](double timeDelta) {
-                deleteSomeGameObjects(runtime, options);
-                addGameObjects(runtime, options);
-            });
+            if (frameCallback)
+            {
+                runtime.simulateFrameWithCustomCallback(options.timeDelta, frameCallback);
+            }
+            else
+            {
+                runtime.simulateFrame(options.timeDelta);
+            }
         }
     }
 
@@ -982,7 +1225,7 @@ namespace
     {
         std::fprintf(
             output,
-            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--csv-output path] [--render]\n");
+            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container|add_and_remove] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--steady-count N] [--add-count N] [--remove-count N] [--churn-count N] [--csv-output path] [--render]\n");
     }
 }
 

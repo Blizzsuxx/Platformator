@@ -53,6 +53,7 @@ namespace platformator
         void run();
         void simulateFrame(double timeDelta);
         bool simulateAndRenderFrame(double timeDelta);
+        bool simulateAndRenderFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback);
         SDL_Window *getWindowHandle() const;
         SDL_Renderer *getRenderer() const;
         const std::vector<GameObject *> &getAllGameObjects() const;

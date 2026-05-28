@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 import argparse
 import csv
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
-def load_rows(csv_path: str) -> List[Dict[str, float]]:
-    rows: List[Dict[str, float]] = []
+STRING_COLUMNS = {"scenario", "sweep_parameter"}
+
+
+def load_rows(csv_path: str) -> List[Dict[str, Union[str, float]]]:
+    rows: List[Dict[str, Union[str, float]]] = []
     with open(csv_path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
-            parsed: Dict[str, float] = {}
+            parsed: Dict[str, Union[str, float]] = {}
             for key, value in row.items():
-                if key == "scenario":
+                if key in STRING_COLUMNS:
                     parsed[key] = value
                 else:
                     parsed[key] = float(value)
             rows.append(parsed)
 
-    rows.sort(key=lambda item: item["requested_count"])
+    rows.sort(key=lambda item: float(item.get("swept_value", item["requested_count"])))
     return rows
+
+
 def format_count_tick(value: float, _: int) -> str:
     if value <= 0.0:
         return ""
@@ -30,6 +35,30 @@ def format_count_tick(value: float, _: int) -> str:
         return str(int(rounded_value))
 
     return f"{value:g}"
+
+
+def sweep_label(sweep_parameter: str) -> str:
+    labels = {
+        "broad_count": "Requested broad-phase object count",
+        "narrow_count": "Requested narrow-phase object count",
+        "total_body_count": "Requested total body count",
+        "churn_count": "Per-frame add/remove count",
+        "steady_count": "Steady live object count",
+    }
+    return labels.get(sweep_parameter, "Requested count")
+
+
+def build_title(rows: List[Dict[str, Union[str, float]]]) -> str:
+    scenario = str(rows[0].get("scenario", "unknown"))
+    sweep_parameter = str(rows[0].get("sweep_parameter", "requested_count"))
+
+    if scenario == "add_and_remove":
+        steady_counts = {float(row.get("steady_count", 0.0)) for row in rows}
+        if len(steady_counts) == 1:
+            steady_count = next(iter(steady_counts))
+            return f"Platformator Scaling: {scenario} ({sweep_parameter}, steady={int(steady_count)})"
+
+    return f"Platformator Scaling: {scenario}"
 
 
 def main() -> int:
@@ -62,7 +91,7 @@ def main() -> int:
     if not rows:
         raise ValueError("Input CSV has no data rows.")
 
-    counts = [row["requested_count"] for row in rows]
+    counts = [float(row.get("swept_value", row["requested_count"])) for row in rows]
     series = [
         ("frame_avg_ms", "Frame Avg", "o"),
         ("frame_p95_ms", "Frame P95", "s"),
@@ -70,16 +99,16 @@ def main() -> int:
         ("narrow_phase_avg_ms", "Narrow Phase Avg", "D"),
         ("resolve_collisions_avg_ms", "Collision Resolution Avg", "v"),
     ]
-    scenario = rows[0].get("scenario", "unknown")
+    sweep_parameter = str(rows[0].get("sweep_parameter", "requested_count"))
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     for key, label, marker in series:
-        values = [row[key] for row in rows]
+        values = [float(row[key]) for row in rows]
         ax.plot(counts, values, marker=marker, linewidth=2, label=label)
 
-    ax.set_title(f"Platformator Scaling: {scenario}")
-    ax.set_xlabel("Requested object count")
+    ax.set_title(build_title(rows))
+    ax.set_xlabel(sweep_label(sweep_parameter))
     ax.set_ylabel("Time (ms)")
     ax.grid(True, linestyle="--", alpha=0.4)
 

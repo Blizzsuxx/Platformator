@@ -163,6 +163,11 @@ namespace platformator
         return gameManager->simulateAndRenderFrame(timeDelta);
     }
 
+    bool Runtime::simulateAndRenderFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback)
+    {
+        return gameManager->simulateAndRenderFrameWithCustomCallback(preRenderCallback, timeDelta);
+    }
+
     SDL_Window *Runtime::getWindowHandle() const
     {
         return gameManager->getWindow()->getWindow();

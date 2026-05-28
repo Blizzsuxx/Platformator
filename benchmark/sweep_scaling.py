@@ -4,8 +4,8 @@ import csv
 import os
 import subprocess
 import tempfile
-from time import sleep
-from typing import Dict, List
+import time
+from typing import Dict, List, Optional
 
 
 def parse_counts(raw: str) -> List[int]:
@@ -24,11 +24,13 @@ def parse_counts(raw: str) -> List[int]:
 
     return counts
 
-def parse_counts_from_step_arguments(step_size: int, ending_step: int, starting_step: int) -> List[int]:
+def parse_counts_from_step_arguments(step_size: int, ending_step: int, starting_step: Optional[int]) -> List[int]:
     if step_size <= 0:
         raise ValueError("--step-size must be a positive integer.")
     if ending_step <= 0:
         raise ValueError("--ending-step must be a positive integer.")
+    if starting_step is None:
+        starting_step = step_size
     if starting_step <= 0:
         raise ValueError("--starting-step must be a positive integer.")
     if starting_step > ending_step:
@@ -78,19 +80,72 @@ def parse_benchmark_csv(csv_path: str) -> Dict[str, float]:
     return metrics
 
 
-def apply_count_argument(base_command: List[str], scenario: str, count: int) -> List[str]:
+def apply_count_argument(base_command: List[str], args: argparse.Namespace, count: int) -> List[str]:
     command = list(base_command)
-    if scenario == "broad_phase":
+    if args.scenario == "broad_phase":
         command.extend(["--broad-count", str(count)])
-    elif scenario == "narrow_phase":
+    elif args.scenario == "narrow_phase":
         command.extend(["--narrow-count", str(count)])
-    elif scenario == "rigid_body_container":
+    elif args.scenario == "rigid_body_container":
         half_count = count // 2
         command.extend(["--box-count", str(half_count), "--circle-count", str(half_count)])
+    elif args.scenario == "add_and_remove":
+        command.extend(["--steady-count", str(args.steady_count), "--churn-count", str(count)])
+        if args.box_mix is not None:
+            command.extend(["--box-count", str(args.box_mix)])
+        if args.circle_mix is not None:
+            command.extend(["--circle-count", str(args.circle_mix)])
     else:
-        raise ValueError(f"Unsupported scenario: {scenario}")
+        raise ValueError(f"Unsupported scenario: {args.scenario}")
 
     return command
+
+
+def sweep_parameter_name(scenario: str) -> str:
+    if scenario == "broad_phase":
+        return "broad_count"
+    if scenario == "narrow_phase":
+        return "narrow_count"
+    if scenario == "rigid_body_container":
+        return "total_body_count"
+    if scenario == "add_and_remove":
+        return "churn_count"
+
+    raise ValueError(f"Unsupported scenario: {scenario}")
+
+
+def build_result_row(args: argparse.Namespace, count: int, metrics: Dict[str, float]) -> Dict[str, float]:
+    steady_count = float(args.steady_count if args.scenario == "add_and_remove" else 0)
+    add_count = float(count if args.scenario == "add_and_remove" else 0)
+    remove_count = float(count if args.scenario == "add_and_remove" else 0)
+
+    return {
+        "scenario": args.scenario,
+        "sweep_parameter": sweep_parameter_name(args.scenario),
+        "requested_count": float(count),
+        "swept_value": float(count),
+        "steady_count": steady_count,
+        "add_count": add_count,
+        "remove_count": remove_count,
+        "frame_avg_ms": metrics.get("scope.frame.avg", 0.0),
+        "frame_p95_ms": metrics.get("scope.frame.p95", 0.0),
+        "broad_phase_avg_ms": metrics.get("scope.broad_phase.avg", 0.0),
+        "broad_phase_p95_ms": metrics.get("scope.broad_phase.p95", 0.0),
+        "narrow_phase_avg_ms": metrics.get("scope.narrow_phase.avg", 0.0),
+        "narrow_phase_p95_ms": metrics.get("scope.narrow_phase.p95", 0.0),
+        "resolve_collisions_avg_ms": metrics.get("scope.resolve_collisions.avg", 0.0),
+        "resolve_collisions_p95_ms": metrics.get("scope.resolve_collisions.p95", 0.0),
+        "reported_object_count_avg": metrics.get("counter.object_count.avg", 0.0),
+        "reported_object_count_min": metrics.get("counter.object_count.min", 0.0),
+        "reported_object_count_max": metrics.get("counter.object_count.max", 0.0),
+        "candidate_pair_count_avg": metrics.get("counter.candidate_pair_count.avg", 0.0),
+        "pending_narrow_phase_pair_count_avg": metrics.get("counter.pending_narrow_phase_pair_count.avg", 0.0),
+        "active_collision_count_avg": metrics.get("counter.active_collision_count.avg", 0.0),
+        "occupied_cell_count_avg": metrics.get("counter.occupied_cell_count.avg", 0.0),
+        "queued_add_count_avg": metrics.get("counter.queued_add_count.avg", 0.0),
+        "queued_remove_count_avg": metrics.get("counter.queued_remove_count.avg", 0.0),
+        "queued_sync_count_avg": metrics.get("counter.queued_sync_count.avg", 0.0),
+    }
 
 
 def main() -> int:
@@ -105,7 +160,7 @@ def main() -> int:
     parser.add_argument(
         "--scenario",
         required=True,
-        choices=["broad_phase", "narrow_phase", "rigid_body_container"],
+        choices=["broad_phase", "narrow_phase", "rigid_body_container", "add_and_remove"],
         help="Benchmark scenario to sweep.",
     )
     parser.add_argument(
@@ -123,11 +178,33 @@ def main() -> int:
     parser.add_argument(
         "--starting-step",
         type=int,
-        help="Starting step for the sweep (default: same as --step).",
+        help="Starting step for the sweep (default: same as --step-size).",
     )
     parser.add_argument("--warmup-frames", type=int, default=120)
     parser.add_argument("--measure-frames", type=int, default=600)
     parser.add_argument("--dt", type=float, default=1.0 / 120.0)
+    parser.add_argument(
+        "--cooldown-seconds",
+        type=float,
+        default=0.0,
+        help="Optional delay between sweep iterations to reduce thermal/scheduling drift on saturated machines.",
+    )
+    parser.add_argument(
+        "--steady-count",
+        type=int,
+        default=1000,
+        help="Stable live body count for the add_and_remove scenario (default: 1000).",
+    )
+    parser.add_argument(
+        "--box-mix",
+        type=int,
+        help="Optional box mix weight for add_and_remove. Passed through as --box-count.",
+    )
+    parser.add_argument(
+        "--circle-mix",
+        type=int,
+        help="Optional circle mix weight for add_and_remove. Passed through as --circle-count.",
+    )
     parser.add_argument(
         "--output",
         default="benchmark_scaling.csv",
@@ -142,6 +219,16 @@ def main() -> int:
         raise ValueError("--measure-frames must be > 0")
     if args.dt <= 0.0:
         raise ValueError("--dt must be > 0")
+    if args.cooldown_seconds < 0.0:
+        raise ValueError("--cooldown-seconds must be >= 0")
+    if args.steady_count <= 0:
+        raise ValueError("--steady-count must be > 0")
+    if args.box_mix is not None and args.box_mix < 0:
+        raise ValueError("--box-mix must be >= 0")
+    if args.circle_mix is not None and args.circle_mix < 0:
+        raise ValueError("--circle-mix must be >= 0")
+    if args.scenario == "add_and_remove" and args.box_mix == 0 and args.circle_mix == 0:
+        raise ValueError("--box-mix and --circle-mix cannot both be zero for add_and_remove.")
 
     counts = parse_counts_from_step_arguments(args.step_size, args.ending_step, args.starting_step)
 
@@ -166,39 +253,28 @@ def main() -> int:
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as temp_file:
             temp_csv_path = temp_file.name
 
-        command = apply_count_argument(base_command, args.scenario, count)
+        command = apply_count_argument(base_command, args, count)
         command.extend(["--csv-output", temp_csv_path])
 
         print(f"[Sweep] Running count={count}")
-        subprocess.run(command)
-        sleep(1)  # Small delay to ensure file is flushed.
+        subprocess.run(command, check=True)
 
         metrics = parse_benchmark_csv(temp_csv_path)
         os.unlink(temp_csv_path)
 
-        row: Dict[str, float] = {
-            "scenario": args.scenario,
-            "requested_count": float(count),
-            "frame_avg_ms": metrics.get("scope.frame.avg", 0.0),
-            "frame_p95_ms": metrics.get("scope.frame.p95", 0.0),
-            "broad_phase_avg_ms": metrics.get("scope.broad_phase.avg", 0.0),
-            "broad_phase_p95_ms": metrics.get("scope.broad_phase.p95", 0.0),
-            "narrow_phase_avg_ms": metrics.get("scope.narrow_phase.avg", 0.0),
-            "narrow_phase_p95_ms": metrics.get("scope.narrow_phase.p95", 0.0),
-            "resolve_collisions_avg_ms": metrics.get("scope.resolve_collisions.avg", 0.0),
-            "resolve_collisions_p95_ms": metrics.get("scope.resolve_collisions.p95", 0.0),
-            "reported_object_count_avg": metrics.get("counter.object_count.avg", 0.0),
-            "candidate_pair_count_avg": metrics.get("counter.candidate_pair_count.avg", 0.0),
-            "pending_narrow_phase_pair_count_avg": metrics.get("counter.pending_narrow_phase_pair_count.avg", 0.0),
-            "active_collision_count_avg": metrics.get("counter.active_collision_count.avg", 0.0),
-            "occupied_cell_count_avg": metrics.get("counter.occupied_cell_count.avg", 0.0),
-            "queued_sync_count_avg": metrics.get("counter.queued_sync_count.avg", 0.0),
-        }
-        aggregate_rows.append(row)
+        aggregate_rows.append(build_result_row(args, count, metrics))
+
+        if args.cooldown_seconds > 0.0 and count != counts[-1]:
+            time.sleep(args.cooldown_seconds)
 
     field_names = [
         "scenario",
+        "sweep_parameter",
         "requested_count",
+        "swept_value",
+        "steady_count",
+        "add_count",
+        "remove_count",
         "frame_avg_ms",
         "frame_p95_ms",
         "broad_phase_avg_ms",
@@ -208,10 +284,14 @@ def main() -> int:
         "resolve_collisions_avg_ms",
         "resolve_collisions_p95_ms",
         "reported_object_count_avg",
+        "reported_object_count_min",
+        "reported_object_count_max",
         "candidate_pair_count_avg",
         "pending_narrow_phase_pair_count_avg",
         "active_collision_count_avg",
         "occupied_cell_count_avg",
+        "queued_add_count_avg",
+        "queued_remove_count_avg",
         "queued_sync_count_avg",
     ]
 

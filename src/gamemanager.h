@@ -135,4 +135,5 @@ private:
     std::vector<GameObject *> &getGameObjects();
     void simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
     void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
+    bool simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
 };

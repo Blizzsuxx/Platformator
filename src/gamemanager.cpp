@@ -298,17 +298,18 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     PLATFORMATOR_BENCH_FRAME_BEGIN();
 
     triggerStartedBehaviors();
+
+    if (customCallback)
+    {
+        customCallback(timeDelta);
+    }
+
     fixedUpdateScriptComponents(timeDelta);
     physicsManager->checkForCollisions();
     physicsManager->applyPhysics(timeDelta);
     physicsManager->resolveCollisions(timeDelta);
     physicsManager->applyMovement(timeDelta);
     physicsManager->handlePendingPhysicsEvents(timeDelta);
-
-    if (customCallback)
-    {
-        customCallback(timeDelta);
-    }
 
     updateScriptComponents(timeDelta);
     updateAnimatorComponents(timeDelta);
@@ -384,11 +385,40 @@ bool GameManager::simulateAndRenderFrame(double timeDelta)
     }
 
     window->updateTransientAudio();
+    deleteMarkedGameObjects();
     window->render();
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     window->clearAdvanceFrameRequest();
 #endif
+    return window->isRunning();
+}
+
+bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta)
+{
+    if (!window->isRunning())
+    {
+        return false;
+    }
+
+    window->handleSDLEvents(timeDelta);
+    if (!window->isRunning())
+    {
+        return false;
+    }
+
+    if (window->shouldSimulateFrame())
+    {
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+        window->clearDebugObjects();
+#endif
+        runSimulationStepWithCustomCallback(customCallback, timeDelta);
+    }
+    window->updateTransientAudio();
     deleteMarkedGameObjects();
+    window->render();
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    window->clearAdvanceFrameRequest();
+#endif
     return window->isRunning();
 }
 

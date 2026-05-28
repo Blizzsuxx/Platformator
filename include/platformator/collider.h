@@ -14,6 +14,7 @@ class GridCell;
 class SegmentedIntervalList;
 class Collision;
 class Grid;
+class AABB;
 
 class BoundingRadiusProjection
 {

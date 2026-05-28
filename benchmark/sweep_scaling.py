@@ -154,7 +154,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--runner",
-        default="./bin/benchmark-release/platformator_benchmark_runner",
+        default="../bin/benchmark-release/platformator_benchmark_runner",
         help="Path to platformator_benchmark_runner binary.",
     )
     parser.add_argument(

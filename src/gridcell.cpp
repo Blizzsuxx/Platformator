@@ -85,12 +85,22 @@ void GridCell::flushPendingOperations()
 
     for (AABB::ColliderBinding *binding : bindingsToSync)
     {
+        if (binding == nullptr || binding->collider == nullptr || binding->collider->getIsQueuedForRemove() || binding->collider->getGameObject()->getIsMarkedForDeletion() || !binding->collider->getGameObject()->getActive())
+        {
+            continue;
+        }
+
         aabb.repair(binding);
     }
     bindingsToSync.clear();
 
     for (Collider *collider : collidersToAdd)
     {
+        if (collider == nullptr || collider->getIsQueuedForRemove() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+        {
+            continue;
+        }
+
         addCollider(collider);
     }
     collidersToAdd.clear();

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MultipleLocator
@@ -22,7 +22,6 @@ def load_rows(csv_path: str) -> List[Dict[str, Union[str, float]]]:
                     parsed[key] = float(value)
             rows.append(parsed)
 
-    rows.sort(key=lambda item: float(item.get("swept_value", item["requested_count"])))
     return rows
 
 
@@ -46,6 +45,28 @@ def sweep_label(sweep_parameter: str) -> str:
         "steady_count": "Steady live object count",
     }
     return labels.get(sweep_parameter, "Requested count")
+
+
+def select_x_axis(rows: List[Dict[str, Union[str, float]]]) -> Tuple[str, str]:
+    sweep_parameter = str(rows[0].get("sweep_parameter", "requested_count"))
+    default_key = "swept_value" if "swept_value" in rows[0] else "requested_count"
+
+    steady_counts = {float(row.get("steady_count", 0.0)) for row in rows if float(row.get("steady_count", 0.0)) > 0.0}
+    if len(steady_counts) > 1:
+        return "steady_count", "Steady live object count"
+
+    reported_counts = [float(row.get("reported_object_count_avg", 0.0)) for row in rows]
+    default_counts = [float(row.get(default_key, row["requested_count"])) for row in rows]
+    varying_reported_counts = len({round(value, 6) for value in reported_counts if value > 0.0}) > 1
+    materially_larger_reported_counts = any(
+        default_value > 0.0 and reported_value / default_value >= 1.5
+        for reported_value, default_value in zip(reported_counts, default_counts)
+    )
+
+    if varying_reported_counts and materially_larger_reported_counts:
+        return "reported_object_count_avg", "Reported live object count"
+
+    return default_key, sweep_label(sweep_parameter)
 
 
 def build_title(rows: List[Dict[str, Union[str, float]]]) -> str:
@@ -91,7 +112,9 @@ def main() -> int:
     if not rows:
         raise ValueError("Input CSV has no data rows.")
 
-    counts = [float(row.get("swept_value", row["requested_count"])) for row in rows]
+    x_axis_key, x_axis_label = select_x_axis(rows)
+    rows.sort(key=lambda item: float(item.get(x_axis_key, item["requested_count"])))
+    counts = [float(row.get(x_axis_key, row["requested_count"])) for row in rows]
     series = [
         ("frame_avg_ms", "Frame Avg", "o"),
         ("frame_p95_ms", "Frame P95", "s"),
@@ -99,7 +122,6 @@ def main() -> int:
         ("narrow_phase_avg_ms", "Narrow Phase Avg", "D"),
         ("resolve_collisions_avg_ms", "Collision Resolution Avg", "v"),
     ]
-    sweep_parameter = str(rows[0].get("sweep_parameter", "requested_count"))
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -108,7 +130,7 @@ def main() -> int:
         ax.plot(counts, values, marker=marker, linewidth=2, label=label)
 
     ax.set_title(build_title(rows))
-    ax.set_xlabel(sweep_label(sweep_parameter))
+    ax.set_xlabel(x_axis_label)
     ax.set_ylabel("Time (ms)")
     ax.grid(True, linestyle="--", alpha=0.4)
 

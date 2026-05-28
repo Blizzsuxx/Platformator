@@ -83,6 +83,24 @@ namespace
         float top = 0.0f;
     };
 
+    struct NarrowPhaseScenarioLayout
+    {
+        int elementCount = 1;
+        float columnWidth = 26.0f;
+        float rowHeight = 26.0f;
+        float bandThickness = 18.0f;
+        float staticLaneSpacing = 44.0f;
+        float bandLaneSpacing = 36.0f;
+        float linePadding = 96.0f;
+        float cameraMargin = 120.0f;
+        float lineWidth = 0.0f;
+        float lineHeight = 0.0f;
+        std::vector<float> columnPositions;
+        std::vector<float> rowPositions;
+        std::vector<float> horizontalBandPositions;
+        std::vector<float> verticalBandPositions;
+    };
+
     struct AddRemoveManagedBody
     {
         GameObject *object = nullptr;
@@ -535,20 +553,20 @@ namespace
         }
     }
 
-    std::vector<float> generateEvenlySpacedAxisPositions(const int count, const float extent)
+    std::vector<float> generateCenteredAxisPositions(const int count, const float step, const float offset = 0.0f)
     {
         std::vector<float> positions;
-        positions.reserve(static_cast<size_t>(count));
+        const int clampedCount = std::max(1, count);
+        positions.reserve(static_cast<size_t>(clampedCount));
 
-        if (count <= 1)
+        if (clampedCount == 1)
         {
-            positions.push_back(0.0f);
+            positions.push_back(offset);
             return positions;
         }
 
-        const float step = (2.0f * extent) / static_cast<float>(count - 1);
-        const float start = -extent;
-        for (int index = 0; index < count; ++index)
+        const float start = -0.5f * static_cast<float>(clampedCount - 1) * step + offset;
+        for (int index = 0; index < clampedCount; ++index)
         {
             positions.push_back(start + static_cast<float>(index) * step);
         }
@@ -556,25 +574,88 @@ namespace
         return positions;
     }
 
+    std::vector<float> generateCenteredAxisPositionsForExtent(const int count, const float extent, const float offset = 0.0f)
+    {
+        const int clampedCount = std::max(1, count);
+        if (clampedCount == 1)
+        {
+            return {offset};
+        }
+
+        return generateCenteredAxisPositions(clampedCount, (2.0f * extent) / static_cast<float>(clampedCount - 1), offset);
+    }
+
+    float calculateAxisHalfExtent(const std::vector<float> &positions, const float thickness)
+    {
+        if (positions.empty())
+        {
+            return 0.5f * thickness;
+        }
+
+        return std::max(-positions.front(), positions.back()) + 0.5f * thickness;
+    }
+
+    NarrowPhaseScenarioLayout calculateNarrowPhaseScenarioLayout(const BenchmarkRunnerOptions &options)
+    {
+        NarrowPhaseScenarioLayout layout;
+        layout.elementCount = std::max(1, options.narrowPhaseElementCount);
+
+        if (!options.renderFrames)
+        {
+            layout.columnPositions = generateCenteredAxisPositionsForExtent(layout.elementCount, 125.0f);
+            layout.rowPositions = generateCenteredAxisPositionsForExtent(layout.elementCount, 125.0f);
+            layout.horizontalBandPositions = generateCenteredAxisPositionsForExtent(layout.elementCount, 140.0f);
+            layout.verticalBandPositions = generateCenteredAxisPositionsForExtent(layout.elementCount, 140.0f);
+            layout.lineWidth = 360.0f;
+            layout.lineHeight = 360.0f;
+            return layout;
+        }
+
+        layout.staticLaneSpacing = 32.0f;
+        layout.bandLaneSpacing = 28.0f;
+        layout.linePadding = 72.0f;
+        layout.cameraMargin = 96.0f;
+
+        const float bandOffset = layout.elementCount > 1 ? 0.25f * layout.staticLaneSpacing : 0.0f;
+
+        layout.columnPositions = generateCenteredAxisPositions(layout.elementCount, layout.staticLaneSpacing);
+        layout.rowPositions = generateCenteredAxisPositions(layout.elementCount, layout.staticLaneSpacing);
+        layout.horizontalBandPositions = generateCenteredAxisPositions(layout.elementCount, layout.bandLaneSpacing, bandOffset);
+        layout.verticalBandPositions = generateCenteredAxisPositions(layout.elementCount, layout.bandLaneSpacing, -bandOffset);
+
+        const float horizontalHalfExtent = std::max(
+            calculateAxisHalfExtent(layout.columnPositions, layout.columnWidth),
+            calculateAxisHalfExtent(layout.verticalBandPositions, layout.bandThickness));
+        const float verticalHalfExtent = std::max(
+            calculateAxisHalfExtent(layout.rowPositions, layout.rowHeight),
+            calculateAxisHalfExtent(layout.horizontalBandPositions, layout.bandThickness));
+
+        layout.lineWidth = 2.0f * (horizontalHalfExtent + layout.linePadding);
+        layout.lineHeight = 2.0f * (verticalHalfExtent + layout.linePadding);
+        return layout;
+    }
+
     void buildNarrowPhaseScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
     {
-        const int elementCount = std::max(1, options.narrowPhaseElementCount);
-        const std::vector<float> columnPositions = generateEvenlySpacedAxisPositions(elementCount, 125.0f);
-        const std::vector<float> rowPositions = generateEvenlySpacedAxisPositions(elementCount, 125.0f);
-        const std::vector<float> bandPositions = generateEvenlySpacedAxisPositions(elementCount, 140.0f);
+        const NarrowPhaseScenarioLayout layout = calculateNarrowPhaseScenarioLayout(options);
         constexpr std::array<float, 8> bandSpeedPattern = {20.0f, -20.0f, 24.0f, -24.0f, 20.0f, -20.0f, 24.0f, -24.0f};
 
-        std::fprintf(stdout, "[Benchmark][Scenario] narrow_element_count=%d\n", elementCount);
+        std::fprintf(
+            stdout,
+            "[Benchmark][Scenario] narrow_element_count=%d layout_width=%.1f layout_height=%.1f\n",
+            layout.elementCount,
+            layout.lineWidth,
+            layout.lineHeight);
 
-        for (size_t index = 0; index < columnPositions.size(); ++index)
+        for (size_t index = 0; index < layout.columnPositions.size(); ++index)
         {
             createBenchmarkBox(
                 runtime,
                 formatIndexedName("Trigger Column", index),
-                columnPositions[index],
+                layout.columnPositions[index],
                 0.0f,
-                26.0f,
-                360.0f,
+                layout.columnWidth,
+                layout.lineHeight,
                 STATIC,
                 false,
                 Eigen::Vector2f::Zero(),
@@ -585,15 +666,15 @@ namespace
                 options.renderFrames);
         }
 
-        for (size_t index = 0; index < rowPositions.size(); ++index)
+        for (size_t index = 0; index < layout.rowPositions.size(); ++index)
         {
             createBenchmarkBox(
                 runtime,
                 formatIndexedName("Trigger Row", index),
                 0.0f,
-                rowPositions[index],
-                360.0f,
-                26.0f,
+            layout.rowPositions[index],
+            layout.lineWidth,
+            layout.rowHeight,
                 STATIC,
                 false,
                 Eigen::Vector2f::Zero(),
@@ -604,15 +685,15 @@ namespace
                 options.renderFrames);
         }
 
-        for (size_t index = 0; index < bandPositions.size(); ++index)
+        for (size_t index = 0; index < layout.horizontalBandPositions.size(); ++index)
         {
             createBenchmarkBox(
                 runtime,
                 formatIndexedName("Horizontal Band", index),
                 0.0f,
-                bandPositions[index],
-                360.0f,
-                18.0f,
+            layout.horizontalBandPositions[index],
+            layout.lineWidth,
+            layout.bandThickness,
                 KINEMATIC,
                 false,
                 Eigen::Vector2f(0.0f, bandSpeedPattern[index % bandSpeedPattern.size()]),
@@ -623,15 +704,15 @@ namespace
                 options.renderFrames);
         }
 
-        for (size_t index = 0; index < bandPositions.size(); ++index)
+        for (size_t index = 0; index < layout.verticalBandPositions.size(); ++index)
         {
             createBenchmarkBox(
                 runtime,
                 formatIndexedName("Vertical Band", index),
-                bandPositions[index],
+            layout.verticalBandPositions[index],
                 0.0f,
-                18.0f,
-                360.0f,
+            layout.bandThickness,
+            layout.lineHeight,
                 KINEMATIC,
                 false,
                 Eigen::Vector2f(bandSpeedPattern[index % bandSpeedPattern.size()], 0.0f),
@@ -880,9 +961,11 @@ namespace
         }
         case BenchmarkScenario::NarrowPhase:
         {
-            const float span = std::max(200.0f, 50.0f * static_cast<float>(std::max(1, options.narrowPhaseElementCount)));
+            const NarrowPhaseScenarioLayout layout = calculateNarrowPhaseScenarioLayout(options);
+            const float cameraWidth = layout.lineWidth + 2.0f * layout.cameraMargin;
+            const float cameraHeight = layout.lineHeight + 2.0f * layout.cameraMargin;
             mainCamera->setCamera(fitCameraRectToWindowAspect(
-                SDL_FRect{-span, -span, 2.0f * span, 2.0f * span},
+                SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
                 options.runtimeOptions.windowSettings));
             return;
         }

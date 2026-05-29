@@ -210,8 +210,8 @@
     "id": 103,
     "name": "Ground A",
     "position": {
-      "x": 160.0,
-      "y": 456.0
+      "x": 176.0,
+      "y": 448.0
     },
     "rotation": 0.0,
     "scale": {
@@ -271,8 +271,8 @@
     "id": 104,
     "name": "Ground B",
     "position": {
-      "x": 480.0,
-      "y": 456.0
+      "x": 496.0,
+      "y": 448.0
     },
     "rotation": 0.0,
     "scale": {
@@ -332,8 +332,8 @@
     "id": 105,
     "name": "Ground C",
     "position": {
-      "x": 920.0,
-      "y": 456.0
+      "x": 928.0,
+      "y": 448.0
     },
     "rotation": 0.0,
     "scale": {
@@ -394,7 +394,7 @@
     "name": "Ground D",
     "position": {
       "x": 1520.0,
-      "y": 456.0
+      "y": 448.0
     },
     "rotation": 0.0,
     "scale": {
@@ -454,8 +454,8 @@
     "id": 1089,
     "name": "Ground D Copy",
     "position": {
-      "x": 2159.8676577831293,
-      "y": 457.08653019973553
+      "x": 2160.0,
+      "y": 448.0
     },
     "rotation": 0.0,
     "scale": {

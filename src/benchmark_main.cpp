@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <deque>
 #include <stdexcept>
@@ -53,6 +54,27 @@ namespace
         float top = 0.0f;
     };
 
+    struct BroadPhaseStressScenarioSettings
+    {
+        int bodyCount = DEFAULT_BROAD_PHASE_ELEMENT_COUNT;
+        float boxWidth = 48.0f;
+        float boxHeight = 48.0f;
+        float spawnStepX = 6.0f;
+        float spawnStepY = 6.0f;
+        float phaseOffset = 320.0f;
+        float cameraMargin = 200.0f;
+    };
+
+    struct BroadPhaseStressScenarioLayout
+    {
+        size_t totalBodyCount = 0;
+        size_t columnCount = 1;
+        float width = 0.0f;
+        float height = 0.0f;
+        float left = 0.0f;
+        float top = 0.0f;
+    };
+
     struct AddRemoveScenarioSettings
     {
         int steadyBodyCount = DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT;
@@ -70,6 +92,9 @@ namespace
         float cameraMargin = 160.0f;
         float friction = 0.0f;
         float restitution = 0.0f;
+        BodyType bodyType = STATIC;
+        bool isTrigger = false;
+        bool movingBodies = false;
     };
 
     struct AddRemoveScenarioLayout
@@ -99,6 +124,14 @@ namespace
         std::vector<float> rowPositions;
         std::vector<float> horizontalBandPositions;
         std::vector<float> verticalBandPositions;
+    };
+
+    struct BroadPhaseStressScenarioState
+    {
+        BroadPhaseStressScenarioSettings settings;
+        BroadPhaseStressScenarioLayout layout;
+        std::vector<GameObject *> movingBodies;
+        size_t phaseIndex = 0;
     };
 
     struct AddRemoveManagedBody
@@ -133,10 +166,17 @@ namespace
     {
         None,
         BroadPhase,
+        BroadPhaseStress,
         NarrowPhase,
         RigidBodyContainer,
         AddAndRemove,
+        MovingAddAndRemove,
     };
+
+    bool isAddRemoveScenario(const BenchmarkScenario scenario)
+    {
+        return scenario == BenchmarkScenario::AddAndRemove || scenario == BenchmarkScenario::MovingAddAndRemove;
+    }
 
     struct BenchmarkRunnerOptions
     {
@@ -163,6 +203,11 @@ namespace
             return BenchmarkScenario::BroadPhase;
         }
 
+        if (value == "broad_phase_stress" || value == "broad-phase-stress" || value == "broadphasestress")
+        {
+            return BenchmarkScenario::BroadPhaseStress;
+        }
+
         if (value == "narrow_phase" || value == "narrow-phase" || value == "narrowphase")
         {
             return BenchmarkScenario::NarrowPhase;
@@ -178,6 +223,12 @@ namespace
             return BenchmarkScenario::AddAndRemove;
         }
 
+        if (value == "moving_add_and_remove" || value == "moving-add-and-remove" || value == "movingaddandremove" ||
+            value == "add_and_remove_moving" || value == "add-and-remove-moving" || value == "addandremovemoving")
+        {
+            return BenchmarkScenario::MovingAddAndRemove;
+        }
+
         throw std::runtime_error("Unknown benchmark scenario: " + value);
     }
 
@@ -187,12 +238,16 @@ namespace
         {
         case BenchmarkScenario::BroadPhase:
             return "broad_phase";
+        case BenchmarkScenario::BroadPhaseStress:
+            return "broad_phase_stress";
         case BenchmarkScenario::NarrowPhase:
             return "narrow_phase";
         case BenchmarkScenario::RigidBodyContainer:
             return "rigid_body_container";
         case BenchmarkScenario::AddAndRemove:
             return "add_and_remove";
+        case BenchmarkScenario::MovingAddAndRemove:
+            return "moving_add_and_remove";
         case BenchmarkScenario::None:
             return "scene";
         }
@@ -290,12 +345,27 @@ namespace
         return settings;
     }
 
+    BroadPhaseStressScenarioSettings makeBroadPhaseStressScenarioSettings(const BenchmarkRunnerOptions &options)
+    {
+        BroadPhaseStressScenarioSettings settings;
+        settings.bodyCount = options.broadPhaseElementCount;
+        return settings;
+    }
+
     AddRemoveScenarioSettings makeAddRemoveScenarioSettings(const BenchmarkRunnerOptions &options)
     {
         AddRemoveScenarioSettings settings;
         settings.steadyBodyCount = options.addRemoveSteadyCount;
         settings.addCountPerFrame = options.addRemoveAddCount;
         settings.removeCountPerFrame = options.addRemoveRemoveCount;
+
+        if (options.scenario == BenchmarkScenario::MovingAddAndRemove)
+        {
+            settings.bodyType = KINEMATIC;
+            settings.isTrigger = true;
+            settings.movingBodies = true;
+            settings.cameraMargin = 320.0f;
+        }
 
         const int compositionTotal = options.boxCount + options.circleCount;
         if (compositionTotal <= 0)
@@ -359,6 +429,26 @@ namespace
         };
     }
 
+    BroadPhaseStressScenarioLayout calculateBroadPhaseStressScenarioLayout(const BenchmarkRunnerOptions &options)
+    {
+        const BroadPhaseStressScenarioSettings settings = makeBroadPhaseStressScenarioSettings(options);
+        const size_t totalBodyCount = static_cast<size_t>(std::max(1, settings.bodyCount));
+        const size_t columnCount = std::max<size_t>(1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(totalBodyCount)))));
+        const size_t rowCount = std::max<size_t>(1, (totalBodyCount + columnCount - 1) / columnCount);
+
+        const float width = settings.boxWidth + static_cast<float>(std::max<size_t>(0, columnCount - 1)) * settings.spawnStepX;
+        const float height = settings.boxHeight + static_cast<float>(std::max<size_t>(0, rowCount - 1)) * settings.spawnStepY;
+
+        return BroadPhaseStressScenarioLayout{
+            totalBodyCount,
+            columnCount,
+            width,
+            height,
+            -0.5f * width,
+            -0.5f * height,
+        };
+    }
+
     Eigen::Vector2f calculateRigidBodyContainerSpawnPosition(const RigidBodyContainerLayout &layout, const RigidBodyContainerScenarioSettings &settings, const size_t spawnIndex)
     {
         const size_t columnIndex = spawnIndex % layout.columnCount;
@@ -376,6 +466,15 @@ namespace
         const size_t rowIndex = slotIndex / layout.columnCount;
         const float x = layout.left + settings.spawnMargin + (static_cast<float>(columnIndex) + 0.5f) * layout.cellSize;
         const float y = layout.top + settings.spawnMargin + (static_cast<float>(rowIndex) + 0.5f) * layout.cellSize;
+        return Eigen::Vector2f(x, y);
+    }
+
+    Eigen::Vector2f calculateBroadPhaseStressSpawnPosition(const BroadPhaseStressScenarioLayout &layout, const BroadPhaseStressScenarioSettings &settings, const size_t spawnIndex)
+    {
+        const size_t columnIndex = spawnIndex % layout.columnCount;
+        const size_t rowIndex = spawnIndex / layout.columnCount;
+        const float x = layout.left + 0.5f * settings.boxWidth + static_cast<float>(columnIndex) * settings.spawnStepX;
+        const float y = layout.top + 0.5f * settings.boxHeight + static_cast<float>(rowIndex) * settings.spawnStepY;
         return Eigen::Vector2f(x, y);
     }
 
@@ -399,6 +498,31 @@ namespace
         return slotUsesBox;
     }
 
+    const char *bodyTypeName(const BodyType bodyType)
+    {
+        switch (bodyType)
+        {
+        case DYNAMIC:
+            return "dynamic";
+        case STATIC:
+            return "static";
+        case KINEMATIC:
+            return "kinematic";
+        }
+
+        return "unknown";
+    }
+
+    Eigen::Vector2f calculateAddRemoveInitialVelocity(const size_t spawnIndex)
+    {
+        constexpr std::array<float, 8> horizontalVelocityPattern = {-72.0f, 60.0f, -48.0f, 84.0f, -64.0f, 52.0f, -88.0f, 68.0f};
+        constexpr std::array<float, 6> verticalVelocityPattern = {34.0f, -28.0f, 22.0f, -40.0f, 30.0f, -18.0f};
+
+        return Eigen::Vector2f(
+            horizontalVelocityPattern[spawnIndex % horizontalVelocityPattern.size()],
+            verticalVelocityPattern[spawnIndex % verticalVelocityPattern.size()]);
+    }
+
     Eigen::Vector2f calculateRigidBodyContainerInitialVelocity(const size_t spawnIndex)
     {
         constexpr std::array<float, 8> horizontalVelocityPattern = {-48.0f, 36.0f, -28.0f, 44.0f, -40.0f, 24.0f, -32.0f, 52.0f};
@@ -406,6 +530,29 @@ namespace
         return Eigen::Vector2f(
             horizontalVelocityPattern[spawnIndex % horizontalVelocityPattern.size()],
             verticalVelocityPattern[spawnIndex % verticalVelocityPattern.size()]);
+    }
+
+    Eigen::Vector2f calculateBroadPhaseStressInitialVelocity(const size_t spawnIndex)
+    {
+        (void)spawnIndex;
+        return Eigen::Vector2f::Zero();
+    }
+
+    Eigen::Vector2f calculateBroadPhaseStressPhaseCenter(const BroadPhaseStressScenarioSettings &settings, const size_t phaseIndex)
+    {
+        switch (phaseIndex % 4)
+        {
+        case 0:
+            return Eigen::Vector2f(-settings.phaseOffset, -settings.phaseOffset);
+        case 1:
+            return Eigen::Vector2f(settings.phaseOffset, -settings.phaseOffset);
+        case 2:
+            return Eigen::Vector2f(-settings.phaseOffset, settings.phaseOffset);
+        case 3:
+            return Eigen::Vector2f(settings.phaseOffset, settings.phaseOffset);
+        }
+
+        return Eigen::Vector2f::Zero();
     }
 
     float calculateRigidBodyContainerAngularVelocity(const size_t spawnIndex)
@@ -504,20 +651,36 @@ namespace
             layout.interiorHeight);
     }
 
+    void printBroadPhaseStressScenarioDetails(
+        const BroadPhaseStressScenarioSettings &settings,
+        const BroadPhaseStressScenarioLayout &layout)
+    {
+        std::fprintf(
+            stdout,
+            "[Benchmark][Scenario] body_count=%d cluster_width=%.1f cluster_height=%.1f phase_offset=%.1f\n",
+            settings.bodyCount,
+            layout.width,
+            layout.height,
+                settings.phaseOffset);
+    }
+
     void printAddRemoveScenarioDetails(
         const AddRemoveScenarioSettings &settings,
         const AddRemoveScenarioLayout &layout)
     {
         std::fprintf(
             stdout,
-            "[Benchmark][Scenario] steady_count=%d add_count=%d remove_count=%d steady_box_count=%d steady_circle_count=%d grid_width=%.1f grid_height=%.1f body_type=static\n",
+            "[Benchmark][Scenario] steady_count=%d add_count=%d remove_count=%d steady_box_count=%d steady_circle_count=%d grid_width=%.1f grid_height=%.1f body_type=%s trigger=%s moving=%s\n",
             settings.steadyBodyCount,
             settings.addCountPerFrame,
             settings.removeCountPerFrame,
             settings.steadyBoxCount,
             settings.steadyCircleCount,
             layout.width,
-            layout.height);
+            layout.height,
+            bodyTypeName(settings.bodyType),
+            settings.isTrigger ? "true" : "false",
+            settings.movingBodies ? "true" : "false");
     }
 
     void buildBroadPhaseScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
@@ -550,6 +713,61 @@ namespace
                 0.0f,
                 0.0f,
                 options.renderFrames);
+        }
+    }
+
+    void buildBroadPhaseStressScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options, BroadPhaseStressScenarioState &state)
+    {
+        state.settings = makeBroadPhaseStressScenarioSettings(options);
+        state.layout = calculateBroadPhaseStressScenarioLayout(options);
+        state.movingBodies.clear();
+        state.movingBodies.reserve(state.layout.totalBodyCount);
+        state.phaseIndex = 0;
+
+        printBroadPhaseStressScenarioDetails(state.settings, state.layout);
+
+        const Eigen::Vector2f phaseCenter = calculateBroadPhaseStressPhaseCenter(state.settings, state.phaseIndex);
+
+        for (size_t spawnIndex = 0; spawnIndex < state.layout.totalBodyCount; ++spawnIndex)
+        {
+            const Eigen::Vector2f position = phaseCenter + calculateBroadPhaseStressSpawnPosition(state.layout, state.settings, spawnIndex);
+            const Eigen::Vector2f velocity = calculateBroadPhaseStressInitialVelocity(spawnIndex);
+
+            GameObject *object = createBenchmarkBox(
+                runtime,
+                formatIndexedName("Dense Broad Mover", spawnIndex),
+                position.x(),
+                position.y(),
+                state.settings.boxWidth,
+                state.settings.boxHeight,
+                STATIC,
+                false,
+                velocity,
+                true,
+                0.0f,
+                0.0f,
+                0.0f,
+                options.renderFrames);
+
+            if (BoxCollider *collider = object->getComponent<BoxCollider>())
+            {
+                collider->setCollisionMask(0);
+            }
+
+            state.movingBodies.push_back(object);
+        }
+    }
+
+    void applyBroadPhaseStressScenarioMotion(BroadPhaseStressScenarioState &state)
+    {
+        state.phaseIndex = (state.phaseIndex + 1) % 4;
+        const Eigen::Vector2f phaseCenter = calculateBroadPhaseStressPhaseCenter(state.settings, state.phaseIndex);
+
+        for (size_t spawnIndex = 0; spawnIndex < state.movingBodies.size(); ++spawnIndex)
+        {
+            GameObject *object = state.movingBodies[spawnIndex];
+
+            object->setPosition(phaseCenter + calculateBroadPhaseStressSpawnPosition(state.layout, state.settings, spawnIndex));
         }
     }
 
@@ -797,6 +1015,8 @@ namespace
         const AddRemoveScenarioSettings &settings = state.settings;
         const Eigen::Vector2f position = calculateAddRemoveSpawnPosition(state.layout, settings, slotIndex);
         const bool useBox = state.slotUsesBox[slotIndex];
+        const size_t spawnIndex = state.spawnedBoxCount + state.spawnedCircleCount;
+        const Eigen::Vector2f velocity = settings.movingBodies ? calculateAddRemoveInitialVelocity(spawnIndex) : Eigen::Vector2f::Zero();
 
         if (useBox)
         {
@@ -808,10 +1028,10 @@ namespace
                     position.y(),
                     settings.boxWidth,
                     settings.boxHeight,
-                    STATIC,
+                    settings.bodyType,
                     false,
-                    Eigen::Vector2f::Zero(),
-                    false,
+                    velocity,
+                    settings.isTrigger,
                     settings.friction,
                     settings.restitution,
                     0.0f,
@@ -827,10 +1047,10 @@ namespace
                 position.x(),
                 position.y(),
                 settings.circleRadius,
-                STATIC,
+                settings.bodyType,
                 false,
-                Eigen::Vector2f::Zero(),
-                false,
+                velocity,
+                settings.isTrigger,
                 settings.friction,
                 settings.restitution,
                 0.0f,
@@ -878,12 +1098,23 @@ namespace
         }
     }
 
-    void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options, AddRemoveScenarioState *addRemoveState)
+    void buildScenario(
+        platformator::Runtime &runtime,
+        const BenchmarkRunnerOptions &options,
+        BroadPhaseStressScenarioState *broadPhaseStressState,
+        AddRemoveScenarioState *addRemoveState)
     {
         switch (options.scenario)
         {
         case BenchmarkScenario::BroadPhase:
             buildBroadPhaseScenario(runtime, options);
+            return;
+        case BenchmarkScenario::BroadPhaseStress:
+            if (broadPhaseStressState == nullptr)
+            {
+                throw std::runtime_error("broad_phase_stress scenario requires state.");
+            }
+            buildBroadPhaseStressScenario(runtime, options, *broadPhaseStressState);
             return;
         case BenchmarkScenario::NarrowPhase:
             buildNarrowPhaseScenario(runtime, options);
@@ -892,9 +1123,10 @@ namespace
             buildRigidBodyContainerScenario(runtime, options);
             return;
         case BenchmarkScenario::AddAndRemove:
+        case BenchmarkScenario::MovingAddAndRemove:
             if (addRemoveState == nullptr)
             {
-                throw std::runtime_error("add_and_remove scenario requires add/remove state.");
+                throw std::runtime_error("add/remove benchmark scenarios require add/remove state.");
             }
             buildAddRemoveScenario(runtime, options, *addRemoveState);
             return;
@@ -933,7 +1165,11 @@ namespace
         return adjustedRect;
     }
 
-    void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options, const AddRemoveScenarioState *addRemoveState)
+    void configureScenarioCamera(
+        platformator::Runtime &runtime,
+        const BenchmarkRunnerOptions &options,
+        const BroadPhaseStressScenarioState *broadPhaseStressState,
+        const AddRemoveScenarioState *addRemoveState)
     {
         if (options.renderFrames == false)
         {
@@ -959,6 +1195,22 @@ namespace
                 options.runtimeOptions.windowSettings));
             return;
         }
+        case BenchmarkScenario::BroadPhaseStress:
+        {
+            if (broadPhaseStressState == nullptr)
+            {
+                return;
+            }
+
+            const BroadPhaseStressScenarioSettings &settings = broadPhaseStressState->settings;
+            const BroadPhaseStressScenarioLayout &layout = broadPhaseStressState->layout;
+            const float cameraWidth = layout.width + 2.0f * (settings.phaseOffset + settings.cameraMargin);
+            const float cameraHeight = layout.height + 2.0f * (settings.phaseOffset + settings.cameraMargin);
+            mainCamera->setCamera(fitCameraRectToWindowAspect(
+                SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
+                options.runtimeOptions.windowSettings));
+            return;
+        }
         case BenchmarkScenario::NarrowPhase:
         {
             const NarrowPhaseScenarioLayout layout = calculateNarrowPhaseScenarioLayout(options);
@@ -981,6 +1233,7 @@ namespace
             return;
         }
         case BenchmarkScenario::AddAndRemove:
+        case BenchmarkScenario::MovingAddAndRemove:
         {
             if (addRemoveState == nullptr)
             {
@@ -1181,16 +1434,16 @@ namespace
             throw std::runtime_error("rigid_body_container scenario requires at least one box or circle.");
         }
 
-        if (options.scenario == BenchmarkScenario::AddAndRemove)
+        if (isAddRemoveScenario(options.scenario))
         {
             if (options.boxCount + options.circleCount <= 0)
             {
-                throw std::runtime_error("add_and_remove scenario requires at least one box or circle to define the steady-state shape mix.");
+                throw std::runtime_error("add/remove benchmark scenarios require at least one box or circle to define the steady-state shape mix.");
             }
 
             if (options.addRemoveAddCount != options.addRemoveRemoveCount)
             {
-                throw std::runtime_error("add_and_remove scenario requires matching --add-count and --remove-count values so the active population stays stable. Use --churn-count for the common case.");
+                throw std::runtime_error("add/remove benchmark scenarios require matching --add-count and --remove-count values so the active population stays stable. Use --churn-count for the common case.");
             }
         }
 
@@ -1211,6 +1464,7 @@ namespace
         platformator::Runtime runtime(options.runtimeOptions);
         AddRemoveScenarioState addRemoveState;
         std::function<void(double)> frameCallback;
+        BroadPhaseStressScenarioState broadPhaseStressState;
 
         std::fprintf(
             stdout,
@@ -1233,16 +1487,31 @@ namespace
         else
         {
             std::fprintf(stdout, "[Benchmark] scenario=%s\n", scenarioName(options.scenario));
-            buildScenario(runtime, options, options.scenario == BenchmarkScenario::AddAndRemove ? &addRemoveState : nullptr);
+            buildScenario(
+                runtime,
+                options,
+                options.scenario == BenchmarkScenario::BroadPhaseStress ? &broadPhaseStressState : nullptr,
+                isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr);
         }
 
-        configureScenarioCamera(runtime, options, options.scenario == BenchmarkScenario::AddAndRemove ? &addRemoveState : nullptr);
+        configureScenarioCamera(
+            runtime,
+            options,
+            options.scenario == BenchmarkScenario::BroadPhaseStress ? &broadPhaseStressState : nullptr,
+            isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr);
 
-        if (options.scenario == BenchmarkScenario::AddAndRemove)
+        if (isAddRemoveScenario(options.scenario))
         {
             frameCallback = [&](double)
             {
                 applyAddRemoveScenarioChurn(runtime, addRemoveState, options.renderFrames);
+            };
+        }
+        else if (options.scenario == BenchmarkScenario::BroadPhaseStress)
+        {
+            frameCallback = [&](double)
+            {
+                applyBroadPhaseStressScenarioMotion(broadPhaseStressState);
             };
         }
 
@@ -1308,7 +1577,7 @@ namespace
     {
         std::fprintf(
             output,
-            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container|add_and_remove] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--steady-count N] [--add-count N] [--remove-count N] [--churn-count N] [--csv-output path] [--render]\n");
+            "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--steady-count N] [--add-count N] [--remove-count N] [--churn-count N] [--csv-output path] [--render]\n");
     }
 }
 

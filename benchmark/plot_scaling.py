@@ -73,7 +73,7 @@ def build_title(rows: List[Dict[str, Union[str, float]]]) -> str:
     scenario = str(rows[0].get("scenario", "unknown"))
     sweep_parameter = str(rows[0].get("sweep_parameter", "requested_count"))
 
-    if scenario == "add_and_remove":
+    if scenario in {"add_and_remove", "moving_add_and_remove"}:
         steady_counts = {float(row.get("steady_count", 0.0)) for row in rows}
         if len(steady_counts) == 1:
             steady_count = next(iter(steady_counts))

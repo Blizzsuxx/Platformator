@@ -8,6 +8,14 @@ import time
 from typing import Dict, List, Optional
 
 
+def is_add_remove_scenario(scenario: str) -> bool:
+    return scenario in {"add_and_remove", "moving_add_and_remove"}
+
+
+def is_broad_phase_scenario(scenario: str) -> bool:
+    return scenario in {"broad_phase", "broad_phase_stress"}
+
+
 def parse_counts(raw: str) -> List[int]:
     counts: List[int] = []
     for token in raw.split(','):
@@ -82,14 +90,14 @@ def parse_benchmark_csv(csv_path: str) -> Dict[str, float]:
 
 def apply_count_argument(base_command: List[str], args: argparse.Namespace, count: int) -> List[str]:
     command = list(base_command)
-    if args.scenario == "broad_phase":
+    if is_broad_phase_scenario(args.scenario):
         command.extend(["--broad-count", str(count)])
     elif args.scenario == "narrow_phase":
         command.extend(["--narrow-count", str(count)])
     elif args.scenario == "rigid_body_container":
         half_count = count // 2
         command.extend(["--box-count", str(half_count), "--circle-count", str(half_count)])
-    elif args.scenario == "add_and_remove":
+    elif is_add_remove_scenario(args.scenario):
         command.extend(["--steady-count", str(args.steady_count), "--churn-count", str(count)])
         if args.box_mix is not None:
             command.extend(["--box-count", str(args.box_mix)])
@@ -102,22 +110,22 @@ def apply_count_argument(base_command: List[str], args: argparse.Namespace, coun
 
 
 def sweep_parameter_name(scenario: str) -> str:
-    if scenario == "broad_phase":
+    if is_broad_phase_scenario(scenario):
         return "broad_count"
     if scenario == "narrow_phase":
         return "narrow_count"
     if scenario == "rigid_body_container":
         return "total_body_count"
-    if scenario == "add_and_remove":
+    if is_add_remove_scenario(scenario):
         return "churn_count"
 
     raise ValueError(f"Unsupported scenario: {scenario}")
 
 
 def build_result_row(args: argparse.Namespace, count: int, metrics: Dict[str, float]) -> Dict[str, float]:
-    steady_count = float(args.steady_count if args.scenario == "add_and_remove" else 0)
-    add_count = float(count if args.scenario == "add_and_remove" else 0)
-    remove_count = float(count if args.scenario == "add_and_remove" else 0)
+    steady_count = float(args.steady_count if is_add_remove_scenario(args.scenario) else 0)
+    add_count = float(count if is_add_remove_scenario(args.scenario) else 0)
+    remove_count = float(count if is_add_remove_scenario(args.scenario) else 0)
 
     return {
         "scenario": args.scenario,
@@ -160,7 +168,7 @@ def main() -> int:
     parser.add_argument(
         "--scenario",
         required=True,
-        choices=["broad_phase", "narrow_phase", "rigid_body_container", "add_and_remove"],
+        choices=["broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove"],
         help="Benchmark scenario to sweep.",
     )
     parser.add_argument(
@@ -193,17 +201,17 @@ def main() -> int:
         "--steady-count",
         type=int,
         default=1000,
-        help="Stable live body count for the add_and_remove scenario (default: 1000).",
+        help="Stable live body count for the add/remove scenarios (default: 1000).",
     )
     parser.add_argument(
         "--box-mix",
         type=int,
-        help="Optional box mix weight for add_and_remove. Passed through as --box-count.",
+        help="Optional box mix weight for add/remove scenarios. Passed through as --box-count.",
     )
     parser.add_argument(
         "--circle-mix",
         type=int,
-        help="Optional circle mix weight for add_and_remove. Passed through as --circle-count.",
+        help="Optional circle mix weight for add/remove scenarios. Passed through as --circle-count.",
     )
     parser.add_argument(
         "--output",
@@ -227,8 +235,8 @@ def main() -> int:
         raise ValueError("--box-mix must be >= 0")
     if args.circle_mix is not None and args.circle_mix < 0:
         raise ValueError("--circle-mix must be >= 0")
-    if args.scenario == "add_and_remove" and args.box_mix == 0 and args.circle_mix == 0:
-        raise ValueError("--box-mix and --circle-mix cannot both be zero for add_and_remove.")
+    if is_add_remove_scenario(args.scenario) and args.box_mix == 0 and args.circle_mix == 0:
+        raise ValueError("--box-mix and --circle-mix cannot both be zero for the add/remove scenarios.")
 
     counts = parse_counts_from_step_arguments(args.step_size, args.ending_step, args.starting_step)
 

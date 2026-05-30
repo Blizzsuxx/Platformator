@@ -1,4 +1,0 @@
-scenario,requested_count,frame_avg_ms,frame_p95_ms,broad_phase_avg_ms,narrow_phase_avg_ms,resolve_collisions_avg_ms,reported_object_count_avg,candidate_pair_count_avg,pending_narrow_phase_pair_count_avg,active_collision_count_avg,occupied_cell_count_avg,queued_sync_count_avg
-broad_phase,10.0,0.013321825,0.0,8.4025e-05,8.9575e-05,0.000136933,11.0,0.0,0.0,0.0,10.808333333,9.916666667
-broad_phase,100.0,0.023601825,0.0,0.000126967,9.95e-05,0.000851467,101.0,0.0,0.0,0.0,111.633333333,83.283333333
-broad_phase,1000.0,0.096592075,0.0,0.000293925,0.000200358,0.006846058,1001.0,0.0,0.0,0.0,1116.85,665.716666667

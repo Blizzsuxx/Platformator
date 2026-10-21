@@ -1,0 +1,17 @@
+{
+  "capture_integrity": "PASS",
+  "runs": 180,
+  "conditions": 36,
+  "measured_steps": 108000,
+  "archived_raw_files": 1080,
+  "archive_content_verification": "PASS: every archived file hash matched original before loose-copy removal",
+  "independent_statistic_recomputation": "PASS",
+  "source_fingerprints": "PASS: engine and dependencies unchanged from e01526b",
+  "stock_counter_comparison": "PASS: six serial pilot workloads",
+  "support_range_failures": [
+    "narrow_phase-small-n10-t6-r5",
+    "narrow_phase-small-n10-t6-r4",
+    "narrow_phase-small-n10-t6-r1"
+  ],
+  "physics_correctness": "Not certified; failures and state variation retained"
+}

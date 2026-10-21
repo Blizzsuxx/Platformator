@@ -1,0 +1,121 @@
+{
+  "artifacts": {
+    "measured_steps": 108000,
+    "raw": "raw-runs.tar.gz",
+    "raw_files": 1080
+  },
+  "available_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "build": "Release, -O3 -DNDEBUG, benchmark instrumentation ON, debug tools OFF, no sanitizers/LTO",
+  "cmake": "cmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+  "compiler": "c++ (GCC) 16.2.1 20260810\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+  "completed_runs": 180,
+  "controlled_environment": {
+    "SDL_AUDIODRIVER": "dummy",
+    "SDL_RENDER_DRIVER": "software",
+    "SDL_VIDEODRIVER": "dummy"
+  },
+  "correctness": {
+    "capture_integrity": "PASS: 180 successful processes, exact populations and 600 samples each, finite final state, nested timer consistency",
+    "physics_correctness": "Not certified; existing engine defects remain. State comparison reports observed variation, not a pass/fail equivalence claim.",
+    "support_range_check": "FAIL",
+    "support_range_failed_runs": [
+      "narrow_phase-small-n10-t6-r5",
+      "narrow_phase-small-n10-t6-r4",
+      "narrow_phase-small-n10-t6-r1"
+    ]
+  },
+  "cpu_model": "AMD Ryzen 5 7535HS with Radeon Graphics",
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "SDL": "3.4.2",
+    "SDL_image": "3.4.0",
+    "SDL_mixer": "3.2.0",
+    "SDL_ttf": "3.1.0",
+    "nlohmann_json": "3.12.0",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "final_loadavg": [
+    4.15966796875,
+    3.900390625,
+    2.845703125
+  ],
+  "final_orchestrator_sha256": "27865dc58251684132bb16e57a8f40a7cea510d6f57384ec3b92850b45101ed8",
+  "finished_utc": "2026-10-21T17:14:53.960051+00:00",
+  "git_status": "A  .agents/skills/speckit-analyze/SKILL.md\nA  .agents/skills/speckit-checklist/SKILL.md\nA  .agents/skills/speckit-clarify/SKILL.md\nA  .agents/skills/speckit-constitution/SKILL.md\nA  .agents/skills/speckit-converge/SKILL.md\nA  .agents/skills/speckit-implement/SKILL.md\nA  .agents/skills/speckit-plan/SKILL.md\nA  .agents/skills/speckit-specify/SKILL.md\nA  .agents/skills/speckit-tasks/SKILL.md\nA  .agents/skills/speckit-taskstoissues/SKILL.md\nA  .specify/.gitignore\nA  .specify/init-options.json\nA  .specify/integration.json\nA  .specify/integrations/codex.manifest.json\nA  .specify/integrations/speckit.manifest.json\nA  .specify/memory/.constitution-template.json\nA  .specify/memory/constitution.md\nA  .specify/scripts/bash/check-prerequisites.sh\nA  .specify/scripts/bash/common.sh\nA  .specify/scripts/bash/create-new-feature.sh\nA  .specify/scripts/bash/resolve-template.sh\nA  .specify/scripts/bash/setup-plan.sh\nA  .specify/scripts/bash/setup-tasks.sh\nA  .specify/templates/checklist-template.md\nA  .specify/templates/constitution-template.md\nA  .specify/templates/plan-template.md\nA  .specify/templates/spec-template.md\nA  .specify/templates/tasks-template.md\nA  .specify/workflows/speckit/workflow.yml\nA  .specify/workflows/workflow-registry.json\nA  CODEBASE_REVIEW.md\nA  specs/001-cpp-engine-cleanup/contracts/library-benchmarks.md\nA  specs/001-cpp-engine-cleanup/contracts/physics-step.md\nA  specs/001-cpp-engine-cleanup/contracts/runtime-lifecycle.md\nA  specs/001-cpp-engine-cleanup/data-model.md\nA  specs/001-cpp-engine-cleanup/plan.md\nA  specs/001-cpp-engine-cleanup/quickstart.md\nA  specs/001-cpp-engine-cleanup/research.md\nA  specs/001-cpp-engine-cleanup/spec.md\nA  specs/001-cpp-engine-cleanup/tasks.md\n?? benchmark/baselines/",
+  "harness_sha256": {
+    "CMakeLists.txt": "fa80f1885c5c59527b4a7584691694649cd114f84ad422d6de4db5b83a28fa83",
+    "capture.cpp": "a4bfa8251bd2469f4598cb83c1ff075c470497cc67ed7f9b0ec9a44dc4d9cde3",
+    "run.py": "15f762fd945f036b978025957cc90a22003c13529197cf2a7556637150126eb3"
+  },
+  "initial_loadavg": [
+    3.12255859375,
+    2.59423828125,
+    1.9375
+  ],
+  "job_shuffle_seed": 1,
+  "machine": {
+    "machine": "x86_64",
+    "node": "user-bravo15c7ve",
+    "processor": "",
+    "release": "6.18.49-1-MANJARO",
+    "system": "Linux",
+    "version": "#1 SMP PREEMPT_DYNAMIC Thu, 03 Sep 2026 23:21:05 +0000"
+  },
+  "measured_steps": 600,
+  "orchestrator_revisions": [
+    {
+      "reason": "Original support-range check stopped at job 72. Preserve that failure as an explicit physics diagnostic and continue unchanged timed captures. No engine, workload, binary, or measurement setting changed.",
+      "resumed_utc": "2026-10-21T17:11:11.946055+00:00",
+      "run_py_sha256": "27865dc58251684132bb16e57a8f40a7cea510d6f57384ec3b92850b45101ed8"
+    }
+  ],
+  "physical_cpu_selection": [
+    0,
+    2,
+    4,
+    6,
+    8,
+    10
+  ],
+  "power_policy": {
+    "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "performance",
+    "/sys/devices/system/cpu/cpufreq/boost": "1"
+  },
+  "profiles": [
+    1,
+    6
+  ],
+  "repetitions": 5,
+  "runner": "/home/user/Projects/Platformator/bin/pre-cleanup-baseline/platformator_baseline_capture",
+  "runner_sha256": "3ace8a7030c1419868ae1178e77a76cbb962890ad53082bbd1ccab40e23fc8e3",
+  "runtime_library_sha256": {
+    "/home/user/Projects/Platformator/bin/pre-cleanup-baseline/gnu_16.2_cxx20_64_release/libtbb.so.12": "287d49f915019bc5ab5846e09ae7683b5c1bc91db664755925bd67310440d145",
+    "/home/user/Projects/Platformator/bin/pre-cleanup-baseline/libSDL3.so.0": "1aa743fdb878e4a6d0cbdb12910d94881d07d3dea1e62567845b46318e67e785",
+    "/home/user/Projects/Platformator/bin/pre-cleanup-baseline/libSDL3_image.so.0": "ec6d7adc81cbb6db04ec54b47f0c5c1ca506f03cfa672ffa8922658676659caa",
+    "/home/user/Projects/Platformator/bin/pre-cleanup-baseline/libSDL3_mixer.so.0": "365d8ae43e9198bab9fbf32899601f9b185fec2f83d4fa5048cb29809caf5dd9",
+    "/home/user/Projects/Platformator/bin/pre-cleanup-baseline/libSDL3_ttf.so.0": "ae012e0874f691ff93f9ed627438bf580fecb320e494f86a501f6296104590a2"
+  },
+  "source_commit": "e01526b00f0b3552cccc884887f9281fbaa1a104",
+  "source_tree_sha256": "97697a90790918da9fe837e56f6ad934783bda772eeba76af920bd3d548374f2",
+  "started_utc": "2026-10-21T17:06:12.958426+00:00",
+  "timing": {
+    "host_step": "steady_clock around one public Runtime simulateFrame[WithCustomCallback] call, including callbacks, legacy instrumentation, transient cleanup and deferred destruction; excludes rendering/startup/shutdown/output",
+    "legacy_frame": "Original recorder: excludes deferred destruction and post-step transient cleanup"
+  },
+  "warmup_steps": 120,
+  "workload_seed": "none: existing fixed placement/velocity patterns"
+}

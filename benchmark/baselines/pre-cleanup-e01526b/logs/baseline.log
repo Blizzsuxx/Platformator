@@ -1,0 +1,80 @@
+[1/180] add_and_remove-medium-n100-t6-r3: host=0.1579 ms, legacy=0.1479 ms
+[2/180] broad_phase-medium-n500-t1-r1: host=0.2589 ms, legacy=0.0280 ms
+[3/180] broad_phase-small-n100-t6-r5: host=0.0319 ms, legacy=0.0085 ms
+[4/180] rigid_body_container-medium-n500-t1-r1: host=0.6595 ms, legacy=0.4621 ms
+[5/180] rigid_body_container-medium-n500-t6-r1: host=0.4895 ms, legacy=0.3979 ms
+[6/180] moving_add_and_remove-small-n10-t1-r4: host=0.5296 ms, legacy=0.1881 ms
+[7/180] broad_phase-medium-n500-t1-r5: host=0.2638 ms, legacy=0.0282 ms
+[8/180] moving_add_and_remove-large-n1000-t6-r3: host=1.2990 ms, legacy=1.0439 ms
+[9/180] broad_phase_stress-medium-n150-t1-r4: host=0.8703 ms, legacy=0.8698 ms
+[10/180] moving_add_and_remove-medium-n100-t6-r3: host=0.3156 ms, legacy=0.1869 ms
+[11/180] narrow_phase-small-n10-t6-r3: host=0.0416 ms, legacy=0.0300 ms
+[12/180] rigid_body_container-large-n1000-t1-r2: host=1.7893 ms, legacy=1.3373 ms
+[13/180] broad_phase_stress-medium-n150-t1-r1: host=0.8605 ms, legacy=0.8600 ms
+[14/180] broad_phase-medium-n500-t6-r1: host=0.1158 ms, legacy=0.0231 ms
+[15/180] add_and_remove-medium-n100-t6-r5: host=0.1597 ms, legacy=0.1497 ms
+[16/180] broad_phase_stress-small-n50-t6-r3: host=0.1290 ms, legacy=0.1286 ms
+[17/180] broad_phase_stress-medium-n150-t1-r2: host=0.9222 ms, legacy=0.9214 ms
+[18/180] narrow_phase-large-n200-t1-r3: host=47.3092 ms, legacy=42.7138 ms
+[19/180] narrow_phase-medium-n100-t1-r4: host=10.1447 ms, legacy=8.9943 ms
+[20/180] moving_add_and_remove-small-n10-t1-r1: host=0.5334 ms, legacy=0.1902 ms
+[21/180] broad_phase_stress-large-n300-t6-r3: host=2.4425 ms, legacy=2.4417 ms
+[22/180] moving_add_and_remove-small-n10-t6-r4: host=0.2283 ms, legacy=0.1021 ms
+[23/180] broad_phase-large-n1000-t6-r4: host=0.2001 ms, legacy=0.0363 ms
+[24/180] broad_phase-medium-n500-t6-r4: host=0.1169 ms, legacy=0.0233 ms
+[25/180] broad_phase-medium-n500-t6-r3: host=0.1234 ms, legacy=0.0244 ms
+[26/180] narrow_phase-large-n200-t1-r4: host=51.8775 ms, legacy=46.7906 ms
+[27/180] rigid_body_container-small-n100-t1-r1: host=0.0770 ms, legacy=0.0460 ms
+[28/180] add_and_remove-large-n1000-t6-r3: host=1.1205 ms, legacy=1.0060 ms
+[29/180] narrow_phase-medium-n100-t1-r3: host=10.2998 ms, legacy=9.1546 ms
+[30/180] broad_phase_stress-medium-n150-t6-r5: host=0.8021 ms, legacy=0.8014 ms
+[31/180] broad_phase-medium-n500-t6-r5: host=0.1220 ms, legacy=0.0240 ms
+[32/180] narrow_phase-medium-n100-t1-r2: host=10.3531 ms, legacy=9.1643 ms
+[33/180] narrow_phase-medium-n100-t6-r2: host=3.2566 ms, legacy=2.2804 ms
+[34/180] narrow_phase-large-n200-t1-r1: host=50.3892 ms, legacy=45.5700 ms
+[35/180] rigid_body_container-small-n100-t6-r4: host=0.0665 ms, legacy=0.0473 ms
+[36/180] rigid_body_container-small-n100-t1-r4: host=0.0768 ms, legacy=0.0456 ms
+[37/180] rigid_body_container-medium-n500-t1-r4: host=0.6333 ms, legacy=0.4455 ms
+[38/180] rigid_body_container-large-n1000-t6-r4: host=1.2601 ms, legacy=1.0870 ms
+[39/180] moving_add_and_remove-small-n10-t6-r3: host=0.2252 ms, legacy=0.1007 ms
+[40/180] add_and_remove-large-n1000-t6-r5: host=1.1381 ms, legacy=1.0220 ms
+[41/180] broad_phase-medium-n500-t1-r3: host=0.2505 ms, legacy=0.0271 ms
+[42/180] broad_phase_stress-medium-n150-t6-r4: host=0.8170 ms, legacy=0.8165 ms
+[43/180] moving_add_and_remove-large-n1000-t1-r3: host=3.2299 ms, legacy=2.5855 ms
+[44/180] broad_phase-large-n1000-t1-r4: host=0.5922 ms, legacy=0.0560 ms
+[45/180] add_and_remove-medium-n100-t1-r1: host=0.3461 ms, legacy=0.3353 ms
+[46/180] rigid_body_container-medium-n500-t1-r5: host=0.6654 ms, legacy=0.4696 ms
+[47/180] broad_phase-large-n1000-t6-r3: host=0.2158 ms, legacy=0.0391 ms
+[48/180] rigid_body_container-small-n100-t1-r2: host=0.0838 ms, legacy=0.0500 ms
+[49/180] moving_add_and_remove-medium-n100-t1-r5: host=0.7854 ms, legacy=0.3933 ms
+[50/180] broad_phase_stress-small-n50-t1-r4: host=0.1471 ms, legacy=0.1467 ms
+[51/180] broad_phase-small-n100-t6-r4: host=0.0384 ms, legacy=0.0101 ms
+[52/180] moving_add_and_remove-medium-n100-t1-r1: host=0.7343 ms, legacy=0.3658 ms
+[53/180] broad_phase_stress-small-n50-t1-r3: host=0.1349 ms, legacy=0.1346 ms
+[54/180] narrow_phase-large-n200-t6-r3: host=17.4090 ms, legacy=12.9172 ms
+[55/180] broad_phase_stress-large-n300-t1-r3: host=2.6916 ms, legacy=2.6909 ms
+[56/180] broad_phase_stress-large-n300-t1-r5: host=2.6183 ms, legacy=2.6176 ms
+[57/180] moving_add_and_remove-small-n10-t6-r2: host=0.2280 ms, legacy=0.1023 ms
+[58/180] add_and_remove-small-n10-t1-r3: host=0.0420 ms, legacy=0.0415 ms
+[59/180] moving_add_and_remove-medium-n100-t1-r3: host=0.7310 ms, legacy=0.3660 ms
+[60/180] rigid_body_container-medium-n500-t6-r3: host=0.4516 ms, legacy=0.3662 ms
+[61/180] add_and_remove-small-n10-t1-r2: host=0.0437 ms, legacy=0.0430 ms
+[62/180] broad_phase_stress-small-n50-t6-r1: host=0.1259 ms, legacy=0.1255 ms
+[63/180] broad_phase_stress-medium-n150-t1-r3: host=0.8603 ms, legacy=0.8598 ms
+[64/180] moving_add_and_remove-large-n1000-t6-r5: host=1.4099 ms, legacy=1.1375 ms
+[65/180] moving_add_and_remove-small-n10-t6-r5: host=0.2290 ms, legacy=0.1024 ms
+[66/180] broad_phase_stress-medium-n150-t6-r1: host=0.7849 ms, legacy=0.7844 ms
+[67/180] broad_phase_stress-medium-n150-t1-r5: host=0.8813 ms, legacy=0.8807 ms
+[68/180] rigid_body_container-small-n100-t1-r3: host=0.0763 ms, legacy=0.0454 ms
+[69/180] add_and_remove-small-n10-t6-r1: host=0.0360 ms, legacy=0.0354 ms
+[70/180] narrow_phase-medium-n100-t6-r5: host=2.7766 ms, legacy=1.9775 ms
+[71/180] rigid_body_container-medium-n500-t1-r2: host=0.6949 ms, legacy=0.4851 ms
+Traceback (most recent call last):
+  File "/home/user/Projects/Platformator/benchmark/baselines/pre-cleanup-e01526b/run.py", line 246, in <module>
+    main()
+    ~~~~^^
+  File "/home/user/Projects/Platformator/benchmark/baselines/pre-cleanup-e01526b/run.py", line 211, in main
+    stats = read_run(directory, expected, args.measure_frames)
+  File "/home/user/Projects/Platformator/benchmark/baselines/pre-cleanup-e01526b/run.py", line 105, in read_run
+    raise ValueError("Implausible final support count")
+ValueError: Implausible final support count

@@ -1,0 +1,13 @@
+[1/12] rigid_body_container-small-n100-t6-r1: host=0.0566 ms, legacy=0.0356 ms
+[2/12] moving_add_and_remove-small-n10-t6-r1: host=0.2170 ms, legacy=0.0929 ms
+[3/12] broad_phase-small-n100-t1-r1: host=0.0464 ms, legacy=0.0071 ms
+[4/12] add_and_remove-small-n10-t1-r1: host=0.0421 ms, legacy=0.0416 ms
+[5/12] narrow_phase-small-n10-t6-r1: host=0.0534 ms, legacy=0.0394 ms
+[6/12] rigid_body_container-small-n100-t1-r1: host=0.0600 ms, legacy=0.0297 ms
+[7/12] broad_phase_stress-small-n50-t6-r1: host=0.1231 ms, legacy=0.1229 ms
+[8/12] moving_add_and_remove-small-n10-t1-r1: host=0.5574 ms, legacy=0.1863 ms
+[9/12] narrow_phase-small-n10-t1-r1: host=0.0775 ms, legacy=0.0650 ms
+[10/12] broad_phase-small-n100-t6-r1: host=0.0382 ms, legacy=0.0107 ms
+[11/12] add_and_remove-small-n10-t6-r1: host=0.0377 ms, legacy=0.0371 ms
+[12/12] broad_phase_stress-small-n50-t1-r1: host=0.1415 ms, legacy=0.1413 ms
+Saved 12 runs and 12 condition summaries to /home/user/Projects/Platformator/benchmark/baselines/pre-cleanup-e01526b/pilot

@@ -1,9 +1,9 @@
-#include "camera.h"
+#include "platformator/camera.h"
 
 #include <algorithm>
 
 #include "constants.h"
-#include "sprite.h"
+#include "platformator/sprite.h"
 
 Camera::Camera() : Component(ComponentType::CAMERA), width(SCREEN_WIDTH), height(SCREEN_HEIGHT)
 {
@@ -13,7 +13,8 @@ Camera::Camera(GameObject *gameObject) : Component(gameObject, CAMERA), width(SC
 {
 }
 
-Camera::Camera(GameObject *gameObject, float x, float y, float w, float h) : Component(gameObject, CAMERA), width(w), height(h)
+Camera::Camera(GameObject *gameObject, float x, float y, float w, float h)
+    : Component(gameObject, CAMERA), width(w), height(h)
 {
     gameObject->setPosition(Eigen::Vector2f(x, y));
 }
@@ -31,19 +32,20 @@ void Camera::render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int
     float renderW = sprite->getWidth();
     float renderH = sprite->getHeight();
 
-    float renderX = sprite->getGameObject()->getX() - renderW / 2.0f;
-    float renderY = sprite->getGameObject()->getY() - renderH / 2.0f;
-
-    SDL_FRect worldRect = {renderX, renderY, renderW, renderH};
-    SDL_FRect renderQuad = worldToScreenRect(worldRect, outputWidth, outputHeight);
-    SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad, sprite->getGameObject()->getRotationInDegrees(), nullptr, sprite->getFlip());
+    const auto &spritePosition = sprite->getGameObject()->worldPosition;
+    const auto &cameraPosition = getGameObject()->worldPosition;
+    const float scaleX = getScaleX(outputWidth), scaleY = getScaleY(outputHeight);
+    SDL_FRect renderQuad = {(spritePosition.x() - renderW * 0.5f - cameraPosition.x()) * scaleX,
+                            (spritePosition.y() - renderH * 0.5f - cameraPosition.y()) * scaleY, renderW * scaleX,
+                            renderH * scaleY};
+    SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad,
+                             sprite->getGameObject()->getRotationInDegrees(), nullptr, sprite->getFlip());
 }
 
 Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const
 {
-    return Eigen::Vector2f(
-        (worldPoint.x() - getGameObject()->getX()) * getScaleX(outputWidth),
-        (worldPoint.y() - getGameObject()->getY()) * getScaleY(outputHeight));
+    return Eigen::Vector2f((worldPoint.x() - getGameObject()->getX()) * getScaleX(outputWidth),
+                           (worldPoint.y() - getGameObject()->getY()) * getScaleY(outputHeight));
 }
 
 Eigen::Vector2f Camera::worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight) const
@@ -53,8 +55,10 @@ Eigen::Vector2f Camera::worldToScreenSize(const Eigen::Vector2f &worldSize, int 
 
 SDL_FRect Camera::worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight) const
 {
-    Eigen::Vector2f screenOrigin = worldToScreenPoint(Eigen::Vector2f(worldRect.x, worldRect.y), outputWidth, outputHeight);
-    Eigen::Vector2f screenSize = worldToScreenSize(Eigen::Vector2f(worldRect.w, worldRect.h), outputWidth, outputHeight);
+    Eigen::Vector2f screenOrigin =
+        worldToScreenPoint(Eigen::Vector2f(worldRect.x, worldRect.y), outputWidth, outputHeight);
+    Eigen::Vector2f screenSize =
+        worldToScreenSize(Eigen::Vector2f(worldRect.w, worldRect.h), outputWidth, outputHeight);
     return SDL_FRect{screenOrigin.x(), screenOrigin.y(), screenSize.x(), screenSize.y()};
 }
 

@@ -8,17 +8,17 @@
 #include <functional>
 #include <vector>
 
-#include "camera.h"
-#include "debugsettings.h"
+#include "platformator/camera.h"
+#include "platformator/debugsettings.h"
 #include "debugdraw.h"
-#include "windowsettings.h"
+#include "platformator/windowsettings.h"
 
 class AudioWrapper;
 class Sprite;
 
 class SDLWindow
 {
-public:
+  public:
     SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
     ~SDLWindow();
 
@@ -49,7 +49,7 @@ public:
     void updateTransientAudio();
     void clearTransientAudio();
 
-private:
+  private:
     struct TransientAudioPlayback
     {
         MIX_Track *track;

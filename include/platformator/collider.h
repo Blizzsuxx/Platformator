@@ -18,198 +18,207 @@ class AABB;
 
 class BoundingRadiusProjection
 {
-public:
-	BoundingRadiusProjection();
-	BoundingRadiusProjection(Collider *collider, float projectedPosition, bool isEnd);
-	~BoundingRadiusProjection();
+  public:
+    BoundingRadiusProjection();
+    BoundingRadiusProjection(Collider *collider, float projectedPosition, bool isEnd);
+    ~BoundingRadiusProjection();
 
-	Collider *getCollider();
-	float getProjectedPosition() const;
-	bool getIsMaxima() const;
+    Collider *getCollider();
+    float getProjectedPosition() const;
+    bool getIsMaxima() const;
 
-	void setCollider(Collider *collider);
-	void setProjectedPosition(float projectedPosition);
-	void setIsMaxima(bool isMaxima);
+    void setCollider(Collider *collider);
+    void setProjectedPosition(float projectedPosition);
+    void setIsMaxima(bool isMaxima);
 
-	bool operator==(const BoundingRadiusProjection &other) const;
-	bool operator!=(const BoundingRadiusProjection &other) const;
-	bool operator<(const BoundingRadiusProjection &other) const;
-	bool operator>(const BoundingRadiusProjection &other) const;
-	bool operator<=(const BoundingRadiusProjection &other) const;
-	bool operator>=(const BoundingRadiusProjection &other) const;
+    bool operator==(const BoundingRadiusProjection &other) const;
+    bool operator!=(const BoundingRadiusProjection &other) const;
+    bool operator<(const BoundingRadiusProjection &other) const;
+    bool operator>(const BoundingRadiusProjection &other) const;
+    bool operator<=(const BoundingRadiusProjection &other) const;
+    bool operator>=(const BoundingRadiusProjection &other) const;
 
-private:
-	Collider *collider;
-	float projectedPosition;
-	bool isMaxima;
+  private:
+    Collider *collider;
+    float projectedPosition;
+    bool isMaxima;
 };
 
 class BoundingRadiusProjectionProxy
 {
-public:
-	BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk);
-	~BoundingRadiusProjectionProxy();
+  public:
+    BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk);
+    ~BoundingRadiusProjectionProxy();
 
-	BoundingRadiusProjection *getProjection() const;
-	LocalSortArray *getChunk() const;
-	size_t getChunkIndex() const;
+    BoundingRadiusProjection *getProjection() const;
+    LocalSortArray *getChunk() const;
+    size_t getChunkIndex() const;
 
-	void setBoundingProjection(BoundingRadiusProjection *projection);
-	void setChunk(LocalSortArray *chunk);
-	void setChunkIndex(size_t chunkIndex);
-	void updateCachedProjectedPosition();
+    void setBoundingProjection(BoundingRadiusProjection *projection);
+    void setChunk(LocalSortArray *chunk);
+    void setChunkIndex(size_t chunkIndex);
+    void updateCachedProjectedPosition();
 
-	Collider *getCollider();
-	float getProjectedPosition() const;
-	bool getIsMaxima() const;
-	float getCachedProjectedPosition() const;
+    Collider *getCollider();
+    float getProjectedPosition() const;
+    bool getIsMaxima() const;
+    float getCachedProjectedPosition() const;
 
-	bool operator==(const BoundingRadiusProjectionProxy &other) const;
-	bool operator!=(const BoundingRadiusProjectionProxy &other) const;
-	bool operator<(const BoundingRadiusProjectionProxy &other) const;
-	bool operator>(const BoundingRadiusProjectionProxy &other) const;
-	bool operator<=(const BoundingRadiusProjectionProxy &other) const;
-	bool operator>=(const BoundingRadiusProjectionProxy &other) const;
+    bool operator==(const BoundingRadiusProjectionProxy &other) const;
+    bool operator!=(const BoundingRadiusProjectionProxy &other) const;
+    bool operator<(const BoundingRadiusProjectionProxy &other) const;
+    bool operator>(const BoundingRadiusProjectionProxy &other) const;
+    bool operator<=(const BoundingRadiusProjectionProxy &other) const;
+    bool operator>=(const BoundingRadiusProjectionProxy &other) const;
 
-private:
-	BoundingRadiusProjection *projection;
-	LocalSortArray *chunk;
-	size_t chunkIndex;
-	float cachedProjectedPosition;
+  private:
+    BoundingRadiusProjection *projection;
+    LocalSortArray *chunk;
+    size_t chunkIndex;
+    float cachedProjectedPosition;
 };
 
 class BoundingRadiusProjectionAxis
 {
-public:
-	BoundingRadiusProjectionAxis(Collider *collider, float min, float max);
-	~BoundingRadiusProjectionAxis();
+  public:
+    BoundingRadiusProjectionAxis(Collider *collider, float min, float max);
+    ~BoundingRadiusProjectionAxis();
 
-	BoundingRadiusProjection *getMin();
-	BoundingRadiusProjection *getMax();
+    BoundingRadiusProjection *getMin();
+    BoundingRadiusProjection *getMax();
 
-	bool operator==(const BoundingRadiusProjectionAxis &other) const;
-	bool operator!=(const BoundingRadiusProjectionAxis &other) const;
+    bool operator==(const BoundingRadiusProjectionAxis &other) const;
+    bool operator!=(const BoundingRadiusProjectionAxis &other) const;
 
-private:
-	BoundingRadiusProjection min;
-	BoundingRadiusProjection max;
+  private:
+    BoundingRadiusProjection min;
+    BoundingRadiusProjection max;
 };
 
 struct BoundingRadiusProjectionAxisBinding
 {
-	BoundingRadiusProjectionProxy minProxy;
-	BoundingRadiusProjectionProxy maxProxy;
+    BoundingRadiusProjectionProxy minProxy;
+    BoundingRadiusProjectionProxy maxProxy;
 
-	explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis);
-	void bind(BoundingRadiusProjectionAxis *axis);
+    explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis);
+    void bind(BoundingRadiusProjectionAxis *axis);
 };
 
 enum class ColliderType
 {
-	CircleCollider,
-	BoxCollider
+    CircleCollider,
+    BoxCollider
 };
 
 enum ColliderFlags : uint8_t
 {
-	IS_TRIGGER = 1 << 0,
-	IS_QUEUED_FOR_ADD = 1 << 1,
-	IS_QUEUED_FOR_SYNC = 1 << 2,
-	IS_QUEUED_FOR_REMOVE = 1 << 3,
-	IS_REGISTERED_IN_GRID = 1 << 4,
-	IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 5
+    IS_TRIGGER = 1 << 0,
+    IS_REGISTERED_IN_GRID = 1 << 4,
+    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 5
 };
 
 class Collider : public Component
 {
-	friend class GameObject;
-	friend class PhysicsManager;
-	friend class Grid;
-	friend class GridCell;
+    friend class GameObject;
+    friend class PhysicsManager;
+    friend class Grid;
+    friend class GridCell;
 
-public:
-	Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType);
-	Collider(ComponentType type, ColliderType colliderType);
-	~Collider();
+  public:
+    Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType);
+    Collider(ComponentType type, ColliderType colliderType);
+    ~Collider();
 
-	ColliderType getColliderType() const;
-	virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
-	virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
+    ColliderType getColliderType() const;
+    virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
+    virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
-	void triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const;
-	void triggerCollisionExit(Collider *other, double timeDelta) const;
-	void triggerCollisionStay(const Collision *collision, Collider *other, double timeDelta) const;
+    void triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const;
+    void triggerCollisionExit(Collider *other, double timeDelta) const;
+    void triggerCollisionStay(const Collision *collision, Collider *other, double timeDelta) const;
 
-	BoundingRadiusProjectionAxis *getXProjections();
-	BoundingRadiusProjectionAxis *getYProjections();
+    BoundingRadiusProjectionAxis *getXProjections();
+    BoundingRadiusProjectionAxis *getYProjections();
 
-	uint64_t getCollisionGroup() const;
-	void setCollisionGroup(uint64_t collisionGroup);
+    uint64_t getCollisionGroup() const;
+    void setCollisionGroup(uint64_t collisionGroup);
 
-	uint64_t getCollisionMask() const;
-	void setCollisionMask(uint64_t collisionMask);
+    uint64_t getCollisionMask() const;
+    void setCollisionMask(uint64_t collisionMask);
 
-	bool getIsTrigger() const;
-	void setIsTrigger(bool isTrigger);
+    bool getIsTrigger() const;
+    void setIsTrigger(bool isTrigger);
 
-	const Eigen::Vector2f &getOffset() const;
-	void setOffset(const Eigen::Vector2f &offset);
-	Eigen::Vector2f getWorldPosition() const;
+    const Eigen::Vector2f &getOffset() const;
+    void setOffset(const Eigen::Vector2f &offset);
+    Eigen::Vector2f getWorldPosition() const;
+    const Eigen::Vector2f &getCachedWorldPosition() const
+    {
+        return cachedWorldPosition;
+    }
 
-	bool getIsQueuedForAdd() const;
-	void markQueuedForAdd();
-	void clearQueuedForAdd();
+    bool getIsQueuedForAdd() const;
 
-	bool getIsQueuedForSync() const;
-	void scheduleSync();
-	void removeSync();
+    bool getIsQueuedForSync() const;
+    void scheduleSync();
+    void invalidateResponse();
 
-	bool getIsQueuedForRemove() const;
-	void markQueuedForRemove();
-	void clearQueuedForRemove();
+    bool getIsQueuedForRemove() const;
 
-	bool getIsQueuedForAnything() const;
+    bool getIsQueuedForAnything() const;
 
-	void prepareSync();
-	uint64_t getStateVersion() const;
+    void prepareSync();
+    uint64_t getStateVersion() const;
 
-	const GridCellRange &getGridCellRange() const;
-	void calculateGridCellRange();
-	const GridCellRange &getGridCellRangeCache() const;
-	bool hasValidGridCellRange() const;
+    const GridCellRange &getGridCellRange() const;
+    void calculateGridCellRange();
+    const GridCellRange &getGridCellRangeCache() const;
+    bool hasValidGridCellRange() const;
 
-	bool getIsRegisteredInGrid() const;
-	void setIsRegisteredInGrid(bool isRegisteredInGrid);
-	bool getIsRegisteredInPhysicsManager() const;
-	void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
-	size_t getPhysicsManagerIndex() const;
-	void setPhysicsManagerIndex(size_t physicsManagerIndex);
+    bool getIsRegisteredInGrid() const;
+    void setIsRegisteredInGrid(bool isRegisteredInGrid);
+    bool getIsRegisteredInPhysicsManager() const;
+    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
+    size_t getPhysicsManagerIndex() const;
+    void setPhysicsManagerIndex(size_t physicsManagerIndex);
 
-	virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
+    virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
-protected:
-	uint64_t collisionGroup;
-	uint64_t collisionMask;
+  protected:
+    uint64_t collisionGroup;
+    uint64_t collisionMask;
 
-	ColliderType colliderType;
-	uint64_t stateVersion;
-	Eigen::Vector2f offset;
+    ColliderType colliderType;
+    uint64_t stateVersion;
+    Eigen::Vector2f offset;
+    Eigen::Vector2f cachedWorldPosition = Eigen::Vector2f::Zero();
 
-	BoundingRadiusProjectionAxis xProjections;
-	BoundingRadiusProjectionAxis yProjections;
-	size_t physicsManagerIndex;
+    BoundingRadiusProjectionAxis xProjections;
+    BoundingRadiusProjectionAxis yProjections;
+    size_t physicsManagerIndex;
 
-	GridCellRange gridCellRange;
-	ColliderFlags flags;
-	GridCellRange gridCellRangeCache;
+    GridCellRange gridCellRange;
+    ColliderFlags flags;
+    GridCellRange gridCellRangeCache;
 
-	void updateGridCellRange();
+    void updateGridCellRange();
 
-	virtual void updateCollider() = 0;
+    virtual void updateCollider() = 0;
+
+  private:
+    enum Dirty : uint8_t
+    {
+        Geometry = 1,
+        Filter = 2,
+        Response = 4
+    };
+    uint8_t dirty = Geometry;
+    bool desiredInGrid = false;
+    size_t gridQueueIndex = SIZE_MAX;
+    void prepareSyncFromCache();
 };
 
-template <>
-struct ComponentTypeFor<Collider>
+template <> struct ComponentTypeFor<Collider>
 {
-	static constexpr ComponentType value = ComponentType::COLLIDER;
+    static constexpr ComponentType value = ComponentType::COLLIDER;
 };

@@ -1,13 +1,16 @@
-#include "circlecollider.h"
+#include "platformator/circlecollider.h"
 #include "helpers.h"
-#include "rigidbody.h"
+#include "platformator/rigidbody.h"
+#include "inputvalidation.h"
 
-CircleCollider::CircleCollider() : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(0.0f)
+CircleCollider::CircleCollider() : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(1.0f)
 {
 }
 
-CircleCollider::CircleCollider(GameObject *gameObject, const float radius) : Collider(gameObject, ComponentType::COLLIDER, ColliderType::CircleCollider), radius(radius)
+CircleCollider::CircleCollider(GameObject *gameObject, const float radius)
+    : Collider(gameObject, ComponentType::COLLIDER, ColliderType::CircleCollider), radius(radius)
 {
+    platformator_detail::positive(radius, "circle.radius");
 }
 
 CircleCollider::~CircleCollider()
@@ -23,6 +26,7 @@ float CircleCollider::getRadius() const
 // Setters
 void CircleCollider::setRadius(const float radius)
 {
+    platformator_detail::positive(radius, "circle.radius");
     this->radius = radius;
 
     GameObject *gameObject = getGameObject();
@@ -44,7 +48,7 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) c
 {
     std::vector<Eigen::Vector2f> normals(1);
 
-    normals[0] = other->getWorldPosition() - getWorldPosition();
+    normals[0] = other->getCachedWorldPosition() - getCachedWorldPosition();
 
     if (normals[0].squaredNorm() <= 1e-12f)
     {
@@ -60,7 +64,7 @@ std::vector<Eigen::Vector2f> CircleCollider::getNormals(const Collider *other) c
 
 Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis) const
 {
-    float value = axis.dot(getWorldPosition());
+    float value = axis.dot(getCachedWorldPosition());
     float scaledRadius = getRadius();
 
     return Eigen::Vector2f(value - scaledRadius, value + scaledRadius);
@@ -68,7 +72,7 @@ Eigen::Vector2f CircleCollider::projectOntoAxis(const Eigen::Vector2f &axis) con
 
 void CircleCollider::generateProjections()
 {
-    Eigen::Vector2f position = getWorldPosition();
+    Eigen::Vector2f position = getCachedWorldPosition();
     float scaledRadius = getRadius();
 
     xProjections.getMin()->setProjectedPosition(position.x() - scaledRadius);
@@ -101,7 +105,7 @@ Edge CircleCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const
         direction.normalize();
     }
 
-    Eigen::Vector2f supportPoint = getWorldPosition() + direction * getRadius();
+    Eigen::Vector2f supportPoint = getCachedWorldPosition() + direction * getRadius();
     return Edge(supportPoint, supportPoint, supportPoint, NO_EDGE);
 }
 

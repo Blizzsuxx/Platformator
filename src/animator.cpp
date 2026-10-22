@@ -1,21 +1,26 @@
-#include "animator.h"
+#include "platformator/animator.h"
 
 #include <algorithm>
 
-#include "sprite.h"
-#include "texturewrapper.h"
+#include "platformator/sprite.h"
+#include "platformator/texturewrapper.h"
 
 Animator::Animator(GameObject *gameObject)
-    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
+    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0),
+      accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
 {
 }
 
-Animator::Animator() : Component(ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
+Animator::Animator()
+    : Component(ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f),
+      playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
 {
 }
 
 Animator::~Animator()
 {
+    if (currentAnimationClip)
+        const_cast<AnimationClip *>(currentAnimationClip)->removeReferenceAndFreeIfNoReferences();
 }
 
 size_t Animator::getCurrentFrameIndex() const
@@ -61,11 +66,8 @@ bool Animator::play(const AnimationClip *animationClip)
         return true;
     }
 
-    currentAnimationClip = animationClip;
-    currentFrameIndex = 0;
-    accumulatedTime = 0.0;
+    setCurrentClip(animationClip);
     playing = true;
-    applyCurrentFrame();
     return true;
 }
 
@@ -102,7 +104,7 @@ void Animator::update(double timeDelta)
 
     accumulatedTime += timeDelta * static_cast<double>(playbackSpeed);
 
-    while (playing)
+    while (playing && getIsCallbackEligible() && !isRetired() && getGameObject()->getActive())
     {
         const double frameDuration = getCurrentFrameDuration();
         if (frameDuration <= 0.0 || accumulatedTime < frameDuration)
@@ -230,10 +232,10 @@ void Animator::advanceFrame()
         accumulatedTime = 0.0;
         playing = false;
     }
-    for (const auto &callback : onClipEndCallbacks)
-    {
-        callback();
-    }
+    const auto callbackCount = onClipEndCallbacks.size();
+    for (size_t i = 0; i < callbackCount && getIsCallbackEligible() && !isRetired() && getGameObject()->getActive();
+         ++i)
+        (*onClipEndCallbacks[i])();
 }
 
 const std::string &Animator::getCurrentClipName() const
@@ -265,7 +267,12 @@ void Animator::setCurrentClip(const AnimationClip *clip)
         return;
     }
 
+    if (clip)
+        const_cast<AnimationClip *>(clip)->addReference();
+    const auto *old = currentAnimationClip;
     currentAnimationClip = clip;
+    if (old)
+        const_cast<AnimationClip *>(old)->removeReferenceAndFreeIfNoReferences();
     currentFrameIndex = 0;
     accumulatedTime = 0.0;
     if (clip != nullptr)
@@ -292,5 +299,5 @@ void Animator::setCurrentFrameIndex(size_t frameIndex)
 
 void Animator::addOnClipEndCallback(const std::function<void()> &callback)
 {
-    onClipEndCallbacks.push_back(callback);
+    onClipEndCallbacks.push_back(std::make_unique<std::function<void()>>(callback));
 }

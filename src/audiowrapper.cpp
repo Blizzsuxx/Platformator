@@ -1,7 +1,8 @@
-#include "audiowrapper.h"
+#include "platformator/audiowrapper.h"
 #include "runtimeaccess.h"
 
-AudioWrapper::AudioWrapper(MIX_Audio *audio, const std::string &filePath) : Asset(filePath), audio(audio), referenceCount(0)
+AudioWrapper::AudioWrapper(MIX_Audio *audio, const std::string &filePath)
+    : Asset(filePath), audio(audio), referenceCount(0)
 {
 }
 

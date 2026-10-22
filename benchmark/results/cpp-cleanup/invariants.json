@@ -1,0 +1,159 @@
+{
+  "passed": true,
+  "tolerances": {
+    "position": 0.0001,
+    "velocity": 0.0001,
+    "rotation": 1e-05,
+    "angular_velocity": 1e-05,
+    "normal": 1e-05,
+    "separation": 0.0001
+  },
+  "cases": [
+    {
+      "scenario": "broad_phase",
+      "count": 100,
+      "serial_parallel_passed": true,
+      "objects": 100,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "broad_phase",
+      "count": 500,
+      "serial_parallel_passed": true,
+      "objects": 500,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "broad_phase",
+      "count": 1000,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "broad_phase_stress",
+      "count": 50,
+      "serial_parallel_passed": true,
+      "objects": 50,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "broad_phase_stress",
+      "count": 150,
+      "serial_parallel_passed": true,
+      "objects": 150,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "broad_phase_stress",
+      "count": 300,
+      "serial_parallel_passed": true,
+      "objects": 300,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "narrow_phase",
+      "count": 10,
+      "serial_parallel_passed": true,
+      "objects": 40,
+      "contacts": 276,
+      "supports": 0
+    },
+    {
+      "scenario": "narrow_phase",
+      "count": 100,
+      "serial_parallel_passed": true,
+      "objects": 400,
+      "contacts": 32994,
+      "supports": 0
+    },
+    {
+      "scenario": "narrow_phase",
+      "count": 200,
+      "serial_parallel_passed": true,
+      "objects": 800,
+      "contacts": 133007,
+      "supports": 0
+    },
+    {
+      "scenario": "rigid_body_container",
+      "count": 100,
+      "serial_parallel_passed": true,
+      "objects": 104,
+      "contacts": 118,
+      "supports": 80
+    },
+    {
+      "scenario": "rigid_body_container",
+      "count": 500,
+      "serial_parallel_passed": true,
+      "objects": 504,
+      "contacts": 704,
+      "supports": 351
+    },
+    {
+      "scenario": "rigid_body_container",
+      "count": 1000,
+      "serial_parallel_passed": true,
+      "objects": 1004,
+      "contacts": 1297,
+      "supports": 620
+    },
+    {
+      "scenario": "add_and_remove",
+      "count": 10,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "add_and_remove",
+      "count": 100,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "add_and_remove",
+      "count": 1000,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "moving_add_and_remove",
+      "count": 10,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 327,
+      "supports": 0
+    },
+    {
+      "scenario": "moving_add_and_remove",
+      "count": 100,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 0,
+      "supports": 0
+    },
+    {
+      "scenario": "moving_add_and_remove",
+      "count": 1000,
+      "serial_parallel_passed": true,
+      "objects": 1000,
+      "contacts": 0,
+      "supports": 0
+    }
+  ],
+  "note": "Expensive per-step oracle; durations not performance eligible",
+  "source_sha256": "9fad5294d11a084a705051a0877aedf84a56e14f38a28eecfae815068581af93"
+}

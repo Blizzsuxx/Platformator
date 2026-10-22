@@ -1,0 +1,18 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-benchmark
+    Start 15: platformator_physics_geometry_test
+1/1 Test #15: platformator_physics_geometry_test ...***Failed    0.01 sec
+Accepted geometry must have a bounded manifold
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+geometry        =   0.01 sec*proc (1 test)
+physics         =   0.01 sec*proc (1 test)
+platformator    =   0.01 sec*proc (1 test)
+
+Total Test time (real) =   0.01 sec
+
+The following tests FAILED:
+	 15 - platformator_physics_geometry_test (Failed)       geometry physics platformator
+Errors while running CTest

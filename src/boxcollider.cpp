@@ -1,15 +1,20 @@
-#include "boxcollider.h"
+#include "platformator/boxcollider.h"
 
 #include "constants.h"
 #include "helpers.h"
-#include "rigidbody.h"
+#include "platformator/rigidbody.h"
+#include "inputvalidation.h"
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
-    : Collider(gameObject, ComponentType::COLLIDER, ColliderType::BoxCollider), width(width), height(height), vertices(), normals(2)
+    : Collider(gameObject, ComponentType::COLLIDER, ColliderType::BoxCollider), width(width), height(height),
+      vertices(), normals()
 {
+    platformator_detail::positive(width, "box.width");
+    platformator_detail::positive(height, "box.height");
 }
 
-BoxCollider::BoxCollider() : Collider(ComponentType::COLLIDER, ColliderType::BoxCollider), width(0.0f), height(0.0f), vertices(), normals(2)
+BoxCollider::BoxCollider()
+    : Collider(ComponentType::COLLIDER, ColliderType::BoxCollider), width(1.0f), height(1.0f), vertices(), normals()
 {
 }
 
@@ -69,6 +74,7 @@ float BoxCollider::getHeightWithoutScale() const
 // Setters
 void BoxCollider::setWidth(const float width)
 {
+    platformator_detail::positive(width, "box.width");
     this->width = width;
 
     GameObject *gameObject = getGameObject();
@@ -88,6 +94,7 @@ void BoxCollider::setWidth(const float width)
 
 void BoxCollider::setHeight(const float height)
 {
+    platformator_detail::positive(height, "box.height");
     this->height = height;
 
     GameObject *gameObject = getGameObject();
@@ -107,7 +114,7 @@ void BoxCollider::setHeight(const float height)
 
 std::vector<Eigen::Vector2f> BoxCollider::getNormals(const Collider *other) const
 {
-    return normals;
+    return {normals.begin(), normals.end()};
 }
 
 void BoxCollider::generateNormals()
@@ -142,7 +149,7 @@ void BoxCollider::generateVertices()
 {
     float scaledWidth = getWidth();
     float scaledHeight = getHeight();
-    Eigen::Vector2f center = getWorldPosition();
+    Eigen::Vector2f center = getCachedWorldPosition();
 
     // top left, top right, bottom right, bottom left
     vertices[0] = Eigen::Vector2f(center.x() - scaledWidth / 2, center.y() - scaledHeight / 2);
@@ -159,8 +166,10 @@ void BoxCollider::generateVertices()
         float xMinusXOrigin = (vertices)[i].x() - xOrigin;
         float yMinusYOrigin = (vertices)[i].y() - yOrigin;
 
-        (vertices)[i].x() = xMinusXOrigin * this->getGameObject()->getCosRotation() - yMinusYOrigin * this->getGameObject()->getSinRotation() + xOrigin;
-        (vertices)[i].y() = xMinusXOrigin * this->getGameObject()->getSinRotation() + yMinusYOrigin * this->getGameObject()->getCosRotation() + yOrigin;
+        (vertices)[i].x() = xMinusXOrigin * this->getGameObject()->getCosRotation() -
+                            yMinusYOrigin * this->getGameObject()->getSinRotation() + xOrigin;
+        (vertices)[i].y() = xMinusXOrigin * this->getGameObject()->getSinRotation() +
+                            yMinusYOrigin * this->getGameObject()->getCosRotation() + yOrigin;
     }
 }
 

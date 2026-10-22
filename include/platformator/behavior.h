@@ -11,20 +11,24 @@ class Collider;
 
 namespace platformator
 {
-    class Runtime;
-}
+class Runtime;
+class ReferenceResolver;
+} // namespace platformator
 
 class Behavior
 {
-public:
+    friend class GameManager;
+    friend class ScriptComponent;
+    friend class SceneBuildContext;
+
+  public:
     Behavior();
     virtual ~Behavior() = default;
 
     GameObject *getGameObject() const;
     platformator::Runtime &getRuntime() const;
 
-    template <typename T>
-    T *getBehavior(GameObject *gameObject) const;
+    template <typename T> T *getBehavior(GameObject *gameObject) const;
 
     void setGameObject(GameObject *gameObject);
 
@@ -40,8 +44,12 @@ public:
     virtual std::string getTypeName() const = 0;
     virtual void serialize(nlohmann::json &j) const = 0;
     virtual void deserialize(const nlohmann::json &j) = 0;
-    virtual void resolveReferences() = 0;
+    virtual void resolveReferences(platformator::ReferenceResolver &resolver) = 0;
 
-private:
+  private:
+    ScriptComponent *scriptComponent = nullptr;
+    bool started = false;
+    bool referencesPrepared = false;
+    size_t pendingStartIndex = SIZE_MAX;
     GameObject *gameObject = nullptr;
 };

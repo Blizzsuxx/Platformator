@@ -1,9 +1,10 @@
-#include "texturewrapper.h"
-#include "sprite.h"
+#include "platformator/texturewrapper.h"
+#include "platformator/sprite.h"
 #include <algorithm>
 #include "runtimeaccess.h"
 
-TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath) : Asset(filePath), texture(texture), referenceCount(0)
+TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath)
+    : Asset(filePath), texture(texture), referenceCount(0)
 {
 }
 

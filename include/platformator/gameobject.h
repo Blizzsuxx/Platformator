@@ -16,6 +16,7 @@
 class GameManager;
 class GameObject;
 class Scene;
+class SceneBuildContext;
 
 enum ComponentType
 {
@@ -41,17 +42,24 @@ class Component : public BaseObject
 {
     friend class GameManager;
 
-public:
+  public:
     Component(GameObject *gameObject, ComponentType type);
     Component(ComponentType type);
     virtual ~Component() = default;
 
     GameObject *getGameObject() const;
     ComponentType getType() const;
+    bool getIsCallbackEligible() const
+    {
+        return callbackEligible;
+    }
 
     virtual void setGameObject(GameObject *gameObject);
 
-private:
+  private:
+    bool reconcileQueued = false;
+    bool systemsRegistered = false;
+    bool callbackEligible = false;
     GameObject *gameObject;
     ComponentType type;
 };
@@ -60,9 +68,15 @@ class GameObject : public BaseObject
 {
     friend class GameManager;
     friend class Scene;
+    friend class SceneBuildContext;
+    friend class Rigidbody;
+    friend class PhysicsManager;
+    friend class Collider;
+    friend class Collision;
+    friend class Camera;
     friend void from_json(const nlohmann::json &j, GameObject &gameObject);
 
-public:
+  public:
     GameObject(GameObject &) = delete;
     GameObject &operator=(const GameObject &) = delete;
 
@@ -83,11 +97,9 @@ public:
     Component *getComponent(const ComponentType &componentType) const;
     Component *const *getComponents() const;
 
-    template <typename T>
-    T *getComponent() const;
+    template <typename T> T *getComponent() const;
 
-    template <typename T, typename... Args>
-    GameObject *addComponent(Args &&...args);
+    template <typename T, typename... Args> GameObject *addComponent(Args &&...args);
 
     const std::vector<GameObject *> &getChildren() const;
 
@@ -105,9 +117,10 @@ public:
     bool getIsMarkedForDeletion() const;
     void destroy();
 
-private:
+  private:
     GameObject();
-    GameObject(float rotation, bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale, const std::string &name, const std::string &tag);
+    GameObject(float rotation, bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale,
+               const std::string &name, const std::string &tag);
     ~GameObject();
 
     float rotation;
@@ -115,7 +128,13 @@ private:
     float cosRotation;
 
     GameObject *parent;
+    size_t parentIndex = SIZE_MAX;
     Eigen::Vector2f position;
+    Eigen::Vector2f worldPosition = Eigen::Vector2f::Zero();
+    size_t transformQueueIndex = SIZE_MAX;
+    size_t hierarchyOrder = 0;
+    size_t hierarchyDepth = 0;
+    uint64_t transformStamp = 0;
     Eigen::Vector2f scale;
     std::string name;
     std::string tag;
@@ -125,8 +144,14 @@ private:
     size_t gameManagerIteratorIndex;
     uint8_t flags;
 
+    void validateMutation() const;
+    void detachFromParent();
     void updateCollider();
+    void queueTransform();
     void addComponentInternal(Component *component);
+    void attachComponent(Component *component);
+    void flushMutations();
+    Component *getColliderByShape(bool box) const;
     GameObject *setIsMarkedForDeletion(bool markedForDeletion);
     GameObject *setIsRegisteredInGameManager(bool isRegisteredInGameManager);
     GameObject *setGameManagerIteratorIndex(size_t index);
@@ -135,26 +160,32 @@ private:
     void removeComponentsFromGameManager();
 };
 
-template <typename T>
-struct ComponentTypeFor;
+template <typename T> struct ComponentTypeFor;
 
-template <typename T>
-T *GameObject::getComponent() const
+template <typename T> T *GameObject::getComponent() const
 {
+    if constexpr (std::is_same_v<T, BoxCollider>)
+        return static_cast<T *>(getColliderByShape(true));
+    else if constexpr (std::is_same_v<T, CircleCollider>)
+        return static_cast<T *>(getColliderByShape(false));
     Component *component = components[ComponentTypeFor<T>::value];
     return component ? static_cast<T *>(component) : nullptr;
 }
 
-template <typename T, typename... Args>
-GameObject *GameObject::addComponent(Args &&...args)
+template <typename T, typename... Args> GameObject *GameObject::addComponent(Args &&...args)
 {
     static_assert(std::is_base_of_v<Component, T>, "addComponent<T> requires T to derive from Component");
-    static_assert(requires { ComponentTypeFor<T>::value; }, "addComponent<T> requires a visible ComponentTypeFor<T>::value specialization");
-    static_assert(std::is_constructible_v<T, GameObject *, Args...>, "addComponent<T>(args...) requires a matching constructor T(GameObject*, args...)");
+    static_assert(
+        requires { ComponentTypeFor<T>::value; },
+        "addComponent<T> requires a visible ComponentTypeFor<T>::value specialization");
+    static_assert(std::is_constructible_v<T, GameObject *, Args...>,
+                  "addComponent<T>(args...) requires a matching constructor T(GameObject*, args...)");
 
+    validateMutation();
     std::unique_ptr<T> component = std::make_unique<T>(this, std::forward<Args>(args)...);
-    addComponent(component.get());
+    attachComponent(component.get());
     component.release();
+    flushMutations();
 
     return this;
 }

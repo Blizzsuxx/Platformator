@@ -1,8 +1,11 @@
-#include "camera.h"
+#include "platformator/camera.h"
 
 void to_json(nlohmann::json &j, const Camera &camera)
 {
-    j = nlohmann::json{{"id", camera.getId()}, {"width", camera.getWidth()}, {"height", camera.getHeight()}, {"type", ComponentType::CAMERA}};
+    j = nlohmann::json{{"id", camera.getId()},
+                       {"width", camera.getWidth()},
+                       {"height", camera.getHeight()},
+                       {"type", ComponentType::CAMERA}};
 }
 
 void from_json(const nlohmann::json &j, Camera &camera)

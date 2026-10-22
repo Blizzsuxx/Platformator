@@ -1,4 +1,4 @@
-#include "animationclip.h"
+#include "platformator/animationclip.h"
 
 #include <utility>
 
@@ -22,7 +22,8 @@ AnimationFrame::AnimationFrame(TextureWrapper *textureWrapper, const SDL_FRect &
 }
 
 AnimationFrame::AnimationFrame(const AnimationFrame &other)
-    : textureWrapper(other.textureWrapper), duration(other.duration), sourceRect(other.sourceRect), hasSourceRect(other.hasSourceRect)
+    : textureWrapper(other.textureWrapper), duration(other.duration), sourceRect(other.sourceRect),
+      hasSourceRect(other.hasSourceRect)
 {
     retainTexture();
 }
@@ -42,7 +43,8 @@ AnimationFrame &AnimationFrame::operator=(const AnimationFrame &other)
 }
 
 AnimationFrame::AnimationFrame(AnimationFrame &&other) noexcept
-    : textureWrapper(other.textureWrapper), duration(other.duration), sourceRect(other.sourceRect), hasSourceRect(other.hasSourceRect)
+    : textureWrapper(other.textureWrapper), duration(other.duration), sourceRect(other.sourceRect),
+      hasSourceRect(other.hasSourceRect)
 {
     other.textureWrapper = nullptr;
 }
@@ -106,8 +108,10 @@ AnimationClip::AnimationClip()
 {
 }
 
-AnimationClip::AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width, float height, std::string name, std::string filePath)
-    : Asset(std::move(filePath)), frames(std::move(frames)), framesPerSecond(framesPerSecond), loop(loop), width(width), height(height), name(std::move(name)), referenceCount(0)
+AnimationClip::AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width,
+                             float height, std::string name, std::string filePath)
+    : Asset(std::move(filePath)), frames(std::move(frames)), framesPerSecond(framesPerSecond), loop(loop), width(width),
+      height(height), name(std::move(name)), referenceCount(0)
 {
 }
 

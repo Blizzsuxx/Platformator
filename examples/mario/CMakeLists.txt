@@ -36,48 +36,26 @@ target_include_directories(mario_example PRIVATE
 
 target_link_libraries(mario_example PRIVATE Platformator::platformator)
 
-set(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR "")
-if(DEFINED PLATFORMATOR_SOURCE_DIR AND EXISTS "${PLATFORMATOR_SOURCE_DIR}/assets")
+if(PLATFORMATOR_MARIO_USE_INSTALLED)
+    set(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR "${Platformator_ASSET_DIR}")
+elseif(DEFINED PLATFORMATOR_SOURCE_DIR)
     set(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR "${PLATFORMATOR_SOURCE_DIR}/assets")
-elseif(EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    set(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets")
-elseif(PLATFORMATOR_MARIO_USE_INSTALLED AND DEFINED Platformator_DIR)
-    get_filename_component(PLATFORMATOR_MARIO_PACKAGE_PREFIX "${Platformator_DIR}/../.." ABSOLUTE)
-    if(EXISTS "${PLATFORMATOR_MARIO_PACKAGE_PREFIX}/assets")
-        set(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR "${PLATFORMATOR_MARIO_PACKAGE_PREFIX}/assets")
-    endif()
-endif()
-
-set(PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR "$<TARGET_FILE_DIR:mario_example>/assets")
-
-if(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR)
-    add_custom_command(TARGET mario_example POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory
-            "${PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR}"
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/level1.scene"
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes/mario_example.scene"
-        VERBATIM
-    )
 else()
-    add_custom_command(TARGET mario_example POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/level1.scene"
-            "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes/mario_example.scene"
-        VERBATIM
-    )
+    set(PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR "${Platformator_SOURCE_DIR}/assets")
 endif()
+foreach(fallback textures/missing.png audio/missing.wav animations/missing.animset)
+    if(NOT EXISTS "${PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR}/${fallback}")
+        message(FATAL_ERROR "Mario requires the packaged engine fallback: ${fallback}")
+    endif()
+endforeach()
+set(PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR "$<TARGET_FILE_DIR:mario_example>/assets")
+add_custom_command(TARGET mario_example POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR}" "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets" "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/level1.scene" "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes/mario_example.scene"
+    VERBATIM)
+install(DIRECTORY "${PLATFORMATOR_MARIO_ENGINE_ASSETS_SOURCE_DIR}/" DESTINATION assets PATTERN "test_runtime" EXCLUDE)
 
 if(NOT DEFINED PLATFORMATOR_INSTALL_RPATH)
     if(APPLE)

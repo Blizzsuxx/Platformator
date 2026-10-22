@@ -1,19 +1,25 @@
-#include "rigidbody.h"
-#include "boxcollider.h"
-#include "circlecollider.h"
+#include "platformator/rigidbody.h"
+#include "platformator/boxcollider.h"
+#include "platformator/circlecollider.h"
 #include "constants.h"
+#include "gamemanager.h"
+#include "runtimeaccess.h"
+#include "inputvalidation.h"
 
 Rigidbody::Rigidbody() : Rigidbody(nullptr, BodyType::DYNAMIC, true)
 {
-    initialize();
 }
 
 Rigidbody::Rigidbody(GameObject *gameObject) : Rigidbody(gameObject, BodyType::DYNAMIC, true)
 {
-    initialize();
 }
 
-Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity) : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f), inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f), inverseMomentOfInertia(1.0f / momentOfInertia), friction(1.0f), restitution(0.0f), bodyType(bodyType), gravity(gravity), sleeping(false), supportContactCount(0), sleepTimer(0.0), isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
+Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity)
+    : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f),
+      inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f),
+      inverseMomentOfInertia(1.0f / momentOfInertia), friction(1.0f), restitution(0.0f), bodyType(bodyType),
+      gravity(gravity), sleeping(false), supportContactCount(0), sleepTimer(0.0), isRegisteredInPhysicsManager(false),
+      physicsManagerIndex(SIZE_MAX)
 {
     initialize();
 }
@@ -24,6 +30,8 @@ Rigidbody::~Rigidbody()
 
 void Rigidbody::initialize()
 {
+    if (bodyType < DYNAMIC || bodyType > KINEMATIC)
+        throw std::invalid_argument("Unknown body type");
     refreshMomentOfInertiaCache();
 
     if (bodyType != BodyType::DYNAMIC)
@@ -61,15 +69,13 @@ float Rigidbody::calculateAutomaticMomentOfInertia() const
 
     switch (collider->getColliderType())
     {
-    case ColliderType::BoxCollider:
-    {
+    case ColliderType::BoxCollider: {
         const BoxCollider *boxCollider = (const BoxCollider *)collider;
         float width = boxCollider->getWidth();
         float height = boxCollider->getHeight();
         return mass * (width * width + height * height) / 12.0f;
     }
-    case ColliderType::CircleCollider:
-    {
+    case ColliderType::CircleCollider: {
         const CircleCollider *circleCollider = (const CircleCollider *)collider;
         float radius = circleCollider->getRadius();
         return 0.5f * mass * radius * radius;
@@ -141,6 +147,8 @@ bool Rigidbody::getGravity() const
 // Setters
 Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 {
+    if (!velocity.allFinite())
+        throw std::invalid_argument("body.velocity must be finite");
     if (getIsSleeping() && velocity.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -152,11 +160,15 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
     }
 
     this->velocity = velocity;
+    if (bodyType == KINEMATIC)
+        bodyStateChanged();
     return this;
 }
 
 Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 {
+    if (!force.allFinite())
+        throw std::invalid_argument("body.force must be finite");
     if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -168,6 +180,8 @@ Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 
 Rigidbody *Rigidbody::addForce(const Eigen::Vector2f &force)
 {
+    if (!force.allFinite())
+        throw std::invalid_argument("body.force must be finite");
     if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -179,13 +193,18 @@ Rigidbody *Rigidbody::addForce(const Eigen::Vector2f &force)
 
 Rigidbody *Rigidbody::setMass(const float mass)
 {
+    platformator_detail::nonnegative(mass, "body.mass");
+    if (bodyType == DYNAMIC && mass == 0)
+        throw std::invalid_argument("Dynamic body mass must be positive");
     this->mass = mass > 0.0f ? mass : 0.0f;
+    wakeUp();
     this->inverseMass = this->mass > 0.0f ? 1.0f / this->mass : 0.0f;
     return refreshMomentOfInertiaCache();
 }
 
 Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
 {
+    platformator_detail::finite(angularVelocity, "body.angularVelocity");
     if (getIsSleeping() && std::abs(angularVelocity) > WAKE_ANGULAR_EPSILON)
     {
         wakeUp();
@@ -197,11 +216,14 @@ Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
     }
 
     this->angularVelocity = angularVelocity;
+    if (bodyType == KINEMATIC)
+        bodyStateChanged();
     return this;
 }
 
 Rigidbody *Rigidbody::setTorque(const float torque)
 {
+    platformator_detail::finite(torque, "body.torque");
     if (getIsSleeping() && std::abs(torque) > WAKE_ANGULAR_EPSILON)
     {
         wakeUp();
@@ -213,68 +235,97 @@ Rigidbody *Rigidbody::setTorque(const float torque)
 
 Rigidbody *Rigidbody::setFriction(const float friction)
 {
+    platformator_detail::nonnegative(friction, "body.friction");
     this->friction = friction;
+    wakeUp();
     return this;
 }
 
 Rigidbody *Rigidbody::setRestitution(const float restitution)
 {
+    platformator_detail::nonnegative(restitution, "body.restitution");
+    if (restitution > 1)
+        throw std::invalid_argument("body.restitution must be <= 1");
     this->restitution = restitution;
+    wakeUp();
     return this;
 }
 
 Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
 {
+    if (bodyType < DYNAMIC || bodyType > KINEMATIC)
+        throw std::invalid_argument("Unknown body type");
+    if (bodyType == DYNAMIC)
+        platformator_detail::positive(mass, "dynamic mass");
     this->bodyType = bodyType;
+    bodyStateChanged();
     if (bodyType != BodyType::DYNAMIC)
     {
         setIsSleeping(false);
     }
     initialize();
+    if (auto *object = getGameObject())
+        if (auto *collider = object->getComponent<Collider>())
+            collider->invalidateResponse();
     return this;
 }
 
 Rigidbody *Rigidbody::setGravity(const bool gravity)
 {
     this->gravity = gravity;
+    wakeUp();
+    bodyStateChanged();
     return this;
 }
 
 Rigidbody *Rigidbody::applyForces(double timeDelta, const Eigen::Vector2f &gravityVector)
 {
-    if (this->getBodyType() != BodyType::DYNAMIC || this->getGameObject()->getActive() == false || this->getIsSleeping())
-    {
+    if (bodyType != DYNAMIC || !getGameObject()->getActive() || sleeping)
         return this;
-    }
-
-    this->setAngularVelocity(this->getAngularVelocity() + this->getTorque() * timeDelta * this->getInverseMomentOfInertia());
-
-    if (this->gravity == true)
-    {
-        this->setVelocity(this->getVelocity() + timeDelta * (this->getForce() * this->getInverseMass() + gravityVector));
-    }
-    else
-    {
-        this->setVelocity(this->getVelocity() + timeDelta * this->getForce() * this->getInverseMass());
-    }
-
+    integrateForces(timeDelta, gravityVector);
     return this;
+}
+
+void Rigidbody::integrateForces(double timeDelta, const Eigen::Vector2f &gravityVector)
+{
+    angularVelocity += torque * timeDelta * inverseMomentOfInertia;
+    velocity += timeDelta * (force * inverseMass + (gravity ? gravityVector : Eigen::Vector2f::Zero()));
 }
 
 Rigidbody *Rigidbody::move(double timeDelta)
 {
+    if (bodyType == STATIC || !getGameObject()->getActive() || sleeping)
+    {
+        force.setZero();
+        torque = 0;
+        return this;
+    }
+    const auto changes = integrateLocal(timeDelta);
+    if (changes & 1)
+        getGameObject()->queueTransform();
+    else if (changes & 2)
+        getGameObject()->updateCollider();
+    return this;
+}
+
+uint8_t Rigidbody::integrateLocal(double timeDelta)
+{
     this->force = Eigen::Vector2f(0.0f, 0.0f);
     this->torque = 0.0f;
 
-    if (this->getBodyType() == BodyType::STATIC || this->getGameObject()->getActive() == false || this->getIsSleeping())
+    const bool translated = !velocity.isZero(0), rotated = angularVelocity != 0;
+    if (!translated && !rotated)
+        return 0;
+    auto *object = getGameObject();
+    if (translated)
+        object->position += velocity * timeDelta;
+    if (rotated)
     {
-        return this;
+        object->rotation = std::fmod(object->rotation + angularVelocity * timeDelta, 2.0 * M_PI);
+        object->sinRotation = std::sin(object->rotation);
+        object->cosRotation = std::cos(object->rotation);
     }
-
-    this->getGameObject()->setRotation(this->getGameObject()->getRotation() + this->getAngularVelocity() * timeDelta);
-    this->getGameObject()->setPosition(this->getGameObject()->getPosition() + this->getVelocity() * timeDelta);
-
-    return this;
+    return (translated ? 1 : 0) | (rotated ? 2 : 0);
 }
 
 float Rigidbody::getInverseMass() const
@@ -298,6 +349,8 @@ float Rigidbody::getInverseMomentOfInertia() const
 
 Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
 {
+    if (!impulse.allFinite())
+        throw std::invalid_argument("body.impulse must be finite");
     if (this->getBodyType() != BodyType::DYNAMIC || this->getGameObject()->getActive() == false)
     {
         return this;
@@ -325,6 +378,7 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
     }
 
     this->sleeping = sleeping;
+    bodyStateChanged();
     if (sleeping)
     {
         // PLATFORMATOR_LOG("Rigidbody on GameObject '%s' is now sleeping.\n", getGameObject()->getName().c_str());
@@ -341,6 +395,20 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
     }
 
     return this;
+}
+
+void Rigidbody::bodyStateChanged()
+{
+    if (isRegisteredInPhysicsManager)
+        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyChange(this);
+}
+
+void Rigidbody::applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm)
+{
+    if (bodyType != DYNAMIC || sleeping)
+        return;
+    velocity += impulse * inverseMass;
+    angularVelocity += inverseMomentOfInertia * (arm.x() * impulse.y() - arm.y() * impulse.x());
 }
 
 Rigidbody *Rigidbody::wakeUp()
@@ -406,7 +474,8 @@ Rigidbody *Rigidbody::setPhysicsManagerIndex(size_t physicsManagerIndex)
     return this;
 }
 
-bool Rigidbody::qualifiesAsSupportContact(const Eigen::Vector2f &contactDirectionNormal, const Eigen::Vector2f &gravityVectorNormal) const
+bool Rigidbody::qualifiesAsSupportContact(const Eigen::Vector2f &contactDirectionNormal,
+                                          const Eigen::Vector2f &gravityVectorNormal) const
 {
     if (bodyType == BodyType::STATIC)
     {

@@ -1,0 +1,1 @@
+Verified: 180 raw runs, 36 aggregates, five unique repetitions each, all schema/metadata/raw means/spread, 12 validation archives and exact source fingerprint.

@@ -1,4 +1,4 @@
-#include "scriptcomponent.h"
+#include "platformator/scriptcomponent.h"
 
 #include "platformator/scriptregistration.h"
 
@@ -22,11 +22,11 @@ void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent)
     for (const auto &behaviorJson : j.at("behaviors"))
     {
         std::string type = behaviorJson.at("type").get<std::string>();
-        Behavior *behavior = platformator::createRegisteredBehavior(type);
-        if (behavior != nullptr)
-        {
-            behavior->deserialize(behaviorJson);
-            scriptComponent.addBehavior(behavior);
-        }
+        std::unique_ptr<Behavior> behavior(platformator::createRegisteredBehavior(type));
+        if (!behavior)
+            throw std::runtime_error("Unknown behavior type: " + type);
+        behavior->deserialize(behaviorJson);
+        scriptComponent.addBehavior(behavior.get());
+        behavior.release();
     }
 }

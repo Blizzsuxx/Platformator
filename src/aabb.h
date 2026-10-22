@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include "segmentedintervallist.h"
-#include "collider.h"
+#include "platformator/collider.h"
 #include "collision.h"
 #include "colliderpair.h"
 
@@ -20,7 +20,7 @@ enum Axis : uint8_t
 
 class AABBPair
 {
-public:
+  public:
     AABBPair(Collider *a, Collider *b) : a(a), b(b)
     {
     }
@@ -35,7 +35,7 @@ public:
 
     class HashFunction
     {
-    public:
+      public:
         size_t operator()(const AABBPair &pair) const
         {
             // sort them so that the order of the objects doesn't matter
@@ -59,7 +59,7 @@ public:
 
 class AABB
 {
-public:
+  public:
     struct ColliderBinding
     {
         Collider *collider;
@@ -93,7 +93,7 @@ public:
     // sort the array with insertion sort, sort from lowest to highest
     bool getIsEmpty() const;
 
-private:
+  private:
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
     void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);

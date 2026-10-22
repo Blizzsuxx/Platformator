@@ -1,9 +1,11 @@
-#include "sprite.h"
+#include "scenecomponentio.h"
+#include "referenceresolver.h"
+#include "platformator/sprite.h"
 
-#include "jsonhelpers.h"
+#include "platformator/scriptregistration.h"
 
 #include "runtimeaccess.h"
-#include "texturewrapper.h"
+#include "platformator/texturewrapper.h"
 
 void to_json(nlohmann::json &j, const Sprite &sprite)
 {
@@ -20,14 +22,14 @@ void to_json(nlohmann::json &j, const Sprite &sprite)
     j["type"] = ComponentType::SPRITE;
 }
 
-void from_json(const nlohmann::json &j, Sprite &sprite)
+void deserialize(const nlohmann::json &j, Sprite &sprite, platformator::ReferenceResolver &resolver)
 {
     sprite.setId(j.at("id").get<int>());
 
     std::string filePath = j.at("textureFilePath").get<std::string>();
     if (!filePath.empty())
     {
-        sprite.setTextureWrapper(platformator_detail::RuntimeAccess::loadTexture(filePath));
+        sprite.setTextureWrapper(resolver.loadTexture(filePath));
     }
 
     sprite.setFlip(j.at("flip").get<SDL_FlipMode>());
@@ -37,4 +39,9 @@ void from_json(const nlohmann::json &j, Sprite &sprite)
     {
         sprite.setSourceRect(j.at("sourceRect").get<SDL_FRect>());
     }
+}
+void from_json(const nlohmann::json &j, Sprite &sprite)
+{
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    deserialize(j, sprite, resolver);
 }

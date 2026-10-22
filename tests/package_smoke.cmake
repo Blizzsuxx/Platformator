@@ -1,0 +1,44 @@
+cmake_minimum_required(VERSION 3.16)
+function(checked)
+    message(STATUS "Checking: ${ARGV}")
+    execute_process(COMMAND ${ARGV} RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT status EQUAL 0)
+        message(FATAL_ERROR "Command failed (${status}): ${ARGV}\n${output}\n${error}")
+    endif()
+endfunction()
+set(fixture "${PLATFORMATOR_BINARY_DIR}/package-smoke")
+set(prefix "${fixture}/prefix")
+set(relocated "${fixture}/relocated")
+file(MAKE_DIRECTORY "${fixture}/elsewhere")
+checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}" -B "${fixture}/core" -G Ninja
+    -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_BUILD_TESTS=OFF -DPLATFORMATOR_BUILD_EXAMPLES=OFF
+    -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF -DPLATFORMATOR_INSTALL=ON)
+checked("${CMAKE_COMMAND}" --build "${fixture}/core" --parallel 3)
+checked("${CMAKE_COMMAND}" --install "${fixture}/core" --prefix "${prefix}")
+checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/tests/consumer" -B "${fixture}/consumer"
+    -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=${prefix}")
+checked("${CMAKE_COMMAND}" --build "${fixture}/consumer" --parallel 3)
+checked("${CMAKE_COMMAND}" --install "${fixture}/consumer" --prefix "${prefix}")
+file(REMOVE_RECURSE "${relocated}")
+file(RENAME "${prefix}" "${relocated}")
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${relocated}/bin/consumer")
+checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/tests/consumer" -B "${fixture}/relocated-consumer"
+    -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=${relocated}")
+checked("${CMAKE_COMMAND}" --build "${fixture}/relocated-consumer" --parallel 3)
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/relocated-consumer/consumer" "${relocated}/assets")
+checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/tests/consumer" -B "${fixture}/source-consumer"
+    -G Ninja -DCMAKE_BUILD_TYPE=Release "-DPLATFORMATOR_SOURCE_DIR=${PLATFORMATOR_SOURCE_DIR}" -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF)
+checked("${CMAKE_COMMAND}" --build "${fixture}/source-consumer" --parallel 3)
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/source-consumer/consumer" "${relocated}/assets")
+checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/examples/mario" -B "${fixture}/mario"
+    -G Ninja -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_MARIO_USE_INSTALLED=ON "-DCMAKE_PREFIX_PATH=${relocated}")
+checked("${CMAKE_COMMAND}" --build "${fixture}/mario" --parallel 3)
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${CMAKE_COMMAND}" -E env
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software "${fixture}/mario/mario_example" --smoke-steps 5)
+checked("${CMAKE_COMMAND}" --install "${fixture}/mario" --prefix "${relocated}")
+set(finalPrefix "${fixture}/final-prefix")
+file(REMOVE_RECURSE "${finalPrefix}")
+file(RENAME "${relocated}" "${finalPrefix}")
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${CMAKE_COMMAND}" -E env
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software "${finalPrefix}/bin/mario_example" --smoke-steps 5)
+message(STATUS "Installed and relocated public-only consumers passed")

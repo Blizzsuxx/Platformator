@@ -1,16 +1,21 @@
 #pragma once
 
 #include <cstdint>
-#include "collider.h"
+#include "platformator/collider.h"
 #include "collision.h"
 
 enum Axis : uint8_t;
 
 class ColliderPair
 {
-public:
+    friend class Grid;
+    friend class PhysicsManager;
+
+  public:
     ColliderPair(Collider *a, Collider *b);
     ~ColliderPair();
+    ColliderPair(const ColliderPair &) = delete;
+    ColliderPair &operator=(const ColliderPair &) = delete;
 
     Collision *getCollision() const;
     Collision *getOrCreateCollisionNoEvent() const;
@@ -46,25 +51,15 @@ public:
 
     class HashFunction
     {
-    public:
+      public:
         size_t operator()(const ColliderPair &collision) const
         {
-            // sort them so that the order of the objects doesn't matter
-            const Collider *objectA = collision.objectA;
-            const Collider *objectB = collision.objectB;
-
-            if (objectA > objectB)
-            {
-                std::swap(objectA, objectB);
-            }
-
-            size_t hash1 = std::hash<const Collider *>()(objectA);
-            size_t hash2 = std::hash<const Collider *>()(objectB);
-            return hash1 ^ (hash2 << 1); // Combine the two hashes
+            const auto a = collision.objectA->getHandle(), b = collision.objectB->getHandle();
+            return std::hash<uint64_t>{}((uint64_t(a.slot) << 32) ^ b.slot ^ a.generation ^ (b.generation << 1));
         }
     };
 
-private:
+  private:
     Collider *objectA;
     Collider *objectB;
 
@@ -76,4 +71,15 @@ private:
     mutable size_t adjacencyIndexA;
     mutable size_t adjacencyIndexB;
     mutable int witnessCount;
+    mutable size_t pairSlot = SIZE_MAX;
+    mutable size_t activeIndex = SIZE_MAX;
+    mutable size_t solverIndex = SIZE_MAX;
+    mutable size_t stayIndex = SIZE_MAX;
+    mutable uint64_t enteredStep = 0;
+    mutable bool resultHadContact = false;
+    mutable bool resultTestedGeometry = false;
+    mutable Rigidbody *supportBodyA = nullptr;
+    mutable Rigidbody *supportBodyB = nullptr;
+    mutable bool supportsA = false;
+    mutable bool supportsB = false;
 };

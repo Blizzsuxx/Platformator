@@ -1,87 +1,20 @@
-#include "scene.h"
+#include "platformator/scene.h"
 
 #include "pathmanager.h"
 
 #include <fstream>
+#include <atomic>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <utility>
 
 #include "gamemanager.h"
-#include "jsonhelpers.h"
-#include "gameobject.h"
-
-namespace
-{
-    bool isAssetsRelativePath(const std::filesystem::path &path)
-    {
-        const auto component = path.begin();
-        return component != path.end() && *component == "assets";
-    }
-
-    std::filesystem::path findExistingAssetsRelativePath(
-        const std::filesystem::path &assetsRelativePath,
-        std::filesystem::path startDirectory)
-    {
-        if (startDirectory.empty())
-        {
-            return {};
-        }
-
-        startDirectory = std::filesystem::absolute(startDirectory).lexically_normal();
-
-        while (true)
-        {
-            const std::filesystem::path candidatePath = (startDirectory / assetsRelativePath).lexically_normal();
-            if (std::filesystem::is_regular_file(candidatePath))
-            {
-                return candidatePath;
-            }
-
-            const std::filesystem::path parentDirectory = startDirectory.parent_path();
-            if (parentDirectory.empty() || parentDirectory == startDirectory)
-            {
-                break;
-            }
-
-            startDirectory = parentDirectory;
-        }
-
-        return {};
-    }
-
-    std::filesystem::path resolveSceneFilePath(const std::string &rawFilePath)
-    {
-        std::filesystem::path scenePath(rawFilePath);
-        if (scenePath.is_absolute())
-        {
-            return scenePath.lexically_normal();
-        }
-
-        scenePath = scenePath.lexically_normal();
-        if (isAssetsRelativePath(scenePath))
-        {
-            const std::filesystem::path runtimeRoot = std::filesystem::path(PathManager::getInstance().getAssetsRootAbsolutePath()).parent_path();
-            const std::filesystem::path runtimeRootResolvedPath = findExistingAssetsRelativePath(scenePath, runtimeRoot);
-            if (!runtimeRootResolvedPath.empty())
-            {
-                return runtimeRootResolvedPath;
-            }
-
-            const std::filesystem::path currentWorkingDirectoryResolvedPath = findExistingAssetsRelativePath(scenePath, std::filesystem::current_path());
-            if (!currentWorkingDirectoryResolvedPath.empty())
-            {
-                return currentWorkingDirectoryResolvedPath;
-            }
-
-            if (!runtimeRoot.empty())
-            {
-                return (runtimeRoot / scenePath).lexically_normal();
-            }
-
-            return (std::filesystem::current_path() / scenePath).lexically_normal();
-        }
-
-        return (std::filesystem::current_path() / scenePath).lexically_normal();
-    }
-}
+#include "platformator/scriptregistration.h"
+#include "platformator/gameobject.h"
+#include "platformator/runtime.h"
+#include "runtimeaccess.h"
+#include "referenceserialization.h"
 
 Scene::Scene(std::string filepath) : filePath(std::move(filepath))
 {
@@ -91,54 +24,68 @@ Scene::~Scene() = default;
 
 std::vector<GameObject *> Scene::loadScene()
 {
-    std::vector<GameObject *> gameObjects;
-    const std::filesystem::path resolvedFilePath = resolveSceneFilePath(filePath);
-
-    std::ifstream file(resolvedFilePath);
-    if (!file.is_open())
-    {
-        printf("Failed to load %s\n", resolvedFilePath.string().c_str());
-        return gameObjects;
-    }
-    nlohmann::json json = nlohmann::json::parse(file);
-    file.close();
-
-    for (const auto &gameObjectJson : json)
-    {
-        if (gameObjectJson.is_null())
-        {
-            continue;
-        }
-
-        GameObject *gameObject = new GameObject();
-        gameObjectJson.get_to(*gameObject);
-        gameObjects.push_back(gameObject);
-    }
-
-    return gameObjects;
+    platformator::Runtime::current().loadScene(*this);
+    std::vector<GameObject *> roots;
+    for (auto *object : platformator::Runtime::current().getAllGameObjects())
+        if (!object->getParent())
+            roots.push_back(object);
+    return roots;
 }
 
 void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
 {
-    nlohmann::json json = nlohmann::json::array();
-    const std::filesystem::path resolvedFilePath = resolveSceneFilePath(filePath);
-
-    for (const GameObject *gameObject : gameObjects)
+    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+    manager.assertCanMutate();
+    if (!manager.isIdle())
+        throw std::logic_error("Scene save requires an idle runtime");
+    if (filePath.empty())
+        throw std::invalid_argument("Scene save path is empty");
+    GameManager::PhaseGuard saving(manager, GameManager::Phase::Saving);
+    platformator_detail::SceneReferenceScope references(gameObjects);
+    nlohmann::json document = nlohmann::json::array();
+    for (const auto *object : gameObjects)
+        document.push_back(*object);
+    const auto contents = document.dump(4);
+    const auto destination = resolvedFilePath();
+    struct TemporaryFile
     {
-        if (gameObject == nullptr)
+        std::filesystem::path path;
+        std::FILE *file = nullptr;
+        ~TemporaryFile()
         {
-            continue;
+            if (file)
+                std::fclose(file);
+            std::error_code ignored;
+            if (!path.empty())
+                std::filesystem::remove(path, ignored);
         }
-
-        json.push_back(*gameObject);
-    }
-
-    std::ofstream file(resolvedFilePath);
-    if (!file.is_open())
+    } temporary;
+    static std::atomic<uint64_t> sequence{0};
+    for (unsigned attempt = 0; attempt < 16; ++attempt)
     {
-        printf("Failed to save %s\n", resolvedFilePath.string().c_str());
-        return;
+        auto candidate = destination;
+        candidate += ".tmp." + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+        auto *file = std::fopen(candidate.string().c_str(), "wbx");
+        if (file)
+        {
+            temporary.path = std::move(candidate);
+            temporary.file = file;
+            break;
+        }
+        if (errno != EEXIST)
+            throw std::runtime_error("Cannot create scene temporary file for '" + destination.string() +
+                                     "': " + std::strerror(errno));
     }
-    file << json.dump(4);
-    file.close();
+    if (!temporary.file)
+        throw std::runtime_error("Cannot reserve scene temporary file for '" + destination.string() + "'");
+    if (std::fwrite(contents.data(), 1, contents.size(), temporary.file) != contents.size())
+        throw std::runtime_error("Cannot write scene temporary file for '" + destination.string() + "'");
+    if (std::fclose(std::exchange(temporary.file, nullptr)) != 0)
+        throw std::runtime_error("Cannot close scene temporary file for '" + destination.string() + "'");
+    std::filesystem::rename(temporary.path, destination);
+}
+
+std::filesystem::path Scene::resolvedFilePath() const
+{
+    return PathManager::getInstance().resolveScenePath(filePath);
 }

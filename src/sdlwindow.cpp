@@ -5,80 +5,77 @@
 
 #include <SDL3/SDL_properties.h>
 
-#include "audiowrapper.h"
+#include "platformator/audiowrapper.h"
 #include "gamemanager.h"
 #include "runtimeaccess.h"
-#include "sprite.h"
+#include "platformator/sprite.h"
+#include "benchmark.h"
 
 SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
-    : window(nullptr),
-      renderer(nullptr),
-      mixer(nullptr),
-      mainCamera(nullptr),
-      sdlEvent(),
-      debugDraw(DebugDraw::getInstance()),
-      rendererName(nullptr),
-      windowSettings(windowSettings),
-      renderWidth(windowSettings.width),
-      renderHeight(windowSettings.height),
-      quit(false),
-      paused(debugSettings.startPaused),
-      advanceFrameRequested(false),
-      spriteComponents(),
-      listeners(),
+    : window(nullptr), renderer(nullptr), mixer(nullptr), mainCamera(nullptr), sdlEvent(),
+      debugDraw(DebugDraw::getInstance()), rendererName(nullptr), windowSettings(windowSettings),
+      renderWidth(windowSettings.width), renderHeight(windowSettings.height), quit(false),
+      paused(debugSettings.startPaused), advanceFrameRequested(false), spriteComponents(), listeners(),
       transientAudioPlaybacks()
 {
+    try
+    {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    debugDraw.setSettings(debugSettings);
+        debugDraw.setSettings(debugSettings);
 #else
-    (void)debugSettings;
+        (void)debugSettings;
 #endif
 
-    if (!init())
-    {
-        printf("Failed to initialize SDLWindow!");
-        quit = true;
-        return;
-    }
-
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    listeners.push_back([this](SDL_Event event, double)
-                        {
-        if (event.type != SDL_EVENT_KEY_DOWN)
+        if (!init())
         {
-            return;
+            const std::string error = SDL_GetError();
+            throw std::runtime_error("Cannot initialize Platformator backends: " + error);
         }
 
-        switch (event.key.key)
-        {
-        case SDLK_F1:
-            debugDraw.toggleShowColliders();
-            break;
-        case SDLK_F2:
-            debugDraw.toggleShowCollisionPoints();
-            break;
-        case SDLK_F3:
-            debugDraw.toggleShowCollisionNormals();
-            break;
-        case SDLK_F4:
-            debugDraw.toggleShowGridCells();
-            break;
-        case SDLK_F5:
-            paused = !paused;
-            advanceFrameRequested = false;
-            PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
-            break;
-        case SDLK_F6:
-            if (paused)
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+        listeners.push_back([this](SDL_Event event, double) {
+            if (event.type != SDL_EVENT_KEY_DOWN)
             {
-                advanceFrameRequested = true;
-                PLATFORMATOR_LOG("Advancing one frame\n");
+                return;
             }
-            break;
-        default:
-            break;
-        } });
+
+            switch (event.key.key)
+            {
+            case SDLK_F1:
+                debugDraw.toggleShowColliders();
+                break;
+            case SDLK_F2:
+                debugDraw.toggleShowCollisionPoints();
+                break;
+            case SDLK_F3:
+                debugDraw.toggleShowCollisionNormals();
+                break;
+            case SDLK_F4:
+                debugDraw.toggleShowGridCells();
+                break;
+            case SDLK_F5:
+                paused = !paused;
+                advanceFrameRequested = false;
+                PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
+                break;
+            case SDLK_F6:
+                if (paused)
+                {
+                    advanceFrameRequested = true;
+                    PLATFORMATOR_LOG("Advancing one frame\n");
+                }
+                break;
+            default:
+                break;
+            }
+        });
 #endif
+    }
+    catch (...)
+    {
+        close();
+        throw;
+    }
 }
 
 SDLWindow::~SDLWindow()
@@ -88,13 +85,18 @@ SDLWindow::~SDLWindow()
 
 bool SDLWindow::init()
 {
-    SDL_InitFlags initFlags = SDL_INIT_AUDIO;
-    if (!windowSettings.headless)
+    if (windowSettings.headless)
     {
-        initFlags = static_cast<SDL_InitFlags>(initFlags | SDL_INIT_VIDEO);
+        if (!SDL_Init(SDL_INIT_EVENTS))
+            return false;
+        rendererName = "Headless";
+        renderWidth = std::max(1, windowSettings.width);
+        renderHeight = std::max(1, windowSettings.height);
+        return true;
     }
+    const SDL_InitFlags initFlags = SDL_INIT_AUDIO | SDL_INIT_VIDEO;
 
-    if (SDL_Init(initFlags) < 0)
+    if (!SDL_Init(initFlags))
     {
         printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
         return false;
@@ -103,7 +105,6 @@ bool SDLWindow::init()
     if (!MIX_Init())
     {
         printf("SDL_mixer could not initialize! SDL_mixer Error: %s", SDL_GetError());
-        close();
         return false;
     }
 
@@ -111,22 +112,12 @@ bool SDLWindow::init()
     if (mixer == nullptr)
     {
         printf("SDL_mixer could not create a mixer device! SDL_mixer Error: %s", SDL_GetError());
-        close();
         return false;
     }
 
-    if (windowSettings.headless)
-    {
-        rendererName = "Headless";
-        renderWidth = std::max(1, windowSettings.width);
-        renderHeight = std::max(1, windowSettings.height);
-        return true;
-    }
-
-    if (TTF_Init() == -1)
+    if (!TTF_Init())
     {
         printf("SDL_ttf could not initialize! SDL_ttf Error: %s", SDL_GetError());
-        close();
         return false;
     }
 
@@ -134,7 +125,6 @@ bool SDLWindow::init()
     if (window == nullptr)
     {
         printf("Window could not be created! SDL_Error: %s", SDL_GetError());
-        close();
         return false;
     }
 
@@ -148,7 +138,6 @@ bool SDLWindow::init()
     if (renderer == nullptr)
     {
         printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
-        close();
         return false;
     }
 
@@ -237,13 +226,19 @@ void SDLWindow::handleSDLEvents(double deltaTime)
 
 void SDLWindow::render()
 {
-    if (renderer == nullptr || mainCamera == nullptr)
+    if (renderer == nullptr)
     {
         return;
     }
+    PLATFORMATOR_BENCH_SCOPE(Render);
 
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(renderer);
+    if (!mainCamera)
+    {
+        SDL_RenderPresent(renderer);
+        return;
+    }
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
@@ -358,7 +353,8 @@ void SDLWindow::clearAdvanceFrameRequest()
 
 void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
 {
-    if (spriteComponent == nullptr || spriteComponent->getIsRegisteredInWindow() || !spriteComponent->getGameObject()->getActive())
+    if (spriteComponent == nullptr || spriteComponent->getIsRegisteredInWindow() ||
+        !spriteComponent->getGameObject()->getActive())
     {
         return;
     }

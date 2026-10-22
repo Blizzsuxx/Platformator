@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-cpp-engine-cleanup`  
 **Created**: 2026-10-21  
-**Status**: Ready for implementation planning  
+**Status**: Implemented and validated on Linux/GCC; see [validation.md](validation.md) for evidence and limitations
 **Input**: Clean up the C++ engine according to `CODEBASE_REVIEW.md`. Prefer simple code and efficient algorithms. Avoid scattered defensive checks. When an implementation appears inefficient, stop and evaluate a better design; implement it when feasible. Any retained inefficiency requires an `EFFICIENCY:` comment explaining the reason, efficient alternative, and prerequisites for replacing it. Tests may favor simplicity over speed.
 
 ## Scope

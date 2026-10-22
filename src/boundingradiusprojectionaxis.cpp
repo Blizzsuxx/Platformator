@@ -1,8 +1,7 @@
-#include "collider.h"
+#include "platformator/collider.h"
 
 BoundingRadiusProjectionAxis::BoundingRadiusProjectionAxis(Collider *collider, float min, float max)
-    : min(BoundingRadiusProjection(collider, min, false)),
-      max(BoundingRadiusProjection(collider, max, true))
+    : min(BoundingRadiusProjection(collider, min, false)), max(BoundingRadiusProjection(collider, max, true))
 {
 }
 
@@ -31,8 +30,7 @@ bool BoundingRadiusProjectionAxis::operator!=(const BoundingRadiusProjectionAxis
 }
 
 BoundingRadiusProjectionAxisBinding::BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis)
-    : minProxy(axis->getMin(), nullptr),
-      maxProxy(axis->getMax(), nullptr)
+    : minProxy(axis->getMin(), nullptr), maxProxy(axis->getMax(), nullptr)
 {
 }
 

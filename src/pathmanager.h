@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <filesystem>
+#include <unordered_set>
 
 enum class AssetPathType
 {
@@ -22,26 +24,24 @@ struct ResolvedAssetPath
 
 class PathManager
 {
-public:
+  public:
+    explicit PathManager(const std::string &root);
     static PathManager &getInstance();
+    const std::filesystem::path &getRoot() const
+    {
+        return root;
+    }
+    std::filesystem::path resolveScenePath(const std::string &path) const;
 
     std::string canonicalizePath(const std::string &rawPath) const;
-    std::string canonicalizeAssetPath(const std::string &rawPath) const;
+    std::string canonicalizeAssetPath(const std::string &rawPath,
+                                      const std::filesystem::path &sceneDirectory = {}) const;
     std::string getAssetsRootAbsolutePath() const;
     std::string getFallbackAssetPath(AssetPathType assetPathType) const;
-    ResolvedAssetPath resolveAssetPath(const std::string &rawPath, AssetPathType assetPathType) const;
+    ResolvedAssetPath resolveAssetPath(const std::string &rawPath, AssetPathType assetPathType, bool required = false,
+                                       const std::filesystem::path &sceneDirectory = {}) const;
 
-private:
-    PathManager() = default;
-
-    static bool isAbsolutePath(const std::string &path);
-    static std::string extractAssetsRelativePath(const std::string &canonicalPath);
-    static bool isAssetsRelativePath(const std::string &canonicalPath);
-
-    ResolvedAssetPath makeResolvedPath(const std::string &requestedPath,
-                                       const std::string &canonicalPath,
-                                       bool usedFallback) const;
-    void logFallbackWarning(const std::string &requestedPath,
-                            const std::string &reason,
-                            const std::string &fallbackPath) const;
+  private:
+    std::filesystem::path root, startupBase;
+    mutable std::unordered_set<std::string> warnedFallbacks;
 };

@@ -4,8 +4,8 @@
 
 #include "platformator/collisiontypes.h"
 
-#include "scriptcomponent.h"
-#include "gameobject.h"
+#include "platformator/scriptcomponent.h"
+#include "platformator/gameobject.h"
 
 inline float cross2D(const Eigen::Vector2f &a, const Eigen::Vector2f &b)
 {
@@ -17,7 +17,8 @@ inline Eigen::Vector2f crossSV(float s, const Eigen::Vector2f &v)
     return Eigen::Vector2f(-s * v.y(), s * v.x());
 }
 
-inline int clipSegmentToLine(ClipVertex output[2], const ClipVertex input[2], const Eigen::Vector2f &normal, float offset, EdgeNumber clipEdge)
+inline int clipSegmentToLine(ClipVertex output[2], const ClipVertex input[2], const Eigen::Vector2f &normal,
+                             float offset, EdgeNumber clipEdge)
 {
     int outputCount = 0;
     float distance0 = normal.dot(input[0].point) - offset;
@@ -69,8 +70,7 @@ inline float Clamp(float a, float low, float high)
     return Max(low, Min(a, high));
 }
 
-template <typename T>
-T *getBehavior(GameObject *gameObject)
+template <typename T> T *getBehavior(GameObject *gameObject)
 
 {
     ScriptComponent *scriptComponent = gameObject != nullptr ? gameObject->getComponent<ScriptComponent>() : nullptr;

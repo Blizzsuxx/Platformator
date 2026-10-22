@@ -1,6 +1,6 @@
-#include "rigidbody.h"
+#include "platformator/rigidbody.h"
 
-#include "jsonhelpers.h"
+#include "platformator/scriptregistration.h"
 
 void to_json(nlohmann::json &j, const Rigidbody &rigidbody)
 {

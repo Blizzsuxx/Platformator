@@ -1,4 +1,4 @@
-#include "collider.h"
+#include "platformator/collider.h"
 #include "localsortarray.h"
 
 BoundingRadiusProjection::BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isMaxima(false)
@@ -56,12 +56,14 @@ bool BoundingRadiusProjection::operator!=(const BoundingRadiusProjection &other)
 
 bool BoundingRadiusProjection::operator<(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition < other.projectedPosition || (projectedPosition == other.projectedPosition && !isMaxima && other.isMaxima);
+    return projectedPosition < other.projectedPosition ||
+           (projectedPosition == other.projectedPosition && !isMaxima && other.isMaxima);
 }
 
 bool BoundingRadiusProjection::operator>(const BoundingRadiusProjection &other) const
 {
-    return projectedPosition > other.projectedPosition || (projectedPosition == other.projectedPosition && isMaxima && !other.isMaxima);
+    return projectedPosition > other.projectedPosition ||
+           (projectedPosition == other.projectedPosition && isMaxima && !other.isMaxima);
 }
 
 bool BoundingRadiusProjection::operator<=(const BoundingRadiusProjection &other) const

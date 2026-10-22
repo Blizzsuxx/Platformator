@@ -1,130 +1,135 @@
 #pragma once
 
+#include <cassert>
 #include <optional>
 #include <type_traits>
-
 #include <json.hpp>
-
 #include "platformator/baseobject.h"
 #include "platformator/runtime.h"
+#include "platformator/referenceresolver.h"
+#include <stdexcept>
 
 namespace platformator_detail
 {
-    BaseObject *resolveObjectReference(platformator::Runtime &runtime, int objectId);
+void validateSceneReference(const BaseObject *object);
 }
 
-template <typename T>
-class ObjectReference
+template <typename T> class ObjectReference
 {
-    static_assert(std::is_base_of_v<BaseObject, T>, "ObjectReference can only store BaseObject-derived types.");
+    static_assert(std::is_base_of_v<BaseObject, T>);
 
-public:
-    ObjectReference() : object(nullptr), objectId(std::nullopt)
+  public:
+    ObjectReference() = default;
+    platformator::ObjectHandle getHandle() const
     {
+        return handle;
     }
-
-    explicit ObjectReference(T *object) : object(nullptr), objectId(std::nullopt)
+    explicit ObjectReference(T *object)
     {
         set(object);
     }
-
-    explicit ObjectReference(int objectId) : object(nullptr), objectId(objectId)
+    explicit ObjectReference(int id) : objectId(id)
     {
     }
-
     T *get() const
     {
-        return object;
+        auto *runtime = platformator::Runtime::tryGetCurrent();
+        return runtime ? static_cast<T *>(runtime->resolveHandle(handle, platformator_detail::objectKind<T>()))
+                       : nullptr;
     }
-
     std::optional<int> getReferencedId() const
     {
-        if (object != nullptr)
-        {
-            return object->getId();
-        }
-
-        return objectId;
+        if (!handle)
+            return objectId;
+        auto *object = get();
+        return object ? std::optional<int>(object->getId()) : std::nullopt;
     }
-
-    void set(T *value)
+    void set(T *object)
     {
-        object = value;
-        objectId = value == nullptr ? std::nullopt : std::optional<int>(value->getId());
+        handle = object ? object->getHandle() : platformator::ObjectHandle{};
+        objectId = object ? std::optional<int>(object->getId()) : std::nullopt;
     }
-
-    void setReferencedId(int value)
+    void setReferencedId(int id)
     {
-        object = nullptr;
-        objectId = value;
+        handle = {};
+        objectId = id;
     }
-
     void clear()
     {
-        object = nullptr;
-        objectId = std::nullopt;
+        handle = {};
+        objectId.reset();
     }
-
     T *resolve()
     {
-        return resolve(platformator::Runtime::current());
+        auto *runtime = platformator::Runtime::tryGetCurrent();
+        return runtime ? resolve(*runtime) : nullptr;
     }
-
     T *resolve(platformator::Runtime &runtime)
     {
-        const std::optional<int> referenceId = getReferencedId();
-        if (!referenceId.has_value())
-        {
-            object = nullptr;
+        if (handle)
+            return static_cast<T *>(runtime.resolveHandle(handle, platformator_detail::objectKind<T>()));
+        if (!objectId)
             return nullptr;
-        }
-
-        BaseObject *resolvedObject = platformator_detail::resolveObjectReference(runtime, *referenceId);
-        object = resolvedObject == nullptr ? nullptr : static_cast<T *>(resolvedObject);
-        return object;
+        auto *target = runtime.getObjectById(*objectId);
+        if (!target)
+            return nullptr;
+        auto *typed = runtime.resolveHandle(target->getHandle(), platformator_detail::objectKind<T>());
+        if (typed)
+            handle = typed->getHandle();
+        return static_cast<T *>(typed);
     }
-
     T &operator*() const
     {
+        auto *object = get();
+        assert(object);
         return *object;
     }
-
+    T *resolve(platformator::ReferenceResolver &resolver)
+    {
+        if (!handle && !objectId)
+            return nullptr;
+        auto *target = handle ? resolver.findHandle(handle, platformator_detail::objectKind<T>())
+                              : resolver.findObject(*objectId, platformator_detail::objectKind<T>());
+        if (!target)
+            throw std::runtime_error("Missing reference target or wrong kind for ID " +
+                                     std::to_string(objectId.value_or(-1)));
+        handle = target->getHandle();
+        return static_cast<T *>(target);
+    }
     T *operator->() const
     {
+        auto *object = get();
+        assert(object);
         return object;
     }
-
     explicit operator bool() const
     {
-        return object != nullptr;
+        return get() != nullptr;
     }
 
-private:
-    T *object;
+  private:
+    platformator::ObjectHandle handle;
     std::optional<int> objectId;
 };
 
-template <typename T>
-void to_json(nlohmann::json &j, const ObjectReference<T> &reference)
+template <typename T> void to_json(nlohmann::json &j, const ObjectReference<T> &reference)
 {
-    const std::optional<int> referenceId = reference.getReferencedId();
-    if (referenceId.has_value())
+    if (auto *object = reference.get())
     {
-        j = *referenceId;
-        return;
+        platformator_detail::validateSceneReference(object);
+        j = object->getId();
     }
-
-    j = nullptr;
+    else
+    {
+        if (!reference.getHandle() && reference.getReferencedId())
+            throw std::runtime_error("Cannot serialize an unbound object reference; resolve its file ID first");
+        j = nullptr;
+    }
 }
-
-template <typename T>
-void from_json(const nlohmann::json &j, ObjectReference<T> &reference)
+template <typename T> void from_json(const nlohmann::json &j, ObjectReference<T> &reference)
 {
     if (j.is_null())
-    {
         reference.clear();
-        return;
-    }
-
-    reference.setReferencedId(j.get<int>());
+    else
+        reference.setReferencedId(j.get<int>());
 }

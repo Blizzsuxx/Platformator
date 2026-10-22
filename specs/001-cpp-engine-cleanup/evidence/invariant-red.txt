@@ -1,0 +1,35 @@
+Validate broad_phase 100 workers=1
+Validate broad_phase 100 workers=6
+Validate broad_phase 500 workers=1
+Validate broad_phase 500 workers=6
+Validate broad_phase 1000 workers=1
+Validate broad_phase 1000 workers=6
+Validate broad_phase_stress 50 workers=1
+Validate broad_phase_stress 50 workers=6
+Validate broad_phase_stress 150 workers=1
+Validate broad_phase_stress 150 workers=6
+Validate broad_phase_stress 300 workers=1
+Validate broad_phase_stress 300 workers=6
+Validate narrow_phase 10 workers=1
+Validate narrow_phase 10 workers=6
+Validate narrow_phase 100 workers=1
+Validate narrow_phase 100 workers=6
+Validate narrow_phase 200 workers=1
+Validate narrow_phase 200 workers=6
+Validate rigid_body_container 100 workers=1
+Validate rigid_body_container 100 workers=6
+Validate rigid_body_container 500 workers=1
+Traceback (most recent call last):
+  File "/home/user/Projects/Platformator/benchmark/capture_cleanup.py", line 173, in <module>
+    main()
+    ~~~~^^
+  File "/home/user/Projects/Platformator/benchmark/capture_cleanup.py", line 116, in main
+    _, manifest = run(runner, root, case, count, workers, 0, True)
+                  ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/Projects/Platformator/benchmark/capture_cleanup.py", line 76, in run
+    subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['taskset', '-c', '0', '/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_benchmark_runner', '--scenario', 'rigid_body_container', '--workers', '1', '--seed', '0', '--warmup-frames', '120', '--measure-frames', '600', '--dt', '0.008333333333333333', '--repetitions', '1', '--run-index', '0', '--csv-output', '/home/user/Projects/Platformator/benchmark/results/cpp-cleanup/validation/rigid_body_container-w1/population-000500/run-00.csv', '--box-count', '250', '--circle-count', '250', '--validate-invariants']' returned non-zero exit status 1.

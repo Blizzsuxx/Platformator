@@ -1,4 +1,4 @@
-#include "gameobject.h"
+#include "platformator/gameobject.h"
 
 Component::Component(GameObject *gameObject, ComponentType type) : gameObject(gameObject), type(type)
 {

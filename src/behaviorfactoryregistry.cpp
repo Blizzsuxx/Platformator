@@ -1,5 +1,5 @@
 #include "behaviorfactoryregistry.h"
-#include "behavior.h"
+#include "platformator/behavior.h"
 
 void BehaviorFactoryRegistry::registerFactory(const std::string &typeName, std::function<Behavior *()> factory)
 {

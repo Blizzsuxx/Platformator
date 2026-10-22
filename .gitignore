@@ -41,3 +41,19 @@
 /Makefile
 /dist
 /ui/platformator_venv
+
+# Local build/editor and Python orchestration artifacts
+/obj/
+/out/
+__pycache__/
+*.py[cod]
+/.venv/
+*.egg-info/
+.idea/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp

@@ -1,20 +1,19 @@
-#include "audio.h"
+#include "scenecomponentio.h"
+#include "referenceresolver.h"
+#include "platformator/audio.h"
 
 #include "runtimeaccess.h"
 
 void to_json(nlohmann::json &j, const Audio &audio)
 {
     j = nlohmann::json{
-        {"id", audio.getId()},
-        {"filePath", audio.getFilePath()},
-        {"gain", audio.getGain()},
-        {"loopCount", audio.getLoopCount()},
-        {"type", ComponentType::AUDIO},
-        {"autoPlay", audio.getAutoPlay()},
+        {"id", audio.getId()},          {"filePath", audio.getFilePath()},
+        {"gain", audio.getGain()},      {"loopCount", audio.getLoopCount()},
+        {"type", ComponentType::AUDIO}, {"autoPlay", audio.getAutoPlay()},
     };
 }
 
-void from_json(const nlohmann::json &j, Audio &audio)
+void deserialize(const nlohmann::json &j, Audio &audio, platformator::ReferenceResolver &resolver)
 {
     audio.setId(j.at("id").get<int>());
 
@@ -23,7 +22,7 @@ void from_json(const nlohmann::json &j, Audio &audio)
 
     if (!filePath.empty())
     {
-        AudioWrapper *audioWrapper = platformator_detail::RuntimeAccess::loadAudio(filePath);
+        AudioWrapper *audioWrapper = resolver.loadAudio(filePath);
         audio.setAudio(audioWrapper);
     }
     else
@@ -36,8 +35,10 @@ void from_json(const nlohmann::json &j, Audio &audio)
 
     bool autoPlay;
     j.at("autoPlay").get_to(autoPlay);
-    if (autoPlay)
-    {
-        audio.play();
-    }
+    audio.setAutoPlay(autoPlay);
+}
+void from_json(const nlohmann::json &j, Audio &audio)
+{
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    deserialize(j, audio, resolver);
 }

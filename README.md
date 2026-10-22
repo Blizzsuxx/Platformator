@@ -1,286 +1,56 @@
 # Platformator
 
-Platformator can be used in three common ways:
+A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The Python editor is optional.
 
-1. Run the stock desktop runner and load a scene.
-2. Run benchmark scenarios and collect performance summaries.
-3. Consume Platformator as a library in your own host.
+## Build and test
 
-The Mario example in [examples/mario](examples/mario) demonstrates both source-tree consumption and installed-package consumption.
+Use a C++20 compiler, CMake 3.21+ with presets, Ninja, and SDL system development prerequisites. Dependencies are bundled. Python 3 is used by benchmark tooling/tests; the Python GUI is unnecessary.
 
-## Quick Start: Build And Run
-
-Platformator uses CMake presets.
-
-Build debug runner:
-
-```bash
-cmake --build --preset debug
+```sh
+cmake --preset cleanup-debug
+cmake --build --preset cleanup-debug --parallel 4
+ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke
 ```
 
-Run the default scene:
+The standalone runner is `bin/cleanup-debug/main`. Supply a scene and its asset root explicitly:
 
-```bash
-./bin/debug/main
+```sh
+bin/cleanup-debug/main --scene /path/to/game.scene --asset-root /path/to/assets
+printf '[]\n' > /tmp/platformator-empty.scene
+bin/cleanup-debug/main --headless --scene /tmp/platformator-empty.scene --smoke-steps 10 --asset-root assets
 ```
 
-Run a specific scene:
+Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. The core assets contain fallbacks, not the Mario game. Build the example with `-DPLATFORMATOR_BUILD_EXAMPLES=ON`; see [Mario](examples/mario/CMakeLists.txt). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
 
-```bash
-./bin/debug/main --scene assets/scenes/mario.scene
-```
-
-Build benchmark runner (instrumentation enabled):
-
-```bash
-cmake --build --preset benchmark-debug --target platformator_benchmark_runner
-```
-
-Run a benchmark scenario:
-
-```bash
-./bin/benchmark-debug/platformator_benchmark_runner --scenario broad_phase
-```
-
-## Build Presets And Output Paths
-
-Main presets from [CMakePresets.json](CMakePresets.json):
-
-- `debug` -> build output in `bin/debug`, install prefix `dist/debug`
-- `benchmark-debug` -> build output in `bin/benchmark-debug`, install prefix `dist/benchmark-debug`
-- `benchmark-release` -> build output in `bin/benchmark-release`, install prefix `dist/benchmark-release`
-- `production` -> build output in `bin/production`, install prefix `dist/production`
-
-The stock runner binary is `main` and is built when `PLATFORMATOR_BUILD_RUNNER=ON`.
-The benchmark binary is `platformator_benchmark_runner` and is built when both `PLATFORMATOR_BUILD_RUNNER=ON` and `PLATFORMATOR_ENABLE_BENCHMARKS=ON`.
-
-## Stock Runner CLI
-
-The stock runner entrypoint is implemented in [src/main.cpp](src/main.cpp) and delegates to [src/runner.cpp](src/runner.cpp).
-
-Usage pattern:
-
-```bash
-./bin/debug/main [scene_path]
-./bin/debug/main --scene path/to.scene
-```
-
-Supported runtime arguments:
-
-- `--scene <path>`
-- `--window-width <positive-int>`
-- `--window-height <positive-int>`
-- `--fullscreen`
-- `--maximized`
-- `--keep-aspect-ratio`
-- `--debug-draw <value>`
-    - accepted values: `all`, `default`, `none`
-    - or comma-separated categories: `colliders`, `collision-points` (alias `points`), `collision-normals` (alias `normals`), `collisions`, `grid-cells` (alias `gridcells`)
-- `--start-paused`
-
-Examples:
-
-```bash
-./bin/debug/main --scene assets/scenes/mario.scene --window-width 1920 --window-height 1080 --keep-aspect-ratio
-
-./bin/debug/main --scene assets/scenes/mario.scene --debug-draw colliders,collisions,grid-cells --start-paused
-```
-
-## Benchmark Runner CLI
-
-Benchmark runner source is [src/benchmark_main.cpp](src/benchmark_main.cpp).
-
-Usage:
-
-```bash
-./bin/benchmark-debug/platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|narrow_phase|rigid_body_container] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--csv-output path] [--render]
-```
-
-Supported benchmark arguments:
-
-- `--scene <path>`
-- `--scenario <broad_phase|narrow_phase|rigid_body_container>`
-- `--warmup-frames <non-negative-int>`
-- `--measure-frames <positive-int>`
-- `--dt <positive-float-seconds>`
-- `--box-count <non-negative-int>` (rigid body container)
-- `--circle-count <non-negative-int>` (rigid body container)
-- `--broad-count <positive-int>` (broad phase lane movers)
-- `--narrow-count <positive-int>` (narrow phase element density)
-- `--csv-output <path>` (alias `--csv`)
-- `--render` (visual run instead of headless frame stepping)
-
-Notes:
-
-- `--scene` and `--scenario` are mutually exclusive.
-- For `rigid_body_container`, at least one of `--box-count` or `--circle-count` must be greater than zero.
-- CSV output writes a single summary file with rows for metadata, scope timings, and counters.
-
-Examples:
-
-```bash
-# Broad phase scaling experiment (25 movers)
-./bin/benchmark-release/platformator_benchmark_runner --scenario broad_phase --broad-count 25 --warmup-frames 120 --measure-frames 600
-
-# Narrow phase scaling experiment (12 elements per axis/band set)
-./bin/benchmark-release/platformator_benchmark_runner --scenario narrow_phase --narrow-count 12 --warmup-frames 120 --measure-frames 600
-
-# Rigid body container scenario with custom body counts
-./bin/benchmark-release/platformator_benchmark_runner --scenario rigid_body_container --box-count 400 --circle-count 400
-
-# Export benchmark summary to CSV
-./bin/benchmark-release/platformator_benchmark_runner --scenario broad_phase --broad-count 128 --csv-output benchmark_broad_128.csv
-```
-
-## Consume From Source
-
-Add Platformator as a subdirectory and link against `Platformator::platformator`:
+## Embed or install
 
 ```cmake
-cmake_minimum_required(VERSION 3.16)
-project(MyGame LANGUAGES CXX C)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(PLATFORMATOR_BUILD_RUNNER OFF CACHE BOOL "" FORCE)
-set(PLATFORMATOR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(PLATFORMATOR_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(PLATFORMATOR_INSTALL OFF CACHE BOOL "" FORCE)
-
-add_subdirectory(path/to/Platformator)
-
-add_executable(my_game
-    src/main.cpp
-    src/my_player_behavior.cpp
-)
-
+add_subdirectory(path/to/Platformator platformator)
 target_link_libraries(my_game PRIVATE Platformator::platformator)
-target_include_directories(my_game PRIVATE src)
 ```
 
-## Consume As An Installed Package
-
-First install Platformator from its own source tree:
-
-```bash
-cmake --build --preset debug --target install
-```
-
-Then consume it from another project with `find_package`:
-
-```cmake
-cmake_minimum_required(VERSION 3.16)
-project(MyGame LANGUAGES CXX C)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-find_package(Platformator CONFIG REQUIRED)
-
-add_executable(my_game
-    src/main.cpp
-    src/my_player_behavior.cpp
-)
-
-target_link_libraries(my_game PRIVATE Platformator::platformator)
-target_include_directories(my_game PRIVATE src)
-```
-
-Configure your consumer with `CMAKE_PREFIX_PATH` pointing at the Platformator install prefix, for example `dist/debug`.
-
-## Host Path 1: Stock Runner
-
-Use the helper entrypoint when you want Platformator to parse runtime options and run a scene for you:
+Or configure `-DPLATFORMATOR_INSTALL=ON`, build, and `cmake --install bin/cleanup-debug --prefix /path/to/sdk`. Consumers use `find_package(Platformator CONFIG REQUIRED)` with that prefix in `CMAKE_PREFIX_PATH`, then the same target. Public headers are under `include/platformator`; consumers do not need private source paths or hand-written dependency link lists. The installed SDK and example support prefix relocation.
 
 ```cpp
-#include "platformator/runner.h"
+#include <platformator/runtime.h>
 
-int main(int argc, char *args[])
-{
-    return platformator::run(argc, args, "assets/scenes/default.scene");
-}
+RuntimeOptions options;
+options.windowSettings.headless = true;
+platformator::Runtime runtime(options);
+runtime.simulateFrame(1.0 / 120.0);
 ```
 
-This is the simplest host path and matches [src/main.cpp](src/main.cpp).
+One Runtime may be active at a time. It owns objects/components/assets; returned raw pointers are borrowed. Use typed `ObjectReference<T>` for references that must survive lifecycle changes. Scripts request scene replacement/clear; commit occurs after callbacks and preparation succeeds before the old scene retires. `onDestroy` can read attached components but cannot perform structural edits. Interactive running uses fixed 1/120 steps; explicit stepping executes one caller-specified tick.
 
-## Host Path 2: Custom Runtime
+Read [C++ API migration](docs/CPP_API_MIGRATION.md) for lifecycle, error, resolver, lifetime and asset-root contracts. [Validation guide](specs/001-cpp-engine-cleanup/quickstart.md) contains sanitizer, work-counter and package commands; [recorded evidence](specs/001-cpp-engine-cleanup/validation.md) distinguishes verified behavior and host limitations. Linux/GCC is exercised; other SDL platforms remain unverified.
 
-Create your own host when you want to control startup, scene loading, object creation, or the frame loop setup:
+## Benchmarks
 
-```cpp
-#include "platformator/runtime.h"
-#include "platformator/runtimeoptions.h"
-
-int main()
-{
-    RuntimeOptions options;
-    options.sceneFilePath = "assets/scenes/default.scene";
-
-    platformator::Runtime runtime(options);
-    runtime.loadScene(options.sceneFilePath);
-    runtime.run();
-    return 0;
-}
+```sh
+cmake --preset cleanup-benchmark
+cmake --build --preset cleanup-benchmark --target platformator_benchmark_runner --parallel 4
+python3 benchmark/sweep_scaling.py --runner bin/cleanup-benchmark/platformator_benchmark_runner \
+  --scenario broad_phase --counts 100,500,1000 --workers 1 --repetitions 5 --output /tmp/broad.csv
 ```
 
-You can also skip `loadScene` and populate the scene manually with `createGameObject()` before calling `run()`.
-
-## Writing Behaviors
-
-Behavior authors should include only the public Platformator headers they actually use. The common starting point is:
-
-```cpp
-#include "platformator/behavior.h"
-#include "platformator/scriptregistration.h"
-```
-
-Add component headers as needed, for example `platformator/rigidbody.h`, `platformator/sprite.h`, or `platformator/audio.h`.
-
-Example behavior skeleton:
-
-```cpp
-#include "platformator/behavior.h"
-#include "platformator/scriptregistration.h"
-
-class MyBehavior : public Behavior
-{
-public:
-    void start() override
-    {
-        getGameObject()->setName("Player");
-    }
-
-    SERIALIZABLE_SCRIPT(MyBehavior);
-};
-```
-
-## Mario Example
-
-The Mario example is a separate consumer project under [examples/mario](examples/mario):
-
-- Source-tree consumer: configure the example directly and let it add Platformator as a subdirectory.
-- Installed-package consumer: configure with `-DPLATFORMATOR_MARIO_USE_INSTALLED=ON -DCMAKE_PREFIX_PATH=/path/to/Platformator/dist/debug`.
-
-Installed-package example command:
-
-```bash
-cmake -S examples/mario -B build/mario \
-  -DPLATFORMATOR_MARIO_USE_INSTALLED=ON \
-  -DCMAKE_PREFIX_PATH="$PWD/dist/debug"
-
-cmake --build build/mario --target mario_example
-```
-
-## Useful CMake Options
-
-Important options from [CMakeLists.txt](CMakeLists.txt):
-
-- `PLATFORMATOR_ENABLE_DEBUG_TOOLS` (default ON)
-- `PLATFORMATOR_ENABLE_BENCHMARKS` (default OFF)
-- `PLATFORMATOR_BUILD_RUNNER`
-- `PLATFORMATOR_BUILD_EXAMPLES`
-- `PLATFORMATOR_BUILD_TESTS`
-- `PLATFORMATOR_INSTALL`
+[Benchmark documentation](benchmark/README.md) explains schema v2, complete-step boundaries, independent repetitions, validation instrumentation and historical-result limitations. Preserve the original [pre-cleanup reference](benchmark/baselines/pre-cleanup-e01526b/RESULTS.md).

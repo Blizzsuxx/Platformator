@@ -1,19 +1,24 @@
 #pragma once
 
-#include "debugsettings.h"
+#include "platformator/debugsettings.h"
 #include "sdlwindow.h"
 #include "physicsmanager.h"
-#include "windowsettings.h"
+#include "platformator/windowsettings.h"
 
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <thread>
+#include <exception>
+#include <optional>
+#include <memory>
+#include "objectregistry.h"
 
-#include "animationclip.h"
-#include "scene.h"
-#include "audiowrapper.h"
-#include "texturewrapper.h"
+#include "platformator/animationclip.h"
+#include "platformator/scene.h"
+#include "platformator/audiowrapper.h"
+#include "platformator/texturewrapper.h"
 
 class Animator;
 class ScriptComponent;
@@ -21,16 +26,18 @@ class Behavior;
 
 namespace platformator
 {
-    class Runtime;
-}
+class Runtime;
+class ReferenceResolver;
+} // namespace platformator
 
 namespace platformator_detail
 {
-    class RuntimeAccess;
+class RuntimeAccess;
 }
 
 class GameManager
 {
+    friend class SceneBuildContext;
     friend class platformator::Runtime;
     friend class platformator_detail::RuntimeAccess;
     friend class GameObject;
@@ -40,8 +47,53 @@ class GameManager
     friend class SDLWindow;
     friend class ColliderPair;
     friend class ScriptComponent;
+    friend class PhysicsManager;
 
-public:
+  public:
+    enum class Phase
+    {
+        Idle,
+        Starting,
+        StepHook,
+        FixedUpdate,
+        Physics,
+        CollisionDispatch,
+        Update,
+        Animation,
+        LateUpdate,
+        MutationCommit,
+        DestructionCallbacks,
+        Rendering,
+        Saving,
+        Shutdown
+    };
+    class PhaseGuard
+    {
+      public:
+        PhaseGuard(GameManager &manager, Phase next) : manager(manager), previous(manager.phase)
+        {
+            manager.phase = next;
+        }
+        ~PhaseGuard()
+        {
+            manager.phase = previous;
+        }
+
+      private:
+        GameManager &manager;
+        Phase previous;
+    };
+    void assertCanMutate() const;
+    void commitMutations();
+    void flushIfIdle();
+    void shutdown();
+    void clearObjects();
+    void requestScene(std::optional<std::string> path);
+    bool isIdle() const
+    {
+        return phase == Phase::Idle;
+    }
+    BaseObject *resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const;
     static GameManager &getInstance();
 
     GameManager(GameManager &) = delete;
@@ -54,19 +106,20 @@ public:
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
 
-
     SDLWindow *getWindow() const;
 
     void loop();
     void simulateFrame(double timeDelta);
     bool simulateAndRenderFrame(double timeDelta);
-    TextureWrapper *loadTexture(const std::string &filePath);
+    TextureWrapper *loadTexture(const std::string &filePath, bool required = false);
     void freeTexture(TextureWrapper *textureWrapper);
     void freeAllTextures();
-    AudioWrapper *loadAudio(const std::string &filePath);
+    AudioWrapper *loadAudio(const std::string &filePath, bool required = false);
     void freeAudio(AudioWrapper *audioWrapper);
     void freeAllAudio();
     AnimationClip *loadAnimationClip(const std::string &filePath);
+    AnimationClip *loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
+                                     bool required);
     void freeAnimationClip(AnimationClip *animationClip);
     void freeAllAnimationClips();
 
@@ -77,34 +130,64 @@ public:
     const Eigen::Vector2f &getGravityVector() const;
     const Eigen::Vector2f &getGravityVectorNormalized() const;
 
-private:
+  private:
     static void setCurrentInstance(GameManager *gameManager);
     static GameManager *tryGetCurrentInstance();
     static GameManager *&currentInstance();
 
-    SDLWindow *window;
+    Phase phase = Phase::Idle;
+    std::thread::id mainThread = std::this_thread::get_id();
+    platformator_detail::ObjectRegistry registry;
+    bool shutdownComplete = false;
+    bool shuttingDown = false;
+    struct SceneRequest
+    {
+        std::optional<std::string> path;
+        uint64_t sequence;
+    };
+    std::optional<SceneRequest> pendingSceneRequest;
+    uint64_t sceneRequestSequence = 0;
+    bool preparingScene = false;
+    int64_t nextFileId = 0;
+    void assignFileId(BaseObject &object);
+    void reconcilePending(std::exception_ptr &error);
+    void drainRetirements(std::exception_ptr &error);
+    std::vector<Component *> reconciliations;
+    std::vector<Component *> reconciliationDrain;
+    std::vector<Component *> retiredComponents;
+    std::vector<Behavior *> startingBehaviors;
+    std::vector<GameObject *> dirtyTransforms;
+    size_t nextHierarchyOrder = 0;
+    bool hierarchyDirty = true;
+    bool transformOrderNeeded = false;
+    uint64_t transformStamp = 0;
+    void queueTransform(GameObject *object);
+    void cancelTransform(GameObject *object);
+    void synchronizeTransforms();
+    void rebuildHierarchyOrder(GameObject *object, size_t depth);
+    void synchronizeSubtree(GameObject *object);
+    void queueReconciliation(Component *component);
+    void retireComponent(Component *component);
+    void runDestructionCallbacks(ScriptComponent *script, std::exception_ptr &error);
+    std::unique_ptr<SDLWindow> window;
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> scriptComponents;
-    std::unordered_map<std::string, TextureWrapper> textureCache;
-    std::unordered_map<std::string, AudioWrapper> audioCache;
-    std::unordered_map<std::string, AnimationClip> animationClipCache;
+    std::unordered_map<std::string, std::unique_ptr<TextureWrapper>> textureCache;
+    std::unordered_map<std::string, std::unique_ptr<AudioWrapper>> audioCache;
+    std::unordered_map<std::string, std::unique_ptr<AnimationClip>> animationClipCache;
     std::unordered_map<int, BaseObject *> idToObjectMap;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<Behavior *> startedBehaviors;
 
-    PhysicsManager *physicsManager;
+    std::unique_ptr<PhysicsManager> physicsManager;
 
-    double deltaTime;
-    double lastUpdateTime;
+    uint64_t droppedSimulationSteps = 0;
 
     void createMainCameraIfNoMainCameraExists();
-    void addStartedBehaviorsRecursive(GameObject *gameObject);
     void registerGameObjectSubtree(GameObject *gameObject);
     void runSimulationStep(double timeDelta);
     void startDeletingGameObject(GameObject *gameObject);
-    void updateDeltaTime();
-    void delay();
 
     GameObject *addGameObject(GameObject *gameObject);
     void removeGameObject(GameObject *gameObject);
@@ -122,7 +205,6 @@ private:
     void notifyComponentRemoved(Component *component);
     void deleteMarkedGameObjects();
 
-    void setPhysicsManager(PhysicsManager *physicsManager);
     PhysicsManager *getPhysicsManager() const;
     void fixedUpdateScriptComponents(double timeDelta);
     void updateScriptComponents(double timeDelta);

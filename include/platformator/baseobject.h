@@ -1,21 +1,50 @@
 #pragma once
 
-#include <atomic>
-#include <algorithm>
+#include <string>
+#include <utility>
+#include <stdexcept>
+#include "platformator/objecthandle.h"
+
+namespace platformator_detail
+{
+class ObjectRegistry;
+}
+enum class ObjectLifecycle : uint8_t
+{
+    Staged,
+    Live,
+    PendingRetire,
+    DestroyCallbacks,
+    Unregistered,
+    Freed
+};
 
 class BaseObject
 {
-protected:
-    BaseObject() : id(next_id++)
+    friend class platformator_detail::ObjectRegistry;
+    friend class GameManager;
+
+  protected:
+    BaseObject() = default;
+    explicit BaseObject(int loadedId) : id(loadedId)
     {
     }
 
-    BaseObject(int loaded_id) : id(loaded_id)
+  public:
+    BaseObject(const BaseObject &) = delete;
+    BaseObject &operator=(const BaseObject &) = delete;
+    platformator::ObjectHandle getHandle() const
     {
-        updateCounter(loaded_id);
+        return handle;
     }
-
-public:
+    ObjectLifecycle getLifecycle() const
+    {
+        return lifecycle;
+    }
+    bool isRetired() const
+    {
+        return lifecycle >= ObjectLifecycle::PendingRetire;
+    }
     int getId() const
     {
         return id;
@@ -23,34 +52,26 @@ public:
 
     void setId(int value)
     {
+        if (handle)
+            throw std::logic_error("Registered IDs cannot be changed");
+        if (value < 0)
+            throw std::invalid_argument("File IDs must be nonnegative");
         id = value;
-        updateCounter(value); // Also protect manually changed IDs
     }
 
-protected:
-    int id;
+  protected:
+    int id = -1;
 
-private:
-    static inline std::atomic<int> next_id{1}; 
-
-    static void updateCounter(int loaded_id)
-    {
-        int current = next_id.load();
-        
-        // Loop ensures safety if multiple threads load data simultaneously
-        while (loaded_id >= current)
-        {
-            if (next_id.compare_exchange_weak(current, loaded_id + 1))
-            {
-                break; // Successfully updated!
-            }
-        }
-    }
+  private:
+    platformator::ObjectHandle handle;
+    ObjectLifecycle lifecycle = ObjectLifecycle::Staged;
 };
 
 class Asset
 {
-protected:
+    friend class GameManager;
+
+  protected:
     Asset(std::string filePath) : filePath(std::move(filePath))
     {
     }
@@ -59,7 +80,11 @@ protected:
     {
     }
 
-public:
+  public:
+    uint64_t getRuntimeSerial() const
+    {
+        return runtimeSerial;
+    }
     const std::string &getFilePath() const
     {
         return filePath;
@@ -70,6 +95,7 @@ public:
         filePath = newFilePath;
     }
 
-private:
+  private:
+    uint64_t runtimeSerial = 0;
     std::string filePath;
 };

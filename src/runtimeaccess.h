@@ -8,27 +8,29 @@ class GameManager;
 class PhysicsManager;
 class SDLWindow;
 class TextureWrapper;
+class PathManager;
 
 namespace platformator
 {
-    class Runtime;
+class Runtime;
 }
 
 namespace platformator_detail
 {
-    class RuntimeAccess
-    {
-    public:
-        static platformator::Runtime &runtime();
-        static GameManager &gameManager();
-        static PhysicsManager *physicsManager();
-        static SDLWindow *window();
-        static TextureWrapper *loadTexture(const std::string &filePath);
-        static AudioWrapper *loadAudio(const std::string &filePath);
-        static AnimationClip *loadAnimationClip(const std::string &filePath);
-        static void freeTexture(TextureWrapper *textureWrapper);
-        static void freeAudio(AudioWrapper *audioWrapper);
-        static void freeAnimationClip(AnimationClip *animationClip);
-        static bool playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount);
-    };
-}
+class RuntimeAccess
+{
+  public:
+    static platformator::Runtime &runtime();
+    static PathManager &pathManager();
+    static GameManager &gameManager();
+    static PhysicsManager *physicsManager();
+    static SDLWindow *window();
+    static TextureWrapper *loadTexture(const std::string &filePath);
+    static AudioWrapper *loadAudio(const std::string &filePath);
+    static AnimationClip *loadAnimationClip(const std::string &filePath);
+    static void freeTexture(TextureWrapper *textureWrapper);
+    static void freeAudio(AudioWrapper *audioWrapper);
+    static void freeAnimationClip(AnimationClip *animationClip);
+    static bool playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount);
+};
+} // namespace platformator_detail

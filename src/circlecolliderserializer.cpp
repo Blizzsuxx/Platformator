@@ -1,6 +1,6 @@
-#include "circlecollider.h"
+#include "platformator/circlecollider.h"
 
-#include "jsonhelpers.h"
+#include "platformator/scriptregistration.h"
 
 void to_json(nlohmann::json &j, const CircleCollider &circleCollider)
 {

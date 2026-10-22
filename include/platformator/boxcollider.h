@@ -8,7 +8,7 @@
 
 class BoxCollider : public Collider
 {
-public:
+  public:
     BoxCollider(GameObject *gameObject, float width, float height);
     BoxCollider();
     ~BoxCollider();
@@ -26,13 +26,17 @@ public:
     std::vector<Eigen::Vector2f> getNormals(const Collider *other) const override;
 
     const std::array<Eigen::Vector2f, 4> &getVertices() const;
+    const std::array<Eigen::Vector2f, 2> &getAxes() const
+    {
+        return normals;
+    }
     Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const override;
 
-private:
+  private:
     float width;
     float height;
     std::array<Eigen::Vector2f, 4> vertices;
-    std::vector<Eigen::Vector2f> normals;
+    std::array<Eigen::Vector2f, 2> normals;
 
     void generateNormals();
     void generateProjections();
@@ -40,8 +44,7 @@ private:
     void updateCollider() override;
 };
 
-template <>
-struct ComponentTypeFor<BoxCollider>
+template <> struct ComponentTypeFor<BoxCollider>
 {
     static constexpr ComponentType value = ComponentType::COLLIDER;
 };

@@ -1,0 +1,17 @@
+[Sweep] broad_phase count=10 run=1/5
+...[Sweep] broad_phase count=10 run=1/5
+[Sweep] broad_phase count=10 run=2/5
+[Sweep] broad_phase count=10 run=3/5
+[Sweep] broad_phase count=10 run=4/5
+[Sweep] broad_phase count=10 run=5/5
+[Sweep] broad_phase count=20 run=1/5
+[Sweep] broad_phase count=20 run=2/5
+[Sweep] broad_phase count=20 run=3/5
+[Sweep] broad_phase count=20 run=4/5
+[Sweep] broad_phase count=20 run=5/5
+...
+----------------------------------------------------------------------
+Ran 6 tests in 0.032s
+
+OK
+[Sweep] Wrote /tmp/tmpjet4qo8p/aggregate.csv; raw records retained in /tmp/tmpjet4qo8p/aggregate.runs

@@ -1,7 +1,10 @@
-#include "collider.h"
+#include "platformator/collider.h"
 #include <cstddef>
 
-BoundingRadiusProjectionProxy::BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk) : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX), cachedProjectedPosition(projection->getProjectedPosition())
+BoundingRadiusProjectionProxy::BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection,
+                                                             LocalSortArray *chunk)
+    : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX),
+      cachedProjectedPosition(projection->getProjectedPosition())
 {
 }
 
@@ -45,7 +48,8 @@ void BoundingRadiusProjectionProxy::setChunkIndex(size_t chunkIndex)
 
 bool BoundingRadiusProjectionProxy::operator==(const BoundingRadiusProjectionProxy &other) const
 {
-    return this->cachedProjectedPosition == other.cachedProjectedPosition && this->projection->getIsMaxima() == other.projection->getIsMaxima();
+    return this->cachedProjectedPosition == other.cachedProjectedPosition &&
+           this->projection->getIsMaxima() == other.projection->getIsMaxima();
 }
 
 bool BoundingRadiusProjectionProxy::operator!=(const BoundingRadiusProjectionProxy &other) const
@@ -55,12 +59,16 @@ bool BoundingRadiusProjectionProxy::operator!=(const BoundingRadiusProjectionPro
 
 bool BoundingRadiusProjectionProxy::operator<(const BoundingRadiusProjectionProxy &other) const
 {
-    return cachedProjectedPosition < other.cachedProjectedPosition || (cachedProjectedPosition == other.cachedProjectedPosition && !projection->getIsMaxima() && other.projection->getIsMaxima());
+    return cachedProjectedPosition < other.cachedProjectedPosition ||
+           (cachedProjectedPosition == other.cachedProjectedPosition && !projection->getIsMaxima() &&
+            other.projection->getIsMaxima());
 }
 
 bool BoundingRadiusProjectionProxy::operator>(const BoundingRadiusProjectionProxy &other) const
 {
-    return cachedProjectedPosition > other.cachedProjectedPosition || (cachedProjectedPosition == other.cachedProjectedPosition && projection->getIsMaxima() && !other.projection->getIsMaxima());
+    return cachedProjectedPosition > other.cachedProjectedPosition ||
+           (cachedProjectedPosition == other.cachedProjectedPosition && projection->getIsMaxima() &&
+            !other.projection->getIsMaxima());
 }
 
 bool BoundingRadiusProjectionProxy::operator<=(const BoundingRadiusProjectionProxy &other) const

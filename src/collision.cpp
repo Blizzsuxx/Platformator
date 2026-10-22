@@ -1,27 +1,31 @@
 #include "collision.h"
 #include "constants.h"
 #include "helpers.h"
-#include "rigidbody.h"
+#include "platformator/rigidbody.h"
 #include "gamemanager.h"
 #include "runtimeaccess.h"
 
-Collision::Collision() : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr), supportState(SupportState::NONE_SUPPORT)
+Collision::Collision()
+    : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr),
+      supportState(SupportState::NONE_SUPPORT)
 {
 }
 
 Collision::Collision(Collider *colliderA, Collider *colliderB)
-    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB), supportState(SupportState::NONE_SUPPORT)
+    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB),
+      supportState(SupportState::NONE_SUPPORT)
 {
 }
 
-Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints, Collider *colliderA, Collider *colliderB)
-    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB), supportState(SupportState::NONE_SUPPORT)
+Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints,
+                     Collider *colliderA, Collider *colliderB)
+    : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB),
+      supportState(SupportState::NONE_SUPPORT)
 {
 }
 
 Collision::~Collision()
 {
-    clearSupportState();
 }
 
 // Getters
@@ -61,9 +65,12 @@ void Collision::setContactPoints(const ClipPoints &newContactPoints) const
         if (index != SIZE_MAX)
         {
             contactPointsWithData.points[i] = ClipPointWithData(newContactPoints.points[i]);
-            contactPointsWithData.points[i].accumulatedNormalImpulse = contactPoints.points[index].accumulatedNormalImpulse;
-            contactPointsWithData.points[i].accumulatedTangentImpulse = contactPoints.points[index].accumulatedTangentImpulse;
-            contactPointsWithData.points[i].accumulatedNormalImpulseBias = contactPoints.points[index].accumulatedNormalImpulseBias;
+            contactPointsWithData.points[i].accumulatedNormalImpulse =
+                contactPoints.points[index].accumulatedNormalImpulse;
+            contactPointsWithData.points[i].accumulatedTangentImpulse =
+                contactPoints.points[index].accumulatedTangentImpulse;
+            contactPointsWithData.points[i].accumulatedNormalImpulseBias =
+                contactPoints.points[index].accumulatedNormalImpulseBias;
         }
         else
         {
@@ -76,6 +83,8 @@ void Collision::setContactPoints(const ClipPoints &newContactPoints) const
 
 void Collision::setReferenceObject(const Collider *colliderA) const
 {
+    if (referenceObject != colliderA)
+        contactPoints = ClipPointsWithData();
     this->referenceObject = colliderA;
 }
 
@@ -158,77 +167,22 @@ Collision::CollisionType Collision::getResolutionType() const
 
 void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalized) const
 {
-    Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-    Rigidbody *rbB = (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-
-    if (rbA == nullptr || rbB == nullptr)
-    {
-        return; // No support state to update if either object doesn't have a Rigidbody
-    }
-
-    bool newSupportsReferenceBody = rbA->qualifiesAsSupportContact(-normal, gravityVectorNormalized);
-    bool newSupportsIncidentBody = rbB->qualifiesAsSupportContact(normal, gravityVectorNormalized);
-
-    bool supportsReferenceBody = getSupportsReferenceBody();
-    bool supportsIncidentBody = getSupportsIncidentBody();
-
-    if (supportsReferenceBody != newSupportsReferenceBody)
-    {
-        if (rbA != nullptr)
-        {
-            if (newSupportsReferenceBody)
-            {
-                rbA->addSupportContact();
-            }
-            else
-            {
-                rbA->removeSupportContact();
-            }
-        }
-        setSupportsReferenceBody(newSupportsReferenceBody);
-    }
-
-    if (supportsIncidentBody != newSupportsIncidentBody)
-    {
-        if (rbB != nullptr)
-        {
-            if (newSupportsIncidentBody)
-            {
-                rbB->addSupportContact();
-            }
-            else
-            {
-                rbB->removeSupportContact();
-            }
-        }
-        setSupportsIncidentBody(newSupportsIncidentBody);
-    }
+    supportState = NONE_SUPPORT;
+    if (referenceObject->getIsTrigger() || incidentObject->getIsTrigger())
+        return;
+    auto *a = referenceObject->getGameObject()->getComponent<Rigidbody>();
+    auto *b = incidentObject->getGameObject()->getComponent<Rigidbody>();
+    if (!a || !b)
+        return;
+    if (a->qualifiesAsSupportContact(-normal, gravityVectorNormalized))
+        supportState |= SUPPORTS_REFERENCE;
+    if (b->qualifiesAsSupportContact(normal, gravityVectorNormalized))
+        supportState |= SUPPORTS_INCIDENT;
 }
 
 void Collision::clearSupportState() const
 {
-    bool supportsReferenceBody = getSupportsReferenceBody();
-    bool supportsIncidentBody = getSupportsIncidentBody();
-
-    if (supportsReferenceBody && referenceObject != nullptr)
-    {
-        Rigidbody *rbA = (Rigidbody *)referenceObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-        if (rbA != nullptr)
-        {
-            rbA->removeSupportContact();
-        }
-        setSupportsReferenceBody(false);
-    }
-
-    if (supportsIncidentBody && incidentObject != nullptr)
-    {
-        Rigidbody *rbB = (Rigidbody *)incidentObject->getGameObject()->getComponent(ComponentType::RIGID_BODY);
-        if (rbB != nullptr)
-        {
-            rbB->removeSupportContact();
-        }
-        setSupportsIncidentBody(false);
-    }
+    supportState = NONE_SUPPORT;
 }
 
 bool Collision::getSupportsReferenceBody() const
@@ -267,7 +221,8 @@ void Collision::setSupportsIncidentBody(bool supports) const
 
 bool Collision::isVerticalCollision() const
 {
-    const Eigen::Vector2f &gravityVectorNormalized = platformator_detail::RuntimeAccess::gameManager().getGravityVectorNormalized();
+    const Eigen::Vector2f &gravityVectorNormalized =
+        platformator_detail::RuntimeAccess::gameManager().getGravityVectorNormalized();
     return std::abs(normal.dot(-gravityVectorNormalized)) >= SUPPORT_NORMAL_THRESHOLD;
 }
 

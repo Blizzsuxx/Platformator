@@ -1,0 +1,1174 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-asan
+    Start 6: platformator_runtime_foundation_test
+1/1 Test #6: platformator_runtime_foundation_test ...***Failed    0.86 sec
+
+=================================================================
+==37075==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 192 byte(s) in 2 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c79e30 in hierarchy /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:104
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c8004c in audioRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:236
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7ad49 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:123
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c783cc in logicalRetirement /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:75
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 2 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c79e30 in hierarchy /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:104
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c77464 in dispatchGrowth /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:58
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 2 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c79e30 in hierarchy /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:104
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7d7ec in activation /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:169
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7c28c in resourceRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:146
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7b872 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:137
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e4d  (<unknown module>)
+    #2 0x7bf0355b25e3  (<unknown module>)
+    #3 0x7bf0355b26b7  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7e9c8 in callbackFailure /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:188
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c8004c in audioRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:236
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c783cc in logicalRetirement /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:75
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c783cc in logicalRetirement /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:75
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7e9c8 in callbackFailure /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:188
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7d7ec in activation /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:169
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c77464 in dispatchGrowth /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:58
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7c28c in resourceRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:146
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c77464 in dispatchGrowth /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:58
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7c28c in resourceRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:146
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7d7ec in activation /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:169
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7b872 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:137
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7b872 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:137
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7e9c8 in callbackFailure /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:188
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c8004c in audioRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:236
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73eb  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7ad49 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:123
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0348b73cc  (<unknown module>)
+    #2 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #21 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #22 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #23 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #24 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #26 0x5582f8c7ad49 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:123
+    #27 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+    #28 0x7ff037c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #29 0x7ff037c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+
+Direct leak of 16 byte(s) in 2 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c79e30 in hierarchy /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:104
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7c28c in resourceRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:146
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7b872 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:137
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c783cc in logicalRetirement /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:75
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c8004c in audioRetention /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:236
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7e9c8 in callbackFailure /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:188
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7d7ec in activation /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:169
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c7ad49 in identities /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:123
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7ff03ef2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7bf0355b3e15  (<unknown module>)
+    #2 0x7bf0355cb69f  (<unknown module>)
+    #3 0x7bf0355b269b  (<unknown module>)
+    #4 0x7ff03f6621ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7ff03f6622cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7ff03f65e526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7ff03f669618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7ff03f669ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7ff037c94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7ff03f65e478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7ff03f65e5c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7ff037c94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7ff037c945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7ff03ee8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7ff03b615434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7ff03ac97285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7ff03e84832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7ff03e848a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7ff03e6f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7ff03e6f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x5582f8f9208c in SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:105
+    #23 0x5582f8f911e7 in SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29
+    #24 0x5582f8d68574 in std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #25 0x5582f8d22751 in GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:36
+    #26 0x5582f8f19a47 in std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105
+    #27 0x5582f8f14ca8 in platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22
+    #28 0x5582f8c77464 in dispatchGrowth /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:58
+    #29 0x5582f8c81294 in main /home/user/Projects/Platformator/tests/runtime_foundation_test.cpp:264
+
+SUMMARY: AddressSanitizer: 2000 byte(s) leaked in 40 allocation(s).
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+lifecycle       =   0.86 sec*proc (1 test)
+platformator    =   0.86 sec*proc (1 test)
+reference       =   0.86 sec*proc (1 test)
+
+Total Test time (real) =   0.87 sec
+
+The following tests FAILED:
+	  6 - platformator_runtime_foundation_test (Failed)     lifecycle platformator reference
+Errors while running CTest

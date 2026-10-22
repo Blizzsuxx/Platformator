@@ -1,0 +1,18 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-tsan
+    Start 13: platformator_transform_hierarchy_test
+1/3 Test #13: platformator_transform_hierarchy_test ...   Passed    1.06 sec
+    Start 14: platformator_physics_support_test
+2/3 Test #14: platformator_physics_support_test .......   Passed    4.34 sec
+    Start 15: platformator_physics_geometry_test
+3/3 Test #15: platformator_physics_geometry_test ......   Passed    1.04 sec
+
+100% tests passed out of 3
+
+Label Time Summary:
+determinism     =   4.34 sec*proc (1 test)
+geometry        =   1.04 sec*proc (1 test)
+physics         =   6.44 sec*proc (3 tests)
+platformator    =   6.44 sec*proc (3 tests)
+transform       =   1.06 sec*proc (1 test)
+
+Total Test time (real) =   6.44 sec

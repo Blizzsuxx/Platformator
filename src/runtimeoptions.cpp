@@ -1,142 +1,125 @@
-#include "runtimeoptions.h"
+#include "platformator/runtimeoptions.h"
 
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
+#include <charconv>
 
 namespace
 {
-    int parsePositiveInteger(const std::string &value, const std::string &argumentName)
+int parsePositiveInteger(const std::string &value, const std::string &argumentName)
+{
+    int parsedValue = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
+    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || parsedValue <= 0)
     {
-        const int parsedValue = std::stoi(value);
-        if (parsedValue <= 0)
-        {
-            throw std::runtime_error(argumentName + " must be greater than zero.");
-        }
-
-        return parsedValue;
+        throw std::runtime_error(argumentName + " must be greater than zero.");
     }
 
-    std::string requireArgumentValue(int argc, char *args[], int &index, const std::string &argumentName)
-    {
-        if (index + 1 >= argc)
-        {
-            throw std::runtime_error("Missing value for " + argumentName + ".");
-        }
-
-        index++;
-        return args[index];
-    }
-
-    std::string normalizeArgumentValue(std::string value)
-    {
-        value.erase(
-            value.begin(),
-            std::find_if(
-                value.begin(),
-                value.end(),
-                [](unsigned char character)
-                {
-                    return !std::isspace(character);
-                }));
-
-        value.erase(
-            std::find_if(
-                value.rbegin(),
-                value.rend(),
-                [](unsigned char character)
-                {
-                    return !std::isspace(character);
-                })
-                .base(),
-            value.end());
-
-        std::transform(
-            value.begin(),
-            value.end(),
-            value.begin(),
-            [](unsigned char character)
-            {
-                return static_cast<char>(std::tolower(character));
-            });
-
-        return value;
-    }
-
-    void applyDebugDrawToken(DebugSettings &debugSettings, const std::string &token)
-    {
-        if (token == "colliders")
-        {
-            debugSettings.showColliders = true;
-            return;
-        }
-
-        if (token == "collision-points" || token == "points")
-        {
-            debugSettings.showCollisionPoints = true;
-            return;
-        }
-
-        if (token == "collision-normals" || token == "normals")
-        {
-            debugSettings.showCollisionNormals = true;
-            return;
-        }
-
-        if (token == "collisions")
-        {
-            debugSettings.showCollisionPoints = true;
-            debugSettings.showCollisionNormals = true;
-            return;
-        }
-
-        if (token == "grid-cells" || token == "gridcells")
-        {
-            debugSettings.showGridCells = true;
-            return;
-        }
-
-        throw std::runtime_error("Unknown debug draw category: " + token);
-    }
-
-    DebugSettings parseDebugDrawSettings(const std::string &value)
-    {
-        const std::string normalizedValue = normalizeArgumentValue(value);
-        if (normalizedValue == "all" || normalizedValue == "default")
-        {
-            return {};
-        }
-
-        if (normalizedValue == "none")
-        {
-            return {false, false, false, false, false};
-        }
-
-        DebugSettings debugSettings{false, false, false, false, false};
-        size_t tokenStart = 0;
-
-        while (tokenStart <= value.size())
-        {
-            const size_t tokenEnd = value.find(',', tokenStart);
-            const std::string token = normalizeArgumentValue(value.substr(tokenStart, tokenEnd - tokenStart));
-            if (token.empty())
-            {
-                throw std::runtime_error("Debug draw categories cannot be empty.");
-            }
-
-            applyDebugDrawToken(debugSettings, token);
-
-            if (tokenEnd == std::string::npos)
-            {
-                break;
-            }
-
-            tokenStart = tokenEnd + 1;
-        }
-
-        return debugSettings;
-    }
+    return parsedValue;
 }
+
+std::string requireArgumentValue(int argc, char *args[], int &index, const std::string &argumentName)
+{
+    if (index + 1 >= argc)
+    {
+        throw std::runtime_error("Missing value for " + argumentName + ".");
+    }
+
+    index++;
+    return args[index];
+}
+
+std::string normalizeArgumentValue(std::string value)
+{
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(),
+                                            [](unsigned char character) { return !std::isspace(character); }));
+
+    value.erase(
+        std::find_if(value.rbegin(), value.rend(), [](unsigned char character) { return !std::isspace(character); })
+            .base(),
+        value.end());
+
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+
+    return value;
+}
+
+void applyDebugDrawToken(DebugSettings &debugSettings, const std::string &token)
+{
+    if (token == "colliders")
+    {
+        debugSettings.showColliders = true;
+        return;
+    }
+
+    if (token == "collision-points" || token == "points")
+    {
+        debugSettings.showCollisionPoints = true;
+        return;
+    }
+
+    if (token == "collision-normals" || token == "normals")
+    {
+        debugSettings.showCollisionNormals = true;
+        return;
+    }
+
+    if (token == "collisions")
+    {
+        debugSettings.showCollisionPoints = true;
+        debugSettings.showCollisionNormals = true;
+        return;
+    }
+
+    if (token == "grid-cells" || token == "gridcells")
+    {
+        debugSettings.showGridCells = true;
+        return;
+    }
+
+    throw std::runtime_error("Unknown debug draw category: " + token);
+}
+
+DebugSettings parseDebugDrawSettings(const std::string &value)
+{
+    const std::string normalizedValue = normalizeArgumentValue(value);
+    if (normalizedValue == "all" || normalizedValue == "default")
+    {
+        return {};
+    }
+
+    if (normalizedValue == "none")
+    {
+        return {false, false, false, false, false};
+    }
+
+    DebugSettings debugSettings{false, false, false, false, false};
+    size_t tokenStart = 0;
+
+    while (tokenStart <= value.size())
+    {
+        const size_t tokenEnd = value.find(',', tokenStart);
+        const std::string token = normalizeArgumentValue(value.substr(tokenStart, tokenEnd - tokenStart));
+        if (token.empty())
+        {
+            throw std::runtime_error("Debug draw categories cannot be empty.");
+        }
+
+        applyDebugDrawToken(debugSettings, token);
+
+        if (tokenEnd == std::string::npos)
+        {
+            break;
+        }
+
+        tokenStart = tokenEnd + 1;
+    }
+
+    return debugSettings;
+}
+} // namespace
 
 RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &defaultScenePath)
 {
@@ -154,15 +137,36 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
             continue;
         }
 
+        if (argument == "--asset-root")
+        {
+            runtimeOptions.assetRoot = requireArgumentValue(argc, args, index, argument);
+            continue;
+        }
+        if (argument == "--smoke-steps")
+        {
+            const auto value = requireArgumentValue(argc, args, index, argument);
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), runtimeOptions.smokeSteps);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !runtimeOptions.smokeSteps)
+                throw std::runtime_error("--smoke-steps must be a positive integer");
+            continue;
+        }
+        if (argument == "--headless")
+        {
+            runtimeOptions.windowSettings.headless = true;
+            continue;
+        }
+
         if (argument == "--window-width")
         {
-            runtimeOptions.windowSettings.width = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            runtimeOptions.windowSettings.width =
+                parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
             continue;
         }
 
         if (argument == "--window-height")
         {
-            runtimeOptions.windowSettings.height = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            runtimeOptions.windowSettings.height =
+                parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
             continue;
         }
 

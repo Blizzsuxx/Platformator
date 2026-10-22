@@ -1,0 +1,10 @@
+[Benchmark][Scenario] box_count=250 circle_count=250 container_width=1600.0 container_height=900.0
+[Benchmark] schema_version=2 complete_steps=600 render_samples=0
+[Benchmark][Scope] complete_step avg_ms=0.691853 median_ms=0.728356 p95_ms=1.152032 samples=600
+[Benchmark][Scope] physics avg_ms=0.451002 median_ms=0.499781 p95_ms=0.883962 samples=600
+[Benchmark][Scope] cleanup avg_ms=0.240473 median_ms=0.224848 p95_ms=0.340438 samples=600
+[Benchmark][Scope] scene_transition avg_ms=0.000000 median_ms=0.000000 p95_ms=0.000000 samples=600
+[Benchmark][Scope] render avg_ms=0.000000 median_ms=0.000000 p95_ms=0.000000 samples=0
+[Benchmark][Scope] broad_phase avg_ms=0.000138 median_ms=0.000131 p95_ms=0.000220 samples=600
+[Benchmark][Scope] narrow_phase avg_ms=0.170460 median_ms=0.193859 p95_ms=0.352792 samples=600
+[Benchmark][Scope] resolve_collisions avg_ms=0.239020 median_ms=0.262129 p95_ms=0.505962 samples=600

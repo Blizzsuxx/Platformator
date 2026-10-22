@@ -1,0 +1,2 @@
+Core-only Release archive: bin/cleanup-debug/package-smoke/core/libplatformator.a
+No work-probe or BenchmarkRecorder symbols found.

@@ -1,0 +1,113 @@
+
+=================================================================
+==38031==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 96 byte(s) in 1 object(s) allocated from:
+    #0 0x7f433ed2bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7f433891ce4d  (<unknown module>)
+    #2 0x7f433891b5e3  (<unknown module>)
+    #3 0x7f433891b6b7  (<unknown module>)
+    #4 0x7f433f4ac1ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7f433f4ac2cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7f433f4a8526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7f433f4b3618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7f433f4b3ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7f4338e94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7f433f4a85c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7f4338e94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7f4338e945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7f433ec8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7f433be15434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7f433b497285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7f433e64832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7f433e648a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7f433e4f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7f433e4f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x55f9c419e30c in main /tmp/platformator-mixer-leak-probe.cpp:13
+    #23 0x7f4338e27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #24 0x7f4338e278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #25 0x55f9c419e154 in _start (/tmp/platformator-mixer-leak-probe+0x1154) (BuildId: c07a9bbd551ab15412b415c029fbbc0701d6d177)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7f433ed2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7f433838a3cc  (<unknown module>)
+    #2 0x7f433f4ac1ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7f433f4ac2cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7f433f4a8526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7f433f4b3618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7f433f4b3ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7f4338e94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7f433f4a85c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7f4338e94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7f4338e945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7f433ec8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7f433be15434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7f433b497285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7f433e64832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7f433e648a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7f433e4f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7f433e4f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x55f9c419e30c in main /tmp/platformator-mixer-leak-probe.cpp:13
+    #21 0x7f4338e27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #22 0x7f4338e278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #23 0x55f9c419e154 in _start (/tmp/platformator-mixer-leak-probe+0x1154) (BuildId: c07a9bbd551ab15412b415c029fbbc0701d6d177)
+
+Direct leak of 48 byte(s) in 1 object(s) allocated from:
+    #0 0x7f433ed2d2a1 in operator new(unsigned long) (/usr/lib/libasan.so.8+0x12d2a1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7f433838a3eb  (<unknown module>)
+    #2 0x7f433f4ac1ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #3 0x7f433f4ac2cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #4 0x7f433f4a8526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7f433f4b3618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7f433f4b3ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7f4338e94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #9 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7f433f4a85c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #11 0x7f4338e94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #12 0x7f4338e945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #13 0x7f433ec8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #14 0x7f433be15434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #15 0x7f433b497285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #16 0x7f433e64832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #17 0x7f433e648a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #18 0x7f433e4f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #19 0x7f433e4f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #20 0x55f9c419e30c in main /tmp/platformator-mixer-leak-probe.cpp:13
+    #21 0x7f4338e27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #22 0x7f4338e278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #23 0x55f9c419e154 in _start (/tmp/platformator-mixer-leak-probe+0x1154) (BuildId: c07a9bbd551ab15412b415c029fbbc0701d6d177)
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x7f433ed2c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x7f433891ce15  (<unknown module>)
+    #2 0x7f433893469f  (<unknown module>)
+    #3 0x7f433891b69b  (<unknown module>)
+    #4 0x7f433f4ac1ee  (/lib64/ld-linux-x86-64.so.2+0x61ee) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #5 0x7f433f4ac2cc  (/lib64/ld-linux-x86-64.so.2+0x62cc) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #6 0x7f433f4a8526 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2526) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #7 0x7f433f4b3618  (/lib64/ld-linux-x86-64.so.2+0xd618) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #8 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #9 0x7f433f4b3ae9  (/lib64/ld-linux-x86-64.so.2+0xdae9) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #10 0x7f4338e94533  (/usr/lib/libc.so.6+0x94533) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #11 0x7f433f4a8478 in _dl_catch_exception (/lib64/ld-linux-x86-64.so.2+0x2478) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #12 0x7f433f4a85c8  (/lib64/ld-linux-x86-64.so.2+0x25c8) (BuildId: 1e794eb14f4bccf6186bf8d9aa2018e8963ea668)
+    #13 0x7f4338e94002  (/usr/lib/libc.so.6+0x94002) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #14 0x7f4338e945ea in dlopen (/usr/lib/libc.so.6+0x945ea) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #15 0x7f433ec8cef8  (/usr/lib/libasan.so.8+0x8cef8) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #16 0x7f433be15434 in SDL_LoadObject_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/loadso/dlopen/SDL_sysloadso.c:47
+    #17 0x7f433b497285 in SDL_LoadObject /home/user/Projects/Platformator/vendored/SDL3-3.4.2/src/dynapi/SDL_dynapi_procs.h:658
+    #18 0x7f433e64832d in LoadModule_fluidsynth /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer_loader.h:43
+    #19 0x7f433e648a86 in FLUIDSYNTH_init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/decoder_fluidsynth.c:100
+    #20 0x7f433e4f7e94 in InitDecoders /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:652
+    #21 0x7f433e4f84d7 in MIX_Init /home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.0/src/SDL_mixer.c:695
+    #22 0x55f9c419e30c in main /tmp/platformator-mixer-leak-probe.cpp:13
+    #23 0x7f4338e27780  (/usr/lib/libc.so.6+0x27780) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #24 0x7f4338e278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: 503200d7fda94a5dc6058d7e0694e5d1dcb2e372)
+    #25 0x55f9c419e154 in _start (/tmp/platformator-mixer-leak-probe+0x1154) (BuildId: c07a9bbd551ab15412b415c029fbbc0701d6d177)
+
+SUMMARY: AddressSanitizer: 200 byte(s) leaked in 4 allocation(s).

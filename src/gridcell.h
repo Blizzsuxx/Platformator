@@ -1,7 +1,7 @@
 #pragma once
 
 #include "aabb.h"
-#include "gridtypes.h"
+#include "platformator/gridtypes.h"
 #include <atomic>
 #include <oneapi/tbb.h>
 
@@ -9,7 +9,7 @@ class Grid;
 
 class GridCell
 {
-public:
+  public:
     GridCell(GridCellKey key, Grid *owner);
     ~GridCell();
     GridCell(const GridCell &) = delete;
@@ -31,7 +31,7 @@ public:
     void queueSyncBinding(AABB::ColliderBinding *binding);
     void flushPendingOperations();
 
-private:
+  private:
     AABB aabb;
     GridCellKey key;
     std::atomic_bool queuedForEmpty;

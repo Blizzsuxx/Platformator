@@ -14,8 +14,9 @@ class Collider;
 class ScriptComponent : public Component
 {
     friend class Collider;
+    friend class GameManager;
 
-public:
+  public:
     ScriptComponent();
     ScriptComponent(GameObject *gameObject);
     ~ScriptComponent() override;
@@ -24,8 +25,7 @@ public:
 
     const std::vector<Behavior *> &getBehaviors() const;
 
-    template <typename T>
-    T *getBehavior() const;
+    template <typename T> T *getBehavior() const;
 
     void fixedUpdate(double timeDelta);
     void update(double timeDelta);
@@ -34,10 +34,12 @@ public:
 
     size_t getGameManagerIndex() const;
     void setGameManagerIndex(size_t index);
+    bool canDispatch() const;
 
-private:
+  private:
     std::vector<Behavior *> behaviors;
     size_t gameManagerIndex;
+    bool destructionDelivered = false;
 
     void destroyBehaviors();
     void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
@@ -45,8 +47,7 @@ private:
     void dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 };
 
-template <>
-struct ComponentTypeFor<ScriptComponent>
+template <> struct ComponentTypeFor<ScriptComponent>
 {
     static constexpr ComponentType value = ComponentType::SCRIPT;
 };
@@ -54,8 +55,7 @@ struct ComponentTypeFor<ScriptComponent>
 void to_json(nlohmann::json &j, const ScriptComponent &scriptComponent);
 void from_json(const nlohmann::json &j, ScriptComponent &scriptComponent);
 
-template <typename T>
-T *ScriptComponent::getBehavior() const
+template <typename T> T *ScriptComponent::getBehavior() const
 {
     static_assert(std::is_base_of_v<Behavior, T>, "getBehavior<T>() requires T to derive from Behavior");
 

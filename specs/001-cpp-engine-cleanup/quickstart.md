@@ -1,6 +1,6 @@
 # Validation Guide: C++ Engine Cleanup
 
-Run commands from the repository root. This is the acceptance guide for the future implementation, not a report that these checks currently pass. `PLATFORMATOR_SANITIZER`, CTest labels/new cases, `--asset-root`, `--smoke-steps`, and benchmark worker/repetition/schema controls below are planned outputs of the cleanup. Existing baseline failures are recorded in [CODEBASE_REVIEW.md](../../CODEBASE_REVIEW.md).
+Run commands from the repository root. This is the repeatable acceptance guide for the implemented cleanup; actual results and host limitations are recorded in [validation.md](validation.md). The earlier failures remain historical evidence in [CODEBASE_REVIEW.md](../../CODEBASE_REVIEW.md).
 
 ## Prerequisites
 

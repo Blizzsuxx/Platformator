@@ -11,6 +11,8 @@ constexpr float SCREEN_WIDTH = 1920.0f;
 constexpr float SCREEN_HEIGHT = 1080.0f;
 constexpr int TARGET_FPS = 120;
 constexpr const double FRAME_TIME = 1.0 / static_cast<double>(TARGET_FPS);
+constexpr double FIXED_TIME_STEP = 1.0 / 120.0;
+constexpr unsigned MAXIMUM_CATCH_UP_STEPS = 8;
 
 constexpr float SUPPORT_NORMAL_THRESHOLD = 0.85f;
 constexpr float LINEAR_SLEEP_THRESHOLD = 5.0f;

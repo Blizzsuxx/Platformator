@@ -6,19 +6,6 @@
 #include "gridcell.h"
 #include "oneapi/tbb.h"
 
-struct ColliderOperation
-{
-    enum OperationType
-    {
-        ADD,
-        SYNC,
-        REMOVE
-    };
-
-    OperationType type;
-    Collider *collider;
-};
-
 struct PairDelta
 {
     Collider *colliderA;
@@ -39,9 +26,10 @@ struct PairDeltaCollector
 class Grid
 {
     friend class AABB;
+    friend class PhysicsManager;
 
-public:
-    Grid();
+  public:
+    explicit Grid(PhysicsManager *owner = nullptr);
     ~Grid();
 
     void addCollider(Collider *collider);
@@ -62,7 +50,7 @@ public:
     void flushDeferredPairDeltas();
     void flushPendingCellUpdates();
 
-private:
+  private:
     void addColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     void removeGridCellIfEmpty(GridCell *cell);
@@ -77,14 +65,18 @@ private:
     void recordPairDelta(Collider *colliderA, Collider *colliderB, int delta);
     void applyCollectedPairDeltas();
     void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
+    void queueCollider(Collider *collider);
+    PhysicsManager *owner;
+    std::vector<const ColliderPair *> pairSlots;
+    std::vector<size_t> freePairSlots;
+    std::vector<PairDelta> pairDeltaScratch;
 
-    tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash>
-        cells;
+    tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> cells;
     std::unordered_set<ColliderPair, ColliderPair::HashFunction> candidateCollisions;
     std::vector<const ColliderPair *> pendingNarrowPhasePairs;
     std::unordered_map<Collider *, std::vector<const ColliderPair *>> pairAdjacency;
     tbb::concurrent_vector<GridCell *> potentiallyEmptyCells;
     tbb::concurrent_vector<GridCell *> cellsWithOperations;
-    tbb::concurrent_vector<ColliderOperation> pendingColliderOperations;
+    std::vector<Collider *> pendingColliderOperations;
     PairDeltaCollector activePairDeltaCollector;
 };

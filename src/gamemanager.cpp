@@ -1,17 +1,25 @@
 #include "gamemanager.h"
+#include "workprobe.h"
+#include "simulationclock.h"
 
 #include <algorithm>
 #include <fstream>
 #include <stdexcept>
+#include <cassert>
+#include <cmath>
 
-#include "animator.h"
-#include "animationclip.h"
-#include "audio.h"
+#include "platformator/animator.h"
+#include "platformator/animationclip.h"
+#include "platformator/audio.h"
 #include "benchmark.h"
 #include "constants.h"
 #include "pathmanager.h"
-#include "scriptcomponent.h"
-#include "texturewrapper.h"
+#include "platformator/scriptcomponent.h"
+#include "referenceresolver.h"
+#include "platformator/texturewrapper.h"
+#include "scenebuilder.h"
+#include "scenecomponentio.h"
+#include <limits>
 
 GameManager &GameManager::getInstance()
 {
@@ -25,31 +33,18 @@ GameManager &GameManager::getInstance()
 }
 
 GameManager::GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
-    : window(new SDLWindow(windowSettings, debugSettings)), gameObjects(), animatorComponents(), scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(), physicsManager(new PhysicsManager()), deltaTime(0.0), lastUpdateTime(0.0)
+    : window(std::make_unique<SDLWindow>(windowSettings, debugSettings)), gameObjects(), animatorComponents(),
+      scriptComponents(), textureCache(), audioCache(), animationClipCache(), idToObjectMap(), gameObjectsToDelete(),
+      physicsManager(std::make_unique<PhysicsManager>())
 {
-    lastUpdateTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
     PLATFORMATOR_BENCH_RESET();
-    // initializeMainCamera();
 }
 
 GameManager::~GameManager()
 {
-    for (GameObject *gameObject : gameObjects)
-    {
-        startDeletingGameObject(gameObject);
-    }
-    gameObjects.clear();
-
-    deleteMarkedGameObjects();
-    window->clearTransientAudio();
-    freeAllAnimationClips();
-    freeAllTextures();
-    freeAllAudio();
-
-    delete physicsManager;
-    delete window;
-
-    PLATFORMATOR_BENCH_PRINT_SUMMARY();
+    shutdown();
+    physicsManager.reset();
+    window.reset();
 }
 
 void GameManager::setCurrentInstance(GameManager *gameManager)
@@ -70,18 +65,8 @@ GameManager *&GameManager::currentInstance()
 
 void GameManager::loadScene(Scene &scene)
 {
-    std::vector<GameObject *> loadedObjects = scene.loadScene();
-
-    for (GameObject *gameObject : loadedObjects)
-    {
-        addGameObject(gameObject);
-    }
-    createMainCameraIfNoMainCameraExists();
-
-    for (GameObject *gameObject : loadedObjects)
-    {
-        addStartedBehaviorsRecursive(gameObject);
-    }
+    requestScene(scene.filePath);
+    flushIfIdle();
 }
 
 void GameManager::saveScene(const Scene &scene)
@@ -102,46 +87,16 @@ void GameManager::saveScene(const Scene &scene)
 
 void GameManager::createMainCameraIfNoMainCameraExists()
 {
-    if (window->getMainCamera() != nullptr)
-    {
+    assertCanMutate();
+    if (window->getMainCamera())
         return;
-    }
-
-    GameObject *mainCameraGameObject = new GameObject();
-    Camera *mainCameraComponent = new Camera(mainCameraGameObject);
-    mainCameraGameObject->addComponentInternal(mainCameraComponent);
-
-    addGameObject(mainCameraGameObject);
-
-    window->setMainCamera(mainCameraComponent);
-}
-
-void GameManager::addStartedBehaviorsRecursive(GameObject *gameObject)
-{
-    if (!gameObject->getActive())
-    {
-        return;
-    }
-
-    ScriptComponent *scriptComponent = gameObject->getComponent<ScriptComponent>();
-    if (scriptComponent != nullptr)
-    {
-        for (Behavior *behavior : scriptComponent->getBehaviors())
-        {
-            behavior->resolveReferences();
-            addStartedBehavior(behavior);
-        }
-    }
-
-    for (GameObject *child : gameObject->getChildren())
-    {
-        addStartedBehaviorsRecursive(child);
-    }
+    createGameObject()->setName("Main Camera")->addComponent<Camera>();
 }
 
 GameObject *GameManager::addGameObject(GameObject *gameObject)
 {
     registerGameObjectSubtree(gameObject);
+    flushIfIdle();
     return gameObject;
 }
 
@@ -152,13 +107,26 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
         return;
     }
 
+    assignFileId(*gameObject);
+    for (auto *component : gameObject->components)
+        if (component)
+            assignFileId(*component);
     gameObject->setGameManagerIteratorIndex(gameObjects.size());
     gameObjects.push_back(gameObject);
     gameObject->setIsRegisteredInGameManager(true);
 
+    registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
     idToObjectMap[gameObject->getId()] = gameObject;
 
     gameObject->addComponentsToGameManager();
+    if (gameObject->parent || !gameObject->children.empty())
+        hierarchyDirty = true;
+    else
+    {
+        gameObject->hierarchyOrder = SIZE_MAX;
+        gameObject->hierarchyDepth = 0;
+    }
+    queueTransform(gameObject);
 
     for (GameObject *child : gameObject->getChildren())
     {
@@ -180,7 +148,7 @@ void GameManager::removeGameObject(GameObject *gameObject)
 
     if (gameObject->getParent() != nullptr)
     {
-        gameObject->getParent()->removeChild(gameObject);
+        gameObject->detachFromParent();
     }
 
     size_t lastIndex = gameObjects.size() - 1;
@@ -192,6 +160,7 @@ void GameManager::removeGameObject(GameObject *gameObject)
         movedGameObject->setGameManagerIteratorIndex(removeIndex);
     }
     gameObjects.pop_back();
+    cancelTransform(gameObject);
     idToObjectMap.erase(gameObject->getId());
     gameObject->setGameManagerIteratorIndex(SIZE_MAX);
 
@@ -200,14 +169,16 @@ void GameManager::removeGameObject(GameObject *gameObject)
 
 void GameManager::startDeletingGameObject(GameObject *gameObject)
 {
-    Camera *camera = gameObject->getComponent<Camera>();
-    if (camera != nullptr && window->getMainCamera() == camera)
-    {
-        window->setMainCamera(nullptr);
-    }
-
     gameObject->setIsMarkedForDeletion(true);
-    gameObject->removeComponentsFromGameManager();
+    registry.retire(*gameObject);
+    for (Component *component : gameObject->components)
+    {
+        if (!component)
+            continue;
+        registry.retire(*component);
+        idToObjectMap.erase(component->getId());
+        queueReconciliation(component);
+    }
     gameObject->setIsRegisteredInGameManager(false);
     gameObjectsToDelete.push_back(gameObject);
 }
@@ -243,124 +214,123 @@ std::vector<GameObject *> &GameManager::getGameObjects()
     return gameObjects;
 }
 
-void GameManager::setPhysicsManager(PhysicsManager *physicsManager)
-{
-    this->physicsManager = physicsManager;
-}
-
 PhysicsManager *GameManager::getPhysicsManager() const
 {
-    return physicsManager;
+    return physicsManager.get();
 }
 
 SDLWindow *GameManager::getWindow() const
 {
-    return window;
-}
-
-void GameManager::updateDeltaTime()
-{
-    double currentTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
-    deltaTime = currentTime - lastUpdateTime;
-    lastUpdateTime = currentTime;
-}
-
-void GameManager::delay()
-{
-    double elapsedTime = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0 - lastUpdateTime;
-    if (elapsedTime < FRAME_TIME)
-    {
-        SDL_Delay(static_cast<Uint32>((FRAME_TIME - elapsedTime) * 1000.0));
-    }
+    return window.get();
 }
 
 void GameManager::runSimulationStep(const double timeDelta)
 {
-    PLATFORMATOR_BENCH_FRAME_BEGIN();
-
-    triggerStartedBehaviors();
-    fixedUpdateScriptComponents(timeDelta);
-    physicsManager->checkForCollisions();
-    physicsManager->applyPhysics(timeDelta);
-    physicsManager->resolveCollisions(timeDelta);
-    physicsManager->applyMovement(timeDelta);
-    physicsManager->handlePendingPhysicsEvents(timeDelta);
-    updateScriptComponents(timeDelta);
-    updateAnimatorComponents(timeDelta);
-    lateUpdateScriptComponents(timeDelta);
-
-    PLATFORMATOR_BENCH_SET_COUNTER(ObjectCount, gameObjects.size());
-    PLATFORMATOR_BENCH_FRAME_END();
+    runSimulationStepWithCustomCallback({}, timeDelta);
 }
 
-void GameManager::runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta)
+void GameManager::runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback,
+                                                      double timeDelta)
 {
+    if (!isIdle() || std::this_thread::get_id() != mainThread)
+        throw std::logic_error("Simulation steps require an idle runtime on its main thread");
+    if (!std::isfinite(timeDelta) || timeDelta <= 0)
+        throw std::invalid_argument("Simulation timestep must be finite and positive");
+    auto stage = [&](Phase next, auto &&work) {
+        PhaseGuard guard(*this, next);
+        work();
+    };
+    std::exception_ptr error;
     PLATFORMATOR_BENCH_FRAME_BEGIN();
-
-    triggerStartedBehaviors();
-
-    if (customCallback)
+    try
     {
-        customCallback(timeDelta);
+        stage(Phase::Starting, [&] { triggerStartedBehaviors(); });
+        stage(Phase::StepHook, [&] {
+            if (customCallback)
+                customCallback(timeDelta);
+        });
+        stage(Phase::FixedUpdate, [&] { fixedUpdateScriptComponents(timeDelta); });
+        stage(Phase::Physics, [&] {
+            PLATFORMATOR_BENCH_SCOPE(Physics);
+            synchronizeTransforms();
+            physicsManager->checkForCollisions();
+            physicsManager->applyPhysics(timeDelta);
+            physicsManager->resolveCollisions(timeDelta);
+            physicsManager->applyMovement(timeDelta);
+            synchronizeTransforms();
+        });
+        stage(Phase::CollisionDispatch, [&] { physicsManager->handlePendingPhysicsEvents(timeDelta); });
+        stage(Phase::Update, [&] { updateScriptComponents(timeDelta); });
+        stage(Phase::Animation, [&] { updateAnimatorComponents(timeDelta); });
+        stage(Phase::LateUpdate, [&] { lateUpdateScriptComponents(timeDelta); });
     }
-
-    fixedUpdateScriptComponents(timeDelta);
-    physicsManager->checkForCollisions();
-    physicsManager->applyPhysics(timeDelta);
-    physicsManager->resolveCollisions(timeDelta);
-    physicsManager->applyMovement(timeDelta);
-    physicsManager->handlePendingPhysicsEvents(timeDelta);
-
-    updateScriptComponents(timeDelta);
-    updateAnimatorComponents(timeDelta);
-    lateUpdateScriptComponents(timeDelta);
-
+    catch (...)
+    {
+        error = std::current_exception();
+        startingBehaviors.clear();
+    }
+    try
+    {
+        PLATFORMATOR_BENCH_SCOPE(Cleanup);
+        window->updateTransientAudio();
+        commitMutations();
+    }
+    catch (...)
+    {
+        if (!error)
+            error = std::current_exception();
+    }
     PLATFORMATOR_BENCH_SET_COUNTER(ObjectCount, gameObjects.size());
     PLATFORMATOR_BENCH_FRAME_END();
+    if (error)
+        std::rethrow_exception(error);
 }
 
 void GameManager::loop()
 {
+    assertCanMutate();
+    if (!isIdle())
+        throw std::logic_error("Interactive run requires an idle runtime");
+    platformator_detail::SimulationClock clock(FIXED_TIME_STEP, MAXIMUM_CATCH_UP_STEPS);
+    auto previous = std::chrono::steady_clock::now();
     while (window->isRunning())
     {
-        updateDeltaTime();
-        window->handleSDLEvents(deltaTime);
-
-        if (window->shouldSimulateFrame())
+        const auto now = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(now - previous).count();
+        previous = now;
+        window->handleSDLEvents(elapsed);
+        if (!window->isRunning())
+            break;
+        const bool paused = window->shouldUseFixedStepDelta();
+        const auto steps = clock.advance(elapsed, paused, paused && window->shouldSimulateFrame());
+        for (unsigned i = 0; i < steps && window->isRunning(); ++i)
         {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
             window->clearDebugObjects();
-            if (window->shouldUseFixedStepDelta())
-            {
-                deltaTime = FRAME_TIME;
-            }
 #endif
-
-            runSimulationStep(deltaTime);
+            runSimulationStep(FIXED_TIME_STEP);
         }
-
-        window->updateTransientAudio();
-        window->render();
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         window->clearAdvanceFrameRequest();
-#endif
-        deleteMarkedGameObjects();
-        delay();
+        if (!window->isRunning())
+            break;
+        {
+            PhaseGuard renderPhase(*this, Phase::Rendering);
+            window->render();
+        }
+        std::this_thread::sleep_until(now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                                std::chrono::duration<double>(FRAME_TIME)));
     }
+    droppedSimulationSteps += clock.droppedSteps();
 }
 
 void GameManager::simulateFrame(double timeDelta)
 {
     runSimulationStep(timeDelta);
-    window->updateTransientAudio();
-    deleteMarkedGameObjects();
 }
 
 void GameManager::simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta)
 {
     runSimulationStepWithCustomCallback(customCallback, timeDelta);
-    window->updateTransientAudio();
-    deleteMarkedGameObjects();
 }
 
 bool GameManager::simulateAndRenderFrame(double timeDelta)
@@ -384,8 +354,7 @@ bool GameManager::simulateAndRenderFrame(double timeDelta)
         runSimulationStep(timeDelta);
     }
 
-    window->updateTransientAudio();
-    deleteMarkedGameObjects();
+    PhaseGuard renderPhase(*this, Phase::Rendering);
     window->render();
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     window->clearAdvanceFrameRequest();
@@ -393,7 +362,8 @@ bool GameManager::simulateAndRenderFrame(double timeDelta)
     return window->isRunning();
 }
 
-bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta)
+bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback,
+                                                           double timeDelta)
 {
     if (!window->isRunning())
     {
@@ -413,8 +383,7 @@ bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<v
 #endif
         runSimulationStepWithCustomCallback(customCallback, timeDelta);
     }
-    window->updateTransientAudio();
-    deleteMarkedGameObjects();
+    PhaseGuard renderPhase(*this, Phase::Rendering);
     window->render();
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     window->clearAdvanceFrameRequest();
@@ -422,40 +391,35 @@ bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<v
     return window->isRunning();
 }
 
-TextureWrapper *GameManager::loadTexture(const std::string &filePath)
+TextureWrapper *GameManager::loadTexture(const std::string &filePath, bool required)
 {
     if (filePath.empty())
     {
+        if (required)
+            throw std::invalid_argument("Required texture path is empty");
         return nullptr;
     }
-
-    if (window == nullptr || window->getRenderer() == nullptr)
-    {
-        throw std::runtime_error("Cannot load textures while Platformator is running in headless mode.");
-    }
-
-    const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Texture);
-
-    auto it = textureCache.find(resolvedPath.canonicalPath);
-    if (it != textureCache.end())
-    {
-        return &it->second;
-    }
-
-    SDL_Texture *texture = IMG_LoadTexture(window->getRenderer(), resolvedPath.absolutePath.c_str());
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Texture, required);
+    if (required && resolved.usedFallback)
+        throw std::runtime_error("Required texture not found: " + filePath);
+    if (auto found = textureCache.find(resolved.canonicalPath); found != textureCache.end())
+        return found->second.get();
+    if (!window->getRenderer())
+        throw std::runtime_error("Textures require a video renderer: " + filePath);
+    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
+        IMG_LoadTexture(window->getRenderer(), resolved.absolutePath.c_str()), SDL_DestroyTexture);
     if (!texture)
     {
-        printf("Failed to load %s: %s\n", resolvedPath.absolutePath.c_str(), SDL_GetError());
+        if (required)
+            throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
         return nullptr;
     }
-
-    // need this so that TextureWrapper is made in-place (so it doesn't destroy the texture)
-    auto [insertedIt, inserted] = textureCache.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(resolvedPath.canonicalPath),
-        std::forward_as_tuple(texture, resolvedPath.canonicalPath)); // uses the TextureWrapper constructor that takes an SDL_Texture* and a file path
-
-    return &insertedIt->second;
+    auto wrapper = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
+    texture.release();
+    wrapper->runtimeSerial = registry.serial();
+    auto *result = wrapper.get();
+    textureCache.emplace(resolved.canonicalPath, std::move(wrapper));
+    return result;
 }
 
 void GameManager::freeTexture(TextureWrapper *textureWrapper)
@@ -476,63 +440,70 @@ void GameManager::freeAllTextures()
 
 GameObject *GameManager::createGameObject()
 {
-    GameObject *gameObject = new GameObject();
-
-    addGameObject(gameObject);
-    return gameObject;
+    assertCanMutate();
+    auto cleanup = [](GameObject *object) { delete object; };
+    std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
+    registerGameObjectSubtree(gameObject.get());
+    auto *result = gameObject.release();
+    flushIfIdle();
+    return result;
 }
 
 void GameManager::destroyGameObject(GameObject *gameObject)
 {
+    assertCanMutate();
+    if (!gameObject)
+        throw std::invalid_argument("Cannot destroy a null GameObject");
+    if (gameObject->getHandle().runtimeSerial != registry.serial())
+        throw std::invalid_argument("GameObject belongs to a different runtime");
     removeGameObject(gameObject);
+    flushIfIdle();
 }
 
 void GameManager::notifyComponentAdded(Component *component)
 {
-    if (component == nullptr)
+    if (!component->getHandle())
     {
-        return;
+        using enum platformator_detail::ObjectKind;
+        static constexpr platformator_detail::ObjectKind kinds[] = {Animator,  Audio,           Camera, Collider,
+                                                                    Rigidbody, ScriptComponent, Sprite};
+        auto kind = kinds[component->getType()];
+        if (kind == Collider)
+            kind = static_cast<::Collider *>(component)->getColliderType() == ColliderType::BoxCollider
+                       ? BoxCollider
+                       : CircleCollider;
+        registry.add(*component, kind);
+        idToObjectMap[component->getId()] = component;
     }
-
-    idToObjectMap[component->getId()] = component;
-    notifyPhysicsManagerOfComponentAdded(component);
-    notifyWindowOfComponentAdded(component);
-    notifyRuntimeOfComponentAdded(component);
+    queueReconciliation(component);
 }
 
 void GameManager::notifyComponentRemoved(Component *component)
 {
-    if (component == nullptr)
-    {
-        return;
-    }
-
-    notifyPhysicsManagerOfComponentRemoved(component);
-    notifyWindowOfComponentRemoved(component);
-    notifyRuntimeOfComponentRemoved(component);
-    idToObjectMap.erase(component->getId());
+    queueReconciliation(component);
 }
 
 void GameManager::notifyRuntimeOfComponentAdded(Component *component)
 {
-    if (component == nullptr || !component->getGameObject()->getActive())
-    {
-        return;
-    }
-
     if (component->getType() == ComponentType::ANIMATOR)
     {
-        Animator *animator = static_cast<Animator *>(component);
-        size_t index = animatorComponents.size();
-        animator->setGameManagerIndex(index);
+        auto *animator = static_cast<Animator *>(component);
+        animator->setGameManagerIndex(animatorComponents.size());
         animatorComponents.push_back(animator);
     }
     else if (component->getType() == ComponentType::SCRIPT)
     {
-        ScriptComponent *scriptComponent = static_cast<ScriptComponent *>(component);
-        size_t index = scriptComponents.size();
-        scriptComponent->setGameManagerIndex(index);
-        scriptComponents.push_back(scriptComponent);
+        auto *script = static_cast<ScriptComponent *>(component);
+        script->setGameManagerIndex(scriptComponents.size());
+        scriptComponents.push_back(script);
+        for (auto *behavior : script->getBehaviors())
+            addStartedBehavior(behavior);
+    }
+    else if (component->getType() == ComponentType::AUDIO)
+    {
+        auto *audio = static_cast<Audio *>(component);
+        if (audio->getAutoPlay())
+            audio->play();
     }
 }
 
@@ -665,19 +636,14 @@ void GameManager::notifyWindowOfComponentRemoved(Component *component)
 
 void GameManager::deleteMarkedGameObjects()
 {
-    physicsManager->flushPendingColliderOperations();
-    for (GameObject *gameObject : gameObjectsToDelete)
-    {
-        delete gameObject;
-    }
-    gameObjectsToDelete.clear();
+    commitMutations();
 }
 
 void GameManager::fixedUpdateScriptComponents(double timeDelta)
 {
     for (ScriptComponent *scriptComponent : scriptComponents)
     {
-        if (!scriptComponent->getGameObject()->getActive())
+        if (!scriptComponent->canDispatch())
         {
             continue;
         }
@@ -690,7 +656,7 @@ void GameManager::updateScriptComponents(double timeDelta)
 {
     for (ScriptComponent *scriptComponent : scriptComponents)
     {
-        if (!scriptComponent->getGameObject()->getActive())
+        if (!scriptComponent->canDispatch())
         {
             continue;
         }
@@ -703,7 +669,7 @@ void GameManager::lateUpdateScriptComponents(double timeDelta)
 {
     for (ScriptComponent *scriptComponent : scriptComponents)
     {
-        if (!scriptComponent->getGameObject()->getActive())
+        if (!scriptComponent->canDispatch())
         {
             continue;
         }
@@ -716,7 +682,7 @@ void GameManager::updateAnimatorComponents(double timeDelta)
 {
     for (Animator *animator : animatorComponents)
     {
-        if (!animator->getGameObject()->getActive())
+        if (!animator->getIsCallbackEligible() || animator->isRetired() || !animator->getGameObject()->getActive())
         {
             continue;
         }
@@ -727,49 +693,67 @@ void GameManager::updateAnimatorComponents(double timeDelta)
 
 void GameManager::triggerStartedBehaviors()
 {
-    std::vector<Behavior *> behaviorsToStart = startedBehaviors;
-    startedBehaviors.clear();
-
-    for (Behavior *behavior : behaviorsToStart)
+    if (startedBehaviors.empty())
+        return;
+    startingBehaviors.swap(startedBehaviors);
+    for (auto *behavior : startingBehaviors)
+        behavior->pendingStartIndex = SIZE_MAX;
+    try
     {
-        behavior->start();
+        for (auto *behavior : startingBehaviors)
+        {
+            if (behavior->started || !behavior->scriptComponent->canDispatch())
+                continue;
+            if (!behavior->referencesPrepared)
+            {
+                platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+                behavior->resolveReferences(resolver);
+                behavior->referencesPrepared = true;
+            }
+            behavior->started = true;
+            behavior->start();
+        }
     }
+    catch (...)
+    {
+        for (auto *behavior : startingBehaviors)
+            if (!behavior->started && behavior->scriptComponent->canDispatch())
+                addStartedBehavior(behavior);
+        startingBehaviors.clear();
+        throw;
+    }
+    startingBehaviors.clear();
 }
 
-AudioWrapper *GameManager::loadAudio(const std::string &filePath)
+AudioWrapper *GameManager::loadAudio(const std::string &filePath, bool required)
 {
     if (filePath.empty())
     {
+        if (required)
+            throw std::invalid_argument("Required audio path is empty");
         return nullptr;
     }
-
-    if (window == nullptr || window->getMixer() == nullptr)
-    {
-        throw std::runtime_error("Cannot load audio without an initialized SDL mixer.");
-    }
-
-    const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Audio);
-
-    auto it = audioCache.find(resolvedPath.canonicalPath);
-    if (it != audioCache.end())
-    {
-        return &it->second;
-    }
-
-    MIX_Audio *audio = MIX_LoadAudio(window->getMixer(), resolvedPath.absolutePath.c_str(), true);
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Audio, required);
+    if (required && resolved.usedFallback)
+        throw std::runtime_error("Required audio not found: " + filePath);
+    if (auto found = audioCache.find(resolved.canonicalPath); found != audioCache.end())
+        return found->second.get();
+    if (!window->getMixer())
+        throw std::runtime_error("Audio assets require an audio backend: " + filePath);
+    std::unique_ptr<MIX_Audio, decltype(&MIX_DestroyAudio)> audio(
+        MIX_LoadAudio(window->getMixer(), resolved.absolutePath.c_str(), true), MIX_DestroyAudio);
     if (!audio)
     {
-        printf("Failed to load %s: %s\n", resolvedPath.absolutePath.c_str(), SDL_GetError());
+        if (required)
+            throw std::runtime_error("Audio '" + filePath + "': " + SDL_GetError());
         return nullptr;
     }
-
-    // need this so that AudioWrapper is made in-place (so it doesn't destroy the audio)
-    auto [insertedIt, inserted] = audioCache.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(resolvedPath.canonicalPath),
-        std::forward_as_tuple(audio, resolvedPath.canonicalPath)); // uses the AudioWrapper constructor that takes an MIX_Audio* and a file path
-
-    return &insertedIt->second;
+    auto wrapper = std::make_unique<AudioWrapper>(audio.get(), resolved.canonicalPath);
+    audio.release();
+    wrapper->runtimeSerial = registry.serial();
+    auto *result = wrapper.get();
+    audioCache.emplace(resolved.canonicalPath, std::move(wrapper));
+    return result;
 }
 
 void GameManager::freeAudio(AudioWrapper *audioWrapper)
@@ -789,37 +773,8 @@ void GameManager::freeAllAudio()
 
 AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
 {
-    if (filePath.empty())
-    {
-        return nullptr;
-    }
-
-    const ResolvedAssetPath resolvedPath = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::AnimationClip);
-
-    auto it = animationClipCache.find(resolvedPath.canonicalPath);
-    if (it != animationClipCache.end())
-    {
-        return &it->second;
-    }
-
-    std::ifstream file(resolvedPath.absolutePath);
-    if (!file.is_open())
-    {
-        printf("Failed to load %s\n", resolvedPath.absolutePath.c_str());
-        return nullptr;
-    }
-    nlohmann::json json = nlohmann::json::parse(file);
-    file.close();
-
-    AnimationClip animationClip = json.get<AnimationClip>();
-    animationClip.setFilePath(resolvedPath.canonicalPath);
-
-    auto [insertedIt, inserted] = animationClipCache.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(resolvedPath.canonicalPath),
-        std::forward_as_tuple(animationClip));
-
-    return &insertedIt->second;
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    return loadAnimationClip(filePath, resolver, false);
 }
 
 void GameManager::freeAnimationClip(AnimationClip *animationClip)
@@ -840,16 +795,22 @@ void GameManager::freeAllAnimationClips()
 
 void GameManager::addStartedBehavior(Behavior *behavior)
 {
+    if (behavior->started || behavior->pendingStartIndex != SIZE_MAX)
+        return;
+    behavior->pendingStartIndex = startedBehaviors.size();
     startedBehaviors.push_back(behavior);
 }
 
 void GameManager::removeStartedBehavior(Behavior *behavior)
 {
-    auto it = std::remove(startedBehaviors.begin(), startedBehaviors.end(), behavior);
-    if (it != startedBehaviors.end())
-    {
-        startedBehaviors.erase(it, startedBehaviors.end());
-    }
+    const auto index = behavior->pendingStartIndex;
+    if (index == SIZE_MAX)
+        return;
+    auto *moved = startedBehaviors.back();
+    startedBehaviors[index] = moved;
+    moved->pendingStartIndex = index;
+    startedBehaviors.pop_back();
+    behavior->pendingStartIndex = SIZE_MAX;
 }
 
 const Eigen::Vector2f &GameManager::getGravityVector() const
@@ -871,4 +832,391 @@ BaseObject *GameManager::getObjectById(int id) const
     }
 
     return nullptr;
+}
+
+void GameManager::assertCanMutate() const
+{
+    if (std::this_thread::get_id() != mainThread)
+        throw std::logic_error("Structural mutation is main-thread-only");
+    if (shuttingDown || preparingScene || phase == Phase::DestructionCallbacks || phase == Phase::Saving)
+        throw std::logic_error("Structural mutation is forbidden during preparation, saving, onDestroy, or shutdown");
+}
+
+BaseObject *GameManager::resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const
+{
+    return registry.get(handle, kind);
+}
+
+void GameManager::queueReconciliation(Component *component)
+{
+    component->callbackEligible = false;
+    if (component->getType() == RIGID_BODY)
+        physicsManager->queueBodyChange(static_cast<Rigidbody *>(component));
+    if (component->reconcileQueued)
+        return;
+    if (component->getType() == ComponentType::SCRIPT)
+        for (auto *behavior : static_cast<ScriptComponent *>(component)->getBehaviors())
+            removeStartedBehavior(behavior);
+    component->reconcileQueued = true;
+    reconciliations.push_back(component);
+}
+
+void GameManager::retireComponent(Component *component)
+{
+    assert(!component->isRetired());
+    registry.retire(*component);
+    idToObjectMap.erase(component->getId());
+    retiredComponents.push_back(component);
+    queueReconciliation(component);
+}
+
+void GameManager::flushIfIdle()
+{
+    if (isIdle())
+        commitMutations();
+}
+
+void GameManager::queueTransform(GameObject *object)
+{
+    transformOrderNeeded |= object->parent != nullptr;
+    if (object->transformQueueIndex != SIZE_MAX)
+        return;
+    object->transformQueueIndex = dirtyTransforms.size();
+    dirtyTransforms.push_back(object);
+}
+
+void GameManager::cancelTransform(GameObject *object)
+{
+    if (object->transformQueueIndex == SIZE_MAX)
+        return;
+    const auto index = object->transformQueueIndex;
+    auto *moved = dirtyTransforms.back();
+    dirtyTransforms[index] = moved;
+    moved->transformQueueIndex = index;
+    dirtyTransforms.pop_back();
+    object->transformQueueIndex = SIZE_MAX;
+    if (dirtyTransforms.empty())
+        transformOrderNeeded = false;
+}
+
+void GameManager::rebuildHierarchyOrder(GameObject *object, size_t depth)
+{
+    object->hierarchyDepth = depth;
+    object->hierarchyOrder = nextHierarchyOrder++;
+    for (auto *child : object->children)
+        rebuildHierarchyOrder(child, depth + 1);
+}
+
+void GameManager::synchronizeSubtree(GameObject *object)
+{
+    if (object->transformStamp == transformStamp)
+        return;
+    object->transformStamp = transformStamp;
+    const auto previous = object->worldPosition;
+    object->worldPosition =
+        object->parent ? (object->parent->worldPosition + object->position).eval() : object->position;
+    if (previous != object->worldPosition)
+        if (auto *body = object->getComponent<Rigidbody>())
+            body->wakeUp();
+    PLATFORMATOR_WORK_ADD(transformVisits, 1);
+    object->updateCollider();
+    for (auto *child : object->children)
+        synchronizeSubtree(child);
+}
+
+void GameManager::synchronizeTransforms()
+{
+    if (hierarchyDirty)
+    {
+        PLATFORMATOR_WORK_ADD(hierarchyRebuilds, 1);
+        nextHierarchyOrder = 0;
+        for (auto *object : gameObjects)
+            if (!object->parent)
+                rebuildHierarchyOrder(object, 0);
+        hierarchyDirty = false;
+    }
+    if (dirtyTransforms.empty())
+        return;
+    if (transformOrderNeeded)
+        std::sort(dirtyTransforms.begin(), dirtyTransforms.end(),
+                  [](auto *a, auto *b) { return a->hierarchyOrder < b->hierarchyOrder; });
+    ++transformStamp;
+    for (auto *object : dirtyTransforms)
+    {
+        object->transformQueueIndex = SIZE_MAX;
+        synchronizeSubtree(object);
+    }
+    dirtyTransforms.clear();
+    transformOrderNeeded = false;
+}
+
+void GameManager::clearObjects()
+{
+    requestScene(std::nullopt);
+    flushIfIdle();
+}
+
+void GameManager::runDestructionCallbacks(ScriptComponent *script, std::exception_ptr &error)
+{
+    if (script->destructionDelivered)
+        return;
+    script->destructionDelivered = true;
+    script->lifecycle = ObjectLifecycle::DestroyCallbacks;
+    PhaseGuard callbackPhase(*this, Phase::DestructionCallbacks);
+    for (auto *behavior : script->getBehaviors())
+    {
+        removeStartedBehavior(behavior);
+        try
+        {
+            behavior->onDestroy();
+        }
+        catch (...)
+        {
+            if (!error)
+                error = std::current_exception();
+        }
+    }
+}
+
+void GameManager::reconcilePending(std::exception_ptr &error)
+{
+    do
+    {
+        reconciliationDrain.swap(reconciliations);
+        for (auto *component : reconciliationDrain)
+        {
+            PLATFORMATOR_WORK_ADD(reconciliations, 1);
+            component->reconcileQueued = false;
+            const auto *owner = component->getGameObject();
+            const bool desired = !component->isRetired() && owner->getActive() && !owner->isRetired();
+            component->callbackEligible = desired;
+            if (component->getType() == SCRIPT || component->getType() == COLLIDER)
+                if (auto *collider = owner->getComponent<Collider>())
+                    physicsManager->refreshSubscriptions(collider);
+            if (desired == component->systemsRegistered)
+            {
+                if (desired && component->getType() == ComponentType::SCRIPT)
+                    for (auto *behavior : static_cast<ScriptComponent *>(component)->getBehaviors())
+                        addStartedBehavior(behavior);
+                continue;
+            }
+            if (desired)
+            {
+                notifyPhysicsManagerOfComponentAdded(component);
+                notifyWindowOfComponentAdded(component);
+                notifyRuntimeOfComponentAdded(component);
+            }
+            else
+            {
+                notifyPhysicsManagerOfComponentRemoved(component);
+                notifyWindowOfComponentRemoved(component);
+                notifyRuntimeOfComponentRemoved(component);
+            }
+            component->systemsRegistered = desired;
+        }
+        reconciliationDrain.clear();
+        synchronizeTransforms();
+        physicsManager->flushPendingColliderOperations();
+        try
+        {
+            PhaseGuard exitPhase(*this, Phase::CollisionDispatch);
+            physicsManager->handlePendingPhysicsEvents(0.0);
+        }
+        catch (...)
+        {
+            if (!error)
+                error = std::current_exception();
+        }
+    } while (!reconciliations.empty());
+}
+
+void GameManager::drainRetirements(std::exception_ptr &error)
+{
+    for (auto *component : retiredComponents)
+        component->lifecycle = ObjectLifecycle::DestroyCallbacks;
+    for (auto *object : gameObjectsToDelete)
+    {
+        object->lifecycle = ObjectLifecycle::DestroyCallbacks;
+        for (auto *component : object->components)
+            if (component)
+                component->lifecycle = ObjectLifecycle::DestroyCallbacks;
+    }
+    for (auto *component : retiredComponents)
+        if (component->getType() == ComponentType::SCRIPT)
+            runDestructionCallbacks(static_cast<ScriptComponent *>(component), error);
+    for (auto *object : gameObjectsToDelete)
+        if (auto *script = object->getComponent<ScriptComponent>())
+            runDestructionCallbacks(script, error);
+    // All callbacks finish before any batch allocation is freed. Hierarchy links
+    // have already detached at logical retirement, independent of allocation order.
+    for (auto *component : retiredComponents)
+    {
+        component->lifecycle = ObjectLifecycle::Unregistered;
+        registry.erase(*component);
+        delete component;
+    }
+    retiredComponents.clear();
+    for (auto *object : gameObjectsToDelete)
+    {
+        for (auto *component : object->components)
+            if (component)
+            {
+                component->lifecycle = ObjectLifecycle::Unregistered;
+                registry.erase(*component);
+            }
+        object->lifecycle = ObjectLifecycle::Unregistered;
+        registry.erase(*object);
+        delete object;
+    }
+    gameObjectsToDelete.clear();
+}
+
+void GameManager::commitMutations()
+{
+    PLATFORMATOR_BENCH_SCOPE_IF(SceneTransition, pendingSceneRequest.has_value());
+    PhaseGuard commitPhase(*this, Phase::MutationCommit);
+    std::exception_ptr error;
+    auto selected = std::move(pendingSceneRequest);
+    pendingSceneRequest.reset();
+    std::unique_ptr<SceneBuildContext> prepared;
+    if (selected && selected->path)
+    {
+        preparingScene = true;
+        try
+        {
+            auto candidate = std::make_unique<SceneBuildContext>(*this);
+            candidate->prepare(Scene(*selected->path));
+            reconciliations.reserve(reconciliations.size() + gameObjects.size() * COMPONENT_TYPE_COUNT +
+                                    candidate->ids.size());
+            gameObjectsToDelete.reserve(gameObjectsToDelete.size() + gameObjects.size());
+            scriptComponents.reserve(std::max(scriptComponents.size(), candidate->objects.size()));
+            animatorComponents.reserve(std::max(animatorComponents.size(), candidate->objects.size()));
+            prepared = std::move(candidate);
+        }
+        catch (...)
+        {
+            error = std::current_exception();
+        }
+        preparingScene = false;
+    }
+    const bool clearing = selected && !selected->path;
+    if (clearing || prepared)
+        while (!gameObjects.empty())
+            removeGameObject(gameObjects.back());
+    reconcilePending(error);
+    drainRetirements(error);
+    if (clearing)
+    {
+        nextFileId = 0;
+        platformator::Runtime::current().currentSceneFilePath.clear();
+    }
+    if (prepared)
+    {
+        gameObjects.swap(prepared->objects);
+        idToObjectMap.swap(prepared->ids);
+        nextFileId = prepared->nextFileId;
+        hierarchyDirty = true;
+        for (size_t i = 0; i < gameObjects.size(); ++i)
+        {
+            auto *object = gameObjects[i];
+            registry.publish(*object);
+            object->setIsRegisteredInGameManager(true);
+            object->setGameManagerIteratorIndex(i);
+            queueTransform(object);
+            for (auto *component : object->components)
+                if (component)
+                {
+                    registry.publish(*component);
+                    queueReconciliation(component);
+                }
+        }
+        platformator::Runtime::current().currentSceneFilePath = std::move(prepared->path);
+        reconcilePending(error);
+    }
+    if (error)
+        std::rethrow_exception(error);
+}
+
+void GameManager::shutdown()
+{
+    if (shutdownComplete)
+        return;
+    shuttingDown = true;
+    pendingSceneRequest.reset();
+    PhaseGuard shutdownPhase(*this, Phase::Shutdown);
+    while (!gameObjects.empty())
+        removeGameObject(gameObjects.back());
+    try
+    {
+        commitMutations();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "Runtime shutdown callback failed: %s\n", error.what());
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "Runtime shutdown callback failed\n");
+    }
+    window->clearTransientAudio();
+    freeAllAnimationClips();
+    freeAllTextures();
+    freeAllAudio();
+    shutdownComplete = true;
+}
+
+AnimationClip *GameManager::loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
+                                              bool required)
+{
+    if (filePath.empty())
+    {
+        if (required)
+            throw std::invalid_argument("Required animation path is empty");
+        return nullptr;
+    }
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::AnimationClip, required);
+    if (required && resolved.usedFallback)
+        throw std::runtime_error("Required animation not found: " + filePath);
+    if (auto found = animationClipCache.find(resolved.canonicalPath); found != animationClipCache.end())
+        return found->second.get();
+    std::ifstream file(resolved.absolutePath);
+    if (!file)
+    {
+        if (required)
+            throw std::runtime_error("Cannot open animation: " + resolved.absolutePath);
+        return nullptr;
+    }
+    auto clip = std::make_unique<AnimationClip>();
+    platformator_detail::ResourceDirectoryResolver localResources(
+        resolver, std::filesystem::path(resolved.absolutePath).parent_path());
+    deserialize(nlohmann::json::parse(file), *clip, localResources);
+    clip->setFilePath(resolved.canonicalPath);
+    clip->runtimeSerial = registry.serial();
+    auto *result = clip.get();
+    animationClipCache.emplace(resolved.canonicalPath, std::move(clip));
+    return result;
+}
+
+void GameManager::requestScene(std::optional<std::string> path)
+{
+    assertCanMutate();
+    if (path && path->empty())
+        throw std::invalid_argument("Scene path is empty");
+    pendingSceneRequest = SceneRequest{std::move(path), ++sceneRequestSequence};
+}
+
+void GameManager::assignFileId(BaseObject &object)
+{
+    if (object.getId() < 0)
+    {
+        if (nextFileId > std::numeric_limits<int>::max())
+            throw std::overflow_error("Scene file IDs exhausted");
+        object.setId(static_cast<int>(nextFileId++));
+    }
+    else
+    {
+        if (auto found = idToObjectMap.find(object.getId()); found != idToObjectMap.end() && found->second != &object)
+            throw std::invalid_argument("Duplicate registered file ID: " + std::to_string(object.getId()));
+        nextFileId = std::max(nextFileId, static_cast<int64_t>(object.getId()) + 1);
+    }
 }

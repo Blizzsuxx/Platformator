@@ -1,65 +1,52 @@
-#include "audio.h"
+#include "platformator/audio.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include <SDL3/SDL_properties.h>
 
 #include "runtimeaccess.h"
 #include "sdlwindow.h"
 
-Audio::Audio(GameObject *gameObject)
-    : Audio(gameObject, (AudioWrapper *)nullptr, 1.0f, false)
+Audio::Audio(GameObject *gameObject) : Audio(gameObject, static_cast<AudioWrapper *>(nullptr), 1.0f, false, 0)
 {
-    SDLWindow *window = platformator_detail::RuntimeAccess::window();
-    track = MIX_CreateTrack(window->getMixer());
 }
 
-Audio::Audio() : Component(ComponentType::AUDIO), audioWrapper(nullptr), track(nullptr), gain(1.0f), loopCount(0), autoPlay(false), gameManagerIndex(SIZE_MAX)
+Audio::Audio() : Audio(nullptr)
 {
-    SDLWindow *window = platformator_detail::RuntimeAccess::window();
-    track = MIX_CreateTrack(window->getMixer());
 }
 
 Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool autoPlay, float loopCount)
-    : Audio(gameObject, (AudioWrapper *)nullptr, gain, autoPlay, loopCount)
+    : Audio(gameObject, static_cast<AudioWrapper *>(nullptr), gain, autoPlay, loopCount)
 {
-    if (filePath != nullptr)
+    if (filePath)
     {
-        AudioWrapper *newAudioWrapper = platformator_detail::RuntimeAccess::loadAudio(filePath);
-
-        SDLWindow *window = platformator_detail::RuntimeAccess::window();
-        track = MIX_CreateTrack(window->getMixer());
-        setAudio(newAudioWrapper);
-        setGain(gain);
-
+        setAudio(platformator_detail::RuntimeAccess::loadAudio(filePath));
         if (autoPlay)
-        {
             play();
-        }
     }
 }
 
 Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, float loopCount)
-    : Component(gameObject, ComponentType::AUDIO), audioWrapper(audioWrapper), track(nullptr), gain(gain), loopCount(loopCount), autoPlay(autoPlay), gameManagerIndex(SIZE_MAX)
+    : Component(gameObject, ComponentType::AUDIO), audioWrapper(nullptr), gain(gain), loopCount(loopCount),
+      autoPlay(autoPlay), gameManagerIndex(SIZE_MAX)
 {
-    if (audioWrapper != nullptr)
+    auto *mixer = platformator_detail::RuntimeAccess::window()->getMixer();
+    if (mixer)
     {
-        SDLWindow *window = platformator_detail::RuntimeAccess::window();
-        track = MIX_CreateTrack(window->getMixer());
-        setAudio(audioWrapper);
-        setGain(gain);
-
-        if (autoPlay)
-        {
-            play();
-        }
+        track.reset(MIX_CreateTrack(mixer));
+        if (!track)
+            throw std::runtime_error(std::string("Failed to create audio track: ") + SDL_GetError());
     }
+    setAudio(audioWrapper);
+    setGain(gain);
+    if (autoPlay && audioWrapper)
+        play();
 }
 
 Audio::~Audio()
 {
     freeAudio();
-    MIX_DestroyTrack(track);
 }
 
 void Audio::freeAudio()
@@ -75,7 +62,7 @@ void Audio::freeAudio()
 
 MIX_Track *Audio::getTrack() const
 {
-    return track;
+    return track.get();
 }
 
 AudioWrapper *Audio::getAudioWrapper() const
@@ -85,17 +72,17 @@ AudioWrapper *Audio::getAudioWrapper() const
 
 float Audio::getGain() const
 {
-    return track != nullptr ? MIX_GetTrackGain(track) : gain;
+    return track != nullptr ? MIX_GetTrackGain(track.get()) : gain;
 }
 
 bool Audio::isPlaying() const
 {
-    return track != nullptr && MIX_TrackPlaying(track);
+    return track != nullptr && MIX_TrackPlaying(track.get());
 }
 
 bool Audio::isPaused() const
 {
-    return track != nullptr && MIX_TrackPaused(track);
+    return track != nullptr && MIX_TrackPaused(track.get());
 }
 
 bool Audio::play()
@@ -119,7 +106,7 @@ bool Audio::play()
         }
     }
 
-    bool played = MIX_PlayTrack(track, options);
+    bool played = MIX_PlayTrack(track.get(), options);
     if (options != 0)
     {
         SDL_DestroyProperties(options);
@@ -152,7 +139,7 @@ bool Audio::stop(Sint64 fadeOutFrames)
         return true;
     }
 
-    return MIX_StopTrack(track, fadeOutFrames);
+    return MIX_StopTrack(track.get(), fadeOutFrames);
 }
 
 bool Audio::pause()
@@ -162,7 +149,7 @@ bool Audio::pause()
         return false;
     }
 
-    return MIX_PauseTrack(track);
+    return MIX_PauseTrack(track.get());
 }
 
 bool Audio::resume()
@@ -172,28 +159,27 @@ bool Audio::resume()
         return false;
     }
 
-    return MIX_ResumeTrack(track);
+    return MIX_ResumeTrack(track.get());
 }
 
 void Audio::setAudio(AudioWrapper *audio)
 {
-    if (this->audioWrapper == audio)
-    {
+    if (audioWrapper == audio)
         return;
-    }
-
-    freeAudio();
-    this->audioWrapper = audio;
-    if (audioWrapper != nullptr)
+    if (audio && !track)
+        throw std::logic_error("Audio assets require an enabled audio backend");
+    if (audio)
+        audio->addReference();
+    if (track && !MIX_SetTrackAudio(track.get(), audio ? audio->getAudio() : nullptr))
     {
-        audioWrapper->addReference();
+        if (audio)
+            audio->removeReferenceAndFreeIfNoReferences();
+        throw std::runtime_error(std::string("Failed to bind audio track: ") + SDL_GetError());
     }
-
-    MIX_SetTrackAudio(track, nullptr);
-    if (audioWrapper != nullptr)
-    {
-        MIX_SetTrackAudio(track, audioWrapper->getAudio());
-    }
+    auto *old = audioWrapper;
+    audioWrapper = audio;
+    if (old)
+        old->removeReferenceAndFreeIfNoReferences();
 }
 
 void Audio::setGain(float gain)
@@ -201,7 +187,7 @@ void Audio::setGain(float gain)
     this->gain = std::max(0.0f, gain);
     if (track != nullptr)
     {
-        MIX_SetTrackGain(track, this->gain);
+        MIX_SetTrackGain(track.get(), this->gain);
     }
 }
 

@@ -1,8 +1,9 @@
-#include "scriptcomponent.h"
+#include "platformator/scriptcomponent.h"
 
-#include "collider.h"
+#include "platformator/collider.h"
 #include "gamemanager.h"
 #include "runtimeaccess.h"
+#include "platformator/runtime.h"
 
 ScriptComponent::ScriptComponent() : Component(ComponentType::SCRIPT), behaviors(), gameManagerIndex(SIZE_MAX)
 {
@@ -15,7 +16,8 @@ ScriptComponent::ScriptComponent(GameObject *gameObject)
 
 ScriptComponent::~ScriptComponent()
 {
-    destroyBehaviors();
+    for (auto *behavior : behaviors)
+        delete behavior;
 }
 
 const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
@@ -25,48 +27,47 @@ const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
 
 Behavior *ScriptComponent::addBehavior(Behavior *behavior)
 {
+    auto *runtime = platformator::Runtime::tryGetCurrent();
+    if (runtime && getLifecycle() != ObjectLifecycle::Staged)
+        platformator_detail::RuntimeAccess::gameManager().assertCanMutate();
+    if (!behavior || isRetired())
+        throw std::invalid_argument("Cannot attach behavior to retired script, or attach null");
+    if (behavior->scriptComponent)
+        throw std::invalid_argument("Behavior already has an owner");
     behaviors.push_back(behavior);
+    behavior->scriptComponent = this;
     behavior->setGameObject(getGameObject());
-    if (gameManagerIndex != SIZE_MAX && getGameObject() != nullptr && getGameObject()->getActive() &&
-        !getGameObject()->getIsMarkedForDeletion())
+    if (gameManagerIndex != SIZE_MAX && getIsCallbackEligible())
     {
         platformator_detail::RuntimeAccess::gameManager().addStartedBehavior(behavior);
+        if (auto *collider = getGameObject()->getComponent<Collider>())
+            platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->refreshSubscriptions(collider);
     }
-
     return behavior;
 }
 
 void ScriptComponent::update(double timeDelta)
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-
-        behavior->update(timeDelta);
-    }
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        if (behaviors[i]->started)
+            behaviors[i]->update(timeDelta);
 }
 
 void ScriptComponent::fixedUpdate(double timeDelta)
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-
-        behavior->fixedUpdate(timeDelta);
-    }
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        if (behaviors[i]->started)
+            behaviors[i]->fixedUpdate(timeDelta);
 }
 
 void ScriptComponent::lateUpdate(double timeDelta)
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-
-        behavior->lateUpdate(timeDelta);
-    }
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        if (behaviors[i]->started)
+            behaviors[i]->lateUpdate(timeDelta);
 }
 
 void ScriptComponent::setGameObject(GameObject *gameObject)
@@ -84,49 +85,33 @@ void ScriptComponent::setGameObject(GameObject *gameObject)
 
 void ScriptComponent::destroyBehaviors()
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-        platformator_detail::RuntimeAccess::gameManager().removeStartedBehavior(behavior);
-        behavior->onDestroy();
-
+    for (auto *behavior : behaviors)
         delete behavior;
-    }
-
     behaviors.clear();
 }
 
 void ScriptComponent::dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-
-        behavior->onCollisionEnter(collision, other, timeDelta);
-    }
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        if (behaviors[i]->started)
+            behaviors[i]->onCollisionEnter(collision, other, timeDelta);
 }
 
 void ScriptComponent::dispatchCollisionExit(Collider *other, double timeDelta)
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-        behavior->onCollisionExit(other, timeDelta);
-    }
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        if (behaviors[i]->started)
+            behaviors[i]->onCollisionExit(other, timeDelta);
 }
 
 void ScriptComponent::dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta)
 {
-    const size_t behaviorCount = behaviors.size();
-    for (size_t index = 0; index < behaviorCount; ++index)
-    {
-        Behavior *behavior = behaviors[index];
-
-        behavior->onCollisionStay(collision, other, timeDelta);
-    }
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        if (behaviors[i]->started)
+            behaviors[i]->onCollisionStay(collision, other, timeDelta);
 }
 
 size_t ScriptComponent::getGameManagerIndex() const
@@ -137,4 +122,11 @@ size_t ScriptComponent::getGameManagerIndex() const
 void ScriptComponent::setGameManagerIndex(size_t index)
 {
     gameManagerIndex = index;
+}
+
+bool ScriptComponent::canDispatch() const
+{
+    const auto *owner = getGameObject();
+    return getIsCallbackEligible() && !isRetired() && owner->getActive() && !owner->isRetired() &&
+           owner->getComponent<ScriptComponent>() == this;
 }

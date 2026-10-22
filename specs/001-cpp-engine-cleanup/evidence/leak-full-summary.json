@@ -1,0 +1,189 @@
+{
+  "command": "ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir bin/cleanup-asan --output-on-failure -E package_smoke",
+  "execution": "outside sandbox, no leak suppressions",
+  "passed": 7,
+  "failed_with_leaks": 14,
+  "skipped": 2,
+  "total_reported_bytes": 8200,
+  "total_reported_allocations": 164,
+  "tests": [
+    {
+      "test": "platformator_regression_tests",
+      "status": "leak_report",
+      "leaked_bytes": 200,
+      "allocations": 4,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_scene_script_roundtrip_test",
+      "status": "leak_report",
+      "leaked_bytes": 200,
+      "allocations": 4,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_queued_deletion_safety_test",
+      "status": "leak_report",
+      "leaked_bytes": 400,
+      "allocations": 8,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_runtime_recreation_test",
+      "status": "leak_report",
+      "leaked_bytes": 400,
+      "allocations": 8,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_collider_pair_cleanup_test",
+      "status": "leak_report",
+      "leaked_bytes": 400,
+      "allocations": 8,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_runtime_foundation_test",
+      "status": "leak_report",
+      "leaked_bytes": 2000,
+      "allocations": 40,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_scene_transition_contract_test",
+      "status": "leak_report",
+      "leaked_bytes": 200,
+      "allocations": 4,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_scene_transition_stress_test",
+      "status": "leak_report",
+      "leaked_bytes": 200,
+      "allocations": 4,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_callback_mutation_test",
+      "status": "leak_report",
+      "leaked_bytes": 2000,
+      "allocations": 40,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_destruction_contract_test",
+      "status": "leak_report",
+      "leaked_bytes": 1000,
+      "allocations": 20,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_object_reference_contract_test",
+      "status": "leak_report",
+      "leaked_bytes": 400,
+      "allocations": 8,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_scene_io_contract_test",
+      "status": "leak_report",
+      "leaked_bytes": 200,
+      "allocations": 4,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_transform_hierarchy_test",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_physics_support_test",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_physics_geometry_test",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_runtime_step_test",
+      "status": "leak_report",
+      "leaked_bytes": 200,
+      "allocations": 4,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_runtime_work_test",
+      "status": "skipped",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_asset_root_contract_test",
+      "status": "leak_report",
+      "leaked_bytes": 400,
+      "allocations": 8,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_runner_failure_test",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_runner_startup_failure",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_physics_only_startup",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_benchmark_contract_test",
+      "status": "skipped",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    },
+    {
+      "test": "platformator_benchmark_sweep_test",
+      "status": "passed",
+      "leaked_bytes": 0,
+      "allocations": 0,
+      "stack_groups_outside_fluidsynth_init": 0
+    }
+  ],
+  "standalone_control": {
+    "0_cycles": {
+      "exit": 0,
+      "bytes": 0,
+      "allocations": 0
+    },
+    "1_cycle": {
+      "exit": 1,
+      "bytes": 200,
+      "allocations": 4
+    },
+    "10_cycles": {
+      "exit": 1,
+      "bytes": 2000,
+      "allocations": 40
+    }
+  }
+}

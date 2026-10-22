@@ -13,6 +13,7 @@ endif()
 
 option(PLATFORMATOR_ENABLE_DEBUG_TOOLS "Enable debug-only logging, overlays, and frame advance controls." ON)
 option(PLATFORMATOR_ENABLE_BENCHMARKS "Enable compile-time benchmark instrumentation and runtime summaries." OFF)
+option(PLATFORMATOR_ENABLE_WORK_PROBES "Enable test-only affected-work counters (never for performance runs)." OFF)
 option(PLATFORMATOR_BUILD_RUNNER "Build the stock Platformator desktop runner." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_EXAMPLES "Build standalone Platformator example projects." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_TESTS "Build Platformator test executables." ${PLATFORMATOR_IS_TOP_LEVEL})
@@ -33,17 +34,44 @@ include(CMakePackageConfigHelpers)
 # pkg_check_modules(SDL2_MIXER REQUIRED IMPORTED_TARGET SDL2_mixer)
 # pkg_check_modules(EIGEN3 REQUIRED IMPORTED_TARGET eigen3)
 
-add_subdirectory(vendored/SDL3-3.4.2 EXCLUDE_FROM_ALL)
-add_subdirectory(vendored/SDL3_mixer-3.2.0 EXCLUDE_FROM_ALL)
-add_subdirectory(vendored/SDL3_image-3.4.0 EXCLUDE_FROM_ALL)
-add_subdirectory(vendored/SDL3_ttf-3.1.0 EXCLUDE_FROM_ALL)
-add_subdirectory(vendored/eigen-5.0.1 EXCLUDE_FROM_ALL)
-add_subdirectory(vendored/oneTBB-2022.3.0 EXCLUDE_FROM_ALL)
+include(cmake/PlatformatorSanitizers.cmake)
+# Only engine tests belong to an ordinary Platformator CTest run.
+foreach(dependency_test_option TBB_TEST TBB_EXAMPLES EIGEN_BUILD_TESTING
+        SDL_TESTS SDL_TEST_LIBRARY SDL_EXAMPLES SDLMIXER_TESTS SDLMIXER_EXAMPLES SDLIMAGE_TESTS)
+    set(${dependency_test_option} OFF CACHE BOOL "Disabled in Platformator builds" FORCE)
+endforeach()
+# CMake leaves old CTest files behind when vendor testing is switched off in an
+# existing build tree. Its parent traversal would still discover those tests.
+file(GLOB_RECURSE platformator_stale_vendor_tests
+    "${CMAKE_CURRENT_BINARY_DIR}/vendored/*/CTestTestfile.cmake")
+if(platformator_stale_vendor_tests)
+    file(REMOVE ${platformator_stale_vendor_tests})
+endif()
+
+# Use dependency-owned export/install rules for offline SDK consumption.
+foreach(install_option SDL_INSTALL SDLIMAGE_INSTALL SDLMIXER_INSTALL SDLTTF_INSTALL TBB_INSTALL EIGEN_BUILD_CMAKE_PACKAGE)
+    set(${install_option} ${PLATFORMATOR_INSTALL} CACHE BOOL "Follow Platformator SDK installation" FORCE)
+endforeach()
+foreach(relocatable_option SDL_RELOCATABLE SDLIMAGE_RELOCATABLE SDLMIXER_RELOCATABLE SDLTTF_RELOCATABLE)
+    set(${relocatable_option} ON CACHE BOOL "Build relocatable bundled dependencies" FORCE)
+endforeach()
+set(CMAKE_EXPORT_PACKAGE_REGISTRY OFF)
+set(platformator_dependency_exclusion)
+if(NOT PLATFORMATOR_INSTALL)
+    set(platformator_dependency_exclusion EXCLUDE_FROM_ALL)
+endif()
+add_subdirectory(vendored/SDL3-3.4.2 ${platformator_dependency_exclusion})
+add_subdirectory(vendored/SDL3_mixer-3.2.0 ${platformator_dependency_exclusion})
+add_subdirectory(vendored/SDL3_image-3.4.0 ${platformator_dependency_exclusion})
+add_subdirectory(vendored/SDL3_ttf-3.1.0 ${platformator_dependency_exclusion})
+add_subdirectory(vendored/eigen-5.0.1 ${platformator_dependency_exclusion})
+add_subdirectory(vendored/oneTBB-2022.3.0 ${platformator_dependency_exclusion})
 
 add_library(nlohmann_json INTERFACE)
 add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
 target_include_directories(nlohmann_json INTERFACE
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendored/json"
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendored/json>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
@@ -60,19 +88,36 @@ configure_file(
     @ONLY
 )
 
-file(GLOB_RECURSE PLATFORMATOR_HEADER_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
-)
-
-foreach(platformator_header IN LISTS PLATFORMATOR_HEADER_SOURCES)
-    file(RELATIVE_PATH platformator_header_relative "${CMAKE_CURRENT_SOURCE_DIR}/src" "${platformator_header}")
-    get_filename_component(platformator_header_output_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/platformator/detail/${platformator_header_relative}" DIRECTORY)
-    file(RELATIVE_PATH platformator_header_include_path "${platformator_header_output_dir}" "${platformator_header}")
-    file(MAKE_DIRECTORY "${platformator_header_output_dir}")
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/platformator/detail/${platformator_header_relative}"
-        "#pragma once\n\n#include \"${platformator_header_include_path}\"\n"
-    )
-endforeach()
+if(PLATFORMATOR_ENABLE_BENCHMARKS)
+    execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE PLATFORMATOR_BENCH_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    execute_process(COMMAND git status --porcelain WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE platformator_git_changes ERROR_QUIET)
+    set(PLATFORMATOR_BENCH_DIRTY 0)
+    if(platformator_git_changes)
+        set(PLATFORMATOR_BENCH_DIRTY 1)
+    endif()
+    file(GLOB_RECURSE platformator_fingerprint_inputs CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*" "${CMAKE_CURRENT_SOURCE_DIR}/include/platformator/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*")
+    list(APPEND platformator_fingerprint_inputs "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.0/src/decoder_wav.c")
+    list(SORT platformator_fingerprint_inputs)
+    set(platformator_source_hashes "")
+    foreach(source_file IN LISTS platformator_fingerprint_inputs)
+        if(NOT IS_DIRECTORY "${source_file}")
+            file(SHA256 "${source_file}" source_hash)
+            file(RELATIVE_PATH source_name "${CMAKE_CURRENT_SOURCE_DIR}" "${source_file}")
+            string(APPEND platformator_source_hashes "${source_name}:${source_hash}\n")
+        endif()
+    endforeach()
+    string(SHA256 PLATFORMATOR_BENCH_SOURCE_SHA256 "${platformator_source_hashes}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${platformator_fingerprint_inputs})
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" platformator_config_upper)
+    set(PLATFORMATOR_BENCH_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${platformator_config_upper}}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/benchmarkbuildconfig.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/benchmarkbuildconfig.h" @ONLY)
+endif()
 
 set(PLATFORMATOR_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 set(PLATFORMATOR_BENCHMARK_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark_main.cpp")
@@ -80,6 +125,10 @@ list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}" "${PLATFORMA
 
 add_library(platformator_engine STATIC ${PLATFORMATOR_SOURCES})
 add_library(Platformator::platformator ALIAS platformator_engine)
+target_compile_features(platformator_engine PUBLIC cxx_std_20)
+set_target_properties(platformator_engine PROPERTIES EXPORT_NAME platformator)
+set_target_properties(nlohmann_json PROPERTIES EXPORT_NAME json)
+target_compile_definitions(platformator_engine PUBLIC PLATFORMATOR_ENABLE_WORK_PROBES=$<BOOL:${PLATFORMATOR_ENABLE_WORK_PROBES}>)
 
 set_target_properties(platformator_engine PROPERTIES
     OUTPUT_NAME platformator
@@ -108,7 +157,7 @@ target_link_libraries(platformator_engine PUBLIC
 if(APPLE)
     set(PLATFORMATOR_INSTALL_RPATH "@loader_path/../lib")
 elseif(UNIX)
-    set(PLATFORMATOR_INSTALL_RPATH "$ORIGIN/../lib")
+    set(PLATFORMATOR_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
 endif()
 
 if(PLATFORMATOR_BUILD_RUNNER)
@@ -148,147 +197,76 @@ if(PLATFORMATOR_BUILD_EXAMPLES)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/examples/mario")
 endif()
 
+# Source runners and core-only tests have deliberate engine resources.
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets/" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/assets" PATTERN "test_runtime" EXCLUDE)
 if(PLATFORMATOR_BUILD_TESTS)
+    # The roundtrip audio fixture is independent of building Mario.
+    file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/assets/audio/jump.wav" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/assets/audio")
     enable_testing()
-
-    add_executable(platformator_regression_tests
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/regression_tests.cpp"
-    )
-    target_link_libraries(platformator_regression_tests PRIVATE Platformator::platformator)
-
-    add_executable(platformator_scene_script_roundtrip_test
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/scene_script_roundtrip_test.cpp"
-    )
-    target_link_libraries(platformator_scene_script_roundtrip_test PRIVATE Platformator::platformator)
-
-    add_executable(platformator_queued_deletion_safety_test
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/queued_deletion_safety_test.cpp"
-    )
-    target_link_libraries(platformator_queued_deletion_safety_test PRIVATE Platformator::platformator)
-
-    add_executable(platformator_runtime_recreation_test
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_recreation_test.cpp"
-    )
-    target_link_libraries(platformator_runtime_recreation_test PRIVATE Platformator::platformator)
-
-    add_executable(platformator_collider_pair_cleanup_test
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/collider_pair_cleanup_test.cpp"
-    )
-    target_link_libraries(platformator_collider_pair_cleanup_test PRIVATE Platformator::platformator)
-
-    foreach(platformator_test_target
-        platformator_regression_tests
-        platformator_scene_script_roundtrip_test
-        platformator_queued_deletion_safety_test
-        platformator_runtime_recreation_test
-        platformator_collider_pair_cleanup_test
-    )
-        target_include_directories(${platformator_test_target} PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/src"
-            "${CMAKE_CURRENT_BINARY_DIR}/generated"
-        )
-    endforeach()
-
-    add_test(
-        NAME platformator_regression_tests
-        COMMAND platformator_regression_tests
-    )
-
-    add_test(
-        NAME platformator_scene_script_roundtrip_test
-        COMMAND platformator_scene_script_roundtrip_test
-    )
-
-    add_test(
-        NAME platformator_queued_deletion_safety_test
-        COMMAND platformator_queued_deletion_safety_test
-    )
-
-    add_test(
-        NAME platformator_runtime_recreation_test
-        COMMAND platformator_runtime_recreation_test
-    )
-
-    add_test(
-        NAME platformator_collider_pair_cleanup_test
-        COMMAND platformator_collider_pair_cleanup_test
-    )
+    include(cmake/PlatformatorTests.cmake)
+    platformator_add_test(platformator_regression_tests tests/regression_tests.cpp INTERNAL LABELS physics)
+    platformator_add_test(platformator_scene_script_roundtrip_test tests/scene_script_roundtrip_test.cpp INTERNAL LABELS scene)
+    platformator_add_test(platformator_queued_deletion_safety_test tests/queued_deletion_safety_test.cpp INTERNAL LABELS lifecycle physics)
+    platformator_add_test(platformator_runtime_recreation_test tests/runtime_recreation_test.cpp INTERNAL LABELS lifecycle)
+    platformator_add_test(platformator_collider_pair_cleanup_test tests/collider_pair_cleanup_test.cpp INTERNAL LABELS physics)
+    platformator_add_test(platformator_runtime_foundation_test tests/runtime_foundation_test.cpp LABELS lifecycle reference)
+    platformator_add_test(platformator_scene_transition_contract_test tests/scene_transition_contract_test.cpp LABELS lifecycle scene)
+    platformator_add_test(platformator_scene_transition_stress_test tests/scene_transition_stress_test.cpp LABELS lifecycle scene)
+    platformator_add_test(platformator_callback_mutation_test tests/callback_mutation_test.cpp LABELS lifecycle mutation)
+    platformator_add_test(platformator_destruction_contract_test tests/destruction_contract_test.cpp LABELS lifecycle mutation)
+    platformator_add_test(platformator_object_reference_contract_test tests/object_reference_contract_test.cpp LABELS scene reference)
+    platformator_add_test(platformator_scene_io_contract_test tests/scene_io_contract_test.cpp LABELS scene reference)
+    platformator_add_test(platformator_transform_hierarchy_test tests/transform_hierarchy_test.cpp LABELS physics transform)
+    platformator_add_test(platformator_physics_support_test tests/physics_support_test.cpp LABELS physics determinism)
+    platformator_add_test(platformator_physics_geometry_test tests/physics_geometry_test.cpp LABELS physics geometry)
+    platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp INTERNAL LABELS lifecycle clock)
+    platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp LABELS physics work)
+    set_tests_properties(platformator_runtime_work_test PROPERTIES SKIP_RETURN_CODE 77)
+    platformator_add_test(platformator_asset_root_contract_test tests/asset_root_contract_test.cpp LABELS package asset)
+    platformator_add_test(platformator_runner_failure_test tests/runner_failure_test.cpp LABELS package runner)
+    add_test(NAME platformator_runner_startup_failure COMMAND platformator_runner_failure_test startup)
+    add_test(NAME platformator_physics_only_startup COMMAND platformator_runner_failure_test physics)
+    set_tests_properties(platformator_runner_startup_failure platformator_physics_only_startup PROPERTIES LABELS "platformator;package;runner")
+    add_test(NAME platformator_package_smoke COMMAND "${CMAKE_COMMAND}"
+        "-DPLATFORMATOR_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DPLATFORMATOR_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_smoke.cmake")
+    set_tests_properties(platformator_package_smoke PROPERTIES LABELS "platformator;package;install")
+    platformator_add_test(platformator_benchmark_contract_test tests/benchmark_contract_test.cpp INTERNAL LABELS benchmark)
+    set_tests_properties(platformator_benchmark_contract_test PROPERTIES SKIP_RETURN_CODE 77)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME platformator_benchmark_sweep_test COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+        -s "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests" -v)
+    set_tests_properties(platformator_benchmark_sweep_test PROPERTIES LABELS "platformator;benchmark")
+    include(cmake/PlatformatorPublicHeaders.cmake)
 endif()
 
 if(PLATFORMATOR_INSTALL)
-    install(TARGETS platformator_engine
+    install(TARGETS platformator_engine nlohmann_json EXPORT PlatformatorTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(EXPORT PlatformatorTargets NAMESPACE Platformator::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Platformator")
     if(PLATFORMATOR_BUILD_RUNNER)
-        install(TARGETS main
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
-        )
+        install(TARGETS main RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
-
-    if(PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
-        install(TARGETS ${PLATFORMATOR_RUNTIME_LIBRARY_TARGETS}
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-    endif()
-
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/"
-        DESTINATION assets
-        PATTERN "test_runtime" EXCLUDE
-    )
-
+    # A shared dependency may depend on another library in this same directory.
+    foreach(runtime_target IN LISTS PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
+        if(UNIX AND NOT APPLE)
+            set_target_properties(${runtime_target} PROPERTIES INSTALL_RPATH "$ORIGIN")
+        elseif(APPLE)
+            set_target_properties(${runtime_target} PROPERTIES INSTALL_RPATH "@loader_path")
+        endif()
+    endforeach()
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/" DESTINATION assets PATTERN "test_runtime" EXCLUDE)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/platformator/"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/platformator"
-        FILES_MATCHING PATTERN "*.h"
-    )
-
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3-3.4.2/include/SDL3"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_image-3.4.0/include/SDL3_image"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.0/include/SDL3_mixer"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_ttf-3.1.0/include/SDL3_ttf"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/eigen-5.0.1/Eigen"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendored/eigen-5.0.1/unsupported/Eigen")
-        install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/eigen-5.0.1/unsupported/Eigen"
-            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/unsupported"
-        )
-    endif()
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vendored/oneTBB-2022.3.0/include/oneapi"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/vendored/json/json.hpp"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/platformator" FILES_MATCHING PATTERN "*.h")
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/vendored/json/json.hpp" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     set(PLATFORMATOR_PACKAGE_CONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/Platformator")
-    configure_package_config_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PlatformatorConfig.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfig.cmake"
-        INSTALL_DESTINATION "${PLATFORMATOR_PACKAGE_CONFIG_DIR}"
-        NO_SET_AND_CHECK_MACRO
-    )
-    write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfigVersion.cmake"
-        VERSION ${PROJECT_VERSION}
-        COMPATIBILITY SameMajorVersion
-    )
-
-    install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfigVersion.cmake"
-        DESTINATION "${PLATFORMATOR_PACKAGE_CONFIG_DIR}"
-    )
+    configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/PlatformatorConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfig.cmake" INSTALL_DESTINATION "${PLATFORMATOR_PACKAGE_CONFIG_DIR}")
+    write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfigVersion.cmake"
+        DESTINATION "${PLATFORMATOR_PACKAGE_CONFIG_DIR}")
 endif()

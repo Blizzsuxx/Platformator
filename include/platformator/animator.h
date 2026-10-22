@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include <json.hpp>
 
@@ -12,51 +13,50 @@
 
 class Animator : public Component
 {
-public:
-	Animator(GameObject *gameObject);
-	Animator();
-	~Animator() override;
+  public:
+    Animator(GameObject *gameObject);
+    Animator();
+    ~Animator() override;
 
-	size_t getCurrentFrameIndex() const;
-	float getPlaybackSpeed() const;
-	bool getIsPlaying() const;
-	bool getIsPaused() const;
-	const AnimationClip *getCurrentAnimationClip() const;
-	const std::string &getCurrentClipName() const;
+    size_t getCurrentFrameIndex() const;
+    float getPlaybackSpeed() const;
+    bool getIsPlaying() const;
+    bool getIsPaused() const;
+    const AnimationClip *getCurrentAnimationClip() const;
+    const std::string &getCurrentClipName() const;
 
-	bool play(const AnimationClip *animationClip);
-	void stop();
-	void pause();
-	void resume();
-	void setPlaybackSpeed(float playbackSpeed);
-	void update(double timeDelta);
-	void setGameObject(GameObject *gameObject) override;
+    bool play(const AnimationClip *animationClip);
+    void stop();
+    void pause();
+    void resume();
+    void setPlaybackSpeed(float playbackSpeed);
+    void update(double timeDelta);
+    void setGameObject(GameObject *gameObject) override;
 
-	size_t getGameManagerIndex() const;
-	void setGameManagerIndex(size_t index);
-	const AnimationClip *getCurrentClip() const;
-	void setCurrentClip(const AnimationClip *clip);
-	void setCurrentFrameIndex(size_t frameIndex);
-	void addOnClipEndCallback(const std::function<void()> &callback);
+    size_t getGameManagerIndex() const;
+    void setGameManagerIndex(size_t index);
+    const AnimationClip *getCurrentClip() const;
+    void setCurrentClip(const AnimationClip *clip);
+    void setCurrentFrameIndex(size_t frameIndex);
+    void addOnClipEndCallback(const std::function<void()> &callback);
 
-private:
-	const AnimationClip *currentAnimationClip;
-	size_t currentFrameIndex;
-	double accumulatedTime;
-	float playbackSpeed;
-	bool playing;
-	size_t gameManagerIndex;
-	std::vector<std::function<void()>> onClipEndCallbacks;
+  private:
+    const AnimationClip *currentAnimationClip;
+    size_t currentFrameIndex;
+    double accumulatedTime;
+    float playbackSpeed;
+    bool playing;
+    size_t gameManagerIndex;
+    std::vector<std::unique_ptr<std::function<void()>>> onClipEndCallbacks;
 
-	double getCurrentFrameDuration() const;
-	void applyCurrentFrame() const;
-	void advanceFrame();
+    double getCurrentFrameDuration() const;
+    void applyCurrentFrame() const;
+    void advanceFrame();
 };
 
-template <>
-struct ComponentTypeFor<Animator>
+template <> struct ComponentTypeFor<Animator>
 {
-	static constexpr ComponentType value = ComponentType::ANIMATOR;
+    static constexpr ComponentType value = ComponentType::ANIMATOR;
 };
 
 void to_json(nlohmann::json &j, const Animator &animator);

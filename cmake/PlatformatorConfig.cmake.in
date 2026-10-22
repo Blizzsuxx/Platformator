@@ -1,41 +1,12 @@
 @PACKAGE_INIT@
-
-set(_platformator_libdir "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@")
-set(_platformator_includedir "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@")
-
-find_library(_platformator_library
-    NAMES platformator
-    PATHS "${_platformator_libdir}"
-    NO_DEFAULT_PATH
-)
-
-if(NOT _platformator_library)
-    set(Platformator_FOUND FALSE)
-    set(Platformator_NOT_FOUND_MESSAGE "Platformator core library was not found in ${_platformator_libdir}.")
-    return()
-endif()
-
-set(_platformator_dependency_libraries)
-foreach(_platformator_dependency_name SDL3 SDL3_image SDL3_mixer SDL3_ttf tbb tbb_debug)
-    find_library(_platformator_dependency_library
-        NAMES ${_platformator_dependency_name}
-        PATHS "${_platformator_libdir}"
-        NO_DEFAULT_PATH
-    )
-    if(_platformator_dependency_library)
-        list(APPEND _platformator_dependency_libraries "${_platformator_dependency_library}")
-    endif()
-    unset(_platformator_dependency_library CACHE)
-endforeach()
-
-if(NOT TARGET Platformator::platformator)
-    add_library(Platformator::platformator STATIC IMPORTED)
-    set_target_properties(Platformator::platformator PROPERTIES
-        IMPORTED_LOCATION "${_platformator_library}"
-        INTERFACE_COMPILE_FEATURES "cxx_std_20"
-        INTERFACE_INCLUDE_DIRECTORIES "${_platformator_includedir}"
-        INTERFACE_LINK_LIBRARIES "${_platformator_dependency_libraries}"
-    )
-endif()
-
-unset(_platformator_library CACHE)
+include(CMakeFindDependencyMacro)
+set(_platformator_prefix "${PACKAGE_PREFIX_DIR}")
+find_dependency(SDL3 CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LIBDIR@/cmake/SDL3")
+find_dependency(SDL3_mixer CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LIBDIR@/cmake/SDL3_mixer")
+find_dependency(SDL3_image CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LIBDIR@/cmake/SDL3_image")
+find_dependency(SDL3_ttf CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LIBDIR@/cmake/SDL3_ttf")
+find_dependency(TBB CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LIBDIR@/cmake/TBB")
+find_dependency(Eigen3 CONFIG HINTS "${_platformator_prefix}/share/eigen3/cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/PlatformatorTargets.cmake")
+set(Platformator_ASSET_DIR "${_platformator_prefix}/assets")
+check_required_components(Platformator)

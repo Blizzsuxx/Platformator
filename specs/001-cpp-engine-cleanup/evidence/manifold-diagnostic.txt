@@ -1,0 +1,3 @@
+Invalid contact manifold: Container Box 148 / Container Box 168 count=0 normal_length_squared=1.000000
+Usage: platformator_benchmark_runner [scene] [--scene path | --scenario broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove] [--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] [--narrow-count N] [--steady-count N] [--add-count N] [--remove-count N] [--churn-count N] [--csv-output path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render]
+[Benchmark][Scenario] box_count=250 circle_count=250 container_width=1600.0 container_height=900.0

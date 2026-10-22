@@ -81,6 +81,58 @@
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/relwithdebinfo"
             }
+        },
+        {
+            "name": "cleanup-debug",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/bin/cleanup-debug",
+            "cacheVariables": {
+                "PLATFORMATOR_SANITIZER": "none",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-debug"
+            }
+        },
+        {
+            "name": "cleanup-asan",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/bin/cleanup-asan",
+            "cacheVariables": {
+                "PLATFORMATOR_SANITIZER": "address-undefined",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-asan"
+            }
+        },
+        {
+            "name": "cleanup-tsan",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/bin/cleanup-tsan",
+            "cacheVariables": {
+                "PLATFORMATOR_SANITIZER": "thread",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-tsan"
+            }
+        },
+        {
+            "name": "cleanup-work",
+            "inherits": "cleanup-debug",
+            "binaryDir": "${sourceDir}/bin/cleanup-work",
+            "cacheVariables": {
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
+                "PLATFORMATOR_ENABLE_WORK_PROBES": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-work"
+            }
+        },
+        {
+            "name": "cleanup-benchmark",
+            "inherits": "benchmark",
+            "binaryDir": "${sourceDir}/bin/cleanup-benchmark",
+            "cacheVariables": {
+                "PLATFORMATOR_SANITIZER": "none",
+                "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "PLATFORMATOR_INSTALL": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-benchmark"
+            }
         }
     ],
     "buildPresets": [
@@ -118,6 +170,26 @@
             "name": "relwithdebinfo",
             "displayName": "RelWithDebInfo",
             "configurePreset": "relwithdebinfo"
+        },
+        {
+            "name": "cleanup-debug",
+            "configurePreset": "cleanup-debug"
+        },
+        {
+            "name": "cleanup-asan",
+            "configurePreset": "cleanup-asan"
+        },
+        {
+            "name": "cleanup-tsan",
+            "configurePreset": "cleanup-tsan"
+        },
+        {
+            "name": "cleanup-work",
+            "configurePreset": "cleanup-work"
+        },
+        {
+            "name": "cleanup-benchmark",
+            "configurePreset": "cleanup-benchmark"
         }
     ]
 }

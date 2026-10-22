@@ -3,9 +3,12 @@
 #include "gamemanager.h"
 #include "runtimeaccess.h"
 
-ColliderPair::ColliderPair(Collider *a, Collider *b) : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1), isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCount(0)
+ColliderPair::ColliderPair(Collider *a, Collider *b)
+    : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1),
+      isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX),
+      adjacencyIndexB(SIZE_MAX), witnessCount(0)
 {
-    if (a < b)
+    if (a->getHandle() < b->getHandle())
     {
         objectA = a;
         objectB = b;
@@ -103,12 +106,13 @@ void ColliderPair::setAdjacencyIndexB(size_t index) const
 
 void ColliderPair::queueCollisionExit() const
 {
-    if (objectA == nullptr || objectA->getGameObject()->getIsMarkedForDeletion() || objectB == nullptr || objectB->getGameObject()->getIsMarkedForDeletion())
+    if (objectA->isRetired() && objectB->isRetired())
     {
         return;
     }
 
-    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
+    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(
+        PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)
@@ -149,7 +153,8 @@ void ColliderPair::updateCachedCollisionVersions() const
 
 bool ColliderPair::operator==(const ColliderPair &other) const
 {
-    return (objectA == other.objectA && objectB == other.objectB) || (objectA == other.objectB && objectB == other.objectA);
+    return (objectA == other.objectA && objectB == other.objectB) ||
+           (objectA == other.objectB && objectB == other.objectA);
 }
 
 void ColliderPair::incrementWitnessCount() const

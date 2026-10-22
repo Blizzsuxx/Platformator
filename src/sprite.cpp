@@ -1,8 +1,10 @@
-#include "sprite.h"
+#include "platformator/sprite.h"
 #include "runtimeaccess.h"
-#include "texturewrapper.h"
+#include "platformator/texturewrapper.h"
 
-Sprite::Sprite() : Component(ComponentType::SPRITE), textureWrapper(nullptr), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+Sprite::Sprite()
+    : Component(ComponentType::SPRITE), textureWrapper(nullptr), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f),
+      sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
 }
 
@@ -10,15 +12,18 @@ Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, (TextureWrapper *)nu
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper) : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper)
+    : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float width, float height) : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE, width, height)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float width, float height)
+    : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE, width, height)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip) : Sprite(gameObject, textureWrapper, flip, 0, 0)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip)
+    : Sprite(gameObject, textureWrapper, flip, 0, 0)
 {
 }
 
@@ -26,15 +31,19 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath) : Sprite(gameObject
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, const char *filePath, float width, float height) : Sprite(gameObject, filePath, SDL_FLIP_NONE, width, height)
+Sprite::Sprite(GameObject *gameObject, const char *filePath, float width, float height)
+    : Sprite(gameObject, filePath, SDL_FLIP_NONE, width, height)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip) : Sprite(gameObject, filePath, flip, 0, 0)
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip)
+    : Sprite(gameObject, filePath, flip, 0, 0)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height)
+    : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), sourceRect(),
+      sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (filePath != nullptr)
     {
@@ -43,7 +52,9 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
     }
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height) : Component(gameObject, SPRITE), textureWrapper(textureWrapper), flip(flip), width(width), height(height), sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height)
+    : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), sourceRect(),
+      sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (textureWrapper != nullptr && width == 0 && height == 0)
     {

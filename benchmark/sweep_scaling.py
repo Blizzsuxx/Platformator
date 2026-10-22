@@ -1,314 +1,269 @@
 #!/usr/bin/env python3
+"""Independent schema-v2 runs; raw artifacts are retained beside the aggregate."""
 import argparse
 import csv
-import os
+import json
+import math
+from pathlib import Path
+import statistics
 import subprocess
-import tempfile
 import time
-from typing import Dict, List, Optional
+
+SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions")
+COUNTERS = ("object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
+            "awake_dynamic_body_count", "queued_add_count", "queued_sync_count", "queued_remove_count", "collision_enter_event_count",
+            "collision_stay_event_count", "collision_exit_event_count")
+SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove")
 
 
-def is_add_remove_scenario(scenario: str) -> bool:
+def is_add_remove_scenario(scenario):
     return scenario in {"add_and_remove", "moving_add_and_remove"}
 
 
-def is_broad_phase_scenario(scenario: str) -> bool:
+def is_broad_phase_scenario(scenario):
     return scenario in {"broad_phase", "broad_phase_stress"}
 
 
-def parse_counts(raw: str) -> List[int]:
-    counts: List[int] = []
-    for token in raw.split(','):
-        token = token.strip()
-        if not token:
-            continue
-        value = int(token)
-        if value <= 0:
-            raise ValueError("All counts must be positive integers.")
-        counts.append(value)
-
-    if not counts:
-        raise ValueError("At least one count must be provided.")
-
-    return counts
-
-def parse_counts_from_step_arguments(step_size: int, ending_step: int, starting_step: Optional[int]) -> List[int]:
-    if step_size <= 0:
-        raise ValueError("--step-size must be a positive integer.")
-    if ending_step <= 0:
-        raise ValueError("--ending-step must be a positive integer.")
-    if starting_step is None:
-        starting_step = step_size
-    if starting_step <= 0:
-        raise ValueError("--starting-step must be a positive integer.")
-    if starting_step > ending_step:
-        raise ValueError("--starting-step must be less than or equal to --ending-step.")
-
-    counts: List[int] = []
-    current = starting_step
-    while current <= ending_step:
-        counts.append(current)
-        current += step_size
-
+def parse_counts(raw):
+    counts = [int(token.strip()) for token in raw.split(",") if token.strip()]
+    if not counts or any(count <= 0 for count in counts) or len(set(counts)) != len(counts):
+        raise ValueError("Counts must be distinct positive integers")
     return counts
 
 
-def parse_benchmark_csv(csv_path: str) -> Dict[str, float]:
-    metrics: Dict[str, float] = {}
-    with open(csv_path, newline="", encoding="utf-8") as handle:
+def parse_counts_from_step_arguments(step_size, ending_step, starting_step):
+    start = step_size if starting_step is None else starting_step
+    if step_size is None or ending_step is None or step_size <= 0 or ending_step <= 0 or start <= 0 or start > ending_step:
+        raise ValueError("Provide positive --step-size/--ending-step and a valid starting step")
+    return list(range(start, ending_step + 1, step_size))
+
+
+def _number(value, field):
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"Invalid finite nonnegative {field}: {value}")
+    return number
+
+
+def load_manifest(path):
+    manifest = json.loads(Path(path).with_suffix(".manifest.json").read_text())
+    required = {"schema_version", "workers", "seed", "dt", "measured_steps", "requested_measured_steps", "warmup_steps", "repetitions",
+                "rendering", "render_samples", "complete_capture", "physical_invariants", "build", "machine", "dependencies", "boundaries", "scenario"}
+    if not required <= manifest.keys() or manifest["schema_version"] != 2:
+        raise ValueError("Missing/unknown benchmark manifest schema")
+    if not manifest["complete_capture"] or manifest["measured_steps"] <= 0 or manifest["measured_steps"] != manifest["requested_measured_steps"]:
+        raise ValueError("Benchmark capture is empty, truncated, or stopped before the requested steps")
+    if manifest["workers"] <= 0 or manifest["seed"] < 0 or manifest["repetitions"] <= 0 or not math.isfinite(manifest["dt"]) or manifest["dt"] <= 0:
+        raise ValueError("Invalid resolved run parameters")
+    mode = manifest.get("validation_mode")
+    if mode not in ("per-step", "boundary-only") or manifest.get("timing_eligible") is not (mode == "boundary-only"):
+        raise ValueError("Missing or contradictory validation instrumentation label")
+    build_fields = {"commit", "dirty", "source_sha256", "compiler", "flags", "configuration", "sanitizer", "work_probes", "debug_tools"}
+    if not build_fields <= manifest["build"].keys():
+        raise ValueError("Incomplete benchmark build provenance")
+    fingerprint = manifest["build"]["source_sha256"]
+    if not isinstance(fingerprint, str) or len(fingerprint) != 64 or any(c not in "0123456789abcdef" for c in fingerprint):
+        raise ValueError("Invalid source fingerprint")
+    if not manifest["machine"] or not manifest["dependencies"] or not set(SCOPES) <= manifest["boundaries"].keys():
+        raise ValueError("Incomplete machine/dependency/scope metadata")
+    if any(manifest["physical_invariants"].get(key) is not True for key in ("finite", "populations_valid", "supports_valid")):
+        raise ValueError("Benchmark physical/population validation did not pass")
+    return manifest
+
+
+def parse_benchmark_csv(csv_path):
+    """Reject legacy/partial/unknown metrics, missing metadata and incomplete raw data."""
+    path = Path(csv_path)
+    metrics, seen, sample_counts = {}, set(), {}
+    with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
+        if not {"schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"} <= set(reader.fieldnames or ()):
+            raise ValueError("Expected schema-v2 benchmark CSV; historical partial frame data is not complete_step")
+        manifest = load_manifest(path)
         for row in reader:
-            category = row.get("category", "")
-            name = row.get("name", "")
-            avg_value = row.get("avg", "")
-            if not category or not name or not avg_value:
-                continue
-
-            key = f"{category}.{name}.avg"
-            metrics[key] = float(avg_value)
-
-            median_value = row.get("median", "")
-            p95_value = row.get("p95", "")
-            p99_value = row.get("p99", "")
-            if median_value:
-                metrics[f"{category}.{name}.median"] = float(median_value)
-            if p95_value:
-                metrics[f"{category}.{name}.p95"] = float(p95_value)
-            if p99_value:
-                metrics[f"{category}.{name}.p99"] = float(p99_value)
-
-            # Export min/max for counters because they are useful for sanity checks.
-            min_value = row.get("min", "")
-            max_value = row.get("max", "")
-            if min_value:
-                metrics[f"{category}.{name}.min"] = float(min_value)
-            if max_value:
-                metrics[f"{category}.{name}.max"] = float(max_value)
-
+            category, name = row["category"], row["name"]
+            key = (category, name)
+            allowed = SCOPES if category == "scope" else COUNTERS if category == "counter" else ()
+            if row["schema_version"] != "2" or name not in allowed or key in seen:
+                raise ValueError(f"Unknown/duplicate benchmark metric: {key}")
+            seen.add(key)
+            expected_unit = "ms" if category == "scope" else "count"
+            if row["unit"] != expected_unit:
+                raise ValueError(f"Unexpected units for {key}")
+            samples = int(row["samples"])
+            expected = manifest["render_samples"] if key == ("scope", "render") else manifest["measured_steps"]
+            if samples != expected:
+                raise ValueError(f"Sample count mismatch for {key}")
+            sample_counts[key] = samples
+            fields = ("avg", "median", "p95", "p99", "min", "max") if category == "scope" else ("avg", "min", "max")
+            for field in fields:
+                metrics[f"{category}.{name}.{field}"] = _number(row[field], f"{category}.{name}.{field}")
+    required = {("scope", name) for name in SCOPES} | {("counter", name) for name in COUNTERS}
+    if seen != required:
+        raise ValueError(f"Missing benchmark metrics: {required - seen}")
+    raw_counts = {"step": 0, "render": 0}
+    totals = {name: 0 for name in SCOPES}
+    with path.with_suffix(".samples.csv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        columns = {"schema_version", "sample_kind", "index"} | {name + "_ns" for name in SCOPES} | set(COUNTERS)
+        if not columns <= set(reader.fieldnames or ()):
+            raise ValueError("Incomplete raw sample schema")
+        for row in reader:
+            kind = row["sample_kind"]
+            if row["schema_version"] != "2" or kind not in raw_counts or int(row["index"]) != raw_counts[kind]:
+                raise ValueError("Invalid raw sample order/schema")
+            raw_counts[kind] += 1
+            for name in SCOPES:
+                value = _number(row[name + "_ns"], name)
+                if (kind == "render") == (name == "render"):
+                    totals[name] += value
+            for name in COUNTERS:
+                _number(row[name], name)
+    if raw_counts != {"step": manifest["measured_steps"], "render": manifest["render_samples"]}:
+        raise ValueError("Raw sample count does not match its manifest")
+    for name in SCOPES:
+        count = manifest["render_samples"] if name == "render" else manifest["measured_steps"]
+        average = totals[name] / count / 1e6 if count else 0
+        if not math.isclose(average, metrics[f"scope.{name}.avg"], rel_tol=1e-6, abs_tol=1e-9):
+            raise ValueError(f"Summary/raw average mismatch for {name}")
     return metrics
 
 
-def apply_count_argument(base_command: List[str], args: argparse.Namespace, count: int) -> List[str]:
+def apply_count_argument(base_command, args, count):
     command = list(base_command)
     if is_broad_phase_scenario(args.scenario):
-        command.extend(["--broad-count", str(count)])
+        command += ["--broad-count", str(count)]
     elif args.scenario == "narrow_phase":
-        command.extend(["--narrow-count", str(count)])
+        command += ["--narrow-count", str(count)]
     elif args.scenario == "rigid_body_container":
-        half_count = count // 2
-        command.extend(["--box-count", str(half_count), "--circle-count", str(half_count)])
+        command += ["--box-count", str(count // 2), "--circle-count", str(count - count // 2)]
     elif is_add_remove_scenario(args.scenario):
-        command.extend(["--steady-count", str(args.steady_count), "--churn-count", str(count)])
+        command += ["--steady-count", str(args.steady_count), "--churn-count", str(count)]
         if args.box_mix is not None:
-            command.extend(["--box-count", str(args.box_mix)])
+            command += ["--box-count", str(args.box_mix)]
         if args.circle_mix is not None:
-            command.extend(["--circle-count", str(args.circle_mix)])
+            command += ["--circle-count", str(args.circle_mix)]
     else:
         raise ValueError(f"Unsupported scenario: {args.scenario}")
-
     return command
 
 
-def sweep_parameter_name(scenario: str) -> str:
+def sweep_parameter_name(scenario):
     if is_broad_phase_scenario(scenario):
         return "broad_count"
-    if scenario == "narrow_phase":
-        return "narrow_count"
-    if scenario == "rigid_body_container":
-        return "total_body_count"
-    if is_add_remove_scenario(scenario):
-        return "churn_count"
-
-    raise ValueError(f"Unsupported scenario: {scenario}")
+    return {"narrow_phase": "narrow_count", "rigid_body_container": "total_body_count",
+            "add_and_remove": "churn_count", "moving_add_and_remove": "churn_count"}[scenario]
 
 
-def build_result_row(args: argparse.Namespace, count: int, metrics: Dict[str, float]) -> Dict[str, float]:
-    steady_count = float(args.steady_count if is_add_remove_scenario(args.scenario) else 0)
-    add_count = float(count if is_add_remove_scenario(args.scenario) else 0)
-    remove_count = float(count if is_add_remove_scenario(args.scenario) else 0)
-
-    return {
-        "scenario": args.scenario,
-        "sweep_parameter": sweep_parameter_name(args.scenario),
-        "requested_count": float(count),
-        "swept_value": float(count),
-        "steady_count": steady_count,
-        "add_count": add_count,
-        "remove_count": remove_count,
-        "frame_avg_ms": metrics.get("scope.frame.avg", 0.0),
-        "frame_p95_ms": metrics.get("scope.frame.p95", 0.0),
-        "broad_phase_avg_ms": metrics.get("scope.broad_phase.avg", 0.0),
-        "broad_phase_p95_ms": metrics.get("scope.broad_phase.p95", 0.0),
-        "narrow_phase_avg_ms": metrics.get("scope.narrow_phase.avg", 0.0),
-        "narrow_phase_p95_ms": metrics.get("scope.narrow_phase.p95", 0.0),
-        "resolve_collisions_avg_ms": metrics.get("scope.resolve_collisions.avg", 0.0),
-        "resolve_collisions_p95_ms": metrics.get("scope.resolve_collisions.p95", 0.0),
-        "reported_object_count_avg": metrics.get("counter.object_count.avg", 0.0),
-        "reported_object_count_min": metrics.get("counter.object_count.min", 0.0),
-        "reported_object_count_max": metrics.get("counter.object_count.max", 0.0),
-        "candidate_pair_count_avg": metrics.get("counter.candidate_pair_count.avg", 0.0),
-        "pending_narrow_phase_pair_count_avg": metrics.get("counter.pending_narrow_phase_pair_count.avg", 0.0),
-        "active_collision_count_avg": metrics.get("counter.active_collision_count.avg", 0.0),
-        "occupied_cell_count_avg": metrics.get("counter.occupied_cell_count.avg", 0.0),
-        "queued_add_count_avg": metrics.get("counter.queued_add_count.avg", 0.0),
-        "queued_remove_count_avg": metrics.get("counter.queued_remove_count.avg", 0.0),
-        "queued_sync_count_avg": metrics.get("counter.queued_sync_count.avg", 0.0),
-    }
+def build_result_row(args, count, metrics):
+    # All required keys were checked; a missing metric must never become zero.
+    row = {"schema_version": 2, "scenario": args.scenario, "sweep_parameter": sweep_parameter_name(args.scenario),
+           "requested_count": count, "swept_value": count, "workers": args.workers, "seed": args.seed,
+           "repetitions": len(metrics), "steady_count": args.steady_count if is_add_remove_scenario(args.scenario) else 0,
+           "add_count": count if is_add_remove_scenario(args.scenario) else 0,
+           "remove_count": count if is_add_remove_scenario(args.scenario) else 0}
+    row["validation_mode"] = "per-step" if args.validate_invariants else "boundary-only"
+    row["timing_eligible"] = not args.validate_invariants
+    for name in SCOPES:
+        averages = [run[f"scope.{name}.avg"] for run in metrics]
+        row.update({f"{name}_avg_ms": statistics.mean(averages), f"{name}_p95_ms": statistics.mean(run[f"scope.{name}.p95"] for run in metrics),
+                    f"{name}_run_median_ms": statistics.median(averages), f"{name}_run_stdev_ms": statistics.stdev(averages) if len(averages) > 1 else 0,
+                    f"{name}_run_min_ms": min(averages), f"{name}_run_max_ms": max(averages)})
+    for name in COUNTERS:
+        row[f"{name}_avg"] = statistics.mean(run[f"counter.{name}.avg"] for run in metrics)
+        row[f"{name}_min"] = min(run[f"counter.{name}.min"] for run in metrics)
+        row[f"{name}_max"] = max(run[f"counter.{name}.max"] for run in metrics)
+    return row
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Run Platformator benchmark scenarios for multiple object counts and write one combined CSV."
-    )
-    parser.add_argument(
-        "--runner",
-        default="../bin/benchmark-release/platformator_benchmark_runner",
-        help="Path to platformator_benchmark_runner binary.",
-    )
-    parser.add_argument(
-        "--scenario",
-        required=True,
-        choices=["broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove"],
-        help="Benchmark scenario to sweep.",
-    )
-    parser.add_argument(
-        "--step-size",
-        required=True,
-        type=int,
-        help="Step size for the sweep.",
-    )
-    parser.add_argument(
-        "--ending-step",
-        required=True,
-        type=int,
-        help="Ending step for the sweep.",
-    )
-    parser.add_argument(
-        "--starting-step",
-        type=int,
-        help="Starting step for the sweep (default: same as --step-size).",
-    )
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--runner", default="../bin/cleanup-benchmark/platformator_benchmark_runner")
+    parser.add_argument("--scenario", required=True, choices=SCENARIOS)
+    parser.add_argument("--counts")
+    parser.add_argument("--step-size", type=int)
+    parser.add_argument("--ending-step", type=int)
+    parser.add_argument("--starting-step", type=int)
     parser.add_argument("--warmup-frames", type=int, default=120)
     parser.add_argument("--measure-frames", type=int, default=600)
-    parser.add_argument("--dt", type=float, default=1.0 / 120.0)
-    parser.add_argument(
-        "--cooldown-seconds",
-        type=float,
-        default=0.0,
-        help="Optional delay between sweep iterations to reduce thermal/scheduling drift on saturated machines.",
-    )
-    parser.add_argument(
-        "--steady-count",
-        type=int,
-        default=1000,
-        help="Stable live body count for the add/remove scenarios (default: 1000).",
-    )
-    parser.add_argument(
-        "--box-mix",
-        type=int,
-        help="Optional box mix weight for add/remove scenarios. Passed through as --box-count.",
-    )
-    parser.add_argument(
-        "--circle-mix",
-        type=int,
-        help="Optional circle mix weight for add/remove scenarios. Passed through as --circle-count.",
-    )
-    parser.add_argument(
-        "--output",
-        default="benchmark_scaling.csv",
-        help="Path for the combined output CSV.",
-    )
-
-    args = parser.parse_args()
-
-    if args.warmup_frames < 0:
-        raise ValueError("--warmup-frames must be >= 0")
-    if args.measure_frames <= 0:
-        raise ValueError("--measure-frames must be > 0")
-    if args.dt <= 0.0:
-        raise ValueError("--dt must be > 0")
-    if args.cooldown_seconds < 0.0:
-        raise ValueError("--cooldown-seconds must be >= 0")
-    if args.steady_count <= 0:
-        raise ValueError("--steady-count must be > 0")
-    if args.box_mix is not None and args.box_mix < 0:
-        raise ValueError("--box-mix must be >= 0")
-    if args.circle_mix is not None and args.circle_mix < 0:
-        raise ValueError("--circle-mix must be >= 0")
-    if is_add_remove_scenario(args.scenario) and args.box_mix == 0 and args.circle_mix == 0:
-        raise ValueError("--box-mix and --circle-mix cannot both be zero for the add/remove scenarios.")
-
-    counts = parse_counts_from_step_arguments(args.step_size, args.ending_step, args.starting_step)
-
-    if not os.path.isfile(args.runner):
-        raise FileNotFoundError(f"Runner not found: {args.runner}")
-
-    base_command = [
-        args.runner,
-        "--scenario",
-        args.scenario,
-        "--warmup-frames",
-        str(args.warmup_frames),
-        "--measure-frames",
-        str(args.measure_frames),
-        "--dt",
-        str(args.dt),
-    ]
-
-    aggregate_rows: List[Dict[str, float]] = []
-
+    parser.add_argument("--dt", type=float, default=1 / 120)
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--repetitions", type=int, default=5)
+    parser.add_argument("--cooldown-seconds", type=float, default=0)
+    parser.add_argument("--steady-count", type=int, default=1000)
+    parser.add_argument("--box-mix", type=int)
+    parser.add_argument("--circle-mix", type=int)
+    parser.add_argument("--asset-root")
+    parser.add_argument("--render", action="store_true")
+    parser.add_argument("--raw-output-dir", "--raw-dir", dest="raw_dir")
+    parser.add_argument("--validate-invariants", action="store_true", help="Per-step contact/support oracle; results are not performance measurements")
+    parser.add_argument("--output", default="benchmark_scaling.csv")
+    args = parser.parse_args(argv)
+    if args.warmup_frames < 0 or args.measure_frames <= 0 or args.workers <= 0 or args.seed < 0 or args.repetitions < (1 if args.validate_invariants else 5) or args.steady_count <= 0:
+        raise ValueError("Use nonnegative warmup/seed, positive steps/workers/population, and at least five independent repetitions")
+    if not math.isfinite(args.dt) or args.dt <= 0 or not math.isfinite(args.cooldown_seconds) or args.cooldown_seconds < 0:
+        raise ValueError("dt/cooldown must be finite, with positive dt and nonnegative cooldown")
+    if any(value is not None and value < 0 for value in (args.box_mix, args.circle_mix)) or args.box_mix == args.circle_mix == 0:
+        raise ValueError("Invalid box/circle mix")
+    if args.counts and (args.step_size is not None or args.ending_step is not None or args.starting_step is not None):
+        raise ValueError("Use --counts or step arguments, not both")
+    counts = parse_counts(args.counts) if args.counts else parse_counts_from_step_arguments(args.step_size, args.ending_step, args.starting_step)
+    runner = Path(args.runner).resolve()
+    if not runner.is_file():
+        raise FileNotFoundError(runner)
+    output = Path(args.output).resolve()
+    if output.exists():
+        raise FileExistsError(f"Refusing to overwrite prior benchmark results: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    raw = Path(args.raw_dir).resolve() if args.raw_dir else output.with_suffix(".runs")
+    base = [str(runner), "--scenario", args.scenario, "--warmup-frames", str(args.warmup_frames), "--measure-frames", str(args.measure_frames),
+            "--dt", str(args.dt), "--workers", str(args.workers), "--seed", str(args.seed), "--repetitions", str(args.repetitions)]
+    if args.asset_root:
+        base += ["--asset-root", str(Path(args.asset_root).resolve())]
+    if args.render:
+        base += ["--render"]
+    if args.validate_invariants:
+        base += ["--validate-invariants"]
+    rows = []
     for count in counts:
-        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as temp_file:
-            temp_csv_path = temp_file.name
-
-        command = apply_count_argument(base_command, args, count)
-        command.extend(["--csv-output", temp_csv_path])
-
-        print(f"[Sweep] Running count={count}")
-        subprocess.run(command, check=True)
-
-        metrics = parse_benchmark_csv(temp_csv_path)
-        os.unlink(temp_csv_path)
-
-        aggregate_rows.append(build_result_row(args, count, metrics))
-
-        if args.cooldown_seconds > 0.0 and count != counts[-1]:
-            time.sleep(args.cooldown_seconds)
-
-    field_names = [
-        "scenario",
-        "sweep_parameter",
-        "requested_count",
-        "swept_value",
-        "steady_count",
-        "add_count",
-        "remove_count",
-        "frame_avg_ms",
-        "frame_p95_ms",
-        "broad_phase_avg_ms",
-        "broad_phase_p95_ms",
-        "narrow_phase_avg_ms",
-        "narrow_phase_p95_ms",
-        "resolve_collisions_avg_ms",
-        "resolve_collisions_p95_ms",
-        "reported_object_count_avg",
-        "reported_object_count_min",
-        "reported_object_count_max",
-        "candidate_pair_count_avg",
-        "pending_narrow_phase_pair_count_avg",
-        "active_collision_count_avg",
-        "occupied_cell_count_avg",
-        "queued_add_count_avg",
-        "queued_remove_count_avg",
-        "queued_sync_count_avg",
-    ]
-
-    with open(args.output, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=field_names)
+        results = []
+        directory = raw / f"population-{count:06d}"
+        directory.mkdir(parents=True, exist_ok=True)
+        for repetition in range(args.repetitions):
+            csv_path = directory / f"run-{repetition:02d}.csv"
+            if csv_path.exists() or csv_path.with_suffix(".manifest.json").exists():
+                raise FileExistsError(csv_path)
+            command = apply_count_argument(base, args, count) + ["--run-index", str(repetition), "--csv-output", str(csv_path)]
+            print(f"[Sweep] {args.scenario} count={count} run={repetition + 1}/{args.repetitions}", flush=True)
+            with csv_path.with_suffix(".log").open("w") as log:
+                subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
+            metrics = parse_benchmark_csv(csv_path)
+            manifest = load_manifest(csv_path)
+            build = manifest["build"]
+            if manifest.get("validation_mode") != ("per-step" if args.validate_invariants else "boundary-only"):
+                raise ValueError("Validation instrumentation does not match the requested mode")
+            if build.get("configuration") != "Release" or build.get("sanitizer") != "none" or build.get("work_probes") or build.get("debug_tools"):
+                raise ValueError("Performance sweeps require Release without sanitizer/work/debug instrumentation")
+            if (manifest["workers"] != args.workers or manifest["seed"] != args.seed or manifest["measured_steps"] != args.measure_frames
+                    or manifest["warmup_steps"] != args.warmup_frames or manifest["repetitions"] != args.repetitions
+                    or manifest.get("repetition_index") != repetition or not math.isclose(manifest["dt"], args.dt, rel_tol=1e-12)
+                    or manifest["rendering"] != args.render):
+                raise ValueError("Runner did not use the requested run parameters")
+            results.append(metrics)
+            if args.cooldown_seconds:
+                time.sleep(args.cooldown_seconds)
+        row = build_result_row(args, count, results)
+        try:
+            row["raw_directory"] = str(directory.relative_to(output.parent))
+        except ValueError:
+            row["raw_directory"] = str(directory)
+        rows.append(row)
+    with output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
-        writer.writerows(aggregate_rows)
-
-    print(f"[Sweep] Wrote combined CSV: {args.output}")
+        writer.writerows(rows)
+    print(f"[Sweep] Wrote {output}; raw records retained in {raw}")
     return 0
 
 

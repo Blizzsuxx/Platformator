@@ -1,236 +1,100 @@
 #include "pathmanager.h"
-
+#include "runtimeaccess.h"
 #include <SDL3/SDL_filesystem.h>
-
-#include "buildconfig.h"
-
 #include <algorithm>
-#include <cctype>
 #include <cstdio>
-#include <filesystem>
-#include <vector>
+#include <stdexcept>
 
+namespace fs = std::filesystem;
 namespace
 {
-    bool isValidAssetsDirectory(const std::filesystem::path &assetsDirectory)
-    {
-        // Treat a directory as a valid runtime assets root if it has the core
-        // content folders and the default scene entrypoint.
-        static const std::filesystem::path requiredAssetDirectories[] = {
-            std::filesystem::path("textures"),
-            std::filesystem::path("audio"),
-            std::filesystem::path("animations"),
-            std::filesystem::path("scenes"),
-        };
-
-        static const std::filesystem::path requiredAssetFiles[] = {
-            std::filesystem::path("scenes") / "default.scene",
-        };
-
-        if (!std::filesystem::is_directory(assetsDirectory))
-        {
-            return false;
-        }
-
-        for (const std::filesystem::path &requiredAssetDirectory : requiredAssetDirectories)
-        {
-            if (!std::filesystem::is_directory(assetsDirectory / requiredAssetDirectory))
-            {
-                return false;
-            }
-        }
-
-        for (const std::filesystem::path &requiredAssetFile : requiredAssetFiles)
-        {
-            if (!std::filesystem::is_regular_file(assetsDirectory / requiredAssetFile))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    std::filesystem::path findAssetsDirectory(std::filesystem::path startDirectory)
-    {
-        if (startDirectory.empty())
-        {
-            return {};
-        }
-
-        startDirectory = std::filesystem::absolute(startDirectory).lexically_normal();
-
-        while (true)
-        {
-            const std::filesystem::path assetsDirectory = startDirectory / "assets";
-            if (isValidAssetsDirectory(assetsDirectory))
-            {
-                return assetsDirectory.lexically_normal();
-            }
-
-            const std::filesystem::path parentDirectory = startDirectory.parent_path();
-            if (parentDirectory.empty() || parentDirectory == startDirectory)
-            {
-                break;
-            }
-
-            startDirectory = parentDirectory;
-        }
-
-        return {};
-    }
-
-    const std::filesystem::path &getExecutableRuntimeRootDirectory()
-    {
-        static const std::filesystem::path executableRuntimeRootDirectory = []()
-        {
-            const char *basePath = SDL_GetBasePath();
-            if (basePath == nullptr)
-            {
-                return std::filesystem::path();
-            }
-
-            const std::filesystem::path assetsDirectory = findAssetsDirectory(std::filesystem::path(basePath));
-            if (assetsDirectory.empty())
-            {
-                return std::filesystem::path();
-            }
-
-            return assetsDirectory.parent_path().lexically_normal();
-        }();
-
-        return executableRuntimeRootDirectory;
-    }
-
-    std::filesystem::path getRuntimeRootDirectory()
-    {
-        const std::filesystem::path &executableRuntimeRootDirectory = getExecutableRuntimeRootDirectory();
-        if (!executableRuntimeRootDirectory.empty())
-        {
-            return executableRuntimeRootDirectory;
-        }
-
-        const std::filesystem::path assetsDirectory = findAssetsDirectory(std::filesystem::current_path());
-        if (!assetsDirectory.empty())
-        {
-            return assetsDirectory.parent_path().lexically_normal();
-        }
-
-        return std::filesystem::current_path().lexically_normal();
-    }
-
-    std::vector<std::string> splitPathComponents(const std::string &path)
-    {
-        std::vector<std::string> components;
-        std::string currentComponent;
-
-        for (char character : path)
-        {
-            if (character == '/')
-            {
-                if (!currentComponent.empty())
-                {
-                    components.push_back(currentComponent);
-                    currentComponent.clear();
-                }
-                continue;
-            }
-
-            currentComponent.push_back(character);
-        }
-
-        if (!currentComponent.empty())
-        {
-            components.push_back(currentComponent);
-        }
-
-        return components;
-    }
-
-    std::string joinPathComponents(const std::vector<std::string> &components, size_t startIndex)
-    {
-        std::string joinedPath;
-        for (size_t index = startIndex; index < components.size(); ++index)
-        {
-            if (!joinedPath.empty())
-            {
-                joinedPath += '/';
-            }
-
-            joinedPath += components[index];
-        }
-
-        return joinedPath;
-    }
+std::string separators(std::string path)
+{
+    std::replace(path.begin(), path.end(), '\\', '/');
+    while (path.starts_with("./"))
+        path.erase(0, 2);
+    return path;
+}
+bool logical(const fs::path &path)
+{
+    return !path.empty() && *path.begin() == "assets";
+}
+bool beneath(const fs::path &root, const fs::path &path)
+{
+    return std::mismatch(root.begin(), root.end(), path.begin(), path.end()).first == root.end();
+}
 } // namespace
+
+PathManager::PathManager(const std::string &configuredRoot) : startupBase(fs::current_path())
+{
+    if (!configuredRoot.empty())
+        root = fs::absolute(fs::path(configuredRoot));
+    else
+    {
+        const char *base = SDL_GetBasePath();
+        if (!base)
+            throw std::runtime_error("Cannot determine the executable directory");
+        fs::path executable(base);
+        if (executable.filename().empty())
+            executable = executable.parent_path();
+        root = fs::is_directory(executable / "assets") ? executable / "assets" : executable.parent_path() / "assets";
+    }
+    root = fs::weakly_canonical(root);
+}
 
 PathManager &PathManager::getInstance()
 {
-    static PathManager instance;
-    return instance;
+    return platformator_detail::RuntimeAccess::pathManager();
 }
-
-std::string PathManager::canonicalizePath(const std::string &rawPath) const
+std::string PathManager::canonicalizePath(const std::string &raw) const
 {
-    if (rawPath.empty())
-    {
-        return "";
-    }
-
-    std::string normalizedPath = rawPath;
-    std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
-    std::transform(normalizedPath.begin(), normalizedPath.end(), normalizedPath.begin(), [](unsigned char character)
-                   { return static_cast<char>(std::tolower(character)); });
-
-    normalizedPath = std::filesystem::path(normalizedPath).lexically_normal().generic_string();
-    if (normalizedPath == ".")
-    {
-        return "";
-    }
-
-    while (normalizedPath.rfind("./", 0) == 0)
-    {
-        normalizedPath.erase(0, 2);
-    }
-
-    return normalizedPath;
+    return fs::path(separators(raw)).lexically_normal().generic_string();
 }
-
-std::string PathManager::canonicalizeAssetPath(const std::string &rawPath) const
-{
-    const std::string canonicalPath = canonicalizePath(rawPath);
-    if (canonicalPath.empty())
-    {
-        return "";
-    }
-
-    std::string assetRelativePath = extractAssetsRelativePath(canonicalPath);
-    if (assetRelativePath.empty())
-    {
-        if (isAbsolutePath(canonicalPath))
-        {
-            return "";
-        }
-
-        assetRelativePath = canonicalizePath(std::string("assets/") + canonicalPath);
-    }
-
-    if (!isAssetsRelativePath(assetRelativePath))
-    {
-        return "";
-    }
-
-    return assetRelativePath;
-}
-
 std::string PathManager::getAssetsRootAbsolutePath() const
 {
-    return (getRuntimeRootDirectory() / "assets").lexically_normal().generic_string();
+    return root.generic_string();
 }
 
-std::string PathManager::getFallbackAssetPath(AssetPathType assetPathType) const
+std::string PathManager::canonicalizeAssetPath(const std::string &raw, const fs::path &sceneDirectory) const
 {
-    switch (assetPathType)
+    if (raw.empty())
+        return {};
+    const fs::path path(separators(raw));
+    fs::path candidate;
+    if (path.is_absolute())
+        candidate = path;
+    else if (logical(path))
+        candidate = root / path.lexically_relative("assets");
+    else
+    {
+        candidate = root / path;
+        if (!sceneDirectory.empty() && (*path.begin() == ".." || !fs::is_regular_file(candidate)))
+            candidate = sceneDirectory / path;
+    }
+    candidate = fs::weakly_canonical(candidate);
+    if (!beneath(root, candidate))
+        throw std::invalid_argument("Asset path escapes configured root: " + raw);
+    return (fs::path("assets") / candidate.lexically_relative(root)).generic_string();
+}
+
+fs::path PathManager::resolveScenePath(const std::string &raw) const
+{
+    if (raw.empty())
+        throw std::invalid_argument("Scene path is empty");
+    const fs::path path(separators(raw));
+    if (path.is_absolute())
+        return path.lexically_normal();
+    if (logical(path))
+    {
+        const auto canonical = fs::path(canonicalizeAssetPath(raw));
+        return root / canonical.lexically_relative("assets");
+    }
+    return (startupBase / path).lexically_normal();
+}
+
+std::string PathManager::getFallbackAssetPath(AssetPathType type) const
+{
+    switch (type)
     {
     case AssetPathType::Texture:
         return "assets/textures/missing.png";
@@ -238,83 +102,26 @@ std::string PathManager::getFallbackAssetPath(AssetPathType assetPathType) const
         return "assets/audio/missing.wav";
     case AssetPathType::AnimationClip:
         return "assets/animations/missing.animset";
-    case AssetPathType::Model:
-        return "assets/models/default_cube.obj";
-    case AssetPathType::Script:
-        return "assets/scripts/missing.lua";
-    case AssetPathType::Generic:
-        return "assets/scripts/missing.lua";
+    default:
+        return {};
     }
-
-    return "assets/scripts/missing.lua";
 }
 
-ResolvedAssetPath PathManager::resolveAssetPath(const std::string &rawPath, AssetPathType assetPathType) const
+ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw, AssetPathType type, bool required,
+                                                const fs::path &sceneDirectory) const
 {
-    const std::string canonicalPath = canonicalizeAssetPath(rawPath);
-    if (!canonicalPath.empty())
-    {
-        ResolvedAssetPath resolvedPath = makeResolvedPath(rawPath, canonicalPath, false);
-        if (std::filesystem::is_regular_file(resolvedPath.absolutePath))
-        {
-            return resolvedPath;
-        }
-
-        const std::string fallbackPath = getFallbackAssetPath(assetPathType);
-        logFallbackWarning(rawPath, "asset-not-found", fallbackPath);
-        return makeResolvedPath(rawPath, fallbackPath, true);
-    }
-
-    const std::string fallbackPath = getFallbackAssetPath(assetPathType);
-    logFallbackWarning(rawPath, "rejected-non-assets-path", fallbackPath);
-    return makeResolvedPath(rawPath, fallbackPath, true);
-}
-
-bool PathManager::isAbsolutePath(const std::string &path)
-{
-    if (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':' && path[2] == '/')
-    {
-        return true;
-    }
-
-    return std::filesystem::path(path).is_absolute();
-}
-
-std::string PathManager::extractAssetsRelativePath(const std::string &canonicalPath)
-{
-    const std::vector<std::string> components = splitPathComponents(canonicalPath);
-    for (size_t index = 0; index < components.size(); ++index)
-    {
-        if (components[index] == "assets")
-        {
-            return joinPathComponents(components, index);
-        }
-    }
-
-    return "";
-}
-
-bool PathManager::isAssetsRelativePath(const std::string &canonicalPath)
-{
-    return canonicalPath == "assets" || canonicalPath.rfind("assets/", 0) == 0;
-}
-
-ResolvedAssetPath PathManager::makeResolvedPath(const std::string &requestedPath,
-                                                const std::string &canonicalPath,
-                                                bool usedFallback) const
-{
-    return ResolvedAssetPath{requestedPath,
-                             canonicalPath,
-                             (getRuntimeRootDirectory() / canonicalPath).lexically_normal().generic_string(),
-                             usedFallback};
-}
-
-void PathManager::logFallbackWarning(const std::string &requestedPath,
-                                     const std::string &reason,
-                                     const std::string &fallbackPath) const
-{
-    PLATFORMATOR_LOG("[PathManager][Warning] requested='%s' reason='%s' fallback='%s'\n",
-                     requestedPath.c_str(),
-                     reason.c_str(),
-                     fallbackPath.c_str());
+    auto canonical = canonicalizeAssetPath(raw, sceneDirectory);
+    auto absolute = root / fs::path(canonical).lexically_relative("assets");
+    if (!canonical.empty() && fs::is_regular_file(absolute))
+        return {raw, canonical, absolute.string(), false};
+    if (required)
+        throw std::runtime_error("Required asset not found: '" + raw + "' beneath '" + root.string() + "'");
+    canonical = getFallbackAssetPath(type);
+    absolute = root / fs::path(canonical).lexically_relative("assets");
+    if (canonical.empty() || !fs::is_regular_file(absolute))
+        throw std::runtime_error("Fallback asset is missing for '" + raw + "': " + absolute.string());
+    const auto key = std::to_string(static_cast<int>(type)) + ':' + raw;
+    if (warnedFallbacks.insert(key).second)
+        std::fprintf(stderr, "Optional asset '%s' uses fallback '%s'\n", raw.c_str(), canonical.c_str());
+    return {raw, canonical, absolute.string(), true};
 }

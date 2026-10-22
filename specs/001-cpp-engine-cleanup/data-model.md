@@ -83,7 +83,7 @@ Keep dirty broad-phase work and persistent active contacts separate. Candidate c
 
 Filter changes locally remove/reinsert affected cell bindings, combining witness deltas so an allowed contact is not spuriously destroyed. Reconciliation compares final desired/current state, fixing off/on churn without contradictory ADD/REMOVE operations racing on one collider.
 
-Bodies maintain indexed awake-dynamic, kinematic, and sleep-eligible membership. Changes in impulses, support, activation, type, or external motion update only affected entries. The serial solver processes the persistent contact list in deterministic order; changed membership is canonicalized outside unchanged hot traversal. Sleeping refinements must satisfy existing physical assertions without relaxed tolerances hiding residual solver problems.
+Bodies maintain indexed awake-dynamic, kinematic, and sleep-eligible membership. Changes in impulses, support, activation, type, or external motion update only affected entries. The serial solver processes its persistent solver list in deterministic order; changed membership is canonicalized outside unchanged hot traversal. The separate contact membership collection needs no iteration order; validation sorts snapshots outside runtime timing. Sleeping refinements must satisfy existing physical assertions without relaxed tolerances hiding residual solver problems.
 
 ## Resources and asset root
 

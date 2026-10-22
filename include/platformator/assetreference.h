@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <cassert>
 #include <string>
 #include <type_traits>
 
@@ -10,36 +11,39 @@
 #include "platformator/animationclip.h"
 #include "platformator/audiowrapper.h"
 #include "platformator/runtime.h"
+#include "platformator/referenceresolver.h"
+#include <stdexcept>
 #include "platformator/texturewrapper.h"
 
 namespace platformator_detail
 {
-    TextureWrapper *loadTextureAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-    AudioWrapper *loadAudioAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-    AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-}
+TextureWrapper *loadTextureAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
+AudioWrapper *loadAudioAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
+AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
+} // namespace platformator_detail
 
-template <typename T>
-inline constexpr bool always_false_asset_reference_v = false;
+template <typename T> inline constexpr bool always_false_asset_reference_v = false;
 
-template <typename T>
-class AssetReference
+template <typename T> class AssetReference
 {
     static_assert(std::is_base_of_v<Asset, T>, "AssetReference can only store Asset-derived types.");
 
-public:
+  public:
     AssetReference() : object(nullptr), filePath(std::nullopt)
     {
     }
 
-    AssetReference(const AssetReference &other) : object(other.object), filePath(other.filePath)
+    AssetReference(const AssetReference &other)
+        : object(other.get()), filePath(other.filePath), runtimeSerial(other.runtimeSerial)
     {
         retainObject();
     }
 
-    AssetReference(AssetReference &&other) noexcept : object(other.object), filePath(std::move(other.filePath))
+    AssetReference(AssetReference &&other) noexcept
+        : object(other.object), filePath(std::move(other.filePath)), runtimeSerial(other.runtimeSerial)
     {
         other.object = nullptr;
+        other.runtimeSerial = 0;
         other.filePath = std::nullopt;
     }
 
@@ -65,7 +69,8 @@ public:
         }
 
         releaseObject();
-        object = other.object;
+        object = other.get();
+        runtimeSerial = other.runtimeSerial;
         filePath = other.filePath;
         retainObject();
         return *this;
@@ -80,19 +85,23 @@ public:
 
         releaseObject();
         object = other.object;
+        runtimeSerial = other.runtimeSerial;
         filePath = std::move(other.filePath);
         other.object = nullptr;
+        other.runtimeSerial = 0;
         other.filePath = std::nullopt;
         return *this;
     }
 
     T *get() const
     {
+        assertLifetime();
         return object;
     }
 
     std::optional<std::string> getFilePath() const
     {
+        assertLifetime();
         if (object != nullptr)
         {
             return object->getFilePath();
@@ -103,6 +112,7 @@ public:
 
     void set(T *value)
     {
+        assertLifetime();
         if (object == value)
         {
             filePath = value == nullptr ? std::nullopt : std::optional<std::string>(value->getFilePath());
@@ -111,6 +121,7 @@ public:
 
         releaseObject();
         object = value;
+        runtimeSerial = value ? value->getRuntimeSerial() : 0;
         filePath = value == nullptr ? std::nullopt : std::optional<std::string>(value->getFilePath());
         retainObject();
     }
@@ -146,24 +157,45 @@ public:
         return object;
     }
 
+    T *resolve(platformator::ReferenceResolver &resolver)
+    {
+        const auto path = getFilePath();
+        if (!path)
+            return nullptr;
+        T *asset;
+        if constexpr (std::is_same_v<T, TextureWrapper>)
+            asset = resolver.loadTexture(*path);
+        else if constexpr (std::is_same_v<T, AudioWrapper>)
+            asset = resolver.loadAudio(*path);
+        else if constexpr (std::is_same_v<T, AnimationClip>)
+            asset = resolver.loadAnimationClip(*path);
+        else
+            static_assert(always_false_asset_reference_v<T>);
+        if (!asset)
+            throw std::runtime_error("Required asset failed to load: " + *path);
+        set(asset);
+        return object;
+    }
+
     T &operator*() const
     {
-        return *object;
+        return *get();
     }
 
     T *operator->() const
     {
-        return object;
+        return get();
     }
 
     explicit operator bool() const
     {
-        return object != nullptr;
+        return get() != nullptr;
     }
 
-private:
+  private:
     void retainObject()
     {
+        assertLifetime();
         if (object != nullptr)
         {
             object->addReference();
@@ -172,10 +204,12 @@ private:
 
     void releaseObject()
     {
+        assertLifetime();
         if (object != nullptr)
         {
             T *currentObject = object;
             object = nullptr;
+            runtimeSerial = 0;
             currentObject->removeReferenceAndFreeIfNoReferences();
         }
     }
@@ -196,16 +230,28 @@ private:
         }
         else
         {
-            static_assert(always_false_asset_reference_v<T>, "AssetReference does not know how to load this asset type.");
+            static_assert(always_false_asset_reference_v<T>,
+                          "AssetReference does not know how to load this asset type.");
         }
     }
 
+    void assertLifetime() const
+    {
+#ifndef NDEBUG
+        if (runtimeSerial)
+        {
+            const auto *runtime = platformator::Runtime::tryGetCurrent();
+            assert(runtime && runtime->getRuntimeSerial() == runtimeSerial &&
+                   "Asset references must not outlive their runtime");
+        }
+#endif
+    }
     T *object;
     std::optional<std::string> filePath;
+    uint64_t runtimeSerial = 0;
 };
 
-template <typename T>
-void to_json(nlohmann::json &j, const AssetReference<T> &reference)
+template <typename T> void to_json(nlohmann::json &j, const AssetReference<T> &reference)
 {
     const std::optional<std::string> assetPath = reference.getFilePath();
     if (assetPath.has_value())
@@ -217,8 +263,7 @@ void to_json(nlohmann::json &j, const AssetReference<T> &reference)
     j = nullptr;
 }
 
-template <typename T>
-void from_json(const nlohmann::json &j, AssetReference<T> &reference)
+template <typename T> void from_json(const nlohmann::json &j, AssetReference<T> &reference)
 {
     if (j.is_null())
     {
@@ -227,12 +272,11 @@ void from_json(const nlohmann::json &j, AssetReference<T> &reference)
     }
 
     reference.setFilePath(j.get<std::string>());
-    reference.resolve();
 }
 
 namespace platformator
 {
-    using TextureAssetRef = AssetReference<TextureWrapper>;
-    using AudioAssetRef = AssetReference<AudioWrapper>;
-    using AnimationClipRef = AssetReference<AnimationClip>;
+using TextureAssetRef = AssetReference<TextureWrapper>;
+using AudioAssetRef = AssetReference<AudioWrapper>;
+using AnimationClipRef = AssetReference<AnimationClip>;
 } // namespace platformator

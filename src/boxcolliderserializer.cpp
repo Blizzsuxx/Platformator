@@ -1,6 +1,6 @@
-#include "boxcollider.h"
+#include "platformator/boxcollider.h"
 
-#include "jsonhelpers.h"
+#include "platformator/scriptregistration.h"
 
 void to_json(nlohmann::json &j, const BoxCollider &boxCollider)
 {

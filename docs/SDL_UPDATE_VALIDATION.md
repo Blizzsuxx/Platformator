@@ -1,6 +1,14 @@
 # SDL update validation
 
-The engine's used C++ APIs remain compatible: normal/Release tests, public headers, Mario, source consumers, installed SDK consumers and relocated consumers pass. **The update is not sanitizer-clean.** The previous local WAV arithmetic fix was replaced, the FluidSynth leak remains, and broader desktop TSan tests report dependency concurrency diagnostics.
+The engine's used C++ APIs remain compatible: normal/Release tests, public headers, Mario, source consumers, installed SDK consumers and relocated consumers pass. The original update replaced the local WAV arithmetic fix; it has since been restored as described below. The FluidSynth leak and broader desktop TSan dependency diagnostics remain unresolved.
+
+## Local WAV fix restored (2026-10-23)
+
+Restored the existing local patch in SDL3_mixer 3.2.4: `FetchPCM24LE` multiplies the signed high byte by 65536 instead of shifting a potentially negative signed value left by 16. The multiplication fits in Sint32 for the entire signed-byte range. The altered line is marked as a local patch; no upstream contribution was made.
+
+Rebuilt `bin/cleanup-asan` and ran the full non-package suite outside the sandbox with `ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`: **21 passed, 0 failed, 2 intentionally skipped**, 12.17 s. Both previously failing audio tests pass. The [complete follow-up log](sdl-update-evidence/wav-fix-asan-tests.txt.gz) is retained. Leak detection was disabled for this memory-access/undefined-behavior check; existing leak/TSan findings are not claimed fixed.
+
+The remaining sections and benchmark captures record the original dependency-update validation before this restoration. Their archived sources, fingerprints and results are preserved; benchmarks were not recaptured for this decoder arithmetic patch.
 
 ## Versions and integration
 

@@ -1,5 +1,7 @@
 # C++ cleanup execution evidence
 
+Latest dependency-update rerun: [SDL update validation](../../docs/SDL_UPDATE_VALIDATION.md). The imported mixer copy replaced the prior local WAV fix; current strict UBSan fails two audio tests. New leak/TSan findings and fresh benchmark captures are recorded there; the older cleanup acceptance below is historical evidence for its recorded source/dependencies.
+
 ## Initial baseline (T001)
 
 - Starting commit: `4d5bc02ce03e4119fdc4a764e993d4d4b7dad35b` (`logs`); initial working tree clean.

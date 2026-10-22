@@ -44,6 +44,8 @@ One Runtime may be active at a time. It owns objects/components/assets; returned
 
 Read [C++ API migration](docs/CPP_API_MIGRATION.md) for lifecycle, error, resolver, lifetime and asset-root contracts. [Validation guide](specs/001-cpp-engine-cleanup/quickstart.md) contains sanitizer, work-counter and package commands; [recorded evidence](specs/001-cpp-engine-cleanup/validation.md) distinguishes verified behavior and host limitations. Linux/GCC is exercised; other SDL platforms remain unverified.
 
+The latest [SDL update validation](docs/SDL_UPDATE_VALIDATION.md) records current dependency compatibility, benchmark comparisons and outstanding sanitizer findings.
+
 ## Benchmarks
 
 ```sh

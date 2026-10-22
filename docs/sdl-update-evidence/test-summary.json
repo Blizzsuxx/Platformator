@@ -1,0 +1,971 @@
+{
+  "normal-tests": {
+    "tests": [
+      {
+        "test": "platformator_regression_tests",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_script_roundtrip_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_queued_deletion_safety_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_recreation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_collider_pair_cleanup_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_foundation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_stress_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_callback_mutation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_destruction_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_object_reference_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_io_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_transform_hierarchy_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_support_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_geometry_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_step_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_work_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_asset_root_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_failure_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_startup_failure",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_only_startup",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_contract_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_sweep_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      }
+    ],
+    "passed": 21,
+    "failed": 0,
+    "skipped": 2
+  },
+  "asan-tests": {
+    "tests": [
+      {
+        "test": "platformator_regression_tests",
+        "status": "failed",
+        "ubsan": [
+          "Adding c/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c:789:48: runtime error: left shift of negative value -8"
+        ],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_script_roundtrip_test",
+        "status": "failed",
+        "ubsan": [
+          "/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c:789:48: runtime error: left shift of negative value -8"
+        ],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_queued_deletion_safety_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_recreation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_collider_pair_cleanup_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_foundation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_stress_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_callback_mutation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_destruction_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_object_reference_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_io_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_transform_hierarchy_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_support_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_geometry_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_step_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_work_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_asset_root_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_failure_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_startup_failure",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_only_startup",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_contract_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_sweep_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      }
+    ],
+    "passed": 19,
+    "failed": 2,
+    "skipped": 2
+  },
+  "leak-tests": {
+    "tests": [
+      {
+        "test": "platformator_regression_tests",
+        "status": "failed",
+        "ubsan": [
+          "Adding c/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c:789:48: runtime error: left shift of negative value -8"
+        ],
+        "tsan": [],
+        "leaked_bytes": 200,
+        "leaked_allocations": 4
+      },
+      {
+        "test": "platformator_scene_script_roundtrip_test",
+        "status": "failed",
+        "ubsan": [
+          "/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c:789:48: runtime error: left shift of negative value -8"
+        ],
+        "tsan": [],
+        "leaked_bytes": 200,
+        "leaked_allocations": 4
+      },
+      {
+        "test": "platformator_queued_deletion_safety_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 400,
+        "leaked_allocations": 8
+      },
+      {
+        "test": "platformator_runtime_recreation_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 400,
+        "leaked_allocations": 8
+      },
+      {
+        "test": "platformator_collider_pair_cleanup_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 400,
+        "leaked_allocations": 8
+      },
+      {
+        "test": "platformator_runtime_foundation_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 2000,
+        "leaked_allocations": 40
+      },
+      {
+        "test": "platformator_scene_transition_contract_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 200,
+        "leaked_allocations": 4
+      },
+      {
+        "test": "platformator_scene_transition_stress_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 200,
+        "leaked_allocations": 4
+      },
+      {
+        "test": "platformator_callback_mutation_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 2000,
+        "leaked_allocations": 40
+      },
+      {
+        "test": "platformator_destruction_contract_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 1000,
+        "leaked_allocations": 20
+      },
+      {
+        "test": "platformator_object_reference_contract_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 400,
+        "leaked_allocations": 8
+      },
+      {
+        "test": "platformator_scene_io_contract_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 200,
+        "leaked_allocations": 4
+      },
+      {
+        "test": "platformator_transform_hierarchy_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_support_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_geometry_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_step_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 200,
+        "leaked_allocations": 4
+      },
+      {
+        "test": "platformator_runtime_work_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_asset_root_contract_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 400,
+        "leaked_allocations": 8
+      },
+      {
+        "test": "platformator_runner_failure_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_startup_failure",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_only_startup",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_contract_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_sweep_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      }
+    ],
+    "passed": 7,
+    "failed": 14,
+    "skipped": 2
+  },
+  "benchmark-tests": {
+    "tests": [
+      {
+        "test": "platformator_regression_tests",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_script_roundtrip_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_queued_deletion_safety_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_recreation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_collider_pair_cleanup_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_foundation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_stress_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_callback_mutation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_destruction_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_object_reference_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_io_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_transform_hierarchy_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_support_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_geometry_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_step_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_work_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_asset_root_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_failure_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_startup_failure",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_only_startup",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_sweep_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      }
+    ],
+    "passed": 22,
+    "failed": 0,
+    "skipped": 1
+  },
+  "tsan-full-tests": {
+    "tests": [
+      {
+        "test": "platformator_regression_tests",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [
+          "WARNING: ThreadSanitizer: data race (pid=67628)"
+        ],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_script_roundtrip_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_queued_deletion_safety_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_recreation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_collider_pair_cleanup_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_foundation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_contract_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [
+          "WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=67752)"
+        ],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_transition_stress_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_callback_mutation_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_destruction_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_object_reference_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_scene_io_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_transform_hierarchy_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_support_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_geometry_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_step_test",
+        "status": "failed",
+        "ubsan": [],
+        "tsan": [
+          "WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=67916)"
+        ],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runtime_work_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_asset_root_contract_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_failure_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_runner_startup_failure",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_physics_only_startup",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_contract_test",
+        "status": "skipped",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      },
+      {
+        "test": "platformator_benchmark_sweep_test",
+        "status": "passed",
+        "ubsan": [],
+        "tsan": [],
+        "leaked_bytes": 0,
+        "leaked_allocations": 0
+      }
+    ],
+    "passed": 18,
+    "failed": 3,
+    "skipped": 2
+  }
+}

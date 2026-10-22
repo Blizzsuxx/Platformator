@@ -1,0 +1,90 @@
+{
+  "scenario": "add_and_remove",
+  "churn": 1000,
+  "steady": 1000,
+  "workers": 1,
+  "seed": 0,
+  "warmup": 120,
+  "steps": 600,
+  "dt": 0.008333333333333333,
+  "order": [
+    [
+      "new",
+      0
+    ],
+    [
+      "old",
+      0
+    ],
+    [
+      "new",
+      1
+    ],
+    [
+      "old",
+      1
+    ],
+    [
+      "new",
+      2
+    ],
+    [
+      "old",
+      2
+    ],
+    [
+      "old",
+      3
+    ],
+    [
+      "new",
+      3
+    ],
+    [
+      "new",
+      4
+    ],
+    [
+      "old",
+      4
+    ]
+  ],
+  "method": "Same current runner and headers; interleaved retained old/new Release SDL runtime libraries. Version functions verify loading. No rebuild between variants.",
+  "old_library_sha256": {
+    "libSDL3.so.0.4.2": "1aa743fdb878e4a6d0cbdb12910d94881d07d3dea1e62567845b46318e67e785",
+    "libSDL3_mixer.so.0.2.0": "0333b2a1625579a62d7bb5d9b51cdf7c9f83eb91a0257fd838b6173823fde224",
+    "libSDL3_image.so.0.4.0": "6559d701992eafa407cac67fb0355c12784a6bd864cf0b7f02062690af5ecf7f",
+    "libSDL3_ttf.so.0.1.0": "aaf12a9a2d23c134e6cc864a8d035c9066ad7bd11676ea7f3aceed51a16f7547"
+  },
+  "samples_ms": {
+    "old": [
+      2.76865968667,
+      2.65406088167,
+      2.737123935,
+      2.838465255,
+      3.19016811
+    ],
+    "new": [
+      2.72882221167,
+      2.80018655333,
+      2.81251770167,
+      3.008068925,
+      3.08912116167
+    ]
+  },
+  "statistics": {
+    "old": {
+      "mean_ms": 2.837695573668,
+      "stdev_ms": 0.20787002524464276,
+      "min_ms": 2.65406088167,
+      "max_ms": 3.19016811
+    },
+    "new": {
+      "mean_ms": 2.887743310668,
+      "stdev_ms": 0.15298062463099246,
+      "min_ms": 2.72882221167,
+      "max_ms": 3.08912116167
+    }
+  },
+  "difference_percent": 1.7636753379894454
+}

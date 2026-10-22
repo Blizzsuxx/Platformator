@@ -163,7 +163,7 @@ def main():
     source = Path(__file__).resolve().parents[1]
     with tarfile.open(root / "source.tar.gz", "x:gz") as output:
         for relative in ("src", "include", "cmake", "tests", "assets", "CMakeLists.txt", "CMakePresets.json", "benchmark/sweep_scaling.py",
-                         "benchmark/plot_scaling.py", "benchmark/capture_cleanup.py", "vendored/SDL3_mixer-3.2.0/src/decoder_wav.c"):
+                         "benchmark/plot_scaling.py", "benchmark/capture_cleanup.py", "vendored/SDL3_mixer-3.2.4/src/decoder_wav.c"):
             output.add(source / relative, arcname=relative)
     (root / "SHA256SUMS").write_text("".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(root)}\n"
                                              for path in sorted(root.rglob("*")) if path.is_file() and path.name != "SHA256SUMS"))

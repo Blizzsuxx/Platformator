@@ -4,51 +4,52 @@
 
 namespace
 {
-bool canonicalLess(const ColliderPair *a, const ColliderPair *b)
-{
-    if (a->getObjectA()->getHandle() != b->getObjectA()->getHandle())
-        return a->getObjectA()->getHandle() < b->getObjectA()->getHandle();
-    return a->getObjectB()->getHandle() < b->getObjectB()->getHandle();
-}
-bool membership(std::vector<const ColliderPair *> &list, const ColliderPair *pair, size_t ColliderPair::*index,
-                bool desired)
-{
-    auto &position = const_cast<ColliderPair *>(pair)->*index;
-    if (desired == (position != SIZE_MAX))
-        return false;
-    if (desired)
+    bool canonicalLess(const ColliderPair *a, const ColliderPair *b)
     {
-        position = list.size();
-        list.push_back(pair);
+        if (a->getObjectA()->getHandle() != b->getObjectA()->getHandle())
+            return a->getObjectA()->getHandle() < b->getObjectA()->getHandle();
+        return a->getObjectB()->getHandle() < b->getObjectB()->getHandle();
     }
-    else
+    bool membership(std::vector<const ColliderPair *> &list, const ColliderPair *pair, size_t ColliderPair::*index,
+                    bool desired)
     {
-        const auto *moved = list.back();
-        list[position] = moved;
-        const_cast<ColliderPair *>(moved)->*index = position;
-        list.pop_back();
-        position = SIZE_MAX;
+        auto &position = const_cast<ColliderPair *>(pair)->*index;
+        if (desired == (position != SIZE_MAX))
+            return false;
+
+        if (desired)
+        {
+            position = list.size();
+            list.push_back(pair);
+        }
+        else
+        {
+            const auto *moved = list.back();
+            list[position] = moved;
+            const_cast<ColliderPair *>(moved)->*index = position;
+            list.pop_back();
+            position = SIZE_MAX;
+        }
+        return true;
     }
-    return true;
-}
-void order(std::vector<const ColliderPair *> &list, size_t ColliderPair::*index, bool &dirty)
-{
-    if (!dirty)
-        return;
-    std::sort(list.begin(), list.end(), canonicalLess);
-    for (size_t i = 0; i < list.size(); ++i)
-        const_cast<ColliderPair *>(list[i])->*index = i;
-    dirty = false;
-}
-bool observed(Collider *collider)
-{
-    const auto *script = collider->getGameObject()->getComponent<ScriptComponent>();
-    return collider->getIsCallbackEligible() && script && script->canDispatch() && !script->getBehaviors().empty();
-}
-bool movingBody(const Rigidbody *body)
-{
-    return body && body->getBodyType() != STATIC && !body->getIsSleeping();
-}
+    void order(std::vector<const ColliderPair *> &list, size_t ColliderPair::*index, bool &dirty)
+    {
+        if (!dirty)
+            return;
+        std::sort(list.begin(), list.end(), canonicalLess);
+        for (size_t i = 0; i < list.size(); ++i)
+            const_cast<ColliderPair *>(list[i])->*index = i;
+        dirty = false;
+    }
+    bool observed(Collider *collider)
+    {
+        const auto *script = collider->getGameObject()->getComponent<ScriptComponent>();
+        return collider->getIsCallbackEligible() && script && script->canDispatch() && !script->getBehaviors().empty();
+    }
+    bool movingBody(const Rigidbody *body)
+    {
+        return body && body->getBodyType() != STATIC && !body->getIsSleeping();
+    }
 } // namespace
 
 void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
@@ -73,7 +74,8 @@ void PhysicsManager::reducePairSupport(const ColliderPair *pair)
                                          (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT));
     const bool supportsB = collision && (collision->supportState &
                                          (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE));
-    const auto reduce = [&](Rigidbody *&oldBody, bool &oldSupport, Rigidbody *body, bool support) {
+    const auto reduce = [&](Rigidbody *&oldBody, bool &oldSupport, Rigidbody *body, bool support)
+    {
         if (oldBody == body && oldSupport == support)
             return;
         if (oldSupport)

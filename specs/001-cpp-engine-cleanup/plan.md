@@ -1,5 +1,8 @@
 # Implementation Plan: C++ Engine Cleanup
 
+**24 October 2026 amendment:** At the user's request, behavior reference resolution now runs only immediately before first start, for both loaded and programmatic behaviors. Inactive behaviors wait for activation. `referencesPrepared` and the scene-preparation behavior-resolution pass were removed. Startup reference errors leave the replacement committed. Earlier staged-behavior-binding decisions/tasks below record the original implementation and are superseded by this amendment; see [runtime-lifecycle.md](contracts/runtime-lifecycle.md) and [validation.md](validation.md).
+
+
 **Branch**: `001-cpp-engine-cleanup` | **Date**: 2026-10-21 | **Spec**: [spec.md](spec.md)  
 **Input**: [Feature specification](spec.md), [codebase review](../../CODEBASE_REVIEW.md), and the user's explicit simplicity/performance requirements.  
 **Status**: All 95 tasks implemented and verified on Linux/GCC. Corrected 36-process invariant and 180-process Release references are recorded; see [validation.md](validation.md) for evidence, migrations and host/platform limitations.

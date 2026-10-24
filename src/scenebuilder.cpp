@@ -239,21 +239,6 @@ void SceneBuildContext::prepare(const Scene &scene)
             addIdentity(*object, Kind::GameObject);
             addIdentity(*object->getComponent<Camera>(), Kind::Camera);
         }
-        for (auto *object : objects)
-            if (auto *script = object->getComponent<ScriptComponent>())
-                for (auto *behavior : script->getBehaviors())
-                {
-                    try
-                    {
-                        behavior->resolveReferences(*this);
-                    }
-                    catch (const std::exception &error)
-                    {
-                        throw std::runtime_error("Object " + std::to_string(object->getId()) + ", behavior '" +
-                                                 behavior->getTypeName() + "': " + error.what());
-                    }
-                    behavior->referencesPrepared = true;
-                }
     }
     catch (const std::exception &error)
     {

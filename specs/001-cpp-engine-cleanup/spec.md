@@ -50,7 +50,7 @@ As a game author, I can serialize scene-local IDs and keep typed runtime referen
 
 1. Retiring a target makes its references empty without reading freed memory; slot reuse, repeated file IDs, and new runtimes do not revive them.
 2. Loading a valid scene twice replaces it; one instance exists and name/ID lookup agrees.
-3. Duplicate object/component IDs, incompatible typed references, or unknown behavior types reject staging before live state changes.
+3. Duplicate object/component IDs, invalid component data/resources, or unknown behavior types reject staging before live state changes. Behavior references, including incompatible types and required behavior assets, resolve immediately before first start for both loaded and programmatic behaviors. Errors there leave the replacement committed; inactive behaviors defer resolution until activation.
 4. A failing load reclaims staged ownership; a failing save leaves a previous valid file intact.
 
 ### User Story 4 — Obtain correct serial and parallel physics (Priority: P1)

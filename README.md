@@ -40,7 +40,7 @@ platformator::Runtime runtime(options);
 runtime.simulateFrame(1.0 / 120.0);
 ```
 
-One Runtime may be active at a time. It owns objects/components/assets; returned raw pointers are borrowed. Use typed `ObjectReference<T>` for references that must survive lifecycle changes. Scripts request scene replacement/clear; commit occurs after callbacks and preparation succeeds before the old scene retires. `onDestroy` can read attached components but cannot perform structural edits. Interactive running uses fixed 1/120 steps; explicit stepping executes one caller-specified tick.
+One Runtime may be active at a time. It owns objects/components/assets; returned raw pointers are borrowed. Use typed `ObjectReference<T>` for references that must survive lifecycle changes. Scripts request scene replacement/clear; commit occurs after callbacks and graph/component preparation succeeds before the old scene retires. Every behavior resolves its references immediately before its first `start()`, including scene-loaded behaviors; startup reference errors leave the replacement scene committed. `onDestroy` can read attached components but cannot perform structural edits. Interactive running uses fixed 1/120 steps; explicit stepping executes one caller-specified tick.
 
 Read [C++ API migration](docs/CPP_API_MIGRATION.md) for lifecycle, error, resolver, lifetime and asset-root contracts. [Validation guide](specs/001-cpp-engine-cleanup/quickstart.md) contains sanitizer, work-counter and package commands; [recorded evidence](specs/001-cpp-engine-cleanup/validation.md) distinguishes verified behavior and host limitations. Linux/GCC is exercised; other SDL platforms remain unverified.
 

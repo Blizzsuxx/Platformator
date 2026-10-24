@@ -2,10 +2,20 @@
 #include <iostream>
 #include <platformator/assetreference.h>
 #include <platformator/scene.h>
+#include <platformator/scriptcomponent.h>
+#include <platformator/scriptregistration.h>
 #include <SDL3/SDL.h>
 
 using namespace test_support;
 namespace fs = std::filesystem;
+namespace
+{
+struct StartupTexture : ::Behavior
+{
+    AssetReference<TextureWrapper> texture;
+    SERIALIZABLE_SCRIPT(StartupTexture, texture);
+};
+}
 int main()
 {
     headlessEnvironment();
@@ -59,6 +69,10 @@ int main()
                                           {"width", 20},
                                           {"height", 20},
                                           {"sourceRectEnabled", false}}};
+            document[0]["components"].push_back(
+                {{"id", 2},
+                 {"type", SCRIPT},
+                 {"behaviors", {{{"type", "StartupTexture"}, {"texture", "../textures/MiXeD.PNG"}}}}});
             {
                 std::ofstream file(scene);
                 file << document;
@@ -66,6 +80,11 @@ int main()
             runtime.loadScene("assets/scenes/Case.scene");
             require(runtime.getGameObject("case"),
                     "Scene-relative legacy resources must resolve inside the configured root");
+            auto *behavior = runtime.getGameObject("case")->getComponent<ScriptComponent>()->getBehavior<StartupTexture>();
+            require(!behavior->texture, "Behavior assets remain unresolved until startup");
+            runtime.simulateFrame(dt);
+            require(behavior->texture.get() == texture.get(),
+                    "Startup resolution must retain scene-relative paths and filename case after cwd changes");
             document[0]["components"][0]["textureFilePath"] = "assets/absent-required.png";
             {
                 std::ofstream file(scene);

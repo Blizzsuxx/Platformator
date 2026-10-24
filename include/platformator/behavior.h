@@ -19,7 +19,6 @@ class Behavior
 {
     friend class GameManager;
     friend class ScriptComponent;
-    friend class SceneBuildContext;
 
   public:
     Behavior();
@@ -49,7 +48,6 @@ class Behavior
   private:
     ScriptComponent *scriptComponent = nullptr;
     bool started = false;
-    bool referencesPrepared = false;
     size_t pendingStartIndex = SIZE_MAX;
     GameObject *gameObject = nullptr;
 };

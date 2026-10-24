@@ -2,6 +2,17 @@
 
 Latest dependency-update rerun and follow-up: [SDL update validation](../../docs/SDL_UPDATE_VALIDATION.md). The local WAV fix has been restored; strict ASan/UBSan now passes all 21 executed non-package tests, with two intentional skips and leak detection disabled. Existing leak/TSan findings remain unresolved. The dependency-update benchmark captures and older cleanup acceptance below are historical evidence for their recorded source/dependencies.
 
+## Startup-only behavior reference resolution (24 October 2026)
+
+At the user's request, removed `Behavior::referencesPrepared` and the behavior-resolution pass from scene preparation. Loaded and programmatic behaviors now resolve against the published scene immediately before first start. The active resolver is shared for the startup batch, retains the committed scene directory for relative behavior assets, and enforces required resources. Inactive behaviors defer resolution until activation; successful initialization does not repeat on reactivation. A resolution error propagates before that behavior's start, leaves the replacement committed, and remains eligible for retry; it does not restore the old scene.
+
+Updated scene transition/reference/I/O and asset-root tests check resolution/start order, no load-time resolution, loaded/programmatic parity, activation/reactivation, wrong-kind/missing targets, missing required behavior assets, startup failure cleanup and scene-relative assets after cwd changes. Preparation failures for malformed graphs, unknown behavior types and invalid component data still preserve the current scene.
+
+- `cmake --build bin/cleanup-debug --parallel 3`: passed, including Mario and independent public headers. `ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke`: **21 passed, 0 failed, 2 intentional skips**, 5.52 s. [Complete log](evidence/startup-only-debug-tests.txt.gz).
+- `cmake --build bin/cleanup-asan --parallel 3`: passed. Outside the sandbox, `ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir bin/cleanup-asan --output-on-failure -E package_smoke`: **21 passed, 0 failed, 2 intentional skips**, 11.82 s. [Complete log](evidence/startup-only-asan-tests.txt.gz).
+
+The work/benchmark-only tests intentionally skip in these configurations. Leak detection, full package relocation, TSan and Release timing were not rerun for this startup-only change. Existing leak/desktop TSan findings remain unresolved; recorded benchmark fingerprints/results describe the earlier implementation. Historical staged-behavior-binding evidence below records the original contract and is superseded by this amendment.
+
 ## Initial baseline (T001)
 
 - Starting commit: `4d5bc02ce03e4119fdc4a764e993d4d4b7dad35b` (`logs`); initial working tree clean.

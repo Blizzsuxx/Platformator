@@ -9,16 +9,31 @@ using namespace test_support;
 
 namespace
 {
-struct LoadedStart : ::Behavior
+struct LoadedStart : test_support::Behavior
 {
-    SERIALIZABLE_SCRIPT(LoadedStart);
-    inline static int starts = 0, updates = 0;
+    ObjectReference<GameObject> target;
+    inline static int resolutions = 0, starts = 0, updates = 0;
+    inline static std::vector<std::string> trace;
+    void deserialize(const nlohmann::json &json) override
+    {
+        json.at("target").get_to(target);
+    }
+    void resolveReferences(platformator::ReferenceResolver &resolver) override
+    {
+        ++resolutions;
+        trace.push_back("resolve");
+        resolver.resolve(target);
+        require(target.get() == getGameObject(), "Startup resolution must use the published scene");
+    }
     void start() override
     {
+        require(target.get() == getGameObject(), "References must resolve before start");
+        trace.push_back("start");
         ++starts;
     }
     void update(double) override
     {
+        trace.push_back("update");
         ++updates;
     }
 };
@@ -45,6 +60,7 @@ int main()
     const auto b = std::filesystem::absolute("transition-b.scene");
     try
     {
+        platformator::registerScriptFactory("LoadedStart", []() -> ::Behavior * { return new LoadedStart(); });
         writeScene(a, "old");
         writeScene(b, "new");
         platformator::Runtime runtime;
@@ -107,16 +123,54 @@ int main()
             std::ifstream file(b);
             file >> document;
         }
-        document[0]["components"].push_back({{"id", 1}, {"type", SCRIPT}, {"behaviors", {{{"type", "LoadedStart"}}}}});
+        document[0]["components"].push_back(
+            {{"id", 1}, {"type", SCRIPT}, {"behaviors", {{{"type", "LoadedStart"}, {"target", 0}}}}});
         {
             std::ofstream file(b);
             file << document;
         }
         runtime.simulateFrameWithCustomCallback(dt, [&](double) { runtime.requestLoadScene(b.string()); });
-        require(LoadedStart::starts == 0 && LoadedStart::updates == 0, "Published scripts cannot start during commit");
+        auto *loaded = runtime.getGameObject("new")->getComponent<ScriptComponent>()->getBehavior<LoadedStart>();
+        require(LoadedStart::resolutions == 0 && LoadedStart::starts == 0 && LoadedStart::updates == 0 && !loaded->target,
+                "Scene commit must not resolve or start behaviors");
         runtime.simulateFrame(dt);
         require(LoadedStart::starts == 1 && LoadedStart::updates == 1,
                 "Published scripts start before dispatch next step");
+        require(LoadedStart::trace == std::vector<std::string>{"resolve", "start", "update"},
+                "Loaded behaviors must resolve immediately before start");
+        runtime.simulateFrame(dt);
+        require(LoadedStart::resolutions == 1 && LoadedStart::starts == 1,
+                "Ordinary steps must not repeat initialization");
+        runtime.getGameObject("new")->setActive(false);
+        runtime.getGameObject("new")->setActive(true);
+        runtime.simulateFrame(dt);
+        require(LoadedStart::resolutions == 1 && LoadedStart::starts == 1,
+                "Reactivation must not repeat initialization");
+
+        document[0]["active"] = false;
+        {
+            std::ofstream file(b);
+            file << document;
+        }
+        runtime.loadScene(b.string());
+        runtime.simulateFrame(dt);
+        require(LoadedStart::resolutions == 1 && LoadedStart::starts == 1,
+                "Inactive loaded behaviors defer resolution as well as start");
+        runtime.getGameObject("new")->setActive(true);
+        runtime.simulateFrame(dt);
+        require(LoadedStart::resolutions == 2 && LoadedStart::starts == 2,
+                "First activation resolves and starts a loaded behavior");
+
+        auto *created = runtime.createGameObject()->addComponent<ScriptComponent>();
+        auto *createdBehavior = new LoadedStart();
+        createdBehavior->target.set(created);
+        created->getComponent<ScriptComponent>()->addBehavior(createdBehavior);
+        LoadedStart::trace.clear();
+        runtime.simulateFrame(dt);
+        require(LoadedStart::resolutions == 3 && LoadedStart::starts == 3 &&
+                    LoadedStart::trace.size() >= 2 && LoadedStart::trace[0] == "resolve" &&
+                    LoadedStart::trace[1] == "start",
+                "Programmatic behaviors use the same resolve-then-start path");
         int exits = 0;
         auto *survivor = runtime.createGameObject()
                              ->setName("survivor")

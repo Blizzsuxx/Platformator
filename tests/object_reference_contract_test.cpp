@@ -80,8 +80,10 @@ int main()
             require(!previous && runtime.getObjectById(id) == runtime.getGameObject("source"),
                     "Repeated file IDs cannot revive old handles");
             auto *loaded = runtime.getGameObject("source")->getComponent<ScriptComponent>()->getBehavior<References>();
-            require(loaded && loaded->target && loaded->target->getId() == targetId,
-                    "Staged references publish with their target");
+            require(loaded && !loaded->target, "Loaded behavior references remain unbound until startup");
+            runtime.simulateFrame(dt);
+            require(loaded->target && loaded->target->getId() == targetId,
+                    "Startup binds behavior references against the published scene");
             std::filesystem::remove(path);
         }
         require(!expired && nlohmann::json(expired).is_null(),

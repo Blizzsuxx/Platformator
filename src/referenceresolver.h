@@ -45,7 +45,8 @@ class ResourceDirectoryResolver : public platformator::ReferenceResolver
 class ActiveReferenceResolver : public platformator::ReferenceResolver
 {
   public:
-    explicit ActiveReferenceResolver(platformator::Runtime &runtime) : runtime(runtime)
+    explicit ActiveReferenceResolver(platformator::Runtime &runtime, std::filesystem::path directory = {})
+        : runtime(runtime), directory(std::move(directory))
     {
     }
     BaseObject *findObject(int id, ObjectKind kind) override;
@@ -56,5 +57,6 @@ class ActiveReferenceResolver : public platformator::ReferenceResolver
 
   private:
     platformator::Runtime &runtime;
+    std::filesystem::path directory;
 };
 } // namespace platformator_detail

@@ -700,16 +700,14 @@ void GameManager::triggerStartedBehaviors()
         behavior->pendingStartIndex = SIZE_MAX;
     try
     {
+        auto &runtime = platformator::Runtime::current();
+        platformator_detail::ActiveReferenceResolver resolver(
+            runtime, std::filesystem::path(runtime.currentSceneFilePath).parent_path());
         for (auto *behavior : startingBehaviors)
         {
             if (behavior->started || !behavior->scriptComponent->canDispatch())
                 continue;
-            if (!behavior->referencesPrepared)
-            {
-                platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-                behavior->resolveReferences(resolver);
-                behavior->referencesPrepared = true;
-            }
+            behavior->resolveReferences(resolver);
             behavior->started = true;
             behavior->start();
         }

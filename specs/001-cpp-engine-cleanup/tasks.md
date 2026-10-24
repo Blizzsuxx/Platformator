@@ -4,6 +4,9 @@ description: "Dependency-ordered C++ engine cleanup implementation tasks"
 
 # Tasks: C++ Engine Cleanup
 
+**24 October 2026 amendment:** At the user's request, behavior reference resolution now runs only immediately before first start, for both loaded and programmatic behaviors. Inactive behaviors wait for activation. `referencesPrepared` and the scene-preparation behavior-resolution pass were removed. Startup reference errors leave the replacement committed. Earlier staged-behavior-binding decisions/tasks below record the original implementation and are superseded by this amendment; see [runtime-lifecycle.md](contracts/runtime-lifecycle.md) and [validation.md](validation.md).
+
+
 **Feature**: `001-cpp-engine-cleanup`  
 **Input**: [plan.md](plan.md), [spec.md](spec.md), [research.md](research.md), [data-model.md](data-model.md), [contracts/](contracts/runtime-lifecycle.md), [quickstart.md](quickstart.md).  
 **Tests**: Explicitly required by the specification. Add discriminating contract/oracle tests before the behavior they verify; demonstrate the expected failure or missing contract first, then implement and validate. Retain the existing lightweight harness. Tests may scan/allocate; runtime hot paths should not.  

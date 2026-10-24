@@ -1,5 +1,8 @@
 # Research: C++ Engine Cleanup
 
+**24 October 2026 amendment:** At the user's request, behavior reference resolution now runs only immediately before first start, for both loaded and programmatic behaviors. Inactive behaviors wait for activation. `referencesPrepared` and the scene-preparation behavior-resolution pass were removed. Startup reference errors leave the replacement committed. Earlier staged-behavior-binding decisions/tasks below record the original implementation and are superseded by this amendment; see [runtime-lifecycle.md](contracts/runtime-lifecycle.md) and [validation.md](validation.md).
+
+
 **Date**: 2026-10-21  
 **Inputs**: [spec.md](spec.md), [review](../../CODEBASE_REVIEW.md), current C++ sources at `e01526b`. Three read-only research passes covered lifecycle/references, physics/transforms, and validation/packaging. Decisions below resolve the technical design choices; no external service or new dependency is required.
 

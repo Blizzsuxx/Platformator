@@ -1,5 +1,7 @@
 #include "referenceresolver.h"
 #include "platformator/baseobject.h"
+#include "gamemanager.h"
+#include "runtimeaccess.h"
 
 namespace platformator_detail
 {
@@ -14,14 +16,17 @@ BaseObject *ActiveReferenceResolver::findHandle(platformator::ObjectHandle handl
 }
 TextureWrapper *ActiveReferenceResolver::loadTexture(const std::string &path)
 {
-    return runtime.loadTexture(path);
+    const auto resolved = PathManager::getInstance().resolveAssetPath(path, AssetPathType::Texture, true, directory);
+    return RuntimeAccess::gameManager().loadTexture(resolved.canonicalPath, true);
 }
 AudioWrapper *ActiveReferenceResolver::loadAudio(const std::string &path)
 {
-    return runtime.loadAudio(path);
+    const auto resolved = PathManager::getInstance().resolveAssetPath(path, AssetPathType::Audio, true, directory);
+    return RuntimeAccess::gameManager().loadAudio(resolved.canonicalPath, true);
 }
 AnimationClip *ActiveReferenceResolver::loadAnimationClip(const std::string &path)
 {
-    return runtime.loadAnimationClip(path);
+    const auto resolved = PathManager::getInstance().resolveAssetPath(path, AssetPathType::AnimationClip, true, directory);
+    return RuntimeAccess::gameManager().loadAnimationClip(resolved.canonicalPath, *this, true);
 }
 } // namespace platformator_detail

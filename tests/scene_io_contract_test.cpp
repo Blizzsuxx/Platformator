@@ -16,9 +16,15 @@ struct RequiredTarget : ::Behavior
     ObjectReference<GameObject> target;
     SERIALIZABLE_SCRIPT(RequiredTarget, target);
 };
+struct RequiredTexture : ::Behavior
+{
+    AssetReference<TextureWrapper> texture;
+    SERIALIZABLE_SCRIPT(RequiredTexture, texture);
+};
 struct ThrowingResolver : test_support::Behavior
 {
-    inline static int destroyed = 0, callbacks = 0;
+    AssetReference<TextureWrapper> texture;
+    inline static int destroyed = 0, callbacks = 0, attempts = 0, starts = 0;
     inline static bool published = false;
     inline static TextureWrapper *shared = nullptr;
     ~ThrowingResolver() override
@@ -29,14 +35,19 @@ struct ThrowingResolver : test_support::Behavior
     {
         ++callbacks;
     }
+    void start() override
+    {
+        ++starts;
+    }
     void resolveReferences(platformator::ReferenceResolver &resolver) override
     {
-        auto *privateObject = resolver.findObject(0, platformator_detail::ObjectKind::GameObject);
-        published = getRuntime().resolveHandle(privateObject->getHandle(),
+        ++attempts;
+        auto *object = resolver.findObject(0, platformator_detail::ObjectKind::GameObject);
+        published = getRuntime().resolveHandle(object->getHandle(),
                                                platformator_detail::ObjectKind::GameObject) != nullptr;
         require(resolver.loadTexture("assets/textures/ball.png") == shared,
-                "Preparation must reuse a retained old resource");
-        resolver.loadTexture("assets/textures/black_circle.png");
+                "Startup must reuse a retained resource");
+        texture.set(resolver.loadTexture("assets/textures/black_circle.png"));
         throw std::runtime_error("intentional resolver failure");
     }
 };
@@ -88,6 +99,18 @@ int main()
             require(runtime.getGameObject("committed") == committed && runtime.getObjectById(0) == committed,
                     "Failed preparation cannot alter committed ownership or lookup");
         };
+        const auto rejectsAtStartup = [&](const Json &bad) {
+            ObjectReference<GameObject> previous(committed);
+            write(candidate, bad);
+            runtime.loadScene(candidate.string());
+            auto *published = runtime.getObjectById(0);
+            require(!previous && published, "Behavior reference errors must not prevent scene replacement");
+            failure([&] { runtime.simulateFrame(dt); });
+            require(runtime.getObjectById(0) == published,
+                    "Startup reference failure leaves the replacement scene committed");
+            runtime.loadScene(original.string());
+            committed = runtime.getGameObject("committed");
+        };
         auto bad = base;
         bad["id"] = -1;
         rejects(Json::array({bad}));
@@ -104,9 +127,12 @@ int main()
         auto parent = base;
         parent["id"] = 3;
         parent["children"] = Json::array({bad});
-        rejects(Json::array({parent}));
+        rejectsAtStartup(Json::array({parent}));
         bad["components"][0]["behaviors"][0]["target"] = 2;
-        rejects(Json::array({bad})); // Script component is not a GameObject.
+        rejectsAtStartup(Json::array({bad})); // Script component is not a GameObject.
+        bad["components"][0]["behaviors"] = {{{"type", "RequiredTexture"},
+                                               {"texture", "assets/textures/missing-startup-resource.png"}}};
+        rejectsAtStartup(Json::array({bad}));
         bad = base;
         bad["scale"]["x"] = 0;
         rejects(Json::array({bad}));
@@ -116,10 +142,21 @@ int main()
         bad = base;
         bad["components"] = {{{"id", 2}, {"type", SCRIPT}, {"behaviors", {{{"type", "ThrowingResolver"}}}}}};
         for (int i = 0; i < 20; ++i)
-            rejects(Json::array({bad}));
-        require(ThrowingResolver::destroyed == 20 && ThrowingResolver::callbacks == 0 && !ThrowingResolver::published &&
-                    retained->getTexture(),
-                "Failed staged resolvers must release storage/resources without lifecycle callbacks or publication");
+        {
+            write(candidate, Json::array({bad}));
+            runtime.loadScene(candidate.string());
+            require(ThrowingResolver::attempts == i, "Loading must not invoke the behavior resolver");
+            const auto message = failure([&] { runtime.simulateFrame(dt); });
+            require(message.find("intentional resolver failure") != std::string::npos &&
+                        ThrowingResolver::attempts == i + 1 && ThrowingResolver::starts == 0 &&
+                        ThrowingResolver::published,
+                    "Resolver errors propagate before start, against the published scene");
+            runtime.clearScene();
+        }
+        require(ThrowingResolver::destroyed == 20 && ThrowingResolver::callbacks == 20 && retained->getTexture(),
+                "Clearing a failed startup must reclaim behaviors/resources through normal retirement");
+        runtime.loadScene(original.string());
+        committed = runtime.getGameObject("committed");
         // Fail after one fully constructed behavior, during the next deserialize.
         bad["components"][0]["behaviors"].push_back({{"type", "RequiredTarget"}, {"target", "invalid integer"}});
         rejects(Json::array({bad}));

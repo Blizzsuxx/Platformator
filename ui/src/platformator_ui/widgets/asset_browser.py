@@ -6,7 +6,7 @@ from PySide6.QtCore import QMimeData, Qt, QUrl, Signal
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QAbstractItemView, QFileSystemModel, QLabel, QTreeView, QVBoxLayout, QWidget
 
-from platformator_ui.services.asset_paths import normalize_scene_editor_asset_path
+from platformator_ui.services.asset_paths import canonicalize_asset_path
 
 
 ASSET_REFERENCE_MIME_TYPE = "application/x-platformator-asset-reference"
@@ -35,7 +35,7 @@ class AssetBrowserTreeView(QTreeView):
         except ValueError:
             return
 
-        normalized = normalize_scene_editor_asset_path(repo_relative, repo_root=self._repo_root)
+        normalized = canonicalize_asset_path(repo_relative)
         if not normalized:
             return
 
@@ -78,6 +78,6 @@ class AssetBrowserWidget(QWidget):
         except ValueError:
             return
 
-        normalized = normalize_scene_editor_asset_path(repo_relative, repo_root=self._repo_root)
+        normalized = canonicalize_asset_path(repo_relative)
         if normalized:
             self.assetActivated.emit(normalized)

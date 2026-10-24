@@ -11,8 +11,6 @@ namespace
 std::string separators(std::string path)
 {
     std::replace(path.begin(), path.end(), '\\', '/');
-    while (path.starts_with("./"))
-        path.erase(0, 2);
     return path;
 }
 bool logical(const fs::path &path)
@@ -46,32 +44,22 @@ PathManager &PathManager::getInstance()
 {
     return platformator_detail::RuntimeAccess::pathManager();
 }
-std::string PathManager::canonicalizePath(const std::string &raw) const
-{
-    return fs::path(separators(raw)).lexically_normal().generic_string();
-}
 std::string PathManager::getAssetsRootAbsolutePath() const
 {
     return root.generic_string();
 }
 
-std::string PathManager::canonicalizeAssetPath(const std::string &raw, const fs::path &sceneDirectory) const
+std::string PathManager::canonicalizeAssetPath(const std::string &raw) const
 {
     if (raw.empty())
         return {};
     const fs::path path(separators(raw));
-    fs::path candidate;
-    if (path.is_absolute())
-        candidate = path;
-    else if (logical(path))
-        candidate = root / path.lexically_relative("assets");
-    else
-    {
-        candidate = root / path;
-        if (!sceneDirectory.empty() && (*path.begin() == ".." || !fs::is_regular_file(candidate)))
-            candidate = sceneDirectory / path;
-    }
-    candidate = fs::weakly_canonical(candidate);
+    if (path.is_absolute() || !logical(path) || path == "assets" || path.filename().empty() || path.filename() == ".")
+        throw std::invalid_argument("Asset paths must use assets/...: " + raw);
+    for (const auto &component : path)
+        if (component == "..")
+            throw std::invalid_argument("Asset paths cannot contain '..': " + raw);
+    const auto candidate = fs::weakly_canonical(root / path.lexically_relative("assets"));
     if (!beneath(root, candidate))
         throw std::invalid_argument("Asset path escapes configured root: " + raw);
     return (fs::path("assets") / candidate.lexically_relative(root)).generic_string();
@@ -107,10 +95,9 @@ std::string PathManager::getFallbackAssetPath(AssetPathType type) const
     }
 }
 
-ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw, AssetPathType type, bool required,
-                                                const fs::path &sceneDirectory) const
+ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw, AssetPathType type, bool required) const
 {
-    auto canonical = canonicalizeAssetPath(raw, sceneDirectory);
+    auto canonical = canonicalizeAssetPath(raw);
     auto absolute = root / fs::path(canonical).lexically_relative("assets");
     if (!canonical.empty() && fs::is_regular_file(absolute))
         return {raw, canonical, absolute.string(), false};

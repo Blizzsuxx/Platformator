@@ -87,7 +87,7 @@ Bodies maintain indexed awake-dynamic, kinematic, and sleep-eligible membership.
 
 ## Resources and asset root
 
-Runtime normalizes one configured root at startup. A logical `assets/...` path maps beneath it while preserving disk filename case; explicit scene paths and scene-relative behavior are defined in the public contract. Fallback assets are deliberately packaged, not inferred from presence of unrelated folders.
+Runtime normalizes one configured root at startup. Every nonempty asset path uses the literal assets/ prefix and maps beneath that root while preserving disk filename case. No scene/animation directory context is stored or consulted. Bare, absolute, parent-traversing and symlink-escaping asset paths reject. Host asset-root configuration and scene-opening filesystem paths are separate APIs. Fallback assets are deliberately packaged, not inferred from presence of unrelated folders.
 
 Resource cache entries own SDL resources. Scene staging, Sprite/Audio/AnimationFrame/Animator, and explicit public asset references retain resources consistently; replacing an animator clip releases the old clip after acquiring the new one. Unreferenced release is explicit and occurs while backend resources are alive. External asset references are scoped to the owning runtime; debug assertions/tests expose violations of that documented precondition. Runtime shutdown destroys components/resources before SDL backends. A physics-only runtime skips video and audio device acquisition.
 

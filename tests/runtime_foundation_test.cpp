@@ -234,7 +234,7 @@ void audioRetention()
     }
     {
         Runtime runtime;
-        auto *cached = runtime.loadAudio(path.string());
+        auto *cached = runtime.loadAudio("assets/test_runtime/foundation.wav");
         require(cached, "Audio fixture must load");
         AssetReference<AudioWrapper> retained(cached);
         auto *owner = runtime.createGameObject()->addComponent<Audio>(cached);

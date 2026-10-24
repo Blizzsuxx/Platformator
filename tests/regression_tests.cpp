@@ -280,7 +280,8 @@ std::filesystem::path makeRuntimeAssetPath(const std::string &fileName)
 
 std::string canonicalAssetPathForTest(const std::filesystem::path &assetPath)
 {
-    return PathManager::getInstance().canonicalizeAssetPath(assetPath.generic_string());
+    return (std::filesystem::path("assets") / assetPath.lexically_relative(PathManager::getInstance().getRoot()))
+        .generic_string();
 }
 
 std::filesystem::path createTemporaryBmpAsset(const std::string &fileName, Uint8 red, Uint8 green, Uint8 blue)
@@ -880,19 +881,6 @@ std::filesystem::path findRegressionAudioAsset(const std::string &fileName)
     return (std::filesystem::path("assets") / "audio" / fileName).lexically_normal();
 }
 
-std::string makeSceneRelativeResourcePath(const std::filesystem::path &resourcePath,
-                                          const std::filesystem::path &scenePath)
-{
-    std::error_code errorCode;
-    std::filesystem::path relativePath = std::filesystem::relative(resourcePath, scenePath.parent_path(), errorCode);
-    if (!errorCode && !relativePath.empty())
-    {
-        return relativePath.generic_string();
-    }
-
-    return resourcePath.generic_string();
-}
-
 nlohmann::json makeVectorJson(float x, float y)
 {
     return nlohmann::json{{"x", x}, {"y", y}};
@@ -1397,7 +1385,7 @@ void testAnimatorComponentPlayback()
         SceneScope sceneScope(gameManager);
         GameObject *animatedObject = gameManager.createGameObject()
                                          ->setName("Animated Sprite")
-                                         ->addComponent<Sprite>(frameAPath.string().c_str(), SDL_FLIP_NONE, 8.0f, 8.0f)
+                                         ->addComponent<Sprite>(canonicalFrameAPath.c_str(), SDL_FLIP_NONE, 8.0f, 8.0f)
                                          ->addComponent<Animator>();
         sceneScope.add(animatedObject);
 
@@ -1406,8 +1394,8 @@ void testAnimatorComponentPlayback()
         require(animator != nullptr, "Animator regression failed to create the animator component.");
         require(sprite != nullptr, "Animator regression failed to create the sprite component.");
 
-        TextureWrapper *frameATexture = gameManager.loadTexture(frameAPath.string());
-        TextureWrapper *frameBTexture = gameManager.loadTexture(frameBPath.string());
+        TextureWrapper *frameATexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
+        TextureWrapper *frameBTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameBPath));
         require(frameATexture != nullptr && frameBTexture != nullptr,
                 "Animator regression failed to load the test frame textures.");
 
@@ -1470,7 +1458,7 @@ void testAnimatorAdvancedPlayback()
         SceneScope sceneScope(gameManager);
         GameObject *animatedObject = gameManager.createGameObject()
                                          ->setName("Advanced Animated Sprite")
-                                         ->addComponent<Sprite>(frameAPath.string().c_str(), SDL_FLIP_NONE, 4.0f, 4.0f)
+                                         ->addComponent<Sprite>(canonicalFrameAPath.c_str(), SDL_FLIP_NONE, 4.0f, 4.0f)
                                          ->addComponent<Animator>();
         sceneScope.add(animatedObject);
 
@@ -1479,8 +1467,8 @@ void testAnimatorAdvancedPlayback()
         require(animator != nullptr, "Advanced animator regression failed to create the animator component.");
         require(sprite != nullptr, "Advanced animator regression failed to create the sprite component.");
 
-        TextureWrapper *idleTexture = gameManager.loadTexture(frameAPath.string());
-        TextureWrapper *sheetTexture = gameManager.loadTexture(sheetPath.string());
+        TextureWrapper *idleTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
+        TextureWrapper *sheetTexture = gameManager.loadTexture(canonicalAssetPathForTest(sheetPath));
         require(idleTexture != nullptr && sheetTexture != nullptr,
                 "Advanced animator regression failed to load the clip textures.");
 
@@ -1554,18 +1542,18 @@ void testAnimationClipFileRoundTrip()
 
     try
     {
-        TextureWrapper *idleTexture = gameManager.loadTexture(frameAPath.string());
-        TextureWrapper *sheetTexture = gameManager.loadTexture(sheetPath.string());
+        TextureWrapper *idleTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
+        TextureWrapper *sheetTexture = gameManager.loadTexture(canonicalAssetPathForTest(sheetPath));
         require(idleTexture != nullptr && sheetTexture != nullptr,
                 "Animation clip file round-trip regression failed to load the source textures.");
 
         const std::vector<AnimationFrame> frames = {
             AnimationFrame(idleTexture, 0.0f), AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
-        const AnimationClip sourceClip(frames, 20.0f, false, 4.0f, 4.0f, "saved_clip", clipPath.string());
+        const AnimationClip sourceClip(frames, 20.0f, false, 4.0f, 4.0f, "saved_clip", canonicalAssetPathForTest(clipPath));
 
         writeJsonFile(clipPath, nlohmann::json(sourceClip),
                       "Animation clip file round-trip regression failed to create the clip file.");
-        AnimationClip *loadedClipPointer = gameManager.loadAnimationClip(clipPath.string());
+        AnimationClip *loadedClipPointer = gameManager.loadAnimationClip(canonicalAssetPathForTest(clipPath));
         require(loadedClipPointer != nullptr,
                 "Animation clip file round-trip regression failed to load the saved clip file.");
         const AnimationClip &loadedClip = *loadedClipPointer;
@@ -1646,15 +1634,12 @@ void testPathManagerCanonicalizationAndFallback()
 {
     PathManager &pathManager = PathManager::getInstance();
 
-    std::string mixedCaseAbsolutePath = std::filesystem::absolute(pathManager.getRoot() / "ball.png").generic_string();
-    std::replace(mixedCaseAbsolutePath.begin(), mixedCaseAbsolutePath.end(), '/', '\\');
-
     const ResolvedAssetPath sanitizedTexturePath =
-        pathManager.resolveAssetPath(mixedCaseAbsolutePath, AssetPathType::Texture);
+        pathManager.resolveAssetPath("assets\\ball.png", AssetPathType::Texture);
     require(!sanitizedTexturePath.usedFallback,
-            "PathManager regression unexpectedly used a fallback for a real asset addressed by an absolute OS path.");
+            "PathManager regression unexpectedly used a fallback for an explicit assets path.");
     require(sanitizedTexturePath.canonicalPath == "assets/ball.png",
-            "PathManager regression failed to canonicalize an absolute texture path to assets/ball.png.");
+            "PathManager regression failed to normalize separators in an assets path.");
     require(std::filesystem::is_regular_file(sanitizedTexturePath.absolutePath),
             "PathManager regression failed to resolve the canonical texture path to a real file on disk.");
 

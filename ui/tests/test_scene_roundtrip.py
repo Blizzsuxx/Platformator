@@ -47,7 +47,7 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
             "components": [
                 {
                     "id": 200,
-                    "textureFilePath": "../ball.png",
+                    "textureFilePath": "assets/ball.png",
                     "flip": 1,
                     "width": 32.0,
                     "height": 32.0,
@@ -60,9 +60,9 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
                     "behaviors": [
                         {
                             "type": "AnnotatedSceneBehavior",
-                            "icon": r"ASSETS\UI\PLAYER.PNG",
+                            "icon": r"assets\ui\PLAYER.PNG",
                             "idleClip": "assets/animations/player.animset",
-                            "sound": "audio/jump.wav",
+                            "sound": "assets/audio/jump.wav",
                             "displayName": "Player One",
                         }
                     ],
@@ -88,7 +88,7 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
     script_component = player.find_component(ScriptComponentModel)
     assert script_component is not None
     behavior = script_component.behaviors[0]
-    assert behavior.icon == "assets/ui/player.png"
+    assert behavior.icon == "assets/ui/PLAYER.PNG"
     assert behavior.idleClip == "assets/animations/player.animset"
     assert behavior.sound == "assets/audio/jump.wav"
 
@@ -109,7 +109,7 @@ def test_scene_roundtrip_preserves_unknown_data_and_normalizes_known_asset_field
 
     saved_components = saved_document[0]["components"]
     assert saved_components[0]["textureFilePath"] == "assets/ball.png"
-    assert saved_components[1]["behaviors"][0]["icon"] == "assets/ui/player.png"
+    assert saved_components[1]["behaviors"][0]["icon"] == "assets/ui/PLAYER.PNG"
     assert saved_components[1]["behaviors"][0]["sound"] == "assets/audio/jump.wav"
     assert saved_components[2]["customField"] == "preserve-me"
     assert saved_document[0]["children"][0]["position"] == {"x": 5.0, "y": -6.0}

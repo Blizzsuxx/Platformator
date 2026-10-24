@@ -41,7 +41,7 @@ from platformator_ui.scene.models import (
     SpriteComponent,
 )
 from platformator_ui.scene.mutations import add_behavior, remove_component
-from platformator_ui.services.asset_paths import AssetKind, normalize_scene_editor_asset_path
+from platformator_ui.services.asset_paths import AssetKind, canonicalize_asset_path
 from platformator_ui.services.behavior_catalog import ObjectReferenceDescriptor, ObjectReferenceTargetKind
 
 from .asset_browser import ASSET_REFERENCE_MIME_TYPE
@@ -892,11 +892,7 @@ class InspectorWidget(QWidget):
             except ValueError:
                 return None
 
-        return normalize_scene_editor_asset_path(
-            stripped_value,
-            scene_path=self._scene_path_provider(),
-            repo_root=self._repo_root,
-        )
+        return canonicalize_asset_path(stripped_value)
 
     def _pick_asset_reference(
         self,

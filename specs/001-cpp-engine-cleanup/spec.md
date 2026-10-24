@@ -76,7 +76,7 @@ As a host developer, I can consume the source or installed package, configure as
 **Acceptance Scenarios**:
 
 1. Normal CTest does not register unbuilt dependency executables.
-2. An explicit asset root resolves mixed-case filenames independently of working directory and without requiring demo folders/default scenes.
+2. An explicit asset root resolves mixed-case assets/... filenames independently of working directory and without requiring demo folders/default scenes. Bare, scene/animation-relative, absolute asset paths and parent traversal reject; host asset-root configuration and scene-opening filesystem paths remain supported.
 3. Invalid SDL or scene input produces an error and nonzero runner exit.
 4. Each public header compiles independently of private/generated forwarding headers.
 
@@ -120,7 +120,7 @@ As the diploma author, I can distinguish complete simulation cost from algorithm
 - **FR-012**: Reconcile filters, trigger/body changes, and enter/stay/exit/destruction event semantics.
 - **FR-013**: Correct circle/box contacts and preserve support-removal/sleeping coverage.
 - **FR-014**: Use fixed steps in interactive running with bounded catch-up, pause, and single-step behavior; keep explicit host stepping deterministic.
-- **FR-015**: Configure a runtime-owned asset root, preserve filename case, and keep resources alive through final users.
+- **FR-015**: Configure a runtime-owned asset root, require assets/... resource paths without containing-file-relative or absolute asset lookup, preserve filename case, and keep resources alive through final users.
 - **FR-016**: Preserve source/installed consumers, transitive dependency requirements, independent public headers, and standalone example assets.
 - **FR-017**: Repair helpers/dependency-test pollution without hiding failures or weakening assertions to match bugs.
 - **FR-018**: Measure complete steps and useful subscopes; add repeated-run metadata and correctness checks.

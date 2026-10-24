@@ -60,5 +60,5 @@ The current shell supports:
 ## Notes
 
 - The engine currently launches scenes by passing a scene file path to `bin/main`.
-- The editor normalizes known asset fields to `assets/...` on load/save.
-- Legacy scene-relative paths such as `../ball.png` are migrated to canonical asset paths when the scene location makes that possible.
+- Known asset fields use case-preserving `assets/...` paths on load/save; backslashes normalize to forward slashes.
+- Scene-relative paths such as `../ball.png` are no longer migrated. Replace legacy values with an explicit path such as `assets/ball.png`. Invalid imported fields remain visible for correction; the engine rejects them when loading or starting the behavior.

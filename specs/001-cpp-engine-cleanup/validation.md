@@ -2,6 +2,21 @@
 
 Latest dependency-update rerun and follow-up: [SDL update validation](../../docs/SDL_UPDATE_VALIDATION.md). The local WAV fix has been restored; strict ASan/UBSan now passes all 21 executed non-package tests, with two intentional skips and leak detection disabled. Existing leak/TSan findings remain unresolved. The dependency-update benchmark captures and older cleanup acceptance below are historical evidence for their recorded source/dependencies.
 
+## Assets-only resource paths (24 October 2026)
+
+At the user's request, simplified resource loading to one assets/... namespace. All nonempty asset paths need the literal assets/ prefix; filename case is preserved and backslashes normalize to forward slashes. Bare/scene-relative/animation-relative paths, absolute asset filenames, parent traversal and symlink escapes reject even for optional loads. Valid missing optional assets retain their deliberate fallbacks. Host asset-root configuration and scene-opening paths still accept their documented filesystem paths.
+
+Removed ResourceDirectoryResolver, active-resolver directory state, containing-file fallback decisions, and duplicate path resolution in staged/active resource loading. Behavior startup remains the single binding location. Scene/animation files checked into the engine and Mario already used assets/ paths; no bulk data rewriting was needed. Test fixtures now separate filesystem write locations from logical loading paths. The editor's small shared path helper/callers now apply the same syntax and preserve case instead of migrating relative fields or silently adding prefixes.
+
+New/updated contract checks cover mixed-case paths, explicit asset roots not named assets, changed cwd, nested animation frame assets, behavior startup, canonical serialized paths, valid optional fallbacks, rejected unsupported spellings and symlinks, old-scene preservation for invalid component paths, and post-commit failure for invalid behavior paths.
+
+- Normal Debug rebuild passed, including Mario/public headers. Full non-package suite: **21 passed, 0 failed, 2 intentional skips**, 5.44 s. [Log](evidence/assets-only-debug-tests.txt.gz).
+- Rebuilt ASan/UBSan; outside the sandbox, `ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir bin/cleanup-asan --output-on-failure -E package_smoke`: **21 passed, 0 failed, 2 intentional skips**, 12.03 s. [Log](evidence/assets-only-asan-tests.txt.gz).
+- Full `tests/package_smoke.cmake`: core-only Release build/install, source/installed/relocated public consumers, installed SDK Mario and installed/relocated Mario from unrelated cwd all passed. [Log](evidence/assets-only-package.txt.gz).
+- Focused editor asset-path and scene-roundtrip tests passed. Broader path/roundtrip/inspector/canvas run: **6 passed, 2 failed**. Both failures are existing ctrl-drag grid-snap assertions, reproduced with unchanged HEAD UI sources in a separate temporary snapshot (**2 failed, 2 deselected**). No snapping behavior was changed. [Current log](evidence/assets-only-editor-tests.txt.gz), [unchanged-source control](evidence/assets-only-editor-before.txt.gz).
+
+No TSan/leak scan or benchmark timing was repeated for this loading-policy change. Existing dependency leak/desktop TSan findings remain unresolved. Original directory-aware design/tasks and prior captures remain historical evidence, superseded by the current contracts rather than silently relabeled as current behavior.
+
 ## Startup-only behavior reference resolution (24 October 2026)
 
 At the user's request, removed `Behavior::referencesPrepared` and the behavior-resolution pass from scene preparation. Loaded and programmatic behaviors now resolve against the published scene immediately before first start. The active resolver is shared for the startup batch, retains the committed scene directory for relative behavior assets, and enforces required resources. Inactive behaviors defer resolution until activation; successful initialization does not repeat on reactivation. A resolution error propagates before that behavior's start, leaves the replacement committed, and remains eligible for retry; it does not restore the old scene.

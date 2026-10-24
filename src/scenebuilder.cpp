@@ -12,7 +12,6 @@
 #include "platformator/scriptregistration.h"
 #include "scenecomponentio.h"
 #include "inputvalidation.h"
-#include "pathmanager.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
 #include "platformator/boxcollider.h"
@@ -258,19 +257,13 @@ BaseObject *SceneBuildContext::findObject(int id, Kind kind)
 }
 TextureWrapper *SceneBuildContext::loadTexture(const std::string &path)
 {
-    const auto resolved = PathManager::getInstance().resolveAssetPath(path, AssetPathType::Texture, true,
-                                                                      std::filesystem::path(this->path).parent_path());
-    return retainAcquisition(textures, manager.loadTexture(resolved.canonicalPath, true));
+    return retainAcquisition(textures, manager.loadTexture(path, true));
 }
 AudioWrapper *SceneBuildContext::loadAudio(const std::string &path)
 {
-    const auto resolved = PathManager::getInstance().resolveAssetPath(path, AssetPathType::Audio, true,
-                                                                      std::filesystem::path(this->path).parent_path());
-    return retainAcquisition(audio, manager.loadAudio(resolved.canonicalPath, true));
+    return retainAcquisition(audio, manager.loadAudio(path, true));
 }
 AnimationClip *SceneBuildContext::loadAnimationClip(const std::string &path)
 {
-    const auto resolved = PathManager::getInstance().resolveAssetPath(path, AssetPathType::AnimationClip, true,
-                                                                      std::filesystem::path(this->path).parent_path());
-    return retainAcquisition(clips, manager.loadAnimationClip(resolved.canonicalPath, *this, true));
+    return retainAcquisition(clips, manager.loadAnimationClip(path, *this, true));
 }

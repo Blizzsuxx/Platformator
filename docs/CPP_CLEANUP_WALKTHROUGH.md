@@ -1,6 +1,6 @@
 # C++ review and cleanup walkthrough
 
-Written 24 October 2026 against the tree at `1f3ffa2` (`SDL fix`), with the startup-only reference-resolution follow-up described below. This is a reading guide to the work performed during the review, cleanup, benchmark capture, and SDL follow-up. It explains the behavior changes and maps them to files so you can read the implementation without reconstructing the chat.
+Written 24 October 2026 against the tree at `1f3ffa2` (`SDL fix`), with the startup-only reference-resolution and assets-only path follow-ups described below. This is a reading guide to the work performed during the review, cleanup, benchmark capture, and SDL follow-up. It explains the behavior changes and maps them to files so you can read the implementation without reconstructing the chat.
 
 The engine already had a library target, public headers, components, scripts, serialization, rendering, audio, animation, a spatial grid, collision manifolds, an impulse solver, sleeping, and benchmark infrastructure before this work. Those systems are your existing engine; this cleanup repaired and reorganized them. It did not introduce a new ECS or replace the physics architecture.
 
@@ -39,8 +39,10 @@ For just the API changes, use [CPP_API_MIGRATION.md](CPP_API_MIGRATION.md). For 
 | `9c4f3f6` (`vendored updated`) | Your replacement of the vendored SDL libraries. The upstream library changes are not changes authored by this review. |
 | `0b9c3e4` (`logs`) | Integration paths, truthful runtime dependency metadata, update testing, benchmark captures and diagnostics. |
 | `1f3ffa2` (`SDL fix`) | Restoration of the local WAV decoder arithmetic patch and its successful sanitizer follow-up. |
+| `162d3ec` (`removed referencesPrepared`) | Follow-up unifying behavior reference binding immediately before first start. |
+| Current assets-only follow-up | Removed containing-file-relative loading and directory-aware resolvers; see §11 and the follow-up inventory. |
 
-On 24 October, you chose a simpler initialization model: all behaviors resolve references immediately before their first start. The separate scene-loading resolution pass and `referencesPrepared` flag were removed. Missing behavior references now fail after scene commit, and inactive behaviors defer that failure until activation. The original 95-task records and captured benchmarks predate this amendment.
+On 24 October, you chose a simpler initialization model: all behaviors resolve references immediately before their first start. The separate scene-loading resolution pass and `referencesPrepared` flag were removed. Missing behavior references now fail after scene commit, and inactive behaviors defer that failure until activation. The original 95-task records and captured benchmarks predate this amendment. You then chose assets-only resource paths: every nonempty asset path starts with assets/, and containing-scene/animation directory context is no longer supported.
 
 The detailed behavioral explanation below covers the main cleanup plus those follow-ups. Formatting and public-include normalization account for some large-looking diffs; a changed file does not automatically imply a rewritten algorithm.
 
@@ -205,7 +207,7 @@ void resolveReferences(platformator::ReferenceResolver &resolver) override
 }
 ```
 
-Registration macros propagate this resolver. Handwritten resolvers must adopt the signature. Every behavior, whether loaded or created in code, receives the active resolver immediately before its first start. The resolver uses the committed scene directory for relative behavior assets and treats non-null asset paths as required. A shared resolver is created once for the startup batch. Resource-directory adapters also preserve animation-relative resource context; the staging resolver remains internal to component resource construction.
+Registration macros propagate this resolver. Handwritten resolvers must adopt the signature. Every behavior, whether loaded or created in code, receives the active resolver immediately before its first start. All asset references use explicit assets/ paths beneath the configured root. Non-null behavior asset paths remain required. A shared resolver is created once for the startup batch. Directory-aware adapters and resolver directory state have been removed; resource requests go directly to the common asset loader for one path resolution. The staging resolver remains internal to component resource construction and its acquisition ledger.
 
 Deserializing behavior fields stores IDs/paths rather than resolving against the old active scene. Unknown behavior names or malformed serialized fields reject preparation. Missing non-null targets, incorrect object/component subtypes, missing behavior assets, and exceptions from a handwritten resolver fail at startup before that behavior starts. A successful startup does not repeat on reactivation. A resolver that throws can run again on a later step; the engine does not roll back its arbitrary user-side effects. There is no `referencesPrepared` flag or alternate loaded-behavior initialization path.
 
@@ -347,7 +349,7 @@ Interactive `run()` uses `SimulationClock`: 1/120-second fixed steps, maximum ei
 
 ## 11. Asset paths, startup, headless operation, and command line
 
-`RuntimeOptions::assetRoot` and `--asset-root` establish one startup-normalized root. An explicit relative root is resolved against startup cwd. Defaults check executable/assets and executable-parent/assets. Logical asset paths preserve filename case, normalize supported separator spelling and reject escaping that root. Explicit scene/animation directory context supports the documented legacy relative forms.
+`RuntimeOptions::assetRoot` and `--asset-root` establish one startup-normalized root. An explicit relative root is resolved against startup cwd. Defaults check executable/assets and executable-parent/assets. Every nonempty asset path uses the literal assets/ prefix. Paths preserve filename case and normalize backslashes to forward slashes. Bare paths, absolute asset filenames, containing-file-relative paths, parent traversal and symlink escapes reject. For example, assets/textures/Player.PNG always maps to <assetRoot>/textures/Player.PNG, even when the configured root is named Data rather than assets. There is no scene/animation directory context or implicit prefix insertion.
 
 The previous upward/demo-directory searching heuristics were removed. Missing required scene resources reject preparation. Supported optional loads diagnose and use intentional packaged fallbacks. Changing cwd later does not redefine the root. A scene path itself can be absolute or startup-relative.
 
@@ -394,7 +396,7 @@ The existing lightweight test approach remains. New tests exercise public contra
 | `physics_geometry_test.cpp` | Independent shape/parameter checks and the empty-clipped-manifold regression. |
 | `runtime_step_test.cpp` | Step order, deterministic clock partitions, pause/manual/catch-up and invalid dt. |
 | `runtime_work_test.cpp` | Counted warmed-idle C++ allocations and affected transform/body work, in a dedicated instrumented build. |
-| `asset_root_contract_test.cpp` | Root selection, filename case, resource policy, legacy context and root escape. |
+| `asset_root_contract_test.cpp` | Root selection, filename case, required/fallback resources, canonical serialization, rejection of unsupported paths/symlink escapes and nested-animation assets. |
 | `runner_failure_test.cpp` | Startup/headless/CLI failure and finite-run behavior. |
 | `benchmark_contract_test.cpp` | Complete-step includes destruction/cleanup, separate scopes, metadata and reserved storage. |
 | `package_smoke.cmake`, `consumer/` | Independent source/installed/relocated SDK and Mario consumption. |
@@ -585,16 +587,16 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | M | [src/localsortarray.h](../src/localsortarray.h) | Normalized public includes and formatting around the existing broad-phase/helper algorithms; no independent algorithm rewrite in this file. |
 | A | [src/objectregistry.cpp](../src/objectregistry.cpp) | Added reusable typed slots, runtime serial, generations, staged/live visibility and invalidation (§2). |
 | A | [src/objectregistry.h](../src/objectregistry.h) | Added reusable typed slots, runtime serial, generations, staged/live visibility and invalidation (§2). |
-| M | [src/pathmanager.cpp](../src/pathmanager.cpp) | Replaced heuristic upward/demo search with startup-rooted, case-preserving, context-aware asset resolution (§11). |
-| M | [src/pathmanager.h](../src/pathmanager.h) | Replaced heuristic upward/demo search with startup-rooted, case-preserving, context-aware asset resolution (§11). |
+| M | [src/pathmanager.cpp](../src/pathmanager.cpp) | Replaced heuristic upward/demo search with startup-rooted, case-preserving asset resolution; later restricted all asset inputs to assets/ paths (§11). |
+| M | [src/pathmanager.h](../src/pathmanager.h) | Replaced heuristic upward/demo search with startup-rooted, case-preserving asset resolution; later restricted all asset inputs to assets/ paths (§11). |
 | A | [src/physicsbodyindexes.cpp](../src/physicsbodyindexes.cpp) | Added affected-only queued membership for awake dynamics, kinematics and sleep-eligible bodies (§9). |
 | A | [src/physicscontacts.cpp](../src/physicscontacts.cpp) | Separated persistent contact/solver/stay indexes, support-delta reduction and observed-contact maintenance; removed unnecessary general contact sorting (§9). |
 | A | [src/physicsgeometry.cpp](../src/physicsgeometry.cpp) | Separated exact circle/box and circle/circle manifold generation and deterministic geometric decisions (§9). |
 | M | [src/physicsmanager.cpp](../src/physicsmanager.cpp) | Integrated pair-local parallel results, synchronized movement, deterministic solver/events, coupled box solve, sleeping and indexed body/contact work (§§7–10). |
 | M | [src/physicsmanager.h](../src/physicsmanager.h) | Integrated pair-local parallel results, synchronized movement, deterministic solver/events, coupled box solve, sleeping and indexed body/contact work (§§7–10). |
 | M | [src/referencehelpers.cpp](../src/referencehelpers.cpp) | Added scene-graph serialization scope and typed active reference validation (§§2,5). |
-| A | [src/referenceresolver.cpp](../src/referenceresolver.cpp) | Implemented active-runtime resolution and resource-directory adapters behind the public resolver (§5). |
-| A | [src/referenceresolver.h](../src/referenceresolver.h) | Implemented active-runtime resolution and resource-directory adapters behind the public resolver (§5). |
+| A | [src/referenceresolver.cpp](../src/referenceresolver.cpp) | Implemented active-runtime resolution; the later assets-only amendment removed directory adapters/context and forwards required loads directly to the common loader (§5). |
+| A | [src/referenceresolver.h](../src/referenceresolver.h) | Implemented active-runtime resolution; the later assets-only amendment removed directory adapters/context and forwards required loads directly to the common loader (§5). |
 | A | [src/referenceserialization.h](../src/referenceserialization.h) | Declared scoped membership validation for the graph being saved (§5). |
 | M | [src/rigidbody.cpp](../src/rigidbody.cpp) | Validated body inputs, updated affected-body membership/support/wake transitions, and integrated local movement under coordinated publication (§§7,9). |
 | M | [src/rigidbodyserializer.cpp](../src/rigidbodyserializer.cpp) | Replaced deleted private includes with public collider/body and shared JSON helper declarations; setters enforce the new numeric boundaries (§§5,9). |
@@ -650,7 +652,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 
 | Status | File | Change |
 | --- | --- | --- |
-| A | [tests/asset_root_contract_test.cpp](../tests/asset_root_contract_test.cpp) | Asset root/path/required-resource contracts (§13). |
+| A | [tests/asset_root_contract_test.cpp](../tests/asset_root_contract_test.cpp) | Asset root/path/required-resource contracts, unsupported-path rejection, symlink containment and canonical serialization (§13). |
 | A | [tests/benchmark_contract_test.cpp](../tests/benchmark_contract_test.cpp) | Complete-step, cleanup, metadata and sample-storage contracts (§13). |
 | A | [tests/callback_mutation_test.cpp](../tests/callback_mutation_test.cpp) | Stable callback creation/removal/replacement and activation traces (§13). |
 | M | [tests/collider_pair_cleanup_test.cpp](../tests/collider_pair_cleanup_test.cpp) | Existing pair cleanup coverage migrated to public includes and formatting; not a replacement physics oracle (§13). |
@@ -704,6 +706,20 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | A | [specs/001-cpp-engine-cleanup/tasks.md](../specs/001-cpp-engine-cleanup/tasks.md) | 95 dependency-ordered implementation, test and integration tasks; planning/evidence rather than runtime code. |
 | A | [specs/001-cpp-engine-cleanup/validation.md](../specs/001-cpp-engine-cleanup/validation.md) | Historical red/green execution evidence and links to later follow-ups; planning/evidence rather than runtime code. |
 
+### Assets-only follow-up (24 October 2026)
+
+The current follow-up simplifies the common loader rather than adding another runtime subsystem:
+
+- `src/pathmanager.{h,cpp}` rejects unsupported asset spellings at the boundary and maps assets/ paths beneath the configured root. Removed the scene-directory parameter, filename-location fallback decisions, and the unused general canonicalizePath method. Symlink containment and case preservation remain.
+- `src/referenceresolver.{h,cpp}` removes ResourceDirectoryResolver and ActiveReferenceResolver directory state. Required texture/audio/clip loads forward directly to the common manager loader, avoiding duplicate normalization/filesystem resolution.
+- `src/gamemanager.cpp` removes animation-relative adapters and the startup resolver's directory argument. `src/scenebuilder.cpp` forwards component asset paths directly while retaining its acquisition ledger.
+- `tests/asset_root_contract_test.cpp` checks explicit paths for components, behaviors and nested clips, serialization/case, cwd independence, optional fallbacks and rejection of bare/absolute/relative/traversing/symlink-escaping paths. Regression/foundation fixtures now separate filesystem locations used to write files from logical assets paths used to load them.
+- The checked-in engine and Mario scene/animation files already used assets/ paths, so their content did not need rewriting.
+- `ui/src/platformator_ui/services/asset_paths.py` removes legacy migration, automatic prefix insertion and lowercasing. The scene serializer no longer passes a containing-directory context. Service exports and asset-browser/inspector/canvas callers use the single canonicalizer. Imported invalid fields remain visible rather than silently repaired. Focused path/roundtrip tests were updated; this is not a general GUI rewrite.
+- README, migration guide, lifecycle/library contracts, feature requirements and this walkthrough document the new rule. The older plan/research/tasks are explicitly annotated where their original directory-aware policy is superseded.
+
+Host asset-root configuration and scene-opening paths retain their filesystem semantics. Empty optional fields still mean no asset. Invalid asset spelling is an error even for an optional loader; an optional valid assets/ path that names a missing file can still select the intentional fallback.
+
 ### Dependency import and local vendor edits
 
 | Path / group | Change |
@@ -753,6 +769,9 @@ git diff -w e01526b 7906959 -- src/animator.cpp
 # Follow-up integration and the local WAV fix:
 git show 0b9c3e4 -- CMakeLists.txt src/benchmark.cpp
 git show 1f3ffa2 -- vendored/SDL3_mixer-3.2.4/src/decoder_wav.c
+
+# Assets-only simplification relative to the startup-only implementation:
+git diff 162d3ec -- src/pathmanager.cpp src/referenceresolver.h src/scenebuilder.cpp
 ```
 
 The initial walkthrough was documentation-only. The later startup-only initialization amendment changes the runtime and its tests; its current verification is recorded in validation.md. Historical benchmark archives remain unchanged. No commit or upstream submission was performed by the agent.

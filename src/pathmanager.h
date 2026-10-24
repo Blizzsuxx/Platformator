@@ -33,13 +33,11 @@ class PathManager
     }
     std::filesystem::path resolveScenePath(const std::string &path) const;
 
-    std::string canonicalizePath(const std::string &rawPath) const;
-    std::string canonicalizeAssetPath(const std::string &rawPath,
-                                      const std::filesystem::path &sceneDirectory = {}) const;
+    std::string canonicalizeAssetPath(const std::string &rawPath) const;
     std::string getAssetsRootAbsolutePath() const;
     std::string getFallbackAssetPath(AssetPathType assetPathType) const;
-    ResolvedAssetPath resolveAssetPath(const std::string &rawPath, AssetPathType assetPathType, bool required = false,
-                                       const std::filesystem::path &sceneDirectory = {}) const;
+    ResolvedAssetPath resolveAssetPath(const std::string &rawPath, AssetPathType assetPathType,
+                                       bool required = false) const;
 
   private:
     std::filesystem::path root, startupBase;

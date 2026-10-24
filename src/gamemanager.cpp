@@ -701,8 +701,7 @@ void GameManager::triggerStartedBehaviors()
     try
     {
         auto &runtime = platformator::Runtime::current();
-        platformator_detail::ActiveReferenceResolver resolver(
-            runtime, std::filesystem::path(runtime.currentSceneFilePath).parent_path());
+        platformator_detail::ActiveReferenceResolver resolver(runtime);
         for (auto *behavior : startingBehaviors)
         {
             if (behavior->started || !behavior->scriptComponent->canDispatch())
@@ -1185,9 +1184,7 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath, platf
         return nullptr;
     }
     auto clip = std::make_unique<AnimationClip>();
-    platformator_detail::ResourceDirectoryResolver localResources(
-        resolver, std::filesystem::path(resolved.absolutePath).parent_path());
-    deserialize(nlohmann::json::parse(file), *clip, localResources);
+    deserialize(nlohmann::json::parse(file), *clip, resolver);
     clip->setFilePath(resolved.canonicalPath);
     clip->runtimeSerial = registry.serial();
     auto *result = clip.get();

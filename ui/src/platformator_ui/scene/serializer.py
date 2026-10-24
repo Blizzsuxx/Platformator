@@ -36,7 +36,7 @@ class SceneSerializer:
             objects=[GameObjectModel.model_validate(game_object) for game_object in raw_document],
             source_path=str(source_path) if source_path is not None else None,
         )
-        normalize_scene_asset_paths(scene_document, scene_path=source_path, repo_root=repo_root)
+        normalize_scene_asset_paths(scene_document, repo_root=repo_root)
         return scene_document
 
     @staticmethod
@@ -67,7 +67,7 @@ class SceneSerializer:
     ) -> bytes:
         scene_copy = scene_document.model_copy(deep=True)
         if canonicalize_assets:
-            normalize_scene_asset_paths(scene_copy, scene_path=source_path, repo_root=repo_root)
+            normalize_scene_asset_paths(scene_copy, repo_root=repo_root)
 
         document = [game_object.model_dump(mode="json", exclude_none=False) for game_object in scene_copy.objects]
         return orjson.dumps(document, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS)

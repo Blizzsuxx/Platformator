@@ -19,7 +19,7 @@ from platformator_ui.scene.models import (
     SceneDocumentModel,
     SpriteComponent,
 )
-from platformator_ui.services.asset_paths import normalize_scene_editor_asset_path
+from platformator_ui.services.asset_paths import canonicalize_asset_path
 from platformator_ui.services.project_paths import ProjectPaths
 
 
@@ -727,11 +727,7 @@ class SceneCanvasWidget(QWidget):
         if not asset_path:
             return None
 
-        canonical_path = normalize_scene_editor_asset_path(
-            asset_path,
-            scene_path=self._scene_path,
-            repo_root=self._project_paths.repo_root,
-        )
+        canonical_path = canonicalize_asset_path(asset_path)
         if not canonical_path:
             return None
 

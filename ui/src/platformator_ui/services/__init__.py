@@ -12,7 +12,6 @@ __all__ = [
     "ProjectPaths",
     "canonicalize_asset_path",
     "normalize_scene_asset_paths",
-    "normalize_scene_editor_asset_path",
 ]
 
 _EXPORTS = {
@@ -20,7 +19,6 @@ _EXPORTS = {
     "ProjectPaths": (".project_paths", "ProjectPaths"),
     "canonicalize_asset_path": (".asset_paths", "canonicalize_asset_path"),
     "normalize_scene_asset_paths": (".asset_paths", "normalize_scene_asset_paths"),
-    "normalize_scene_editor_asset_path": (".asset_paths", "normalize_scene_editor_asset_path"),
 }
 
 

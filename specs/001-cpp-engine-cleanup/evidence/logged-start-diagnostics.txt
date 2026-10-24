@@ -1,0 +1,28 @@
+Behavior 'TestBehavior' on '' initialization failed: resolve failure
+Behavior 'TestBehavior' on '' initialization failed: start failure
+Behavior 'TestBehavior' on '' initialization failed: start failure
+Behavior 'TestBehavior' on '' initialization failed: unknown exception
+Behavior 'RequiredTarget' on 'committed' initialization failed: Field 'target': Missing reference target or wrong kind for ID 999
+Behavior 'RequiredTarget' on 'committed' initialization failed: Field 'target': Missing reference target or wrong kind for ID 2
+Behavior 'RequiredTexture' on 'committed' initialization failed: Field 'texture': Required asset not found: 'assets/textures/missing-startup-resource.png' beneath '/home/user/Projects/Platformator/bin/cleanup-debug/assets'
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'StartupTexture' on 'case' initialization failed: Field 'texture': Asset paths must use assets/...: ../textures/MiXeD.PNG

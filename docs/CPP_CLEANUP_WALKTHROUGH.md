@@ -136,7 +136,11 @@ Previously, a callback could grow or swap-remove the collection currently being 
 
 The manager now separates requested state from system membership. It uses reusable start, reconciliation, and retirement buffers with queued indexes/bits so the same item is not repeatedly enqueued. Dense dispatch vectors change at reconciliation boundaries. Disabling/retiring an item suppresses later eligible callbacks immediately; physical removal happens safely afterward. Off/on before the barrier reconciles the final desired state.
 
-New behaviors start once before their first ordinary callback on an eligible step. Inactive creation does not queue start work; activation makes it eligible. A behavior that already started does not start again when reactivated. Retiring a ScriptComponent suppresses its remaining behaviors during the current dispatch.
+Every attached behavior enters a pending list. The global script queue selects components with pending work. Startup iterates each queued component's pending vector in insertion order, including eligible additions made during startup. Each entry gets one resolve/start attempt. After processing the script, the attempted prefix transfers together into its runnable behaviors vector, including entries whose initialization errors were logged. Eligible additions during startup can start in the same pass; additions from later phases wait for the next startup pass, even on an already active ScriptComponent. Ordinary callbacks iterate the runnable list without a per-behavior started flag. Inactive creation does not queue startup; activation queues only pending work. Reactivation does not restart runnable behaviors. Retiring a ScriptComponent suppresses its remaining behaviors during the current dispatch.
+
+There are just two owning vectors: pendingBehaviors and behaviors (runnable entries whose initialization was attempted). getBehaviors exposes runnable entries; getPendingBehaviors exposes the pending vector; `getBehavior<T>()` searches both. Serialization, owner updates and component destruction inspect both lists. There is no separate runnableBehaviors vector. Each script component has one index for deduplication and O(1) cancellation from the global script startup queue.
+
+Resolve/start exceptions are logged per behavior so later entries can initialize. Failed entries remain owned and become runnable; only normal teardown invokes onDestroy and deletes them. Startup clears pending once after transferring attempted entries. If the script becomes inactive or retired during startup, only the processed prefix transfers, preserving its unattempted suffix. Behavior has no pending membership index. ScriptComponent retains one index for O(1) cancellation from the global script queue. Cancellation marks a queue entry empty so callbacks can append/cancel without moving the drain position. Eligible additions during startup join the current pass.
 
 ### Destruction callback rules
 
@@ -189,7 +193,7 @@ catch (const std::exception &error)
 }
 ```
 
-Preparation failure preserves the old scene; it does not undo arbitrary script-side changes already made earlier in that step or promise rollback after irreversible commit work. Behavior reference errors are startup errors after commit: the old scene is gone, earlier behaviors may already have started, and the replacement remains committed. The host can fix the data/retry or clear/load another scene.
+Preparation failure preserves the old scene; it does not undo arbitrary script-side changes already made earlier in that step or promise rollback after irreversible commit work. Behavior reference errors are startup errors after commit: the old scene is gone, earlier behaviors may already have started, and the replacement remains committed. The host can clear/load another scene or replace the failed behavior for a fresh attempt; simply advancing another step does not retry it.
 
 **Files:** `src/scenebuilder.{h,cpp}`, `src/gamemanager.cpp`, `src/runtime.cpp`, `src/scene.cpp`, `src/gameobjectserializer.cpp`.
 
@@ -209,7 +213,7 @@ void resolveReferences(platformator::ReferenceResolver &resolver) override
 
 Registration macros propagate this resolver. Handwritten resolvers must adopt the signature. Every behavior, whether loaded or created in code, receives the active resolver immediately before its first start. All asset references use explicit assets/ paths beneath the configured root. Non-null behavior asset paths remain required. A shared resolver is created once for the startup batch. Directory-aware adapters and resolver directory state have been removed; resource requests go directly to the common asset loader for one path resolution. The staging resolver remains internal to component resource construction and its acquisition ledger.
 
-Deserializing behavior fields stores IDs/paths rather than resolving against the old active scene. Unknown behavior names or malformed serialized fields reject preparation. Missing non-null targets, incorrect object/component subtypes, missing behavior assets, and exceptions from a handwritten resolver fail at startup before that behavior starts. A successful startup does not repeat on reactivation. A resolver that throws can run again on a later step; the engine does not roll back its arbitrary user-side effects. There is no `referencesPrepared` flag or alternate loaded-behavior initialization path.
+Deserializing behavior fields stores IDs/paths rather than resolving against the old active scene. Unknown behavior names or malformed serialized fields reject preparation. Missing non-null targets, incorrect object/component subtypes, missing behavior assets, and exceptions from a handwritten resolver fail at startup before that behavior starts. Initialization is not retried on reactivation, including after a logged failure. Resolve/start exceptions are logged per behavior and the startup pass continues. Attempted entries become runnable, including failures, and remain owned until normal teardown. A resolver exception skips start for that attempt. Initialization is not retried automatically and arbitrary user-side effects are not rolled back. There is no `referencesPrepared` flag or alternate loaded-behavior initialization path.
 
 ### Resource rollback
 
@@ -525,7 +529,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | M | [include/platformator/assetreference.h](../include/platformator/assetreference.h) | Explicit resolver binding, retained-resource copy/move/set behavior and owning-runtime diagnostics (§§5–6). |
 | M | [include/platformator/audio.h](../include/platformator/audio.h) | Changed the playback track member to unique_ptr with SDL custom deleter; public include/formatting cleanup (§6). |
 | M | [include/platformator/baseobject.h](../include/platformator/baseobject.h) | Separated file ID from registry handle/lifecycle, disabled identity copying, restricted ID edits, and added asset runtime ownership serial and required includes (§§2–3,6). |
-| M | [include/platformator/behavior.h](../include/platformator/behavior.h) | Added explicit resolver signature and tracked script ownership/start eligibility; the later startup-only amendment removed reference-preparation state (§§3,5). |
+| M | [include/platformator/behavior.h](../include/platformator/behavior.h) | Added the explicit resolver signature; later removed reference-preparation/started flags. Removed the behavior startup flags and membership indices; global startup membership belongs to ScriptComponent (§§3,5). |
 | M | [include/platformator/boxcollider.h](../include/platformator/boxcollider.h) | Exposed fixed-size box axes and replaced dynamic normal-vector storage (§9). |
 | M | [include/platformator/collider.h](../include/platformator/collider.h) | Added cached position, desired grid membership, dirty reasons, indexed queue membership and response invalidation; removed contradictory queued-operation flags (§§7–9). |
 | M | [include/platformator/collision.h](../include/platformator/collision.h) | Added cached two-contact normal matrices, block-solve flag and solver friction; related support behavior changes are implemented in Collision/PhysicsManager source (§9). |
@@ -537,7 +541,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | M | [include/platformator/runtime.h](../include/platformator/runtime.h) | Exposed scene request, checked identity and asset-root APIs; kept the public host boundary for stepping/scene errors (§§2,4,10–11). |
 | M | [include/platformator/runtimeoptions.h](../include/platformator/runtimeoptions.h) | Added asset-root and finite smoke-run configuration (§11). |
 | M | [include/platformator/scene.h](../include/platformator/scene.h) | Aligned scene/path/loading declarations with runtime ownership and validated save behavior (§§4–5). |
-| M | [include/platformator/scriptcomponent.h](../include/platformator/scriptcomponent.h) | Added manager access, dispatch eligibility and exactly-once destruction-delivery bookkeeping (§3). |
+| M | [include/platformator/scriptcomponent.h](../include/platformator/scriptcomponent.h) | Added manager access, dispatch eligibility and destruction bookkeeping; the follow-up uses only pending/runnable owning lists and a global script startup queue (§3). |
 | M | [include/platformator/scriptregistration.h](../include/platformator/scriptregistration.h) | Forwarded explicit resolvers through registered fields and containers; validated missing required references with field context (§5). |
 
 ### Engine implementation and private helpers
@@ -582,7 +586,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | M | [src/grid.cpp](../src/grid.cpp) | Reconciled desired collider state, affected bindings/pairs and incremental witness/event work; skipped unnecessary idle setup (§8). |
 | M | [src/grid.h](../src/grid.h) | Reconciled desired collider state, affected bindings/pairs and incremental witness/event work; skipped unnecessary idle setup (§8). |
 | M | [src/gridcell.h](../src/gridcell.h) | Normalized public includes and formatting around the existing broad-phase/helper algorithms; no independent algorithm rewrite in this file. |
-| M | [src/helpers.h](../src/helpers.h) | Normalized public includes and formatting around the existing broad-phase/helper algorithms; no independent algorithm rewrite in this file. |
+| M | [src/helpers.h](../src/helpers.h) | Normalized public includes; the scheduling follow-up delegates typed behavior lookup to ScriptComponent so it searches pending and runnable entries. |
 | A | [src/inputvalidation.h](../src/inputvalidation.h) | Added shared finite/positive/nonnegative numeric boundary helpers (§9). |
 | M | [src/localsortarray.h](../src/localsortarray.h) | Normalized public includes and formatting around the existing broad-phase/helper algorithms; no independent algorithm rewrite in this file. |
 | A | [src/objectregistry.cpp](../src/objectregistry.cpp) | Added reusable typed slots, runtime serial, generations, staged/live visibility and invalidation (§2). |
@@ -609,8 +613,8 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | A | [src/scenebuilder.cpp](../src/scenebuilder.cpp) | Added staged graph validation/construction, private handles and component-resource rollback before publication; behavior binding now occurs only at startup (§§4–5). |
 | A | [src/scenebuilder.h](../src/scenebuilder.h) | Added staged graph validation/construction, private handles and component-resource rollback before publication; behavior binding now occurs only at startup (§§4–5). |
 | A | [src/scenecomponentio.h](../src/scenecomponentio.h) | Declared component/resource deserialization overloads that accept an explicit resolver (§5). |
-| M | [src/scriptcomponent.cpp](../src/scriptcomponent.cpp) | Moved start/destruction dispatch under manager lifecycle control and enforced per-behavior callback eligibility (§3). |
-| M | [src/scriptcomponentserializer.cpp](../src/scriptcomponentserializer.cpp) | Adapted behavior-field deserialization/binding to the explicit resolver and staged graph (§5). |
+| M | [src/scriptcomponent.cpp](../src/scriptcomponent.cpp) | Owns pending/runnable behaviors, dispatches runnable entries directly and exposes both collections for lookup/serialization/teardown (§3). |
+| M | [src/scriptcomponentserializer.cpp](../src/scriptcomponentserializer.cpp) | Adapted behavior-field deserialization to the explicit resolver; serialization includes both pending and runnable entries after the scheduling cleanup (§§3,5). |
 | M | [src/sdlwindow.cpp](../src/sdlwindow.cpp) | Made backend acquisition/headless startup/teardown ownership explicit, kept transient audio cleanup safe and allowed empty-scene rendering (§§6,10–11). |
 | M | [src/sdlwindow.h](../src/sdlwindow.h) | Made backend acquisition/headless startup/teardown ownership explicit, kept transient audio cleanup safe and allowed empty-scene rendering (§§6,10–11). |
 | A | [src/simulationclock.h](../src/simulationclock.h) | Added deterministic accumulator, pause/manual-step, catch-up limit/remainder and dropped-tick accounting (§10). |

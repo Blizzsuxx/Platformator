@@ -95,6 +95,174 @@ struct Action : test_support::Behavior
     std::function<void()> action;
     bool ran = false;
 };
+struct StartupCounts : Counts
+{
+    int resolutions = 0;
+};
+struct StartupProbe : Counter
+{
+    enum class Failure
+    {
+        None,
+        Resolve,
+        Start,
+        Unknown
+    };
+    StartupProbe(StartupCounts &counts, Failure failure = Failure::None)
+        : Counter(counts), startupCounts(counts), failure(failure)
+    {
+    }
+    void resolveReferences(platformator::ReferenceResolver &) override
+    {
+        ++startupCounts.resolutions;
+        if (failure == Failure::Resolve)
+            throw std::runtime_error("resolve failure");
+    }
+    void start() override
+    {
+        Counter::start();
+        if (failure == Failure::Start)
+            throw std::runtime_error("start failure");
+        if (failure == Failure::Unknown)
+            throw 42;
+    }
+    StartupCounts &startupCounts;
+    Failure failure;
+};
+void startupFailures()
+{
+    StartupCounts badReference, badStart, failedOnly, unknown, first, second, survivor, added;
+    platformator::Runtime runtime;
+    auto *owner = runtime.createGameObject()->addComponent<ScriptComponent>();
+    auto *script = owner->getComponent<ScriptComponent>();
+    auto *unresolved = script->addBehavior(new StartupProbe(badReference, StartupProbe::Failure::Resolve));
+    script->addBehavior(new StartupProbe(first));
+    script->addBehavior(new StartupProbe(badStart, StartupProbe::Failure::Start));
+    script->addBehavior(new StartupProbe(second));
+    require(script->getBehaviors().empty() && script->getPendingBehaviors().size() == 4 &&
+                script->getBehavior<StartupProbe>() == unresolved,
+            "Pending behaviors remain discoverable without joining ordinary dispatch");
+    auto *failedOwner = runtime.createGameObject()->addComponent<ScriptComponent>();
+    auto *failedScript = failedOwner->getComponent<ScriptComponent>();
+    failedScript->addBehavior(new StartupProbe(failedOnly, StartupProbe::Failure::Start));
+    failedScript->addBehavior(new StartupProbe(unknown, StartupProbe::Failure::Unknown));
+    runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
+        new StartupProbe(survivor));
+    runtime.simulateFrame(dt);
+    require(first.starts == 1 && second.starts == 1 && survivor.starts == 1 && badStart.starts == 1 &&
+                badReference.starts == 0 && failedOnly.starts == 1 && unknown.starts == 1,
+            "Startup errors must not escape or prevent other initialization attempts");
+    require(script->getBehaviors().size() == 4 && failedScript->getBehaviors().size() == 2 &&
+                script->getPendingBehaviors().empty() && failedScript->getPendingBehaviors().empty() &&
+                script->getBehavior<StartupProbe>() == unresolved,
+            "All attempted behaviors become runnable and remain discoverable, including failed initialization");
+    require(badReference.destroyed == 0 && badStart.destroyed == 0 && failedOnly.destroyed == 0 && unknown.destroyed == 0,
+            "Startup errors must not destroy behaviors");
+    require(first.fixed == 1 && first.updates == 1 && first.late == 1 && second.updates == 1 && survivor.updates == 1 &&
+                badReference.fixed == 1 && badReference.updates == 1 && badReference.late == 1 && badStart.updates == 1 &&
+                failedOnly.updates == 1 && unknown.updates == 1,
+            "Failed initialization still participates in ordinary callbacks in the same step");
+    owner->setActive(false)->setActive(true);
+    failedOwner->setActive(false)->setActive(true);
+    script->addBehavior(new StartupProbe(added));
+    runtime.simulateFrame(dt);
+    require(first.starts == 1 && second.starts == 1 && added.starts == 1 && added.updates == 1 &&
+                badReference.resolutions == 1 && badStart.resolutions == 1 && failedOnly.resolutions == 1 &&
+                unknown.resolutions == 1 && badReference.starts == 0 && badStart.starts == 1 &&
+                failedOnly.starts == 1 && unknown.starts == 1 && badReference.updates == 2,
+            "Reactivation and later additions must not retry initialization");
+    require(script->getBehaviors().size() == 5 && failedScript->getBehaviors().size() == 2,
+            "Logged errors must leave the original behaviors owned until normal teardown");
+    runtime.clearScene();
+    require(badReference.destroyed == 1 && badStart.destroyed == 1 && failedOnly.destroyed == 1 && unknown.destroyed == 1 &&
+                first.destroyed == 1,
+            "Normal scene teardown destroys each retained behavior once");
+}
+struct StartOrder : test_support::Behavior
+{
+    StartOrder(std::vector<int> &trace, int id) : trace(trace), id(id)
+    {
+    }
+    void start() override
+    {
+        trace.push_back(id);
+    }
+    std::vector<int> &trace;
+    int id;
+};
+void scriptStartupQueue()
+{
+    std::vector<int> trace;
+    Counts deferred;
+    platformator::Runtime runtime;
+    auto *first = runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>();
+    auto *second = runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>();
+    first->addBehavior(new StartOrder(trace, 1));
+    second->addBehavior(new StartOrder(trace, 2));
+    first->addBehavior(new StartOrder(trace, 3));
+    runtime.simulateFrame(dt);
+    require(trace == std::vector<int>{1, 3, 2}, "Queued scripts start their pending behaviors together, once each");
+    auto *deferredOwner = runtime.createGameObject()->addComponent<ScriptComponent>();
+    first->addBehavior(new Action(Phase::Start, [&] { deferredOwner->setActive(false); }));
+    deferredOwner->getComponent<ScriptComponent>()->addBehavior(new Counter(deferred));
+    runtime.simulateFrame(dt);
+    require(deferred.starts == 0 && deferred.updates == 0 &&
+                deferredOwner->getComponent<ScriptComponent>()->getPendingBehaviors().size() == 1,
+            "Deactivation during the batch must preserve unattempted pending behaviors");
+    deferredOwner->setActive(true);
+    runtime.simulateFrame(dt);
+    require(deferred.starts == 1 && deferred.updates == 1, "Activation queues only remaining pending work");
+    Counts interrupted;
+    auto *interruptedOwner = runtime.createGameObject()->addComponent<ScriptComponent>();
+    auto *interruptedScript = interruptedOwner->getComponent<ScriptComponent>();
+    interruptedScript->addBehavior(new Action(Phase::Start, [&] { interruptedOwner->setActive(false); }));
+    interruptedScript->addBehavior(new Counter(interrupted));
+    runtime.simulateFrame(dt);
+    require(interrupted.starts == 0 && interruptedScript->getBehaviors().size() == 1 &&
+                interruptedScript->getPendingBehaviors().size() == 1,
+            "Interrupted startup transfers only attempted entries and preserves the unprocessed suffix");
+    interruptedOwner->setActive(true);
+    runtime.simulateFrame(dt);
+    require(interrupted.starts == 1 && interrupted.updates == 1 && interruptedScript->getPendingBehaviors().empty(),
+            "Activation starts the retained suffix once");
+}
+void additionsWithinActiveScripts()
+{
+    Counts existing, ownStart, otherStart, earlierStart, ownFixed, otherFixed;
+    platformator::Runtime runtime;
+    auto *owner = runtime.createGameObject()->addComponent<ScriptComponent>();
+    auto *other = runtime.createGameObject()->addComponent<ScriptComponent>();
+    auto *script = owner->getComponent<ScriptComponent>();
+    auto *otherScript = other->getComponent<ScriptComponent>();
+    script->addBehavior(new Action(Phase::Start, [&] {
+        script->addBehavior(new Counter(ownStart));
+        otherScript->addBehavior(new Counter(otherStart));
+    }));
+    otherScript->addBehavior(new Counter(existing));
+    otherScript->addBehavior(new Action(Phase::Start, [&] {
+        script->addBehavior(new Counter(earlierStart));
+    }));
+    runtime.simulateFrame(dt);
+    require(existing.starts == 1 && existing.updates == 1 && ownStart.starts == 1 && ownStart.updates == 1 &&
+                otherStart.starts == 1 && otherStart.updates == 1 && earlierStart.starts == 1 && earlierStart.updates == 1,
+            "Startup drains additions to current, later queued, and already processed scripts");
+    runtime.simulateFrame(dt);
+    require(ownStart.starts == 1 && ownStart.updates == 2 && otherStart.starts == 1 && otherStart.updates == 2 &&
+                earlierStart.starts == 1 && earlierStart.updates == 2,
+            "Behaviors added during startup initialize once before ordinary dispatch");
+    script->addBehavior(new Action(Phase::Fixed, [&] {
+        script->addBehavior(new Counter(ownFixed));
+        otherScript->addBehavior(new Counter(otherFixed));
+    }));
+    runtime.simulateFrame(dt);
+    require(ownFixed.starts == 0 && ownFixed.fixed == 0 && ownFixed.updates == 0 && ownFixed.late == 0 &&
+                otherFixed.starts == 0 && otherFixed.fixed == 0 && otherFixed.updates == 0 && otherFixed.late == 0,
+            "Pending additions cannot receive later-phase callbacks before startup");
+    runtime.simulateFrame(dt);
+    require(ownFixed.starts == 1 && ownFixed.fixed == 1 && ownFixed.updates == 1 && ownFixed.late == 1 &&
+                otherFixed.starts == 1 && otherFixed.updates == 1,
+            "Promoted behaviors initialize once before ordinary callbacks");
+}
 void replaceDuring(Phase phase)
 {
     Counts oldCounts, replacementCounts, survivorCounts;
@@ -224,6 +392,9 @@ int main()
             replaceDuring(phase);
         removeAndToggle();
         growAndDestroy();
+        startupFailures();
+        scriptStartupQueue();
+        additionsWithinActiveScripts();
         animationMutation();
         std::cout << "[PASS] callback mutation contracts\n";
         return 0;

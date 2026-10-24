@@ -109,7 +109,7 @@ As the diploma author, I can distinguish complete simulation cost from algorithm
 - **FR-001**: Use one safe structural-mutation policy across frame entry points and callback families.
 - **FR-002**: Commit scene changes without recursive simulation; prepare/validate replacement before retiring live state.
 - **FR-003**: Define `loadScene` as single-scene replacement and expose explicit requests for scripts; document migration from append behavior.
-- **FR-004**: Deliver start once before ordinary callbacks and destruction once while required components remain readable.
+- **FR-004**: Attempt behavior initialization once, log resolve/start exceptions per behavior, and promote all attempted entries into ordinary callbacks, including failed initialization. Retain behaviors until normal teardown and never automatically retry initialization. Deliver destruction once while required components remain readable.
 - **FR-005**: Retire physics/render/event users before freeing allocations; hierarchy links do not form a second owning tree.
 - **FR-006**: Reconcile activation and replacement with final desired registration state.
 - **FR-007**: Keep typed references safe after retirement, replacement, storage reuse, and runtime recreation.

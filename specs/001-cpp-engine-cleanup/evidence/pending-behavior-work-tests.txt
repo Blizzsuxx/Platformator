@@ -1,0 +1,12 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-work
+    Start 17: platformator_runtime_work_test
+1/1 Test #17: platformator_runtime_work_test ...   Passed    0.02 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+physics         =   0.02 sec*proc (1 test)
+platformator    =   0.02 sec*proc (1 test)
+work            =   0.02 sec*proc (1 test)
+
+Total Test time (real) =   0.02 sec

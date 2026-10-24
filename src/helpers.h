@@ -79,15 +79,7 @@ template <typename T> T *getBehavior(GameObject *gameObject)
         return nullptr;
     }
 
-    for (Behavior *behavior : scriptComponent->getBehaviors())
-    {
-        if (T *typedBehavior = dynamic_cast<T *>(behavior))
-        {
-            return typedBehavior;
-        }
-    }
-
-    return nullptr;
+    return scriptComponent->getBehavior<T>();
 }
 
 inline constexpr EdgeNumber getStartVertexAdjacentEdge(EdgeNumber edgeNumber)

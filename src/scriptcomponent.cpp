@@ -18,6 +18,8 @@ ScriptComponent::~ScriptComponent()
 {
     for (auto *behavior : behaviors)
         delete behavior;
+    for (auto *behavior : pendingBehaviors)
+        delete behavior;
 }
 
 const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
@@ -34,15 +36,19 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
         throw std::invalid_argument("Cannot attach behavior to retired script, or attach null");
     if (behavior->scriptComponent)
         throw std::invalid_argument("Behavior already has an owner");
-    behaviors.push_back(behavior);
+    pendingBehaviors.push_back(behavior);
+    try
+    {
+        if (gameManagerIndex != SIZE_MAX && getIsCallbackEligible())
+            platformator_detail::RuntimeAccess::gameManager().queueScriptStart(this);
+    }
+    catch (...)
+    {
+        pendingBehaviors.pop_back();
+        throw;
+    }
     behavior->scriptComponent = this;
     behavior->setGameObject(getGameObject());
-    if (gameManagerIndex != SIZE_MAX && getIsCallbackEligible())
-    {
-        platformator_detail::RuntimeAccess::gameManager().addStartedBehavior(behavior);
-        if (auto *collider = getGameObject()->getComponent<Collider>())
-            platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->refreshSubscriptions(collider);
-    }
     return behavior;
 }
 
@@ -50,68 +56,52 @@ void ScriptComponent::update(double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        if (behaviors[i]->started)
-            behaviors[i]->update(timeDelta);
+        behaviors[i]->update(timeDelta);
 }
 
 void ScriptComponent::fixedUpdate(double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        if (behaviors[i]->started)
-            behaviors[i]->fixedUpdate(timeDelta);
+        behaviors[i]->fixedUpdate(timeDelta);
 }
 
 void ScriptComponent::lateUpdate(double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        if (behaviors[i]->started)
-            behaviors[i]->lateUpdate(timeDelta);
+        behaviors[i]->lateUpdate(timeDelta);
 }
 
 void ScriptComponent::setGameObject(GameObject *gameObject)
 {
     Component::setGameObject(gameObject);
 
-    for (Behavior *behavior : behaviors)
-    {
-        if (behavior != nullptr)
-        {
-            behavior->setGameObject(gameObject);
-        }
-    }
-}
-
-void ScriptComponent::destroyBehaviors()
-{
     for (auto *behavior : behaviors)
-        delete behavior;
-    behaviors.clear();
+        behavior->setGameObject(gameObject);
+    for (auto *behavior : pendingBehaviors)
+        behavior->setGameObject(gameObject);
 }
 
 void ScriptComponent::dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        if (behaviors[i]->started)
-            behaviors[i]->onCollisionEnter(collision, other, timeDelta);
+        behaviors[i]->onCollisionEnter(collision, other, timeDelta);
 }
 
 void ScriptComponent::dispatchCollisionExit(Collider *other, double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        if (behaviors[i]->started)
-            behaviors[i]->onCollisionExit(other, timeDelta);
+        behaviors[i]->onCollisionExit(other, timeDelta);
 }
 
 void ScriptComponent::dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        if (behaviors[i]->started)
-            behaviors[i]->onCollisionStay(collision, other, timeDelta);
+        behaviors[i]->onCollisionStay(collision, other, timeDelta);
 }
 
 size_t ScriptComponent::getGameManagerIndex() const

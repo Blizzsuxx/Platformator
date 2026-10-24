@@ -4,6 +4,9 @@ description: "Dependency-ordered C++ engine cleanup implementation tasks"
 
 # Tasks: C++ Engine Cleanup
 
+**24 October 2026 pending-promotion amendment:** At the user's request, Behavior has no started flag. New behaviors remain pending until one resolve/start attempt promotes them to ordinary dispatch, including logged initialization failures. Per-behavior catches log initialization errors; attempted behaviors remain owned and become runnable without automatic retries. The global startup queue holds each script component once while queued; startup iterates its pending vector directly, including eligible additions made during startup, without a snapshot, then transfers the processed prefix together. Components retain only the pending and runnable owning collections, without a third ownership/runnable list. Lookup/serialization/teardown inspect pending and runnable entries. This supersedes earlier per-behavior startup-state/retry details below; see [runtime-lifecycle.md](contracts/runtime-lifecycle.md) and [validation.md](validation.md).
+
+
 **24 October 2026 assets-only amendment:** At the user's request, all asset-loading APIs and serialized resource fields require assets/ paths. Scene/animation-relative and absolute asset paths, bare root-relative paths and parent traversal are unsupported. Directory-aware resolvers were removed. Host asset-root configuration and scene-opening paths retain their filesystem semantics. This supersedes the original legacy-path decisions/tasks below; see [library-benchmarks.md](contracts/library-benchmarks.md) and [validation.md](validation.md).
 
 

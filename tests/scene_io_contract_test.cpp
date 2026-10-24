@@ -24,7 +24,7 @@ struct RequiredTexture : ::Behavior
 struct ThrowingResolver : test_support::Behavior
 {
     AssetReference<TextureWrapper> texture;
-    inline static int destroyed = 0, callbacks = 0, attempts = 0, starts = 0;
+    inline static int destroyed = 0, callbacks = 0, attempts = 0, starts = 0, updates = 0;
     inline static bool published = false;
     inline static TextureWrapper *shared = nullptr;
     ~ThrowingResolver() override
@@ -38,6 +38,10 @@ struct ThrowingResolver : test_support::Behavior
     void start() override
     {
         ++starts;
+    }
+    void update(double) override
+    {
+        ++updates;
     }
     void resolveReferences(platformator::ReferenceResolver &resolver) override
     {
@@ -99,13 +103,13 @@ int main()
             require(runtime.getGameObject("committed") == committed && runtime.getObjectById(0) == committed,
                     "Failed preparation cannot alter committed ownership or lookup");
         };
-        const auto rejectsAtStartup = [&](const Json &bad) {
+        const auto loadsWithStartupError = [&](const Json &bad) {
             ObjectReference<GameObject> previous(committed);
             write(candidate, bad);
             runtime.loadScene(candidate.string());
             auto *published = runtime.getObjectById(0);
             require(!previous && published, "Behavior reference errors must not prevent scene replacement");
-            failure([&] { runtime.simulateFrame(dt); });
+            runtime.simulateFrame(dt);
             require(runtime.getObjectById(0) == published,
                     "Startup reference failure leaves the replacement scene committed");
             runtime.loadScene(original.string());
@@ -127,12 +131,12 @@ int main()
         auto parent = base;
         parent["id"] = 3;
         parent["children"] = Json::array({bad});
-        rejectsAtStartup(Json::array({parent}));
+        loadsWithStartupError(Json::array({parent}));
         bad["components"][0]["behaviors"][0]["target"] = 2;
-        rejectsAtStartup(Json::array({bad})); // Script component is not a GameObject.
+        loadsWithStartupError(Json::array({bad})); // Script component is not a GameObject.
         bad["components"][0]["behaviors"] = {{{"type", "RequiredTexture"},
                                                {"texture", "assets/textures/missing-startup-resource.png"}}};
-        rejectsAtStartup(Json::array({bad}));
+        loadsWithStartupError(Json::array({bad}));
         bad = base;
         bad["scale"]["x"] = 0;
         rejects(Json::array({bad}));
@@ -146,11 +150,14 @@ int main()
             write(candidate, Json::array({bad}));
             runtime.loadScene(candidate.string());
             require(ThrowingResolver::attempts == i, "Loading must not invoke the behavior resolver");
-            const auto message = failure([&] { runtime.simulateFrame(dt); });
-            require(message.find("intentional resolver failure") != std::string::npos &&
-                        ThrowingResolver::attempts == i + 1 && ThrowingResolver::starts == 0 &&
-                        ThrowingResolver::published,
-                    "Resolver errors propagate before start, against the published scene");
+            runtime.simulateFrame(dt);
+            require(ThrowingResolver::attempts == i + 1 && ThrowingResolver::starts == 0 &&
+                        ThrowingResolver::published && ThrowingResolver::destroyed == i &&
+                        ThrowingResolver::updates == i * 2 + 1,
+                    "Resolver errors leave the published behavior alive and runnable without calling start");
+            runtime.simulateFrame(dt);
+            require(ThrowingResolver::attempts == i + 1 && ThrowingResolver::updates == (i + 1) * 2,
+                    "Resolver errors do not retry on the next step");
             runtime.clearScene();
         }
         require(ThrowingResolver::destroyed == 20 && ThrowingResolver::callbacks == 20 && retained->getTexture(),

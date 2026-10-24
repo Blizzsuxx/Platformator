@@ -47,7 +47,5 @@ class Behavior
 
   private:
     ScriptComponent *scriptComponent = nullptr;
-    bool started = false;
-    size_t pendingStartIndex = SIZE_MAX;
     GameObject *gameObject = nullptr;
 };

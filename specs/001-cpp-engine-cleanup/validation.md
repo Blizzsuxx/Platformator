@@ -2,6 +2,65 @@
 
 Latest dependency-update rerun and follow-up: [SDL update validation](../../docs/SDL_UPDATE_VALIDATION.md). The local WAV fix has been restored; strict ASan/UBSan now passes all 21 executed non-package tests, with two intentional skips and leak detection disabled. Existing leak/TSan findings remain unresolved. The dependency-update benchmark captures and older cleanup acceptance below are historical evidence for their recorded source/dependencies.
 
+## Logged startup errors and batch promotion (24 October 2026)
+
+At the user's request, initialization errors are logged per behavior, and failed initialization no longer destroys behaviors or propagates startup exceptions to the host. Every attempted entry becomes runnable and remains owned until ordinary teardown. Initialization is never automatically retried. A resolver exception skips start for that attempt; ordinary callbacks can still run on the partially initialized behavior. Ordinary callback and engine exceptions retain their existing propagation policy.
+
+Pending behaviors are vectors again. Startup iterates by index so eligible callback additions can join the pass, then transfers the processed prefix together into runnable behaviors. Fully processed scripts clear pending once. When a script becomes inactive or retired during startup, only its attempted prefix transfers; the unattempted suffix stays owned. No deque, per-entry pop/removal, behavior membership index, startup state flag, or snapshot is needed.
+
+Updated mutation, scene-I/O and asset-root contracts check retained/runnable behavior after resolver/start failures, non-standard exceptions, no initialization retries, normal exactly-once teardown, and interruption/reactivation of a partially processed script. Diagnostics include behavior type, owner name and exception text; stderr logging remains enabled independently of debug logging. [Captured diagnostics](evidence/logged-start-diagnostics.txt).
+
+- Normal build, including Mario/public headers, passed. Non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 5.62 s. [Log](evidence/logged-start-debug-tests.txt).
+- ASan/UBSan build passed. With `ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`, non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 12.84 s. [Log](evidence/logged-start-asan-tests.txt).
+- Dedicated work/allocation oracle: **1 passed**, 0.04 s. [Log](evidence/logged-start-work-tests.txt).
+
+Package, leak, TSan and benchmark runs were not repeated. Earlier sections below describe historical policies and are superseded by this section.
+
+## Previous direct startup drain, without a snapshot (24 October 2026)
+
+At the user's request, removed the behavior snapshot and relaxed startup deferral. Startup drains each queued script's pending behaviors directly in FIFO order. Eligible additions during startup can initialize in that pass, including additions to current, later queued, and already processed scripts. Additions from ordinary callback phases still wait for the next startup pass. Per-behavior failure handling and retirement gates remain in place.
+
+Pending behaviors now use a deque for constant-time front removal/back insertion; initialized behaviors retain their dispatch vector. Behavior has no pending index or startup state. ScriptComponent retains one queue membership index. Cancellation marks the script queue slot empty without moving other entries during callback mutation. There is no startup snapshot, per-script startup cursor, or additional owning list. The pending getter's public return type is now `const std::deque<Behavior *> &`.
+
+The mutation test covers immediate startup additions to current/later/already processed scripts, queue growth, and exactly-once initialization; existing cases retain cancellation/reactivation, replacement, failed initialization, serialization, and later-phase deferral coverage.
+
+- Normal build, including Mario/public headers, passed. Non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 5.60 s. [Log](evidence/direct-start-debug-tests.txt).
+- ASan/UBSan build passed. With `ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`, non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 12.25 s. [Log](evidence/direct-start-asan-tests.txt).
+- Dedicated work/allocation oracle: **1 passed**, 0.03 s. [Log](evidence/direct-start-work-tests.txt).
+
+Package, leak, TSan and benchmark runs were not repeated. The snapshot-based section below is historical and superseded by this section.
+
+## Previous script startup queue follow-up (24 October 2026)
+
+This follow-up supersedes the queue representation described in the previous section. The global producer queue now holds ScriptComponent pointers, with one deduplication/cancellation index per component. Behavior retains only its owner-pending-list index. Each component still owns exactly two collections: pending and initialized behaviors.
+
+Before callbacks, queued components' pending pointers are captured into the existing reusable, non-owning behavior batch. This freezes additions to both current and later queued scripts without adding a per-script cursor or third owning list. Startup groups behaviors by script queue order. Per-behavior failure handling and promotion are unchanged. Empty startup steps return immediately; snapshot construction only visits queued work, and its capacity is reused.
+
+The mutation test now checks grouped script startup order and deduplication; its existing cases cover callback additions to current/later scripts, activation, replacement, and individual failures.
+
+- Normal rebuild, including Mario/public headers, passed. Non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 5.79 s. [Log](evidence/script-start-queue-debug-tests.txt).
+- ASan/UBSan rebuild passed. With `ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`, non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 13.35 s. [Log](evidence/script-start-queue-asan-tests.txt).
+
+- Dedicated work/allocation oracle: **1 passed**, 0.02 s. [Log](evidence/script-start-queue-work-tests.txt).
+
+Package, leak, TSan and benchmark runs were not repeated for this follow-up; previous results remain historical evidence.
+
+## Previous global pending behavior queue and two-list ownership (24 October 2026)
+
+At the user's request, kept Behavior free of a started flag and restored the original global behavior startup queue. ScriptComponent has only two owning lists: pendingBehaviors and initialized behaviors. There is no separate runnable/ownership list or per-script startup queue. getBehaviors returns initialized entries, getPendingBehaviors returns pending entries, and getBehavior<T> searches both. Serialization, owner updates and normal component teardown inspect both lists.
+
+The global producer/drain buffers swap before callbacks. New additions wait until the next eligible batch even on an already active component. Only successful resolve/start moves a pending entry into ordinary dispatch. Inactive unattempted entries remain pending without per-frame polling; activation queues only remaining pending work. Per-behavior catches finish the batch and report its first error afterward. Failed initialization removes the entry, invokes read-only onDestroy and deletes it, so its borrowed pointers become invalid and it cannot retry or receive later callbacks.
+
+Two Behavior indices are membership metadata only: one for O(1) swap-removal from the owner's pending vector and one for O(1) cancellation/deduplication in the global queue. No startup cursor, initialized-prefix count or per-frame started check is used.
+
+Extended mutation contracts verify global cross-script startup order, additions to current/later active components during startup and fixed update, cancellation during a startup batch with later activation, mixed resolver/start failures followed by healthy entries, no retries after reactivation/additions, and exactly-once failure cleanup without later double destruction. Existing scene serialization/reference, retirement and physics tests remain enabled.
+
+- Normal rebuild including Mario/public headers passed. Full non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 5.51 s. [Log](evidence/pending-behavior-debug-tests.txt).
+- ASan/UBSan rebuild passed. Outside the sandbox with `ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`, full non-package CTest: **21 passed, 0 failed, 2 intentional skips**, 11.88 s. [Log](evidence/pending-behavior-asan-tests.txt).
+- Dedicated work/allocation target rebuilt and its oracle passed: **1 passed**, 0.02 s. [Log](evidence/pending-behavior-work-tests.txt).
+
+These are correctness/work checks, not performance timings. No SDK relocation, TSan/leak scan or benchmark capture was repeated for this scheduling change. Historical automatic-retry and per-behavior started-state evidence below is superseded by the current contract.
+
 ## Assets-only resource paths (24 October 2026)
 
 At the user's request, simplified resource loading to one assets/... namespace. All nonempty asset paths need the literal assets/ prefix; filename case is preserved and backslashes normalize to forward slashes. Bare/scene-relative/animation-relative paths, absolute asset filenames, parent traversal and symlink escapes reject even for optional loads. Valid missing optional assets retain their deliberate fallbacks. Host asset-root configuration and scene-opening paths still accept their documented filesystem paths.

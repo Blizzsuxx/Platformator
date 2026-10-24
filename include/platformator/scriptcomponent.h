@@ -24,6 +24,10 @@ class ScriptComponent : public Component
     Behavior *addBehavior(Behavior *behavior);
 
     const std::vector<Behavior *> &getBehaviors() const;
+    const std::vector<Behavior *> &getPendingBehaviors() const
+    {
+        return pendingBehaviors;
+    }
 
     template <typename T> T *getBehavior() const;
 
@@ -38,10 +42,11 @@ class ScriptComponent : public Component
 
   private:
     std::vector<Behavior *> behaviors;
+    std::vector<Behavior *> pendingBehaviors;
+    size_t pendingStartIndex = SIZE_MAX; // Global script startup queue.
     size_t gameManagerIndex;
     bool destructionDelivered = false;
 
-    void destroyBehaviors();
     void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
     void dispatchCollisionExit(Collider *other, double timeDelta);
     void dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta);
@@ -60,12 +65,11 @@ template <typename T> T *ScriptComponent::getBehavior() const
     static_assert(std::is_base_of_v<Behavior, T>, "getBehavior<T>() requires T to derive from Behavior");
 
     for (Behavior *behavior : behaviors)
-    {
-        if (T *castedBehavior = dynamic_cast<T *>(behavior))
-        {
+        if (auto *castedBehavior = dynamic_cast<T *>(behavior))
             return castedBehavior;
-        }
-    }
+    for (Behavior *behavior : pendingBehaviors)
+        if (auto *castedBehavior = dynamic_cast<T *>(behavior))
+            return castedBehavior;
 
     return nullptr;
 }

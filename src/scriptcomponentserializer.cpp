@@ -6,12 +6,15 @@ void to_json(nlohmann::json &j, const ScriptComponent &scriptComponent)
 {
     j["id"] = scriptComponent.getId();
     j["behaviors"] = nlohmann::json::array();
-    for (const auto &behavior : scriptComponent.getBehaviors())
-    {
+    const auto serialize = [&](Behavior *behavior) {
         nlohmann::json behaviorJson;
         behavior->serialize(behaviorJson);
         j["behaviors"].push_back(behaviorJson);
-    }
+    };
+    for (auto *behavior : scriptComponent.getBehaviors())
+        serialize(behavior);
+    for (auto *behavior : scriptComponent.getPendingBehaviors())
+        serialize(behavior);
     j["type"] = ComponentType::SCRIPT;
 }
 

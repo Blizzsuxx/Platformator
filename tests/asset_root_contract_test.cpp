@@ -170,8 +170,11 @@ int main()
                 file << document;
             }
             runtime.loadScene(scene.string());
-            rejects([&] { runtime.simulateFrame(dt); });
-            require(runtime.getGameObject("case"), "Relative behavior assets fail at startup after commit");
+            runtime.simulateFrame(dt);
+            auto *script = runtime.getGameObject("case")->getComponent<ScriptComponent>();
+            require(script->getBehaviors().size() == 1 && script->getPendingBehaviors().empty() &&
+                        !script->getBehavior<StartupTexture>()->texture,
+                    "Invalid behavior asset paths log startup errors and leave the behavior runnable and unresolved");
             clipDocument["frames"][0]["textureWrapperFilePath"] = "../../textures/MiXeD.PNG";
             {
                 std::ofstream file(root / "animations/nested/Invalid.animset");

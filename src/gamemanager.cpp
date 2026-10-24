@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 
 #include "platformator/animator.h"
 #include "platformator/animationclip.h"
@@ -236,7 +237,8 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
         throw std::logic_error("Simulation steps require an idle runtime on its main thread");
     if (!std::isfinite(timeDelta) || timeDelta <= 0)
         throw std::invalid_argument("Simulation timestep must be finite and positive");
-    auto stage = [&](Phase next, auto &&work) {
+    auto stage = [&](Phase next, auto &&work)
+    {
         PhaseGuard guard(*this, next);
         work();
     };
@@ -244,30 +246,35 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     PLATFORMATOR_BENCH_FRAME_BEGIN();
     try
     {
-        stage(Phase::Starting, [&] { triggerStartedBehaviors(); });
-        stage(Phase::StepHook, [&] {
+        stage(Phase::Starting, [&]
+              { triggerStartedBehaviors(); });
+        stage(Phase::StepHook, [&]
+              {
             if (customCallback)
-                customCallback(timeDelta);
-        });
-        stage(Phase::FixedUpdate, [&] { fixedUpdateScriptComponents(timeDelta); });
-        stage(Phase::Physics, [&] {
+                customCallback(timeDelta); });
+        stage(Phase::FixedUpdate, [&]
+              { fixedUpdateScriptComponents(timeDelta); });
+        stage(Phase::Physics, [&]
+              {
             PLATFORMATOR_BENCH_SCOPE(Physics);
             synchronizeTransforms();
             physicsManager->checkForCollisions();
             physicsManager->applyPhysics(timeDelta);
             physicsManager->resolveCollisions(timeDelta);
             physicsManager->applyMovement(timeDelta);
-            synchronizeTransforms();
-        });
-        stage(Phase::CollisionDispatch, [&] { physicsManager->handlePendingPhysicsEvents(timeDelta); });
-        stage(Phase::Update, [&] { updateScriptComponents(timeDelta); });
-        stage(Phase::Animation, [&] { updateAnimatorComponents(timeDelta); });
-        stage(Phase::LateUpdate, [&] { lateUpdateScriptComponents(timeDelta); });
+            synchronizeTransforms(); });
+        stage(Phase::CollisionDispatch, [&]
+              { physicsManager->handlePendingPhysicsEvents(timeDelta); });
+        stage(Phase::Update, [&]
+              { updateScriptComponents(timeDelta); });
+        stage(Phase::Animation, [&]
+              { updateAnimatorComponents(timeDelta); });
+        stage(Phase::LateUpdate, [&]
+              { lateUpdateScriptComponents(timeDelta); });
     }
     catch (...)
     {
         error = std::current_exception();
-        startingBehaviors.clear();
     }
     try
     {
@@ -441,7 +448,8 @@ void GameManager::freeAllTextures()
 GameObject *GameManager::createGameObject()
 {
     assertCanMutate();
-    auto cleanup = [](GameObject *object) { delete object; };
+    auto cleanup = [](GameObject *object)
+    { delete object; };
     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
     registerGameObjectSubtree(gameObject.get());
     auto *result = gameObject.release();
@@ -465,7 +473,7 @@ void GameManager::notifyComponentAdded(Component *component)
     if (!component->getHandle())
     {
         using enum platformator_detail::ObjectKind;
-        static constexpr platformator_detail::ObjectKind kinds[] = {Animator,  Audio,           Camera, Collider,
+        static constexpr platformator_detail::ObjectKind kinds[] = {Animator, Audio, Camera, Collider,
                                                                     Rigidbody, ScriptComponent, Sprite};
         auto kind = kinds[component->getType()];
         if (kind == Collider)
@@ -496,8 +504,7 @@ void GameManager::notifyRuntimeOfComponentAdded(Component *component)
         auto *script = static_cast<ScriptComponent *>(component);
         script->setGameManagerIndex(scriptComponents.size());
         scriptComponents.push_back(script);
-        for (auto *behavior : script->getBehaviors())
-            addStartedBehavior(behavior);
+        queueScriptStart(script);
     }
     else if (component->getType() == ComponentType::AUDIO)
     {
@@ -693,33 +700,46 @@ void GameManager::updateAnimatorComponents(double timeDelta)
 
 void GameManager::triggerStartedBehaviors()
 {
-    if (startedBehaviors.empty())
+    if (pendingStartScripts.empty())
         return;
-    startingBehaviors.swap(startedBehaviors);
-    for (auto *behavior : startingBehaviors)
-        behavior->pendingStartIndex = SIZE_MAX;
-    try
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    // Callbacks can append or cancel script entries, so retain no queue iterators.
+    for (size_t i = 0; i < pendingStartScripts.size(); ++i)
     {
-        auto &runtime = platformator::Runtime::current();
-        platformator_detail::ActiveReferenceResolver resolver(runtime);
-        for (auto *behavior : startingBehaviors)
+        auto *script = pendingStartScripts[i];
+        if (!script) // Canceled queue entry.
+            continue;
+        size_t processed = 0;
+        for (; script->canDispatch() && processed < script->pendingBehaviors.size(); ++processed)
         {
-            if (behavior->started || !behavior->scriptComponent->canDispatch())
-                continue;
-            behavior->resolveReferences(resolver);
-            behavior->started = true;
-            behavior->start();
+            auto *behavior = script->pendingBehaviors[processed];
+            try
+            {
+                behavior->resolveReferences(resolver);
+                behavior->start();
+            }
+            catch (const std::exception &error)
+            {
+                std::fprintf(stderr, "Behavior '%s' on '%s' initialization failed: %s\n",
+                             behavior->getTypeName().c_str(), script->getGameObject()->getName().c_str(), error.what());
+            }
+            catch (...)
+            {
+                std::fprintf(stderr, "Behavior '%s' on '%s' initialization failed: unknown exception\n",
+                             behavior->getTypeName().c_str(), script->getGameObject()->getName().c_str());
+            }
         }
+        const bool firstBehaviors = script->behaviors.empty() && processed != 0;
+        script->behaviors.insert(script->behaviors.end(), script->pendingBehaviors.begin(),
+                                 script->pendingBehaviors.begin() + processed);
+        script->pendingBehaviors.erase(script->pendingBehaviors.begin(),
+                                       script->pendingBehaviors.begin() + processed);
+        cancelScriptStart(script);
+        if (firstBehaviors && script->canDispatch())
+            if (auto *collider = script->getGameObject()->getComponent<Collider>())
+                physicsManager->refreshSubscriptions(collider);
     }
-    catch (...)
-    {
-        for (auto *behavior : startingBehaviors)
-            if (!behavior->started && behavior->scriptComponent->canDispatch())
-                addStartedBehavior(behavior);
-        startingBehaviors.clear();
-        throw;
-    }
-    startingBehaviors.clear();
+    pendingStartScripts.clear();
 }
 
 AudioWrapper *GameManager::loadAudio(const std::string &filePath, bool required)
@@ -790,24 +810,21 @@ void GameManager::freeAllAnimationClips()
     animationClipCache.clear();
 }
 
-void GameManager::addStartedBehavior(Behavior *behavior)
+void GameManager::queueScriptStart(ScriptComponent *script)
 {
-    if (behavior->started || behavior->pendingStartIndex != SIZE_MAX)
+    if (script->pendingBehaviors.empty() || script->pendingStartIndex != SIZE_MAX)
         return;
-    behavior->pendingStartIndex = startedBehaviors.size();
-    startedBehaviors.push_back(behavior);
+    pendingStartScripts.push_back(script);
+    script->pendingStartIndex = pendingStartScripts.size() - 1;
 }
 
-void GameManager::removeStartedBehavior(Behavior *behavior)
+void GameManager::cancelScriptStart(ScriptComponent *script)
 {
-    const auto index = behavior->pendingStartIndex;
+    const auto index = script->pendingStartIndex;
     if (index == SIZE_MAX)
         return;
-    auto *moved = startedBehaviors.back();
-    startedBehaviors[index] = moved;
-    moved->pendingStartIndex = index;
-    startedBehaviors.pop_back();
-    behavior->pendingStartIndex = SIZE_MAX;
+    pendingStartScripts[index] = nullptr;
+    script->pendingStartIndex = SIZE_MAX;
 }
 
 const Eigen::Vector2f &GameManager::getGravityVector() const
@@ -852,8 +869,7 @@ void GameManager::queueReconciliation(Component *component)
     if (component->reconcileQueued)
         return;
     if (component->getType() == ComponentType::SCRIPT)
-        for (auto *behavior : static_cast<ScriptComponent *>(component)->getBehaviors())
-            removeStartedBehavior(behavior);
+        cancelScriptStart(static_cast<ScriptComponent *>(component));
     component->reconcileQueued = true;
     reconciliations.push_back(component);
 }
@@ -936,7 +952,8 @@ void GameManager::synchronizeTransforms()
         return;
     if (transformOrderNeeded)
         std::sort(dirtyTransforms.begin(), dirtyTransforms.end(),
-                  [](auto *a, auto *b) { return a->hierarchyOrder < b->hierarchyOrder; });
+                  [](auto *a, auto *b)
+                  { return a->hierarchyOrder < b->hierarchyOrder; });
     ++transformStamp;
     for (auto *object : dirtyTransforms)
     {
@@ -960,9 +977,9 @@ void GameManager::runDestructionCallbacks(ScriptComponent *script, std::exceptio
     script->destructionDelivered = true;
     script->lifecycle = ObjectLifecycle::DestroyCallbacks;
     PhaseGuard callbackPhase(*this, Phase::DestructionCallbacks);
-    for (auto *behavior : script->getBehaviors())
+    cancelScriptStart(script);
+    const auto destroy = [&](Behavior *behavior)
     {
-        removeStartedBehavior(behavior);
         try
         {
             behavior->onDestroy();
@@ -972,7 +989,11 @@ void GameManager::runDestructionCallbacks(ScriptComponent *script, std::exceptio
             if (!error)
                 error = std::current_exception();
         }
-    }
+    };
+    for (auto *behavior : script->behaviors)
+        destroy(behavior);
+    for (auto *behavior : script->pendingBehaviors)
+        destroy(behavior);
 }
 
 void GameManager::reconcilePending(std::exception_ptr &error)
@@ -993,8 +1014,7 @@ void GameManager::reconcilePending(std::exception_ptr &error)
             if (desired == component->systemsRegistered)
             {
                 if (desired && component->getType() == ComponentType::SCRIPT)
-                    for (auto *behavior : static_cast<ScriptComponent *>(component)->getBehaviors())
-                        addStartedBehavior(behavior);
+                    queueScriptStart(static_cast<ScriptComponent *>(component));
                 continue;
             }
             if (desired)

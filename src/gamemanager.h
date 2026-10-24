@@ -155,7 +155,6 @@ class GameManager
     std::vector<Component *> reconciliations;
     std::vector<Component *> reconciliationDrain;
     std::vector<Component *> retiredComponents;
-    std::vector<Behavior *> startingBehaviors;
     std::vector<GameObject *> dirtyTransforms;
     size_t nextHierarchyOrder = 0;
     bool hierarchyDirty = true;
@@ -178,7 +177,7 @@ class GameManager
     std::unordered_map<std::string, std::unique_ptr<AnimationClip>> animationClipCache;
     std::unordered_map<int, BaseObject *> idToObjectMap;
     std::vector<GameObject *> gameObjectsToDelete;
-    std::vector<Behavior *> startedBehaviors;
+    std::vector<ScriptComponent *> pendingStartScripts;
 
     std::unique_ptr<PhysicsManager> physicsManager;
 
@@ -212,8 +211,8 @@ class GameManager
     void updateAnimatorComponents(double timeDelta);
     void triggerStartedBehaviors();
 
-    void addStartedBehavior(Behavior *behavior);
-    void removeStartedBehavior(Behavior *behavior);
+    void queueScriptStart(ScriptComponent *script);
+    void cancelScriptStart(ScriptComponent *script);
     std::vector<GameObject *> &getGameObjects();
     void simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
     void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);

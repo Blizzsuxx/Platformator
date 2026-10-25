@@ -4,6 +4,7 @@
 #include "gamemanager.h"
 #include "runtimeaccess.h"
 #include "platformator/runtime.h"
+#include <cstdio>
 
 ScriptComponent::ScriptComponent() : Component(ComponentType::SCRIPT), behaviors(), gameManagerIndex(SIZE_MAX)
 {
@@ -52,6 +53,32 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
     return behavior;
 }
 
+void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &resolver)
+{
+    size_t processed = 0;
+    for (; canDispatch() && processed < pendingBehaviors.size(); ++processed)
+    {
+        auto *behavior = pendingBehaviors[processed];
+        try
+        {
+            behavior->resolveReferences(resolver);
+            behavior->start();
+        }
+        catch (const std::exception &error)
+        {
+            std::fprintf(stderr, "Behavior '%s' on '%s' initialization failed: %s\n", behavior->getTypeName().c_str(),
+                         getGameObject()->getName().c_str(), error.what());
+        }
+        catch (...)
+        {
+            std::fprintf(stderr, "Behavior '%s' on '%s' initialization failed: unknown exception\n",
+                         behavior->getTypeName().c_str(), getGameObject()->getName().c_str());
+        }
+    }
+    behaviors.insert(behaviors.end(), pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
+    pendingBehaviors.erase(pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
+}
+
 void ScriptComponent::update(double timeDelta)
 {
     const size_t count = behaviors.size();
@@ -95,13 +122,6 @@ void ScriptComponent::dispatchCollisionExit(Collider *other, double timeDelta)
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
         behaviors[i]->onCollisionExit(other, timeDelta);
-}
-
-void ScriptComponent::dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta)
-{
-    const size_t count = behaviors.size();
-    for (size_t i = 0; i < count && canDispatch(); ++i)
-        behaviors[i]->onCollisionStay(collision, other, timeDelta);
 }
 
 size_t ScriptComponent::getGameManagerIndex() const

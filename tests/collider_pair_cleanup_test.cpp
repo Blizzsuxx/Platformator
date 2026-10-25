@@ -171,7 +171,7 @@ void runDestroyedVictimCleanupScenario()
         runtime.simulateFrame(kTimeStep);
     }
 
-    require(survivorCounter->exitCount <= 1,
+    require(survivorCounter->exitCount == 1,
             "Collider pair cleanup regression observed duplicate collision exits after the victim was destroyed.");
 }
 
@@ -213,6 +213,36 @@ void runNonPrimaryRemovalCoverageScenario()
                                                                                               victimCollider),
             "Coverage removal scenario left a stale same-cell pair witness for the removed victim.");
 }
+void runMultiWitnessTransitions()
+{
+    Runtime runtime;
+    auto *a = createStaticBox(runtime, "wide a", 0, 0, 600, 600)->addComponent<ScriptComponent>();
+    auto *b = createStaticBox(runtime, "wide b", 50, 0, 600, 600);
+    a->getComponent<BoxCollider>()->setIsTrigger(true);
+    auto *counter = new CollisionCounterBehavior;
+    a->getComponent<ScriptComponent>()->addBehavior(counter);
+    runtime.simulateFrame(kTimeStep);
+    require(counter->enterCount == 1, "Multiple cell witnesses produce one Enter");
+    b->setPosition({210, 0});
+    runtime.simulateFrame(kTimeStep);
+    runtime.simulateFrame(kTimeStep);
+    require(counter->enterCount == 1 && counter->exitCount == 0, "Losing only some witnesses preserves contact");
+    b->getComponent<BoxCollider>()->setCollisionMask(0);
+    runtime.simulateFrame(kTimeStep);
+    require(counter->exitCount == 1, "Filter exclusion ends contact once");
+    b->getComponent<BoxCollider>()->setCollisionMask(1);
+    runtime.simulateFrame(kTimeStep);
+    require(counter->enterCount == 2, "Re-enabled overlap begins a new lifetime");
+    b->setActive(false);
+    require(counter->exitCount == 2, "Idle deactivation exits before reclamation");
+    b->setActive(true);
+    runtime.simulateFrame(kTimeStep);
+    require(counter->enterCount == 3, "Reactivation confirms a fresh contact");
+    b->removeComponent(COLLIDER);
+    for (int i = 0; i < 3; ++i)
+        runtime.simulateFrame(kTimeStep);
+    require(counter->exitCount == 3, "Collider removal closes only its own contact lifetime");
+}
 } // namespace
 
 int main()
@@ -223,6 +253,7 @@ int main()
     {
         runDestroyedVictimCleanupScenario();
         runNonPrimaryRemovalCoverageScenario();
+        runMultiWitnessTransitions();
 
         std::cout << "[PASS] collider_pair_cleanup_test\n";
         return 0;

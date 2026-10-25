@@ -1,5 +1,5 @@
 #include "physicsmanager.h"
-#include "platformator/scriptcomponent.h"
+#include "workprobe.h"
 #include <cassert>
 
 namespace
@@ -40,11 +40,6 @@ namespace
         for (size_t i = 0; i < list.size(); ++i)
             const_cast<ColliderPair *>(list[i])->*index = i;
         dirty = false;
-    }
-    bool observed(Collider *collider)
-    {
-        const auto *script = collider->getGameObject()->getComponent<ScriptComponent>();
-        return collider->getIsCallbackEligible() && script && script->canDispatch() && !script->getBehaviors().empty();
     }
     bool movingBody(const Rigidbody *body)
     {
@@ -116,21 +111,31 @@ void PhysicsManager::refreshPairLists(const ColliderPair *pair)
                       pair->getObjectA()->getGameObject()->getActive() &&
                       pair->getObjectB()->getGameObject()->getActive();
     membership(contactPairs, pair, &ColliderPair::activeIndex, live);
+    refreshSolverPair(pair, live);
+}
+
+void PhysicsManager::refreshSolverPair(const ColliderPair *pair, bool live)
+{
+    const auto *collision = pair->getCollision();
     const bool solve = live &&
                        (collision->getResolutionType() == Collision::DYNAMIC ||
                         collision->getResolutionType() == Collision::KINEMATIC) &&
                        (movingBody(pair->getObjectA()->getGameObject()->getComponent<Rigidbody>()) ||
                         movingBody(pair->getObjectB()->getGameObject()->getComponent<Rigidbody>()));
     solverOrderDirty |= membership(solverPairs, pair, &ColliderPair::solverIndex, solve);
-    stayOrderDirty |= membership(stayPairs, pair, &ColliderPair::stayIndex,
-                                 live && (observed(pair->getObjectA()) || observed(pair->getObjectB())));
 }
 
-void PhysicsManager::refreshSubscriptions(Collider *collider)
+void PhysicsManager::refreshSolverPairs(Collider *collider)
 {
     if (const auto *pairs = grid.getTouchingPairs(collider))
         for (auto *pair : *pairs)
-            refreshPairLists(pair);
+        {
+            PLATFORMATOR_WORK_ADD(solverRefreshPairs, 1);
+            const bool live = pair->getCollision() && !pair->getObjectA()->isRetired() &&
+                              !pair->getObjectB()->isRetired() && pair->getObjectA()->getGameObject()->getActive() &&
+                              pair->getObjectB()->getGameObject()->getActive();
+            refreshSolverPair(pair, live);
+        }
 }
 
 void PhysicsManager::refreshResponse(Collider *collider)
@@ -147,6 +152,9 @@ void PhysicsManager::refreshResponse(Collider *collider)
 
 void PhysicsManager::removePair(const ColliderPair *pair)
 {
+    // This is the explicit end boundary for contacts lost with their final cell witness.
+    if (pair->getCollision())
+        addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_EXIT, pair, nullptr));
     if (pair->supportsA)
         queueSupportDelta(pair->supportBodyA, -1);
     if (pair->supportsB)
@@ -154,20 +162,10 @@ void PhysicsManager::removePair(const ColliderPair *pair)
     pair->supportsA = pair->supportsB = false;
     membership(contactPairs, pair, &ColliderPair::activeIndex, false);
     solverOrderDirty |= membership(solverPairs, pair, &ColliderPair::solverIndex, false);
-    stayOrderDirty |= membership(stayPairs, pair, &ColliderPair::stayIndex, false);
 }
 
 void PhysicsManager::canonicalizePairs()
 {
-    // Only solver and observed-event iteration require canonical order. The
-    // contact collection is indexed membership, never a solver/dispatch input.
-    order(stayPairs, &ColliderPair::stayIndex, stayOrderDirty);
-    if (solverOrderDirty)
-    {
-        order(solverPairs, &ColliderPair::solverIndex, solverOrderDirty);
-        activeCollisions.clear();
-        activeCollisions.reserve(solverPairs.size());
-        for (auto *pair : solverPairs)
-            activeCollisions.push_back(pair->getCollision());
-    }
+    // Only solver consumption requires canonical order. Event batches contain transitions only.
+    order(solverPairs, &ColliderPair::solverIndex, solverOrderDirty);
 }

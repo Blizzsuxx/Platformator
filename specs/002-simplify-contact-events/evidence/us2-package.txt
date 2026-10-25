@@ -1,0 +1,12 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start 23: platformator_package_smoke
+1/1 Test #23: platformator_package_smoke .......   Passed  133.83 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+install         = 133.83 sec*proc (1 test)
+package         = 133.83 sec*proc (1 test)
+platformator    = 133.83 sec*proc (1 test)
+
+Total Test time (real) = 133.83 sec

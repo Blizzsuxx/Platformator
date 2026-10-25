@@ -34,7 +34,6 @@ constexpr std::array<const char *, BENCHMARK_COUNTER_COUNT> counterNames = {"obj
                                                                             "queued_sync_count",
                                                                             "queued_remove_count",
                                                                             "collision_enter_event_count",
-                                                                            "collision_stay_event_count",
                                                                             "collision_exit_event_count"};
 std::string dependencyVersion(int version)
 {
@@ -213,7 +212,7 @@ void BenchmarkRecorder::updateMetadata(const nlohmann::json &fields)
 nlohmann::json BenchmarkRecorder::manifest() const
 {
     auto result = metadata;
-    result["schema_version"] = 2;
+    result["schema_version"] = 3;
     result["requested_measured_steps"] = metadata.at("measured_steps");
     result["measured_steps"] = frames.size();
     result["complete_capture"] = totalSteps == frames.size() && totalRenders == renders.size();
@@ -280,7 +279,7 @@ void BenchmarkRecorder::writeOutputs(const std::string &requestedPath) const
                 for (const auto &frame : frames)
                     values.push_back(frame.scopeDurationsNanoseconds[scope] / 1e6);
             const auto stats = statistics(values);
-            summary << "2,scope," << scopeNames[scope] << ',' << values.size() << ',' << stats.average << ','
+            summary << "3,scope," << scopeNames[scope] << ',' << values.size() << ',' << stats.average << ','
                     << stats.median << ',' << stats.p95 << ',' << stats.p99 << ',' << stats.minimum << ','
                     << stats.maximum << ",ms\n";
         }
@@ -291,7 +290,7 @@ void BenchmarkRecorder::writeOutputs(const std::string &requestedPath) const
             for (const auto &frame : frames)
                 values.push_back(frame.counters[counter]);
             const auto stats = statistics(values);
-            summary << "2,counter," << counterNames[counter] << ',' << values.size() << ',' << stats.average << ",,,,"
+            summary << "3,counter," << counterNames[counter] << ',' << values.size() << ',' << stats.average << ",,,,"
                     << stats.minimum << ',' << stats.maximum << ",count\n";
         }
         std::ostringstream raw;
@@ -304,7 +303,7 @@ void BenchmarkRecorder::writeOutputs(const std::string &requestedPath) const
         for (size_t i = 0; i < frames.size(); ++i)
         {
             const auto &frame = frames[(nextFrame + i) % frames.size()];
-            raw << "2,step," << i;
+            raw << "3,step," << i;
             for (auto value : frame.scopeDurationsNanoseconds)
                 raw << ',' << value;
             for (auto value : frame.counters)
@@ -313,7 +312,7 @@ void BenchmarkRecorder::writeOutputs(const std::string &requestedPath) const
         }
         for (size_t i = 0; i < renders.size(); ++i)
         {
-            raw << "2,render," << i;
+            raw << "3,render," << i;
             for (size_t scope = 0; scope < BENCHMARK_SCOPE_COUNT; ++scope)
                 raw << ','
                     << (scope == static_cast<size_t>(BenchmarkScopeId::Render)
@@ -340,7 +339,7 @@ void BenchmarkRecorder::printSummary(FILE *output) const
 {
     if (frames.empty())
         return;
-    std::fprintf(output, "[Benchmark] schema_version=2 complete_steps=%zu render_samples=%zu\n", frames.size(),
+    std::fprintf(output, "[Benchmark] schema_version=3 complete_steps=%zu render_samples=%zu\n", frames.size(),
                  renders.size());
     for (size_t scope = 0; scope < BENCHMARK_SCOPE_COUNT; ++scope)
     {

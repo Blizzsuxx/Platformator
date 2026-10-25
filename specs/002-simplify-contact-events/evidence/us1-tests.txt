@@ -1,0 +1,28 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start  1: platformator_regression_tests
+1/7 Test  #1: platformator_regression_tests ...............   Passed    0.83 sec
+    Start  3: platformator_queued_deletion_safety_test
+2/7 Test  #3: platformator_queued_deletion_safety_test ....   Passed    0.15 sec
+    Start  5: platformator_collider_pair_cleanup_test
+3/7 Test  #5: platformator_collider_pair_cleanup_test .....   Passed    0.23 sec
+    Start  8: platformator_scene_transition_stress_test
+4/7 Test  #8: platformator_scene_transition_stress_test ...   Passed    0.33 sec
+    Start  9: platformator_callback_mutation_test
+5/7 Test  #9: platformator_callback_mutation_test .........   Passed    0.96 sec
+    Start 14: platformator_physics_support_test
+6/7 Test #14: platformator_physics_support_test ...........   Passed    0.76 sec
+    Start 16: platformator_physics_geometry_test
+7/7 Test #16: platformator_physics_geometry_test ..........   Passed    0.01 sec
+
+100% tests passed out of 7
+
+Label Time Summary:
+determinism     =   0.76 sec*proc (1 test)
+geometry        =   0.01 sec*proc (1 test)
+lifecycle       =   1.45 sec*proc (3 tests)
+mutation        =   0.96 sec*proc (1 test)
+physics         =   1.98 sec*proc (5 tests)
+platformator    =   3.27 sec*proc (7 tests)
+scene           =   0.33 sec*proc (1 test)
+
+Total Test time (real) =   3.27 sec

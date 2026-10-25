@@ -1,100 +1,83 @@
 # Data Model: Simplify Contact Events
 
-This feature changes in-memory responsibilities and observable callback/diagnostic contracts. Scene serialization is unchanged. See [the plan](plan.md) and [contact contract](contracts/contact-events.md).
+This is an in-memory runtime design; there is no scene-format migration. [Contact contracts](contracts/contact-events.md) define public behavior; [research.md](research.md) explains retained and removed state.
 
 ## ColliderPair and confirmed contact
 
-| State / field | Owner and meaning |
+**Owner**: Grid candidate storage. The pair owns its optional `Collision`; stable ordered collider handles identify its endpoints.
+
+| State | Meaning and invariant |
 | --- | --- |
-| Canonical collider A/B | Grid's unique candidate pair; endpoint order follows runtime handles, independent of SAT reference/incident selection. |
-| Witness count and adjacency/queue indices | Existing Grid bookkeeping for duplicate spatial witnesses and affected narrow-phase work. |
-| Optional owned Collision | Pair-owned confirmed manifold; absence means no confirmed contact. Geometry may create, update, or clear it. |
-| Cached collider versions | Determine whether this pair needs geometry work. |
-| resultHadContact | Pair-local pre-worker presence needed for main-thread before/after reconciliation. |
-| resultTestedGeometry | Existing pair-local instrumentation result; no event semantics. |
-| activeIndex / solverIndex | O(1) membership repair for confirmed-contact and solver collections. |
-| Prior supportBodyA/B and supportsA/B | Canonical endpoint support contribution used to reduce only actual changes, including body replacement. |
+| Endpoint pointers | Canonical A/B handle order; allocations remain valid through pending notification delivery. |
+| Witness count and adjacency indexes | Candidate membership across spatial cells; losing one of several witnesses cannot erase the pair. |
+| Optional `Collision*` | Sole source of confirmed-contact presence; a bounding-region overlap alone is insufficient. |
+| Cached collider versions | Determine whether pair geometry needs re-evaluation. |
+| Narrow-phase queue membership | At most one pending entry per pair; workers own distinct pairs. |
+| `resultHadContact` | Previous contact presence captured for the current evaluation, consumed after workers finish. |
+| `resultTestedGeometry` | Existing test-work result, reduced on the main thread. |
+| Active-contact and solver indexes | Membership in two distinct physical collections; absent membership uses the existing sentinel. |
+| Support body pointers and contribution flags | Previous per-endpoint support contributions; changes reduce once into body totals. |
 
-Remove `stayIndex` and `enteredStep`. Pair destruction releases its manifold and never accesses the runtime or queues gameplay work.
+Remove `stayIndex` and `enteredStep`. Remove event-emitting pair methods (`queueCollisionExit`, event-emitting `clearCollision`) and runtime-service lookup from the pair. Pair-local creation/clearing may update contact memory and cached versions but never enqueue events. The destructor releases any remaining collision without notifying the runtime.
 
-### Contact state transitions
+### Transition table
 
-| Before | After | Event | Membership/support action |
-| --- | --- | --- | --- |
-| Absent | Absent | None | No confirmed contact; no support contribution. |
-| Absent | Present | Enter | Add contact membership; reconcile solver eligibility and support. |
-| Present | Present | None | Retain contact; update support/solver eligibility only as physical state requires. |
-| Present | Absent | Exit | Remove contact/solver membership and prior support contribution. |
-| Present | Pair removal | Exit before erasure | Remove memberships/support through manager, then free pair/manifold. |
-| Absent | Pair removal | None | Remove candidate bookkeeping only. |
+| Previous confirmed contact | Current confirmed contact | Result |
+| --- | --- | --- |
+| Absent | Absent | No event; no contact membership. |
+| Absent | Present | Queue one Enter; add physical memberships and support as applicable. |
+| Present | Present | No event; refresh geometry/response/support only when affected. |
+| Present | Absent | Queue one Exit; remove contact/solver membership and prior support. |
+| Present | Pair removed | Queue one Exit before erasure; remove memberships/support; destroy contact storage. |
+| Absent | Pair removed | No event; remove candidate storage only. |
 
-Neither script count nor callback eligibility participates in this table. Pair removal cannot repeat a geometry-generated exit because that path already cleared the collision. Net spatial witness deltas are consolidated by Grid before removal; temporary witnesses do not independently create transitions.
+Geometry transitions are committed in the serial narrow-phase reduction; removal transitions are committed by `PhysicsManager::removePair` after witness reduction. A geometry-ending pair has no `Collision` when later removed, so removal cannot emit a duplicate Exit. No transition condition reads scripts.
 
-## Collision geometry
+## PhysicsManager physical collections
 
-A Collision holds the normal, reference/incident colliders, up to two feature-identified manifold points, warm-start impulses, support flags, and solver data already used by the engine.
+| Collection | Owner and purpose | Update cost and ordering |
+| --- | --- | --- |
+| `contactPairs` | All live confirmed contacts, including non-solving contacts; benchmark invariant oracle and active-contact count. | O(1) indexed insert/swap removal; consumers requiring order canonicalize their own output. |
+| `solverPairs` | Confirmed contacts eligible for dynamic/kinematic response with an applicable moving body. | O(1) membership changes; sort only when membership changes, O(S log S). Resolution/debug obtain the current collision directly from each pair. |
+| `dynamicCollisionScratch` | Reusable per-step subset used for iterative dynamic solving. | Rebuilt during the required solver pass, preserving canonical selection order. |
+| `supportDeltaBodies` | Bodies with accumulated support-count changes. | Deduplicated indexed queue; reduced after workers, before affected-body reconciliation. |
+| Body work collections | Registered, awake dynamic, moving kinematic and sleep-eligible bodies, plus changed-body queue. | Existing indexed membership and sleep-island invariants; no script dependency. |
 
-The internal geometry operation reads synchronized collider geometry and mutates only the owning pair/manifold. Shape helpers do not emit events or mutate shared body collections. The worker wrapper computes support flags after geometry; shared body support counts change only in the serial reduction.
+Delete `stayPairs`, `stayOrderDirty`, `simulationStep`, and the redundant `activeCollisions` projection. Retain solver dirty state. Delete unused `NarrowPhaseLocalResults` after a whole-repository use check.
 
-Keep existing box/circle math, feature identities, clipping acceptance, and fallback policy. Moving fallback construction to the internal geometry module does not introduce a new public Collision operation.
+`refreshPairLists` becomes physical membership reconciliation only. `refreshSolverPairs(Collider*)` visits touching adjacency for relevant body/collider state changes and refreshes solver eligibility without a geometry query or script lookup. `refreshResponse` remains responsible for response/support changes. Script reconciliation and startup must reach none of these operations solely because a script changed.
 
-## PhysicsEvent
+## PhysicsEvent batch
+
+**Owner**: PhysicsManager's existing reusable pending-event vector. No new public event bus, observer table, persistent history or script-specific contact state is introduced.
 
 | Field | Contract |
 | --- | --- |
-| type | Enter or exit only. No Stay value. |
-| colliderA / colliderB | Borrowed canonical endpoints, readable until the current dispatch/retirement barrier finishes. |
-| collision | Borrowed current pair manifold for enter; null for exit. Never dereferenced by exit handling. |
+| Type | Enter or Exit only. |
+| `colliderA`, `colliderB` | Canonical endpoint pointers; full stable handles supply deterministic sorting, including generations. |
+| `collision` | Borrowed confirmed contact for Enter; null for Exit. It remains valid until Enter dispatch completes. |
 
-PhysicsManager owns the retained-capacity pending event vector. Main-thread contact reduction and pair removal use one enqueue function. That function counts the generated transition once, independent of whether any callback can run.
+The manager's enqueue operation is the sole append/count boundary for both producers. Each actual transition creates one pair event even with no recipients, including removal of both endpoints. Each nonempty dispatch batch orders Exit before Enter, then canonical endpoint handles; delivery visits A before B. The phase model admits at most one event of a given kind for a given pair in a batch; enforce this through transition ownership, not a per-frame deduplication set. Ending an old contact and beginning a new one may legitimately produce Exit and Enter for the same pair.
 
-Each batch is ordered by exit before enter, then canonical A/B handles. Delivery visits A then B, checks each recipient's current lifecycle eligibility, aggregates exceptions under the existing policy, and clears the batch before storage reclamation.
+No supported structural mutation is applied while the notification vector is being iterated. Complete ordinary physics dispatch before cleanup can clear geometry. Cleanup-generated Exits dispatch before retired component/object allocation reclamation. Finish old-scene reconciliation and event drains before publishing replacement objects. Inactive/retired recipients are skipped at delivery; borrowed `other` pointers follow the existing callback-duration contract and must not be retained as durable references.
 
-No replay log, observer index, new event identity, subscription entity, manifold snapshot, or replacement Stay mechanism is added. No event survives into a replacement scene.
+Catch callback exceptions per endpoint, continue delivery under current rules, clear the consumed queue, then propagate the first exception. Cleanup still executes under GameManager's existing exception handling.
 
-## Physics collections
+## Script startup ownership
 
-| Collection | Membership / purpose | Update trigger |
-| --- | --- | --- |
-| contactPairs | Confirmed live contacts; diagnostics and existing invariant inspection. Unsorted indexed membership. | Confirmed-contact reconciliation/removal. |
-| solverPairs | Confirmed contacts with physical response and a moving/awake eligible body; canonical constraint order. | Geometry, response, body wake/sleep or membership changes. |
-| dynamicCollisionScratch | Dynamic subset reused across solver iterations. | Rebuilt by the existing solve phase. |
-| awakeBodies | Live awake dynamic bodies for force/integration. | Coalesced body-state changes. |
-| kinematicBodies | Live moving kinematic bodies. | Coalesced body-state changes. |
-| sleepEligibleBodies | Existing supported or gravity-free awake dynamic bodies eligible for sleeping. | Body/support changes. |
-| changedBodies / supportDeltaBodies | Deduplicated affected-body work with reusable capacity. | Actual body-state/support changes. |
+GameManager owns `pendingStartScripts`, per-script queue indexes, cancellation tombstones and the startup phase. `startPendingScripts` keeps index-based traversal and one active reference resolver for the pass.
 
-Remove `stayPairs`, `activeCollisions`, `stayOrderDirty`, `simulationStep`, and the unused local-results struct. Retain solver-order dirtiness and existing body membership indices, support-delta fields, and sleep-island state. Body adjacency refresh updates solver membership only; script changes never touch these collections.
+ScriptComponent owns `pendingBehaviors`, runnable `behaviors`, dispatch eligibility and private `startPendingBehaviors(platformator::ReferenceResolver&)`:
 
-Solver membership must be canonically prepared before its next solver/debug consumer after membership changes. Do not mutate a collection while its consumers iterate it; body changes discovered in solver callbacks are queued and drained at the existing boundary.
+1. Recheck eligibility before each pending behavior and read the current pending size, allowing same-pass additions during startup.
+2. Resolve references and attempt start; report failures per behavior without aborting the remaining eligible batch.
+3. Promote exactly the attempted prefix in order, including failed attempts as the existing contract requires.
+4. Leave an unattempted suffix pending after disable/retirement; queue scheduling remains the manager's responsibility.
 
-## ScriptComponent startup state
+After the component operation returns, GameManager cancels that script's start-queue membership as today. No `firstBehaviors` state or contact refresh follows. Public callback and serialization contracts do not change beyond Stay removal.
 
-| State | Owner / rule |
-| --- | --- |
-| pendingBehaviors | Script-owned entries awaiting their one initialization attempt. Startup may append entries. |
-| behaviors | Script-owned runnable entries whose initialization was attempted, including logged failures. |
-| pendingStartScripts plus queue index | GameManager's cancellable indexed startup queue; cancellation leaves a null slot during iteration. |
-| Attempted prefix count | Local startup variable; only this prefix transfers from pending to runnable. |
+## Benchmark and test-only data
 
-`startPendingBehaviors` retains no iterators across user callbacks. New entries added during startup may be attempted in the same pass. Deactivation/retirement interrupts the loop and preserves the untouched suffix. Resolve failure skips that entry's start call; every attempted entry is promoted once and is not retried. Ordinary-dispatch additions wait for the next eligible startup pass.
+Schema 3 has the same eight timing scopes and eleven counters; see [benchmark-schema.md](contracts/benchmark-schema.md). Each enqueue increments Enter or Exit using frame-scoped recorder accumulation. Generation outside an active measured frame does not create an artificial sample. Main-phase and cleanup events both contribute when they occur within a frame. Do not count recipients, rescan pending events, or carry an out-of-frame event into a later sample.
 
-Remove the local `firstBehaviors` condition and all startup observer refresh. These changes introduce no new behavior state or ownership list.
-
-## Diagnostics
-
-Per recorded complete step, enter/exit counters accumulate at transition enqueue, including cleanup events and zero-recipient contacts. Frame start resets them; an idle event outside a recorded frame does not contaminate a future sample.
-
-Schema v3 removes Stay and retains eleven counters and eight timing scopes. Historical v2 artifacts remain immutable with their original semantics. See [benchmark schema contract](contracts/benchmark-schema.md).
-
-## Invariants and validation rules
-
-1. Every collider pair has at most one confirmed Collision, independent of spatial witness count.
-2. Every completed absent/present change contributes one generated transition; callback multiplicity never changes this count.
-3. An unchanged contact, including stationary/sleeping/trigger contact, emits no recurring event.
-4. Each list insertion/removal repairs the moved element's index in O(1).
-5. Support flags map through canonical endpoints even if SAT reference/incident roles swap.
-6. Wake/sleep and response changes refresh affected solver membership even without geometry changes.
-7. Scripts pending initialization receive no callbacks before their existing initialization boundary; adding them creates no replay.
-8. Logical retirement suppresses later callbacks immediately; pending records are drained or cleared before referenced allocations are reclaimed, including exceptional cleanup.
-9. Serial and parallel processing produce the same canonical transitions and physical state within established test tolerances.
+Replace the Stay work probe with test-only counters for actual transition comparisons in the pending-pair reduction and event records appended. Quiet persistent-contact tests must show both remain zero after warmup with and without scripts. Pending geometry updates may perform a transition comparison even when contact remains present; this is changed-pair work, not a dedicated traversal of persistent contacts. Probe support is compiled out of performance builds.

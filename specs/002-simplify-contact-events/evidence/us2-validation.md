@@ -1,0 +1,5 @@
+# US2 validation
+
+Stay API/event/observer state and duplicate solver projection removed. Normal debug CTest excluding package passes all applicable tests (instrumentation-specific tests skip as configured); package smoke separately passes and rebuilds/install/relocates consumers. cleanup-work contact/support/work tests: 3/3 pass, including quiet observed contacts with zero warmed idle allocations and zero event/geometry/adjacency visits, while body-state changes still visit physical neighbors. Benchmark C++/Python contract tests: 2/2 pass; direct Python unittest: 10/10 pass.
+
+New pre-change failures retained: persistent contacts emitted a recurring event; schema-2 and extra raw fields were accepted; both-retired cleanup Exit was missing from the complete-step counter. Their corresponding final checks now pass. Current producer has schema 3, eight scope summaries, eleven counters; generation accumulation includes cleanup and ignores out-of-frame operations. Archived data remain unchanged.

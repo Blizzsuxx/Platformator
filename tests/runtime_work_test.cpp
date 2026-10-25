@@ -1,5 +1,7 @@
 #include "test_support.h"
 #include "runtime_work_probe.h"
+#include "runtimeaccess.h"
+#include "physicsmanager.h"
 #include <iostream>
 #include <atomic>
 #include <cstdlib>
@@ -7,6 +9,7 @@
 #include <oneapi/tbb/global_control.h>
 #include <platformator/boxcollider.h>
 #include <platformator/rigidbody.h>
+#include <platformator/scriptcomponent.h>
 
 using namespace test_support;
 #if PLATFORMATOR_ENABLE_WORK_PROBES
@@ -63,6 +66,16 @@ int main()
                 ->getComponent<Rigidbody>()
                 ->setIsSleeping(true);
         }
+        std::vector<GameObject *> observed;
+        for (int i = 0; i < 64; ++i)
+        {
+            auto *a = runtime.createGameObject()->setPosition({10000.f + i * 40.f, 0})->addComponent<BoxCollider>(4, 4);
+            auto *b = runtime.createGameObject()->setPosition({10001.f + i * 40.f, 0})->addComponent<BoxCollider>(4, 4);
+            a->getComponent<BoxCollider>()->setIsTrigger(true);
+            a->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
+                new test_support::Behavior);
+            observed.push_back(b);
+        }
         for (int i = 0; i < 32; ++i)
             runtime.simulateFrame(dt);
         platformator_test::work = {};
@@ -71,12 +84,17 @@ int main()
         runtime.simulateFrame(dt);
         countAllocations = false;
         auto work = platformator_test::work;
-        require(
-            work.hierarchyRebuilds == 0 && work.transformVisits == 0 && work.reconciliations == 0 &&
-                work.geometryPairs == 0 && work.stayPairs == 0 && work.forceBodies == 0 && work.movingBodies == 0 &&
-                work.sleepBodies == 0,
-            "Idle/static/unobserved contacts cannot trigger global lifecycle, transform, geometry, stay, or body work");
+        require(work.hierarchyRebuilds == 0 && work.transformVisits == 0 && work.reconciliations == 0 &&
+                    work.geometryPairs == 0 && work.contactTransitionChecks == 0 && work.contactEventRecords == 0 &&
+                    work.solverRefreshPairs == 0 && work.forceBodies == 0 && work.movingBodies == 0 &&
+                    work.sleepBodies == 0,
+                "Idle/static/unobserved contacts cannot trigger global lifecycle, transform, geometry, event, or body "
+                "work");
         require(allocations == 0, "A warmed idle step must reuse its scratch allocations");
+        std::cout << "idle allocations=" << allocations << " geometry=" << work.geometryPairs
+                  << " transition_checks=" << work.contactTransitionChecks
+                  << " event_records=" << work.contactEventRecords
+                  << " solver_refresh_visits=" << work.solverRefreshPairs << '\n';
         platformator_test::work = {};
         runtime.simulateFrameWithCustomCallback(dt, [&](double) {
             root->setPosition({1, 0});
@@ -91,6 +109,61 @@ int main()
         work = platformator_test::work;
         require(work.hierarchyRebuilds == 0 && work.forceBodies == 0 && work.movingBodies == 0,
                 "Flat creation/retirement cannot rebuild the hierarchy or integrate a terminal body");
+        platformator_test::work = {};
+        auto *script = observed.front()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>();
+        script->addBehavior(new test_support::Behavior);
+        runtime.simulateFrame(dt);
+        observed.front()->removeComponent(SCRIPT);
+        observed.front()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
+            new test_support::Behavior);
+        runtime.simulateFrame(dt);
+        work = platformator_test::work;
+        require(work.solverRefreshPairs == 0 && work.geometryPairs == 0 && work.contactTransitionChecks == 0 &&
+                    work.contactEventRecords == 0,
+                "Script startup and replacement must not visit physical adjacency or contact transitions");
+        observed.front()->addComponent<Rigidbody>(DYNAMIC, false);
+        runtime.simulateFrame(dt);
+        observed.front()->getComponent<Rigidbody>()->setIsSleeping(true);
+        platformator_test::work = {};
+        runtime.simulateFrame(dt);
+        require(platformator_test::work.solverRefreshPairs > 0,
+                "Body sleep transitions still reconcile actual physical adjacency");
+        auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+        std::pair<size_t, size_t> retained;
+        const auto originalContacts = physics->getContactPairs().size();
+        for (int cycle = 0; cycle < 5; ++cycle)
+        {
+            std::vector<GameObject *> churn;
+            runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+                for (int i = 0; i < 16; ++i)
+                    for (int endpoint = 0; endpoint < 2; ++endpoint)
+                    {
+                        auto *object = runtime.createGameObject()
+                                           ->setPosition({30000.f + i * 40.f + endpoint, 0})
+                                           ->addComponent<BoxCollider>(4, 4);
+                        object->getComponent<BoxCollider>()->setIsTrigger(true);
+                        churn.push_back(object);
+                    }
+            });
+            runtime.simulateFrame(
+                dt); // Components created in the hook register at cleanup; confirm geometry next step.
+            require(physics->getContactPairs().size() == originalContacts + 16,
+                    "Each churn cycle must add sixteen real confirmed contacts");
+            const auto capacity =
+                std::pair{physics->getPendingPhysicsEvents().capacity(), physics->getContactPairs().capacity()};
+            if (cycle == 0)
+                retained = capacity;
+            else
+                require(capacity == retained, "Fixed-peak contact churn must reuse retained event/contact storage");
+            runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+                for (auto *object : churn)
+                    object->destroy();
+            });
+            require(physics->getContactPairs().size() == originalContacts,
+                    "Churn removals must restore contact membership");
+        }
+        std::cout << "fixed-peak churn retained event_slots=" << retained.first << " contact_slots=" << retained.second
+                  << '\n';
         std::cout << "[PASS] affected-work counters\n";
         return 0;
     }

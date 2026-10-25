@@ -2,6 +2,7 @@
 #include "benchmark.h"
 #include <iostream>
 #include <platformator/scriptcomponent.h>
+#include <platformator/boxcollider.h>
 
 using namespace test_support;
 #if PLATFORMATOR_ENABLE_BENCHMARKS
@@ -34,6 +35,54 @@ struct RetiredWork : test_support::Behavior
     }
     Trace &trace;
 };
+void generatedEventCounters()
+{
+    for (int recipients = 0; recipients <= 2; ++recipients)
+    {
+        platformator::Runtime runtime(physicsOnly());
+        auto &recorder = BenchmarkRecorder::getInstance();
+        recorder.configure(8, {{"scenario", "event-contract"},
+                               {"seed", 0},
+                               {"workers", 1},
+                               {"dt", dt},
+                               {"warmup_steps", 0},
+                               {"measured_steps", 8},
+                               {"repetitions", 1},
+                               {"rendering", false}});
+        auto *a = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
+        auto *b = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
+        for (int endpoint = 0; endpoint < recipients; ++endpoint)
+        {
+            auto *owner = endpoint == 0 ? a : b;
+            owner->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
+                new test_support::Behavior);
+        }
+        const auto count = [&](BenchmarkCounterId id) {
+            return recorder.samples().back().counters[static_cast<size_t>(id)];
+        };
+        runtime.simulateFrame(dt);
+        require(count(BenchmarkCounterId::CollisionEnterEventCount) == 1,
+                "Generated Enter is one pair regardless of recipients");
+        runtime.simulateFrame(dt);
+        require(count(BenchmarkCounterId::CollisionEnterEventCount) == 0 &&
+                    count(BenchmarkCounterId::CollisionExitEventCount) == 0,
+                "Persistent contact does not increment transition counters");
+        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+            a->destroy();
+            b->destroy();
+        });
+        require(count(BenchmarkCounterId::CollisionExitEventCount) == 1,
+                "Both-retired cleanup Exit belongs to the current complete step");
+        a = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
+        b = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
+        runtime.simulateFrame(dt);
+        require(count(BenchmarkCounterId::CollisionEnterEventCount) == 1, "New listener-free lifetime is counted");
+        a->destroy(); // No active recording frame.
+        runtime.simulateFrame(dt);
+        require(count(BenchmarkCounterId::CollisionExitEventCount) == 0,
+                "Out-of-frame Exit cannot leak into next sample");
+    }
+}
 } // namespace
 #endif
 int main()
@@ -42,6 +91,7 @@ int main()
     headlessEnvironment();
     try
     {
+        generatedEventCounters();
         Trace trace;
         {
             platformator::Runtime runtime(physicsOnly());
@@ -76,7 +126,7 @@ int main()
                 std::ifstream file(path.parent_path() / "benchmark-contract.manifest.json");
                 file >> manifest;
             }
-            require(manifest.at("schema_version") == 2 && manifest.at("measured_steps") == 64 &&
+            require(manifest.at("schema_version") == 3 && manifest.at("measured_steps") == 64 &&
                         manifest.contains("boundaries") && manifest.contains("build") && manifest.contains("machine") &&
                         manifest.contains("dependencies"),
                     "A run must record schema, boundaries, resolved parameters and build/machine/dependency identity");

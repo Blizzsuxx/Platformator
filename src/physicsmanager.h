@@ -3,10 +3,8 @@
 #include "platformator/rigidbody.h"
 #include "platformator/collider.h"
 #include "collision.h"
-#include "segmentedintervallist.h"
 #include <algorithm>
-#include <chrono>
-#include <oneapi/tbb/concurrent_vector.h>
+#include <oneapi/tbb/enumerable_thread_specific.h>
 #include <vector>
 #include <span>
 #include "helpers.h"
@@ -19,8 +17,7 @@ struct PhysicsEvent
     enum EventType
     {
         COLLISION_ENTER,
-        COLLISION_EXIT,
-        COLLISION_STAY
+        COLLISION_EXIT
     };
 
     EventType type;
@@ -53,7 +50,6 @@ class PhysicsManager
 
     void addRigidBodyComponent(Rigidbody *rigidBodyComponent);
     void addColliderComponent(Collider *colliderComponent);
-    // void refreshColliderComponent(Collider *colliderComponent);
     void queueColliderSync(Collider *colliderComponent);
 
     void removeRigidBodyComponent(Rigidbody *rigidBodyComponent);
@@ -66,7 +62,7 @@ class PhysicsManager
 
     const Eigen::Vector2f &getGravityVector() const;
     const Eigen::Vector2f &getGravityVectorNormalized() const;
-    void refreshSubscriptions(Collider *collider);
+    void refreshSolverPairs(Collider *collider);
     void refreshResponse(Collider *collider);
 
   private:
@@ -77,6 +73,7 @@ class PhysicsManager
     void narrowPhase();
     void processNarrowPhasePair(const ColliderPair *pair);
     void refreshPairLists(const ColliderPair *pair);
+    void refreshSolverPair(const ColliderPair *pair, bool live);
     void removePair(const ColliderPair *pair);
     void reducePairSupport(const ColliderPair *pair);
     void queueSupportDelta(Rigidbody *body, int delta);
@@ -92,7 +89,7 @@ class PhysicsManager
     size_t countAwakeDynamicBodies() const;
 #endif
 
-    void satCreateCollision(const ColliderPair &pair);
+    void updateContactGeometry(const ColliderPair &pair);
     void circleCircleCollision(const ColliderPair &pair);
     void circleBoxCollision(const ColliderPair &pair);
 
@@ -110,14 +107,11 @@ class PhysicsManager
     std::vector<Rigidbody *> rigidBodyComponents;
     std::vector<Rigidbody *> awakeBodies, kinematicBodies, sleepEligibleBodies, changedBodies;
     std::vector<Collider *> colliderComponents;
-    std::vector<Collision *> activeCollisions;
     std::vector<Collision *> dynamicCollisionScratch;
     std::vector<const ColliderPair *> contactPairs;
     std::vector<const ColliderPair *> solverPairs;
-    std::vector<const ColliderPair *> stayPairs;
     std::vector<Rigidbody *> supportDeltaBodies;
-    bool solverOrderDirty = false, stayOrderDirty = false;
-    uint64_t simulationStep = 0;
+    bool solverOrderDirty = false;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
     struct MovedObject
     {
@@ -129,10 +123,4 @@ class PhysicsManager
 
     Eigen::Vector2f gravityVector;
     Eigen::Vector2f gravityVectorNormalized;
-};
-
-struct NarrowPhaseLocalResults
-{
-    std::vector<Collision *> activeCollisions;
-    std::vector<PhysicsEvent> physicsEvents;
 };

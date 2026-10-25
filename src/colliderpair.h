@@ -23,7 +23,6 @@ class ColliderPair
     void updateCachedCollisionVersions() const;
     bool shouldUpdate() const;
     void clearCollisionNoEvent() const;
-    void clearCollision() const;
 
     bool getIsQueuedForNarrowPhase() const;
     void setIsQueuedForNarrowPhase(bool queued) const;
@@ -34,7 +33,6 @@ class ColliderPair
     size_t getAdjacencyIndexB() const;
     void setAdjacencyIndexB(size_t index) const;
 
-    void queueCollisionExit() const;
 
     void setObjectA(Collider *colliderA);
     void setObjectB(Collider *colliderB);
@@ -74,8 +72,6 @@ class ColliderPair
     mutable size_t pairSlot = SIZE_MAX;
     mutable size_t activeIndex = SIZE_MAX;
     mutable size_t solverIndex = SIZE_MAX;
-    mutable size_t stayIndex = SIZE_MAX;
-    mutable uint64_t enteredStep = 0;
     mutable bool resultHadContact = false;
     mutable bool resultTestedGeometry = false;
     mutable Rigidbody *supportBodyA = nullptr;

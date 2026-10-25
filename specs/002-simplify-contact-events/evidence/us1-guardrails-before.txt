@@ -1,0 +1,14 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start  5: platformator_collider_pair_cleanup_test
+1/2 Test  #5: platformator_collider_pair_cleanup_test ...   Passed    0.23 sec
+    Start 16: platformator_physics_geometry_test
+2/2 Test #16: platformator_physics_geometry_test ........   Passed    0.01 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+geometry        =   0.01 sec*proc (1 test)
+physics         =   0.24 sec*proc (2 tests)
+platformator    =   0.24 sec*proc (2 tests)
+
+Total Test time (real) =   0.24 sec

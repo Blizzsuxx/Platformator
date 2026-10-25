@@ -1,0 +1,60 @@
+# Complete-step comparison
+
+Five independent process runs per group; 120 warmup and 600 measured steps; seed 0; dt 1/120. Same hardware, compiler/flags, dependencies, physical workload, worker affinity and scope boundaries verified. Both capture sets and raw checksums verified. Positive change means slower. Overlap describes observed run-mean ranges, not a significance test. Timing scopes are compared; changed event-counter semantics are not.
+
+| Workload / pairs or population / recipients / workers | Baseline µs | Candidate µs | Change | Run ranges overlap |
+| --- | ---: | ---: | ---: | --- |
+| add_and_remove-n10-r0-w1 | 36.143 | 37.034 | +2.5% | yes |
+| add_and_remove-n10-r0-w6 | 27.737 | 27.741 | +0.0% | yes |
+| add_and_remove-n100-r0-w1 | 324.457 | 331.892 | +2.3% | yes |
+| add_and_remove-n100-r0-w6 | 183.516 | 166.171 | -9.5% | yes |
+| add_and_remove-n1000-r0-w1 | 2844.436 | 2820.477 | -0.8% | yes |
+| add_and_remove-n1000-r0-w6 | 1481.772 | 1426.096 | -3.8% | yes |
+| broad_phase-n100-r0-w1 | 45.471 | 45.285 | -0.4% | yes |
+| broad_phase-n100-r0-w6 | 32.452 | 30.916 | -4.7% | yes |
+| broad_phase-n1000-r0-w1 | 652.569 | 601.993 | -7.8% | yes |
+| broad_phase-n1000-r0-w6 | 194.190 | 200.532 | +3.3% | yes |
+| broad_phase-n500-r0-w1 | 273.423 | 264.055 | -3.4% | yes |
+| broad_phase-n500-r0-w6 | 107.897 | 115.695 | +7.2% | yes |
+| broad_phase_stress-n150-r0-w1 | 873.286 | 877.430 | +0.5% | yes |
+| broad_phase_stress-n150-r0-w6 | 805.025 | 803.164 | -0.2% | yes |
+| broad_phase_stress-n300-r0-w1 | 2653.095 | 2661.148 | +0.3% | yes |
+| broad_phase_stress-n300-r0-w6 | 2597.052 | 2493.292 | -4.0% | yes |
+| broad_phase_stress-n50-r0-w1 | 141.356 | 136.572 | -3.4% | yes |
+| broad_phase_stress-n50-r0-w6 | 136.720 | 119.919 | -12.3% | yes |
+| moving_add_and_remove-n10-r0-w1 | 484.867 | 465.529 | -4.0% | yes |
+| moving_add_and_remove-n10-r0-w6 | 217.463 | 209.603 | -3.6% | yes |
+| moving_add_and_remove-n100-r0-w1 | 702.865 | 705.349 | +0.4% | yes |
+| moving_add_and_remove-n100-r0-w6 | 298.003 | 300.978 | +1.0% | yes |
+| moving_add_and_remove-n1000-r0-w1 | 2909.069 | 2829.090 | -2.7% | yes |
+| moving_add_and_remove-n1000-r0-w6 | 1438.830 | 1422.714 | -1.1% | yes |
+| narrow_phase-n10-r0-w1 | 58.707 | 54.126 | -7.8% | no |
+| narrow_phase-n10-r0-w6 | 40.620 | 39.451 | -2.9% | yes |
+| narrow_phase-n100-r0-w1 | 8192.663 | 7929.135 | -3.2% | yes |
+| narrow_phase-n100-r0-w6 | 3234.626 | 2985.638 | -7.7% | no |
+| narrow_phase-n200-r0-w1 | 33329.063 | 33577.494 | +0.7% | yes |
+| narrow_phase-n200-r0-w6 | 16922.201 | 16466.704 | -2.7% | yes |
+| persistent_contacts-n10-r0-w1 | 0.320 | 0.315 | -1.5% | yes |
+| persistent_contacts-n10-r0-w6 | 0.294 | 0.307 | +4.3% | yes |
+| persistent_contacts-n10-r1-w1 | 0.809 | 0.617 | -23.8% | no |
+| persistent_contacts-n10-r1-w6 | 0.828 | 0.663 | -19.9% | yes |
+| persistent_contacts-n10-r2-w1 | 1.362 | 0.923 | -32.3% | no |
+| persistent_contacts-n10-r2-w6 | 1.307 | 0.948 | -27.4% | no |
+| persistent_contacts-n100-r0-w1 | 0.291 | 0.308 | +5.6% | yes |
+| persistent_contacts-n100-r0-w6 | 0.313 | 0.312 | -0.5% | yes |
+| persistent_contacts-n100-r1-w1 | 5.741 | 3.897 | -32.1% | no |
+| persistent_contacts-n100-r1-w6 | 6.175 | 3.710 | -39.9% | no |
+| persistent_contacts-n100-r2-w1 | 10.305 | 7.090 | -31.2% | no |
+| persistent_contacts-n100-r2-w6 | 10.643 | 7.020 | -34.0% | no |
+| persistent_contacts-n1000-r0-w1 | 0.341 | 0.289 | -15.5% | no |
+| persistent_contacts-n1000-r0-w6 | 0.336 | 0.309 | -8.1% | yes |
+| persistent_contacts-n1000-r1-w1 | 75.263 | 41.221 | -45.2% | no |
+| persistent_contacts-n1000-r1-w6 | 76.549 | 40.166 | -47.5% | no |
+| persistent_contacts-n1000-r2-w1 | 131.064 | 80.442 | -38.6% | no |
+| persistent_contacts-n1000-r2-w6 | 128.270 | 85.737 | -33.2% | no |
+| rigid_body_container-n100-r0-w1 | 70.235 | 70.592 | +0.5% | yes |
+| rigid_body_container-n100-r0-w6 | 68.348 | 65.260 | -4.5% | yes |
+| rigid_body_container-n1000-r0-w1 | 1482.863 | 1507.921 | +1.7% | yes |
+| rigid_body_container-n1000-r0-w6 | 1238.313 | 1181.048 | -4.6% | yes |
+| rigid_body_container-n500-r0-w1 | 596.906 | 584.086 | -2.1% | yes |
+| rigid_body_container-n500-r0-w6 | 451.505 | 452.707 | +0.3% | yes |

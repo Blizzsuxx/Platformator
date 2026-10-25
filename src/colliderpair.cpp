@@ -1,7 +1,5 @@
 #include "colliderpair.h"
 #include "aabb.h"
-#include "gamemanager.h"
-#include "runtimeaccess.h"
 
 ColliderPair::ColliderPair(Collider *a, Collider *b)
     : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1),
@@ -23,7 +21,7 @@ ColliderPair::ColliderPair(Collider *a, Collider *b)
 
 ColliderPair::~ColliderPair()
 {
-    clearCollision();
+    delete collision;
 }
 
 Collision *ColliderPair::getCollision() const
@@ -52,16 +50,6 @@ void ColliderPair::clearCollisionNoEvent() const
     }
 
     updateCachedCollisionVersions();
-}
-
-void ColliderPair::clearCollision() const
-{
-    if (collision != nullptr)
-    {
-        queueCollisionExit();
-    }
-
-    clearCollisionNoEvent();
 }
 
 bool ColliderPair::getIsQueuedForNarrowPhase() const
@@ -102,17 +90,6 @@ size_t ColliderPair::getAdjacencyIndexB() const
 void ColliderPair::setAdjacencyIndexB(size_t index) const
 {
     adjacencyIndexB = index;
-}
-
-void ColliderPair::queueCollisionExit() const
-{
-    if (objectA->isRetired() && objectB->isRetired())
-    {
-        return;
-    }
-
-    platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->addPendingPhysicsEvent(
-        PhysicsEvent{PhysicsEvent::COLLISION_EXIT, nullptr, objectA, objectB});
 }
 
 void ColliderPair::setObjectA(Collider *colliderA)

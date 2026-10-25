@@ -209,7 +209,7 @@ class GameManager
     void updateScriptComponents(double timeDelta);
     void lateUpdateScriptComponents(double timeDelta);
     void updateAnimatorComponents(double timeDelta);
-    void triggerStartedBehaviors();
+    void startPendingScripts();
 
     void queueScriptStart(ScriptComponent *script);
     void cancelScriptStart(ScriptComponent *script);

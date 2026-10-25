@@ -1,144 +1,148 @@
 # Validation Guide: Simplify Contact Events
 
-These are implementation acceptance instructions. The plan itself does not implement runtime changes or run the behavioral checks. The new contact-transition test target becomes available when its implementation is added.
+This guide validates the implemented feature. The internal contact test, persistent-contact fixture and schema-3 tools are available. Run commands from the repository root; retained results and known sanitizer limitations are linked from [validation.md](validation.md). See [data-model.md](data-model.md) for ownership and [contracts/contact-events.md](contracts/contact-events.md) for expected behavior.
 
-Run commands from the repository root. Use a C++20 compiler, Ninja, CMake 3.21+ for the existing presets, Python 3, and the repository's SDL system development prerequisites. Dependencies are vendored. Headless CTest entries configure dummy SDL drivers.
+## Prerequisites and baseline
 
-Read [the contact contract](contracts/contact-events.md), [diagnostic contract](contracts/benchmark-schema.md), and [data model](data-model.md) for expected semantics.
+Use the existing C++20/CMake/Ninja/Python 3 toolchain and vendored dependencies. SDL tests run headless through CTest's configured environment. Record the source revision and dirty patch, compiler/build options, CPU topology, worker count/affinity, seed and timestep. Use one worker and an appropriate multiworker count for the machine; six below is the repository reference example, not a hardware assumption.
 
-## 1. Preserve baseline evidence
+For a new baseline comparison, reproduce the recorded baseline revision plus [common-fixture.patch](evidence/common-fixture.patch) in a separate checkout before changing runtime behavior. The recorded baseline provenance is in [baseline-provenance.md](evidence/baseline-provenance.md). The current checkout implements the candidate. Its Enter/Exit-only no-op observer compiles against both versions. Preserve the exact fixture patch in both baseline and candidate source fingerprints. The fixture adds runner `--contact-pair-count`, sweep `--counts`, and `--scripted-endpoints 0|1|2`; it must report and verify the resolved number of real confirmed contacts.
 
-Before source edits, record `git rev-parse HEAD` and `git status --short`. The planning baseline is `0ca09758f5148426139a923a1e7b9404471eac67`. Keep current source/tooling available for equivalent pre-change captures. Existing historical results are not a substitute for a matching before/after workload.
+```sh
+export CONTACT_CAPTURE_ROOT="$(mktemp -d /tmp/platformator-contact-captures.XXXXXX)"
+export CONTACT_MULTI_WORKERS=6
+export CONTACT_STAGE=candidate
+cmake --preset cleanup-benchmark
+cmake --build --preset cleanup-benchmark --parallel 4
+```
 
-Run the existing focused tests when establishing the baseline. New behavior tests should demonstrate the script-dependent enter defect before its fix; existing Stay assertions are expected to change with the deliberate contract removal. Do not weaken support, geometry, startup, or lifetime assertions.
+Capture the baseline matrix in its baseline checkout with `CONTACT_STAGE=baseline`, using its schema-2 producer and matching tooling before runtime changes. Retain all captures; do not copy a lone dynamically linked runner and assume it preserves the baseline after dependencies are rebuilt. After implementation, rebuild the same preset, set `CONTACT_STAGE=candidate`, and capture again with schema-3 tooling. Keep workload, fixture, compiler flags, seed, timestep and worker/affinity choices equivalent. Differences in schema/event counter meaning must remain labeled.
 
-## 2. Build and run focused correctness checks
+## Focused correctness and public consumers
 
-~~~sh
+The INTERNAL target `platformator_contact_events_test` is registered with physics/determinism labels and implemented in `tests/contact_events_test.cpp`. Its fixture observes pair-event generation before delivery without adding a public event-inspection API.
+
+```sh
 cmake --preset cleanup-debug
 cmake --build --preset cleanup-debug --parallel 4
 ctest --test-dir bin/cleanup-debug --output-on-failure \
-  -R 'platformator_(contact_transition_contract_test|physics_support_test|physics_geometry_test|collider_pair_cleanup_test|queued_deletion_safety_test|callback_mutation_test|scene_transition_contract_test|scene_transition_stress_test|destruction_contract_test|regression_tests)$'
-~~~
+  -R 'platformator_(contact_events|physics_support|physics_geometry|callback_mutation|scene_transition_stress|queued_deletion_safety|collider_pair_cleanup)_test|platformator_regression_tests'
+```
 
-Expected results after implementation:
+Expected outcomes:
 
-| Area / requirements | Required observation |
-| --- | --- |
-| FR-001–003, FR-010 | Identical generated pair-event traces with zero, one-sided, and two-sided script availability; absent/present changes only; canonical serial/parallel order. |
-| FR-004–005 | Each eligible behavior receives one callback; empty/pending scripts receive none; late attachment gets no replay and can receive the later exit. |
-| FR-006, FR-012 | Stay declarations/definitions/dispatch and active consumer overrides are removed. Maintained test callback families use the remaining contract. |
-| FR-007–008 | 100 unchanged steps produce no further notifications for moving, stationary, sleeping, and trigger contacts. Filter/coalesced toggle, support/body replacement, response-change, and re-entry expectations hold. |
-| FR-009 | Survivor retirement exits keep the other collider readable; both-retired callbacks are suppressed; no stale callback after replacement/clear or exceptions. |
-| Startup cleanup | One-attempt resolve/start, failed-entry promotion, additions during startup, next-pass ordinary additions, cancellation, and interrupted pending suffix retain their exact existing assertions. |
-| Geometry/body consolidation | Circle/circle, circle/box corner/containment/offset, rotated boxes, rounded-SAT gap, manifold features, 128 support counts, support-loss waking, tall stacks, and wide piles remain correct. |
+- Zero, one and two scripted endpoints produce the same generated Enter/Exit sequence; callback totals reflect only current eligible recipients.
+- Entry followed by 100 unchanged updates produces one Enter and no further contact event; separation produces one Exit; re-contact produces one new Enter.
+- Adding, replacing or enabling a script midcontact creates no Enter replay. An eligible late recipient receives the actual Exit.
+- False-positive candidates produce no events. Multiple cell witnesses never duplicate transitions or end a still-covered contact.
+- Geometry separation, filter exclusion, deactivation and collider/object removal each close real contacts once, including when both recipients retire.
+- One and several workers produce identical canonical Exit-before-Enter traces and A-before-B delivery, with normal and cleanup batches tested separately.
+- Contact/support totals, trigger response changes, 128-support cases, resting stacks, sleeping/waking and geometry/manifold regressions remain correct.
+- Callback mutation, exception aggregation, scene replacement/shutdown and detailed start-order/failure/queue-mutation tests retain their previous guarantees after startup extraction.
 
-The new focused test is an INTERNAL CTest target using existing PhysicsManager access. At controlled physics test boundaries, inspect queued pair events before delivery. This proves generation for scriptless contacts without adding production observer APIs. Public/runtime callback traces separately prove eligibility and lifecycle delivery.
+Run the full normal suite once the focused checks pass; this includes public-header builds, package consumers, scene serialization and lifecycle integration:
 
-## 3. Run the complete runtime suite and consumers
+```sh
+ctest --test-dir bin/cleanup-debug --output-on-failure -L platformator
+```
 
-~~~sh
-ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke
-cmake --preset cleanup-debug -DPLATFORMATOR_BUILD_EXAMPLES=ON
-cmake --build --preset cleanup-debug --parallel 4
-ctest --test-dir bin/cleanup-debug --output-on-failure -R platformator_package_smoke
-~~~
+Any external behavior consumer must rebuild against the new library and remove Stay overrides. No scene serialization migration is expected.
 
-The example game and installed/public-header consumer must compile against the enter/exit-only surface. Remove obsolete Stay overrides where they exist; the current Mario example already uses enter callbacks.
+## Affected work, allocation and memory lifetime
 
-## 4. Verify affected work and allocation reuse
-
-~~~sh
+```sh
 cmake --preset cleanup-work
-cmake --build --preset cleanup-work --target platformator_runtime_work_test --parallel 4
-ctest --test-dir bin/cleanup-work --output-on-failure -R platformator_runtime_work_test
-~~~
-
-Extend the existing warmed-up test with stable confirmed contacts that have eligible scripts, empty scripts, and sleeping bodies. Verify:
-
-- Unchanged contacts generate zero events and cause zero event-pair visits.
-- Script-only attachment/removal/replacement causes zero physics adjacency refresh visits; actual startup/reconciliation work is allowed.
-- A real wake/sleep or response change still refreshes the affected solver adjacency and retains correct support/sleep behavior.
-- Warming and reusing buffers preserves zero allocations in a mutation-free idle step.
-- Existing transform-subtree, force/movement, body sleeping, and lifecycle affected-work assertions remain intact.
-
-Remove the old `stayPairs` probe. Add only small test-only counts at actual transition and solver-adjacency work boundaries as needed to distinguish the behavior above. Work probes remain disabled for timing runs.
-
-## 5. Verify sanitizer and failure paths
-
-~~~sh
+cmake --build --preset cleanup-work --parallel 4
+ctest --test-dir bin/cleanup-work --output-on-failure \
+  -R 'platformator_(runtime_work|contact_events|physics_support)_test'
 cmake --preset cleanup-asan
 cmake --build --preset cleanup-asan --parallel 4
-ctest --test-dir bin/cleanup-asan --output-on-failure \
-  -R 'platformator_(contact_transition_contract_test|physics_support_test|physics_geometry_test|callback_mutation_test|queued_deletion_safety_test|scene_transition_stress_test|collider_pair_cleanup_test)$'
-~~~
+ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+  ctest --test-dir bin/cleanup-asan --output-on-failure -L platformator -E platformator_package_smoke
+cmake --preset cleanup-tsan
+cmake --build --preset cleanup-tsan --parallel 4
+TSAN_OPTIONS=halt_on_error=1 ctest --test-dir bin/cleanup-tsan --output-on-failure \
+  -L 'physics|mutation|lifecycle'
+```
 
-Include callbacks that throw after requesting retirement and cases that destroy/replace the other endpoint during enter/exit delivery. Pending enter manifold pointers and exit endpoints must remain valid through dispatch; error cleanup must not free referenced storage while records remain pending.
+The work fixture includes quiet confirmed contacts with and without scripts, and five fixed-peak churn cycles that assert sixteen real contacts per cycle and retained capacity reuse. After warmup, transition comparisons and queued event records remain zero, and existing idle allocation checks remain zero. Moving pairs may require geometry/transition checks but must not cause a separate persistent-contact event scan. Record retained vector capacity/memory and allocation behavior under contact churn as well as idle. Keep probes and allocation instrumentation out of timing runs.
 
-Use the existing `cleanup-tsan` preset for supplemental serial/multiworker checks when the host and instrumented dependencies support it. Record exact environmental failures or existing sanitizer defects separately; do not report a clean sanitizer run if it did not complete.
+The ASan command above checks memory access and UB; it does not certify leak freedom. A separate leak-enabled run outside the tool sandbox reproduces the documented FluidSynth initialization leak in desktop hosts. The sandbox itself prevents LeakSanitizer thread inspection. Leak-enabled contact/support/geometry/transform hosts pass outside it. Broad TSan currently reports SDL/libdbus lock-order warnings in two desktop tests; those remain unresolved. No TSan suppression or deadlock-detector disabling was added. See [sanitizers.md](evidence/sanitizers.md) for complete counts and reports.
 
-## 6. Verify diagnostic schema and generation counts
+To check the changed physics-only cases with leak detection enabled in an environment allowing sanitizer thread inspection:
 
-~~~sh
+```sh
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+  ctest --test-dir bin/cleanup-asan --output-on-failure \
+  -R 'platformator_(contact_events|physics_support|physics_geometry|transform_hierarchy)_test'
+```
+
+Package smoke rebuilds separate unsanitized SDK consumers and is covered by the normal Debug/production package checks. Report unavailable runtimes and detector warnings as limitations; skipped or failing checks are not passes.
+
+## Benchmark format contract
+
+```sh
 cmake --preset cleanup-benchmark
 cmake --build --preset cleanup-benchmark --parallel 4
-ctest --test-dir bin/cleanup-benchmark --output-on-failure \
-  -R 'platformator_benchmark_(contract|sweep)_test$'
-python3 -m unittest discover -s benchmark/tests -p 'test_*.py'
-~~~
+ctest --test-dir bin/cleanup-benchmark --output-on-failure -L benchmark
+python3 -m unittest discover -s benchmark/tests -v
+```
 
-The C++ contract test must check zero-recipient enters/exits, multi-behavior non-multiplication, cleanup-generated exits accumulated into the same step, multiple delivery batches, and idle transitions excluded from future recorded frames.
+The candidate requires schema 3 in summaries, raw samples, manifests, aggregates and console output; eight scopes, eleven counters and no Stay field. Verify listener-free event counts, cleanup Exits inside the originating complete-step sample, both-endpoint retirement, callback exceptions and out-of-frame removals. Reject schema-2/mixed/unknown/missing metrics without rewriting historical captures. See [benchmark-schema.md](contracts/benchmark-schema.md).
 
-The Python fixtures must cover schema v3 summary/raw/manifest/aggregate consistency, absence of Stay, exact eight-scope/eleven-counter sets, and rejection of v2/mixed versions, missing/duplicate/unknown metrics, or incomplete captures. Existing metadata, rendering, timing-eligibility, and sample-capacity checks remain meaningful.
+## Separate physics validation captures
 
-## 7. Validate physical equivalence before timing
+Use each stage's matching sweep tooling and runner. Choose unused output directories under `CONTACT_CAPTURE_ROOT`. This example validates observed persistent contacts; repeat for scripted endpoints 0 and 1, then the existing broad/dense/narrow/body/churn workloads listed below.
 
-Use a new output directory for each capture; the tools refuse overwriting earlier evidence. Example serial/multiworker narrow-phase correctness runs:
-
-~~~sh
-for contact_workers in 1 6; do
+```sh
+for contact_workers in 1 "$CONTACT_MULTI_WORKERS"; do
   python3 benchmark/sweep_scaling.py \
     --runner bin/cleanup-benchmark/platformator_benchmark_runner \
-    --scenario narrow_phase --counts 10,100,200 --workers "$contact_workers" --seed 0 \
-    --warmup-frames 120 --measure-frames 600 --dt 0.008333333333333333 \
-    --validate-invariants --repetitions 1 \
-    --output "/tmp/platformator-contact-v3-validation/narrow-w$contact_workers.csv"
+    --scenario persistent_contacts --counts 10,100,1000 --scripted-endpoints 2 \
+    --workers "$contact_workers" --seed 0 --dt 0.008333333333333333 \
+    --warmup-frames 120 --measure-frames 600 --repetitions 1 \
+    --validate-invariants \
+    --raw-output-dir "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-validate-observed-w$contact_workers" \
+    --output "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-validate-observed-w$contact_workers.csv"
 done
-~~~
+```
 
-Repeat applicable existing broad-phase, dense, rigid-body, and static/moving churn scenarios using the populations in [the benchmark methodology](../../benchmark/README.md). Compare serial/multiworker snapshots with its declared tolerances and the existing `capture_cleanup.py` comparison helper: support/sleep/identity/features match exactly; physical floats use the existing tolerances. Keep the exact 128-support regression's tighter 1e-5 comparison.
+These results must be labeled `validation_mode=per-step`, `timing_eligible=false`. Compare canonical contacts, support totals and body snapshots between worker counts with declared existing numerical tolerances. The test trace checks event order separately. Keep equivalent physical state between baseline and candidate despite the intentional event contract change.
 
-Validation captures must be marked `per-step` and `timing_eligible=false`. Do not use their durations for performance claims.
+## Release timing matrix
 
-## 8. Capture comparable Release timings
+After correctness passes, finish all builds/tests and avoid competing work during captures. Use matching stage tooling, identical affinity and at least five independent process repetitions. The persistent fixture demonstrates the removed observer cost; existing script-free workloads detect unrelated regressions.
 
-After correctness passes and build/test work finishes, make fresh boundary-only captures with at least five independent repetitions. For example:
-
-~~~sh
-for contact_workers in 1 6; do
-  python3 benchmark/sweep_scaling.py \
-    --runner bin/cleanup-benchmark/platformator_benchmark_runner \
-    --scenario narrow_phase --counts 10,100,200 --workers "$contact_workers" --seed 0 \
-    --warmup-frames 120 --measure-frames 600 --dt 0.008333333333333333 \
-    --repetitions 5 \
-    --output "/tmp/platformator-contact-v3-timing/narrow-w$contact_workers.csv"
+```sh
+for contact_recipients in 0 1 2; do
+  for contact_workers in 1 "$CONTACT_MULTI_WORKERS"; do
+    python3 benchmark/sweep_scaling.py \
+      --runner bin/cleanup-benchmark/platformator_benchmark_runner \
+      --scenario persistent_contacts --counts 10,100,1000 \
+      --scripted-endpoints "$contact_recipients" \
+      --workers "$contact_workers" --seed 0 --dt 0.008333333333333333 \
+      --warmup-frames 120 --measure-frames 600 --repetitions 5 \
+      --raw-output-dir "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-persistent-r$contact_recipients-w$contact_workers" \
+      --output "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-persistent-r$contact_recipients-w$contact_workers.csv"
+  done
 done
-~~~
+```
 
-Also cover sparse/dense broad-phase, resting rigid-body populations, and static/moving churn. Compare equivalent unchanged timing scopes against baseline captures made with the original v2 tooling. Preserve each source fingerprint, configuration, worker/affinity setting, seed, dt, raw sample set, and manifest. Pin processes consistently when collecting publishable timings.
+Repeat the sweep command with these existing cases, omitting `--scripted-endpoints`, retaining both worker counts, and assigning each a new output/raw directory:
 
-The expected structural improvement is no observer traversal/invalidation and no mirrored active-collision collection. Report measured results and workload differences; no universal speedup percentage is an acceptance requirement. A full reproduction of the historical 180-process study is optional unless needed to support a broader performance claim.
+| Scenario | Counts | Extra options |
+| --- | --- | --- |
+| `broad_phase` | `100,500,1000` | Existing uniform broad layout. |
+| `broad_phase_stress` | `50,150,300` | Existing dense/skewed broad layout. |
+| `narrow_phase` | `10,100,200` | Existing moving narrow layout. |
+| `rigid_body_container` | `100,500,1000` | Existing body/sleep/support workload. |
+| `add_and_remove` | `10,100,1000` | `--steady-count 1000` |
+| `moving_add_and_remove` | `10,100,1000` | `--steady-count 1000` |
 
-## 9. Final source and artifact review
+Retain source fingerprints and patches, resolved workload fields, build/hardware/worker configuration, raw per-step samples, logs and independent-run aggregates. Review complete-step and relevant nested-scope mean/p95/p99/raw tails, run spread, worker scaling and allocation/retained-memory evidence. Investigate regressions, especially event sorting under churn and solver dereference cost after removing `activeCollisions`. Do not sum nested scopes, plot validation-only captures, compare incompatible counter meanings, or claim performance improvements from complexity arguments alone.
 
-~~~sh
-rg -n 'onCollisionStay|triggerCollisionStay|dispatchCollisionStay|COLLISION_STAY|stayPairs|stayIndex|stayOrderDirty|enteredStep|refreshSubscriptions|triggerStartedBehaviors|NarrowPhaseLocalResults' \
-  src include tests examples
-rg -n 'collision_stay_event_count|CollisionStayEventCount' \
-  src benchmark/sweep_scaling.py benchmark/plot_scaling.py benchmark/tests
-git diff --check
-~~~
+`benchmark/capture_cleanup.py` can reproduce its existing six-case reference matrix on the specifically documented six-core topology; inspect its fixed CPU affinity before using it on another machine. It does not replace the added observer fixture.
 
-Both searches should have no remaining active implementation/consumer matches; ripgrep's no-match exit status is 1. Negative contract assertions mentioning removed names are acceptable only where they explicitly verify absence. Feature docs and immutable historical results may still discuss Stay.
+## Completion evidence
 
-Verify the three old fragment files are gone, geometry has no manager/script/event dependency, startup has no subscription side effect, body wake/sleep retains solver refresh, and v3 diagnostic output is documented. Record actual test commands, outcomes, captures, and limitations before declaring implementation complete.
+Retain test summaries, sanitizer results/limitations, current-symbol audit, schema contract results, serial/parallel traces, baseline/candidate provenance and performance analysis with investigated regressions. A search for `onCollisionStay`, `dispatchCollisionStay`, `triggerCollisionStay`, `COLLISION_STAY`, `stayPairs`, `stayIndex`, `stayOrderDirty`, `refreshSubscriptions`, `collision_stay_event_count` and the old startup/geometry names must find no supported current runtime/tooling path. Scope the search to current source/tests/tools/docs; historical captures/specifications and ordinary English “stay” text are not removal targets.

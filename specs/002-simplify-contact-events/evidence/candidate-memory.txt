@@ -1,0 +1,10 @@
+[Benchmark] schema_version=3 complete_steps=600 render_samples=0
+[Benchmark][Scope] complete_step avg_ms=0.079716 median_ms=0.078289 p95_ms=0.087647 samples=600
+[Benchmark][Scope] physics avg_ms=0.000237 median_ms=0.000211 p95_ms=0.000281 samples=600
+[Benchmark][Scope] cleanup avg_ms=0.000080 median_ms=0.000070 p95_ms=0.000111 samples=600
+[Benchmark][Scope] scene_transition avg_ms=0.000000 median_ms=0.000000 p95_ms=0.000000 samples=600
+[Benchmark][Scope] render avg_ms=0.000000 median_ms=0.000000 p95_ms=0.000000 samples=0
+[Benchmark][Scope] broad_phase avg_ms=0.000050 median_ms=0.000040 p95_ms=0.000071 samples=600
+[Benchmark][Scope] narrow_phase avg_ms=0.000035 median_ms=0.000030 p95_ms=0.000060 samples=600
+[Benchmark][Scope] resolve_collisions avg_ms=0.000042 median_ms=0.000040 p95_ms=0.000060 samples=600
+{"runner_peak_rss_kib": 14360, "exit_code": 0, "method": "wait4 per child"}

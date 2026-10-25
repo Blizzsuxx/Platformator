@@ -1,0 +1,3 @@
+idle allocations=0 geometry=0 transition_checks=0 event_records=0 solver_refresh_visits=0
+fixed-peak churn retained event_slots=256 contact_slots=512
+[PASS] affected-work counters

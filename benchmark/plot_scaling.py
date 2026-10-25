@@ -17,10 +17,10 @@ def load_rows(csv_path):
         required |= {f"{scope}_{suffix}" for scope in SCOPES for suffix in
                      ("avg_ms", "p95_ms", "run_median_ms", "run_stdev_ms", "run_min_ms", "run_max_ms")}
         if not required <= set(reader.fieldnames or ()):
-            raise ValueError("Expected schema-v2 aggregate with complete_step and run spread; historical graphs remain separate")
+            raise ValueError("Expected schema-v3 aggregate with complete_step and run spread; historical graphs remain separate")
         rows = []
         for row in reader:
-            if row["schema_version"] != "2" or row["validation_mode"] != "boundary-only" or row["timing_eligible"] != "True":
+            if row["schema_version"] != "3" or row["validation_mode"] != "boundary-only" or row["timing_eligible"] != "True":
                 raise ValueError("Unknown schema or instrumented validation data cannot be plotted as performance")
             parsed = {}
             for key, value in row.items():
@@ -51,6 +51,7 @@ def format_count_tick(value: float, _: int) -> str:
 def sweep_label(sweep_parameter: str) -> str:
     labels = {
         "broad_count": "Requested broad-phase object count",
+        "contact_pair_count": "Persistent confirmed contact pairs",
         "narrow_count": "Requested narrow-phase object count",
         "total_body_count": "Requested total body count",
         "churn_count": "Per-step add/remove count",

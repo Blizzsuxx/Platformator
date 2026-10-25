@@ -31,9 +31,10 @@
 
 ## Notes
 
+- Validation completed in one review; all 16 quality items pass. These marks assess specification readiness, not implementation completion.
+- FR-001 through FR-011 link to acceptance scenarios or named edge cases. SC-001 through SC-006 define event counts, script-independence checks, contract removal, correctness, and affected-work evidence.
+- "An eligible recipient MAY receive Exit for a contact whose Enter occurred before it became eligible" explicitly resolves late script attachment without inventing per-script contact lifetimes.
+- "They MUST NOT remain as deprecated callbacks or inactive compatibility placeholders" bounds the Stay removal and its intentional compatibility impact.
+- Performance criteria require representative baseline comparisons and investigation of regressions without inventing timing targets. No implementation algorithms, framework choices, or code structure are prescribed.
+- No clarification markers or unresolved requirements remain. Ready for `$speckit-plan`.
 - Items marked incomplete require spec updates before `$speckit-clarify` or `$speckit-plan`.
-- Checked items indicate specification quality, not implementation completion.
-
-- Review completed on 2026-10-25: all 16 criteria pass; no unresolved clarifications or quality issues remain.
-- Coverage: Story 1 covers FR-001 through FR-004; Story 2 covers FR-003, FR-006, FR-007, FR-011, and FR-012; Story 3 and edge cases cover FR-005 and FR-008 through FR-010.
-- The specification defines observable behavior and compatibility impact without prescribing language, storage, algorithms, or internal event structures. Success criteria cover script-independent transitions, unchanged contacts, lifecycle safety, and consumer migration.

@@ -230,7 +230,7 @@ GameObject *createKinematicBox(Runtime &gameManager, const std::string &name, fl
 class CollisionEventCounterBehavior : public Behavior
 {
   public:
-    CollisionEventCounterBehavior() : enterCount(0), stayCount(0), exitCount(0)
+    CollisionEventCounterBehavior() : enterCount(0), exitCount(0)
     {
     }
 
@@ -262,13 +262,7 @@ class CollisionEventCounterBehavior : public Behavior
         exitCount++;
     }
 
-    void onCollisionStay(const Collision *, Collider *, double) override
-    {
-        stayCount++;
-    }
-
     size_t enterCount;
-    size_t stayCount;
     size_t exitCount;
 };
 
@@ -605,7 +599,7 @@ void testBroadPhasePairTracking()
     scriptComponent->addBehavior(collisionCounter);
 
     gameManager.simulateFrame(kTimeStep);
-    require(collisionCounter->enterCount == 0 && collisionCounter->stayCount == 0 && collisionCounter->exitCount == 0,
+    require(collisionCounter->enterCount == 0 && collisionCounter->exitCount == 0,
             "Broad-phase regression unexpectedly reported a collision before overlap.");
 
     boxB->setPosition(Eigen::Vector2f(135.0f, 120.0f));
@@ -705,7 +699,7 @@ void testParallelBroadAndNarrowPhaseStress()
 
     for (const CollisionEventCounterBehavior *counter : counters)
     {
-        require(counter->enterCount == 1 && counter->stayCount == 0 && counter->exitCount == 0,
+        require(counter->enterCount == 1 && counter->exitCount == 0,
                 "Parallel broad/narrow regression expected exactly one enter event for each overlapping pair after the "
                 "first frame.");
     }
@@ -719,9 +713,9 @@ void testParallelBroadAndNarrowPhaseStress()
 
     for (const CollisionEventCounterBehavior *counter : counters)
     {
-        require(
-            counter->enterCount == 1 && counter->stayCount == 1 && counter->exitCount == 0,
-            "Parallel broad/narrow regression expected exactly one stay event for each pair after an in-overlap sync.");
+        require(counter->enterCount == 1 && counter->exitCount == 0,
+                "Parallel broad/narrow regression expected no repeated enter or exit for an unchanged contact after an "
+                "in-overlap sync.");
     }
 
     for (GameObject *probe : probes)
@@ -733,7 +727,7 @@ void testParallelBroadAndNarrowPhaseStress()
 
     for (const CollisionEventCounterBehavior *counter : counters)
     {
-        require(counter->enterCount == 1 && counter->stayCount == 1 && counter->exitCount == 1,
+        require(counter->enterCount == 1 && counter->exitCount == 1,
                 "Parallel broad/narrow regression expected exactly one exit event for each pair after separation.");
     }
 }

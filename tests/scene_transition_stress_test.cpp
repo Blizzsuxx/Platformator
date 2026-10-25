@@ -17,7 +17,6 @@ enum class Family
     Update,
     Late,
     Enter,
-    Stay,
     Exit,
     Animation
 };
@@ -52,13 +51,14 @@ struct Transition : test_support::Behavior
     {
         fire(Family::Late);
     }
-    void onCollisionEnter(const Collision *, Collider *, double) override
+    void onCollisionEnter(const Collision *, Collider *other, double) override
     {
         fire(Family::Enter);
-    }
-    void onCollisionStay(const Collision *, Collider *, double) override
-    {
-        fire(Family::Stay);
+        if (retireEndpoints)
+        {
+            other->getGameObject()->destroy();
+            getGameObject()->destroy();
+        }
     }
     void onCollisionExit(Collider *, double) override
     {
@@ -72,6 +72,7 @@ struct Transition : test_support::Behavior
     std::string path;
     int &requests, &destroyed;
     bool requested = false;
+    bool retireEndpoints = false;
 };
 } // namespace
 
@@ -90,13 +91,14 @@ int main()
         for (int iteration = 0; iteration < 1000; ++iteration)
         {
             runtime.loadScene(a.string());
-            auto family = static_cast<Family>(iteration % 8);
+            auto family = static_cast<Family>(iteration % 7);
             auto *driver = runtime.createGameObject()->setName("driver")->addComponent<ScriptComponent>();
             auto *behavior = new Transition(family, b.string(), requests, destroyed);
+            behavior->retireEndpoints = family == Family::Enter && iteration % 2 == 0;
             driver->getComponent<ScriptComponent>()->addBehavior(behavior);
             ObjectReference<GameObject> expired(driver);
             GameObject *other = nullptr;
-            if (family == Family::Enter || family == Family::Stay || family == Family::Exit)
+            if (family == Family::Enter || family == Family::Exit)
             {
                 driver->addComponent<BoxCollider>(20, 20);
                 other = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
@@ -109,9 +111,9 @@ int main()
                 animator->play(&clip);
             }
             runtime.simulateFrame(dt);
-            if (family == Family::Stay || family == Family::Exit)
+            if (family == Family::Exit)
             {
-                other->setPosition(Eigen::Vector2f(family == Family::Stay ? 0.1f : 1000.0f, 0));
+                other->setPosition(Eigen::Vector2f(1000.0f, 0));
                 runtime.simulateFrame(dt);
             }
             require(!expired && runtime.getGameObject("new") && !runtime.getGameObject("old"),
@@ -123,7 +125,7 @@ int main()
         require(runtime.getAllGameObjects().empty(), "Final clear must release the last scene");
         std::filesystem::remove(a);
         std::filesystem::remove(b);
-        std::cout << "[PASS] 1000 scene transitions across eight callback families\n";
+        std::cout << "[PASS] 1000 scene transitions across seven callback families\n";
         return 0;
     }
     catch (const std::exception &error)

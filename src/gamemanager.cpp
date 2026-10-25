@@ -246,8 +246,7 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     PLATFORMATOR_BENCH_FRAME_BEGIN();
     try
     {
-        stage(Phase::Starting, [&]
-              { triggerStartedBehaviors(); });
+        stage(Phase::Starting, [&] { startPendingScripts(); });
         stage(Phase::StepHook, [&]
               {
             if (customCallback)
@@ -698,7 +697,7 @@ void GameManager::updateAnimatorComponents(double timeDelta)
     }
 }
 
-void GameManager::triggerStartedBehaviors()
+void GameManager::startPendingScripts()
 {
     if (pendingStartScripts.empty())
         return;
@@ -709,35 +708,8 @@ void GameManager::triggerStartedBehaviors()
         auto *script = pendingStartScripts[i];
         if (!script) // Canceled queue entry.
             continue;
-        size_t processed = 0;
-        for (; script->canDispatch() && processed < script->pendingBehaviors.size(); ++processed)
-        {
-            auto *behavior = script->pendingBehaviors[processed];
-            try
-            {
-                behavior->resolveReferences(resolver);
-                behavior->start();
-            }
-            catch (const std::exception &error)
-            {
-                std::fprintf(stderr, "Behavior '%s' on '%s' initialization failed: %s\n",
-                             behavior->getTypeName().c_str(), script->getGameObject()->getName().c_str(), error.what());
-            }
-            catch (...)
-            {
-                std::fprintf(stderr, "Behavior '%s' on '%s' initialization failed: unknown exception\n",
-                             behavior->getTypeName().c_str(), script->getGameObject()->getName().c_str());
-            }
-        }
-        const bool firstBehaviors = script->behaviors.empty() && processed != 0;
-        script->behaviors.insert(script->behaviors.end(), script->pendingBehaviors.begin(),
-                                 script->pendingBehaviors.begin() + processed);
-        script->pendingBehaviors.erase(script->pendingBehaviors.begin(),
-                                       script->pendingBehaviors.begin() + processed);
+        script->startPendingBehaviors(resolver);
         cancelScriptStart(script);
-        if (firstBehaviors && script->canDispatch())
-            if (auto *collider = script->getGameObject()->getComponent<Collider>())
-                physicsManager->refreshSubscriptions(collider);
     }
     pendingStartScripts.clear();
 }
@@ -1008,9 +980,9 @@ void GameManager::reconcilePending(std::exception_ptr &error)
             const auto *owner = component->getGameObject();
             const bool desired = !component->isRetired() && owner->getActive() && !owner->isRetired();
             component->callbackEligible = desired;
-            if (component->getType() == SCRIPT || component->getType() == COLLIDER)
+            if (component->getType() == COLLIDER)
                 if (auto *collider = owner->getComponent<Collider>())
-                    physicsManager->refreshSubscriptions(collider);
+                    physicsManager->refreshSolverPairs(collider);
             if (desired == component->systemsRegistered)
             {
                 if (desired && component->getType() == ComponentType::SCRIPT)

@@ -10,105 +10,108 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Report actual contact transitions (Priority: P1)
+### User Story 1 - Produce events from contact transitions (Priority: P1)
 
-As a game author, I can rely on enter and exit events to describe when confirmed contacts begin and end, regardless of whether either object has scripts.
+As a game author, I want a contact beginning or ending to produce the same event regardless of whether either object has a script, so contact behavior remains predictable when scripts change.
 
-**Why this priority**: Contact history must describe physical interaction consistently, including interactions with no callback recipients.
+**Why this priority**: Contact state must describe the physical interaction rather than whether a script can currently receive a notification.
 
-**Independent Test**: Establish, maintain, and end the same contact with no scripts, scripts on one object, and scripts on both. Compare generated transitions separately from delivered callbacks.
+**Independent Test**: Run a separate-to-touching-to-separated sequence with neither object, one object, and both objects having eligible scripts. Compare generated events in every run and callbacks for each eligible recipient.
 
 **Acceptance Scenarios**:
 
-1. **Given** two eligible colliders without scripts and no confirmed contact, **When** a contact is confirmed, **Then** exactly one enter event is generated for the pair and no callbacks run.
-2. **Given** a confirmed contact, **When** it persists through subsequent simulation steps, **Then** no further contact events are generated until its state changes.
-3. **Given** a confirmed contact, **When** the colliders separate, **Then** exactly one exit event is generated; continued separation generates no additional exits, and a later confirmed contact generates a new enter.
-4. **Given** the same contact sequence with eligible scripts on one or both objects, **When** transitions occur, **Then** the generated event sequence is identical to the sequence without scripts, and each eligible behavior receives one corresponding callback per transition.
-5. **Given** colliders whose bounding regions overlap without a confirmed contact, **When** collision detection runs, **Then** no enter or exit event is generated for that candidate pair.
+1. **Given** two eligible colliders without scripts and no confirmed contact, **When** a physics update confirms their contact, **Then** exactly one Enter event is generated for the pair.
+2. **Given** a confirmed contact without scripts, **When** a physics update confirms its end, **Then** exactly one Exit event is generated for the pair.
+3. **Given** the same contact transition in runs with zero, one, or two eligible script recipients, **When** events are produced, **Then** the generated event sequence is identical and each eligible recipient receives its corresponding callback once.
+4. **Given** overlapping bounding regions whose shapes do not touch, **When** the interaction is evaluated, **Then** no Enter or Exit event is generated.
+5. **Given** a pair spanning multiple spatial regions, **When** it begins or ends one confirmed contact, **Then** duplicate spatial observations do not create duplicate events or a premature Exit.
 
 ---
 
-### User Story 2 - Use an enter/exit-only contract (Priority: P1)
+### User Story 2 - Remove Stay from the contact lifecycle (Priority: P1)
 
-As a game author, I have a contact notification contract containing enter and exit only, with clear migration guidance for behavior that previously relied on Stay callbacks.
+As a game author, I want only Enter and Exit contact notifications, so an unchanged contact does not repeatedly notify scripts or require Stay-specific bookkeeping.
 
-**Why this priority**: Removing recurring notifications simplifies the contract and eliminates notifications for unchanged contacts.
+**Why this priority**: Removing Stay is the requested simplification and removes recurring event work for persistent contacts.
 
-**Independent Test**: Exercise moving, stationary, sleeping, and trigger contacts across multiple steps; inspect the supported callback contract and maintained consumer guidance.
+**Independent Test**: Keep a pair in contact for 100 physics updates, then separate it. Observe one Enter, no intervening contact events or callbacks, and one Exit; review the supported contact callback surface and current usage guidance.
 
 **Acceptance Scenarios**:
 
-1. **Given** a confirmed moving, stationary, sleeping, or trigger contact, **When** it persists for 100 additional steps, **Then** no Stay event or callback occurs and the contact continues to have its existing physical effect.
-2. **Given** a game author reviewing the supported contact notifications, **When** they consult the public behavior contract and current documentation, **Then** only enter and exit are offered; Stay callbacks are removed rather than retained as compatibility no-ops.
-3. **Given** a maintained consumer that previously used Stay callbacks, **When** it is migrated, **Then** it uses the enter/exit-only contract and migration guidance explains how to manage ongoing interaction through ordinary updates where needed.
-4. **Given** newly recorded event diagnostics, **When** contact activity is reported, **Then** enter and exit counts describe generated pair transitions independently of callback recipient counts, and Stay is not reported as a supported event category.
+1. **Given** a newly confirmed contact, **When** it remains confirmed for 100 subsequent physics updates, **Then** its event history contains only the initial Enter, with no Stay events or repeated Enter callbacks.
+2. **Given** an unchanged contact between stationary or sleeping objects, **When** further physics updates occur, **Then** no recurring contact event or callback work is performed for that pair.
+3. **Given** the supported contact callback contract, **When** an author reviews available callbacks and current examples, **Then** only Enter and Exit contact callbacks are supported and Stay callbacks are absent.
+4. **Given** current event reporting and benchmark output, **When** a run reports contact events, **Then** Enter and Exit counts reflect generated pair events, including pairs without scripts, and no Stay event metric is reported.
 
 ---
 
-### User Story 3 - Keep contact history stable during lifecycle changes (Priority: P2)
+### User Story 3 - Change scripts without changing contacts (Priority: P2)
 
-As a game author, I can change scripts or retire contacting objects without inventing contact transitions, duplicating callbacks, or accessing retired state.
+As a game author, I want to add, remove, or enable scripts during a contact without creating artificial transitions or disrupting physical behavior.
 
-**Why this priority**: Script independence must hold during lifecycle changes as well as ordinary movement.
+**Why this priority**: Separating event production from delivery must remain correct during ordinary gameplay and callback-driven changes.
 
-**Independent Test**: Change script availability during a persistent contact, then exercise filter changes, object retirement, and scene replacement. Repeat equivalent contact scenarios with serial and parallel processing.
+**Independent Test**: Change script availability while colliders remain touching, then separate them. Repeat with object removal during a callback and compare physical behavior and event histories with equivalent control runs.
 
 **Acceptance Scenarios**:
 
-1. **Given** a contact that began without a script on one object, **When** an eligible script is added while the contact persists, **Then** no enter is synthesized or replayed; if that script remains eligible when the contact later ends, it receives the exit callback even though it never received an enter.
-2. **Given** a persistent contact, **When** its script component is removed, replaced, or becomes ineligible without changing collider eligibility, **Then** no contact event is generated solely by that script change and the physical contact continues.
-3. **Given** a confirmed contact, **When** filtering, collider deactivation, removal, or object destruction ends it, **Then** one exit transition is recorded, an eligible survivor receives the exit with the other collider still readable during that callback, and retired objects or replaced scripts receive no later callbacks.
-4. **Given** equivalent initial scenes and changes, **When** contact processing runs serially or in parallel, **Then** enter/exit order and counts agree and support, sleeping, and physical results remain within existing correctness tolerances.
+1. **Given** a contact that began without a script, **When** an eligible script is added during that contact, **Then** no Enter is replayed; the script receives Exit if it remains eligible when the real contact ends.
+2. **Given** an existing contact, **When** scripts are removed, replaced, enabled, or disabled while collider eligibility and geometry remain unchanged, **Then** no contact transition is created and physical contact handling is unaffected.
+3. **Given** a generated transition, **When** a recipient has no eligible script at delivery, **Then** that recipient receives no callback and the generated event remains valid for the other eligible recipient.
+4. **Given** an Enter or Exit callback that removes a script, collider, or object, or requests a scene change, **When** remaining notifications and deferred lifecycle work execute, **Then** existing mutation and lifetime guarantees are preserved without duplicate callbacks or access to retired recipients.
+5. **Given** a resting supported body, **When** its contact persists without Stay callbacks and later loses its final support, **Then** support, sleeping, and wake-up behavior match the existing physical contract.
 
 ### Edge Cases
 
-- An empty script component, a script awaiting initialization, and an object without a script all leave event generation unchanged; delivery follows existing initialization and eligibility rules.
-- Adding or removing a script on one side cannot suppress transitions or callbacks on the other side.
-- Disabling and re-enabling a filter or collider before the existing reconciliation boundary produces no exit/enter if the final confirmed contact is unchanged. Ending contact at one boundary and restoring it at a later boundary produces one exit followed by one enter.
-- Multiple spatial cells witnessing the same collider pair produce one transition for that pair. Multiple behaviors may receive callbacks without multiplying the generated event count.
-- A trigger or body-response change that leaves a confirmed contact intact creates no contact transition; its physical response and support state still update under existing rules.
-- A callback that destroys an object, removes its script, or requests scene replacement follows the existing deferred mutation boundaries. Stale callbacks do not reach retired objects or a replacement scene.
-- When both objects retire, no callback is delivered to either retired object. Retirement does not duplicate an already recorded exit.
+- First contact, persistent contact, separation, and re-contact produce Enter, silence, Exit, and a new Enter respectively.
+- A contact ending because filtering changes, an object becomes inactive, or a collider is removed produces one Exit; any callback is subject to recipient eligibility and safe lifetime handling.
+- A filter change that permits an unchanged geometric overlap again produces a new Enter when the contact is confirmed.
+- Script availability changing between event generation and delivery affects delivery only; past events are not retained for later script attachment or activation.
+- A script attached after contact begins can receive Exit without having received Enter. This follows contact transitions rather than per-script notification history.
+- Multiple spatial witnesses, repeated synchronization, and different worker completion orders must not duplicate or reorder the observable transition sequence for an equivalent run.
+- Stationary, sleeping, and moving contacts remain valid for physical handling even when they produce no new events.
+- Scene replacement clears old-scene pending work under the existing lifecycle contract; old events must not reach the replacement scene.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST generate exactly one enter event per collider pair when its confirmed contact changes from absent to present, and exactly one exit event when it changes from present to absent.
-- **FR-002**: Event generation and confirmed contact membership MUST be independent of script presence, behavior count, initialization state, and callback eligibility on either object.
-- **FR-003**: A contact that remains present MUST generate no further contact events, including when colliders are stationary or bodies are sleeping. A candidate overlap without a confirmed contact MUST generate no contact event.
-- **FR-004**: Callback delivery MUST apply existing initialization, lifecycle, and eligibility rules separately to each recipient. A generated pair event MUST invoke the corresponding callback once per eligible behavior, without requiring an eligible recipient on the other object.
-- **FR-005**: Script availability changes alone MUST NOT start or end contacts, generate synthetic transitions, or replay earlier transitions. An eligible script attached during an existing contact MUST receive a subsequent exit even if it did not receive the earlier enter.
-- **FR-006**: Stay events and callbacks MUST be removed from the supported contract and all event production and delivery. No deprecated Stay callback, compatibility no-op, or replacement recurring contact notification is included.
-- **FR-007**: Confirmed-contact rules MUST apply to ordinary collisions and trigger overlaps. Physical response, support accounting, and sleeping behavior MUST remain correct without recurring contact notifications.
-- **FR-008**: Contact termination from separation, filtering, collider deactivation or removal, and object retirement MUST produce a single exit transition. Net-unchanged changes coalesced at an existing reconciliation boundary MUST NOT manufacture transitions.
-- **FR-009**: Enter/exit delivery MUST preserve existing callback mutation and scene-change boundaries, suppress callbacks to retired or replaced recipients, and keep the other collider readable during an eligible survivor's retirement exit callback.
-- **FR-010**: Generated transition order and counts MUST remain deterministic and equivalent between serial and parallel processing for equivalent inputs. Multiple spatial witnesses MUST NOT multiply pair events.
-- **FR-011**: Current event diagnostics MUST count generated enters and exits independently of scripts or the number of delivered callbacks, and remove Stay as a supported event category.
-- **FR-012**: Affected maintained consumers, tests, and current documentation MUST adopt the enter/exit-only contract. Migration guidance MUST identify callback removal as a breaking change and explain ongoing interaction using the remaining lifecycle facilities.
+- **FR-001**: The system MUST generate exactly one Enter event per collider pair when confirmed contact changes from absent to present, independently of script presence, behavior count, or callback eligibility. Acceptance: User Story 1, scenarios 1 and 3.
+- **FR-002**: The system MUST generate exactly one Exit event per collider pair when confirmed contact changes from present to absent, including separation, filtering exclusion, deactivation, and collider removal. Event generation MUST NOT depend on script availability. Acceptance: User Story 1, scenarios 2 and 3, and lifecycle edge cases.
+- **FR-003**: The system MUST use confirmed shape contacts as the source of transitions. Candidate overlaps and duplicate spatial observations MUST NOT manufacture contacts, duplicate transitions, or end a contact that still has valid spatial coverage. Acceptance: User Story 1, scenarios 4 and 5.
+- **FR-004**: The system MUST produce no contact event when the confirmed contact state is unchanged. Re-contact after an actual end MUST produce a new Enter. Acceptance: User Story 2, scenarios 1 and 2, and the re-contact edge case.
+- **FR-005**: The system MUST deliver Enter and Exit callbacks once to each recipient that is eligible under the existing callback and lifetime rules at delivery. An unavailable recipient MUST NOT suppress the other recipient's callback. Acceptance: User Story 1, scenario 3; User Story 3, scenarios 3 and 4.
+- **FR-006**: Adding, removing, replacing, enabling, or disabling scripts alone MUST NOT change contact state, generate Enter or Exit, or replay past events. An eligible recipient MAY receive Exit for a contact whose Enter occurred before it became eligible. Acceptance: User Story 3, scenarios 1 and 2, and the delivery-timing edge case.
+- **FR-007**: Stay events and callbacks MUST be removed from the supported contact lifecycle, including their declarations, dispatch paths, current examples, tests, and current contract documentation. They MUST NOT remain as deprecated callbacks or inactive compatibility placeholders. Acceptance: User Story 2, scenarios 1 and 3.
+- **FR-008**: Bookkeeping, subscription maintenance, recurring contact traversal, and reporting that exist solely to support Stay events MUST be removed. Persistent contacts MUST incur no recurring work solely to construct or deliver contact events; event production MUST follow actual transitions rather than enumerate unchanged contacts. Acceptance: User Story 2, scenario 2, with affected-work evidence.
+- **FR-009**: Contact persistence, collision response, support tracking, sleeping, and wake-up behavior MUST remain independent of script availability and MUST preserve their existing physical guarantees after Stay removal. Acceptance: User Story 3, scenarios 2 and 5.
+- **FR-010**: Enter and Exit processing MUST preserve deterministic ordering for equivalent inputs across supported worker counts and existing callback mutation, retirement, deferred destruction, and scene replacement guarantees. Acceptance: User Story 3, scenario 4, and ordering and scene-replacement edge cases.
+- **FR-011**: Current event metrics MUST report generated Enter and Exit pair events independently of delivered callback counts, and MUST remove Stay-specific metrics. Updated benchmark output and its current consumers MUST agree on the changed reporting contract. Acceptance: User Story 2, scenario 4.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Confirmed contact**: A validated interaction between a collider pair, including a trigger overlap, distinct from a candidate bounding-region overlap. Its lifetime is independent of scripts.
-- **Contact transition event**: A single pair-level enter or exit describing a change in confirmed contact state. Its existence does not depend on successful callback delivery.
-- **Callback recipient**: A behavior eligible to receive the corresponding transition callback under existing initialization and lifecycle rules. One event may have zero, one, or several recipients.
-- **Contact diagnostics**: Reports of generated enter/exit transitions, whose counts do not change when only the number or availability of scripts changes.
+- **Collider pair**: Two colliders considered together, regardless of how many spatial regions observe their overlap.
+- **Confirmed contact**: A physical touching relationship established by shape testing, with a lifetime independent of scripts and with physical information needed for response and support.
+- **Contact transition event**: One pair-level Enter or Exit describing a change in confirmed contact state. Its existence is distinct from the number of callbacks delivered.
+- **Callback recipient**: A script-bearing object whose current eligibility and lifetime determine whether it receives a generated transition notification.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: For identical contact sequences with zero scripts, scripts on one object, and scripts on both objects, 100% of generated enter/exit transitions have matching types, order, and pair identities. Each uninterrupted contact interval has one enter and one exit when it ends.
-- **SC-002**: A contact held for 100 additional steps after entry produces zero additional contact events or callbacks until exit, across moving, stationary, sleeping, and trigger scenarios.
-- **SC-003**: All script-only additions, removals, and replacements in the acceptance scenarios produce zero contact transitions. Eligible recipients receive each subsequent transition once, including an exit after joining during contact.
-- **SC-004**: All defined filtering, retirement, duplicate-witness, and serial/parallel scenarios pass without duplicate transitions, stale callbacks, or regressions in existing support and sleeping expectations.
-- **SC-005**: All maintained consumers use the enter/exit-only contract, and a game author can find a consistent explanation of Stay removal and ongoing-interaction migration in current documentation, with no supported Stay event or callback remaining.
+- **SC-001**: Every verified contact lifetime produces exactly one Enter and one Exit, with identical pair-event histories for zero, one, and two eligible script recipients.
+- **SC-002**: Across 100 unchanged physics updates after contact begins, each persistent pair produces zero additional contact events or callbacks; the later separation produces exactly one Exit.
+- **SC-003**: All script-availability scenarios produce zero synthetic transitions or replayed notifications, and every eligible recipient receives each real transition once.
+- **SC-004**: Supported callback surfaces, current examples, and current event reports contain zero Stay contact callbacks or metrics, and all maintained consumers use the revised contract.
+- **SC-005**: Equivalent runs with one and multiple workers produce identical ordered transition histories, while support, sleeping, collision response, and callback mutation scenarios preserve existing correctness guarantees.
+- **SC-006**: Affected-work evidence shows zero per-update event-production visits to unchanged contacts, both with and without scripts. Representative small and large scenes, persistent-contact populations, contact churn, and worker counts are compared against a recorded baseline; any timing or allocation regression is investigated before acceptance. No unmeasured speedup or arbitrary latency target is required.
 
 ## Assumptions
 
-- The target users are game authors and hosts of the existing Platformator runtime. This feature covers contact events and affected consumers; unrelated event families, the editor, and foundational collision algorithms are outside scope.
-- Existing contact detection, filtering, reconciliation timing, behavior initialization, callback arguments, and scene-change boundaries remain the basis of the contract. A new contact-query facility, event subscription system, or callback-count reporting facility is not required.
-- Script availability means whether an eligible behavior can receive a callback. Collider eligibility can independently affect contact state; changing an object's active state may therefore cause a real contact transition.
-- The Unity-inspired behavior model deliberately adopts an enter/exit-only contact contract. Removing Stay is an intentional compatibility break; no automatic conversion of external user scripts is included.
-- Game authors needing ongoing interaction can maintain their own state through enter/exit and ordinary updates. Late script attachment does not guarantee a matching earlier enter callback.
-- Current guidance and newly produced diagnostics must describe the new contract. Historical specifications, recorded benchmark results, and other historical evidence retain their original meaning and are not rewritten.
+- The feature applies to the existing collider contact event family. It does not introduce a separate trigger-event family or change which shape interactions qualify as contacts.
+- Script availability means the presence and delivery eligibility of scripts and behaviors. Collider eligibility, object activation, filtering, and physical geometry remain inputs to actual contact state.
+- The request authorizes an intentional public compatibility break for Stay callbacks and a reporting compatibility break for Stay metrics. Affected callers, tests, current documentation, and benchmark consumers must be updated; archived specifications and historical benchmark captures remain historical records.
+- Enter and Exit names, payload meaning, callback timing, and lifecycle eligibility rules remain as currently defined except for transition-driven generation and the explicitly documented absence of notification replay.
+- Continued per-update gameplay logic can use existing update callbacks; this feature adds no replacement recurring contact notification or new contact-query capability.
+- Existing contact detection, physical response, support handling, lifecycle boundaries, and benchmark methodology are dependencies. Broad-phase redesign, solver redesign, unrelated event families, and unrelated editor work are outside this feature.
+- Performance validation follows the project constitution and benchmark methodology, using representative workloads and measured evidence rather than invented numerical performance targets.

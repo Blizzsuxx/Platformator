@@ -55,7 +55,3 @@ void Behavior::onCollisionEnter(const Collision *, Collider *, double)
 void Behavior::onCollisionExit(Collider *, double)
 {
 }
-
-void Behavior::onCollisionStay(const Collision *, Collider *, double)
-{
-}

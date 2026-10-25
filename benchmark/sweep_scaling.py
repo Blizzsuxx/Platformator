@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent schema-v2 runs; raw artifacts are retained beside the aggregate."""
+"""Independent schema-v3 runs; raw artifacts are retained beside the aggregate."""
 import argparse
 import csv
 import json
@@ -12,8 +12,8 @@ import time
 SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions")
 COUNTERS = ("object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
             "awake_dynamic_body_count", "queued_add_count", "queued_sync_count", "queued_remove_count", "collision_enter_event_count",
-            "collision_stay_event_count", "collision_exit_event_count")
-SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove")
+            "collision_exit_event_count")
+SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove", "persistent_contacts")
 
 
 def is_add_remove_scenario(scenario):
@@ -49,8 +49,8 @@ def load_manifest(path):
     manifest = json.loads(Path(path).with_suffix(".manifest.json").read_text())
     required = {"schema_version", "workers", "seed", "dt", "measured_steps", "requested_measured_steps", "warmup_steps", "repetitions",
                 "rendering", "render_samples", "complete_capture", "physical_invariants", "build", "machine", "dependencies", "boundaries", "scenario"}
-    if not required <= manifest.keys() or manifest["schema_version"] != 2:
-        raise ValueError("Missing/unknown benchmark manifest schema")
+    if not required <= manifest.keys() or manifest["schema_version"] != 3:
+        raise ValueError("Missing/unknown benchmark manifest schema: expected schema 3; historical captures require their original tooling")
     if not manifest["complete_capture"] or manifest["measured_steps"] <= 0 or manifest["measured_steps"] != manifest["requested_measured_steps"]:
         raise ValueError("Benchmark capture is empty, truncated, or stopped before the requested steps")
     if manifest["workers"] <= 0 or manifest["seed"] < 0 or manifest["repetitions"] <= 0 or not math.isfinite(manifest["dt"]) or manifest["dt"] <= 0:
@@ -78,13 +78,13 @@ def parse_benchmark_csv(csv_path):
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         if not {"schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"} <= set(reader.fieldnames or ()):
-            raise ValueError("Expected schema-v2 benchmark CSV; historical partial frame data is not complete_step")
+            raise ValueError("Expected schema-v3 benchmark CSV; historical partial frame data is not complete_step")
         manifest = load_manifest(path)
         for row in reader:
             category, name = row["category"], row["name"]
             key = (category, name)
             allowed = SCOPES if category == "scope" else COUNTERS if category == "counter" else ()
-            if row["schema_version"] != "2" or name not in allowed or key in seen:
+            if row["schema_version"] != "3" or name not in allowed or key in seen:
                 raise ValueError(f"Unknown/duplicate benchmark metric: {key}")
             seen.add(key)
             expected_unit = "ms" if category == "scope" else "count"
@@ -106,11 +106,11 @@ def parse_benchmark_csv(csv_path):
     with path.with_suffix(".samples.csv").open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         columns = {"schema_version", "sample_kind", "index"} | {name + "_ns" for name in SCOPES} | set(COUNTERS)
-        if not columns <= set(reader.fieldnames or ()):
-            raise ValueError("Incomplete raw sample schema")
+        if columns != set(reader.fieldnames or ()) or len(reader.fieldnames or ()) != len(columns):
+            raise ValueError("Raw sample columns must exactly match benchmark schema 3")
         for row in reader:
             kind = row["sample_kind"]
-            if row["schema_version"] != "2" or kind not in raw_counts or int(row["index"]) != raw_counts[kind]:
+            if row["schema_version"] != "3" or kind not in raw_counts or int(row["index"]) != raw_counts[kind]:
                 raise ValueError("Invalid raw sample order/schema")
             raw_counts[kind] += 1
             for name in SCOPES:
@@ -133,6 +133,8 @@ def apply_count_argument(base_command, args, count):
     command = list(base_command)
     if is_broad_phase_scenario(args.scenario):
         command += ["--broad-count", str(count)]
+    elif args.scenario == "persistent_contacts":
+        command += ["--contact-pair-count", str(count), "--scripted-endpoints", str(args.scripted_endpoints)]
     elif args.scenario == "narrow_phase":
         command += ["--narrow-count", str(count)]
     elif args.scenario == "rigid_body_container":
@@ -151,17 +153,18 @@ def apply_count_argument(base_command, args, count):
 def sweep_parameter_name(scenario):
     if is_broad_phase_scenario(scenario):
         return "broad_count"
-    return {"narrow_phase": "narrow_count", "rigid_body_container": "total_body_count",
+    return {"persistent_contacts": "contact_pair_count", "narrow_phase": "narrow_count", "rigid_body_container": "total_body_count",
             "add_and_remove": "churn_count", "moving_add_and_remove": "churn_count"}[scenario]
 
 
 def build_result_row(args, count, metrics):
     # All required keys were checked; a missing metric must never become zero.
-    row = {"schema_version": 2, "scenario": args.scenario, "sweep_parameter": sweep_parameter_name(args.scenario),
+    row = {"schema_version": 3, "scenario": args.scenario, "sweep_parameter": sweep_parameter_name(args.scenario),
            "requested_count": count, "swept_value": count, "workers": args.workers, "seed": args.seed,
            "repetitions": len(metrics), "steady_count": args.steady_count if is_add_remove_scenario(args.scenario) else 0,
            "add_count": count if is_add_remove_scenario(args.scenario) else 0,
            "remove_count": count if is_add_remove_scenario(args.scenario) else 0}
+    row["scripted_endpoints"] = args.scripted_endpoints if args.scenario == "persistent_contacts" else 0
     row["validation_mode"] = "per-step" if args.validate_invariants else "boundary-only"
     row["timing_eligible"] = not args.validate_invariants
     for name in SCOPES:
@@ -181,6 +184,7 @@ def main(argv=None):
     parser.add_argument("--runner", default="../bin/cleanup-benchmark/platformator_benchmark_runner")
     parser.add_argument("--scenario", required=True, choices=SCENARIOS)
     parser.add_argument("--counts")
+    parser.add_argument("--scripted-endpoints", type=int, choices=(0, 1, 2), default=2)
     parser.add_argument("--step-size", type=int)
     parser.add_argument("--ending-step", type=int)
     parser.add_argument("--starting-step", type=int)

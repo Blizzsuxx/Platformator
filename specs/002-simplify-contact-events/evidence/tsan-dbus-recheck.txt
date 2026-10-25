@@ -1,0 +1,158 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-tsan
+    Start  7: platformator_scene_transition_contract_test
+1/2 Test  #7: platformator_scene_transition_contract_test ...***Failed    0.16 sec
+==================
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=171556)
+  Cycle in lock order graph: M0 (0x720c00000600) => M1 (0x720c00000900) => M0
+
+  Mutex M1 acquired here while holding mutex M0 in main thread:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 <null> <null> (libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_scene_transition_contract_test+0xf851a) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #6 SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_scene_transition_contract_test+0xf815c) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #7 std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0x77740) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #8 GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_scene_transition_contract_test+0x6910f) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #9 std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0xd9d1b) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_scene_transition_contract_test+0xd83ae) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #11 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:66 (platformator_scene_transition_contract_test+0xcec3) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+
+  Mutex M0 previously acquired by the same thread here:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 <null> <null> (libdbus-1.so.3+0x181df) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_scene_transition_contract_test+0xf851a) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #6 SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_scene_transition_contract_test+0xf815c) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #7 std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0x77740) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #8 GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_scene_transition_contract_test+0x6910f) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #9 std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0xd9d1b) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_scene_transition_contract_test+0xd83ae) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #11 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:66 (platformator_scene_transition_contract_test+0xcec3) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+
+  Mutex M0 acquired here while holding mutex M1 in main thread:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 <null> <null> (libdbus-1.so.3+0x16644) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_scene_transition_contract_test+0xf8ca2) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_scene_transition_contract_test+0xf837d) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #6 std::default_delete<SDLWindow>::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0x7ce5b) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #7 std::__uniq_ptr_impl<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0x7da07) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #8 std::unique_ptr<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0x782e4) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_scene_transition_contract_test+0x69555) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #10 std::default_delete<GameManager>::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0xda1af) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #11 std::__uniq_ptr_impl<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0xda479) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #12 std::unique_ptr<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0xd9e9e) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_scene_transition_contract_test+0xd84ed) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #14 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:205 (platformator_scene_transition_contract_test+0xf0ad) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+
+  Mutex M1 previously acquired by the same thread here:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 dbus_connection_close <null> (libdbus-1.so.3+0x17340) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_scene_transition_contract_test+0xf8ca2) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_scene_transition_contract_test+0xf837d) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #6 std::default_delete<SDLWindow>::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0x7ce5b) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #7 std::__uniq_ptr_impl<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0x7da07) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #8 std::unique_ptr<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0x782e4) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_scene_transition_contract_test+0x69555) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #10 std::default_delete<GameManager>::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0xda1af) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #11 std::__uniq_ptr_impl<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0xda479) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #12 std::unique_ptr<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0xd9e9e) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_scene_transition_contract_test+0xd84ed) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+    #14 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:205 (platformator_scene_transition_contract_test+0xf0ad) (BuildId: 4f639e5baec683efcd0376b0f09e2973afcedfd4)
+
+SUMMARY: ThreadSanitizer: lock-order-inversion (potential deadlock) (/usr/lib/../lib/libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a) 
+==================
+
+    Start 17: platformator_runtime_step_test
+2/2 Test #17: platformator_runtime_step_test ................***Failed    0.15 sec
+==================
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=171576)
+  Cycle in lock order graph: M0 (0x720c000005d0) => M1 (0x720c000008d0) => M0
+
+  Mutex M1 acquired here while holding mutex M0 in main thread:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 <null> <null> (libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_runtime_step_test+0x4d1a2) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #6 SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_runtime_step_test+0x4cde4) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #7 std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x78def) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #8 GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_runtime_step_test+0x69c21) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #9 std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x38f43) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_runtime_step_test+0x36fb2) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #11 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:61 (platformator_runtime_step_test+0xc834) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+
+  Mutex M0 previously acquired by the same thread here:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 <null> <null> (libdbus-1.so.3+0x181df) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_runtime_step_test+0x4d1a2) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #6 SDLWindow::SDLWindow(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_runtime_step_test+0x4cde4) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #7 std::__detail::_MakeUniq<SDLWindow>::__single_object std::make_unique<SDLWindow, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x78def) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #8 GameManager::GameManager(WindowSettings const&, DebugSettings const&) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_runtime_step_test+0x69c21) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #9 std::__detail::_MakeUniq<GameManager>::__single_object std::make_unique<GameManager, WindowSettings const&, DebugSettings const&>(WindowSettings const&, DebugSettings const&) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x38f43) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_runtime_step_test+0x36fb2) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #11 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:61 (platformator_runtime_step_test+0xc834) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+
+  Mutex M0 acquired here while holding mutex M1 in main thread:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 <null> <null> (libdbus-1.so.3+0x16644) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_runtime_step_test+0x4d92a) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_runtime_step_test+0x4d005) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #6 std::default_delete<SDLWindow>::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x7dd79) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #7 std::__uniq_ptr_impl<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x7e89f) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #8 std::unique_ptr<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x79866) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_runtime_step_test+0x6a067) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #10 std::default_delete<GameManager>::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x3962f) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #11 std::__uniq_ptr_impl<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x398f9) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #12 std::unique_ptr<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x390c6) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_runtime_step_test+0x370f1) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #14 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:93 (platformator_runtime_step_test+0xce07) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+
+  Mutex M1 previously acquired by the same thread here:
+    #0 pthread_mutex_lock <null> (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 dbus_connection_close <null> (libdbus-1.so.3+0x17340) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_runtime_step_test+0x4d92a) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_runtime_step_test+0x4d005) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #6 std::default_delete<SDLWindow>::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x7dd79) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #7 std::__uniq_ptr_impl<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x7e89f) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #8 std::unique_ptr<SDLWindow, std::default_delete<SDLWindow> >::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x79866) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_runtime_step_test+0x6a067) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #10 std::default_delete<GameManager>::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x3962f) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #11 std::__uniq_ptr_impl<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x398f9) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #12 std::unique_ptr<GameManager, std::default_delete<GameManager> >::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x390c6) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_runtime_step_test+0x370f1) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+    #14 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:93 (platformator_runtime_step_test+0xce07) (BuildId: df554d52278e22b527467e2ed85df2fd2871b48b)
+
+SUMMARY: ThreadSanitizer: lock-order-inversion (potential deadlock) (/usr/lib/../lib/libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a) 
+==================
+
+
+0% tests passed, 2 tests failed out of 2
+
+Label Time Summary:
+clock           =   0.15 sec*proc (1 test)
+lifecycle       =   0.32 sec*proc (2 tests)
+platformator    =   0.32 sec*proc (2 tests)
+scene           =   0.16 sec*proc (1 test)
+
+Total Test time (real) =   0.32 sec
+
+The following tests FAILED:
+	  7 - platformator_scene_transition_contract_test (Failed) lifecycle platformator scene
+	 17 - platformator_runtime_step_test (Failed)           clock lifecycle platformator
+Errors while running CTest

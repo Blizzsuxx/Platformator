@@ -13,7 +13,7 @@ SPEC.loader.exec_module(sweep)
 SCOPES = ["complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions"]
 COUNTERS = ["object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
             "awake_dynamic_body_count", "queued_add_count", "queued_sync_count", "queued_remove_count", "collision_enter_event_count",
-            "collision_stay_event_count", "collision_exit_event_count"]
+            "collision_exit_event_count"]
 
 
 def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0):
@@ -22,10 +22,10 @@ def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0):
         writer.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
         for scope in SCOPES:
             metric = 0 if scope == "render" else value
-            writer.writerow([2, "scope", scope, 0 if scope == "render" else 10, metric, metric, metric, metric, metric, metric, "ms"])
+            writer.writerow([3, "scope", scope, 0 if scope == "render" else 10, metric, metric, metric, metric, metric, metric, "ms"])
         for counter in COUNTERS:
-            writer.writerow([2, "counter", counter, 10, 1, "", "", "", 1, 1, "count"])
-    path.with_suffix(".manifest.json").write_text(json.dumps({"schema_version": 2, "workers": workers, "seed": seed,
+            writer.writerow([3, "counter", counter, 10, 1, "", "", "", 1, 1, "count"])
+    path.with_suffix(".manifest.json").write_text(json.dumps({"schema_version": 3, "workers": workers, "seed": seed,
         "dt": 1 / 120, "measured_steps": 10, "requested_measured_steps": 10, "warmup_steps": warmup, "repetitions": 5, "repetition_index": repetition,
         "rendering": False, "render_samples": 0, "complete_capture": True, "scenario": "broad_phase",
         "validation_mode": "boundary-only", "timing_eligible": True,
@@ -36,10 +36,62 @@ def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0):
         writer = csv.writer(handle)
         writer.writerow(["schema_version", "sample_kind", "index"] + [name + "_ns" for name in SCOPES] + COUNTERS)
         for index in range(10):
-            writer.writerow([2, "step", index] + [0 if name == "render" else int(value * 1e6) for name in SCOPES] + [1] * len(COUNTERS))
+            writer.writerow([3, "step", index] + [0 if name == "render" else int(value * 1e6) for name in SCOPES] + [1] * len(COUNTERS))
 
 
 class SweepContract(unittest.TestCase):
+    def test_schema_three_is_live_and_two_is_historical(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run.csv"
+            for version in (2, 3):
+                fixture(path)
+                manifest_path = path.with_suffix(".manifest.json")
+                manifest = json.loads(manifest_path.read_text())
+                manifest["schema_version"] = version
+                manifest_path.write_text(json.dumps(manifest))
+                for csv_path in (path, path.with_suffix(".samples.csv")):
+                    with csv_path.open() as handle:
+                        rows = list(csv.reader(handle))
+                    for row in rows[1:]:
+                        row[0] = str(version)
+                    with csv_path.open("w", newline="") as handle:
+                        csv.writer(handle).writerows(rows)
+                if version == 2:
+                    with self.assertRaises(ValueError):
+                        sweep.parse_benchmark_csv(path)
+                else:
+                    sweep.parse_benchmark_csv(path)
+                    manifest["schema_version"] = 2
+                    manifest_path.write_text(json.dumps(manifest))
+                    with self.assertRaises(ValueError):
+                        sweep.parse_benchmark_csv(path)
+
+    def test_raw_removed_or_duplicate_counter_rejects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run.csv"
+            old_metric = "collision_stay_event_count"
+            for extra in (old_metric, "collision_enter_event_count"):
+                fixture(path)
+                raw = path.with_suffix(".samples.csv")
+                with raw.open() as handle:
+                    rows = list(csv.reader(handle))
+                rows[0].append(extra)
+                for row in rows[1:]:
+                    row.append("0")
+                with raw.open("w", newline="") as handle:
+                    csv.writer(handle).writerows(rows)
+                with self.assertRaises(ValueError):
+                    sweep.parse_benchmark_csv(path)
+
+    def test_persistent_contact_count_and_recipient_arguments(self):
+        from types import SimpleNamespace
+        for recipients in (0, 1, 2):
+            command = sweep.apply_count_argument(["runner"], SimpleNamespace(
+                scenario="persistent_contacts", scripted_endpoints=recipients), 100)
+            self.assertEqual(command, ["runner", "--contact-pair-count", "100", "--scripted-endpoints", str(recipients)])
+        self.assertEqual(sweep.sweep_parameter_name("persistent_contacts"), "contact_pair_count")
+
+
     def test_legacy_and_incomplete_data_reject(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "run.csv"

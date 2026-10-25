@@ -1,0 +1,1509 @@
+diff --git a/specs/002-simplify-contact-events/checklists/requirements.md b/specs/002-simplify-contact-events/checklists/requirements.md
+index 37cface..d5ae1f9 100644
+--- a/specs/002-simplify-contact-events/checklists/requirements.md
++++ b/specs/002-simplify-contact-events/checklists/requirements.md
+@@ -31,9 +31,10 @@
+ 
+ ## Notes
+ 
++- Validation completed in one review; all 16 quality items pass. These marks assess specification readiness, not implementation completion.
++- FR-001 through FR-011 link to acceptance scenarios or named edge cases. SC-001 through SC-006 define event counts, script-independence checks, contract removal, correctness, and affected-work evidence.
++- "An eligible recipient MAY receive Exit for a contact whose Enter occurred before it became eligible" explicitly resolves late script attachment without inventing per-script contact lifetimes.
++- "They MUST NOT remain as deprecated callbacks or inactive compatibility placeholders" bounds the Stay removal and its intentional compatibility impact.
++- Performance criteria require representative baseline comparisons and investigation of regressions without inventing timing targets. No implementation algorithms, framework choices, or code structure are prescribed.
++- No clarification markers or unresolved requirements remain. Ready for `$speckit-plan`.
+ - Items marked incomplete require spec updates before `$speckit-clarify` or `$speckit-plan`.
+-- Checked items indicate specification quality, not implementation completion.
+-
+-- Review completed on 2026-10-25: all 16 criteria pass; no unresolved clarifications or quality issues remain.
+-- Coverage: Story 1 covers FR-001 through FR-004; Story 2 covers FR-003, FR-006, FR-007, FR-011, and FR-012; Story 3 and edge cases cover FR-005 and FR-008 through FR-010.
+-- The specification defines observable behavior and compatibility impact without prescribing language, storage, algorithms, or internal event structures. Success criteria cover script-independent transitions, unchanged contacts, lifecycle safety, and consumer migration.
+diff --git a/specs/002-simplify-contact-events/contracts/benchmark-schema.md b/specs/002-simplify-contact-events/contracts/benchmark-schema.md
+index 1b082bd..f6af1da 100644
+--- a/specs/002-simplify-contact-events/contracts/benchmark-schema.md
++++ b/specs/002-simplify-contact-events/contracts/benchmark-schema.md
+@@ -1,22 +1,23 @@
+-# Benchmark Diagnostic Contract: Schema v3
++# Benchmark Schema 3: Contact Transitions
+ 
+-**Status**: Design contract for this feature.
+-**Compatibility**: New captures and current tooling move together from schema v2 to v3. Archived v2 artifacts retain their original data and meaning.
++## Version and boundaries
+ 
+-## Version and shape
++Set `schema_version` to **3** in manifest JSON, summary CSV rows, raw CSV rows, aggregate CSV rows and console reporting. Update producer, sweep parser, capture tooling where applicable, plotting checks, C++ contract tests, Python fixtures/tests and current benchmark documentation as one compatibility change.
+ 
+-Set `schema_version` to `3` in run manifests, summary CSV rows, raw sample rows, console version text, and sweep aggregates. New raw headers and summary counter rows omit `collision_stay_event_count`.
++Preserve the existing file roles and timing boundaries: summary `<run>.csv`, raw `<run>.samples.csv`, provenance `<run>.manifest.json`; complete-step includes final reconciliation and retirement, physics and cleanup remain nested scopes, and rendering remains separately sampled. Scope times must not be summed as total wall time. Preserve all source/build/hardware/worker metadata, capture completeness checks, physical invariants and timing-eligibility labels.
+ 
+-The existing eight timing scopes remain:
++## Metric inventory
+ 
+-~~~text
+-complete_step, physics, cleanup, scene_transition, render,
+-broad_phase, narrow_phase, resolve_collisions
+-~~~
++The eight timing scopes remain:
++
++```text
++complete_step, physics, cleanup, scene_transition,
++render, broad_phase, narrow_phase, resolve_collisions
++```
+ 
+ The eleven counters are:
+ 
+-~~~text
++```text
+ object_count
+ occupied_cell_count
+ candidate_pair_count
+@@ -28,53 +29,25 @@ queued_sync_count
+ queued_remove_count
+ collision_enter_event_count
+ collision_exit_event_count
+-~~~
+-
+-Scope timing boundaries, units, metadata/provenance requirements, validation-mode labels, and independent-run spread calculations remain as documented in [benchmark/README.md](../../../benchmark/README.md).
+-
+-## Event counter meaning
+-
+-| Counter | Meaning |
+-| --- | --- |
+-| collision_enter_event_count | Generated absent-to-present confirmed-contact transitions enqueued during this recorded complete step. |
+-| collision_exit_event_count | Generated present-to-absent confirmed-contact transitions enqueued during this recorded complete step, including cleanup/removal exits. |
+-
+-A pair transition counts once even if no script receives it, several behaviors receive it, or a delivery callback throws. A retired recipient does not suppress generation. Delivery and queue clearing do not increment or decrement counts.
+-
+-Frame start initializes counters to zero. Count at the manager's single enqueue path, while a recording frame is active. Do not rescan/reset the event totals in narrow phase. Events generated during idle mutation outside a recorded step do not get attributed to the next recorded sample.
+-
+-One completed contact interval contributes one enter and one exit over its measured lifetime; intervals that start before warmup/measurement or end after capture naturally need not be balanced within a single capture window. Do not reject those captures solely for unequal aggregate enter/exit counts.
+-
+-Unchanged contacts contribute zero events in later samples even if awake, scripted, stationary, sleeping, or triggers. Active contact counts continue describing all confirmed contacts rather than only solver contacts.
+-
+-## Writer and reader migration
+-
+-Update these together:
+-
+-- `src/benchmark.h/.cpp`: counter enum/name arrays, manifest and CSV versions, console text, and recorded metric descriptions.
+-- `src/physicsmanager.cpp`: transition counters at enqueue; remove the narrow-phase recount and Stay branch.
+-- `benchmark/sweep_scaling.py`: exact counter set, accepted version, raw/summary validation, aggregate version, and error wording.
+-- `benchmark/plot_scaling.py`: accepted aggregate version and diagnostic wording.
+-- `benchmark/tests/test_sweep_scaling.py` and `tests/benchmark_contract_test.cpp`: schema fixtures, complete metric expectations, generation-count coverage, and rejection cases.
+-- `benchmark/capture_cleanup.py`: verify integration with the migrated imported parser and aggregation helpers; change only assumptions actually affected.
+-- Current benchmark documentation and feature validation instructions.
+-
+-Current tools reject v2 and mixed-version input with a clear unsupported-version message; this feature does not add a general multi-version parser. Never fill a removed Stay field with zero or silently interpret old v2 enters as script-independent counts.
++```
+ 
+-## Historical comparison
++Remove `collision_stay_event_count` from the recorder enum/name arrays, summary rows, raw columns, aggregate columns, console output, parser required sets and current fixtures. Do not preserve it as zero or silently synthesize it.
+ 
+-Leave `benchmark/baselines/`, archived `benchmark/results/`, historical specifications, captured manifests/CSVs, and historical source snapshots intact. Existing references to those results retain their schema/version labels.
++`collision_enter_event_count` and `collision_exit_event_count` count **generated collider-pair events in the sampled complete step**, not eligible scripts, behaviors, delivered callbacks or contacts still active at sample end. Increment at manager-owned enqueue for both geometry and removal transitions, including cleanup and both-endpoint retirement inside the measured step. Frame begin resets counters; out-of-frame mutations do not leak into the next step or create extra samples. Delivery failure does not undo a generated count. `active_collision_count` retains its existing confirmed-contact snapshot meaning; the other nine counters retain their existing definitions and sampling points.
+ 
+-For before/after timing evidence, use the baseline source and its original v2 tools for the baseline, and v3 tools for the new source, with equivalent workloads, workers, seed, dt, steps, instrumentation, and timing boundaries. Preserve both artifact sets and provenance. Compare unchanged timing scopes explicitly; event-counter values may differ by the intended semantics and must not be pooled as one series.
++## Reader and history rules
+ 
+-Do not claim a measured speedup until correctness and comparable captures establish it.
++- Current tools accept schema 3 consistently across all files in a run and its aggregates. Reject schema 2, missing metrics, unknown metrics, duplicate summary metrics, mixed versions, missing required raw columns, incomplete captures and contradictory instrumentation labels with an actionable message.
++- Keep archival schema-2 and earlier captures unchanged. Historical readers are available at their recorded source/tool revision. Do not fabricate transition totals from historical observed-contact counts or rewrite old files under a new schema number.
++- Cross-version baseline comparisons may compare timing scopes only after confirming unchanged workload and timing boundaries. Do not equate old Enter/Exit counter semantics with new generated-transition semantics; label this distinction in results.
++- Plotting accepts only complete schema-3 timing-eligible aggregates and retains the requirement for at least five independent repetitions. Validation-only results stay excluded from performance plots.
+ 
+-## Required contract checks
++## Contract checks
+ 
+-1. New summary/raw/manifest/aggregate outputs consistently identify version 3, eight scopes, and eleven counters.
+-2. No Stay counter is emitted; missing required metrics, duplicate/unknown metrics, v2 input, mixed versions, and truncated captures fail validation.
+-3. A scriptless contact generates a counted enter and exit; adding behaviors does not multiply either count.
+-4. An exit generated during final cleanup appears in the same complete-step sample.
+-5. An idle exit outside recording does not affect the next frame's counts.
+-6. Multiple dispatch/cleanup batches in one step accumulate rather than overwrite event totals.
+-7. Existing completeness, rendering, metadata, validation-mode, and sample-capacity checks continue to pass.
++1. A no-script pair entering and later exiting contributes one count to each relevant measured step.
++2. The same physical transition with zero, one or two scripted endpoints has the same pair count despite differing callback totals.
++3. Quiet persistent contacts contribute zero Enter/Exit counts after entry, including sleeping contacts.
++4. Exit produced during cleanup contributes to that same complete step; out-of-frame removal contributes to no later sample.
++5. Both endpoints retiring, script replacement and callback exceptions do not convert pair counts to callback counts.
++6. Producer output has eight scopes, eleven counters, schema 3 throughout and no Stay field. Reader fixtures verify rejection of schema 2, mixed versions and removed Stay metrics.
++7. Recorder storage reuse, raw sample counts, invariants, build provenance, rendering separation and output error behavior continue to pass their existing contract tests.
+diff --git a/specs/002-simplify-contact-events/contracts/contact-events.md b/specs/002-simplify-contact-events/contracts/contact-events.md
+index 8bc0dee..81f15be 100644
+--- a/specs/002-simplify-contact-events/contracts/contact-events.md
++++ b/specs/002-simplify-contact-events/contracts/contact-events.md
+@@ -1,63 +1,48 @@
+-# Contact Events and Behavior Startup Contract
++# Contact Events and Startup Contract
+ 
+-**Applies to**: Platformator runtime/library consumers after implementation of this feature.
+-**Compatibility**: Intentional source and ABI break for Stay callbacks; rebuild the library and all consumers.
++## Public callbacks
+ 
+-## Public callback surface
++The retained callback signatures are:
+ 
+-Retain the existing Behavior callbacks:
+-
+-~~~cpp
++```cpp
+ virtual void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
+ virtual void onCollisionExit(Collider *other, double timeDelta);
+-~~~
+-
+-Remove `Behavior::onCollisionStay`, `Collider::triggerCollisionStay`, and `ScriptComponent::dispatchCollisionStay`, including their declarations, definitions, and internal delivery paths. There is no deprecated no-op overload, separate trigger-Stay path, or substitute recurring notification.
+-
+-Enter receives the existing Collision and other-collider data; exit receives the existing other-collider data. Existing argument meanings and ordinary-step/retirement timing remain unchanged. In particular, reconciliation exits outside the ordinary collision phase retain the existing zero timeDelta.
+-
+-## Generated events
+-
+-- A collider pair generates one enter when confirmed contact begins and one exit when that contact ends.
+-- An unchanged confirmed contact generates no event. Candidate bounding-region overlap alone is insufficient.
+-- Generation is identical with no scripts, one scripted endpoint, two scripted endpoints, empty script components, or scripts pending initialization.
+-- Body response and trigger changes that preserve confirmed contact do not generate transitions. Their physical effects still update.
+-- Duplicate cell witnesses and multiple behaviors cannot multiply a pair transition.
+-- Filtering, collider deactivation/removal, and object retirement generate the terminal exit once. Both-retired endpoints still have a generated transition but no eligible recipient.
+-- Final-state changes coalesced before an existing reconciliation boundary do not manufacture exit/enter when the confirmed contact remains uninterrupted. Distinct completed transitions are not merged.
+-
+-## Delivery and ordering
+-
+-Recipient eligibility is evaluated separately at delivery under the existing initialization, active-state, component-slot, and retirement rules. An event can deliver zero, one, or multiple behavior callbacks. Each eligible behavior on each endpoint receives one corresponding callback.
+-
+-Within each dispatch batch, exits precede enters; each group is ordered by canonical pair handles. Endpoint A is visited before B. Ordering and event counts match for equivalent serial and parallel inputs. Existing per-callback exception handling continues attempting eligible delivery, clears the batch, and rethrows the first captured exception.
++```
+ 
+-Adding a script during an existing contact produces no enter or replay. That script can receive a later exit despite not receiving an enter. Removing/replacing a script does not end the contact or suppress the other object's callback. A replacement script follows the same initialization and eligibility rules as any newly attached script.
++Remove `Behavior::onCollisionStay`, `ScriptComponent::dispatchCollisionStay`, `Collider::triggerCollisionStay`, their definitions and internal Stay event kind. No deprecated shims or zero-work replacement callback remains. Removing a virtual callback changes the library's source and binary contract: rebuild the engine and external consumers together, remove Stay overrides/calls, and update generated or example behavior code if affected. Scene files and behavior-field serialization are unchanged.
+ 
+-## Callback lifetime and mutation
++Enter carries the current confirmed contact; Exit supplies the other collider without a contact payload. Payloads are borrowed for callback use under existing lifetime rules. Ordinary events retain the simulation timestep; lifecycle-removal callbacks dispatched during reconciliation retain the existing zero timestep.
+ 
+-The Collision pointer is borrowed for the enter callback; the other collider is borrowed for each callback. Consumers must not retain either raw pointer as a lifetime guarantee. Existing typed object-reference facilities remain available for references spanning lifecycle changes.
++## Pair events versus callback delivery
+ 
+-Callbacks may request structural changes or scene replacement under the existing deferred mutation policy. Logical retirement/replacement suppresses later delivery immediately. An eligible survivor may inspect the other collider during a retirement exit, before physical allocation release. Both retired endpoints receive no later ordinary callbacks. Pending events are drained or cleared before their storage can be reclaimed; replacement scenes receive no stale callbacks.
++1. Absent→confirmed contact creates one Enter per pair. Confirmed→absent, including removal, creates one Exit. Unchanged contact creates no event.
++2. Generation does not inspect script presence, behavior count, startup state, activation or recipient eligibility. Shape/contact eligibility remains a physical concern.
++3. Delivery checks each endpoint independently under existing ScriptComponent/Collider eligibility rules. A pair with two eligible endpoints has two endpoint notifications for one event; an endpoint may contain multiple runnable behaviors as today. A missing or ineligible endpoint does not suppress the other.
++4. Script changes alone create no transition. Adding a script during an existing contact never replays Enter; if still eligible, that script receives the actual future Exit. No per-script balanced-history guarantee is added.
++5. Bounding-region candidates without a confirmed shape contact create no contact events. Multiple spatial witnesses describe one pair/contact lifetime.
++6. Removal records an actual ending even when both endpoints are retired and neither receives a callback. Old-scene notifications never reach replacement-scene scripts.
+ 
+-## Startup semantics preserved
++## Ordering and mutation
+ 
+-The internal method name becomes `GameManager::startPendingBehaviors`; this is not a new public lifecycle entry point.
++- Preserve Exit-before-Enter ordering within each dispatch batch. Within a family, order by canonical endpoint A handle then B handle, using complete stable handles. Deliver A before B; keep behavior insertion order within each recipient.
++- Main physics and cleanup are separate batches. Finish a contact's queued Enter delivery before clearing its storage; finish cleanup notifications before freeing endpoints. Do not sort or retain unchanged contacts solely for event delivery.
++- Maintain current deferred mutation and scene replacement boundaries. Callback-driven script/collider/object removal is safe, suppresses later ineligible delivery, and cannot invalidate the active event batch.
++- Catch failures independently per endpoint, continue the batch under existing semantics, clear consumed records, and then rethrow the first failure. Preserve GameManager cleanup on errors.
++- Do not collapse Exit and subsequent Enter for a re-contact into one notification or replay Enter after script activation.
+ 
+-- Reference resolution immediately precedes the first start attempt.
+-- Resolve/start exceptions are logged per behavior. Resolve failure skips that start call.
+-- Every attempted entry, including failure, becomes runnable under the existing one-attempt policy; there is no automatic retry.
+-- Pending additions during startup may be initialized during that startup pass.
+-- An interrupted pending suffix remains pending until an eligible startup pass.
+-- Additions during ordinary fixed/update/late/collision dispatch wait for the next startup pass.
+-- Startup and script reconciliation do not change physics observer or solver membership.
++## Startup responsibility contract
+ 
+-## Migration guidance to publish
++`GameManager::startPendingScripts` schedules scripts; private `ScriptComponent::startPendingBehaviors` initializes the component's own behaviors. This is a responsibility extraction, with these existing behaviors preserved:
+ 
+-Remove Stay overrides and their internal calls. For ongoing interaction, a behavior can maintain its own interaction state from enter/exit and use ordinary updates for recurring work, clearing that state on its normal lifecycle teardown. Because late attachment has no replay, an exit must tolerate an untracked contact; authors needing knowledge of pre-existing contacts must establish that through their own game state. This feature does not add a public contact-query facility.
++- Resolve references immediately before each start attempt, once per attempted initialization.
++- Check current dispatch eligibility before every attempt; keep unattempted suffixes for later activation.
++- Allow additions to the current script and later queued scripts during startup according to the existing dynamic queue pass; an already-processed script and additions during ordinary callbacks retain their existing next-pass semantics.
++- Log individual initialization failures and continue; attempted behaviors become runnable even on failure, matching current tests.
++- Retain index-based queue traversal and O(1) tombstone cancellation during mutation. No iterator may survive a callback that can append/cancel.
++- Startup performs no contact observation/subscription refresh. A script becoming runnable cannot manufacture a physical transition.
+ 
+-Existing examples already use enter callbacks; rebuild them as public consumers. Update current API guidance, test callback-family matrices, and explanatory walkthroughs. Preserve historical specifications and recorded results as historical evidence.
++## Required acceptance coverage
+ 
+-## Acceptance references
++The implementation must demonstrate no-script generation separately from callback traces; zero/one/two recipient equivalence; late attachment/activation and replacement; 100 quiet updates; re-contact; shape false positives; multi-cell witnesses; filtering/deactivation/removal; both-endpoint retirement; callback exceptions/mutation; scene replacement and shutdown; unchanged support/sleep/wake behavior; and deterministic serial/multiworker ordered histories. Retain existing detailed startup mutation tests while extracting ownership. A private/internal test fixture may inspect pending records; no public inspection API is required.
+ 
+-The [specification](../spec.md) defines the user scenarios. The [data model](../data-model.md) defines transition ownership and fields; the [validation guide](../quickstart.md) covers generated events separately from callback delivery.
++The absence of Stay is a deliberate deviation from Unity's collision-event family, which includes Stay; see [Unity documentation](https://docs.unity.com/en-us/engine/6000.7/manual/physics-section/physics-overview/collision-section/collider-interactions/oncollision). Enter/Exit naming remains familiar; no claim is made that Platformator's eligibility, payload or lifecycle rules match Unity's.
+diff --git a/specs/002-simplify-contact-events/data-model.md b/specs/002-simplify-contact-events/data-model.md
+index 56d5e7c..d06e589 100644
+--- a/specs/002-simplify-contact-events/data-model.md
++++ b/specs/002-simplify-contact-events/data-model.md
+@@ -1,100 +1,83 @@
+ # Data Model: Simplify Contact Events
+ 
+-This feature changes in-memory responsibilities and observable callback/diagnostic contracts. Scene serialization is unchanged. See [the plan](plan.md) and [contact contract](contracts/contact-events.md).
++This is an in-memory runtime design; there is no scene-format migration. [Contact contracts](contracts/contact-events.md) define public behavior; [research.md](research.md) explains retained and removed state.
+ 
+ ## ColliderPair and confirmed contact
+ 
+-| State / field | Owner and meaning |
++**Owner**: Grid candidate storage. The pair owns its optional `Collision`; stable ordered collider handles identify its endpoints.
++
++| State | Meaning and invariant |
+ | --- | --- |
+-| Canonical collider A/B | Grid's unique candidate pair; endpoint order follows runtime handles, independent of SAT reference/incident selection. |
+-| Witness count and adjacency/queue indices | Existing Grid bookkeeping for duplicate spatial witnesses and affected narrow-phase work. |
+-| Optional owned Collision | Pair-owned confirmed manifold; absence means no confirmed contact. Geometry may create, update, or clear it. |
+-| Cached collider versions | Determine whether this pair needs geometry work. |
+-| resultHadContact | Pair-local pre-worker presence needed for main-thread before/after reconciliation. |
+-| resultTestedGeometry | Existing pair-local instrumentation result; no event semantics. |
+-| activeIndex / solverIndex | O(1) membership repair for confirmed-contact and solver collections. |
+-| Prior supportBodyA/B and supportsA/B | Canonical endpoint support contribution used to reduce only actual changes, including body replacement. |
++| Endpoint pointers | Canonical A/B handle order; allocations remain valid through pending notification delivery. |
++| Witness count and adjacency indexes | Candidate membership across spatial cells; losing one of several witnesses cannot erase the pair. |
++| Optional `Collision*` | Sole source of confirmed-contact presence; a bounding-region overlap alone is insufficient. |
++| Cached collider versions | Determine whether pair geometry needs re-evaluation. |
++| Narrow-phase queue membership | At most one pending entry per pair; workers own distinct pairs. |
++| `resultHadContact` | Previous contact presence captured for the current evaluation, consumed after workers finish. |
++| `resultTestedGeometry` | Existing test-work result, reduced on the main thread. |
++| Active-contact and solver indexes | Membership in two distinct physical collections; absent membership uses the existing sentinel. |
++| Support body pointers and contribution flags | Previous per-endpoint support contributions; changes reduce once into body totals. |
++
++Remove `stayIndex` and `enteredStep`. Remove event-emitting pair methods (`queueCollisionExit`, event-emitting `clearCollision`) and runtime-service lookup from the pair. Pair-local creation/clearing may update contact memory and cached versions but never enqueue events. The destructor releases any remaining collision without notifying the runtime.
+ 
+-Remove `stayIndex` and `enteredStep`. Pair destruction releases its manifold and never accesses the runtime or queues gameplay work.
++### Transition table
+ 
+-### Contact state transitions
++| Previous confirmed contact | Current confirmed contact | Result |
++| --- | --- | --- |
++| Absent | Absent | No event; no contact membership. |
++| Absent | Present | Queue one Enter; add physical memberships and support as applicable. |
++| Present | Present | No event; refresh geometry/response/support only when affected. |
++| Present | Absent | Queue one Exit; remove contact/solver membership and prior support. |
++| Present | Pair removed | Queue one Exit before erasure; remove memberships/support; destroy contact storage. |
++| Absent | Pair removed | No event; remove candidate storage only. |
+ 
+-| Before | After | Event | Membership/support action |
+-| --- | --- | --- | --- |
+-| Absent | Absent | None | No confirmed contact; no support contribution. |
+-| Absent | Present | Enter | Add contact membership; reconcile solver eligibility and support. |
+-| Present | Present | None | Retain contact; update support/solver eligibility only as physical state requires. |
+-| Present | Absent | Exit | Remove contact/solver membership and prior support contribution. |
+-| Present | Pair removal | Exit before erasure | Remove memberships/support through manager, then free pair/manifold. |
+-| Absent | Pair removal | None | Remove candidate bookkeeping only. |
++Geometry transitions are committed in the serial narrow-phase reduction; removal transitions are committed by `PhysicsManager::removePair` after witness reduction. A geometry-ending pair has no `Collision` when later removed, so removal cannot emit a duplicate Exit. No transition condition reads scripts.
+ 
+-Neither script count nor callback eligibility participates in this table. Pair removal cannot repeat a geometry-generated exit because that path already cleared the collision. Net spatial witness deltas are consolidated by Grid before removal; temporary witnesses do not independently create transitions.
++## PhysicsManager physical collections
+ 
+-## Collision geometry
++| Collection | Owner and purpose | Update cost and ordering |
++| --- | --- | --- |
++| `contactPairs` | All live confirmed contacts, including non-solving contacts; benchmark invariant oracle and active-contact count. | O(1) indexed insert/swap removal; consumers requiring order canonicalize their own output. |
++| `solverPairs` | Confirmed contacts eligible for dynamic/kinematic response with an applicable moving body. | O(1) membership changes; sort only when membership changes, O(S log S). Resolution/debug obtain the current collision directly from each pair. |
++| `dynamicCollisionScratch` | Reusable per-step subset used for iterative dynamic solving. | Rebuilt during the required solver pass, preserving canonical selection order. |
++| `supportDeltaBodies` | Bodies with accumulated support-count changes. | Deduplicated indexed queue; reduced after workers, before affected-body reconciliation. |
++| Body work collections | Registered, awake dynamic, moving kinematic and sleep-eligible bodies, plus changed-body queue. | Existing indexed membership and sleep-island invariants; no script dependency. |
+ 
+-A Collision holds the normal, reference/incident colliders, up to two feature-identified manifold points, warm-start impulses, support flags, and solver data already used by the engine.
++Delete `stayPairs`, `stayOrderDirty`, `simulationStep`, and the redundant `activeCollisions` projection. Retain solver dirty state. Delete unused `NarrowPhaseLocalResults` after a whole-repository use check.
+ 
+-The internal geometry operation reads synchronized collider geometry and mutates only the owning pair/manifold. Shape helpers do not emit events or mutate shared body collections. The worker wrapper computes support flags after geometry; shared body support counts change only in the serial reduction.
++`refreshPairLists` becomes physical membership reconciliation only. `refreshSolverPairs(Collider*)` visits touching adjacency for relevant body/collider state changes and refreshes solver eligibility without a geometry query or script lookup. `refreshResponse` remains responsible for response/support changes. Script reconciliation and startup must reach none of these operations solely because a script changed.
+ 
+-Keep existing box/circle math, feature identities, clipping acceptance, and fallback policy. Moving fallback construction to the internal geometry module does not introduce a new public Collision operation.
++## PhysicsEvent batch
+ 
+-## PhysicsEvent
++**Owner**: PhysicsManager's existing reusable pending-event vector. No new public event bus, observer table, persistent history or script-specific contact state is introduced.
+ 
+ | Field | Contract |
+ | --- | --- |
+-| type | Enter or exit only. No Stay value. |
+-| colliderA / colliderB | Borrowed canonical endpoints, readable until the current dispatch/retirement barrier finishes. |
+-| collision | Borrowed current pair manifold for enter; null for exit. Never dereferenced by exit handling. |
+-
+-PhysicsManager owns the retained-capacity pending event vector. Main-thread contact reduction and pair removal use one enqueue function. That function counts the generated transition once, independent of whether any callback can run.
++| Type | Enter or Exit only. |
++| `colliderA`, `colliderB` | Canonical endpoint pointers; full stable handles supply deterministic sorting, including generations. |
++| `collision` | Borrowed confirmed contact for Enter; null for Exit. It remains valid until Enter dispatch completes. |
+ 
+-Each batch is ordered by exit before enter, then canonical A/B handles. Delivery visits A then B, checks each recipient's current lifecycle eligibility, aggregates exceptions under the existing policy, and clears the batch before storage reclamation.
++The manager's enqueue operation is the sole append/count boundary for both producers. Each actual transition creates one pair event even with no recipients, including removal of both endpoints. Each nonempty dispatch batch orders Exit before Enter, then canonical endpoint handles; delivery visits A before B. The phase model admits at most one event of a given kind for a given pair in a batch; enforce this through transition ownership, not a per-frame deduplication set. Ending an old contact and beginning a new one may legitimately produce Exit and Enter for the same pair.
+ 
+-No replay log, observer index, new event identity, subscription entity, manifold snapshot, or replacement Stay mechanism is added. No event survives into a replacement scene.
++No supported structural mutation is applied while the notification vector is being iterated. Complete ordinary physics dispatch before cleanup can clear geometry. Cleanup-generated Exits dispatch before retired component/object allocation reclamation. Finish old-scene reconciliation and event drains before publishing replacement objects. Inactive/retired recipients are skipped at delivery; borrowed `other` pointers follow the existing callback-duration contract and must not be retained as durable references.
+ 
+-## Physics collections
++Catch callback exceptions per endpoint, continue delivery under current rules, clear the consumed queue, then propagate the first exception. Cleanup still executes under GameManager's existing exception handling.
+ 
+-| Collection | Membership / purpose | Update trigger |
+-| --- | --- | --- |
+-| contactPairs | Confirmed live contacts; diagnostics and existing invariant inspection. Unsorted indexed membership. | Confirmed-contact reconciliation/removal. |
+-| solverPairs | Confirmed contacts with physical response and a moving/awake eligible body; canonical constraint order. | Geometry, response, body wake/sleep or membership changes. |
+-| dynamicCollisionScratch | Dynamic subset reused across solver iterations. | Rebuilt by the existing solve phase. |
+-| awakeBodies | Live awake dynamic bodies for force/integration. | Coalesced body-state changes. |
+-| kinematicBodies | Live moving kinematic bodies. | Coalesced body-state changes. |
+-| sleepEligibleBodies | Existing supported or gravity-free awake dynamic bodies eligible for sleeping. | Body/support changes. |
+-| changedBodies / supportDeltaBodies | Deduplicated affected-body work with reusable capacity. | Actual body-state/support changes. |
+-
+-Remove `stayPairs`, `activeCollisions`, `stayOrderDirty`, `simulationStep`, and the unused local-results struct. Retain solver-order dirtiness and existing body membership indices, support-delta fields, and sleep-island state. Body adjacency refresh updates solver membership only; script changes never touch these collections.
+-
+-Solver membership must be canonically prepared before its next solver/debug consumer after membership changes. Do not mutate a collection while its consumers iterate it; body changes discovered in solver callbacks are queued and drained at the existing boundary.
+-
+-## ScriptComponent startup state
+-
+-| State | Owner / rule |
+-| --- | --- |
+-| pendingBehaviors | Script-owned entries awaiting their one initialization attempt. Startup may append entries. |
+-| behaviors | Script-owned runnable entries whose initialization was attempted, including logged failures. |
+-| pendingStartScripts plus queue index | GameManager's cancellable indexed startup queue; cancellation leaves a null slot during iteration. |
+-| Attempted prefix count | Local startup variable; only this prefix transfers from pending to runnable. |
++## Script startup ownership
+ 
+-`startPendingBehaviors` retains no iterators across user callbacks. New entries added during startup may be attempted in the same pass. Deactivation/retirement interrupts the loop and preserves the untouched suffix. Resolve failure skips that entry's start call; every attempted entry is promoted once and is not retried. Ordinary-dispatch additions wait for the next eligible startup pass.
++GameManager owns `pendingStartScripts`, per-script queue indexes, cancellation tombstones and the startup phase. `startPendingScripts` keeps index-based traversal and one active reference resolver for the pass.
+ 
+-Remove the local `firstBehaviors` condition and all startup observer refresh. These changes introduce no new behavior state or ownership list.
++ScriptComponent owns `pendingBehaviors`, runnable `behaviors`, dispatch eligibility and private `startPendingBehaviors(platformator::ReferenceResolver&)`:
+ 
+-## Diagnostics
++1. Recheck eligibility before each pending behavior and read the current pending size, allowing same-pass additions during startup.
++2. Resolve references and attempt start; report failures per behavior without aborting the remaining eligible batch.
++3. Promote exactly the attempted prefix in order, including failed attempts as the existing contract requires.
++4. Leave an unattempted suffix pending after disable/retirement; queue scheduling remains the manager's responsibility.
+ 
+-Per recorded complete step, enter/exit counters accumulate at transition enqueue, including cleanup events and zero-recipient contacts. Frame start resets them; an idle event outside a recorded frame does not contaminate a future sample.
++After the component operation returns, GameManager cancels that script's start-queue membership as today. No `firstBehaviors` state or contact refresh follows. Public callback and serialization contracts do not change beyond Stay removal.
+ 
+-Schema v3 removes Stay and retains eleven counters and eight timing scopes. Historical v2 artifacts remain immutable with their original semantics. See [benchmark schema contract](contracts/benchmark-schema.md).
++## Benchmark and test-only data
+ 
+-## Invariants and validation rules
++Schema 3 has the same eight timing scopes and eleven counters; see [benchmark-schema.md](contracts/benchmark-schema.md). Each enqueue increments Enter or Exit using frame-scoped recorder accumulation. Generation outside an active measured frame does not create an artificial sample. Main-phase and cleanup events both contribute when they occur within a frame. Do not count recipients, rescan pending events, or carry an out-of-frame event into a later sample.
+ 
+-1. Every collider pair has at most one confirmed Collision, independent of spatial witness count.
+-2. Every completed absent/present change contributes one generated transition; callback multiplicity never changes this count.
+-3. An unchanged contact, including stationary/sleeping/trigger contact, emits no recurring event.
+-4. Each list insertion/removal repairs the moved element's index in O(1).
+-5. Support flags map through canonical endpoints even if SAT reference/incident roles swap.
+-6. Wake/sleep and response changes refresh affected solver membership even without geometry changes.
+-7. Scripts pending initialization receive no callbacks before their existing initialization boundary; adding them creates no replay.
+-8. Logical retirement suppresses later callbacks immediately; pending records are drained or cleared before referenced allocations are reclaimed, including exceptional cleanup.
+-9. Serial and parallel processing produce the same canonical transitions and physical state within established test tolerances.
++Replace the Stay work probe with test-only counters for actual transition comparisons in the pending-pair reduction and event records appended. Quiet persistent-contact tests must show both remain zero after warmup with and without scripts. Pending geometry updates may perform a transition comparison even when contact remains present; this is changed-pair work, not a dedicated traversal of persistent contacts. Probe support is compiled out of performance builds.
+diff --git a/specs/002-simplify-contact-events/plan.md b/specs/002-simplify-contact-events/plan.md
+index 4fdb2de..0f425ab 100644
+--- a/specs/002-simplify-contact-events/plan.md
++++ b/specs/002-simplify-contact-events/plan.md
+@@ -1,186 +1,182 @@
+ # Implementation Plan: Simplify Contact Events
+ 
+-**Branch**: `001-cpp-engine-cleanup` | **Date**: 2026-10-25 | **Spec**: [spec.md](spec.md)
++**Branch**: `001-cpp-engine-cleanup` (actual Git branch) | **Date**: 2026-10-25 | **Spec**: [spec.md](spec.md)
+ 
+-**Input**: Feature specification from `specs/002-simplify-contact-events/spec.md`.
+-
+-**Feature context**: `002-simplify-contact-events`. Setup reports this feature identifier in its `BRANCH` field; the actual Git branch remains `001-cpp-engine-cleanup`. No branch switch is part of this plan.
++**Input**: `specs/002-simplify-contact-events/spec.md`. Setup resolved the workflow identifier `002-simplify-contact-events` from the feature directory; it did not change the actual Git branch. Keep feature selection independent of Git branch naming.
+ 
+ ## Summary
+ 
+-Produce enter/exit events directly from confirmed contact transitions, independently of scripts. Remove Stay callbacks, recurring event traversal, observer membership, and script-to-physics subscription invalidation. Keep callback eligibility checks at delivery and preserve existing mutation/reclamation boundaries.
++Generate Enter and Exit directly from confirmed-contact transitions, including explicit pair removal, and remove Stay callbacks, observer tracking and reporting. Keep physical contact, solver, body and support indexes where they serve distinct consumers. Remove the redundant `activeCollisions` solver projection and unused narrow-phase aggregation declaration. Make geometry one cohesive worker-owned operation and let ScriptComponent own pending behavior initialization while GameManager retains queue scheduling.
+ 
+-Address the user's four concrete concerns through responsibility changes: fold contact/body scheduling members into PhysicsManager; consolidate all narrow-phase shape geometry into an internal module with one pair-local entry point; remove startup's physics side effect and rename it `startPendingBehaviors`. Preserve the body/support indexes with actual solver consumers. Remove the mirrored active-collision list. See [research.md](research.md) for source evidence, alternatives, and decisions.
++The requested smell audit covers all four named areas and follows their dependencies into ColliderPair destruction, Grid pair erasure, public callbacks, debug consumers, benchmark producers/readers and mutation tests. The design removes unnecessary state and misplaced responsibilities without changing collision calculations, sleep algorithms or startup scheduling semantics. [research.md](research.md) records evidence and rejected alternatives; [data-model.md](data-model.md) defines ownership and invariants.
+ 
+ ## Technical Context
+ 
+-**Language/Version**: C++20 runtime; Python 3 standard-library benchmark tooling; CMake presets/Ninja.
++**Language/Version**: C++20 runtime and tests; Python 3 standard-library benchmark tooling, optional matplotlib plotting.
+ 
+-**Primary Dependencies**: Existing vendored SDL 3.4.18, SDL_image 3.4.8, SDL_mixer 3.2.4, SDL_ttf 3.2.2, Eigen 5.0.1, oneTBB 2022.3.0, and nlohmann/json. No dependency changes.
++**Primary Dependencies**: Existing vendored SDL3 family, Eigen 5.0.1, oneTBB 2022.3.0 and nlohmann JSON; CMake/Ninja. No new runtime dependency, scheduler, service or framework.
+ 
+-**Storage**: In-memory collider pairs, borrowed callback data, retained-capacity event/scratch vectors, existing JSON scene files, and benchmark CSV/JSON artifacts. No scene-format migration.
++**Storage**: In-memory candidate pairs, optional confirmed contacts, indexed physical work lists, deferred lifecycle queues and reusable event/scratch vectors; JSON scene serialization unchanged. Benchmark CSV/JSON moves to schema 3.
+ 
+-**Testing**: Existing CTest C++ executables and Python unittest suite; focused internal transition-contract coverage; work probes and allocation counting; ASan/UBSan; serial/multiworker comparisons. TSan is a supplemental check on a supported instrumented host.
++**Testing**: Existing CTest executable suite and Python unittest benchmark suite; focused internal contact-event test; existing cleanup-debug, cleanup-work, cleanup-asan, cleanup-tsan and cleanup-benchmark presets; public-header and package checks.
+ 
+-**Target Platform**: Current Linux/GCC development and validation host. Preserve portable C++/SDL library and runner behavior; no claim of new platform validation.
++**Target Platform**: Existing native desktop library/runner targets; primary validation on Linux/GCC with headless SDL. Do not claim unrun platform or sanitizer validation.
+ 
+-**Project Type**: Embeddable native library with desktop/headless runners and an example game.
++**Project Type**: Native game-engine library with runner/examples and benchmark CLI; Python editor changes only if a direct compatibility consumer is found.
+ 
+-**Performance Goals**: Zero per-contact event work for unchanged contacts, including contacts with eligible scripts; no physics adjacency traversal due solely to script changes; O(E log E) ordering of E queued transitions; O(1) indexed contact/body membership updates; retain warmed-up idle allocation reuse. Validate timing differences on declared workloads, without an arbitrary speedup requirement.
++**Performance Goals**: Eliminate the event-only O(observed contacts) traversal on persistent contacts and all Stay subscription maintenance. Event generation uses existing changed-pair reduction plus actual removal transitions; order only generated events. Preserve warmed idle allocation reuse, affected-body work and existing multicore geometry/cell processing. Establish runtime impact through equivalent baseline measurements, not an invented speedup or latency target.
+ 
+-**Constraints**: Preserve pair-local parallel geometry, serial shared-state reduction, support-loss waking, awake/kinematic/sleep indexes, canonical solver order, single-attempt initialization, callback safety, and all existing public enter/exit arguments. Stay removal is an intentional source/ABI break requiring consumer rebuilds. Benchmark output/readers migrate together to schema v3.
++**Constraints**: Confirmed shape contact differs from broad-phase overlap; preserve witness deduplication, support totals, solver order, sleeping/waking, raw-pointer lifetime boundaries, start-before-dispatch, callback exceptions and safe mutation. Stay removal deliberately breaks source/binary callback compatibility; schema 3 deliberately breaks reporting compatibility. No per-script contact histories, new public event-observation API or recurring replacement for Stay.
+ 
+-**Scale/Scope**: Contact/event producer, geometry organization, body membership integration, startup decoupling, affected public callbacks, tests, current docs, and benchmark tools. Exercise 128 shared supports, long persistent contacts, duplicate cell witnesses, large resting populations, and existing sparse/dense/churn scenarios. Exclude broad-phase algorithm replacement, editor changes, a general event bus, and new ownership frameworks.
++**Scale/Scope**: Small and large populations, stationary/sleeping and moving contacts, script-heavy persistent contacts, insertion/removal churn, migration and multi-cell pairs, uniform/skewed layouts, one and multiple workers. Existing reference populations are broad 100/500/1000, dense broad 50/150/300, narrow 10/100/200 elements, rigid 100/500/1000 bodies and churn 10/100/1000 with 1000 steady bodies. Add a bounded persistent-pair fixture at 10/100/1000 pairs with zero/one/two scripted endpoints. These are validation workloads, not product capacity promises.
+ 
+ ## Constitution Check
+ 
+-*GATE: Reviewed before research and re-evaluated after design.*
++The initial gate passed before selecting the research decisions. Post-design results below assess the design and its required verification; they do not claim implementation or benchmark completion.
+ 
+-| Principle / gate | Pre-research assessment | Post-design result |
++| Principle/gate | Before research | Post-design evidence and implementation obligation |
+ | --- | --- | --- |
+-| I. Performance and scalability | Existing observer traversal and script invalidation are identifiable hot paths. Retain affected-work indexes until their consumers are traced. | PASS: remove observer work; process only pending geometry, physics adjacency changes, and event batches. Record complexity and validate representative workloads. |
+-| II. Simple code and ownership | Audit the three implementation fragments and startup side effects before proposing abstractions. | PASS: one physics owner, one internal geometry function, one event queue; delete obsolete lists and singleton-driven destructor events. |
+-| III. Architectural integrity | Preserve candidate/contact distinction and cell-witness consolidation; consult included paper section 3.3. | PASS: Grid, segmented lists, endpoint/checkpoint ordering, and witness reduction are unchanged. Confirmed contacts alone produce gameplay events. |
+-| IV. Developer experience | Removing Stay changes the public behavior contract; startup semantics already have explicit documentation. | PASS: preserve enter/exit signatures, document the deliberate enter/exit-only choice, late-attachment exits, and source/ABI migration. |
+-| V. Evidence before performance claims | Existing CTest, work probes, and benchmark methodology provide the appropriate evidence. | PASS: separate correctness from timings; version changed output; preserve v2 history and retain comparable raw captures/provenance. No speedup claimed in planning. |
+-| VI. Correctness and evolution | Trace pair removal, shared-body support, startup mutation, and queued callback lifetime. | PASS: manager-owned removal transitions, solver-only wake/sleep refresh, preserved startup prefix algorithm, and focused lifecycle/parallel regressions. |
++| I. Performance and scalability | Pass: remove recurring listener-contact work and assess physical indexes. | Pass: changed-pair reduction replaces observer enumeration; retain affected-body/adjacency indexes; remove duplicate solver projection; record allocation and timing comparisons across populations/churn/workers. |
++| II. Multicore design | Pass: preserve oneTBB and establish worker/reduction boundaries. | Pass: independent cell, geometry and body integration stay parallel; queue/list/support mutations stay after joins; shared-body solver and arbitrary callbacks stay sequential. Measure granularity, serial reduction/sort cost, contention/load imbalance and end-to-end scaling. No worker-pool addition. |
++| III. Collision architecture | Pass: inspect existing pair transitions/witnesses and local paper §§3.1–3.3. | Pass: no segmented sweep redesign; preserve ties, chunk/checkpoint and migration invariants. Explicit removal runs after consolidated witness reduction; candidate overlaps never imply confirmed contact. Keep existing broad-phase regressions, including duplicate witnesses. |
++| IV. KISS and responsibility | Pass: investigate each flagged area, retain only justified state. | Pass: remove Stay state and destructor queueing; eliminate `activeCollisions`; consolidate geometry; move per-script startup into its owner. Retain physical indexes and indexed queue semantics with explicit invariants. No generic container/lifecycle framework. |
++| V. Developer experience | Pass: define public compatibility and intentional deviation. | Pass: retain Enter/Exit naming and payloads; remove Stay without shim; update consumers and document migration. Official Unity collision docs confirm Stay exists there; its removal is a deliberate product choice. |
++| VI. Evidence | Pass: require a pre-change baseline and representative workloads. | Pass: common fixture first, baseline before runtime changes, then correctness, separate affected-work/allocation probes and independent Release repetitions. Keep historical captures and timing boundaries intact; label schema/counter semantics. Actual speedup remains unverified until measured. |
++| VII. Correctness/integrity | Pass: inspect teardown, dispatch, startup and response dependencies. | Pass: explicit two-source transition ownership, deterministic Exit-before-Enter batches, safe dispatch-before-free, preserved support and start semantics; focused regressions and sanitizer/worker comparisons are acceptance gates. |
+ 
+-No constitution exceptions are required. All research questions are resolved in [research.md](research.md).
++No constitution exception is required. If implementation reveals a correctness gap, unsupported mutation path or retained known inefficiency, resolve it or document the constitution-required local `EFFICIENCY:` rationale and concrete replacement work; do not silently waive the gate.
+ 
+ ## Project Structure
+ 
+ ### Documentation (this feature)
+ 
+-~~~text
++```text
+ specs/002-simplify-contact-events/
+ ├── spec.md
+ ├── plan.md
+ ├── research.md
+ ├── data-model.md
+ ├── quickstart.md
+-├── contracts/
+-│   ├── contact-events.md
+-│   └── benchmark-schema.md
+-└── checklists/
+-    └── requirements.md
+-~~~
++├── checklists/requirements.md
++└── contracts/
++    ├── contact-events.md
++    └── benchmark-schema.md
++```
+ 
+-`tasks.md` is generated later by `$speckit-tasks`, not during this planning command.
++`tasks.md` is intentionally left to the next `$speckit-tasks` phase.
+ 
+ ### Source Code (repository root)
+ 
+-~~~text
+-include/platformator/
+-    behavior.h, collider.h, scriptcomponent.h   # Remove Stay declarations.
+-    collision.h                               # Remove relocated private geometry helper.
++```text
++include/platformator/{behavior,collider,scriptcomponent}.h
+ src/
+-    physicsmanager.h/.cpp                      # Physics phases, contacts/support/body indexes, events.
+-    collisiongeometry.h/.cpp                  # New internal home for ALL shape geometry.
+-    colliderpair.h/.cpp                        # Pair/manifold ownership; no eventful destructor.
+-    behavior.cpp, collider.cpp, scriptcomponent.cpp
+-    gamemanager.h/.cpp                         # Startup and lifecycle without observer refresh.
+-    benchmark.h/.cpp                           # Two event counters, schema v3.
+-    physicscontacts.cpp                       # Removed after retaining required member logic.
+-    physicsbodyindexes.cpp                    # Removed after retaining required member logic.
+-    physicsgeometry.cpp                       # Replaced by complete geometry module.
++├── physicsmanager.{h,cpp}        # phases, transition reduction, solver/dispatch
++├── physicscontacts.cpp          # physical contact/solver/support membership
++├── physicsgeometry.cpp          # all supported shape dispatch/manifold work
++├── physicsbodyindexes.cpp       # body membership, change queue, sleep islands
++├── colliderpair.{h,cpp}          # pair/contact ownership, no event side effects
++├── grid.cpp                     # explicit removePair call before pair erasure
++├── gamemanager.{h,cpp}           # startup scheduling and lifecycle boundaries
++├── scriptcomponent.cpp          # per-script initialization and callback delivery
++├── {behavior,collider}.cpp       # supported Enter/Exit callbacks only
++├── benchmark.{h,cpp}            # schema 3 and generation counters
++└── benchmark_main.cpp           # invariant consumer and common baseline fixture
+ tests/
+-    contact_transition_contract_test.cpp       # New internal pair-event contract coverage.
+-    physics_support_test.cpp, physics_geometry_test.cpp
+-    runtime_work_probe.h, runtime_work_test.cpp
+-    callback_mutation_test.cpp, scene_transition_stress_test.cpp
+-    queued_deletion_safety_test.cpp, regression_tests.cpp
+-    collider_pair_cleanup_test.cpp, benchmark_contract_test.cpp
+-benchmark/
+-    sweep_scaling.py, plot_scaling.py, capture_cleanup.py
+-    tests/test_sweep_scaling.py, README.md
+-docs/
+-    CPP_API_MIGRATION.md, CPP_CLEANUP_WALKTHROUGH.md
+-CMakeLists.txt                                 # Register focused test; glob picks up file changes.
+-~~~
+-
+-**Structure Decision**: Keep mutable phase state with PhysicsManager and remove the two files that merely scatter its implementation. Geometry becomes a complete internal operation over a pair, with no manager access. Retain small concrete membership helpers locally; do not create a generic collection framework. The existing CMake recursive source glob already discovers/removes translation units on reconfiguration.
++├── contact_events_test.cpp      # planned internal transition/recipient contract
++├── callback_mutation_test.cpp
++├── scene_transition_stress_test.cpp
++├── physics_support_test.cpp
++├── physics_geometry_test.cpp
++├── runtime_work_{probe.h,test.cpp}
++├── regression_tests.cpp
++├── queued_deletion_safety_test.cpp
++└── benchmark_contract_test.cpp
++benchmark/{sweep_scaling,plot_scaling,capture_cleanup}.py
++benchmark/tests/test_sweep_scaling.py
++benchmark/README.md
++docs/CPP_CLEANUP_WALKTHROUGH.md
++CMakeLists.txt
++```
+ 
+-## Phase 0: Research Decisions
++**Structure Decision**: Retain the existing library and domain-oriented translation units. Geometry moves into its existing owner file. Startup adds one private method to its existing component owner. CMake discovers engine source files through the existing source setup; add explicit registration for the planned test and adjust affected declarations/includes. Search the runner/examples/editor for actual consumers instead of assuming none. Preserve archived specs, benchmark baselines and historical results.
+ 
+-Research is complete. [research.md](research.md) records event origin, destructor removal, required solver/body indexes, geometry extraction, startup invariants, diagnostics versioning, and verification alternatives. No external service or new technology choice is needed.
++## Phase 0: Research Outcome
+ 
+-## Phase 1: Design
++Research is complete in [research.md](research.md). The selected design resolves:
+ 
+-### Contact reconciliation and queue ownership
++- Which pair state defines Enter/Exit, and how removal differs from geometry separation.
++- Which contact/body indexes remain necessary, and why `activeCollisions` can be deleted.
++- Why body-driven solver refresh must survive while script subscription work disappears.
++- How geometry consolidation and per-script initialization ownership address the user's four named smells.
++- How event ordering, teardown, metric semantics and public compatibility remain explicit.
+ 
+-The worker wrapper saves whether a collision existed, updates pair-local geometry if versions changed, and refreshes pair-local support flags when geometry was updated. After the join, the runtime thread reconciles transitions, support deltas, and contact/solver membership. Unchanged contacts produce no queued event. Response-only synchronization preserves contacts while updating support/solver state.
++All technical unknowns have evidence-backed decisions. No clarification is pending.
+ 
+-When Grid removes a candidate pair, PhysicsManager records an exit only if that pair still has a confirmed collision, removes indexed memberships, and reduces prior support before Grid erases storage. The pair destructor never queues work. Both-retired endpoints still contribute a generated exit; delivery suppresses their callbacks.
++## Phase 1: Design and Implementation Sequence
+ 
+-The manager enqueue function increments transition diagnostics and appends the event. Count at generation exactly once, including cleanup-generated exits; delivery does not modify those counts. Sort queued batches by exit before enter and canonical pair handles at every dispatch boundary, including idle/cleanup. Preserve A-then-B delivery and the existing exception aggregation policy.
++### 1. Establish common workload and baseline
+ 
+-### Required collections and refresh paths
++Before runtime edits, add a minimal `persistent_contacts` benchmark fixture and matching sweep options: `--contact-pair-count` in the runner, sweep `--counts`, and `--scripted-endpoints 0|1|2`. Use disjoint persistent static/trigger pairs and a no-op behavior implementing only retained callbacks so the identical fixture compiles before/after Stay removal. Include the existing independent contact/support checks and recorded resolved workload fields. The fixture must actually retain confirmed contacts and produce no recurring movement. Record its source patch/fingerprint with the baseline; do not time an empty-contact scene.
+ 
+-Keep `contactPairs` as unsorted indexed membership for confirmed contacts and diagnostics. Keep canonically ordered `solverPairs` for response involving a moving/awake eligible body. Remove `activeCollisions` and read the manifold from each solver pair directly. Retain `dynamicCollisionScratch` for the repeated dynamic solver iterations. Prepare canonical solver order after pending body/response changes and before its next solver/debug consumer; do not mutate that membership while iterating it.
++Capture existing workloads and this fixture using schema-2 producer/readers before changing runtime/event behavior. Keep the source revision, fixture patch, build, worker topology/affinity, seed, timestep, warmup and independent-run files. A historical capture is reference material rather than a substitute for a comparable current baseline.
+ 
+-Replace `refreshSubscriptions` with a private `refreshSolverPairs(Collider*)`: body wake/sleep/membership changes use the collider's existing adjacency to update solver eligibility. Response synchronization updates support and solver state. Geometry reduction updates contact and solver membership. GameManager and script startup have no subscription or solver refresh calls.
++### 2. Make transitions and ownership explicit
+ 
+-Remove Stay indexes/order flags, enter-step stamps, observer checks, the unused `NarrowPhaseLocalResults`, and source-level remnants of obsolete Stay delivery.
++In the existing serial post-geometry reduction, enqueue Enter/Exit from `resultHadContact` and current contact presence, with no script query. In `removePair`, enqueue Exit before erasure if contact still exists; eliminate pair-destructor event emission and retirement-based generation suppression. Use the manager enqueue operation for both paths. Remove Stay event kind/callbacks, observer vector/index/dirty state, step markers and the persistent event traversal. Remove unused narrow-phase aggregation state after confirming its absence of consumers.
+ 
+-### Geometry and body scheduling
++Keep complete-contact and solver indexes and support delta bookkeeping. Delete `activeCollisions`; resolution and debug access collision through canonical `solverPairs`, retaining dynamic scratch. Narrow `canonicalizePairs` to solver ordering, without rebuilding a second projection. Replace `refreshSubscriptions` with `refreshSolverPairs` for relevant physical state changes; remove all script-only callers and preserve response/support refresh. Test body type changes, sleeping/waking, component replacement, filtering and multi-cell removal before accepting this simplification.
+ 
+-The internal geometry function accepts a pair with synchronized cached collider geometry. Its shape helpers update/create/clear only the pair's manifold and preserve feature identities/warm-start behavior. All shape selection, SAT, clipping and fallback construction live together. Geometry does not queue events, change body support counts, or obtain the runtime singleton.
++### 3. Consolidate geometry and startup responsibilities
+ 
+-Keep support flags/reduction, body work-list membership, and sleep-island helpers under PhysicsManager's ownership. Merge their retained definitions into the manager beside force, response, solve, and sleeping phases. Preserve enqueue/drain ordering and O(1) swap-removal repair; the file move is not a sleeping or solver algorithm rewrite.
++Move shape dispatch, projection testing, box SAT and clipping into `physicsgeometry.cpp`; rename `satCreateCollision` to `updateContactGeometry`. Preserve math, feature IDs, tolerances, warm-start/manifold behavior and version updates exactly. Geometry creates/updates/clears only its own pair contact and never enqueues events.
+ 
+-### Behavior startup
++Extract the per-script startup loop/prefix transfer/logging into private `ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver&)`. Rename the manager entry point `startPendingScripts`, preserving its dynamic indexed queue drain, cancellation, resolver lifetime and phase timing. Do not move failure handling across the batch or change which attempted behaviors become runnable. Keep body membership and sleep islands in `physicsbodyindexes.cpp`; its physical solver dependency now has a correct name. These bounded refactors must retain the existing mutation/startup and geometry tests before further cleanup.
+ 
+-Rename `triggerStartedBehaviors` to `startPendingBehaviors`. Delete only the observer-specific branch and clarify the attempted-prefix variable. Keep nullable cancellation slots, index-based queue iteration, growth during startup, pending/runnable ownership, deferred ordinary-dispatch additions, per-behavior resolve/start exception logging, and promotion of every attempted entry including failed initialization. No change to when pending entries become visible.
++### 4. Finalize event delivery and reporting contracts
+ 
+-### Lifetime and compatibility
++Sort nonempty generated-event batches at dispatch by Exit-first family and canonical complete handles, covering both regular and cleanup drains. Keep endpoint A-before-B delivery, per-endpoint exception aggregation and borrowed-payload lifetime boundaries. Do not add per-script history, duplicate suppression maps or an asynchronous event bus.
+ 
+-Enter borrows the pair's current `Collision` until delivery; exit has a null collision field. Events borrow endpoints through the existing retirement barrier. Replaced/retired recipients are ineligible immediately; allocations remain readable until all pending callback work is finished. Explicitly verify error cleanup cannot reclaim borrowed storage while records remain pending.
++Advance all live benchmark output/readers/fixtures to schema 3; remove Stay metric and increment Enter/Exit at enqueue with frame-scoped accumulation, including cleanup. Preserve other metric definitions, scope boundaries, provenance, capture validation and plot safeguards. Keep old captures untouched and reject incompatible/mixed current input clearly. See [contact-events.md](contracts/contact-events.md) and [benchmark-schema.md](contracts/benchmark-schema.md).
+ 
+-Public enter/exit signatures remain as documented in [the contact contract](contracts/contact-events.md). Stay declarations/definitions disappear across Behavior, Collider and ScriptComponent. Existing binaries must be rebuilt. Current examples use enter callbacks already; rebuild them and change only affected consumers. Migrate current explanatory docs while preserving clearly historical evidence.
++### 5. Carry verification and migration into tasks
+ 
+-### Diagnostic contract
++Add internal contact-event coverage that observes generated records before delivery, independently of callbacks. Cover zero/one/two eligible endpoints, 100 quiet updates, late attachment/no replay, re-contact, rejected candidates, both endpoint removals, filter/deactivation, callback exceptions/mutation, scene replacement and multi-cell witnesses. Assert actual ordered traces across one and several workers. A newly eligible script may receive Exit without Enter; this must be an explicit regression.
+ 
+-New benchmark artifacts use version 3, eight unchanged scopes, and eleven counters; Stay is absent. Update writer, parsers, aggregates, plotting, fixtures, console strings, current docs, and the capture helper integration together. [The diagnostic contract](contracts/benchmark-schema.md) defines generation counts, recording boundaries, and historical separation.
++Adapt Stay-specific tests without deleting their unrelated lifetime/physics coverage. Extend work probes to count transition comparisons and appended records; quiet observed and unobserved contacts must both show zero after warmup. Keep zero-allocation warmed idle validation. Cover moving persistent contacts too: changed-pair geometry/reduction may run, but no separate unchanged-contact event traversal may remain. Preserve detailed startup queue/failure tests and support/sleep/wake/oracle tests. Verify schema inventory and cleanup/out-of-frame event counting with the recorder.
+ 
+-### Complexity and retained state
+-
+-| Operation | Intended cost / invariant |
+-| --- | --- |
+-| Unchanged contacts, no body/response changes | Zero contact-event traversal or event allocation, regardless of script presence. |
+-| Affected narrow-phase pairs P | O(P) transition/support/membership reduction after existing geometry work. |
+-| E queued transitions | O(E) enqueue/delivery and O(E log E) deterministic batch ordering. |
+-| Script-only changes | No contact adjacency walk or physics-list invalidation. |
+-| Changed body/collider response | O(degree of affected collider) solver/support refresh; coalesced body queue. |
+-| Contact/body membership insertion/removal | O(1), including moved element's index repair. |
+-| Changed solver membership S | Existing O(S log S) canonicalization only when dirty; no mirrored collision vector. |
+-| Retained memory | O(contacts + solver pairs + affected bodies + peak transition batch); observer set and stamps removed. |
++Build public headers and independent package consumers after the callback contract break; update examples/current docs and explain consumer rebuilds. Search all current source/tooling for Stay-specific symbols/columns, distinguishing historical files and ordinary uses of the English word “stay.”
+ 
+-If implementation discovers a retained inefficiency, evaluate the feasible simpler/faster design first. Any unavoidable retention requires the constitution's local `EFFICIENCY:` explanation with replacement prerequisites; a comment does not excuse an available fix.
++## Hot Paths, Complexity and Parallel Strategy
+ 
+-### Risks and tradeoffs
++Let P be pending evaluated pairs, E generated events in a dispatch batch, S solver contacts, C confirmed contacts, D affected collider adjacency and B affected bodies.
+ 
+-- Scriptless contacts now generate required transitions that the old observer path omitted. Initial-contact and churn work may increase even as recurring Stay work disappears; preserve peak queue capacity and report workload/event-count differences with timings.
+-- Public Stay overrides and existing binaries require migration/rebuilds. Schema v2 readers also require the coordinated v3 migration; archived data remains valid under its original contract.
+-- Geometry relocation and removal of the mirrored solver vector can expose ordering or private-access assumptions. Preserve shape math and prepare canonical solver membership before each consumer; use existing geometry/support/sleep assertions as gates.
+-- Borrowed event data depends on the dispatch/reclamation barrier. Cover exceptional cleanup and callback-driven retirement explicitly before accepting destructor-side-effect removal.
+-
+-## Implementation Sequence for Task Generation
++| Work | Chosen strategy and cost |
++| --- | --- |
++| Cell updates / pair witnesses | Keep existing oneTBB cell processing and task-local results; serial consolidated witness changes after joins. No sweep-and-prune algorithm change. |
++| Pair geometry | Existing thresholded oneTBB over P, pair-local mutable results and immutable published geometry. No shared event appends or support/list mutations in workers. |
++| Transition/support reduction | Existing serial O(P) pass plus O(removed confirmed pairs) explicit removal work; no O(C) or O(observed C) event-only scan. |
++| Event order/delivery | O(E log E) ordering, then recipient/behavior delivery; no work over persistent contacts when E=0. Callbacks remain serial because arbitrary game state/lifetimes are shared. |
++| Solver membership | O(1) indexed updates and O(D) affected adjacency refresh. Canonical O(S log S) sorting only on membership change; remove the projection rebuild. |
++| Solving and body integration | Preserve serial shared-body solver, dynamic iterative scratch and parallel independent force/movement work. Do not assume adjacent contacts are independent. |
++| Support/body reconciliation | Preserve deduplicated deltas/change queues and O(B) affected body membership work; keep physical adjacency updates independent of scripts. |
++| Startup | O(queued scripts + attempted behaviors) using existing vector capacity and tombstones; no contact-adjacency traversal caused by script startup. |
+ 
+-1. Capture the source baseline and focused correctness/work evidence. Protect current startup and physical invariants; identify all Stay consumers and v2 writers/readers.
+-2. Consolidate geometry behind the pair-local internal boundary; fold retained scheduling helpers into the manager. Keep physical results unchanged while changing ownership and file organization.
+-3. Implement transition-driven enqueue, explicit removal exits, solver-only body refresh, deterministic batches, and removal of observer/mirror/stamp state. Remove GameManager subscription calls and simplify startup without changing its algorithm.
+-4. Remove Stay from public/internal callback surfaces and migrate affected tests/consumers. Add pair-event generation coverage independent of callback counts.
+-5. Migrate benchmark writer/readers/docs to v3; prove cleanup exits and zero-recipient transitions are counted.
+-6. Run focused/full correctness, work/allocation, consumer, and sanitizer checks, then comparable Release measurements. Record actual evidence and limitations.
++Removing the solver projection adds a pair-to-contact dereference for required solver/debug visits while removing a vector and its rebuild. Measure that tradeoff, event sorting under churn, allocator reuse, serial reductions, task granularity, load balance and worker scaling. Retain existing thresholds unless measurements justify a change. No new lock contention or task scheduling is introduced for events/startup; false-sharing and bandwidth effects remain part of representative profiling if results warrant it.
+ 
+-These are planning packages for the next command, not a generated task checklist or completed implementation.
++## Validation and Acceptance
+ 
+-## Validation and Readiness
++[quickstart.md](quickstart.md) is the runnable validation guide. Runtime correctness and timing checks are planned work, not results from this planning command.
+ 
+-[quickstart.md](quickstart.md) provides commands and expected outcomes. Acceptance requires all FR-001 through FR-012 and SC-001 through SC-005, including script-independent transition traces, zero recurring notifications for 100 persistent steps, retained startup mutation behavior, exact support counts, and serial/parallel equivalence.
++| Requirement coverage | Evidence to retain during implementation |
++| --- | --- |
++| FR-001–FR-004 / SC-001–SC-002 | Internal generated-event traces and shape/witness/re-contact cases; quiet 100-update history. |
++| FR-005–FR-006 / SC-003 | Recipient matrix, mid-contact script changes, independent endpoint delivery and no replay. |
++| FR-007–FR-008 / SC-004, SC-006 | Current symbol/metric audit, affected-work counters, idle allocations, equivalent persistent-contact timing fixture. |
++| FR-009–FR-010 / SC-005 | Support/sleep/geometry regressions, startup mutation/failure tests, teardown/scene integration, ordered serial/parallel traces, ASan/UBSan and TSan where runnable. |
++| FR-011 | Schema-3 C++/Python contract results including cleanup generation, no-script counts, out-of-frame behavior and historical-version rejection. |
+ 
+-Post-design constitution review passes all six gates. Deliverables are this plan, research, data model, two contracts, and the validation guide. Runtime implementation, task generation, benchmark captures, and behavioral test execution are not claimed as completed by this planning phase.
++Performance acceptance requires correctness first, independent repetitions (at least five for reported timing aggregates), complete-step and relevant nested-scope means/tails, retained raw samples/provenance, allocation/retained-storage observations, and investigated regressions. Include observer-heavy and observer-free persistent scenes, dynamic scenes, churn, skewed/multi-cell layouts and worker sweeps. Do not infer total time by summing scopes, mix instrumented validation into timings, relabel old event counts, or assert speedup without comparable measurements.
+ 
+-## Complexity Tracking
++## Post-Design Gate Result
+ 
+-No constitution violations or exceptions. Existing solver/body indexes and support reductions are retained for named consumers and scaling invariants; no new subsystem or ownership layer is proposed.
++All seven constitution gates pass for this design; no unresolved clarification or justified exception remains. Phase 1 outputs are complete. Next phase is `$speckit-tasks`; implementation and measured validation remain outstanding.
+diff --git a/specs/002-simplify-contact-events/quickstart.md b/specs/002-simplify-contact-events/quickstart.md
+index 1064f33..208f2df 100644
+--- a/specs/002-simplify-contact-events/quickstart.md
++++ b/specs/002-simplify-contact-events/quickstart.md
+@@ -1,144 +1,137 @@
+ # Validation Guide: Simplify Contact Events
+ 
+-These are implementation acceptance instructions. The plan itself does not implement runtime changes or run the behavioral checks. The new contact-transition test target becomes available when its implementation is added.
++This guide is for the implementation phase. The plan creates documentation only; the new test target, persistent-contact fixture and schema-3 tools below must be implemented before their candidate checks can pass. Run commands from the repository root. See [data-model.md](data-model.md) for ownership and [contracts/contact-events.md](contracts/contact-events.md) for expected behavior.
+ 
+-Run commands from the repository root. Use a C++20 compiler, Ninja, CMake 3.21+ for the existing presets, Python 3, and the repository's SDL system development prerequisites. Dependencies are vendored. Headless CTest entries configure dummy SDL drivers.
++## Prerequisites and baseline
+ 
+-Read [the contact contract](contracts/contact-events.md), [diagnostic contract](contracts/benchmark-schema.md), and [data model](data-model.md) for expected semantics.
++Use the existing C++20/CMake/Ninja/Python 3 toolchain and vendored dependencies. SDL tests run headless through CTest's configured environment. Record the source revision and dirty patch, compiler/build options, CPU topology, worker count/affinity, seed and timestep. Use one worker and an appropriate multiworker count for the machine; six below is the repository reference example, not a hardware assumption.
+ 
+-## 1. Preserve baseline evidence
++First implement only the common `persistent_contacts` benchmark fixture described in [plan.md](plan.md), before modifying runtime behavior. Its Enter/Exit-only no-op observer compiles against both versions. Preserve the exact fixture patch in both baseline and candidate source fingerprints. The fixture adds runner `--contact-pair-count`, sweep `--counts`, and `--scripted-endpoints 0|1|2`; it must report and verify the resolved number of real confirmed contacts.
+ 
+-Before source edits, record `git rev-parse HEAD` and `git status --short`. The planning baseline is `0ca09758f5148426139a923a1e7b9404471eac67`. Keep current source/tooling available for equivalent pre-change captures. Existing historical results are not a substitute for a matching before/after workload.
++```sh
++export CONTACT_CAPTURE_ROOT="$(mktemp -d /tmp/platformator-contact-captures.XXXXXX)"
++export CONTACT_MULTI_WORKERS=6
++export CONTACT_STAGE=baseline
++cmake --preset cleanup-benchmark
++cmake --build --preset cleanup-benchmark --parallel 4
++```
++
++Capture the workload matrix below with the baseline schema-2 producer and its matching tooling before runtime changes. Retain all captures; do not copy a lone dynamically linked runner and assume it preserves the baseline after dependencies are rebuilt. After implementation, rebuild the same preset, set `CONTACT_STAGE=candidate`, and capture again with schema-3 tooling. Keep workload, fixture, compiler flags, seed, timestep and worker/affinity choices equivalent. Differences in schema/event counter meaning must remain labeled.
+ 
+-Run the existing focused tests when establishing the baseline. New behavior tests should demonstrate the script-dependent enter defect before its fix; existing Stay assertions are expected to change with the deliberate contract removal. Do not weaken support, geometry, startup, or lifetime assertions.
++## Focused correctness and public consumers
+ 
+-## 2. Build and run focused correctness checks
++Implement `tests/contact_events_test.cpp` and register the internal target `platformator_contact_events_test` with physics/determinism labels. Its internal fixture must observe pair-event generation before delivery without adding a public event-inspection API.
+ 
+-~~~sh
++```sh
+ cmake --preset cleanup-debug
+ cmake --build --preset cleanup-debug --parallel 4
+ ctest --test-dir bin/cleanup-debug --output-on-failure \
+-  -R 'platformator_(contact_transition_contract_test|physics_support_test|physics_geometry_test|collider_pair_cleanup_test|queued_deletion_safety_test|callback_mutation_test|scene_transition_contract_test|scene_transition_stress_test|destruction_contract_test|regression_tests)$'
+-~~~
++  -R 'platformator_(contact_events|physics_support|physics_geometry|callback_mutation|scene_transition_stress|queued_deletion_safety|collider_pair_cleanup)_test|platformator_regression_tests'
++```
+ 
+-Expected results after implementation:
++Expected outcomes:
+ 
+-| Area / requirements | Required observation |
+-| --- | --- |
+-| FR-001–003, FR-010 | Identical generated pair-event traces with zero, one-sided, and two-sided script availability; absent/present changes only; canonical serial/parallel order. |
+-| FR-004–005 | Each eligible behavior receives one callback; empty/pending scripts receive none; late attachment gets no replay and can receive the later exit. |
+-| FR-006, FR-012 | Stay declarations/definitions/dispatch and active consumer overrides are removed. Maintained test callback families use the remaining contract. |
+-| FR-007–008 | 100 unchanged steps produce no further notifications for moving, stationary, sleeping, and trigger contacts. Filter/coalesced toggle, support/body replacement, response-change, and re-entry expectations hold. |
+-| FR-009 | Survivor retirement exits keep the other collider readable; both-retired callbacks are suppressed; no stale callback after replacement/clear or exceptions. |
+-| Startup cleanup | One-attempt resolve/start, failed-entry promotion, additions during startup, next-pass ordinary additions, cancellation, and interrupted pending suffix retain their exact existing assertions. |
+-| Geometry/body consolidation | Circle/circle, circle/box corner/containment/offset, rotated boxes, rounded-SAT gap, manifold features, 128 support counts, support-loss waking, tall stacks, and wide piles remain correct. |
++- Zero, one and two scripted endpoints produce the same generated Enter/Exit sequence; callback totals reflect only current eligible recipients.
++- Entry followed by 100 unchanged updates produces one Enter and no further contact event; separation produces one Exit; re-contact produces one new Enter.
++- Adding, replacing or enabling a script midcontact creates no Enter replay. An eligible late recipient receives the actual Exit.
++- False-positive candidates produce no events. Multiple cell witnesses never duplicate transitions or end a still-covered contact.
++- Geometry separation, filter exclusion, deactivation and collider/object removal each close real contacts once, including when both recipients retire.
++- One and several workers produce identical canonical Exit-before-Enter traces and A-before-B delivery, with normal and cleanup batches tested separately.
++- Contact/support totals, trigger response changes, 128-support cases, resting stacks, sleeping/waking and geometry/manifold regressions remain correct.
++- Callback mutation, exception aggregation, scene replacement/shutdown and detailed start-order/failure/queue-mutation tests retain their previous guarantees after startup extraction.
+ 
+-The new focused test is an INTERNAL CTest target using existing PhysicsManager access. At controlled physics test boundaries, inspect queued pair events before delivery. This proves generation for scriptless contacts without adding production observer APIs. Public/runtime callback traces separately prove eligibility and lifecycle delivery.
++Run the full normal suite once the focused checks pass; this includes public-header builds, package consumers, scene serialization and lifecycle integration:
+ 
+-## 3. Run the complete runtime suite and consumers
+-
+-~~~sh
+-ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke
+-cmake --preset cleanup-debug -DPLATFORMATOR_BUILD_EXAMPLES=ON
+-cmake --build --preset cleanup-debug --parallel 4
+-ctest --test-dir bin/cleanup-debug --output-on-failure -R platformator_package_smoke
+-~~~
++```sh
++ctest --test-dir bin/cleanup-debug --output-on-failure -L platformator
++```
+ 
+-The example game and installed/public-header consumer must compile against the enter/exit-only surface. Remove obsolete Stay overrides where they exist; the current Mario example already uses enter callbacks.
++Any external behavior consumer must rebuild against the new library and remove Stay overrides. No scene serialization migration is expected.
+ 
+-## 4. Verify affected work and allocation reuse
++## Affected work, allocation and memory lifetime
+ 
+-~~~sh
++```sh
+ cmake --preset cleanup-work
+-cmake --build --preset cleanup-work --target platformator_runtime_work_test --parallel 4
+-ctest --test-dir bin/cleanup-work --output-on-failure -R platformator_runtime_work_test
+-~~~
+-
+-Extend the existing warmed-up test with stable confirmed contacts that have eligible scripts, empty scripts, and sleeping bodies. Verify:
+-
+-- Unchanged contacts generate zero events and cause zero event-pair visits.
+-- Script-only attachment/removal/replacement causes zero physics adjacency refresh visits; actual startup/reconciliation work is allowed.
+-- A real wake/sleep or response change still refreshes the affected solver adjacency and retains correct support/sleep behavior.
+-- Warming and reusing buffers preserves zero allocations in a mutation-free idle step.
+-- Existing transform-subtree, force/movement, body sleeping, and lifecycle affected-work assertions remain intact.
+-
+-Remove the old `stayPairs` probe. Add only small test-only counts at actual transition and solver-adjacency work boundaries as needed to distinguish the behavior above. Work probes remain disabled for timing runs.
+-
+-## 5. Verify sanitizer and failure paths
+-
+-~~~sh
++cmake --build --preset cleanup-work --parallel 4
++ctest --test-dir bin/cleanup-work --output-on-failure \
++  -R 'platformator_(runtime_work|contact_events|physics_support)_test'
+ cmake --preset cleanup-asan
+ cmake --build --preset cleanup-asan --parallel 4
+-ctest --test-dir bin/cleanup-asan --output-on-failure \
+-  -R 'platformator_(contact_transition_contract_test|physics_support_test|physics_geometry_test|callback_mutation_test|queued_deletion_safety_test|scene_transition_stress_test|collider_pair_cleanup_test)$'
+-~~~
++ctest --test-dir bin/cleanup-asan --output-on-failure -L platformator
++cmake --preset cleanup-tsan
++cmake --build --preset cleanup-tsan --parallel 4
++ctest --test-dir bin/cleanup-tsan --output-on-failure \
++  -L 'physics|mutation|lifecycle'
++```
+ 
+-Include callbacks that throw after requesting retirement and cases that destroy/replace the other endpoint during enter/exit delivery. Pending enter manifold pointers and exit endpoints must remain valid through dispatch; error cleanup must not free referenced storage while records remain pending.
++Extend the work fixture to quiet confirmed contacts with and without scripts. After warmup, transition comparisons and queued event records remain zero, and existing idle allocation checks remain zero. Moving pairs may require geometry/transition checks but must not cause a separate persistent-contact event scan. Record retained vector capacity/memory and allocation behavior under contact churn as well as idle. Keep probes and allocation instrumentation out of timing runs.
+ 
+-Use the existing `cleanup-tsan` preset for supplemental serial/multiworker checks when the host and instrumented dependencies support it. Record exact environmental failures or existing sanitizer defects separately; do not report a clean sanitizer run if it did not complete.
++Sanitizer runs must show valid Enter payloads and endpoint lifetimes across callbacks, cleanup, component replacement and scene changes. Report an unavailable sanitizer runtime/platform as unverified with the actual failure; do not present a skipped run as a pass.
+ 
+-## 6. Verify diagnostic schema and generation counts
++## Benchmark format contract
+ 
+-~~~sh
++```sh
+ cmake --preset cleanup-benchmark
+ cmake --build --preset cleanup-benchmark --parallel 4
+-ctest --test-dir bin/cleanup-benchmark --output-on-failure \
+-  -R 'platformator_benchmark_(contract|sweep)_test$'
+-python3 -m unittest discover -s benchmark/tests -p 'test_*.py'
+-~~~
+-
+-The C++ contract test must check zero-recipient enters/exits, multi-behavior non-multiplication, cleanup-generated exits accumulated into the same step, multiple delivery batches, and idle transitions excluded from future recorded frames.
++ctest --test-dir bin/cleanup-benchmark --output-on-failure -L benchmark
++python3 -m unittest discover -s benchmark/tests -v
++```
+ 
+-The Python fixtures must cover schema v3 summary/raw/manifest/aggregate consistency, absence of Stay, exact eight-scope/eleven-counter sets, and rejection of v2/mixed versions, missing/duplicate/unknown metrics, or incomplete captures. Existing metadata, rendering, timing-eligibility, and sample-capacity checks remain meaningful.
++For the candidate, require schema 3 in summaries, raw samples, manifests, aggregates and console output; eight scopes, eleven counters and no Stay field. Verify listener-free event counts, cleanup Exits inside the originating complete-step sample, both-endpoint retirement, callback exceptions and out-of-frame removals. Reject schema-2/mixed/unknown/missing metrics without rewriting historical captures. See [benchmark-schema.md](contracts/benchmark-schema.md).
+ 
+-## 7. Validate physical equivalence before timing
++## Separate physics validation captures
+ 
+-Use a new output directory for each capture; the tools refuse overwriting earlier evidence. Example serial/multiworker narrow-phase correctness runs:
++Use each stage's matching sweep tooling and runner. Choose unused output directories under `CONTACT_CAPTURE_ROOT`. This example validates observed persistent contacts; repeat for scripted endpoints 0 and 1, then the existing broad/dense/narrow/body/churn workloads listed below.
+ 
+-~~~sh
+-for contact_workers in 1 6; do
++```sh
++for contact_workers in 1 "$CONTACT_MULTI_WORKERS"; do
+   python3 benchmark/sweep_scaling.py \
+     --runner bin/cleanup-benchmark/platformator_benchmark_runner \
+-    --scenario narrow_phase --counts 10,100,200 --workers "$contact_workers" --seed 0 \
+-    --warmup-frames 120 --measure-frames 600 --dt 0.008333333333333333 \
+-    --validate-invariants --repetitions 1 \
+-    --output "/tmp/platformator-contact-v3-validation/narrow-w$contact_workers.csv"
++    --scenario persistent_contacts --counts 10,100,1000 --scripted-endpoints 2 \
++    --workers "$contact_workers" --seed 0 --dt 0.008333333333333333 \
++    --warmup-frames 120 --measure-frames 600 --repetitions 1 \
++    --validate-invariants \
++    --raw-output-dir "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-validate-observed-w$contact_workers" \
++    --output "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-validate-observed-w$contact_workers.csv"
+ done
+-~~~
+-
+-Repeat applicable existing broad-phase, dense, rigid-body, and static/moving churn scenarios using the populations in [the benchmark methodology](../../benchmark/README.md). Compare serial/multiworker snapshots with its declared tolerances and the existing `capture_cleanup.py` comparison helper: support/sleep/identity/features match exactly; physical floats use the existing tolerances. Keep the exact 128-support regression's tighter 1e-5 comparison.
+-
+-Validation captures must be marked `per-step` and `timing_eligible=false`. Do not use their durations for performance claims.
+-
+-## 8. Capture comparable Release timings
+-
+-After correctness passes and build/test work finishes, make fresh boundary-only captures with at least five independent repetitions. For example:
+-
+-~~~sh
+-for contact_workers in 1 6; do
+-  python3 benchmark/sweep_scaling.py \
+-    --runner bin/cleanup-benchmark/platformator_benchmark_runner \
+-    --scenario narrow_phase --counts 10,100,200 --workers "$contact_workers" --seed 0 \
+-    --warmup-frames 120 --measure-frames 600 --dt 0.008333333333333333 \
+-    --repetitions 5 \
+-    --output "/tmp/platformator-contact-v3-timing/narrow-w$contact_workers.csv"
++```
++
++These results must be labeled `validation_mode=per-step`, `timing_eligible=false`. Compare canonical contacts, support totals and body snapshots between worker counts with declared existing numerical tolerances. The test trace checks event order separately. Keep equivalent physical state between baseline and candidate despite the intentional event contract change.
++
++## Release timing matrix
++
++After correctness passes, finish all builds/tests and avoid competing work during captures. Use matching stage tooling, identical affinity and at least five independent process repetitions. The persistent fixture demonstrates the removed observer cost; existing script-free workloads detect unrelated regressions.
++
++```sh
++for contact_recipients in 0 1 2; do
++  for contact_workers in 1 "$CONTACT_MULTI_WORKERS"; do
++    python3 benchmark/sweep_scaling.py \
++      --runner bin/cleanup-benchmark/platformator_benchmark_runner \
++      --scenario persistent_contacts --counts 10,100,1000 \
++      --scripted-endpoints "$contact_recipients" \
++      --workers "$contact_workers" --seed 0 --dt 0.008333333333333333 \
++      --warmup-frames 120 --measure-frames 600 --repetitions 5 \
++      --raw-output-dir "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-persistent-r$contact_recipients-w$contact_workers" \
++      --output "$CONTACT_CAPTURE_ROOT/$CONTACT_STAGE-persistent-r$contact_recipients-w$contact_workers.csv"
++  done
+ done
+-~~~
++```
+ 
+-Also cover sparse/dense broad-phase, resting rigid-body populations, and static/moving churn. Compare equivalent unchanged timing scopes against baseline captures made with the original v2 tooling. Preserve each source fingerprint, configuration, worker/affinity setting, seed, dt, raw sample set, and manifest. Pin processes consistently when collecting publishable timings.
++Repeat the sweep command with these existing cases, omitting `--scripted-endpoints`, retaining both worker counts, and assigning each a new output/raw directory:
+ 
+-The expected structural improvement is no observer traversal/invalidation and no mirrored active-collision collection. Report measured results and workload differences; no universal speedup percentage is an acceptance requirement. A full reproduction of the historical 180-process study is optional unless needed to support a broader performance claim.
++| Scenario | Counts | Extra options |
++| --- | --- | --- |
++| `broad_phase` | `100,500,1000` | Existing uniform broad layout. |
++| `broad_phase_stress` | `50,150,300` | Existing dense/skewed broad layout. |
++| `narrow_phase` | `10,100,200` | Existing moving narrow layout. |
++| `rigid_body_container` | `100,500,1000` | Existing body/sleep/support workload. |
++| `add_and_remove` | `10,100,1000` | `--steady-count 1000` |
++| `moving_add_and_remove` | `10,100,1000` | `--steady-count 1000` |
+ 
+-## 9. Final source and artifact review
++Retain source fingerprints and patches, resolved workload fields, build/hardware/worker configuration, raw per-step samples, logs and independent-run aggregates. Review complete-step and relevant nested-scope mean/p95/p99/raw tails, run spread, worker scaling and allocation/retained-memory evidence. Investigate regressions, especially event sorting under churn and solver dereference cost after removing `activeCollisions`. Do not sum nested scopes, plot validation-only captures, compare incompatible counter meanings, or claim performance improvements from complexity arguments alone.
+ 
+-~~~sh
+-rg -n 'onCollisionStay|triggerCollisionStay|dispatchCollisionStay|COLLISION_STAY|stayPairs|stayIndex|stayOrderDirty|enteredStep|refreshSubscriptions|triggerStartedBehaviors|NarrowPhaseLocalResults' \
+-  src include tests examples
+-rg -n 'collision_stay_event_count|CollisionStayEventCount' \
+-  src benchmark/sweep_scaling.py benchmark/plot_scaling.py benchmark/tests
+-git diff --check
+-~~~
++`benchmark/capture_cleanup.py` can reproduce its existing six-case reference matrix on the specifically documented six-core topology; inspect its fixed CPU affinity before using it on another machine. It does not replace the added observer fixture.
+ 
+-Both searches should have no remaining active implementation/consumer matches; ripgrep's no-match exit status is 1. Negative contract assertions mentioning removed names are acceptable only where they explicitly verify absence. Feature docs and immutable historical results may still discuss Stay.
++## Completion evidence
+ 
+-Verify the three old fragment files are gone, geometry has no manager/script/event dependency, startup has no subscription side effect, body wake/sleep retains solver refresh, and v3 diagnostic output is documented. Record actual test commands, outcomes, captures, and limitations before declaring implementation complete.
++Retain test summaries, sanitizer results/limitations, current-symbol audit, schema contract results, serial/parallel traces, baseline/candidate provenance and performance analysis with investigated regressions. A search for `onCollisionStay`, `dispatchCollisionStay`, `triggerCollisionStay`, `COLLISION_STAY`, `stayPairs`, `stayIndex`, `stayOrderDirty`, `refreshSubscriptions`, `collision_stay_event_count` and the old startup/geometry names must find no supported current runtime/tooling path. Scope the search to current source/tests/tools/docs; historical captures/specifications and ordinary English “stay” text are not removal targets.
+diff --git a/specs/002-simplify-contact-events/research.md b/specs/002-simplify-contact-events/research.md
+index 5592c58..09099a2 100644
+--- a/specs/002-simplify-contact-events/research.md
++++ b/specs/002-simplify-contact-events/research.md
+@@ -1,145 +1,111 @@
+ # Research: Simplify Contact Events
+ 
+ **Date**: 2026-10-25
+-**Source baseline**: `0ca09758f5148426139a923a1e7b9404471eac67`
+-**Inputs**: [Specification](spec.md), project constitution, and the user's focus on `physicscontacts.cpp`, `physicsgeometry.cpp`, `physicsbodyindexes.cpp`, and `GameManager::triggerStartedBehaviors`.
++**Scope**: [spec.md](spec.md), including the requested audit of `physicscontacts.cpp`, `physicsgeometry.cpp`, `physicsbodyindexes.cpp`, and `GameManager::triggerStartedBehaviors`.
+ 
+-Research used the repository implementation, existing tests, and the included sweep-and-prune paper. Two research agents independently traced contact lifetime and behavior startup; their findings were checked against body indexing and solver consumers. No runtime code or tests were changed or executed during planning.
++Initial constitution gate passed before selecting designs: preserve confirmed-contact and lifecycle semantics, remove recurring Stay work, retain oneTBB ownership boundaries, investigate alternatives and measure performance during implementation. Three research agents independently examined contacts/events, geometry/body bookkeeping, and script startup; findings below were checked against source. No unresolved design questions remain.
+ 
+-## R1. Generate events where confirmed contact state changes
++## 1. Generate transitions at the existing reduction boundary
+ 
+-**Decision**: Compare the pre-worker `resultHadContact` flag with the final presence of the pair's `Collision` in the serial reduction after narrow-phase workers join. Enqueue enter for absent-to-present and exit for present-to-absent. Generate no event for either unchanged state.
++**Evidence**: `PhysicsManager::narrowPhase` in `src/physicsmanager.cpp` records each pending pair's old contact presence in `resultHadContact`. Geometry runs independently per pair, using oneTBB above the existing threshold. A serial pass already reduces support and list membership after workers finish. Enter is currently delayed until a separate traversal of script-observed `stayPairs`; Exit is already detected from old/new contact presence.
+ 
+-**Evidence**: [physicsmanager.cpp](../../src/physicsmanager.cpp), `narrowPhase` and `processNarrowPhasePair`, already preserve the required before/after state. [physicscontacts.cpp](../../src/physicscontacts.cpp), `observed` and `refreshPairLists`, restrict `stayPairs` to objects with runnable scripts; `narrowPhase` currently derives both enter and Stay from that observer list. This is the dependency to eliminate.
++**Decision**: Compare old and new confirmed contact presence in that serial reduction. Append Enter on absent→present and Exit on present→absent. Append nothing for the other two states. Keep script lookup exclusively in callback delivery. Remove `stayPairs`, `stayIndex`, `stayOrderDirty`, `observed`, `enteredStep`, and `simulationStep` when their remaining uses have been removed.
+ 
+-**Rationale**: Workers retain pair-local geometry writes; transition production and shared collection changes remain on the runtime thread. The existing pending-pair queue already identifies affected geometry. No recurring contact traversal or event subscription index is necessary.
++**Rationale**: The existing changed-pair pass supplies the information without a new queue, script subscription index, full-contact scan, or cross-worker event synchronization.
+ 
+-Scriptless contacts now require enter/exit records that the old observer-dependent path omitted. Initial-contact and churn workloads can therefore perform more legitimate event work; the expected reduction concerns recurring Stay processing and observer invalidation. Measure those workload differences explicitly rather than assuming every workload becomes faster.
++**Alternatives considered**: Scanning all contacts preserves recurring O(contact count) work; retaining an observer list keeps script-dependent contact production; worker-side appends require coordination and introduce nondeterministic shared mutation. None is necessary.
+ 
+-**Alternatives considered**:
++## 2. Make pair-removal Exit explicit
+ 
+-- Keep an observer list for enter/exit: rejected because script changes would still affect contact notification history and require subscription invalidation.
+-- Traverse all confirmed contacts each step: rejected because unchanged contacts carry no transition information.
+-- Emit from shape routines or workers: rejected because it couples geometry to gameplay and requires concurrent event collection.
++**Evidence**: `Grid::applyPairWitnessDelta` in `src/grid.cpp` calls `PhysicsManager::removePair` before erasing the last witnessed candidate. The current `ColliderPair` destructor calls `clearCollision`, which queues Exit through the active runtime. Geometry uses `clearCollisionNoEvent`, making destruction an otherwise hidden second event producer. `queueCollisionExit` currently also skips pairs whose endpoints are both retired.
+ 
+-## R2. Make PhysicsManager own transition production and ordering
++**Decision**: `PhysicsManager::removePair` queues Exit if the pair still owns a confirmed contact, then removes support and memberships before pair erasure. Narrow-phase reduction owns geometry-driven endings. `ColliderPair` destruction only releases contact memory; remove its runtime lookup and event-queue methods. Queue pair-removal Exit even if neither endpoint can receive it; recipient eligibility belongs to delivery, including the both-retired case. Destruction of already-drained manager storage emits no additional events.
+ 
+-**Decision**: Keep one retained-capacity pending event vector. Ordinary transitions are produced by narrow-phase reduction; pair removal produces its single exit in `PhysicsManager::removePair` before Grid erases the pair. Make `ColliderPair` destruction release its collision only. Remove `queueCollisionExit`, eventful `clearCollision`, and the pair's dependency on RuntimeAccess/GameManager.
++**Rationale**: There are two explicit, mutually exclusive end paths: geometry already cleared the contact, or removal still sees it. This avoids both missed removals and destructor-driven duplicates, and makes generated-event counts independent of listeners and retirement delivery eligibility.
+ 
+-**Evidence**: [grid.cpp](../../src/grid.cpp), `applyPairDelta`, already calls `owner->removePair(pair)` immediately before pair erasure. [colliderpair.cpp](../../src/colliderpair.cpp) currently queues an exit from its destructor through the runtime singleton. This hides event generation and suppresses generation when both endpoints have retired.
++**Alternatives considered**: Keeping destructor notifications hides lifetime and runtime dependencies. Emitting only in narrow phase misses pair erasure. Separate contact-history maps and duplicate suppression sets repeat state already available on the pair.
+ 
+-**Rationale**: A confirmed contact has one terminal transition even when neither endpoint can receive callbacks. Recipient eligibility belongs to delivery. A pair that already lost its collision during narrow phase cannot produce another exit when later erased. Temporary lookup pairs and teardown destructors have no gameplay side effects.
++## 3. Retain physical indexes; remove a redundant solver projection
+ 
+-Before each delivery batch, sort only queued events by exit before enter, then canonical endpoint handles; deliver endpoint A before B. This preserves the current ordinary-step exits-before-enters convention and gives cleanup/idle exit batches the same deterministic order. Use allocation-free in-place sorting; each reconciliation boundary dispatches its own batch. Do not coalesce distinct transitions from distinct completed reconciliation boundaries.
++**Evidence**: `src/physicscontacts.cpp` maintains `contactPairs`, `solverPairs`, and `stayPairs`. `src/benchmark_main.cpp::validatePhysicalState` enumerates `getContactPairs()` for an independent support/manifold oracle, so the all-contact index is not just an unused metric. `activeCollisions` is rebuilt solely by projecting ordered `solverPairs` and is read only by resolution and debug drawing. `dynamicCollisionScratch` selects dynamic contacts for repeated solver iterations and has a different role.
+ 
+-Borrowed `Collision*` for enter and borrowed endpoint pointers keep their existing lifetime: dispatch finishes before pair/collider storage is reclaimed. Exit carries no collision pointer. Collision callbacks may retire objects logically but cannot flush structural deletion while the batch is executing. On exceptional cleanup, drain or clear pending records before reclaiming their borrowed storage; verify this explicitly rather than adding per-event ownership or a general event bus.
++**Decision**: Retain indexed all-contact membership, ordered solver membership, adjacency, witness counts, cached support contributions and body delta reduction. Delete Stay membership and the `activeCollisions` projection; solver/debug consumers dereference `pair->getCollision()` directly from `solverPairs`. Retain reusable `dynamicCollisionScratch`. Remove the unused `NarrowPhaseLocalResults` declaration after confirming repository-wide absence of users.
+ 
+-**Alternatives considered**:
++**Rationale**: Each remaining collection has a distinct consumer and invariant. Deleting `activeCollisions` removes a full rebuild and an extra invalidation relationship. Keeping `contactPairs` preserves validation without scanning every candidate, including broad-phase false positives.
+ 
+-- Keep destructor-driven exits: rejected because ownership, diagnostics, and both-retired behavior remain implicit.
+-- Copy every manifold into events or introduce persistent event handles: unnecessary under the existing dispatch/reclamation barrier; would add data and lifetime policy.
+-- Sort the full contact set: rejected; ordering concerns only the event batch and the solver's own membership.
++**Alternatives considered**: Rebuilding all physical subsets each step loses affected-work scaling. Replacing the all-contact list with a count breaks the existing oracle; replacing it with candidate scans adds unrelated work. A generic indexed-container framework adds machinery to two small domain-specific helpers. Retaining the solver projection would require measured benefit rather than convenience.
+ 
+-## R3. Preserve necessary physics indexes while removing observer state
++## 4. Rename solver refresh and remove script coupling
+ 
+-**Decision**: Remove `stayPairs`, `stayIndex`, `stayOrderDirty`, `observed`, `simulationStep`, `enteredStep`, and all script-subscription refreshes. Keep indexed `contactPairs`, `solverPairs`, body work lists, and coalesced support/body queues. Replace the body-side use of `refreshSubscriptions` with an adjacency-local `refreshSolverPairs(Collider*)` that updates solver eligibility only.
++**Evidence**: `refreshSubscriptions` currently refreshes every touching pair's physical and observer membership. Calls from first behavior startup and SCRIPT reconciliation serve observers. The call from `PhysicsManager::reconcileBody` is physically necessary: solver membership depends on body type and sleeping state. Collider activation and `refreshResponse` also have physical consequences.
+ 
+-**Evidence**: [physicsbodyindexes.cpp](../../src/physicsbodyindexes.cpp), `reconcileBody`, calls `refreshSubscriptions`; that function also updates solver membership through `refreshPairLists`. Deleting this call without replacement would prevent stationary sleeping/waking contacts from entering or leaving the solver correctly. [physicscontacts.cpp](../../src/physicscontacts.cpp) also reduces support by canonical pair endpoints, handles body replacement, and wakes a body on loss of final support.
++**Decision**: Replace the subscription concept with an explicitly physical adjacency refresh, named `refreshSolverPairs(Collider*)`. Limit it to solver participation and retain it for relevant body/collider state changes. Remove all calls caused solely by script addition, startup, replacement or activation. Keep response/support updates in their existing owner. Audit COLLIDER reconciliation separately from SCRIPT reconciliation instead of deleting the combined branch blindly.
+ 
+-**Rationale**: Contact membership describes geometry; solver membership depends on response and awake body state; script eligibility determines callback delivery only. The remaining indexes have actual consumers and provide constant-time insertion/removal. An awake or response change revisits only the affected collider's adjacency. Script-only changes revisit no physics adjacency.
++**Rationale**: Removing every function named subscription would leave stale solver membership even after Stay is gone. A physical name and narrower operation expose the real dependency.
+ 
+-Remove the mirrored `activeCollisions` vector and have solver/debug consumers read each collision from the canonically ordered `solverPairs`. Retain `dynamicCollisionScratch`, which is the dynamic subset reused across solver iterations. Remove the unused `NarrowPhaseLocalResults` declaration. Do not replace these removals with a generic indexed-container framework.
++**Alternatives considered**: Retaining the old name obscures ownership. Waking or revisiting all bodies/contacts on script changes defeats the feature. Moving all membership work into narrow phase misses sleeping/body transitions that do not change geometry.
+ 
+-**Alternatives considered**:
++## 5. Consolidate geometry by responsibility
+ 
+-- Remove every maintained list to reduce field count: rejected because it reintroduces whole-body/contact scans.
+-- Keep `activeCollisions` as a mirror: rejected because every element already belongs to `solverPairs` and its collision is directly available there.
+-- Use one list for geometry, response, and subscribers: rejected because their membership rules differ.
++**Evidence**: `src/physicsgeometry.cpp` contains direct circle-circle and circle-box routines. Shape dispatch, box SAT projection tests and contact clipping remain in `src/physicsmanager.cpp`. The function named `satCreateCollision` also dispatches the non-SAT circle routines. These functions mutate only the current pair/contact and use immutable published collider geometry and gravity direction; they must never enqueue events.
+ 
+-## R4. Replace fragmented manager implementation with cohesive responsibilities
++**Decision**: Move shape dispatch, `checkProjections`, box SAT and `calculateContactPoint` into `physicsgeometry.cpp` alongside the circle routines. Rename `satCreateCollision` to `updateContactGeometry`, reflecting updates, separation and multiple algorithms. Keep the existing pair-owned geometry contract, calculations, feature IDs, tolerances, orientation and cached versions unchanged. Move required includes with the functions. Do not introduce a geometry service or result-object hierarchy.
+ 
+-**Decision**:
++**Rationale**: A single cohesive geometry translation unit makes the worker mutation boundary reviewable and reduces manager responsibilities. Moving functions is justified by ownership, not a filename preference. Mathematical or clipping changes would increase correctness scope without helping transition semantics.
+ 
+-- Fold retained contact membership/support reduction and body membership/sleep-island helpers from `physicscontacts.cpp` and `physicsbodyindexes.cpp` into `physicsmanager.cpp`, beside the phases that own their state; delete the two fragment files.
+-- Replace `physicsgeometry.cpp` with internal `collisiongeometry.h/.cpp`, containing all shape detection currently split between it and `physicsmanager.cpp`: circle/circle, circle/box, box SAT, clipping, and fallback-point construction.
+-- Expose one internal function, `platformator_detail::updateContactGeometry(const ColliderPair&)`. It reads synchronized collider geometry and updates only that pair's collision/manifold. It has no manager, script, event queue, body-list, or runtime-singleton dependency.
+-- Compute the collision's support flags once in the worker wrapper after successful geometry update; response-only updates retain their existing controlled support refresh.
+-- Move fallback-point construction into the geometry implementation using existing public collision accessors, removing the now-unused private `Collision::generateFallbackContactPoint` member. Preserve its existing calculation and clipping acceptance policy in this refactor.
+-- Make the clipping helper box-only after all shape routing is consolidated. Remove its circle branches only after the call graph and geometry regressions prove those branches unreachable.
++**Alternatives considered**: Merging everything back into the manager hides responsibilities. Introducing polymorphic shape-pair handlers adds indirection. Rewriting the circle routines or SAT is unsupported by a defect in this feature. Unreachable-branch cleanup can wait rather than alter geometry during this move.
+ 
+-**Evidence**: [physicsgeometry.cpp](../../src/physicsgeometry.cpp) contains 83 lines of circle-specific PhysicsManager members, while its dispatcher, box SAT, and clipping remain in [physicsmanager.cpp](../../src/physicsmanager.cpp). The other two fragment files add 279 lines of members manipulating the same manager fields. The geometry move offsets the consolidation rather than merely enlarging the manager.
++## 6. Keep body indexes and sleeping invariants explicit
+ 
+-**Rationale**: This gives geometry a bounded input/output and places mutable scheduling state with its owner. No new subsystem class, virtual interface, public API, or independent contact manager is needed. Existing shape math, warm-start feature identities, parallel-read assumptions, support reductions, and sleep-island algorithms remain intact.
++**Evidence**: `src/physicsbodyindexes.cpp` is a small implementation of O(1) swap membership for awake, moving kinematic and sleep-eligible lists, deduplicated body-change queueing, and sleep-island operations. `reconcileBody` initializes newly sleep-eligible nodes and currently reaches the physical solver refresh through the misleading subscription name.
+ 
+-**Alternatives considered**:
++**Decision**: Retain these body lists, indexes, change queue and island behavior. Keep the file as the body membership/sleep bookkeeping owner, with the solver refresh named by its actual physical responsibility. Remove no body state merely because it looks like contact-event state. Avoid cosmetic file splitting or merging into the manager.
+ 
+-- Concatenate all three files into PhysicsManager: loses a useful separation between pure pair geometry and shared phase state.
+-- Add ContactManager, BodyIndexManager, and startup services: duplicates ownership and expands coordination for this small change.
+-- Rename files without changing responsibilities: leaves the geometry split and hidden manager coupling intact.
+-- Rewrite solver or sleep-island algorithms: outside the evidence and scope of this feature.
++**Rationale**: Replacing the indexes with scans would regress idle/static/sleeping scenes. A new container abstraction or body manager would create more ownership boundaries, while the actual cross-system smell is removed by decision 4.
+ 
+-## R5. Simplify startup by removing its physics side effect
++**Alternatives considered**: One general body list requires filtering all bodies repeatedly; a global sleep redesign is unrelated. Renaming files alone offers no behavioral or ownership improvement.
+ 
+-**Decision**: Remove `firstBehaviors`, its collider lookup and subscription refresh from `triggerStartedBehaviors`, and remove subscription calls from GameManager reconciliation. Rename the method to `startPendingBehaviors` and name its processed prefix clearly. Keep the current queue and promotion algorithm.
++## 7. Give ScriptComponent ownership of per-script startup
+ 
+-**Evidence**: [gamemanager.cpp](../../src/gamemanager.cpp), `triggerStartedBehaviors`, `queueScriptStart`, `cancelScriptStart`, and `reconcilePending`; [scriptcomponent.cpp](../../src/scriptcomponent.cpp), `addBehavior`; [CPP_API_MIGRATION.md](../../docs/CPP_API_MIGRATION.md), lifecycle section; [callback_mutation_test.cpp](../../tests/callback_mutation_test.cpp).
++**Evidence**: `GameManager::triggerStartedBehaviors` drains a queue by index because callbacks can append/cancel scripts. Its inner loop checks `canDispatch` for each behavior, resolves references, logs failures independently, and promotes the attempted pending prefix even if an individual initialization failed. Additions during startup can participate in that pass; additions during ordinary callbacks await the next startup phase. Existing `callback_mutation_test.cpp` covers these distinctions.
+ 
+-**Rationale**: Index-based iteration and nullable cancellation slots are required because startup can append or cancel queue entries. A growing pending-behavior list permits additions during start in the same startup pass. Only the attempted prefix is promoted; an interrupted suffix remains pending. Resolve/start exceptions are logged per behavior; attempted entries, including failures, become runnable and are not retried. Additions during ordinary dispatch wait until the next startup pass. These are existing contracts, not incidental complexity.
++**Decision**: Keep the indexed `pendingStartScripts` queue, its cancellation tombstones and all phase semantics. Rename the manager operation to `startPendingScripts` and move the per-script initialization loop, failure handling and attempted-prefix transfer into a private `ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver&)`. The manager owns the resolver, queue drain and cancellation; the component owns its behavior collections. Delete `firstBehaviors` and physics-subscription refresh. Make this a mechanical responsibility extraction after contact decoupling, preserving failure promotion and dynamic append behavior exactly.
+ 
+-Do not extract a new startup service or change ownership, resolver timing, failure handling, promotion visibility, or `canDispatch()` gates.
++**Rationale**: This addresses the flagged manager smell without changing scheduling or adding a lifecycle framework. It is one private method on the existing owner, with no extra queue or persistent state.
+ 
+-**Alternatives considered**:
++**Alternatives considered**: Only deleting the subscription branch leaves the manager manipulating component-owned pending ranges. Iterator traversal, swapping away the start queue, one fixed starting size, or failing the whole batch on an exception changes documented behavior. A generic lifecycle dispatcher is unnecessary.
+ 
+-- Range iteration, a copied queue, or replacing the loop with a drain-until-empty loop: risks iterator invalidation, delayed additions, or infinite retries of interrupted entries.
+-- Promoting each behavior before its start returns: changes which behaviors callbacks and lookups observe.
+-- Excluding failed behaviors from ordinary dispatch: contradicts the documented one-attempt initialization policy.
++## 8. Define ordering, lifetime and exception boundaries
+ 
+-## R6. Count generation across the complete step and version changed output
++**Evidence**: Current narrow phase sorts pending Exits by canonical handles, then appends canonical observed Enter/Stay records. Delivery visits endpoint A before B, catches each endpoint failure, clears the queue and rethrows the first exception. `GameManager::reconcilePending` flushes removal work and dispatches cleanup events before `drainRetirements` frees allocations. Supported callback mutation is deferred; it does not synchronously append physics events while their vector is being iterated.
+ 
+-**Decision**: Increment enter/exit benchmark counters at the single manager enqueue function. Remove the narrow-phase event recount and Stay enum/name/column. Record transitions during cleanup as well as ordinary physics; idle transitions outside an active recorded step do not get attributed to a later step.
++**Decision**: Canonicalize each nonempty batch immediately before delivery, including cleanup batches: Exit family first, then Enter family, each by the full ordered collider handles. Keep A-before-B delivery and exception aggregation. Do not deduplicate distinct transitions by pair. Enforce the current phase invariant that a contact with an undelivered Enter cannot be destroyed before that batch is dispatched. Main physics delivery precedes structural cleanup; cleanup delivery precedes physical reclamation and replacement-scene publication.
+ 
+-Publish benchmark schema version 3 consistently in manifests, summary/raw CSV, console output, sweep aggregates, current readers/plotting, fixtures, and documentation. New output has the existing eight timing scopes and eleven counters. Keep the existing enter/exit counter names, with their clarified meaning: generated pair transitions, including zero-recipient transitions. Do not add callback-count reporting. Preserve archived v2 results and specifications unchanged; current tools reject v2 or mixed-version captures with a clear migration error.
++**Rationale**: Sorting only changed events covers both producers and avoids sorting persistent contacts. Existing deferred mutation keeps borrowed pointers valid without a new persistent event bus or payload copies.
+ 
+-**Evidence**: [benchmark.cpp](../../src/benchmark.cpp), `addCounter` ignores calls outside an active frame. Existing event counters are set by recounting pending events in `narrowPhase`, so cleanup-generated exits are omitted. [sweep_scaling.py](../../benchmark/sweep_scaling.py) validates the exact v2 counter set; [plot_scaling.py](../../benchmark/plot_scaling.py) validates version 2; [test_sweep_scaling.py](../../benchmark/tests/test_sweep_scaling.py) builds corresponding fixtures. [capture_cleanup.py](../../benchmark/capture_cleanup.py) imports the sweep parser and needs an integration check.
++**Alternatives considered**: Worker completion order is not a contract. Global pair-first ordering changes the existing Exit-before-Enter behavior. New handle-resolution layers or per-step event snapshots are unnecessary without a supported path violating the established lifetime boundary; any such discovered path is a correctness defect to fix before acceptance.
+ 
+-**Rationale**: Removing a required column and changing scriptless enter counts is a data-contract change. A version bump prevents old and new workload/event counters from being silently treated as equivalent. Timing scopes and equivalent workloads remain comparable with recorded provenance; event-count series require their respective semantics.
++## 9. Version benchmark changes and count at generation
+ 
+-**Alternatives considered**:
++**Evidence**: `src/benchmark.cpp`, `benchmark/sweep_scaling.py`, `benchmark/plot_scaling.py`, `benchmark/tests/test_sweep_scaling.py` and `tests/benchmark_contract_test.cpp` use schema 2. The live format requires twelve counters including `collision_stay_event_count`. Current event counts are obtained by scanning the queue in narrow phase, before later cleanup Exits exist.
+ 
+-- Keep a permanently zero Stay column: contradicts removal of Stay as a supported diagnostic category.
+-- Remove the column under v2: makes the same version identify incompatible required metric sets.
+-- Count callbacks: loses contacts without recipients and multiplies events with behavior count.
++**Decision**: Emit schema 3 consistently across summary/raw CSV, manifests, aggregates and console summaries; remove Stay to leave eight scopes and eleven counters. Keep the Enter/Exit names but define their values as pair events generated during the complete step, including cleanup. Increment the recorder at the single manager-owned event enqueue operation using existing frame-scoped accumulation. Remove the queue-count scan. Update all live readers, fixtures, validation and plotting code together. Current tools reject schema-2/mixed input clearly; historical captures remain unchanged and can be read with their corresponding tooling revision.
+ 
+-## R7. Validate changed behavior and scaling at the affected boundaries
++**Rationale**: Both the metric set and event-count meaning change. A version boundary prevents silent interpretation of old values as new semantics. Counting where events originate includes listener-free and cleanup cases without a second history.
+ 
+-**Decision**: Extend the existing physics/support, mutation/startup, retirement, benchmark, and work-probe tests, and add one focused internal contact-transition contract test. Inspect generated events directly with the existing internal PhysicsManager pending-event access at controlled test boundaries; no production observer API is needed. Keep tests of callback delivery separate.
++**Alternatives considered**: Keeping schema 2 silently changes a strict format. A permanently zero Stay field contradicts removal. Silently converting old counters loses provenance and cannot reconstruct missing listener-free or cleanup events.
+ 
+-Cover scriptless/one-sided/two-sided recipients, empty/unstarted scripts, late attachment, persistent stationary/sleeping/trigger contacts, separation/re-entry, duplicate cell witnesses, coalesced toggles, removal/replacement, both-retired endpoints, callback exceptions, and serial/parallel canonical ordering. Preserve existing geometry, 128-support, tall-stack/wide-pile, startup queue, and scene-change assertions. Remove obsolete Stay cases; retain their mutation/lifetime intent through the remaining callback families.
++## 10. Validate correctness before making performance claims
+ 
+-Replace the obsolete `stayPairs` work probe with a small transition count/visit probe at the actual event producer, extending the warmed-contact scenario to include eligible scripts. Script-only changes must not visit contact adjacency; idle contacts must not incur event work or new allocations.
++**Decision**: Record a pre-change source fingerprint and baseline before modifying runtime code. Use existing Debug, ASan/UBSan, TSan, affected-work and Release benchmark configurations. Extend transition/lifecycle/geometry/support tests and current benchmark contract tests. Add focused internal event tests and test-only event-work counters; no new public event-inspection interface. Compare zero/one/two recipients, 100 unchanged updates, removal paths, shape families, cell witnesses and one/multiple workers. Include observer-heavy persistent scenes as well as the repository's existing representative broad/narrow/body/churn workloads. Retain raw timing/allocation data and independent repetitions.
+ 
+-Use separate correctness and Release captures for existing broad, dense, narrow, rigid-body, and churn workloads; compare serial/multiworker snapshots before timings. Run comparable before/after captures at the recorded source baseline with the original v2 tooling and the new v3 tooling respectively. Retain manifests/raw samples; do not invent a universal speedup threshold or run the full historical 180-process study as a planning prerequisite.
++**Rationale**: Removing O(observed contacts) event traversal is a complexity conclusion; runtime improvement and the extra solver-pair dereference require measurement. Existing headless benchmark cases largely lack scripts and alone cannot demonstrate the removed observer cost.
+ 
+-**Evidence**: [benchmark methodology](../../benchmark/README.md), [runtime_work_test.cpp](../../tests/runtime_work_test.cpp), existing CTest registrations, and the included [paper, section 3.3](../../paper/paper.txt). The paper motivates overlap-change output without traversal of all unchanged overlaps; broad-phase witness changes must still remain distinct from confirmed narrow-phase contacts.
++**Alternatives considered**: Reusing old Stay assertions no longer tests the contract. Testing callbacks alone cannot prove events exist without scripts. Running correctness instrumentation in timing captures distorts comparisons. Invented latency/speedup targets have no project basis.
+ 
+-**Rationale**: The expected benefit is elimination of Stay traversal, observer invalidation, and mirrored solver storage. Necessary solver/support work remains proportional to affected physics state. Geometry comparisons and body-state regressions prevent a bookkeeping cleanup from weakening correctness.
++## Primary references checked
+ 
+-**Alternatives considered**:
+-
+-- Rely only on existing callback traces: cannot prove that scriptless contacts generate events, or that cleanup exits are included in diagnostics.
+-- Treat a large timing study as the first gate: expensive and unable to establish lifecycle correctness; focused invariants and work probes come first.
+-- Add production observation hooks solely for tests: unnecessary because existing internal physics entry points and diagnostic recording expose the relevant boundaries.
+-
+-## Resolved research questions
+-
+-| Question | Resolution |
+-| --- | --- |
+-| Where do script-independent enters come from? | Post-worker before/after contact reconciliation. |
+-| Who owns removal exits? | PhysicsManager, before pair erasure; pair destruction has no event side effect. |
+-| Can all subscription call sites simply disappear? | GameManager calls disappear; body changes retain a solver-only adjacency refresh. |
+-| Are body/support indexes obsolete with Stay? | No; preserve their physics consumers and constant-time membership. |
+-| What happens to the three source fragments? | Two fold into the owner; all geometry becomes one independent internal module. |
+-| Does startup need a new lifecycle algorithm? | No; remove physics coupling and preserve queue/initialization semantics. |
+-| How do event reports stay trustworthy? | Count enqueue operations across the recorded step and migrate output/readers to v3. |
+-
+-All planning unknowns are resolved. No user clarification, new dependency, constitution exception, or broad-phase algorithm change is required.
++- Repository source and tests cited above; `.specify/memory/constitution.md` version 1.1.0; `benchmark/README.md`.
++- [Tracy, Buss and Woods, local paper](../../paper/paper.txt), §§3.1–3.3: retain spatial witness deduplication and segmented sweep invariants; use overlap changes without confusing candidates with confirmed contacts. The broad-phase algorithm itself is not redesigned.
++- [Unity collision-event documentation](https://docs.unity.com/en-us/engine/6000.7/manual/physics-section/physics-overview/collision-section/collider-interactions/oncollision): Unity exposes Enter, Stay and Exit. Removing Stay is an explicit product choice for this feature; this plan claims no other Unity callback-eligibility equivalence.
++- [oneAPI parallel_for specification](https://oneapi-spec.uxlfoundation.org/specifications/oneapi/v1.0-rev-3/elements/onetbb/source/algorithms/functions/parallel_for_func): iteration order is not deterministic. Keep pair-local work parallel and event/support reduction ordered after completion rather than deriving event order from worker completion.
+diff --git a/specs/002-simplify-contact-events/spec.md b/specs/002-simplify-contact-events/spec.md
+index d446dcd..511e5d3 100644
+--- a/specs/002-simplify-contact-events/spec.md
++++ b/specs/002-simplify-contact-events/spec.md
+@@ -10,105 +10,108 @@
+ 
+ ## User Scenarios & Testing *(mandatory)*
+ 
+-### User Story 1 - Report actual contact transitions (Priority: P1)
++### User Story 1 - Produce events from contact transitions (Priority: P1)
+ 
+-As a game author, I can rely on enter and exit events to describe when confirmed contacts begin and end, regardless of whether either object has scripts.
++As a game author, I want a contact beginning or ending to produce the same event regardless of whether either object has a script, so contact behavior remains predictable when scripts change.
+ 
+-**Why this priority**: Contact history must describe physical interaction consistently, including interactions with no callback recipients.
++**Why this priority**: Contact state must describe the physical interaction rather than whether a script can currently receive a notification.
+ 
+-**Independent Test**: Establish, maintain, and end the same contact with no scripts, scripts on one object, and scripts on both. Compare generated transitions separately from delivered callbacks.
++**Independent Test**: Run a separate-to-touching-to-separated sequence with neither object, one object, and both objects having eligible scripts. Compare generated events in every run and callbacks for each eligible recipient.
+ 
+ **Acceptance Scenarios**:
+ 
+-1. **Given** two eligible colliders without scripts and no confirmed contact, **When** a contact is confirmed, **Then** exactly one enter event is generated for the pair and no callbacks run.
+-2. **Given** a confirmed contact, **When** it persists through subsequent simulation steps, **Then** no further contact events are generated until its state changes.
+-3. **Given** a confirmed contact, **When** the colliders separate, **Then** exactly one exit event is generated; continued separation generates no additional exits, and a later confirmed contact generates a new enter.
+-4. **Given** the same contact sequence with eligible scripts on one or both objects, **When** transitions occur, **Then** the generated event sequence is identical to the sequence without scripts, and each eligible behavior receives one corresponding callback per transition.
+-5. **Given** colliders whose bounding regions overlap without a confirmed contact, **When** collision detection runs, **Then** no enter or exit event is generated for that candidate pair.
++1. **Given** two eligible colliders without scripts and no confirmed contact, **When** a physics update confirms their contact, **Then** exactly one Enter event is generated for the pair.
++2. **Given** a confirmed contact without scripts, **When** a physics update confirms its end, **Then** exactly one Exit event is generated for the pair.
++3. **Given** the same contact transition in runs with zero, one, or two eligible script recipients, **When** events are produced, **Then** the generated event sequence is identical and each eligible recipient receives its corresponding callback once.
++4. **Given** overlapping bounding regions whose shapes do not touch, **When** the interaction is evaluated, **Then** no Enter or Exit event is generated.
++5. **Given** a pair spanning multiple spatial regions, **When** it begins or ends one confirmed contact, **Then** duplicate spatial observations do not create duplicate events or a premature Exit.
+ 
+ ---
+ 
+-### User Story 2 - Use an enter/exit-only contract (Priority: P1)
++### User Story 2 - Remove Stay from the contact lifecycle (Priority: P1)
+ 
+-As a game author, I have a contact notification contract containing enter and exit only, with clear migration guidance for behavior that previously relied on Stay callbacks.
++As a game author, I want only Enter and Exit contact notifications, so an unchanged contact does not repeatedly notify scripts or require Stay-specific bookkeeping.
+ 
+-**Why this priority**: Removing recurring notifications simplifies the contract and eliminates notifications for unchanged contacts.
++**Why this priority**: Removing Stay is the requested simplification and removes recurring event work for persistent contacts.
+ 
+-**Independent Test**: Exercise moving, stationary, sleeping, and trigger contacts across multiple steps; inspect the supported callback contract and maintained consumer guidance.
++**Independent Test**: Keep a pair in contact for 100 physics updates, then separate it. Observe one Enter, no intervening contact events or callbacks, and one Exit; review the supported contact callback surface and current usage guidance.
+ 
+ **Acceptance Scenarios**:
+ 
+-1. **Given** a confirmed moving, stationary, sleeping, or trigger contact, **When** it persists for 100 additional steps, **Then** no Stay event or callback occurs and the contact continues to have its existing physical effect.
+-2. **Given** a game author reviewing the supported contact notifications, **When** they consult the public behavior contract and current documentation, **Then** only enter and exit are offered; Stay callbacks are removed rather than retained as compatibility no-ops.
+-3. **Given** a maintained consumer that previously used Stay callbacks, **When** it is migrated, **Then** it uses the enter/exit-only contract and migration guidance explains how to manage ongoing interaction through ordinary updates where needed.
+-4. **Given** newly recorded event diagnostics, **When** contact activity is reported, **Then** enter and exit counts describe generated pair transitions independently of callback recipient counts, and Stay is not reported as a supported event category.
++1. **Given** a newly confirmed contact, **When** it remains confirmed for 100 subsequent physics updates, **Then** its event history contains only the initial Enter, with no Stay events or repeated Enter callbacks.
++2. **Given** an unchanged contact between stationary or sleeping objects, **When** further physics updates occur, **Then** no recurring contact event or callback work is performed for that pair.
++3. **Given** the supported contact callback contract, **When** an author reviews available callbacks and current examples, **Then** only Enter and Exit contact callbacks are supported and Stay callbacks are absent.
++4. **Given** current event reporting and benchmark output, **When** a run reports contact events, **Then** Enter and Exit counts reflect generated pair events, including pairs without scripts, and no Stay event metric is reported.
+ 
+ ---
+ 
+-### User Story 3 - Keep contact history stable during lifecycle changes (Priority: P2)
++### User Story 3 - Change scripts without changing contacts (Priority: P2)
+ 
+-As a game author, I can change scripts or retire contacting objects without inventing contact transitions, duplicating callbacks, or accessing retired state.
++As a game author, I want to add, remove, or enable scripts during a contact without creating artificial transitions or disrupting physical behavior.
+ 
+-**Why this priority**: Script independence must hold during lifecycle changes as well as ordinary movement.
++**Why this priority**: Separating event production from delivery must remain correct during ordinary gameplay and callback-driven changes.
+ 
+-**Independent Test**: Change script availability during a persistent contact, then exercise filter changes, object retirement, and scene replacement. Repeat equivalent contact scenarios with serial and parallel processing.
++**Independent Test**: Change script availability while colliders remain touching, then separate them. Repeat with object removal during a callback and compare physical behavior and event histories with equivalent control runs.
+ 
+ **Acceptance Scenarios**:
+ 
+-1. **Given** a contact that began without a script on one object, **When** an eligible script is added while the contact persists, **Then** no enter is synthesized or replayed; if that script remains eligible when the contact later ends, it receives the exit callback even though it never received an enter.
+-2. **Given** a persistent contact, **When** its script component is removed, replaced, or becomes ineligible without changing collider eligibility, **Then** no contact event is generated solely by that script change and the physical contact continues.
+-3. **Given** a confirmed contact, **When** filtering, collider deactivation, removal, or object destruction ends it, **Then** one exit transition is recorded, an eligible survivor receives the exit with the other collider still readable during that callback, and retired objects or replaced scripts receive no later callbacks.
+-4. **Given** equivalent initial scenes and changes, **When** contact processing runs serially or in parallel, **Then** enter/exit order and counts agree and support, sleeping, and physical results remain within existing correctness tolerances.
++1. **Given** a contact that began without a script, **When** an eligible script is added during that contact, **Then** no Enter is replayed; the script receives Exit if it remains eligible when the real contact ends.
++2. **Given** an existing contact, **When** scripts are removed, replaced, enabled, or disabled while collider eligibility and geometry remain unchanged, **Then** no contact transition is created and physical contact handling is unaffected.
++3. **Given** a generated transition, **When** a recipient has no eligible script at delivery, **Then** that recipient receives no callback and the generated event remains valid for the other eligible recipient.
++4. **Given** an Enter or Exit callback that removes a script, collider, or object, or requests a scene change, **When** remaining notifications and deferred lifecycle work execute, **Then** existing mutation and lifetime guarantees are preserved without duplicate callbacks or access to retired recipients.
++5. **Given** a resting supported body, **When** its contact persists without Stay callbacks and later loses its final support, **Then** support, sleeping, and wake-up behavior match the existing physical contract.
+ 
+ ### Edge Cases
+ 
+-- An empty script component, a script awaiting initialization, and an object without a script all leave event generation unchanged; delivery follows existing initialization and eligibility rules.
+-- Adding or removing a script on one side cannot suppress transitions or callbacks on the other side.
+-- Disabling and re-enabling a filter or collider before the existing reconciliation boundary produces no exit/enter if the final confirmed contact is unchanged. Ending contact at one boundary and restoring it at a later boundary produces one exit followed by one enter.
+-- Multiple spatial cells witnessing the same collider pair produce one transition for that pair. Multiple behaviors may receive callbacks without multiplying the generated event count.
+-- A trigger or body-response change that leaves a confirmed contact intact creates no contact transition; its physical response and support state still update under existing rules.
+-- A callback that destroys an object, removes its script, or requests scene replacement follows the existing deferred mutation boundaries. Stale callbacks do not reach retired objects or a replacement scene.
+-- When both objects retire, no callback is delivered to either retired object. Retirement does not duplicate an already recorded exit.
++- First contact, persistent contact, separation, and re-contact produce Enter, silence, Exit, and a new Enter respectively.
++- A contact ending because filtering changes, an object becomes inactive, or a collider is removed produces one Exit; any callback is subject to recipient eligibility and safe lifetime handling.
++- A filter change that permits an unchanged geometric overlap again produces a new Enter when the contact is confirmed.
++- Script availability changing between event generation and delivery affects delivery only; past events are not retained for later script attachment or activation.
++- A script attached after contact begins can receive Exit without having received Enter. This follows contact transitions rather than per-script notification history.
++- Multiple spatial witnesses, repeated synchronization, and different worker completion orders must not duplicate or reorder the observable transition sequence for an equivalent run.
++- Stationary, sleeping, and moving contacts remain valid for physical handling even when they produce no new events.
++- Scene replacement clears old-scene pending work under the existing lifecycle contract; old events must not reach the replacement scene.
+ 
+ ## Requirements *(mandatory)*
+ 
+ ### Functional Requirements
+ 
+-- **FR-001**: The system MUST generate exactly one enter event per collider pair when its confirmed contact changes from absent to present, and exactly one exit event when it changes from present to absent.
+-- **FR-002**: Event generation and confirmed contact membership MUST be independent of script presence, behavior count, initialization state, and callback eligibility on either object.
+-- **FR-003**: A contact that remains present MUST generate no further contact events, including when colliders are stationary or bodies are sleeping. A candidate overlap without a confirmed contact MUST generate no contact event.
+-- **FR-004**: Callback delivery MUST apply existing initialization, lifecycle, and eligibility rules separately to each recipient. A generated pair event MUST invoke the corresponding callback once per eligible behavior, without requiring an eligible recipient on the other object.
+-- **FR-005**: Script availability changes alone MUST NOT start or end contacts, generate synthetic transitions, or replay earlier transitions. An eligible script attached during an existing contact MUST receive a subsequent exit even if it did not receive the earlier enter.
+-- **FR-006**: Stay events and callbacks MUST be removed from the supported contract and all event production and delivery. No deprecated Stay callback, compatibility no-op, or replacement recurring contact notification is included.
+-- **FR-007**: Confirmed-contact rules MUST apply to ordinary collisions and trigger overlaps. Physical response, support accounting, and sleeping behavior MUST remain correct without recurring contact notifications.
+-- **FR-008**: Contact termination from separation, filtering, collider deactivation or removal, and object retirement MUST produce a single exit transition. Net-unchanged changes coalesced at an existing reconciliation boundary MUST NOT manufacture transitions.
+-- **FR-009**: Enter/exit delivery MUST preserve existing callback mutation and scene-change boundaries, suppress callbacks to retired or replaced recipients, and keep the other collider readable during an eligible survivor's retirement exit callback.
+-- **FR-010**: Generated transition order and counts MUST remain deterministic and equivalent between serial and parallel processing for equivalent inputs. Multiple spatial witnesses MUST NOT multiply pair events.
+-- **FR-011**: Current event diagnostics MUST count generated enters and exits independently of scripts or the number of delivered callbacks, and remove Stay as a supported event category.
+-- **FR-012**: Affected maintained consumers, tests, and current documentation MUST adopt the enter/exit-only contract. Migration guidance MUST identify callback removal as a breaking change and explain ongoing interaction using the remaining lifecycle facilities.
++- **FR-001**: The system MUST generate exactly one Enter event per collider pair when confirmed contact changes from absent to present, independently of script presence, behavior count, or callback eligibility. Acceptance: User Story 1, scenarios 1 and 3.
++- **FR-002**: The system MUST generate exactly one Exit event per collider pair when confirmed contact changes from present to absent, including separation, filtering exclusion, deactivation, and collider removal. Event generation MUST NOT depend on script availability. Acceptance: User Story 1, scenarios 2 and 3, and lifecycle edge cases.
++- **FR-003**: The system MUST use confirmed shape contacts as the source of transitions. Candidate overlaps and duplicate spatial observations MUST NOT manufacture contacts, duplicate transitions, or end a contact that still has valid spatial coverage. Acceptance: User Story 1, scenarios 4 and 5.
++- **FR-004**: The system MUST produce no contact event when the confirmed contact state is unchanged. Re-contact after an actual end MUST produce a new Enter. Acceptance: User Story 2, scenarios 1 and 2, and the re-contact edge case.
++- **FR-005**: The system MUST deliver Enter and Exit callbacks once to each recipient that is eligible under the existing callback and lifetime rules at delivery. An unavailable recipient MUST NOT suppress the other recipient's callback. Acceptance: User Story 1, scenario 3; User Story 3, scenarios 3 and 4.
++- **FR-006**: Adding, removing, replacing, enabling, or disabling scripts alone MUST NOT change contact state, generate Enter or Exit, or replay past events. An eligible recipient MAY receive Exit for a contact whose Enter occurred before it became eligible. Acceptance: User Story 3, scenarios 1 and 2, and the delivery-timing edge case.
++- **FR-007**: Stay events and callbacks MUST be removed from the supported contact lifecycle, including their declarations, dispatch paths, current examples, tests, and current contract documentation. They MUST NOT remain as deprecated callbacks or inactive compatibility placeholders. Acceptance: User Story 2, scenarios 1 and 3.
++- **FR-008**: Bookkeeping, subscription maintenance, recurring contact traversal, and reporting that exist solely to support Stay events MUST be removed. Persistent contacts MUST incur no recurring work solely to construct or deliver contact events; event production MUST follow actual transitions rather than enumerate unchanged contacts. Acceptance: User Story 2, scenario 2, with affected-work evidence.
++- **FR-009**: Contact persistence, collision response, support tracking, sleeping, and wake-up behavior MUST remain independent of script availability and MUST preserve their existing physical guarantees after Stay removal. Acceptance: User Story 3, scenarios 2 and 5.
++- **FR-010**: Enter and Exit processing MUST preserve deterministic ordering for equivalent inputs across supported worker counts and existing callback mutation, retirement, deferred destruction, and scene replacement guarantees. Acceptance: User Story 3, scenario 4, and ordering and scene-replacement edge cases.
++- **FR-011**: Current event metrics MUST report generated Enter and Exit pair events independently of delivered callback counts, and MUST remove Stay-specific metrics. Updated benchmark output and its current consumers MUST agree on the changed reporting contract. Acceptance: User Story 2, scenario 4.
+ 
+ ### Key Entities *(include if feature involves data)*
+ 
+-- **Confirmed contact**: A validated interaction between a collider pair, including a trigger overlap, distinct from a candidate bounding-region overlap. Its lifetime is independent of scripts.
+-- **Contact transition event**: A single pair-level enter or exit describing a change in confirmed contact state. Its existence does not depend on successful callback delivery.
+-- **Callback recipient**: A behavior eligible to receive the corresponding transition callback under existing initialization and lifecycle rules. One event may have zero, one, or several recipients.
+-- **Contact diagnostics**: Reports of generated enter/exit transitions, whose counts do not change when only the number or availability of scripts changes.
++- **Collider pair**: Two colliders considered together, regardless of how many spatial regions observe their overlap.
++- **Confirmed contact**: A physical touching relationship established by shape testing, with a lifetime independent of scripts and with physical information needed for response and support.
++- **Contact transition event**: One pair-level Enter or Exit describing a change in confirmed contact state. Its existence is distinct from the number of callbacks delivered.
++- **Callback recipient**: A script-bearing object whose current eligibility and lifetime determine whether it receives a generated transition notification.
+ 
+ ## Success Criteria *(mandatory)*
+ 
+ ### Measurable Outcomes
+ 
+-- **SC-001**: For identical contact sequences with zero scripts, scripts on one object, and scripts on both objects, 100% of generated enter/exit transitions have matching types, order, and pair identities. Each uninterrupted contact interval has one enter and one exit when it ends.
+-- **SC-002**: A contact held for 100 additional steps after entry produces zero additional contact events or callbacks until exit, across moving, stationary, sleeping, and trigger scenarios.
+-- **SC-003**: All script-only additions, removals, and replacements in the acceptance scenarios produce zero contact transitions. Eligible recipients receive each subsequent transition once, including an exit after joining during contact.
+-- **SC-004**: All defined filtering, retirement, duplicate-witness, and serial/parallel scenarios pass without duplicate transitions, stale callbacks, or regressions in existing support and sleeping expectations.
+-- **SC-005**: All maintained consumers use the enter/exit-only contract, and a game author can find a consistent explanation of Stay removal and ongoing-interaction migration in current documentation, with no supported Stay event or callback remaining.
++- **SC-001**: Every verified contact lifetime produces exactly one Enter and one Exit, with identical pair-event histories for zero, one, and two eligible script recipients.
++- **SC-002**: Across 100 unchanged physics updates after contact begins, each persistent pair produces zero additional contact events or callbacks; the later separation produces exactly one Exit.
++- **SC-003**: All script-availability scenarios produce zero synthetic transitions or replayed notifications, and every eligible recipient receives each real transition once.
++- **SC-004**: Supported callback surfaces, current examples, and current event reports contain zero Stay contact callbacks or metrics, and all maintained consumers use the revised contract.
++- **SC-005**: Equivalent runs with one and multiple workers produce identical ordered transition histories, while support, sleeping, collision response, and callback mutation scenarios preserve existing correctness guarantees.
++- **SC-006**: Affected-work evidence shows zero per-update event-production visits to unchanged contacts, both with and without scripts. Representative small and large scenes, persistent-contact populations, contact churn, and worker counts are compared against a recorded baseline; any timing or allocation regression is investigated before acceptance. No unmeasured speedup or arbitrary latency target is required.
+ 
+ ## Assumptions
+ 
+-- The target users are game authors and hosts of the existing Platformator runtime. This feature covers contact events and affected consumers; unrelated event families, the editor, and foundational collision algorithms are outside scope.
+-- Existing contact detection, filtering, reconciliation timing, behavior initialization, callback arguments, and scene-change boundaries remain the basis of the contract. A new contact-query facility, event subscription system, or callback-count reporting facility is not required.
+-- Script availability means whether an eligible behavior can receive a callback. Collider eligibility can independently affect contact state; changing an object's active state may therefore cause a real contact transition.
+-- The Unity-inspired behavior model deliberately adopts an enter/exit-only contact contract. Removing Stay is an intentional compatibility break; no automatic conversion of external user scripts is included.
+-- Game authors needing ongoing interaction can maintain their own state through enter/exit and ordinary updates. Late script attachment does not guarantee a matching earlier enter callback.
+-- Current guidance and newly produced diagnostics must describe the new contract. Historical specifications, recorded benchmark results, and other historical evidence retain their original meaning and are not rewritten.
++- The feature applies to the existing collider contact event family. It does not introduce a separate trigger-event family or change which shape interactions qualify as contacts.
++- Script availability means the presence and delivery eligibility of scripts and behaviors. Collider eligibility, object activation, filtering, and physical geometry remain inputs to actual contact state.
++- The request authorizes an intentional public compatibility break for Stay callbacks and a reporting compatibility break for Stay metrics. Affected callers, tests, current documentation, and benchmark consumers must be updated; archived specifications and historical benchmark captures remain historical records.
++- Enter and Exit names, payload meaning, callback timing, and lifecycle eligibility rules remain as currently defined except for transition-driven generation and the explicitly documented absence of notification replay.
++- Continued per-update gameplay logic can use existing update callbacks; this feature adds no replacement recurring contact notification or new contact-query capability.
++- Existing contact detection, physical response, support handling, lifecycle boundaries, and benchmark methodology are dependencies. Broad-phase redesign, solver redesign, unrelated event families, and unrelated editor work are outside this feature.
++- Performance validation follows the project constitution and benchmark methodology, using representative workloads and measured evidence rather than invented numerical performance targets.
+diff --git a/specs/002-simplify-contact-events/tasks.md b/specs/002-simplify-contact-events/tasks.md
+new file mode 100644
+index 0000000..e4fedea
+--- /dev/null
++++ b/specs/002-simplify-contact-events/tasks.md
+@@ -0,0 +1,194 @@
++# Tasks: Simplify Contact Events
++
++**Input**: Design artifacts in `specs/002-simplify-contact-events/`: [plan.md](plan.md), [spec.md](spec.md), [research.md](research.md), [data-model.md](data-model.md), [contact contract](contracts/contact-events.md), [benchmark contract](contracts/benchmark-schema.md), and [quickstart.md](quickstart.md).
++
++**Prerequisites**: Read these artifacts and `.specify/memory/constitution.md` before implementation. Feature selection is `specs/002-simplify-contact-events`, independent of the existing Git branch. No runtime work has been completed by task generation; all tasks below are pending.
++
++**Tests**: Included because the specification explicitly requires acceptance scenarios and measurable correctness/affected-work evidence. Add changed-contract tests before implementation and record their relevant failures; retain passing geometry/startup/lifetime guardrails before mechanical refactors. A compile failure caused solely by a removed callback is not sufficient evidence of correct transition semantics.
++
++**Organization**: Setup → shared foundation → US1 (P1) → US2 (P1) → US3 (P2) → cross-cutting acceptance. The stories have explicit integration dependencies because they edit the same runtime files; each has a separate observable acceptance checkpoint.
++
++## Format: `[ID] [P?] [Story] Description`
++
++- Every task has an unchecked box, sequential ID, and concrete repository-relative file paths.
++- `[P]` denotes a task that can run alongside its listed peer after the stated prerequisite. It does not override phase gates, file ownership, or resource isolation for measurements.
++- `[US1]`, `[US2]`, and `[US3]` refer to the three stories in `spec.md`; setup, foundation and polish tasks have no story label.
++- Evidence paths below are outputs to create during implementation, not pre-existing proof. Large raw captures may live in a fresh directory outside Git with a durable path, checksums and provenance recorded in feature evidence.
++
++## Phase 1: Setup (Shared Infrastructure and Baseline)
++
++**Purpose**: Establish an equivalent measurable workload before changing runtime behavior. No event, geometry, startup, solver or body implementation edits may precede T006.
++
++- [ ] T001 Record source revision, dirty patch, relevant callers and baseline build/worker/CPU configuration in `specs/002-simplify-contact-events/evidence/baseline-provenance.md`; recheck the current paths in `src/physicsmanager.cpp`, `src/physicscontacts.cpp`, `src/physicsgeometry.cpp`, `src/physicsbodyindexes.cpp`, `src/colliderpair.cpp`, `src/gamemanager.cpp` and `src/benchmark_main.cpp`, including the all-contact invariant consumer; verify preset availability in `CMakePresets.json` and preserve existing user changes.
++- [ ] T002 [P] After T001, add the common `persistent_contacts` fixture and runner options `--contact-pair-count` and `--scripted-endpoints 0|1|2` in `src/benchmark_main.cpp`; create disjoint stationary confirmed static/trigger pairs with no-op behaviors overriding only Enter/Exit, validate requested contact/recipient populations, and record resolved parameters without changing existing runtime behavior, scope boundaries or schema 2.
++- [ ] T003 [P] After T001, support `persistent_contacts`, sweep `--counts` and `--scripted-endpoints 0|1|2` in `benchmark/sweep_scaling.py`, mapping counts to `--contact-pair-count` and preserving existing scenario flags, independent-process repetitions, output safeguards and schema-2 readers; use the exact runner interface specified by T002 and `plan.md`.
++- [ ] T004 After T002 and T003, add fixture/argument/provenance coverage in `benchmark/tests/test_sweep_scaling.py` and verify actual pair counts through `src/benchmark_main.cpp` invariant captures; ensure zero/one/two scripted endpoints and invalid values behave as specified, and save the common fixture patch and source fingerprint in `specs/002-simplify-contact-events/evidence/baseline-provenance.md` for reuse unchanged by the candidate.
++- [ ] T005 Build and validate the unmodified runtime plus common fixture using `CMakePresets.json` cleanup-debug and cleanup-benchmark configurations and `benchmark/sweep_scaling.py --validate-invariants`; capture baseline test results, one/multiworker contact/support/body snapshots and numerical tolerances in `specs/002-simplify-contact-events/evidence/baseline-correctness.md`, resolving observed correctness failures before using any timings.
++- [ ] T006 Capture the pre-change Release timing matrix from `specs/002-simplify-contact-events/quickstart.md` using `benchmark/sweep_scaling.py` with its schema-2 runner/readers: persistent pairs 10/100/1000 with zero/one/two scripted endpoints plus all six existing workload families and their small/large/churn sizes, one and appropriate multiple workers, matching seed/dt/affinity, and at least five independent repetitions; retain raw samples, manifests, logs, baseline allocation/retained-storage observations, fixture patch and capture checksums in `specs/002-simplify-contact-events/evidence/baseline-results.md` without overwriting historical results.
++
++**Checkpoint**: A validated, reproducible baseline exists before any runtime edit. Record actual environment limitations rather than silently substituting unrelated historical measurements.
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++**Purpose**: Supply internal inspection and real affected-work measurement shared by all stories, without creating a new public event API.
++
++- [ ] T007 Create the reusable internal fixture in `tests/contact_events_test.cpp` and register `platformator_contact_events_test` as INTERNAL with physics/determinism labels in `CMakeLists.txt`; use existing RuntimeAccess/PhysicsManager inspection at valid phase boundaries to capture generated records separately from delivered callbacks, support one/multiworker runs and zero/one/two recipients, and preserve the endpoint constraint "Canonical A/B handle order; allocations remain valid through pending notification delivery."
++- [ ] T008 Add test-only counters for actual pending-pair transition comparisons and appended event records in `tests/runtime_work_probe.h`, wiring the real operations through `src/workprobe.h` and `src/physicsmanager.cpp`; route existing event appends through the manager enqueue operation as needed without changing baseline semantics yet, retain legacy Stay instrumentation until US2, preserve `resultTestedGeometry` as "Existing test-work result, reduced on the main thread.", and compile all probes out of performance builds.
++
++**Checkpoint**: Baseline evidence is protected, internal event inspection works without recipient scripts, and probes measure executed operations rather than infer work from delivered callbacks. T007 and T008 are sequential because they establish shared test/runtime interfaces.
++
++## Phase 3: User Story 1 — Produce Events from Contact Transitions (Priority: P1) — MVP
++
++**Goal**: Confirmed-contact beginnings/endings produce exactly one Enter/Exit per pair independently of scripts, including explicit pair removal, with deterministic and safe delivery.
++
++**Independent Test**: Observe generated Enter/Exit records and recipient callbacks for separate→touching→separated→re-contact sequences with zero/one/two scripted endpoints. Verify false-positive candidates, multiple cell witnesses, physical removals and one/multiworker transition ordering. This checkpoint validates the Enter/Exit subsequence; complete Stay removal belongs to US2.
++
++### Tests for User Story 1
++
++- [ ] T009 [P] [US1] Add generation-versus-delivery assertions in `tests/contact_events_test.cpp` for zero/one/two eligible recipients, entry, geometric separation, re-contact and independently gated endpoints; assert one pair record versus per-recipient/per-behavior callbacks and record the no-script Enter failure before implementing transitions.
++- [ ] T010 [P] [US1] Extend `tests/collider_pair_cleanup_test.cpp` with last-witness removal, partial multi-cell witness loss, duplicate synchronization, filter exclusion/re-enable, deactivation and one/both endpoint retirement; prove one ending per confirmed contact and no Exit for an unconfirmed candidate, preserving "losing one of several witnesses cannot erase the pair."
++- [ ] T011 [P] [US1] Extend `tests/physics_geometry_test.cpp` with confirmed-contact versus bounding-region false-positive cases across box-box, circle-circle and circle-box interactions, including rotated/touching/near-separated cases; retain manifold/support validity, feature stability and numerical tolerances as guardrails for geometry consolidation.
++
++### Implementation for User Story 1
++
++- [ ] T012 [US1] Generate Enter on absent→present and Exit on present→absent in the existing serial post-worker reduction in `src/physicsmanager.cpp`, using `src/colliderpair.h::resultHadContact` as "Previous contact presence captured for the current evaluation, consumed after workers finish."; retain "At most one pending entry per pair; workers own distinct pairs." and optional Collision as "Sole source of confirmed-contact presence; a bounding-region overlap alone is insufficient."; never inspect scripts or append shared events in geometry workers, and remove Enter synthesis from the legacy Stay traversal so transitional US1 behavior cannot double-emit Enter.
++- [ ] T013 [US1] Move pair-removal Exit enqueue into `PhysicsManager::removePair` in `src/physicscontacts.cpp` before the erasure boundary in `src/grid.cpp`; make `src/colliderpair.cpp`/`src/colliderpair.h` destruction release memory only and remove event-emitting pair methods/runtime lookup, emit removal even when both endpoints are retired, and preserve "Previous per-endpoint support contributions; changes reduce once into body totals." so a geometry-ended pair cannot emit another removal Exit.
++- [ ] T014 [US1] Canonicalize generated transition batches in `src/physicsmanager.cpp::handlePendingPhysicsEvents`, including cleanup drains from `src/gamemanager.cpp`, by Exit-before-Enter then full endpoint handles with A-before-B delivery; enforce "Canonical endpoint pointers; full stable handles supply deterministic sorting, including generations." and payload constraint "Borrowed confirmed contact for Enter; null for Exit. It remains valid until Enter dispatch completes."; preserve per-endpoint exception aggregation, drain-before-free and old-scene-before-publication boundaries, leaving any temporary legacy Stay delivery separate from Enter/Exit generation until US2.
++- [ ] T015 [US1] Move shape dispatch, `checkProjections`, box SAT and `calculateContactPoint` from `src/physicsmanager.cpp` into `src/physicsgeometry.cpp`, renaming `satCreateCollision` to `updateContactGeometry` in `src/physicsmanager.h` and its caller; preserve calculations, feature IDs, orientation, tolerances, warm-start behavior and version semantics ("Determine whether pair geometry needs re-evaluation."), keep pair-local geometry free of event side effects, and move only required includes with the functions.
++- [ ] T016 [US1] Run the focused internal event, cleanup, geometry and existing physics/lifecycle regression checks from `specs/002-simplify-contact-events/quickstart.md` with one and multiple workers; retain exact canonical transition traces, supported callback-exception/teardown outcomes and preserved geometry/support results in `specs/002-simplify-contact-events/evidence/us1-validation.md`, fixing any US1 failure before continuing.
++
++**Checkpoint**: US1 is a demonstrable MVP for script-independent Enter/Exit generation. Legacy Stay surfaces may still exist until US2; this checkpoint is not completion of the full requested feature.
++
++## Phase 4: User Story 2 — Remove Stay from the Contact Lifecycle (Priority: P1)
++
++**Goal**: Remove Stay callbacks and all Stay-only recurring work, simplify physical bookkeeping, and publish a consistent schema-3 reporting contract.
++
++**Independent Test**: One Enter, 100 quiet updates with no additional events/work, then one Exit; no supported Stay callback/event/metric; listener-free and cleanup Enter/Exit counts agree across recorder output and live readers. Physical solver/support behavior remains correct.
++
++### Tests for User Story 2
++
++- [ ] T017 [P] [US2] Add 100-update persistent stationary/sleeping/moving contact cases and supported-callback-surface checks in `tests/contact_events_test.cpp`; require no Stay or repeated Enter and exactly one later Exit, distinguishing required changed-geometry comparisons from a forbidden separate persistent-contact event traversal; record the legacy Stay failure before removal.
++- [ ] T018 [P] [US2] Extend `tests/benchmark_contract_test.cpp` for schema 3 throughout output, eight scopes and eleven counters without Stay, zero/one/two recipient count equivalence, cleanup Exit in the same complete-step sample, both-endpoint retirement, callback exceptions and out-of-frame events not leaking into the next sample; retain provenance, rendering separation, sample storage and output-error checks.
++- [ ] T019 [P] [US2] Add schema-3 reader/aggregate/plot expectations in `benchmark/tests/test_sweep_scaling.py`, including rejection of schema 2, mixed versions, missing/unknown/duplicate metrics, removed Stay fields, incomplete captures and validation-only performance input; preserve independent-process and common-fixture coverage established in T004.
++- [ ] T020 [P] [US2] Extend `tests/runtime_work_test.cpp` to warm quiet confirmed contacts with and without scripts, then assert zero transition comparisons, zero appended event records and zero warmed idle allocations using T008 probes; add moving-contact/churn observations that distinguish physical work from Stay-only work without imposing fabricated timing thresholds.
++
++### Implementation for User Story 2
++
++- [ ] T021 [US2] Remove `Behavior::onCollisionStay`, `ScriptComponent::dispatchCollisionStay` and `Collider::triggerCollisionStay` declarations/definitions from `include/platformator/behavior.h`, `include/platformator/scriptcomponent.h`, `include/platformator/collider.h`, `src/behavior.cpp`, `src/scriptcomponent.cpp` and `src/collider.cpp`; remove the Stay event kind/dispatch in `src/physicsmanager.h`/`src/physicsmanager.cpp`, enforcing event type "Enter or Exit only." with no deprecated shim or replacement recurring callback.
++- [ ] T022 [US2] Remove `observed`, `stayPairs`, `stayIndex`, `stayOrderDirty`, `enteredStep`, `simulationStep` and the persistent event loop from `src/physicscontacts.cpp`, `src/physicsmanager.cpp`, `src/physicsmanager.h` and `src/colliderpair.h`; replace `refreshSubscriptions` with solver-only `refreshSolverPairs(Collider*)`, retain its physical body/collider callers in `src/physicsbodyindexes.cpp`/`src/gamemanager.cpp`, remove script/startup-only callers and `firstBehaviors`, and preserve body lists/change queues with "Existing indexed membership and sleep-island invariants; no script dependency." and response/support refresh ownership.
++- [ ] T023 [US2] Delete the redundant `activeCollisions` projection/rebuild in `src/physicscontacts.cpp`, `src/physicsmanager.cpp` and `src/physicsmanager.h`; resolve/debug directly through canonical `solverPairs`, retain reusable `dynamicCollisionScratch` and all-contact `getContactPairs()` for the independent `src/benchmark_main.cpp` manifold/support oracle, preserve "Membership in two distinct physical collections; absent membership uses the existing sentinel.", retain solver dirty ordering and O(1) physical membership, and remove `NarrowPhaseLocalResults` after a whole-repository use check.
++- [ ] T024 [US2] Remove obsolete Stay overrides/counters/phases from `tests/callback_mutation_test.cpp`, `tests/scene_transition_stress_test.cpp`, `tests/physics_support_test.cpp`, `tests/regression_tests.cpp` and `tests/queued_deletion_safety_test.cpp`; replace Stay-specific expectations with silence/transition expectations while retaining Enter/Exit mutation, scene, support, idle and deletion coverage, and remove the old Stay-only probe in `tests/runtime_work_probe.h`/`tests/runtime_work_test.cpp` once T020 uses real event-work counters.
++- [ ] T025 [P] [US2] After T021–T024, migrate the producer in `src/benchmark.h`/`src/benchmark.cpp` to schema 3 in summary/raw CSV, JSON manifests and console output, removing the Stay enum/name/column and retaining eight scopes/eleven counters; in `src/physicsmanager.cpp` accumulate Enter/Exit counters at the single enqueue boundary for both transition producers and delete the narrow-phase queue-count scan, counting generated pairs through cleanup rather than delivered recipients while preserving active-contact sampling and all other metric definitions.
++- [ ] T026 [P] [US2] After T021–T024, migrate live parsers/aggregates/plotting in `benchmark/sweep_scaling.py` and `benchmark/plot_scaling.py`, audit `benchmark/capture_cleanup.py` for affected assumptions, and update fixtures in `benchmark/tests/test_sweep_scaling.py` to schema 3 with no Stay metric; reject incompatible/mixed captures clearly, preserve provenance/completeness and five-repetition plot guards, and leave archived captures unchanged.
++- [ ] T027 [US2] Document callback source/binary rebuild requirements, generated-pair metrics including cleanup, schema-3 reader compatibility and deliberate Stay removal in `docs/CPP_CLEANUP_WALKTHROUGH.md` and `benchmark/README.md`; audit actual current callers/templates under `examples/mario/` and `ui/src/platformator_ui/`, update only affected consumers, and preserve scene serialization, archived specifications and historical benchmark files.
++- [ ] T028 [US2] After T025 and T026 converge, build normal and benchmark configurations, run the US2 contact/work/recorder/Python contract checks and public-header/package compatibility checks from `specs/002-simplify-contact-events/quickstart.md`; retain output inventories, quiet-work/allocator observations, schema rejection evidence and unchanged support/solver results in `specs/002-simplify-contact-events/evidence/us2-validation.md` before marking this story complete.
++
++**Checkpoint**: Stay is absent across the supported callback/event/reporting surfaces. T021–T026 form one coordinated contract cut: do not claim a buildable/releasable US2 increment until stale overrides, producer and readers have all migrated.
++
++## Phase 5: User Story 3 — Change Scripts without Changing Contacts (Priority: P2)
++
++**Goal**: Script churn never creates contacts/transitions or physical subscription work, and startup responsibilities live on their owners without changing scheduling, mutation or failure semantics.
++
++**Independent Test**: Attach/replace/activate scripts during a contact, observe no replay and the real future Exit, and compare physical state with a control run. Exercise per-script startup additions/cancellation/failures and callback-driven removal/scene changes with valid event payloads.
++
++### Tests for User Story 3
++
++- [ ] T029 [P] [US3] Extend `tests/contact_events_test.cpp` with late script attachment, addition to an existing ScriptComponent, activation, removal, replacement and generation-to-delivery eligibility changes; assert no synthetic transition/replay, legitimate Exit without a previously delivered Enter, independent endpoint delivery and unchanged physical contact histories at one/multiple worker counts.
++- [ ] T030 [P] [US3] Preserve and extend startup guardrails in `tests/callback_mutation_test.cpp` for same-script/later-script/already-processed-script additions, per-behavior resolve/start failures, failed-attempt promotion, self-disable/retirement, pending suffix reactivation, tombstone cancellation and start-before-ordinary-dispatch; establish passing pre-extraction traces so moving ownership cannot silently change scheduling or failure behavior.
++- [ ] T031 [P] [US3] Extend `tests/physics_support_test.cpp` with script-churn/control-run comparisons and physical body type, sleep/wake and component replacement cases that require `refreshSolverPairs` without changed geometry; retain 128-support/reference-flip/filter/trigger cases and prove script changes neither alter support totals nor prevent wake-up after final support loss.
++- [ ] T032 [P] [US3] Extend `tests/scene_transition_stress_test.cpp` with Enter/Exit-driven script/collider/object removal, callback exceptions, both-endpoint retirement and scene replacement/shutdown; assert recipient suppression, no old-scene notification reaching new objects and safe borrowed payloads through main and cleanup drains under the existing lifecycle phases.
++
++### Implementation for User Story 3
++
++- [ ] T033 [US3] Extract the current per-script initialization loop, per-attempt error logging and attempted-prefix transfer into private `ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver&)` in `include/platformator/scriptcomponent.h`/`src/scriptcomponent.cpp`; rename the scheduler to `GameManager::startPendingScripts` in `src/gamemanager.h`/`src/gamemanager.cpp`, retaining dynamic indexed queue traversal, resolver lifetime and cancellation, rechecking eligibility before each attempt, promoting failed attempts exactly as before and leaving unattempted suffixes pending, with no new startup state or physics refresh.
++- [ ] T034 [US3] Instrument actual solver-adjacency refresh visits in `src/physicscontacts.cpp` using test-only fields in `tests/runtime_work_probe.h`, and add script-start/activation/replacement churn assertions in `tests/runtime_work_test.cpp` showing zero physical neighbor refresh, geometry and transition work for otherwise unchanged contacts; separately demonstrate required body-state changes still refresh solver membership so absence of script coupling cannot hide a broken physical refresh path.
++- [ ] T035 [US3] Run the contact, startup mutation/failure, support, work and scene stress acceptance checks from `specs/002-simplify-contact-events/quickstart.md`; compare one/multiworker traces and pre-extraction startup behavior, fix any observed eligibility/lifetime defect at its existing owner boundary, and retain results in `specs/002-simplify-contact-events/evidence/us3-validation.md` without adding a generic lifecycle or contact-history layer.
++
++**Checkpoint**: Script/startup changes are isolated from physical contact state and neighbor work; all startup and physical-state-dependent solver guarantees remain observable and tested.
++
++## Phase 6: Polish & Cross-Cutting Concerns
++
++**Purpose**: Verify the full feature, measure costs/benefits, and leave reviewable evidence. All three stories are prerequisites. Run resource-heavy builds/tests and timing captures sequentially; do not time while other work competes for the same machine.
++
++- [ ] T036 Audit current runtime/headers/tests/tooling/docs in `src/`, `include/platformator/`, `tests/`, `benchmark/`, `docs/`, `examples/mario/` and `ui/src/platformator_ui/` for removed Stay symbols/columns, `refreshSubscriptions`, `triggerStartedBehaviors`, `satCreateCollision` and unused aggregation/projection state; fix live remnants and record exclusions for archival files/ordinary English text in `specs/002-simplify-contact-events/evidence/current-contract-audit.md`, preserving historical captures and unrelated user edits.
++- [ ] T037 Build the final cleanup-debug and production configurations from `CMakePresets.json`, including supported example consumers, independent public headers and `tests/package_smoke.cmake`; run the complete normal CTest suite and benchmark contract suite from `specs/002-simplify-contact-events/quickstart.md`, recording exact build/test commands and outcomes in `specs/002-simplify-contact-events/evidence/final-correctness.md` and resolving compatibility/scene/lifecycle regressions.
++- [ ] T038 Run cleanup-work instrumentation for quiet script-observed/unobserved contacts, moving contacts, body changes, startup churn and insertion/removal churn using `tests/runtime_work_test.cpp` and `tests/contact_events_test.cpp`; retain actual event/geometry/adjacency visit counts, allocation observations and retained vector/storage growth against T006 in `specs/002-simplify-contact-events/evidence/affected-work-memory.md`, proving zero event-only persistent scans and warmed idle allocation reuse while distinguishing required solver/body work.
++- [ ] T039 Run cleanup-asan (ASan/UBSan) and cleanup-tsan configurations from `CMakePresets.json` over the final physics/lifecycle/mutation/scene cases in `tests/`, using `specs/002-simplify-contact-events/quickstart.md`; investigate failures and record actual race/lifetime results or exact runtime/platform limitations in `specs/002-simplify-contact-events/evidence/sanitizers.md`, never treating a skip or unavailable runtime as a successful check.
++- [ ] T040 Capture final schema-3 validation-only runs using `benchmark/sweep_scaling.py --validate-invariants` for the common persistent fixture and all baseline workload sizes/worker counts; compare canonical contact/support/body snapshots with T005 tolerances and record ordered event-trace comparisons plus physical-state equivalence in `specs/002-simplify-contact-events/evidence/parallel-validation.md`, labeling correctness-instrumented captures `timing_eligible=false`.
++- [ ] T041 After all builds/correctness checks finish, capture the final Release matrix in `specs/002-simplify-contact-events/quickstart.md` using `benchmark/sweep_scaling.py` with at least five independent repetitions and exactly matching baseline fixture/workload/build/seed/dt/affinity/worker choices; retain raw samples/manifests/logs/checksums, complete-step and relevant nested-scope means/tails/run spread, and one/multiworker scaling under `specs/002-simplify-contact-events/evidence/candidate-results.md`, keeping work probes/sanitizers/debug tools and competing jobs out of timing captures.
++- [ ] T042 Analyze baseline/candidate comparisons in `specs/002-simplify-contact-events/evidence/performance-analysis.md`, investigating every timing/allocation regression and the solver dereference/event-sort/startup tradeoffs, serial reduction cost and worker load balance; fix feasible affected-path inefficiencies in `src/physicsmanager.cpp`, `src/physicscontacts.cpp`, `src/physicsbodyindexes.cpp` or `src/scriptcomponent.cpp` only when evidence warrants them, rerun affected correctness and comparable captures after fixes, and document any justified retained inefficiency with the constitution-required local `EFFICIENCY:` cost/frequency/reason/alternative/replacement-work comment instead of claiming unmeasured gains.
++- [ ] T043 Finalize `specs/002-simplify-contact-events/validation.md` with FR/SC-to-evidence links, actual commands/results, baseline/candidate provenance, compatibility migration, investigated regressions and remaining environment limitations; update `specs/002-simplify-contact-events/quickstart.md` and current `benchmark/README.md`/`docs/CPP_CLEANUP_WALKTHROUGH.md` to match implemented behavior and runnable commands, recheck all seven constitution gates and mark only tasks whose stated work/evidence is complete.
++
++## Dependencies & Execution Order
++
++### Phase and Story Dependencies
++
++```text
++T001 → (T002 || T003) → T004 → T005 → T006 [baseline gate]
++  → T007 → T008 [foundation gate]
++  → US1: (T009 || T010 || T011) → T012 → T013 → T014 → T015 → T016
++  → US2: (T017 || T018 || T019 || T020)
++       → T021 → T022 → T023 → T024 → (T025 || T026) → T027 → T028
++  → US3: (T029 || T030 || T031 || T032) → T033 → T034 → T035
++  → T036 → T037 → T038 → T039 → T040 → T041 → T042 → T043
++```
++
++The graph is the default executable order; parenthesized peers may run together on disjoint files. An implementation fix or newly discovered failure requires rerunning affected checks and refreshing affected captures before dependent completion, rather than declaring an old passing result current.
++
++- **US1** depends only on setup/foundation and is independently demonstrable for Enter/Exit transition semantics. It deliberately precedes the full Stay compatibility cut.
++- **US2** depends on US1's transition producers so removal of observer/Stay state cannot lose Enter generation. T021–T024 touch shared runtime/test surfaces and are sequential. T025 and T026 can proceed together only after those changes and the prewritten schema tests; integrate both before T028.
++- **US3** depends on US2's script-free physical refresh boundary. Its new behavior scenarios are independently testable, but implementation is not concurrent with the prior edits to GameManager, ScriptComponent or physical refresh code.
++- **Final acceptance** depends on all stories. T040 correctness precedes T041 timing; T042 analysis may require targeted fixes and repeated affected verification. Do not broaden unrelated subsystems merely to fill tasks.
++
++### Within Each Story
++
++Write changed-contract tests first and capture meaningful failures; retain existing passing guardrails for mechanical ownership changes. Implement pair/model ownership before transition consumers, update all affected callers before the story checkpoint, and validate the story's explicit observable outcome. Maintain working-file ownership even when test-authoring peers are parallelized. No task authorizes sending external messages, publishing, or merging.
++
++## Parallel Example: User Story 1
++
++After T008, T009 can author event/recipient tests in `tests/contact_events_test.cpp` while T010 authors witness/removal tests in `tests/collider_pair_cleanup_test.cpp` and T011 authors geometry guardrails in `tests/physics_geometry_test.cpp`. Join all three before the sequential runtime tasks. Do not run builds while these shared test interfaces are being revised.
++
++## Parallel Example: User Story 2
++
++After T016, T017/T018/T019/T020 can author their disjoint contact/recorder/Python/work tests together. After T024, T025 may migrate the C++ producer while T026 migrates Python readers/fixtures against the already-defined schema-3 contract. Join both before building, capturing or claiming reporting compatibility. Do not parallelize T021–T024, which overlap runtime declarations and callers.
++
++## Parallel Example: User Story 3
++
++After T028, T029/T030/T031/T032 can author their disjoint contact/startup/support/scene cases together. Join before T033 startup extraction and T034 instrumentation/integration. ScriptComponent and GameManager changes remain one sequential responsibility extraction; the test tasks do not permit concurrent modification of those files.
++
++## Requirement and Design Coverage
++
++| Requirement/design obligation | Primary tasks | Acceptance evidence |
++| --- | --- | --- |
++| FR-001, FR-002: script-independent actual transitions/removals | T009, T010, T012, T013 | T016, T028, T035 |
++| FR-003: confirmed shapes and spatial-witness deduplication | T010, T011, T013, T015 | T016, T040 |
++| FR-004 / SC-002: silence during unchanged contact and real re-contact | T009, T017, T020, T022 | T028, T038 |
++| FR-005, FR-006 / SC-003: delivery eligibility, script churn, no replay | T009, T014, T029, T033, T034 | T016, T035 |
++| FR-007 / SC-004: callback/event/metric removal and consumer migration | T021, T024, T025, T026, T027 | T028, T036, T037 |
++| FR-008 / SC-006: no Stay-only bookkeeping/work | T008, T020, T022, T023, T034 | T038, T041, T042 |
++| FR-009: support, response, sleeping/waking and body indexes | T013, T015, T022, T023, T031 | T035, T037, T040 |
++| FR-010 / SC-005: deterministic ordering and safe lifecycle | T010, T014, T030, T032, T033 | T016, T035, T039, T040 |
++| FR-011: generated pair metrics and schema compatibility | T018, T019, T025, T026 | T028, T037 |
++| SC-001: exact Enter/Exit lifetime counts across recipients | T009, T012, T013, T029 | T016, T035 |
++| User-named smells and clearer ownership | T015 geometry; T022 physical refresh/body indexes; T023 contact/solver state; T033 startup | T016, T028, T035, T042 |
++| Constitution: baseline, parallel strategy, allocation/tails, provenance | T001–T008, T038–T042 | T043 and linked evidence |
++
++## Implementation Strategy
++
++### MVP First
++
++Complete setup/foundation and US1 through T016 to demonstrate transition-driven Enter/Exit without scripts. This is the smallest useful increment; it does not satisfy the full removal request while legacy Stay remains. Continue autonomously through US2, US3 and final acceptance for the complete feature.
++
++### Incremental Delivery
++
++1. Preserve the validated baseline and common fixture before modifying runtime behavior.
++2. Establish explicit transition/removal ownership and validate US1.
++3. Remove Stay and duplicate state, migrate all live reporting/consumers, then validate US2.
++4. Complete startup ownership and script-isolation proof, then validate US3.
++5. Run full correctness, sanitizer/work validation, comparable measurements and evidence review; rerun affected checks only when changes/failures justify it.
++
++### Scope and Completion Rules
++
++Retain physical contact/solver/body/support indexes with their documented purposes; retain the independent all-contact oracle. Do not redesign broad phase, collision math, sleep algorithms, phase scheduling or public contact queries. Preserve native lifetime/worker boundaries, archived captures and prior user edits. Measurement targets are evidence-based; no arbitrary speedup is required. Missing baseline or unresolved correctness/regression evidence cannot be converted into a completed performance task. Report genuine external/runtime limitations explicitly and retain the applicable work as unverified where necessary.
++
++**Task inventory**: 43 total: setup 6; foundation 2; US1 8; US2 12; US3 7; cross-cutting 8. Fifteen `[P]` tasks form five explicit parallel groups. All 43 tasks are pending.

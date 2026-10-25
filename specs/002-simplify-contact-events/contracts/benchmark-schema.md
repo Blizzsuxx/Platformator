@@ -1,22 +1,23 @@
-# Benchmark Diagnostic Contract: Schema v3
+# Benchmark Schema 3: Contact Transitions
 
-**Status**: Design contract for this feature.
-**Compatibility**: New captures and current tooling move together from schema v2 to v3. Archived v2 artifacts retain their original data and meaning.
+## Version and boundaries
 
-## Version and shape
+Set `schema_version` to **3** in manifest JSON, summary CSV rows, raw CSV rows, aggregate CSV rows and console reporting. Update producer, sweep parser, capture tooling where applicable, plotting checks, C++ contract tests, Python fixtures/tests and current benchmark documentation as one compatibility change.
 
-Set `schema_version` to `3` in run manifests, summary CSV rows, raw sample rows, console version text, and sweep aggregates. New raw headers and summary counter rows omit `collision_stay_event_count`.
+Preserve the existing file roles and timing boundaries: summary `<run>.csv`, raw `<run>.samples.csv`, provenance `<run>.manifest.json`; complete-step includes final reconciliation and retirement, physics and cleanup remain nested scopes, and rendering remains separately sampled. Scope times must not be summed as total wall time. Preserve all source/build/hardware/worker metadata, capture completeness checks, physical invariants and timing-eligibility labels.
 
-The existing eight timing scopes remain:
+## Metric inventory
 
-~~~text
-complete_step, physics, cleanup, scene_transition, render,
-broad_phase, narrow_phase, resolve_collisions
-~~~
+The eight timing scopes remain:
+
+```text
+complete_step, physics, cleanup, scene_transition,
+render, broad_phase, narrow_phase, resolve_collisions
+```
 
 The eleven counters are:
 
-~~~text
+```text
 object_count
 occupied_cell_count
 candidate_pair_count
@@ -28,53 +29,25 @@ queued_sync_count
 queued_remove_count
 collision_enter_event_count
 collision_exit_event_count
-~~~
+```
 
-Scope timing boundaries, units, metadata/provenance requirements, validation-mode labels, and independent-run spread calculations remain as documented in [benchmark/README.md](../../../benchmark/README.md).
+Remove `collision_stay_event_count` from the recorder enum/name arrays, summary rows, raw columns, aggregate columns, console output, parser required sets and current fixtures. Do not preserve it as zero or silently synthesize it.
 
-## Event counter meaning
+`collision_enter_event_count` and `collision_exit_event_count` count **generated collider-pair events in the sampled complete step**, not eligible scripts, behaviors, delivered callbacks or contacts still active at sample end. Increment at manager-owned enqueue for both geometry and removal transitions, including cleanup and both-endpoint retirement inside the measured step. Frame begin resets counters; out-of-frame mutations do not leak into the next step or create extra samples. Delivery failure does not undo a generated count. `active_collision_count` retains its existing confirmed-contact snapshot meaning; the other nine counters retain their existing definitions and sampling points.
 
-| Counter | Meaning |
-| --- | --- |
-| collision_enter_event_count | Generated absent-to-present confirmed-contact transitions enqueued during this recorded complete step. |
-| collision_exit_event_count | Generated present-to-absent confirmed-contact transitions enqueued during this recorded complete step, including cleanup/removal exits. |
+## Reader and history rules
 
-A pair transition counts once even if no script receives it, several behaviors receive it, or a delivery callback throws. A retired recipient does not suppress generation. Delivery and queue clearing do not increment or decrement counts.
+- Current tools accept schema 3 consistently across all files in a run and its aggregates. Reject schema 2, missing metrics, unknown metrics, duplicate summary metrics, mixed versions, missing required raw columns, incomplete captures and contradictory instrumentation labels with an actionable message.
+- Keep archival schema-2 and earlier captures unchanged. Historical readers are available at their recorded source/tool revision. Do not fabricate transition totals from historical observed-contact counts or rewrite old files under a new schema number.
+- Cross-version baseline comparisons may compare timing scopes only after confirming unchanged workload and timing boundaries. Do not equate old Enter/Exit counter semantics with new generated-transition semantics; label this distinction in results.
+- Plotting accepts only complete schema-3 timing-eligible aggregates and retains the requirement for at least five independent repetitions. Validation-only results stay excluded from performance plots.
 
-Frame start initializes counters to zero. Count at the manager's single enqueue path, while a recording frame is active. Do not rescan/reset the event totals in narrow phase. Events generated during idle mutation outside a recorded step do not get attributed to the next recorded sample.
+## Contract checks
 
-One completed contact interval contributes one enter and one exit over its measured lifetime; intervals that start before warmup/measurement or end after capture naturally need not be balanced within a single capture window. Do not reject those captures solely for unequal aggregate enter/exit counts.
-
-Unchanged contacts contribute zero events in later samples even if awake, scripted, stationary, sleeping, or triggers. Active contact counts continue describing all confirmed contacts rather than only solver contacts.
-
-## Writer and reader migration
-
-Update these together:
-
-- `src/benchmark.h/.cpp`: counter enum/name arrays, manifest and CSV versions, console text, and recorded metric descriptions.
-- `src/physicsmanager.cpp`: transition counters at enqueue; remove the narrow-phase recount and Stay branch.
-- `benchmark/sweep_scaling.py`: exact counter set, accepted version, raw/summary validation, aggregate version, and error wording.
-- `benchmark/plot_scaling.py`: accepted aggregate version and diagnostic wording.
-- `benchmark/tests/test_sweep_scaling.py` and `tests/benchmark_contract_test.cpp`: schema fixtures, complete metric expectations, generation-count coverage, and rejection cases.
-- `benchmark/capture_cleanup.py`: verify integration with the migrated imported parser and aggregation helpers; change only assumptions actually affected.
-- Current benchmark documentation and feature validation instructions.
-
-Current tools reject v2 and mixed-version input with a clear unsupported-version message; this feature does not add a general multi-version parser. Never fill a removed Stay field with zero or silently interpret old v2 enters as script-independent counts.
-
-## Historical comparison
-
-Leave `benchmark/baselines/`, archived `benchmark/results/`, historical specifications, captured manifests/CSVs, and historical source snapshots intact. Existing references to those results retain their schema/version labels.
-
-For before/after timing evidence, use the baseline source and its original v2 tools for the baseline, and v3 tools for the new source, with equivalent workloads, workers, seed, dt, steps, instrumentation, and timing boundaries. Preserve both artifact sets and provenance. Compare unchanged timing scopes explicitly; event-counter values may differ by the intended semantics and must not be pooled as one series.
-
-Do not claim a measured speedup until correctness and comparable captures establish it.
-
-## Required contract checks
-
-1. New summary/raw/manifest/aggregate outputs consistently identify version 3, eight scopes, and eleven counters.
-2. No Stay counter is emitted; missing required metrics, duplicate/unknown metrics, v2 input, mixed versions, and truncated captures fail validation.
-3. A scriptless contact generates a counted enter and exit; adding behaviors does not multiply either count.
-4. An exit generated during final cleanup appears in the same complete-step sample.
-5. An idle exit outside recording does not affect the next frame's counts.
-6. Multiple dispatch/cleanup batches in one step accumulate rather than overwrite event totals.
-7. Existing completeness, rendering, metadata, validation-mode, and sample-capacity checks continue to pass.
+1. A no-script pair entering and later exiting contributes one count to each relevant measured step.
+2. The same physical transition with zero, one or two scripted endpoints has the same pair count despite differing callback totals.
+3. Quiet persistent contacts contribute zero Enter/Exit counts after entry, including sleeping contacts.
+4. Exit produced during cleanup contributes to that same complete step; out-of-frame removal contributes to no later sample.
+5. Both endpoints retiring, script replacement and callback exceptions do not convert pair counts to callback counts.
+6. Producer output has eight scopes, eleven counters, schema 3 throughout and no Stay field. Reader fixtures verify rejection of schema 2, mixed versions and removed Stay metrics.
+7. Recorder storage reuse, raw sample counts, invariants, build provenance, rendering separation and output error behavior continue to pass their existing contract tests.

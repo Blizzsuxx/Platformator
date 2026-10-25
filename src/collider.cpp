@@ -132,15 +132,6 @@ void Collider::triggerCollisionExit(Collider *other, double timeDelta) const
     }
 }
 
-void Collider::triggerCollisionStay(const Collision *collision, Collider *other, double timeDelta) const
-{
-    ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
-    if (getIsCallbackEligible() && !isRetired() && scriptComponent != nullptr)
-    {
-        scriptComponent->dispatchCollisionStay(collision, other, timeDelta);
-    }
-}
-
 void Collider::setCollisionGroup(const uint64_t collisionGroup)
 {
     if (this->collisionGroup == collisionGroup)

@@ -63,7 +63,7 @@ void PhysicsManager::reconcileBody(Rigidbody *body)
         body->islandTimer = body->getSleepTimer();
     }
     if (auto *collider = body->getGameObject()->getComponent<Collider>())
-        refreshSubscriptions(collider);
+        refreshSolverPairs(collider);
 }
 
 Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)

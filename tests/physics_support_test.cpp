@@ -10,16 +10,12 @@ namespace
 {
 struct Events : test_support::Behavior
 {
-    int enter = 0, stay = 0, exit = 0;
+    int enter = 0, exit = 0;
     std::vector<int> trace;
     void onCollisionEnter(const Collision *, Collider *other, double) override
     {
         ++enter;
         trace.push_back(other->getId());
-    }
-    void onCollisionStay(const Collision *, Collider *, double) override
-    {
-        ++stay;
     }
     void onCollisionExit(Collider *other, double) override
     {
@@ -114,8 +110,8 @@ void stationary()
     auto *b = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
     for (int i = 0; i < 3; ++i)
         runtime.simulateFrame(dt);
-    require(events->enter == 1 && events->stay == 2 && events->exit == 0,
-            "Stationary observed contacts stay every step without geometry work");
+    require(events->enter == 1 && events->exit == 0,
+            "Stationary observed contacts remain silent without geometry work");
     b->getComponent<BoxCollider>()->setCollisionMask(0);
     runtime.simulateFrame(dt);
     require(events->exit == 1, "Mask removal must exit once");
@@ -130,6 +126,35 @@ void stationary()
     require(events->enter == 2 && events->exit == 1, "Net-unchanged toggles cannot manufacture exit/enter");
     b->destroy();
     require(events->exit == 2, "Eligible survivor receives the retirement exit synchronously while idle");
+}
+void scriptsPreserveSleepingSupport()
+{
+    platformator::Runtime runtime(physicsOnly());
+    auto *object =
+        runtime.createGameObject()->addComponent<BoxCollider>(20, 20)->addComponent<Rigidbody>(DYNAMIC, false);
+    auto *floor =
+        runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(
+            STATIC, false);
+    runtime.simulateFrame(dt);
+    auto *body = object->getComponent<Rigidbody>();
+    require(body->getSupportContactCount() == 1, "Control contact contributes one physical support");
+    body->setIsSleeping(true);
+    object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(new Events);
+    runtime.simulateFrame(dt);
+    object->removeComponent(SCRIPT);
+    object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(new Events);
+    runtime.simulateFrame(dt);
+    require(body->getIsSleeping() && body->getSupportContactCount() == 1,
+            "Script replacement preserves sleeping physical support");
+    object->removeComponent(RIGID_BODY);
+    object->addComponent<Rigidbody>(DYNAMIC, false);
+    runtime.simulateFrame(dt);
+    body = object->getComponent<Rigidbody>();
+    require(body->getSupportContactCount() == 1, "Body replacement transfers support without geometry movement");
+    body->setIsSleeping(true);
+    floor->removeComponent(COLLIDER);
+    require(!body->getIsSleeping() && body->getSupportContactCount() == 0,
+            "Losing final support wakes the replacement body");
 }
 } // namespace
 int main()
@@ -149,6 +174,7 @@ int main()
                     "Frozen serial/parallel physical snapshots must agree within 1e-5");
         }
         stationary();
+        scriptsPreserveSleepingSupport();
         referenceSwaps();
         std::cout << "[PASS] deterministic supports and persistent contacts\n";
         return 0;

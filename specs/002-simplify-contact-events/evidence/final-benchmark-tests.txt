@@ -1,0 +1,15 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-benchmark
+    Start 24: platformator_benchmark_contract_test
+1/3 Test #24: platformator_benchmark_contract_test ............   Passed    0.09 sec
+    Start 25: platformator_benchmark_persistent_zero_warmup
+2/3 Test #25: platformator_benchmark_persistent_zero_warmup ...   Passed    0.01 sec
+    Start 26: platformator_benchmark_sweep_test
+3/3 Test #26: platformator_benchmark_sweep_test ...............   Passed    0.11 sec
+
+100% tests passed out of 3
+
+Label Time Summary:
+benchmark       =   0.22 sec*proc (3 tests)
+platformator    =   0.22 sec*proc (3 tests)
+
+Total Test time (real) =   0.22 sec

@@ -1,0 +1,75 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+      Start  1: platformator_regression_tests
+ 1/24 Test  #1: platformator_regression_tests .................   Passed    0.90 sec
+      Start  2: platformator_scene_script_roundtrip_test
+ 2/24 Test  #2: platformator_scene_script_roundtrip_test ......   Passed    0.15 sec
+      Start  3: platformator_queued_deletion_safety_test
+ 3/24 Test  #3: platformator_queued_deletion_safety_test ......   Passed    0.16 sec
+      Start  4: platformator_runtime_recreation_test
+ 4/24 Test  #4: platformator_runtime_recreation_test ..........   Passed    0.16 sec
+      Start  5: platformator_collider_pair_cleanup_test
+ 5/24 Test  #5: platformator_collider_pair_cleanup_test .......   Passed    0.16 sec
+      Start  6: platformator_runtime_foundation_test
+ 6/24 Test  #6: platformator_runtime_foundation_test ..........   Passed    0.75 sec
+      Start  7: platformator_scene_transition_contract_test
+ 7/24 Test  #7: platformator_scene_transition_contract_test ...   Passed    0.08 sec
+      Start  8: platformator_scene_transition_stress_test
+ 8/24 Test  #8: platformator_scene_transition_stress_test .....   Passed    0.36 sec
+      Start  9: platformator_callback_mutation_test
+ 9/24 Test  #9: platformator_callback_mutation_test ...........   Passed    0.97 sec
+      Start 10: platformator_destruction_contract_test
+10/24 Test #10: platformator_destruction_contract_test ........   Passed    0.38 sec
+      Start 11: platformator_object_reference_contract_test
+11/24 Test #11: platformator_object_reference_contract_test ...   Passed    0.16 sec
+      Start 12: platformator_scene_io_contract_test
+12/24 Test #12: platformator_scene_io_contract_test ...........   Passed    0.11 sec
+      Start 13: platformator_transform_hierarchy_test
+13/24 Test #13: platformator_transform_hierarchy_test .........   Passed    0.01 sec
+      Start 14: platformator_physics_support_test
+14/24 Test #14: platformator_physics_support_test .............   Passed    0.83 sec
+      Start 15: platformator_physics_geometry_test
+15/24 Test #15: platformator_physics_geometry_test ............   Passed    0.01 sec
+      Start 16: platformator_runtime_step_test
+16/24 Test #16: platformator_runtime_step_test ................   Passed    0.08 sec
+      Start 17: platformator_runtime_work_test
+17/24 Test #17: platformator_runtime_work_test ................***Skipped   0.01 sec
+      Start 18: platformator_asset_root_contract_test
+18/24 Test #18: platformator_asset_root_contract_test .........   Passed    0.16 sec
+      Start 19: platformator_runner_failure_test
+19/24 Test #19: platformator_runner_failure_test ..............   Passed    0.01 sec
+      Start 20: platformator_runner_startup_failure
+20/24 Test #20: platformator_runner_startup_failure ...........   Passed    0.01 sec
+      Start 21: platformator_physics_only_startup
+21/24 Test #21: platformator_physics_only_startup .............   Passed    0.01 sec
+      Start 22: platformator_package_smoke
+22/24 Test #22: platformator_package_smoke ....................   Passed  111.43 sec
+      Start 23: platformator_benchmark_contract_test
+23/24 Test #23: platformator_benchmark_contract_test ..........***Skipped   0.00 sec
+      Start 24: platformator_benchmark_sweep_test
+24/24 Test #24: platformator_benchmark_sweep_test .............   Passed    0.11 sec
+
+100% tests passed out of 24
+
+Label Time Summary:
+asset           =   0.16 sec*proc (1 test)
+benchmark       =   0.11 sec*proc (2 tests)
+clock           =   0.08 sec*proc (1 test)
+determinism     =   0.83 sec*proc (1 test)
+geometry        =   0.01 sec*proc (1 test)
+install         = 111.43 sec*proc (1 test)
+lifecycle       =   2.93 sec*proc (8 tests)
+mutation        =   1.35 sec*proc (2 tests)
+package         = 111.60 sec*proc (5 tests)
+physics         =   2.07 sec*proc (7 tests)
+platformator    = 116.97 sec*proc (24 tests)
+reference       =   1.01 sec*proc (3 tests)
+runner          =   0.02 sec*proc (3 tests)
+scene           =   0.86 sec*proc (5 tests)
+transform       =   0.01 sec*proc (1 test)
+work            =   0.01 sec*proc (1 test)
+
+Total Test time (real) = 116.98 sec
+
+The following tests did not run:
+	 17 - platformator_runtime_work_test (Skipped)
+	 23 - platformator_benchmark_contract_test (Skipped)

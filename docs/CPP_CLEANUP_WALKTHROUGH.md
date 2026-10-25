@@ -300,9 +300,9 @@ Workers now produce pair-owned manifold/support results. Canonical pair identiti
 
 ### Persistent contact/solver/event collections
 
-The engine maintains indexed collections for active contacts, solver contacts, and contacts with stay-event observers. Membership uses insertion and swap-removal; solver/event consumers canonicalize changed membership where order matters. Script activation/subscription changes update affected adjacency rather than scanning every unobserved pair.
+The engine maintains separate indexed collections for confirmed contacts and solver-eligible contacts. Membership uses insertion and swap-removal; solver membership is canonically ordered when changed. Resolution/debug consumers read the collision directly through solver pairs, without a second cached projection. Body-state changes refresh affected solver adjacency; script changes do not visit physical adjacency.
 
-Observed stationary/sleeping contacts still receive the promised stays. Support/event transitions remain balanced through filter changes, body replacement, disabling and retirement.
+Enter and Exit are generated from confirmed-contact transitions after geometry workers finish, independently of scripts. Unchanged stationary/sleeping contacts generate no recurring event. Explicit pair removal queues Exit before erasure; pair destructors only free contact memory. Support and event transitions remain correct through filtering, body replacement, deactivation and retirement. Each delivery batch orders Exit before Enter and canonical endpoints; recipient eligibility is checked at delivery.
 
 An early corrected benchmark exposed an unnecessary full sort of the general contact-membership collection whenever anything changed. At 133,007 contacts this was expensive and its ordering had no consumer. That sort was removed; solver and observed-event lists retain their own required canonical ordering. Incomplete preliminary captures were excluded, not mixed into accepted results.
 
@@ -414,7 +414,7 @@ Existing tests were repaired too. Deletion helpers now capture IDs while objects
 
 ### Measurement changes
 
-The previous internal frame timer omitted post-step collider/grid work and deferred destruction. New schema-v2 `complete_step` includes the final retirement/transient cleanup. Rendering has its own scope; physics, cleanup, scene-transition and lower-level scopes have documented nesting. Nested times must not all be added as if disjoint.
+The previous internal frame timer omitted post-step collider/grid work and deferred destruction. New schema-v3 `complete_step` includes the final retirement/transient cleanup. Rendering has its own scope; physics, cleanup, scene-transition and lower-level scopes have documented nesting. Nested times must not all be added as if disjoint.
 
 Sample storage is reserved before measurement. Once-per-run manifests record source commit/dirty state/fingerprint, compiler/flags, build/instrumentation, machine/OS, linked dependencies, scenario/seed/workers/dt/warmup/step/repetition settings and timing boundaries. CLI worker control is configured once per process. Quit stops samples for work that did not happen.
 
@@ -559,7 +559,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | M | [src/audiowrapperserializer.cpp](../src/audiowrapperserializer.cpp) | Switched to public header includes; no new wrapper JSON format. |
 | M | [src/behavior.cpp](../src/behavior.cpp) | Normalized includes to public declarations; main lifecycle/factory behavior changes are in the manager, builder and headers. |
 | M | [src/behaviorfactoryregistry.cpp](../src/behaviorfactoryregistry.cpp) | Normalized includes to public declarations; main lifecycle/factory behavior changes are in the manager, builder and headers. |
-| M | [src/benchmark.cpp](../src/benchmark.cpp) | Implemented complete-step/nested scopes, reserved samples, schema-v2 output/manifests and later actual runtime SDL version reporting (§14). |
+| M | [src/benchmark.cpp](../src/benchmark.cpp) | Implemented complete-step/nested scopes, reserved samples, schema-v3 output/manifests and later actual runtime SDL version reporting (§14). |
 | M | [src/benchmark.h](../src/benchmark.h) | Declared corrected scopes/counters/recorder controls and compiled-out instrumentation interface (§14). |
 | M | [src/benchmark_main.cpp](../src/benchmark_main.cpp) | Added worker/seed control, validation fixtures and full snapshots, workload metadata, and correct quit/sample handling; substantial formatting too (§14). |
 | A | [src/benchmarkbuildconfig.h.in](../src/benchmarkbuildconfig.h.in) | Added generated benchmark build/source identity metadata (§14). |
@@ -594,7 +594,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | M | [src/pathmanager.cpp](../src/pathmanager.cpp) | Replaced heuristic upward/demo search with startup-rooted, case-preserving asset resolution; later restricted all asset inputs to assets/ paths (§11). |
 | M | [src/pathmanager.h](../src/pathmanager.h) | Replaced heuristic upward/demo search with startup-rooted, case-preserving asset resolution; later restricted all asset inputs to assets/ paths (§11). |
 | A | [src/physicsbodyindexes.cpp](../src/physicsbodyindexes.cpp) | Added affected-only queued membership for awake dynamics, kinematics and sleep-eligible bodies (§9). |
-| A | [src/physicscontacts.cpp](../src/physicscontacts.cpp) | Separated persistent contact/solver/stay indexes, support-delta reduction and observed-contact maintenance; removed unnecessary general contact sorting (§9). |
+| A | [src/physicscontacts.cpp](../src/physicscontacts.cpp) | Physical contact/solver indexes, support-delta reduction and transition-only event generation; removed observer tracking and duplicate solver projection (§9). |
 | A | [src/physicsgeometry.cpp](../src/physicsgeometry.cpp) | Separated exact circle/box and circle/circle manifold generation and deterministic geometric decisions (§9). |
 | M | [src/physicsmanager.cpp](../src/physicsmanager.cpp) | Integrated pair-local parallel results, synchronized movement, deterministic solver/events, coupled box solve, sleeping and indexed body/contact work (§§7–10). |
 | M | [src/physicsmanager.h](../src/physicsmanager.h) | Integrated pair-local parallel results, synchronized movement, deterministic solver/events, coupled box solve, sleeping and indexed body/contact work (§§7–10). |
@@ -687,7 +687,7 @@ Status: **A** = added; **M** = modified; **D** = deleted. Paths compare `e01526b
 | --- | --- | --- |
 | A | [assets/animations/missing.animset](../assets/animations/missing.animset) | Added an intentional core fallback animation referring to the existing missing texture (§11). |
 | A | [assets/audio/missing.wav](../assets/audio/missing.wav) | Added a core fallback sound independent of example assets (§11). |
-| A | [benchmark/README.md](../benchmark/README.md) | Documented complete-step/schema-v2 measurement, independent runs, workload interpretation and historical/Godot comparison limits (§14). |
+| A | [benchmark/README.md](../benchmark/README.md) | Documented complete-step/schema-v3 measurement, independent runs, workload interpretation and historical/Godot comparison limits (§14). |
 | A | [benchmark/capture_cleanup.py](../benchmark/capture_cleanup.py) | Added pinned fresh-process validation/timing orchestration, snapshot comparison, source/raw-result archives and checksums; updated the mixer source path after the vendor import (§14). |
 | M | [benchmark/plot_scaling.py](../benchmark/plot_scaling.py) | Required recognized schema/metrics instead of plotting missing measurements as zero (§14). |
 | M | [benchmark/sweep_scaling.py](../benchmark/sweep_scaling.py) | Propagated worker/seed/repetition settings, preserved raw samples/manifests and aggregated independent-process spread with stricter parsing (§14). |
@@ -779,3 +779,7 @@ git diff 162d3ec -- src/pathmanager.cpp src/referenceresolver.h src/scenebuilder
 ```
 
 The initial walkthrough was documentation-only. The later startup-only initialization amendment changes the runtime and its tests; its current verification is recorded in validation.md. Historical benchmark archives remain unchanged. No commit or upstream submission was performed by the agent.
+
+### Contact callback migration
+
+The Stay callback family has been removed intentionally. Rebuild the library and consumers together, remove obsolete overrides/calls, and use existing update callbacks for recurring gameplay work. Enter/Exit signatures and borrowed callback-duration payloads remain unchanged. Attaching/replacing a script during a contact does not replay Enter; an eligible late recipient can receive the real Exit. No scene serialization migration is required. Schema-3 event counters count generated pairs including cleanup, not script notifications.

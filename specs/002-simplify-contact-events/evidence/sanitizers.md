@@ -1,0 +1,9 @@
+# Sanitizer results
+
+ASan/UBSan builds with instrumented dependencies succeed. Full non-package memory-access/UB run (ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1): 24 registered, 22 passed, two instrumentation skips, no access/UB diagnostics. Leak-enabled contact/support/geometry/transform tests pass. The full leak-enabled run outside the sandbox reproduces FluidSynth initialization leaks; see leak-attribution.md and complete reports. No leak suppression or MIDI-support removal was applied.
+
+TSan engine and oneTBB build succeeds. With TSAN_OPTIONS=halt_on_error=1 outside the sandbox, the physics/lifecycle/mutation selection registers 15 checks: 12 pass, two fail, one work-probe skip. New contact transitions, serial/multiworker histories, support/geometry, callback mutation, destruction, queued deletion, scene stress and runtime recreation pass without data-race diagnostics.
+
+scene_transition_contract_test and runtime_step_test report lock-order-inversion (potential deadlock), with both lock-order stacks in system libdbus through SDL_InitSubSystem/SDL_Quit. A detailed recheck reproduces both warnings. src/sdlwindow.cpp and its backend initialization/shutdown are unchanged. A standalone SDL/mixer/font initialization probe without engine code does not reproduce the cycle, so exclusive dependency attribution is not established; these two desktop checks remain unresolved, not passes. No TSan suppression or deadlock-detector disabling was used.
+
+LeakSanitizer initially failed to inspect threads within the tool sandbox; approved outside-sandbox execution resolved that diagnostic and exposed actual leak reports. The sandboxed suite was stopped during the redundant unsanitized package build. Package consumers passed the separate Debug/Release package checks; no sanitizer certification is claimed for that unsanitized fixture.

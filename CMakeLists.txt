@@ -218,9 +218,10 @@ if(PLATFORMATOR_BUILD_TESTS)
     platformator_add_test(platformator_scene_io_contract_test tests/scene_io_contract_test.cpp LABELS scene reference)
     platformator_add_test(platformator_transform_hierarchy_test tests/transform_hierarchy_test.cpp LABELS physics transform)
     platformator_add_test(platformator_physics_support_test tests/physics_support_test.cpp LABELS physics determinism)
+    platformator_add_test(platformator_contact_events_test tests/contact_events_test.cpp INTERNAL LABELS physics determinism)
     platformator_add_test(platformator_physics_geometry_test tests/physics_geometry_test.cpp LABELS physics geometry)
     platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp INTERNAL LABELS lifecycle clock)
-    platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp LABELS physics work)
+    platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp INTERNAL LABELS physics work)
     set_tests_properties(platformator_runtime_work_test PROPERTIES SKIP_RETURN_CODE 77)
     platformator_add_test(platformator_asset_root_contract_test tests/asset_root_contract_test.cpp LABELS package asset)
     platformator_add_test(platformator_runner_failure_test tests/runner_failure_test.cpp LABELS package runner)
@@ -233,6 +234,14 @@ if(PLATFORMATOR_BUILD_TESTS)
     set_tests_properties(platformator_package_smoke PROPERTIES LABELS "platformator;package;install")
     platformator_add_test(platformator_benchmark_contract_test tests/benchmark_contract_test.cpp INTERNAL LABELS benchmark)
     set_tests_properties(platformator_benchmark_contract_test PROPERTIES SKIP_RETURN_CODE 77)
+    if(TARGET platformator_benchmark_runner)
+        add_test(NAME platformator_benchmark_persistent_zero_warmup
+            COMMAND platformator_benchmark_runner --scenario persistent_contacts --contact-pair-count 10
+                --scripted-endpoints 0 --workers 1 --warmup-frames 0 --measure-frames 2 --validate-invariants)
+        set_tests_properties(platformator_benchmark_persistent_zero_warmup PROPERTIES
+            LABELS "platformator;benchmark"
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+    endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME platformator_benchmark_sweep_test COMMAND "${Python3_EXECUTABLE}" -m unittest discover
         -s "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests" -v)

@@ -1,0 +1,234 @@
+diff --git a/benchmark/sweep_scaling.py b/benchmark/sweep_scaling.py
+index 8704266..cb9c0db 100644
+--- a/benchmark/sweep_scaling.py
++++ b/benchmark/sweep_scaling.py
+@@ -13,7 +13,7 @@ SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "
+ COUNTERS = ("object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
+             "awake_dynamic_body_count", "queued_add_count", "queued_sync_count", "queued_remove_count", "collision_enter_event_count",
+             "collision_stay_event_count", "collision_exit_event_count")
+-SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove")
++SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove", "persistent_contacts")
+ 
+ 
+ def is_add_remove_scenario(scenario):
+@@ -133,6 +133,8 @@ def apply_count_argument(base_command, args, count):
+     command = list(base_command)
+     if is_broad_phase_scenario(args.scenario):
+         command += ["--broad-count", str(count)]
++    elif args.scenario == "persistent_contacts":
++        command += ["--contact-pair-count", str(count), "--scripted-endpoints", str(args.scripted_endpoints)]
+     elif args.scenario == "narrow_phase":
+         command += ["--narrow-count", str(count)]
+     elif args.scenario == "rigid_body_container":
+@@ -151,7 +153,7 @@ def apply_count_argument(base_command, args, count):
+ def sweep_parameter_name(scenario):
+     if is_broad_phase_scenario(scenario):
+         return "broad_count"
+-    return {"narrow_phase": "narrow_count", "rigid_body_container": "total_body_count",
++    return {"persistent_contacts": "contact_pair_count", "narrow_phase": "narrow_count", "rigid_body_container": "total_body_count",
+             "add_and_remove": "churn_count", "moving_add_and_remove": "churn_count"}[scenario]
+ 
+ 
+@@ -162,6 +164,7 @@ def build_result_row(args, count, metrics):
+            "repetitions": len(metrics), "steady_count": args.steady_count if is_add_remove_scenario(args.scenario) else 0,
+            "add_count": count if is_add_remove_scenario(args.scenario) else 0,
+            "remove_count": count if is_add_remove_scenario(args.scenario) else 0}
++    row["scripted_endpoints"] = args.scripted_endpoints if args.scenario == "persistent_contacts" else 0
+     row["validation_mode"] = "per-step" if args.validate_invariants else "boundary-only"
+     row["timing_eligible"] = not args.validate_invariants
+     for name in SCOPES:
+@@ -181,6 +184,7 @@ def main(argv=None):
+     parser.add_argument("--runner", default="../bin/cleanup-benchmark/platformator_benchmark_runner")
+     parser.add_argument("--scenario", required=True, choices=SCENARIOS)
+     parser.add_argument("--counts")
++    parser.add_argument("--scripted-endpoints", type=int, choices=(0, 1, 2), default=2)
+     parser.add_argument("--step-size", type=int)
+     parser.add_argument("--ending-step", type=int)
+     parser.add_argument("--starting-step", type=int)
+diff --git a/benchmark/tests/test_sweep_scaling.py b/benchmark/tests/test_sweep_scaling.py
+index 9f968f7..ea5d1d9 100644
+--- a/benchmark/tests/test_sweep_scaling.py
++++ b/benchmark/tests/test_sweep_scaling.py
+@@ -40,6 +40,15 @@ def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0):
+ 
+ 
+ class SweepContract(unittest.TestCase):
++    def test_persistent_contact_count_and_recipient_arguments(self):
++        from types import SimpleNamespace
++        for recipients in (0, 1, 2):
++            command = sweep.apply_count_argument(["runner"], SimpleNamespace(
++                scenario="persistent_contacts", scripted_endpoints=recipients), 100)
++            self.assertEqual(command, ["runner", "--contact-pair-count", "100", "--scripted-endpoints", str(recipients)])
++        self.assertEqual(sweep.sweep_parameter_name("persistent_contacts"), "contact_pair_count")
++
++
+     def test_legacy_and_incomplete_data_reject(self):
+         with tempfile.TemporaryDirectory() as directory:
+             path = Path(directory) / "run.csv"
+diff --git a/src/benchmark_main.cpp b/src/benchmark_main.cpp
+index 24d5a47..cc3e61e 100644
+--- a/src/benchmark_main.cpp
++++ b/src/benchmark_main.cpp
+@@ -16,6 +16,7 @@
+ #include "benchmark.h"
+ #include "constants.h"
+ #include "platformator/boxcollider.h"
++#include "platformator/scriptcomponent.h"
+ #include "platformator/camera.h"
+ #include "platformator/circlecollider.h"
+ #include "platformator/rigidbody.h"
+@@ -178,6 +179,7 @@ enum class BenchmarkScenario
+     RigidBodyContainer,
+     AddAndRemove,
+     MovingAddAndRemove,
++    PersistentContacts,
+ };
+ 
+ bool isAddRemoveScenario(const BenchmarkScenario scenario)
+@@ -205,6 +207,7 @@ struct BenchmarkRunnerOptions
+     uint64_t seed = 0;
+     int repetitions = 1, runIndex = 0;
+     bool validateInvariants = false;
++    int contactPairCount = 100, scriptedEndpoints = 2;
+ };
+ 
+ BenchmarkScenario parseScenario(const std::string &value)
+@@ -241,6 +244,9 @@ BenchmarkScenario parseScenario(const std::string &value)
+         return BenchmarkScenario::MovingAddAndRemove;
+     }
+ 
++    if (value == "persistent_contacts")
++        return BenchmarkScenario::PersistentContacts;
++
+     throw std::runtime_error("Unknown benchmark scenario: " + value);
+ }
+ 
+@@ -260,6 +266,8 @@ const char *scenarioName(const BenchmarkScenario scenario)
+         return "add_and_remove";
+     case BenchmarkScenario::MovingAddAndRemove:
+         return "moving_add_and_remove";
++    case BenchmarkScenario::PersistentContacts:
++        return "persistent_contacts";
+     case BenchmarkScenario::None:
+         return "scene";
+     }
+@@ -918,6 +926,32 @@ void applyAddRemoveScenarioChurn(platformator::Runtime &runtime, AddRemoveScenar
+     }
+ }
+ 
++class ContactObserver : public Behavior
++{
++  public:
++    std::string getTypeName() const override { return "BenchmarkContactObserver"; }
++    void serialize(nlohmann::json &j) const override { j = nlohmann::json::object(); }
++    void deserialize(const nlohmann::json &) override {}
++    void resolveReferences(platformator::ReferenceResolver &) override {}
++    void onCollisionEnter(const Collision *, Collider *, double) override {}
++    void onCollisionExit(Collider *, double) override {}
++};
++
++void buildPersistentContacts(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
++{
++    for (int i = 0; i < options.contactPairCount; ++i)
++        for (int endpoint = 0; endpoint < 2; ++endpoint)
++        {
++            auto *object = runtime.createGameObject()
++                               ->setName("Contact " + std::to_string(i) + "/" + std::to_string(endpoint))
++                               ->setPosition({float(i % 32) * 80 + endpoint, float(i / 32) * 80})
++                               ->addComponent<BoxCollider>(4, 4);
++            object->getComponent<BoxCollider>()->setIsTrigger(true);
++            if (endpoint < options.scriptedEndpoints)
++                object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(new ContactObserver);
++        }
++}
++
+ void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options,
+                    BroadPhaseStressScenarioState *broadPhaseStressState, AddRemoveScenarioState *addRemoveState)
+ {
+@@ -947,6 +981,9 @@ void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions
+         }
+         buildAddRemoveScenario(runtime, options, *addRemoveState);
+         return;
++    case BenchmarkScenario::PersistentContacts:
++        buildPersistentContacts(runtime, options);
++        return;
+     case BenchmarkScenario::None:
+         return;
+     }
+@@ -1058,6 +1095,9 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
+                                         options.runtimeOptions.windowSettings));
+         return;
+     }
++    case BenchmarkScenario::PersistentContacts:
++        mainCamera->setCamera(SDL_FRect{-10, -10, 2600, 2600});
++        return;
+     case BenchmarkScenario::None:
+         return;
+     }
+@@ -1117,6 +1157,18 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
+     for (int index = 1; index < argc; index++)
+     {
+         const std::string argument = args[index];
++        if (argument == "--contact-pair-count")
++        {
++            options.contactPairCount = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
++            continue;
++        }
++        if (argument == "--scripted-endpoints")
++        {
++            options.scriptedEndpoints = parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
++            if (options.scriptedEndpoints > 2)
++                throw std::runtime_error("--scripted-endpoints must be 0, 1 or 2");
++            continue;
++        }
+         if (argument == "--validate-invariants")
+         {
+             options.validateInvariants = true;
+@@ -1372,6 +1424,9 @@ nlohmann::json resolvedParameters(const BenchmarkRunnerOptions &options)
+                        {"moving", settings.movingBodies},
+                        {"body_type", bodyTypeName(settings.bodyType)}});
+     }
++    if (options.scenario == BenchmarkScenario::PersistentContacts)
++        result.update({{"contact_pair_count", options.contactPairCount}, {"scripted_endpoints", options.scriptedEndpoints},
++                       {"box_size", {4, 4}}, {"pair_spacing", 80}, {"triggers", true}});
+     return result;
+ }
+ size_t expectedPopulation(const BenchmarkRunnerOptions &options)
+@@ -1389,6 +1444,8 @@ size_t expectedPopulation(const BenchmarkRunnerOptions &options)
+     case BenchmarkScenario::AddAndRemove:
+     case BenchmarkScenario::MovingAddAndRemove:
+         return options.addRemoveSteadyCount + camera;
++    case BenchmarkScenario::PersistentContacts:
++        return size_t(options.contactPairCount) * 2 + camera;
+     case BenchmarkScenario::None:
+         return 0;
+     }
+@@ -1400,6 +1457,16 @@ nlohmann::json validatePhysicalState(const platformator::Runtime &runtime, const
+     const auto &objects = runtime.getAllGameObjects();
+     if (options.scenario != BenchmarkScenario::None && objects.size() != expectedPopulation(options))
+         throw std::runtime_error("Benchmark population does not match the resolved workload");
++    if (options.scenario == BenchmarkScenario::PersistentContacts)
++    {
++        const auto &pairs = platformator_detail::RuntimeAccess::physicsManager()->getContactPairs();
++        size_t scripts = 0;
++        for (const auto *object : objects)
++            scripts += object->getComponent<ScriptComponent>() != nullptr;
++        if (pairs.size() != size_t(options.contactPairCount) ||
++            scripts != size_t(options.contactPairCount) * options.scriptedEndpoints)
++            throw std::runtime_error("Persistent-contact fixture has incorrect contact/script populations");
++    }
+     size_t colliders = 0, bodies = 0, supportTotal = 0, maximumSupports = 0;
+     std::unordered_map<const Rigidbody *, size_t> expectedSupports;
+     nlohmann::json bodySnapshots = nlohmann::json::array(), contacts = nlohmann::json::array();
+@@ -1591,9 +1658,9 @@ void printUsage(FILE *output)
+     std::fprintf(
+         output,
+         "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario "
+-        "broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove] "
++        "broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove|persistent_contacts] "
+         "[--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] "
+-        "[--narrow-count N] [--steady-count N] [--add-count N] [--remove-count N] [--churn-count N] [--csv-output "
++        "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--steady-count N] [--add-count N] [--remove-count N] [--churn-count N] [--csv-output "
+         "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render]\n");
+ }
+ } // namespace

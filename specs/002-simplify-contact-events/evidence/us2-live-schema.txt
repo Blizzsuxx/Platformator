@@ -1,0 +1,1 @@
+Actual runner output parsed successfully: schema 3 throughout; 8 scopes; 11 counters; no Stay raw field. Command and output: /tmp/contact-schema3-live.*

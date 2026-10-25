@@ -36,7 +36,6 @@ enum class BenchmarkCounterId : uint8_t
     QueuedSyncCount,
     QueuedRemoveCount,
     CollisionEnterEventCount,
-    CollisionStayEventCount,
     CollisionExitEventCount,
     COUNT
 };

@@ -1,0 +1,34 @@
+[Sweep] broad_phase count=10 run=1/5
+[Sweep] broad_phase count=10 run=1/5
+[Sweep] broad_phase count=10 run=2/5
+[Sweep] broad_phase count=10 run=3/5
+[Sweep] broad_phase count=10 run=4/5
+[Sweep] broad_phase count=10 run=5/5
+[Sweep] broad_phase count=20 run=1/5
+[Sweep] broad_phase count=20 run=2/5
+[Sweep] broad_phase count=20 run=3/5
+[Sweep] broad_phase count=20 run=4/5
+[Sweep] broad_phase count=20 run=5/5
+======================================================================
+FAIL: test_raw_removed_or_duplicate_counter_rejects (test_sweep_scaling.SweepContract.test_raw_removed_or_duplicate_counter_rejects)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/Projects/Platformator/benchmark/tests/test_sweep_scaling.py", line 83, in test_raw_removed_or_duplicate_counter_rejects
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_schema_three_is_live_and_two_is_historical (test_sweep_scaling.SweepContract.test_schema_three_is_live_and_two_is_historical)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/Projects/Platformator/benchmark/tests/test_sweep_scaling.py", line 60, in test_schema_three_is_live_and_two_is_historical
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.019s
+
+FAILED (failures=2)
+[Sweep] Wrote /tmp/tmpj2kro0bm/aggregate.csv; raw records retained in /tmp/tmpj2kro0bm/aggregate.runs

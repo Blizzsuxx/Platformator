@@ -16,7 +16,6 @@ enum class Phase
     Update,
     Late,
     Enter,
-    Stay,
     Exit
 };
 struct Counts
@@ -82,10 +81,6 @@ struct Action : test_support::Behavior
     void onCollisionEnter(const Collision *, Collider *, double) override
     {
         fire(Phase::Enter);
-    }
-    void onCollisionStay(const Collision *, Collider *, double) override
-    {
-        fire(Phase::Stay);
     }
     void onCollisionExit(Collider *, double) override
     {
@@ -212,6 +207,8 @@ void scriptStartupQueue()
     deferredOwner->setActive(true);
     runtime.simulateFrame(dt);
     require(deferred.starts == 1 && deferred.updates == 1, "Activation queues only remaining pending work");
+    require(first->getPendingBehaviors().empty() && second->getPendingBehaviors().empty(),
+            "Completed scripts leave no unattempted prefix behind");
     Counts interrupted;
     auto *interruptedOwner = runtime.createGameObject()->addComponent<ScriptComponent>();
     auto *interruptedScript = interruptedOwner->getComponent<ScriptComponent>();
@@ -246,6 +243,8 @@ void additionsWithinActiveScripts()
     require(existing.starts == 1 && existing.updates == 1 && ownStart.starts == 1 && ownStart.updates == 1 &&
                 otherStart.starts == 1 && otherStart.updates == 1 && earlierStart.starts == 1 && earlierStart.updates == 1,
             "Startup drains additions to current, later queued, and already processed scripts");
+    require(script->getPendingBehaviors().empty() && otherScript->getPendingBehaviors().empty(),
+            "Requeued already-processed scripts drain their new pending work in the same startup pass");
     runtime.simulateFrame(dt);
     require(ownStart.starts == 1 && ownStart.updates == 2 && otherStart.starts == 1 && otherStart.updates == 2 &&
                 earlierStart.starts == 1 && earlierStart.updates == 2,
@@ -283,15 +282,15 @@ void replaceDuring(Phase phase)
     runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
         new Counter(survivorCounts));
     GameObject *other = nullptr;
-    if (phase == Phase::Enter || phase == Phase::Stay || phase == Phase::Exit)
+    if (phase == Phase::Enter || phase == Phase::Exit)
     {
         owner->addComponent<BoxCollider>(20, 20);
         other = runtime.createGameObject()->addComponent<BoxCollider>(20, 20);
     }
     runtime.simulateFrame(dt);
-    if (phase == Phase::Stay || phase == Phase::Exit)
+    if (phase == Phase::Exit)
     {
-        other->setPosition({phase == Phase::Stay ? 0.1f : 1000.f, 0});
+        other->setPosition({1000.f, 0});
         runtime.simulateFrame(dt);
     }
     require(replaced && oldCounts.destroyed == 1 && replacementCounts.starts == 0,
@@ -387,8 +386,7 @@ int main()
     headlessEnvironment();
     try
     {
-        for (auto phase :
-             {Phase::Start, Phase::Fixed, Phase::Update, Phase::Late, Phase::Enter, Phase::Stay, Phase::Exit})
+        for (auto phase : {Phase::Start, Phase::Fixed, Phase::Update, Phase::Late, Phase::Enter, Phase::Exit})
             replaceDuring(phase);
         removeAndToggle();
         growAndDestroy();

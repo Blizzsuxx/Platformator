@@ -11,9 +11,10 @@
 
 #include <limits>
 #include <exception>
+#include <tuple>
 
 PhysicsManager::PhysicsManager()
-    : rigidBodyComponents(), colliderComponents(), activeCollisions(), pendingPhysicsEvents(), grid(this),
+    : rigidBodyComponents(), colliderComponents(), pendingPhysicsEvents(), grid(this),
       gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
 }
@@ -107,19 +108,6 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     grid.queueAddCollider(colliderComponent);
 }
 
-// void PhysicsManager::refreshColliderComponent(Collider *colliderComponent)
-// {
-//     if (!colliderComponent->getGameObject()->getActive() || !colliderComponent->getIsRegisteredInGrid())
-//     {
-//         return;
-//     }
-
-//     grid.removeCollider(colliderComponent);
-//     colliderComponent->setIsRegisteredInGrid(false);
-//     grid.addCollider(colliderComponent);
-//     colliderComponent->setIsRegisteredInGrid(true);
-// }
-
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {
     grid.queueSyncCollider(colliderComponent);
@@ -193,7 +181,6 @@ void PhysicsManager::narrowPhase()
 {
     PLATFORMATOR_BENCH_SCOPE(NarrowPhase);
 
-    ++simulationStep;
     const auto &pendingPairs = *grid.getPendingNarrowPhasePairs();
     if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
         for (auto *pair : pendingPairs)
@@ -203,33 +190,23 @@ void PhysicsManager::narrowPhase()
     for (auto *pair : pendingPairs)
     {
         PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
+        PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
         if (pair->resultHadContact && !pair->getCollision())
-            pair->queueCollisionExit();
+            addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_EXIT, pair, nullptr));
         if (!pair->resultHadContact && pair->getCollision())
-            pair->enteredStep = simulationStep;
+        {
+            addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_ENTER, pair, pair->getCollision()));
+        }
         reducePairSupport(pair);
         refreshPairLists(pair);
     }
     flushSupportDeltas();
     canonicalizePairs();
-    const auto eventKey = [](const PhysicsEvent &event) {
-        auto a = event.colliderA->getHandle(), b = event.colliderB->getHandle();
-        if (b < a)
-            std::swap(a, b);
-        return std::pair{a, b};
-    };
-    // Only changed exits need sorting; persistent subscribed contacts already have canonical order.
-    std::sort(pendingPhysicsEvents.begin(), pendingPhysicsEvents.end(),
-              [&](const auto &a, const auto &b) { return eventKey(a) < eventKey(b); });
-    PLATFORMATOR_WORK_ADD(stayPairs, stayPairs.size());
-    for (auto *pair : stayPairs)
-        pendingPhysicsEvents.push_back(makePhysicsEvent(
-            pair->enteredStep == simulationStep ? PhysicsEvent::COLLISION_ENTER : PhysicsEvent::COLLISION_STAY, pair,
-            pair->getCollision()));
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    for (Collision *collision : activeCollisions)
+    for (auto *pair : solverPairs)
     {
+        auto *collision = pair->getCollision();
         DebugDraw::getInstance().addCollisionDebugObject(*collision);
     }
 #endif
@@ -238,29 +215,7 @@ void PhysicsManager::narrowPhase()
     PLATFORMATOR_BENCH_SET_COUNTER(PendingNarrowPhasePairCount, pendingPairs.size());
     PLATFORMATOR_BENCH_SET_COUNTER(ActiveCollisionCount, contactPairs.size());
 
-    int64_t enterCount = 0;
-    int64_t stayCount = 0;
-    int64_t exitCount = 0;
 
-    for (const PhysicsEvent &event : pendingPhysicsEvents)
-    {
-        switch (event.type)
-        {
-        case PhysicsEvent::COLLISION_ENTER:
-            enterCount++;
-            break;
-        case PhysicsEvent::COLLISION_STAY:
-            stayCount++;
-            break;
-        case PhysicsEvent::COLLISION_EXIT:
-            exitCount++;
-            break;
-        }
-    }
-
-    PLATFORMATOR_BENCH_SET_COUNTER(CollisionEnterEventCount, enterCount);
-    PLATFORMATOR_BENCH_SET_COUNTER(CollisionStayEventCount, stayCount);
-    PLATFORMATOR_BENCH_SET_COUNTER(CollisionExitEventCount, exitCount);
 #endif
 
     grid.clearPendingNarrowPhasePairs();
@@ -288,214 +243,7 @@ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair)
     if (pair->shouldUpdate())
     {
         pair->resultTestedGeometry = true;
-        satCreateCollision(*pair);
-    }
-}
-
-bool PhysicsManager::checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
-                                      const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
-                                      const Collider *&realIncidentCollider)
-{
-    for (long unsigned int i = 0; i < normals.size(); i++)
-    {
-        const Eigen::Vector2f &normal = normals[i];
-        Eigen::Vector2f projections1 = referenceCollider->projectOntoAxis(
-            normal); // we are using the index on the owner of the normal to further optimize projection
-        Eigen::Vector2f projections2 = incidentCollider->projectOntoAxis(
-            normal); // TODO: see if it's better to approximate from the perspective of the incident or reference object
-
-        if (projections1.y() < projections2.x() || projections2.y() < projections1.x())
-        {
-            return false;
-        }
-        else
-        {
-            float overlap = std::min(projections1.y() - projections2.x(), projections2.y() - projections1.x());
-            if (overlap < minOverlap &&
-                (realIncidentCollider == incidentCollider || overlap < minOverlap * 0.98f - 0.001f))
-            {
-                minOverlap = overlap;
-                minNormal = normal;
-                realIncidentCollider = incidentCollider;
-            }
-        }
-    }
-
-    return true;
-}
-
-void PhysicsManager::satCreateCollision(const ColliderPair &pair)
-{
-    const Collider *referenceCollider = pair.getObjectA();
-    const Collider *incidentCollider = pair.getObjectB();
-    if (referenceCollider->getColliderType() == ColliderType::CircleCollider &&
-        incidentCollider->getColliderType() == ColliderType::CircleCollider)
-    {
-        circleCircleCollision(pair);
-        return;
-    }
-    if (referenceCollider->getColliderType() == ColliderType::CircleCollider ||
-        incidentCollider->getColliderType() == ColliderType::CircleCollider)
-    {
-        circleBoxCollision(pair);
-        return;
-    }
-
-    float minOverlap = std::numeric_limits<float>::max();
-    Eigen::Vector2f minNormal;
-    const Collider *realIncidentCollider = incidentCollider;
-
-    std::span<const Eigen::Vector2f> normals = static_cast<const BoxCollider *>(referenceCollider)->getAxes();
-    if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, realIncidentCollider) ==
-        false)
-    {
-        pair.clearCollisionNoEvent();
-        return;
-    }
-
-    normals = static_cast<const BoxCollider *>(incidentCollider)->getAxes();
-
-    if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, realIncidentCollider) ==
-        false)
-    {
-        pair.clearCollisionNoEvent();
-        return;
-    }
-
-    Collision *collision = pair.getOrCreateCollisionNoEvent();
-
-    collision->clearSupportState();
-
-    collision->setIncidentObject(realIncidentCollider);
-    collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
-
-    // Ensure the normal points from reference toward incident
-    Eigen::Vector2f directionVector = collision->getIncidentObject()->getCachedWorldPosition() -
-                                      collision->getReferenceObject()->getCachedWorldPosition();
-    if (minNormal.dot(directionVector) < 0)
-    {
-        minNormal = -minNormal;
-    }
-
-    // Store the corrected normal
-    collision->setNormal(minNormal);
-
-    calculateContactPoint(collision);
-    // Float SAT can round a sub-ulp separating gap to overlap. Clipping must
-    // produce an actual manifold before this pair contributes events or support.
-    if (!collision->getContactPoints().count)
-    {
-        pair.clearCollisionNoEvent();
-        return;
-    }
-    collision->updateSupportState(gravityVectorNormalized);
-}
-
-void PhysicsManager::calculateContactPoint(Collision *collision)
-{
-    const Collider *referenceCollider = collision->getReferenceObject();
-    const Collider *incidentCollider = collision->getIncidentObject();
-    const Eigen::Vector2f &normal = collision->getNormal();
-
-    const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
-    const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
-
-    ColliderType referenceType = referenceCollider->getColliderType();
-    ColliderType incidentType = incidentCollider->getColliderType();
-
-    if (incidentType == ColliderType::CircleCollider)
-    {
-        ClipPoints cp;
-        cp.add(incidentEdge.max,
-               makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
-        collision->setContactPoints(cp);
-        float max = normal.dot(referenceEdge.max);
-        float separation = normal.dot(incidentEdge.max) - max;
-        collision->getContactPoints().points[0].separation = separation;
-        return;
-    }
-    else if (referenceType == ColliderType::CircleCollider)
-    {
-        ClipPoints cp;
-        const Eigen::Vector2f circleCenter = referenceCollider->getGameObject()->worldPosition;
-        const Eigen::Vector2f edgeVector = incidentEdge.getEdgeVector();
-        const float edgeLengthSquared = edgeVector.squaredNorm();
-
-        float t = 0.0f;
-        if (edgeLengthSquared > 1e-12f)
-        {
-            t = std::clamp((circleCenter - incidentEdge.v1).dot(edgeVector) / edgeLengthSquared, 0.0f, 1.0f);
-        }
-
-        const Eigen::Vector2f closestPoint = incidentEdge.v1 + t * edgeVector;
-        cp.add(closestPoint, makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
-        collision->setContactPoints(cp);
-
-        const float max = normal.dot(referenceEdge.max);
-        const float separation = normal.dot(closestPoint) - max;
-        collision->getContactPoints().points[0].separation = separation;
-        return;
-    }
-
-    // the edge vector
-    Eigen::Vector2f referenceEdgeVector = referenceEdge.getEdgeVector();
-    referenceEdgeVector.normalize();
-
-    ClipVertex incidentVertices[2];
-
-    incidentVertices[0] = ClipVertex(
-        incidentEdge.v1, makeContactFeature(NO_EDGE, NO_EDGE, getStartVertexAdjacentEdge(incidentEdge.edgeNumber),
-                                            incidentEdge.edgeNumber));
-    incidentVertices[1] = ClipVertex(
-        incidentEdge.v2, makeContactFeature(NO_EDGE, NO_EDGE, getEndVertexAdjacentEdge(incidentEdge.edgeNumber),
-                                            incidentEdge.edgeNumber));
-
-    ClipVertex clippedVertices1[2];
-    ClipVertex clippedVertices2[2];
-
-    double o1 = referenceEdgeVector.dot(referenceEdge.v1);
-    int clippedCount = clipSegmentToLine(clippedVertices1, incidentVertices, referenceEdgeVector, o1,
-                                         getStartVertexAdjacentEdge(referenceEdge.edgeNumber));
-    if (clippedCount < 2)
-    {
-        PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
-        collision->generateFallbackContactPoint();
-        return;
-    }
-
-    // clip whats left of the incident edge by the
-    // second vertex of the reference edge
-    // but we need to clip in the opposite direction
-    // so we flip the direction and offset
-    double o2 = referenceEdgeVector.dot(referenceEdge.v2);
-    clippedCount = clipSegmentToLine(clippedVertices2, clippedVertices1, -referenceEdgeVector, -o2,
-                                     getEndVertexAdjacentEdge(referenceEdge.edgeNumber));
-    if (clippedCount < 2)
-    {
-        PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
-        collision->generateFallbackContactPoint();
-        return;
-    }
-
-    double max = normal.dot(referenceEdge.max);
-
-    ClipPoints cp;
-    for (int i = 0; i < clippedCount; ++i)
-    {
-        float separation = normal.dot(clippedVertices2[i].point) - max;
-        if (separation <= 0.0f)
-        {
-            cp.add(clippedVertices2[i]);
-        }
-    }
-
-    collision->setContactPoints(cp);
-
-    ClipPointsWithData &contactPoints = collision->getContactPoints();
-    for (size_t i = 0; i < contactPoints.count; i++)
-    {
-        float separation = normal.dot(cp.points[i].point) - max;
-        contactPoints.points[i].separation = separation;
+        updateContactGeometry(*pair);
     }
 }
 
@@ -506,8 +254,9 @@ void PhysicsManager::resolveCollisions(double timeDelta)
     float inverseTimeDelta = timeDelta > 0.0 ? static_cast<float>(1.0 / timeDelta) : 0.0f;
     dynamicCollisionScratch.clear();
 
-    for (Collision *collision : activeCollisions)
+    for (auto *pair : solverPairs)
     {
+        auto *collision = pair->getCollision();
         const Collider *referenceCollider = collision->getReferenceObject();
         const Collider *incidentCollider = collision->getIncidentObject();
 
@@ -831,6 +580,11 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
 void PhysicsManager::addPendingPhysicsEvent(const PhysicsEvent &event)
 {
     pendingPhysicsEvents.push_back(event);
+    PLATFORMATOR_WORK_ADD(contactEventRecords, 1);
+    if (event.type == PhysicsEvent::COLLISION_ENTER)
+        PLATFORMATOR_BENCH_ADD_COUNTER(CollisionEnterEventCount, 1);
+    else
+        PLATFORMATOR_BENCH_ADD_COUNTER(CollisionExitEventCount, 1);
 }
 
 const std::vector<PhysicsEvent> &PhysicsManager::getPendingPhysicsEvents() const
@@ -845,6 +599,12 @@ void PhysicsManager::clearPendingPhysicsEvents()
 
 void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
 {
+    const auto key = [](const PhysicsEvent &event) {
+        const int family = event.type == PhysicsEvent::COLLISION_EXIT ? 0 : 1;
+        return std::tuple{family, event.colliderA->getHandle(), event.colliderB->getHandle()};
+    };
+    std::sort(pendingPhysicsEvents.begin(), pendingPhysicsEvents.end(),
+              [&](const auto &a, const auto &b) { return key(a) < key(b); });
     std::exception_ptr error;
     for (const PhysicsEvent &event : pendingPhysicsEvents)
     {
@@ -853,8 +613,6 @@ void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
             {
                 if (event.type == PhysicsEvent::COLLISION_ENTER)
                     receiver->triggerCollisionEnter(event.collision, other, timeDelta);
-                else if (event.type == PhysicsEvent::COLLISION_STAY)
-                    receiver->triggerCollisionStay(event.collision, other, timeDelta);
                 else
                     receiver->triggerCollisionExit(other, timeDelta);
             }

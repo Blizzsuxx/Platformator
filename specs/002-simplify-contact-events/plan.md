@@ -1,186 +1,182 @@
 # Implementation Plan: Simplify Contact Events
 
-**Branch**: `001-cpp-engine-cleanup` | **Date**: 2026-10-25 | **Spec**: [spec.md](spec.md)
+**Branch**: `001-cpp-engine-cleanup` (actual Git branch) | **Date**: 2026-10-25 | **Spec**: [spec.md](spec.md)
 
-**Input**: Feature specification from `specs/002-simplify-contact-events/spec.md`.
-
-**Feature context**: `002-simplify-contact-events`. Setup reports this feature identifier in its `BRANCH` field; the actual Git branch remains `001-cpp-engine-cleanup`. No branch switch is part of this plan.
+**Input**: `specs/002-simplify-contact-events/spec.md`. Setup resolved the workflow identifier `002-simplify-contact-events` from the feature directory; it did not change the actual Git branch. Keep feature selection independent of Git branch naming.
 
 ## Summary
 
-Produce enter/exit events directly from confirmed contact transitions, independently of scripts. Remove Stay callbacks, recurring event traversal, observer membership, and script-to-physics subscription invalidation. Keep callback eligibility checks at delivery and preserve existing mutation/reclamation boundaries.
+Generate Enter and Exit directly from confirmed-contact transitions, including explicit pair removal, and remove Stay callbacks, observer tracking and reporting. Keep physical contact, solver, body and support indexes where they serve distinct consumers. Remove the redundant `activeCollisions` solver projection and unused narrow-phase aggregation declaration. Make geometry one cohesive worker-owned operation and let ScriptComponent own pending behavior initialization while GameManager retains queue scheduling.
 
-Address the user's four concrete concerns through responsibility changes: fold contact/body scheduling members into PhysicsManager; consolidate all narrow-phase shape geometry into an internal module with one pair-local entry point; remove startup's physics side effect and rename it `startPendingBehaviors`. Preserve the body/support indexes with actual solver consumers. Remove the mirrored active-collision list. See [research.md](research.md) for source evidence, alternatives, and decisions.
+The requested smell audit covers all four named areas and follows their dependencies into ColliderPair destruction, Grid pair erasure, public callbacks, debug consumers, benchmark producers/readers and mutation tests. The design removes unnecessary state and misplaced responsibilities without changing collision calculations, sleep algorithms or startup scheduling semantics. [research.md](research.md) records evidence and rejected alternatives; [data-model.md](data-model.md) defines ownership and invariants.
 
 ## Technical Context
 
-**Language/Version**: C++20 runtime; Python 3 standard-library benchmark tooling; CMake presets/Ninja.
+**Language/Version**: C++20 runtime and tests; Python 3 standard-library benchmark tooling, optional matplotlib plotting.
 
-**Primary Dependencies**: Existing vendored SDL 3.4.18, SDL_image 3.4.8, SDL_mixer 3.2.4, SDL_ttf 3.2.2, Eigen 5.0.1, oneTBB 2022.3.0, and nlohmann/json. No dependency changes.
+**Primary Dependencies**: Existing vendored SDL3 family, Eigen 5.0.1, oneTBB 2022.3.0 and nlohmann JSON; CMake/Ninja. No new runtime dependency, scheduler, service or framework.
 
-**Storage**: In-memory collider pairs, borrowed callback data, retained-capacity event/scratch vectors, existing JSON scene files, and benchmark CSV/JSON artifacts. No scene-format migration.
+**Storage**: In-memory candidate pairs, optional confirmed contacts, indexed physical work lists, deferred lifecycle queues and reusable event/scratch vectors; JSON scene serialization unchanged. Benchmark CSV/JSON moves to schema 3.
 
-**Testing**: Existing CTest C++ executables and Python unittest suite; focused internal transition-contract coverage; work probes and allocation counting; ASan/UBSan; serial/multiworker comparisons. TSan is a supplemental check on a supported instrumented host.
+**Testing**: Existing CTest executable suite and Python unittest benchmark suite; focused internal contact-event test; existing cleanup-debug, cleanup-work, cleanup-asan, cleanup-tsan and cleanup-benchmark presets; public-header and package checks.
 
-**Target Platform**: Current Linux/GCC development and validation host. Preserve portable C++/SDL library and runner behavior; no claim of new platform validation.
+**Target Platform**: Existing native desktop library/runner targets; primary validation on Linux/GCC with headless SDL. Do not claim unrun platform or sanitizer validation.
 
-**Project Type**: Embeddable native library with desktop/headless runners and an example game.
+**Project Type**: Native game-engine library with runner/examples and benchmark CLI; Python editor changes only if a direct compatibility consumer is found.
 
-**Performance Goals**: Zero per-contact event work for unchanged contacts, including contacts with eligible scripts; no physics adjacency traversal due solely to script changes; O(E log E) ordering of E queued transitions; O(1) indexed contact/body membership updates; retain warmed-up idle allocation reuse. Validate timing differences on declared workloads, without an arbitrary speedup requirement.
+**Performance Goals**: Eliminate the event-only O(observed contacts) traversal on persistent contacts and all Stay subscription maintenance. Event generation uses existing changed-pair reduction plus actual removal transitions; order only generated events. Preserve warmed idle allocation reuse, affected-body work and existing multicore geometry/cell processing. Establish runtime impact through equivalent baseline measurements, not an invented speedup or latency target.
 
-**Constraints**: Preserve pair-local parallel geometry, serial shared-state reduction, support-loss waking, awake/kinematic/sleep indexes, canonical solver order, single-attempt initialization, callback safety, and all existing public enter/exit arguments. Stay removal is an intentional source/ABI break requiring consumer rebuilds. Benchmark output/readers migrate together to schema v3.
+**Constraints**: Confirmed shape contact differs from broad-phase overlap; preserve witness deduplication, support totals, solver order, sleeping/waking, raw-pointer lifetime boundaries, start-before-dispatch, callback exceptions and safe mutation. Stay removal deliberately breaks source/binary callback compatibility; schema 3 deliberately breaks reporting compatibility. No per-script contact histories, new public event-observation API or recurring replacement for Stay.
 
-**Scale/Scope**: Contact/event producer, geometry organization, body membership integration, startup decoupling, affected public callbacks, tests, current docs, and benchmark tools. Exercise 128 shared supports, long persistent contacts, duplicate cell witnesses, large resting populations, and existing sparse/dense/churn scenarios. Exclude broad-phase algorithm replacement, editor changes, a general event bus, and new ownership frameworks.
+**Scale/Scope**: Small and large populations, stationary/sleeping and moving contacts, script-heavy persistent contacts, insertion/removal churn, migration and multi-cell pairs, uniform/skewed layouts, one and multiple workers. Existing reference populations are broad 100/500/1000, dense broad 50/150/300, narrow 10/100/200 elements, rigid 100/500/1000 bodies and churn 10/100/1000 with 1000 steady bodies. Add a bounded persistent-pair fixture at 10/100/1000 pairs with zero/one/two scripted endpoints. These are validation workloads, not product capacity promises.
 
 ## Constitution Check
 
-*GATE: Reviewed before research and re-evaluated after design.*
+The initial gate passed before selecting the research decisions. Post-design results below assess the design and its required verification; they do not claim implementation or benchmark completion.
 
-| Principle / gate | Pre-research assessment | Post-design result |
+| Principle/gate | Before research | Post-design evidence and implementation obligation |
 | --- | --- | --- |
-| I. Performance and scalability | Existing observer traversal and script invalidation are identifiable hot paths. Retain affected-work indexes until their consumers are traced. | PASS: remove observer work; process only pending geometry, physics adjacency changes, and event batches. Record complexity and validate representative workloads. |
-| II. Simple code and ownership | Audit the three implementation fragments and startup side effects before proposing abstractions. | PASS: one physics owner, one internal geometry function, one event queue; delete obsolete lists and singleton-driven destructor events. |
-| III. Architectural integrity | Preserve candidate/contact distinction and cell-witness consolidation; consult included paper section 3.3. | PASS: Grid, segmented lists, endpoint/checkpoint ordering, and witness reduction are unchanged. Confirmed contacts alone produce gameplay events. |
-| IV. Developer experience | Removing Stay changes the public behavior contract; startup semantics already have explicit documentation. | PASS: preserve enter/exit signatures, document the deliberate enter/exit-only choice, late-attachment exits, and source/ABI migration. |
-| V. Evidence before performance claims | Existing CTest, work probes, and benchmark methodology provide the appropriate evidence. | PASS: separate correctness from timings; version changed output; preserve v2 history and retain comparable raw captures/provenance. No speedup claimed in planning. |
-| VI. Correctness and evolution | Trace pair removal, shared-body support, startup mutation, and queued callback lifetime. | PASS: manager-owned removal transitions, solver-only wake/sleep refresh, preserved startup prefix algorithm, and focused lifecycle/parallel regressions. |
+| I. Performance and scalability | Pass: remove recurring listener-contact work and assess physical indexes. | Pass: changed-pair reduction replaces observer enumeration; retain affected-body/adjacency indexes; remove duplicate solver projection; record allocation and timing comparisons across populations/churn/workers. |
+| II. Multicore design | Pass: preserve oneTBB and establish worker/reduction boundaries. | Pass: independent cell, geometry and body integration stay parallel; queue/list/support mutations stay after joins; shared-body solver and arbitrary callbacks stay sequential. Measure granularity, serial reduction/sort cost, contention/load imbalance and end-to-end scaling. No worker-pool addition. |
+| III. Collision architecture | Pass: inspect existing pair transitions/witnesses and local paper §§3.1–3.3. | Pass: no segmented sweep redesign; preserve ties, chunk/checkpoint and migration invariants. Explicit removal runs after consolidated witness reduction; candidate overlaps never imply confirmed contact. Keep existing broad-phase regressions, including duplicate witnesses. |
+| IV. KISS and responsibility | Pass: investigate each flagged area, retain only justified state. | Pass: remove Stay state and destructor queueing; eliminate `activeCollisions`; consolidate geometry; move per-script startup into its owner. Retain physical indexes and indexed queue semantics with explicit invariants. No generic container/lifecycle framework. |
+| V. Developer experience | Pass: define public compatibility and intentional deviation. | Pass: retain Enter/Exit naming and payloads; remove Stay without shim; update consumers and document migration. Official Unity collision docs confirm Stay exists there; its removal is a deliberate product choice. |
+| VI. Evidence | Pass: require a pre-change baseline and representative workloads. | Pass: common fixture first, baseline before runtime changes, then correctness, separate affected-work/allocation probes and independent Release repetitions. Keep historical captures and timing boundaries intact; label schema/counter semantics. Actual speedup remains unverified until measured. |
+| VII. Correctness/integrity | Pass: inspect teardown, dispatch, startup and response dependencies. | Pass: explicit two-source transition ownership, deterministic Exit-before-Enter batches, safe dispatch-before-free, preserved support and start semantics; focused regressions and sanitizer/worker comparisons are acceptance gates. |
 
-No constitution exceptions are required. All research questions are resolved in [research.md](research.md).
+No constitution exception is required. If implementation reveals a correctness gap, unsupported mutation path or retained known inefficiency, resolve it or document the constitution-required local `EFFICIENCY:` rationale and concrete replacement work; do not silently waive the gate.
 
 ## Project Structure
 
 ### Documentation (this feature)
 
-~~~text
+```text
 specs/002-simplify-contact-events/
 ├── spec.md
 ├── plan.md
 ├── research.md
 ├── data-model.md
 ├── quickstart.md
-├── contracts/
-│   ├── contact-events.md
-│   └── benchmark-schema.md
-└── checklists/
-    └── requirements.md
-~~~
+├── checklists/requirements.md
+└── contracts/
+    ├── contact-events.md
+    └── benchmark-schema.md
+```
 
-`tasks.md` is generated later by `$speckit-tasks`, not during this planning command.
+`tasks.md` is intentionally left to the next `$speckit-tasks` phase.
 
 ### Source Code (repository root)
 
-~~~text
-include/platformator/
-    behavior.h, collider.h, scriptcomponent.h   # Remove Stay declarations.
-    collision.h                               # Remove relocated private geometry helper.
+```text
+include/platformator/{behavior,collider,scriptcomponent}.h
 src/
-    physicsmanager.h/.cpp                      # Physics phases, contacts/support/body indexes, events.
-    collisiongeometry.h/.cpp                  # New internal home for ALL shape geometry.
-    colliderpair.h/.cpp                        # Pair/manifold ownership; no eventful destructor.
-    behavior.cpp, collider.cpp, scriptcomponent.cpp
-    gamemanager.h/.cpp                         # Startup and lifecycle without observer refresh.
-    benchmark.h/.cpp                           # Two event counters, schema v3.
-    physicscontacts.cpp                       # Removed after retaining required member logic.
-    physicsbodyindexes.cpp                    # Removed after retaining required member logic.
-    physicsgeometry.cpp                       # Replaced by complete geometry module.
+├── physicsmanager.{h,cpp}        # phases, transition reduction, solver/dispatch
+├── physicscontacts.cpp          # physical contact/solver/support membership
+├── physicsgeometry.cpp          # all supported shape dispatch/manifold work
+├── physicsbodyindexes.cpp       # body membership, change queue, sleep islands
+├── colliderpair.{h,cpp}          # pair/contact ownership, no event side effects
+├── grid.cpp                     # explicit removePair call before pair erasure
+├── gamemanager.{h,cpp}           # startup scheduling and lifecycle boundaries
+├── scriptcomponent.cpp          # per-script initialization and callback delivery
+├── {behavior,collider}.cpp       # supported Enter/Exit callbacks only
+├── benchmark.{h,cpp}            # schema 3 and generation counters
+└── benchmark_main.cpp           # invariant consumer and common baseline fixture
 tests/
-    contact_transition_contract_test.cpp       # New internal pair-event contract coverage.
-    physics_support_test.cpp, physics_geometry_test.cpp
-    runtime_work_probe.h, runtime_work_test.cpp
-    callback_mutation_test.cpp, scene_transition_stress_test.cpp
-    queued_deletion_safety_test.cpp, regression_tests.cpp
-    collider_pair_cleanup_test.cpp, benchmark_contract_test.cpp
-benchmark/
-    sweep_scaling.py, plot_scaling.py, capture_cleanup.py
-    tests/test_sweep_scaling.py, README.md
-docs/
-    CPP_API_MIGRATION.md, CPP_CLEANUP_WALKTHROUGH.md
-CMakeLists.txt                                 # Register focused test; glob picks up file changes.
-~~~
+├── contact_events_test.cpp      # planned internal transition/recipient contract
+├── callback_mutation_test.cpp
+├── scene_transition_stress_test.cpp
+├── physics_support_test.cpp
+├── physics_geometry_test.cpp
+├── runtime_work_{probe.h,test.cpp}
+├── regression_tests.cpp
+├── queued_deletion_safety_test.cpp
+└── benchmark_contract_test.cpp
+benchmark/{sweep_scaling,plot_scaling,capture_cleanup}.py
+benchmark/tests/test_sweep_scaling.py
+benchmark/README.md
+docs/CPP_CLEANUP_WALKTHROUGH.md
+CMakeLists.txt
+```
 
-**Structure Decision**: Keep mutable phase state with PhysicsManager and remove the two files that merely scatter its implementation. Geometry becomes a complete internal operation over a pair, with no manager access. Retain small concrete membership helpers locally; do not create a generic collection framework. The existing CMake recursive source glob already discovers/removes translation units on reconfiguration.
+**Structure Decision**: Retain the existing library and domain-oriented translation units. Geometry moves into its existing owner file. Startup adds one private method to its existing component owner. CMake discovers engine source files through the existing source setup; add explicit registration for the planned test and adjust affected declarations/includes. Search the runner/examples/editor for actual consumers instead of assuming none. Preserve archived specs, benchmark baselines and historical results.
 
-## Phase 0: Research Decisions
+## Phase 0: Research Outcome
 
-Research is complete. [research.md](research.md) records event origin, destructor removal, required solver/body indexes, geometry extraction, startup invariants, diagnostics versioning, and verification alternatives. No external service or new technology choice is needed.
+Research is complete in [research.md](research.md). The selected design resolves:
 
-## Phase 1: Design
+- Which pair state defines Enter/Exit, and how removal differs from geometry separation.
+- Which contact/body indexes remain necessary, and why `activeCollisions` can be deleted.
+- Why body-driven solver refresh must survive while script subscription work disappears.
+- How geometry consolidation and per-script initialization ownership address the user's four named smells.
+- How event ordering, teardown, metric semantics and public compatibility remain explicit.
 
-### Contact reconciliation and queue ownership
+All technical unknowns have evidence-backed decisions. No clarification is pending.
 
-The worker wrapper saves whether a collision existed, updates pair-local geometry if versions changed, and refreshes pair-local support flags when geometry was updated. After the join, the runtime thread reconciles transitions, support deltas, and contact/solver membership. Unchanged contacts produce no queued event. Response-only synchronization preserves contacts while updating support/solver state.
+## Phase 1: Design and Implementation Sequence
 
-When Grid removes a candidate pair, PhysicsManager records an exit only if that pair still has a confirmed collision, removes indexed memberships, and reduces prior support before Grid erases storage. The pair destructor never queues work. Both-retired endpoints still contribute a generated exit; delivery suppresses their callbacks.
+### 1. Establish common workload and baseline
 
-The manager enqueue function increments transition diagnostics and appends the event. Count at generation exactly once, including cleanup-generated exits; delivery does not modify those counts. Sort queued batches by exit before enter and canonical pair handles at every dispatch boundary, including idle/cleanup. Preserve A-then-B delivery and the existing exception aggregation policy.
+Before runtime edits, add a minimal `persistent_contacts` benchmark fixture and matching sweep options: `--contact-pair-count` in the runner, sweep `--counts`, and `--scripted-endpoints 0|1|2`. Use disjoint persistent static/trigger pairs and a no-op behavior implementing only retained callbacks so the identical fixture compiles before/after Stay removal. Include the existing independent contact/support checks and recorded resolved workload fields. The fixture must actually retain confirmed contacts and produce no recurring movement. Record its source patch/fingerprint with the baseline; do not time an empty-contact scene.
 
-### Required collections and refresh paths
+Capture existing workloads and this fixture using schema-2 producer/readers before changing runtime/event behavior. Keep the source revision, fixture patch, build, worker topology/affinity, seed, timestep, warmup and independent-run files. A historical capture is reference material rather than a substitute for a comparable current baseline.
 
-Keep `contactPairs` as unsorted indexed membership for confirmed contacts and diagnostics. Keep canonically ordered `solverPairs` for response involving a moving/awake eligible body. Remove `activeCollisions` and read the manifold from each solver pair directly. Retain `dynamicCollisionScratch` for the repeated dynamic solver iterations. Prepare canonical solver order after pending body/response changes and before its next solver/debug consumer; do not mutate that membership while iterating it.
+### 2. Make transitions and ownership explicit
 
-Replace `refreshSubscriptions` with a private `refreshSolverPairs(Collider*)`: body wake/sleep/membership changes use the collider's existing adjacency to update solver eligibility. Response synchronization updates support and solver state. Geometry reduction updates contact and solver membership. GameManager and script startup have no subscription or solver refresh calls.
+In the existing serial post-geometry reduction, enqueue Enter/Exit from `resultHadContact` and current contact presence, with no script query. In `removePair`, enqueue Exit before erasure if contact still exists; eliminate pair-destructor event emission and retirement-based generation suppression. Use the manager enqueue operation for both paths. Remove Stay event kind/callbacks, observer vector/index/dirty state, step markers and the persistent event traversal. Remove unused narrow-phase aggregation state after confirming its absence of consumers.
 
-Remove Stay indexes/order flags, enter-step stamps, observer checks, the unused `NarrowPhaseLocalResults`, and source-level remnants of obsolete Stay delivery.
+Keep complete-contact and solver indexes and support delta bookkeeping. Delete `activeCollisions`; resolution and debug access collision through canonical `solverPairs`, retaining dynamic scratch. Narrow `canonicalizePairs` to solver ordering, without rebuilding a second projection. Replace `refreshSubscriptions` with `refreshSolverPairs` for relevant physical state changes; remove all script-only callers and preserve response/support refresh. Test body type changes, sleeping/waking, component replacement, filtering and multi-cell removal before accepting this simplification.
 
-### Geometry and body scheduling
+### 3. Consolidate geometry and startup responsibilities
 
-The internal geometry function accepts a pair with synchronized cached collider geometry. Its shape helpers update/create/clear only the pair's manifold and preserve feature identities/warm-start behavior. All shape selection, SAT, clipping and fallback construction live together. Geometry does not queue events, change body support counts, or obtain the runtime singleton.
+Move shape dispatch, projection testing, box SAT and clipping into `physicsgeometry.cpp`; rename `satCreateCollision` to `updateContactGeometry`. Preserve math, feature IDs, tolerances, warm-start/manifold behavior and version updates exactly. Geometry creates/updates/clears only its own pair contact and never enqueues events.
 
-Keep support flags/reduction, body work-list membership, and sleep-island helpers under PhysicsManager's ownership. Merge their retained definitions into the manager beside force, response, solve, and sleeping phases. Preserve enqueue/drain ordering and O(1) swap-removal repair; the file move is not a sleeping or solver algorithm rewrite.
+Extract the per-script startup loop/prefix transfer/logging into private `ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver&)`. Rename the manager entry point `startPendingScripts`, preserving its dynamic indexed queue drain, cancellation, resolver lifetime and phase timing. Do not move failure handling across the batch or change which attempted behaviors become runnable. Keep body membership and sleep islands in `physicsbodyindexes.cpp`; its physical solver dependency now has a correct name. These bounded refactors must retain the existing mutation/startup and geometry tests before further cleanup.
 
-### Behavior startup
+### 4. Finalize event delivery and reporting contracts
 
-Rename `triggerStartedBehaviors` to `startPendingBehaviors`. Delete only the observer-specific branch and clarify the attempted-prefix variable. Keep nullable cancellation slots, index-based queue iteration, growth during startup, pending/runnable ownership, deferred ordinary-dispatch additions, per-behavior resolve/start exception logging, and promotion of every attempted entry including failed initialization. No change to when pending entries become visible.
+Sort nonempty generated-event batches at dispatch by Exit-first family and canonical complete handles, covering both regular and cleanup drains. Keep endpoint A-before-B delivery, per-endpoint exception aggregation and borrowed-payload lifetime boundaries. Do not add per-script history, duplicate suppression maps or an asynchronous event bus.
 
-### Lifetime and compatibility
+Advance all live benchmark output/readers/fixtures to schema 3; remove Stay metric and increment Enter/Exit at enqueue with frame-scoped accumulation, including cleanup. Preserve other metric definitions, scope boundaries, provenance, capture validation and plot safeguards. Keep old captures untouched and reject incompatible/mixed current input clearly. See [contact-events.md](contracts/contact-events.md) and [benchmark-schema.md](contracts/benchmark-schema.md).
 
-Enter borrows the pair's current `Collision` until delivery; exit has a null collision field. Events borrow endpoints through the existing retirement barrier. Replaced/retired recipients are ineligible immediately; allocations remain readable until all pending callback work is finished. Explicitly verify error cleanup cannot reclaim borrowed storage while records remain pending.
+### 5. Carry verification and migration into tasks
 
-Public enter/exit signatures remain as documented in [the contact contract](contracts/contact-events.md). Stay declarations/definitions disappear across Behavior, Collider and ScriptComponent. Existing binaries must be rebuilt. Current examples use enter callbacks already; rebuild them and change only affected consumers. Migrate current explanatory docs while preserving clearly historical evidence.
+Add internal contact-event coverage that observes generated records before delivery, independently of callbacks. Cover zero/one/two eligible endpoints, 100 quiet updates, late attachment/no replay, re-contact, rejected candidates, both endpoint removals, filter/deactivation, callback exceptions/mutation, scene replacement and multi-cell witnesses. Assert actual ordered traces across one and several workers. A newly eligible script may receive Exit without Enter; this must be an explicit regression.
 
-### Diagnostic contract
+Adapt Stay-specific tests without deleting their unrelated lifetime/physics coverage. Extend work probes to count transition comparisons and appended records; quiet observed and unobserved contacts must both show zero after warmup. Keep zero-allocation warmed idle validation. Cover moving persistent contacts too: changed-pair geometry/reduction may run, but no separate unchanged-contact event traversal may remain. Preserve detailed startup queue/failure tests and support/sleep/wake/oracle tests. Verify schema inventory and cleanup/out-of-frame event counting with the recorder.
 
-New benchmark artifacts use version 3, eight unchanged scopes, and eleven counters; Stay is absent. Update writer, parsers, aggregates, plotting, fixtures, console strings, current docs, and the capture helper integration together. [The diagnostic contract](contracts/benchmark-schema.md) defines generation counts, recording boundaries, and historical separation.
+Build public headers and independent package consumers after the callback contract break; update examples/current docs and explain consumer rebuilds. Search all current source/tooling for Stay-specific symbols/columns, distinguishing historical files and ordinary uses of the English word “stay.”
 
-### Complexity and retained state
+## Hot Paths, Complexity and Parallel Strategy
 
-| Operation | Intended cost / invariant |
+Let P be pending evaluated pairs, E generated events in a dispatch batch, S solver contacts, C confirmed contacts, D affected collider adjacency and B affected bodies.
+
+| Work | Chosen strategy and cost |
 | --- | --- |
-| Unchanged contacts, no body/response changes | Zero contact-event traversal or event allocation, regardless of script presence. |
-| Affected narrow-phase pairs P | O(P) transition/support/membership reduction after existing geometry work. |
-| E queued transitions | O(E) enqueue/delivery and O(E log E) deterministic batch ordering. |
-| Script-only changes | No contact adjacency walk or physics-list invalidation. |
-| Changed body/collider response | O(degree of affected collider) solver/support refresh; coalesced body queue. |
-| Contact/body membership insertion/removal | O(1), including moved element's index repair. |
-| Changed solver membership S | Existing O(S log S) canonicalization only when dirty; no mirrored collision vector. |
-| Retained memory | O(contacts + solver pairs + affected bodies + peak transition batch); observer set and stamps removed. |
+| Cell updates / pair witnesses | Keep existing oneTBB cell processing and task-local results; serial consolidated witness changes after joins. No sweep-and-prune algorithm change. |
+| Pair geometry | Existing thresholded oneTBB over P, pair-local mutable results and immutable published geometry. No shared event appends or support/list mutations in workers. |
+| Transition/support reduction | Existing serial O(P) pass plus O(removed confirmed pairs) explicit removal work; no O(C) or O(observed C) event-only scan. |
+| Event order/delivery | O(E log E) ordering, then recipient/behavior delivery; no work over persistent contacts when E=0. Callbacks remain serial because arbitrary game state/lifetimes are shared. |
+| Solver membership | O(1) indexed updates and O(D) affected adjacency refresh. Canonical O(S log S) sorting only on membership change; remove the projection rebuild. |
+| Solving and body integration | Preserve serial shared-body solver, dynamic iterative scratch and parallel independent force/movement work. Do not assume adjacent contacts are independent. |
+| Support/body reconciliation | Preserve deduplicated deltas/change queues and O(B) affected body membership work; keep physical adjacency updates independent of scripts. |
+| Startup | O(queued scripts + attempted behaviors) using existing vector capacity and tombstones; no contact-adjacency traversal caused by script startup. |
 
-If implementation discovers a retained inefficiency, evaluate the feasible simpler/faster design first. Any unavoidable retention requires the constitution's local `EFFICIENCY:` explanation with replacement prerequisites; a comment does not excuse an available fix.
+Removing the solver projection adds a pair-to-contact dereference for required solver/debug visits while removing a vector and its rebuild. Measure that tradeoff, event sorting under churn, allocator reuse, serial reductions, task granularity, load balance and worker scaling. Retain existing thresholds unless measurements justify a change. No new lock contention or task scheduling is introduced for events/startup; false-sharing and bandwidth effects remain part of representative profiling if results warrant it.
 
-### Risks and tradeoffs
+## Validation and Acceptance
 
-- Scriptless contacts now generate required transitions that the old observer path omitted. Initial-contact and churn work may increase even as recurring Stay work disappears; preserve peak queue capacity and report workload/event-count differences with timings.
-- Public Stay overrides and existing binaries require migration/rebuilds. Schema v2 readers also require the coordinated v3 migration; archived data remains valid under its original contract.
-- Geometry relocation and removal of the mirrored solver vector can expose ordering or private-access assumptions. Preserve shape math and prepare canonical solver membership before each consumer; use existing geometry/support/sleep assertions as gates.
-- Borrowed event data depends on the dispatch/reclamation barrier. Cover exceptional cleanup and callback-driven retirement explicitly before accepting destructor-side-effect removal.
+[quickstart.md](quickstart.md) is the runnable validation guide. Runtime correctness and timing checks are planned work, not results from this planning command.
 
-## Implementation Sequence for Task Generation
+| Requirement coverage | Evidence to retain during implementation |
+| --- | --- |
+| FR-001–FR-004 / SC-001–SC-002 | Internal generated-event traces and shape/witness/re-contact cases; quiet 100-update history. |
+| FR-005–FR-006 / SC-003 | Recipient matrix, mid-contact script changes, independent endpoint delivery and no replay. |
+| FR-007–FR-008 / SC-004, SC-006 | Current symbol/metric audit, affected-work counters, idle allocations, equivalent persistent-contact timing fixture. |
+| FR-009–FR-010 / SC-005 | Support/sleep/geometry regressions, startup mutation/failure tests, teardown/scene integration, ordered serial/parallel traces, ASan/UBSan and TSan where runnable. |
+| FR-011 | Schema-3 C++/Python contract results including cleanup generation, no-script counts, out-of-frame behavior and historical-version rejection. |
 
-1. Capture the source baseline and focused correctness/work evidence. Protect current startup and physical invariants; identify all Stay consumers and v2 writers/readers.
-2. Consolidate geometry behind the pair-local internal boundary; fold retained scheduling helpers into the manager. Keep physical results unchanged while changing ownership and file organization.
-3. Implement transition-driven enqueue, explicit removal exits, solver-only body refresh, deterministic batches, and removal of observer/mirror/stamp state. Remove GameManager subscription calls and simplify startup without changing its algorithm.
-4. Remove Stay from public/internal callback surfaces and migrate affected tests/consumers. Add pair-event generation coverage independent of callback counts.
-5. Migrate benchmark writer/readers/docs to v3; prove cleanup exits and zero-recipient transitions are counted.
-6. Run focused/full correctness, work/allocation, consumer, and sanitizer checks, then comparable Release measurements. Record actual evidence and limitations.
+Performance acceptance requires correctness first, independent repetitions (at least five for reported timing aggregates), complete-step and relevant nested-scope means/tails, retained raw samples/provenance, allocation/retained-storage observations, and investigated regressions. Include observer-heavy and observer-free persistent scenes, dynamic scenes, churn, skewed/multi-cell layouts and worker sweeps. Do not infer total time by summing scopes, mix instrumented validation into timings, relabel old event counts, or assert speedup without comparable measurements.
 
-These are planning packages for the next command, not a generated task checklist or completed implementation.
+## Post-Design Gate Result
 
-## Validation and Readiness
-
-[quickstart.md](quickstart.md) provides commands and expected outcomes. Acceptance requires all FR-001 through FR-012 and SC-001 through SC-005, including script-independent transition traces, zero recurring notifications for 100 persistent steps, retained startup mutation behavior, exact support counts, and serial/parallel equivalence.
-
-Post-design constitution review passes all six gates. Deliverables are this plan, research, data model, two contracts, and the validation guide. Runtime implementation, task generation, benchmark captures, and behavioral test execution are not claimed as completed by this planning phase.
-
-## Complexity Tracking
-
-No constitution violations or exceptions. Existing solver/body indexes and support reductions are retained for named consumers and scaling invariants; no new subsystem or ownership layer is proposed.
+All seven constitution gates pass for this design; no unresolved clarification or justified exception remains. Phase 1 outputs are complete. Next phase is `$speckit-tasks`; implementation and measured validation remain outstanding.

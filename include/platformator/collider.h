@@ -135,7 +135,6 @@ class Collider : public Component
 
     void triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const;
     void triggerCollisionExit(Collider *other, double timeDelta) const;
-    void triggerCollisionStay(const Collision *collision, Collider *other, double timeDelta) const;
 
     BoundingRadiusProjectionAxis *getXProjections();
     BoundingRadiusProjectionAxis *getYProjections();

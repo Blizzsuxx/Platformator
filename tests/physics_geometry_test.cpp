@@ -48,6 +48,17 @@ void circleBox(Eigen::Vector2f center, bool expected, float rotation = 0,
     require((contacts == 1) == expected, "Circle/box closest-point oracle disagrees at " + std::to_string(center.x()) +
                                              "," + std::to_string(center.y()));
 }
+void circleCircle(Eigen::Vector2f offset, bool expected)
+{
+    int contacts = 0;
+    platformator::Runtime runtime(physicsOnly());
+    auto *a = runtime.createGameObject()->addComponent<CircleCollider>(2)->addComponent<ScriptComponent>();
+    runtime.createGameObject()->setPosition(offset)->addComponent<CircleCollider>(2);
+    a->getComponent<ScriptComponent>()->addBehavior(new Contact(contacts));
+    runtime.simulateFrame(dt);
+    require((contacts == 1) == expected,
+            "Circle distance oracle must distinguish AABB candidates from confirmed contact");
+}
 void roundedBoxGap()
 {
     // In double precision these OBBs have a 3e-5 separating gap. Float SAT
@@ -111,6 +122,10 @@ int main()
         circleBox({10.5f, 0}, true);
         circleBox({0, 14}, true, 0.7853981634f);
         circleBox({-100, 0}, true, 0, {110, 0});
+        circleCircle({3, 3}, false);
+        circleCircle({2, 2}, true);
+        circleCircle({4, 0}, true);
+        circleCircle({0, 0}, true);
         roundedBoxGap();
         parameters();
         std::cout << "[PASS] geometry and numeric boundaries\n";

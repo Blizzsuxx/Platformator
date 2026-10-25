@@ -41,6 +41,7 @@ class ScriptComponent : public Component
     bool canDispatch() const;
 
   private:
+    void startPendingBehaviors(platformator::ReferenceResolver &resolver);
     std::vector<Behavior *> behaviors;
     std::vector<Behavior *> pendingBehaviors;
     size_t pendingStartIndex = SIZE_MAX; // Global script startup queue.
@@ -49,7 +50,6 @@ class ScriptComponent : public Component
 
     void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
     void dispatchCollisionExit(Collider *other, double timeDelta);
-    void dispatchCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 };
 
 template <> struct ComponentTypeFor<ScriptComponent>

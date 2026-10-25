@@ -1,0 +1,1 @@
+Original HEAD physicsmanager projection/SAT/clipping function tokens match relocated physicsgeometry code after normalizing whitespace and the satCreateCollision -> updateContactGeometry rename. No mathematical changes. Circle routines retain their original bodies.

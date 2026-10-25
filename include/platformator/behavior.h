@@ -38,7 +38,6 @@ class Behavior
     virtual void onDestroy();
     virtual void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
     virtual void onCollisionExit(Collider *other, double timeDelta);
-    virtual void onCollisionStay(const Collision *collision, Collider *other, double timeDelta);
 
     virtual std::string getTypeName() const = 0;
     virtual void serialize(nlohmann::json &j) const = 0;

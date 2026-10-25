@@ -228,7 +228,7 @@ class DestroyTargetsBehavior : public TestBehavior
 class CollisionCounterBehavior : public TestBehavior
 {
   public:
-    CollisionCounterBehavior() : enterCount(0), exitCount(0), stayCount(0)
+    CollisionCounterBehavior() : enterCount(0), exitCount(0)
     {
     }
 
@@ -242,14 +242,8 @@ class CollisionCounterBehavior : public TestBehavior
         exitCount++;
     }
 
-    void onCollisionStay(const Collision *, Collider *, double) override
-    {
-        stayCount++;
-    }
-
     size_t enterCount;
     size_t exitCount;
-    size_t stayCount;
 };
 
 void testQueuedAddDeletion()

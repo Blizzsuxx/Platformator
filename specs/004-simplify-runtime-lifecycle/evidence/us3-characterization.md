@@ -1,0 +1,5 @@
+# US3 characterization
+
+Extended runtime foundation/recreation hosts pass against frozen-engine archives and the pre-US3 candidate. Privileged access without a runtime throws the established logic_error; runtime/manager access remains valid inside onDestroy during explicit shutdown; access is empty afterwards. Recreated runtimes publish distinct registry serials and bind current access to the new owner. Existing foundation identity tests already cover bound-reference non-revival, so no duplicate identity implementation test was added.
+
+Existing scene transition contract/stress, object reference, destruction and runner startup failure cases pass, preserving last-wins request selection, preparation failure, next-step starts and failure publication. Logs: bin/runtime-cleanup-validation/logs/us3-baseline-tests-v2.txt and us3-characterization-tests-v2.txt. Constructor/destructor source audit confirms required callbacks run before manager reset; no physics/window destructor uses RuntimeAccess afterwards. The first test-edit attempt was corrected before acceptance; v2 logs identify the added coverage.

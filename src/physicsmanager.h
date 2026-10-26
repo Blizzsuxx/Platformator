@@ -1,13 +1,13 @@
 #pragma once
 
-#include "platformator/rigidbody.h"
-#include "platformator/collider.h"
 #include "collision.h"
+#include "grid.h"
+#include "helpers.h"
+#include "platformator/collider.h"
+#include "platformator/rigidbody.h"
 #include <algorithm>
 #include <oneapi/tbb/enumerable_thread_specific.h>
 #include <vector>
-#include "helpers.h"
-#include "grid.h"
 
 class GameManager;
 
@@ -42,6 +42,7 @@ class PhysicsManager
     void resolveCollisions(double timeDelta);
     const Grid &getGrid() const;
     const std::vector<Collider *> &getColliders() const;
+
     const std::vector<const ColliderPair *> &getContactPairs() const
     {
         return contactPairs;
@@ -82,6 +83,7 @@ class PhysicsManager
     void cancelBodyParticipationChange(Rigidbody *body);
     void reconcileBodyParticipation(Rigidbody *body);
     void reconcileChangedBodies();
+
     static void resetSleepIsland(Rigidbody *body)
     {
         // Step-local aggregation: the solver merges these roots before the sleep decision.
@@ -90,7 +92,8 @@ class PhysicsManager
         body->islandQuiet = true;
         body->islandTimer = body->getSleepTimer();
     }
-    Rigidbody *sleepRoot(Rigidbody *body);
+
+    Rigidbody *findSleepRoot(Rigidbody *body);
     void mergeSleepIslands(Rigidbody *a, Rigidbody *b);
 #if PLATFORMATOR_ENABLE_BENCHMARKS
     size_t countAwakeDynamicBodies() const;
@@ -101,7 +104,8 @@ class PhysicsManager
     void resolveKinematicCollision(const Collision *collision);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
-    PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair, Collision *collision);
+    PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair,
+                                  Collision *collision);
 
     std::vector<Rigidbody *> registeredBodies;
     std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
@@ -112,11 +116,13 @@ class PhysicsManager
     std::vector<const ColliderPair *> solverPairs;
     std::vector<Rigidbody *> supportDeltaBodies;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
+
     struct MovedObject
     {
         GameObject *object;
         bool translated;
     };
+
     tbb::enumerable_thread_specific<std::vector<MovedObject>> movedObjects;
     Grid grid;
 

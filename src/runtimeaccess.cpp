@@ -1,5 +1,7 @@
 #include "runtimeaccess.h"
 
+#include <stdexcept>
+
 #include "gamemanager.h"
 #include "platformator/runtime.h"
 #include "sdlwindow.h"
@@ -10,6 +12,7 @@ PathManager &RuntimeAccess::pathManager()
 {
     return *runtime().paths;
 }
+
 platformator::Runtime &RuntimeAccess::runtime()
 {
     return platformator::Runtime::current();
@@ -17,13 +20,13 @@ platformator::Runtime &RuntimeAccess::runtime()
 
 GameManager &RuntimeAccess::gameManager()
 {
-    if (platformator::Runtime *activeRuntime = platformator::Runtime::tryGetCurrent();
-        activeRuntime != nullptr && activeRuntime->gameManager != nullptr)
+    auto *active = platformator::Runtime::tryGetCurrent();
+    if (active == nullptr || active->gameManager == nullptr)
     {
-        return activeRuntime->getGameManager();
+        throw std::logic_error("Platformator runtime is not active.");
     }
 
-    return GameManager::getInstance();
+    return active->getGameManager();
 }
 
 PhysicsManager *RuntimeAccess::physicsManager()

@@ -1,23 +1,24 @@
 #pragma once
 
-#include "platformator/debugsettings.h"
-#include "sdlwindow.h"
 #include "physicsmanager.h"
+#include "platformator/debugsettings.h"
 #include "platformator/windowsettings.h"
+#include "sdlwindow.h"
 
+#include "objectregistry.h"
 #include <cstdint>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
-#include <thread>
-#include <exception>
-#include <optional>
-#include <memory>
-#include "objectregistry.h"
 
 #include "platformator/animationclip.h"
-#include "platformator/scene.h"
 #include "platformator/audiowrapper.h"
+#include "platformator/scene.h"
 #include "platformator/texturewrapper.h"
 
 class Animator;
@@ -67,6 +68,7 @@ class GameManager
         Saving,
         Shutdown
     };
+
     class PhaseGuard
     {
       public:
@@ -74,6 +76,7 @@ class GameManager
         {
             manager.phase = next;
         }
+
         ~PhaseGuard()
         {
             manager.phase = previous;
@@ -83,18 +86,20 @@ class GameManager
         GameManager &manager;
         Phase previous;
     };
+
     void assertCanMutate() const;
     void commitMutations();
     void flushIfIdle();
     void shutdown();
     void clearObjects();
     void requestScene(std::optional<std::string> path);
+
     bool isIdle() const
     {
         return phase == Phase::Idle;
     }
+
     BaseObject *resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const;
-    static GameManager &getInstance();
 
     GameManager(GameManager &) = delete;
     GameManager &operator=(const GameManager &) = delete;
@@ -131,22 +136,19 @@ class GameManager
     const Eigen::Vector2f &getGravityVectorNormalized() const;
 
   private:
-    static void setCurrentInstance(GameManager *gameManager);
-    static GameManager *tryGetCurrentInstance();
-    static GameManager *&currentInstance();
-
     Phase phase = Phase::Idle;
     std::thread::id mainThread = std::this_thread::get_id();
     platformator_detail::ObjectRegistry registry;
     bool shutdownComplete = false;
     bool shuttingDown = false;
+
     struct SceneRequest
     {
+        // A null path requests clearing; no pending request means no scene work.
         std::optional<std::string> path;
-        uint64_t sequence;
     };
+
     std::optional<SceneRequest> pendingSceneRequest;
-    uint64_t sceneRequestSequence = 0;
     bool preparingScene = false;
     int64_t nextFileId = 0;
     void assignFileId(BaseObject &object);
@@ -190,7 +192,6 @@ class GameManager
 
     GameObject *addGameObject(GameObject *gameObject);
     void removeGameObject(GameObject *gameObject);
-    bool removeGameObject(std::string name);
 
     void notifyPhysicsManagerOfComponentAdded(Component *component);
     void notifyWindowOfComponentAdded(Component *component);
@@ -202,7 +203,6 @@ class GameManager
     void notifyRuntimeOfComponentRemoved(Component *component);
     void notifyComponentAdded(Component *component);
     void notifyComponentRemoved(Component *component);
-    void deleteMarkedGameObjects();
 
     PhysicsManager *getPhysicsManager() const;
     void fixedUpdateScriptComponents(double timeDelta);
@@ -213,8 +213,10 @@ class GameManager
 
     void queueScriptStart(ScriptComponent *script);
     void cancelScriptStart(ScriptComponent *script);
-    std::vector<GameObject *> &getGameObjects();
+    const std::vector<GameObject *> &getGameObjects() const;
     void simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
-    void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
-    bool simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
+    void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback,
+                                             double timeDelta);
+    bool simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback,
+                                                  double timeDelta);
 };

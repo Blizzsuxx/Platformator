@@ -5,13 +5,13 @@
 
 #include "constants.h"
 #include "gamemanager.h"
+#include "pathmanager.h"
 #include "platformator/scene.h"
 #include "sdlwindow.h"
-#include "pathmanager.h"
 
 namespace platformator
 {
-Runtime::Runtime(const RuntimeOptions &runtimeOptions) : gameManager(), currentSceneFilePath()
+Runtime::Runtime(const RuntimeOptions &runtimeOptions)
 {
     if (activeRuntime() != nullptr)
     {
@@ -20,7 +20,6 @@ Runtime::Runtime(const RuntimeOptions &runtimeOptions) : gameManager(), currentS
     paths = std::make_unique<PathManager>(runtimeOptions.assetRoot);
     smokeStepLimit = runtimeOptions.smokeSteps;
     gameManager = std::make_unique<GameManager>(runtimeOptions.windowSettings, runtimeOptions.debugSettings);
-    GameManager::setCurrentInstance(gameManager.get());
     activeRuntime() = this;
 }
 
@@ -28,9 +27,9 @@ Runtime::~Runtime()
 {
     if (activeRuntime() == this)
     {
+        // Shutdown callbacks and resource release still have access to the live owner.
         gameManager->shutdown();
         gameManager.reset();
-        GameManager::setCurrentInstance(nullptr);
         activeRuntime() = nullptr;
     }
 }
@@ -75,6 +74,7 @@ void Runtime::requestClearScene()
 {
     gameManager->requestScene(std::nullopt);
 }
+
 void Runtime::requestLoadScene(const std::string &path)
 {
     gameManager->requestScene(path);
@@ -165,9 +165,13 @@ void Runtime::run()
         for (uint64_t step = 0; step < smokeStepLimit; ++step)
         {
             if (gameManager->getWindow()->isHeadless())
+            {
                 simulateFrame(FIXED_TIME_STEP);
+            }
             else if (!simulateAndRenderFrame(FIXED_TIME_STEP))
+            {
                 break;
+            }
         }
         return;
     }
@@ -179,7 +183,8 @@ void Runtime::simulateFrame(double timeDelta)
     gameManager->simulateFrame(timeDelta);
 }
 
-void Runtime::simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback)
+void Runtime::simulateFrameWithCustomCallback(double timeDelta,
+                                              const std::function<void(double)> &preRenderCallback)
 {
     gameManager->simulateFrameWithCustomCallback(preRenderCallback, timeDelta);
 }

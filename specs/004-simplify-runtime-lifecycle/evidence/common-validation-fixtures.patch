@@ -1,0 +1,433 @@
+diff --git a/benchmark/runtime_cleanup_probe.cpp b/benchmark/runtime_cleanup_probe.cpp
+new file mode 100644
+index 0000000..8c9fbbd
+--- /dev/null
++++ b/benchmark/runtime_cleanup_probe.cpp
+@@ -0,0 +1,427 @@
++#include "benchmark.h"
++#include "physicsmanager.h"
++#include "runtimeaccess.h"
++#include "test_support.h"
++
++#include <algorithm>
++#include <cmath>
++#include <filesystem>
++#include <iostream>
++#include <numeric>
++#include <oneapi/tbb/global_control.h>
++#include <platformator/boxcollider.h>
++#include <platformator/camera.h>
++#include <platformator/objectreference.h>
++#include <platformator/rigidbody.h>
++#include <platformator/scriptcomponent.h>
++#include <unordered_map>
++
++namespace
++{
++using test_support::require;
++constexpr double dt = test_support::dt;
++
++struct Options
++{
++    std::string workload;
++    size_t count = 100;
++    size_t workers = 1;
++    size_t warmup = 120;
++    size_t steps = 600;
++    size_t seed = 0;
++    std::filesystem::path output;
++    bool validate = false;
++};
++
++Options parse(int argc, char **argv)
++{
++    Options options;
++    for (int i = 1; i < argc; ++i)
++    {
++        const std::string argument = argv[i];
++        if (argument == "--validate-invariants")
++        {
++            options.validate = true;
++            continue;
++        }
++        require(i + 1 < argc, "Missing option value");
++        const std::string value = argv[++i];
++        if (argument == "--workload")
++        {
++            options.workload = value;
++        }
++        else if (argument == "--csv-output")
++        {
++            options.output = std::filesystem::absolute(value);
++        }
++        else
++        {
++            require(!value.empty() && value.find_first_not_of("0123456789") == std::string::npos,
++                    "Numeric options must be nonnegative integers");
++            const auto number = std::stoull(value);
++            if (argument == "--count")
++            {
++                options.count = number;
++            }
++            else if (argument == "--workers")
++            {
++                options.workers = number;
++            }
++            else if (argument == "--warmup-frames")
++            {
++                options.warmup = number;
++            }
++            else if (argument == "--measure-frames")
++            {
++                options.steps = number;
++            }
++            else if (argument == "--seed")
++            {
++                options.seed = number;
++            }
++            else
++            {
++                throw std::invalid_argument("Unknown option: " + argument);
++            }
++        }
++    }
++
++    const std::vector<std::string> workloads = {"quiet",     "mixed",     "wake_burst",
++                                                "connected", "hierarchy", "lifecycle"};
++    require(std::find(workloads.begin(), workloads.end(), options.workload) != workloads.end(),
++            "Unknown workload");
++    require(options.count >= 10 && options.workers && options.steps && !options.output.empty(),
++            "Invalid probe options");
++    for (const auto *suffix : {".csv", ".samples.csv", ".manifest.json"})
++    {
++        auto destination = options.output;
++        destination.replace_extension(suffix);
++        require(!std::filesystem::exists(destination), "Capture already exists: " + destination.string());
++    }
++    return options;
++}
++
++struct DestructionCounter : test_support::Behavior
++{
++    explicit DestructionCounter(size_t &count) : count(count)
++    {
++    }
++
++    void onDestroy() override
++    {
++        ++count;
++    }
++
++    size_t &count;
++};
++
++class Fixture
++{
++  public:
++    Fixture(platformator::Runtime &runtime, const Options &options, size_t &destroyed)
++        : runtime(runtime), options(options), destroyed(destroyed)
++    {
++        for (size_t i = 0; i < options.count; ++i)
++        {
++            auto *object = runtime.createGameObject();
++            if (options.workload == "hierarchy")
++            {
++                object->setPosition({float(i * 40), 0});
++                if (i)
++                {
++                    objects.front()->addChild(object);
++                    object->addComponent<BoxCollider>(4, 4);
++                }
++            }
++            else
++            {
++                const float spacing = options.workload == "connected" ? 0.99f : 80.f;
++                object->setPosition({float(i) * spacing, 0});
++                const float size = options.workload == "connected" ? 1.f : 20.f;
++                object->addComponent<BoxCollider>(size, size);
++                const bool stationary = options.workload == "quiet" && i < options.count / 2;
++                object->addComponent<Rigidbody>(stationary ? STATIC : DYNAMIC, false);
++                auto *body = object->getComponent<Rigidbody>();
++                if (options.workload == "connected")
++                {
++                    // Awake candidates first establish a real connected contact graph.
++                }
++                else if (options.workload == "mixed" && i < options.count / 10)
++                {
++                    body->setVelocity({6, 0});
++                }
++                else if (!stationary)
++                {
++                    body->setIsSleeping(true);
++                }
++            }
++            objects.push_back(object);
++        }
++
++        if (options.workload == "lifecycle")
++        {
++            scene = options.output.parent_path() / (options.output.stem().string() + ".scene");
++            objects.back()->addComponent<Camera>();
++            runtime.saveScene(scene.string());
++            observeDestruction();
++        }
++    }
++
++    ~Fixture()
++    {
++        if (!scene.empty())
++        {
++            std::error_code error;
++            std::filesystem::remove(scene, error);
++        }
++    }
++
++    void step(size_t index)
++    {
++        lastStep = index;
++        stepped = true;
++        const bool replacement = options.workload == "lifecycle" && index % 120 == 119;
++        const auto retired =
++            replacement ? ObjectReference<GameObject>(objects.front()) : ObjectReference<GameObject>();
++        const size_t previousDestroyed = destroyed;
++        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
++            if (options.workload == "wake_burst")
++            {
++                if (index % 60 == 0)
++                {
++                    for (size_t i = 0; i < options.count / 10; ++i)
++                    {
++                        auto *body = objects[i]->getComponent<Rigidbody>();
++                        if (index % 120 == 0)
++                        {
++                            body->setVelocity({6, 0});
++                        }
++                        else
++                        {
++                            body->setIsSleeping(true);
++                        }
++                    }
++                }
++            }
++            else if (options.workload == "connected" && index % 60 == 0)
++            {
++                const Eigen::Vector2f velocity(index % 120 == 0 ? 0.f : 6.f, 0);
++                for (auto *object : objects)
++                {
++                    object->getComponent<Rigidbody>()->setVelocity(velocity);
++                }
++            }
++            else if (options.workload == "hierarchy")
++            {
++                objects.front()->setPosition({float(index % 2), 0});
++                objects.front()->setPosition({float(index % 2) + 0.25f, 0});
++                objects.back()->setPosition(objects.back()->getPosition() + Eigen::Vector2f(0.01f, 0));
++            }
++            else if (options.workload == "lifecycle")
++            {
++                if (replacement)
++                {
++                    runtime.requestLoadScene(scene.string());
++                }
++                else
++                {
++                    for (size_t i = 0; i < options.count / 10; ++i)
++                    {
++                        const auto position = objects[i]->getPosition();
++                        objects[i]->destroy();
++                        objects[i] = runtime.createGameObject()
++                                         ->setPosition(position)
++                                         ->addComponent<BoxCollider>(20, 20)
++                                         ->addComponent<Rigidbody>(DYNAMIC, false);
++                        attachObserver(objects[i]);
++                    }
++                    auto *object = objects.back();
++                    object->removeComponent(RIGID_BODY);
++                    object->addComponent<Rigidbody>(DYNAMIC, false);
++                }
++            }
++        });
++
++        if (replacement)
++        {
++            require(!retired && destroyed == previousDestroyed + options.count,
++                    "Scene retirement must invalidate references and deliver "
++                    "destruction before returning");
++            objects = runtime.getAllGameObjects();
++            observeDestruction();
++            replacementSteps.push_back(index);
++        }
++    }
++
++    nlohmann::json state() const
++    {
++        require(runtime.getAllGameObjects().size() == options.count, "Wrong fixture population");
++        size_t awake = 0, sleeping = 0;
++        for (const auto *object : runtime.getAllGameObjects())
++        {
++            require(object->getPosition().allFinite() && std::isfinite(object->getRotation()),
++                    "Nonfinite transform");
++            if (const auto *body = object->getComponent<Rigidbody>())
++            {
++                require(body->getVelocity().allFinite() && std::isfinite(body->getAngularVelocity()),
++                        "Nonfinite body");
++                require(body->getSupportContactCount() == 0,
++                        "Horizontal/disjoint fixture must have zero support");
++                sleeping += body->getIsSleeping();
++                awake += body->getBodyType() == DYNAMIC && !body->getIsSleeping();
++            }
++        }
++        if (options.workload == "quiet")
++        {
++            require(awake == 0 && sleeping == options.count - options.count / 2, "Wrong quiet populations");
++        }
++        if (options.workload == "mixed")
++        {
++            require(awake == options.count / 10 && sleeping == options.count - awake,
++                    "Wrong mixed populations");
++        }
++
++        if (options.workload == "wake_burst")
++        {
++            const size_t expectedAwake = stepped && lastStep % 120 < 60 ? options.count / 10 : 0;
++            require(awake == expectedAwake && sleeping == options.count - expectedAwake,
++                    "Wrong wake-burst populations");
++        }
++        if (options.workload == "connected" && stepped)
++        {
++            if (lastStep % 120 >= 60)
++            {
++                require(awake == options.count, "Moving group must stay awake");
++            }
++            else if (lastStep % 120 >= 40)
++            {
++                require(sleeping == options.count, "Quiet connected group must sleep together");
++            }
++        }
++
++        const auto *physics = platformator_detail::RuntimeAccess::physicsManager();
++        const auto &pairs = physics->getContactPairs();
++        if (options.workload == "connected")
++        {
++            std::unordered_map<const GameObject *, size_t> indexes;
++            std::vector<size_t> roots(objects.size());
++            std::iota(roots.begin(), roots.end(), 0);
++            for (size_t i = 0; i < objects.size(); ++i)
++            {
++                indexes.emplace(objects[i], i);
++            }
++            const auto root = [&](size_t i) {
++                while (roots[i] != i)
++                {
++                    i = roots[i];
++                }
++                return i;
++            };
++            for (const auto *pair : pairs)
++            {
++                const auto a = indexes.at(pair->getObjectA()->getGameObject());
++                const auto b = indexes.at(pair->getObjectB()->getGameObject());
++                roots[root(a)] = root(b);
++            }
++            require(pairs.size() == options.count - 1, "Connected chain has " + std::to_string(pairs.size()) +
++                                                           " contacts for " + std::to_string(options.count) +
++                                                           " bodies");
++            for (size_t i = 1; i < roots.size(); ++i)
++            {
++                require(root(i) == root(0), "Disconnected fixture");
++            }
++        }
++        return {{"finite", true},           {"populations_valid", true},
++                {"supports_valid", true},   {"objects", objects.size()},
++                {"awake", awake},           {"sleeping", sleeping},
++                {"contacts", pairs.size()}, {"destroyed", destroyed}};
++    }
++
++    const std::vector<size_t> &replacements() const
++    {
++        return replacementSteps;
++    }
++
++  private:
++    void attachObserver(GameObject *object)
++    {
++        object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
++            new DestructionCounter(destroyed));
++    }
++
++    void observeDestruction()
++    {
++        for (auto *object : objects)
++        {
++            attachObserver(object);
++        }
++    }
++
++    platformator::Runtime &runtime;
++    const Options &options;
++    size_t &destroyed;
++    std::vector<GameObject *> objects;
++    std::filesystem::path scene;
++    std::vector<size_t> replacementSteps;
++    size_t lastStep = 0;
++    bool stepped = false;
++};
++} // namespace
++
++int main(int argc, char **argv)
++{
++    test_support::headlessEnvironment();
++    try
++    {
++        const auto options = parse(argc, argv);
++        std::filesystem::create_directories(options.output.parent_path());
++        tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, options.workers);
++        size_t destroyed = 0;
++        platformator::Runtime runtime(test_support::physicsOnly());
++        Fixture fixture(runtime, options, destroyed);
++        for (size_t i = 0; i < options.warmup; ++i)
++        {
++            fixture.step(i);
++        }
++        const auto initial = fixture.state();
++        auto &recorder = platformator_detail::BenchmarkRecorder::getInstance();
++        recorder.configure(options.steps,
++                           {{"scenario", "runtime_" + options.workload},
++                            {"seed", options.seed},
++                            {"workers", options.workers},
++                            {"dt", dt},
++                            {"warmup_steps", options.warmup},
++                            {"measured_steps", options.steps},
++                            {"repetitions", 1},
++                            {"rendering", false},
++                            {"validation_mode", options.validate ? "per-step" : "boundary-only"},
++                            {"timing_eligible", !options.validate},
++                            {"initial_state", initial},
++                            {"resolved_parameters",
++                             {{"count", options.count},
++                              {"subset", options.count / 10},
++                              {"cycle_steps", 120},
++                              {"seed_layout", "fixed"}}}});
++        for (size_t i = 0; i < options.steps; ++i)
++        {
++            fixture.step(options.warmup + i);
++            if (options.validate)
++            {
++                fixture.state();
++            }
++        }
++        require(recorder.samples().size() == options.steps, "Incomplete capture");
++        recorder.updateMetadata(
++            {{"physical_invariants", fixture.state()}, {"replacement_steps", fixture.replacements()}});
++        recorder.writeOutputs(options.output.string());
++        runtime.clearScene();
++        std::cout << "[PASS] " << options.workload << " n=" << options.count << " workers=" << options.workers
++                  << '\n';
++        return 0;
++    }
++    catch (const std::exception &error)
++    {
++        std::cerr << error.what() << '\n';
++        return 1;
++    }
++}

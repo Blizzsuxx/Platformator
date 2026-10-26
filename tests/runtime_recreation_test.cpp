@@ -13,55 +13,62 @@
 
 namespace
 {
-    void require(bool condition, const std::string &message)
+void require(bool condition, const std::string &message)
+{
+    if (!condition)
     {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
+        throw std::runtime_error(message);
     }
+}
 
-    void configureHeadlessEnvironment()
-    {
-        setenv("SDL_VIDEODRIVER", "dummy", 1);
-        setenv("SDL_AUDIODRIVER", "dummy", 1);
-        setenv("SDL_RENDER_DRIVER", "software", 1);
-    }
+void configureHeadlessEnvironment()
+{
+    setenv("SDL_VIDEODRIVER", "dummy", 1);
+    setenv("SDL_AUDIODRIVER", "dummy", 1);
+    setenv("SDL_RENDER_DRIVER", "software", 1);
+}
 
-    void writeSceneFile(const std::filesystem::path &path, const std::string &name, int objectId)
-    {
-        nlohmann::json gameObject = {
-            {"id", objectId},
-            {"name", name},
-            {"tag", ""},
-            {"rotation", 0.0f},
-            {"active", true},
-            {"position", {{"x", 10.0f}, {"y", 20.0f}}},
-            {"scale", {{"x", 1.0f}, {"y", 1.0f}}},
-            {"components", nlohmann::json::array()},
-            {"children", nlohmann::json::array()},
-        };
+void writeSceneFile(const std::filesystem::path &path, const std::string &name, int objectId)
+{
+    nlohmann::json gameObject = {
+        {"id", objectId},
+        {"name", name},
+        {"tag", ""},
+        {"rotation", 0.0f},
+        {"active", true},
+        {"position", {{"x", 10.0f}, {"y", 20.0f}}},
+        {"scale", {{"x", 1.0f}, {"y", 1.0f}}},
+        {"components", nlohmann::json::array()},
+        {"children", nlohmann::json::array()},
+    };
 
-        std::ofstream file(path);
-        require(file.is_open(), "Runtime recreation test failed to open the temporary scene file.");
-        file << nlohmann::json::array({gameObject}).dump(4);
-    }
+    std::ofstream file(path);
+    require(file.is_open(), "Runtime recreation test failed to open the temporary scene file.");
+    file << nlohmann::json::array({gameObject}).dump(4);
+}
 
-    void runRuntimePass(const std::filesystem::path &scenePath, const std::filesystem::path &savedScenePath, const std::string &name, int objectId)
-    {
-        platformator::Runtime runtime;
-        require(runtime.getWindowHandle() != nullptr, "Runtime recreation test expected a live SDL window handle.");
+uint64_t runRuntimePass(const std::filesystem::path &scenePath, const std::filesystem::path &savedScenePath,
+                        const std::string &name, int objectId)
+{
+    platformator::Runtime runtime;
+    require(&platformator::Runtime::current() == &runtime,
+            "Current access must bind to the newly constructed runtime");
+    require(runtime.getWindowHandle() != nullptr,
+            "Runtime recreation test expected a live SDL window handle.");
 
-        runtime.loadScene(scenePath.string());
+    runtime.loadScene(scenePath.string());
 
-        GameObject *gameObject = runtime.getGameObject(name);
-        require(gameObject != nullptr, "Runtime recreation test failed to load the named GameObject through Runtime.");
-        require(runtime.getObjectById(objectId) != nullptr,
-                "Runtime recreation test failed to resolve the loaded GameObject by id through Runtime.");
+    GameObject *gameObject = runtime.getGameObject(name);
+    require(gameObject != nullptr,
+            "Runtime recreation test failed to load the named GameObject through Runtime.");
+    require(runtime.getObjectById(objectId) != nullptr,
+            "Runtime recreation test failed to resolve the loaded GameObject by id through Runtime.");
 
-        runtime.saveScene(savedScenePath.string());
-        require(std::filesystem::exists(savedScenePath), "Runtime recreation test failed to save the scene through Runtime.");
-    }
+    runtime.saveScene(savedScenePath.string());
+    require(std::filesystem::exists(savedScenePath),
+            "Runtime recreation test failed to save the scene through Runtime.");
+    return runtime.getRuntimeSerial();
+}
 } // namespace
 
 int main()
@@ -70,11 +77,12 @@ int main()
 
     const std::filesystem::path scenePathA = std::filesystem::current_path() / "runtime_recreation_a.scene";
     const std::filesystem::path scenePathB = std::filesystem::current_path() / "runtime_recreation_b.scene";
-    const std::filesystem::path savedScenePathA = std::filesystem::current_path() / "runtime_recreation_saved_a.scene";
-    const std::filesystem::path savedScenePathB = std::filesystem::current_path() / "runtime_recreation_saved_b.scene";
+    const std::filesystem::path savedScenePathA =
+        std::filesystem::current_path() / "runtime_recreation_saved_a.scene";
+    const std::filesystem::path savedScenePathB =
+        std::filesystem::current_path() / "runtime_recreation_saved_b.scene";
 
-    auto cleanup = [&]()
-    {
+    auto cleanup = [&]() {
         std::error_code errorCode;
         std::filesystem::remove(scenePathA, errorCode);
         std::filesystem::remove(scenePathB, errorCode);
@@ -89,8 +97,12 @@ int main()
         writeSceneFile(scenePathA, "Runtime A", 4100);
         writeSceneFile(scenePathB, "Runtime B", 4200);
 
-        runRuntimePass(scenePathA, savedScenePathA, "Runtime A", 4100);
-        runRuntimePass(scenePathB, savedScenePathB, "Runtime B", 4200);
+        require(platformator::Runtime::tryGetCurrent() == nullptr, "No runtime is published before creation");
+        const auto firstSerial = runRuntimePass(scenePathA, savedScenePathA, "Runtime A", 4100);
+        require(platformator::Runtime::tryGetCurrent() == nullptr, "Shutdown clears current access");
+        const auto secondSerial = runRuntimePass(scenePathB, savedScenePathB, "Runtime B", 4200);
+        require(firstSerial != secondSerial && platformator::Runtime::tryGetCurrent() == nullptr,
+                "Recreation publishes a distinct identity lifetime and clears access again");
 
         cleanup();
         std::cout << "[PASS] runtime_recreation_test\n";

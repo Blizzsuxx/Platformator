@@ -1,17 +1,17 @@
 #include "physicsmanager.h"
 #include "physicsgeometry.h"
 
-#include "platformator/boxcollider.h"
 #include "benchmark.h"
 #include "constants.h"
 #include "debugdraw.h"
 #include "gamemanager.h"
+#include "oneapi/tbb.h"
+#include "platformator/boxcollider.h"
 #include "runtimeaccess.h"
 #include "workprobe.h"
-#include "oneapi/tbb.h"
 
-#include <limits>
 #include <exception>
+#include <limits>
 #include <tuple>
 
 PhysicsManager::PhysicsManager()
@@ -26,36 +26,46 @@ PhysicsManager::~PhysicsManager()
 
 void PhysicsManager::applyPhysics(double timeDelta)
 {
-    // reconcileChangedBodies();
     PLATFORMATOR_WORK_ADD(forceBodies, awakeDynamicBodies.size());
     if (awakeDynamicBodies.empty())
+    {
         return;
-    tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i)
-                      {
+    }
+    tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i) {
         auto *body = awakeDynamicBodies[i];
         resetSleepIsland(body);
-        body->integrateForces(timeDelta, gravityVector); });
+        body->integrateForces(timeDelta, gravityVector);
+    });
 }
 
 void PhysicsManager::applyMovement(double timeDelta)
 {
     PLATFORMATOR_WORK_ADD(movingBodies, awakeDynamicBodies.size() + movingKinematicBodies.size());
     if (awakeDynamicBodies.empty() && movingKinematicBodies.empty())
+    {
         return;
-    tbb::parallel_for(size_t(0), awakeDynamicBodies.size() + movingKinematicBodies.size(), [&](size_t i)
-                      {
-        auto *body = i < awakeDynamicBodies.size() ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeDynamicBodies.size()];
+    }
+    tbb::parallel_for(size_t(0), awakeDynamicBodies.size() + movingKinematicBodies.size(), [&](size_t i) {
+        auto *body = i < awakeDynamicBodies.size() ? awakeDynamicBodies[i]
+                                                   : movingKinematicBodies[i - awakeDynamicBodies.size()];
         if (const auto changes = body->integrateLocal(timeDelta))
-            movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0}); });
+        {
+            movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0});
+        }
+    });
     auto &manager = platformator_detail::RuntimeAccess::gameManager();
     for (auto &objects : movedObjects)
     {
         for (auto changed : objects)
         {
             if (changed.translated)
+            {
                 manager.queueTransform(changed.object);
+            }
             else
+            {
                 changed.object->updateCollider();
+            }
         }
         objects.clear();
     }
@@ -190,8 +200,9 @@ void PhysicsManager::narrowPhase()
     }
     else
     {
-        tbb::parallel_for(size_t(0), pendingPairs.size(), [&](size_t i)
-                          { processNarrowPhasePair(pendingPairs[i]); });
+        tbb::parallel_for(size_t(0), pendingPairs.size(), [&](size_t i) {
+            processNarrowPhasePair(pendingPairs[i]);
+        });
     }
 
     for (auto *pair : pendingPairs)
@@ -206,7 +217,8 @@ void PhysicsManager::narrowPhase()
 
         if (!pair->resultHadContact && pair->getCollision())
         {
-            addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_ENTER, pair, pair->getCollision()));
+            addPendingPhysicsEvent(
+                makePhysicsEvent(PhysicsEvent::COLLISION_ENTER, pair, pair->getCollision()));
         }
 
         reconcilePairSupport(pair);
@@ -246,8 +258,9 @@ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair)
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     pair->resultTestedGeometry = false;
 #endif
-    if (!pair->getObjectA()->getGameObject()->getActive() || !pair->getObjectB()->getGameObject()->getActive() ||
-        pair->getObjectA()->isRetired() || pair->getObjectB()->isRetired())
+    if (!pair->getObjectA()->getGameObject()->getActive() ||
+        !pair->getObjectB()->getGameObject()->getActive() || pair->getObjectA()->isRetired() ||
+        pair->getObjectB()->isRetired())
     {
         pair->clearCollisionNoEvent();
         return;
@@ -311,8 +324,8 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 
 void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDelta)
 {
-    Rigidbody *rbA =
-        (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(
+        ComponentType::RIGID_BODY);
     Rigidbody *rbB =
         (Rigidbody *)collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
 
@@ -321,17 +334,20 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
         return;
     }
 
-    const auto impact = [&](Rigidbody *body, Rigidbody *other)
-    {
+    const auto hasWakeMotion = [](const Rigidbody *other) {
         return other->getVelocity().squaredNorm() > LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD ||
                std::abs(other->getAngularVelocity()) > ANGULAR_SLEEP_THRESHOLD ||
                (other->getBodyType() == KINEMATIC &&
                 (!other->getVelocity().isZero(0) || other->getAngularVelocity() != 0));
     };
-    if (rbA->getIsSleeping() && impact(rbA, rbB))
+    if (rbA->getIsSleeping() && hasWakeMotion(rbB))
+    {
         rbA->wakeUp();
-    if (rbB->getIsSleeping() && impact(rbB, rbA))
+    }
+    if (rbB->getIsSleeping() && hasWakeMotion(rbA))
+    {
         rbB->wakeUp();
+    }
     mergeSleepIslands(rbA, rbB);
     float invMassA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMass();
     float invMassB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMass();
@@ -384,8 +400,9 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
             inverseMassSum + invInertiaA * (rA.dot(rA) - rtA * rtA) + invInertiaB * (rB.dot(rB) - rtB * rtB);
         contactPoints.points[i].massTangent = kTangent > 0 ? 1.0f / kTangent : 0.f;
 
-        float baumgarteBias = -COLLISION_BIAS_FACTOR * inverseTimeDelta *
-                              std::min(0.0f, contactPoints.points[i].separation + COLLISION_ALLOWED_PENETRATION);
+        float baumgarteBias =
+            -COLLISION_BIAS_FACTOR * inverseTimeDelta *
+            std::min(0.0f, contactPoints.points[i].separation + COLLISION_ALLOWED_PENETRATION);
 
         Eigen::Vector2f relativeVelocity = (rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB)) -
                                            (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA));
@@ -439,10 +456,12 @@ void PhysicsManager::resolveCollision(const Collision *collision)
                                        contactPoints.points[1].accumulatedNormalImpulse);
         Eigen::Vector2f rhs;
         for (int i = 0; i < 2; ++i)
+        {
             rhs[i] = ((rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB[i])) -
                       (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA[i])))
                          .dot(normal) -
                      contactPoints.points[i].bias;
+        }
         rhs -= collision->normalK * previous;
         Eigen::Vector2f next = -collision->normalMass * rhs;
         bool accepted = next.x() >= 0 && next.y() >= 0;
@@ -462,6 +481,7 @@ void PhysicsManager::resolveCollision(const Collision *collision)
             accepted = true;
         }
         if (accepted)
+        {
             for (int i = 0; i < 2; ++i)
             {
                 const Eigen::Vector2f impulse = (next[i] - previous[i]) * normal;
@@ -469,6 +489,7 @@ void PhysicsManager::resolveCollision(const Collision *collision)
                 rbB->applySolverImpulse(impulse, rB[i]);
                 contactPoints.points[i].accumulatedNormalImpulse = next[i];
             }
+        }
     }
 
     // TODO: paralelize this
@@ -505,8 +526,10 @@ void PhysicsManager::resolveCollision(const Collision *collision)
 
         float oldTangentImpulse = contactPoints.points[i].accumulatedTangentImpulse;
 
-        float maxTangentImpulse = collision->solverFriction * contactPoints.points[i].accumulatedNormalImpulse;
-        float newTangentImpulse = Clamp(oldTangentImpulse + tangentImpulse, -maxTangentImpulse, maxTangentImpulse);
+        float maxTangentImpulse =
+            collision->solverFriction * contactPoints.points[i].accumulatedNormalImpulse;
+        float newTangentImpulse =
+            Clamp(oldTangentImpulse + tangentImpulse, -maxTangentImpulse, maxTangentImpulse);
         contactPoints.points[i].accumulatedTangentImpulse = newTangentImpulse;
         tangentImpulse = newTangentImpulse - oldTangentImpulse;
 
@@ -519,8 +542,8 @@ void PhysicsManager::resolveCollision(const Collision *collision)
 
 void PhysicsManager::resolveKinematicCollision(const Collision *collision)
 {
-    Rigidbody *rbA =
-        (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(
+        ComponentType::RIGID_BODY);
     Rigidbody *rbB =
         (Rigidbody *)collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
 
@@ -552,7 +575,8 @@ void PhysicsManager::resolveKinematicCollision(const Collision *collision)
     }
 }
 
-void PhysicsManager::resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
+void PhysicsManager::resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody,
+                                                       const Eigen::Vector2f &approachNormal,
                                                        float correctionDistance)
 {
     Eigen::Vector2f velocity = rigidBody->getVelocity();
@@ -573,22 +597,31 @@ void PhysicsManager::resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, con
 void PhysicsManager::updateSleepingStates(double timeDelta)
 {
     PLATFORMATOR_WORK_ADD(sleepBodies, sleepCandidates.size());
+
+    // Reduce all member motion and timers before applying any group decision.
     for (auto *body : sleepCandidates)
     {
-        auto *root = sleepRoot(body);
-        root->islandQuiet &= body->getVelocity().squaredNorm() <= LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD &&
-                             std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
+        auto *root = findSleepRoot(body);
+        root->islandQuiet &=
+            body->getVelocity().squaredNorm() <= LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD &&
+            std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
         root->islandTimer = std::min(root->islandTimer, body->getSleepTimer());
     }
+
     for (auto *body : sleepCandidates)
     {
-        auto *root = sleepRoot(body);
+        auto *root = findSleepRoot(body);
         const auto timer = root->islandQuiet ? root->islandTimer + timeDelta : 0;
         if (timer >= SLEEP_DELAY)
+        {
             body->setIsSleeping(true);
+        }
         else
+        {
             body->setSleepTimer(timer);
+        }
     }
+
     // Sleep decisions queue membership changes; drain only after both fixed-list traversals finish.
     reconcileChangedBodies();
 }
@@ -598,9 +631,13 @@ void PhysicsManager::addPendingPhysicsEvent(const PhysicsEvent &event)
     pendingPhysicsEvents.push_back(event);
     PLATFORMATOR_WORK_ADD(contactEventRecords, 1);
     if (event.type == PhysicsEvent::COLLISION_ENTER)
+    {
         PLATFORMATOR_BENCH_ADD_COUNTER(CollisionEnterEventCount, 1);
+    }
     else
+    {
         PLATFORMATOR_BENCH_ADD_COUNTER(CollisionExitEventCount, 1);
+    }
 }
 
 const std::vector<PhysicsEvent> &PhysicsManager::getPendingPhysicsEvents() const
@@ -615,30 +652,34 @@ void PhysicsManager::clearPendingPhysicsEvents()
 
 void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
 {
-    const auto key = [](const PhysicsEvent &event)
-    {
+    const auto key = [](const PhysicsEvent &event) {
         const int family = event.type == PhysicsEvent::COLLISION_EXIT ? 0 : 1;
         return std::tuple{family, event.colliderA->getHandle(), event.colliderB->getHandle()};
     };
-    std::sort(pendingPhysicsEvents.begin(), pendingPhysicsEvents.end(),
-              [&](const auto &a, const auto &b)
-              { return key(a) < key(b); });
+    std::sort(pendingPhysicsEvents.begin(), pendingPhysicsEvents.end(), [&](const auto &a, const auto &b) {
+        return key(a) < key(b);
+    });
     std::exception_ptr error;
     for (const PhysicsEvent &event : pendingPhysicsEvents)
     {
-        auto deliver = [&](Collider *receiver, Collider *other)
-        {
+        auto deliver = [&](Collider *receiver, Collider *other) {
             try
             {
                 if (event.type == PhysicsEvent::COLLISION_ENTER)
+                {
                     receiver->triggerCollisionEnter(event.collision, other, timeDelta);
+                }
                 else
+                {
                     receiver->triggerCollisionExit(other, timeDelta);
+                }
             }
             catch (...)
             {
                 if (!error)
+                {
                     error = std::current_exception();
+                }
             }
         };
         deliver(event.colliderA, event.colliderB);
@@ -646,7 +687,9 @@ void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
     }
     clearPendingPhysicsEvents();
     if (error)
+    {
         std::rethrow_exception(error);
+    }
 }
 
 const Eigen::Vector2f &PhysicsManager::getGravityVector() const

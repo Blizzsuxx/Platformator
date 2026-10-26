@@ -1,13 +1,14 @@
+#include "runtimeaccess.h"
 #include "test_support.h"
 
-#include <functional>
-#include <iostream>
 #include <filesystem>
 #include <fstream>
-#include <platformator/audio.h>
+#include <functional>
+#include <iostream>
 #include <platformator/animationclip.h>
 #include <platformator/animator.h>
 #include <platformator/assetreference.h>
+#include <platformator/audio.h>
 #include <platformator/boxcollider.h>
 #include <platformator/circlecollider.h>
 #include <platformator/objectreference.h>
@@ -25,17 +26,21 @@ struct Counter : test_support::Behavior
     explicit Counter(int &value) : value(value)
     {
     }
+
     void update(double) override
     {
         ++value;
     }
+
     int &value;
 };
+
 struct Action : test_support::Behavior
 {
     explicit Action(std::function<void()> action) : action(std::move(action))
     {
     }
+
     void update(double) override
     {
         if (!ran)
@@ -44,14 +49,64 @@ struct Action : test_support::Behavior
             action();
         }
     }
+
     bool ran = false;
     std::function<void()> action;
 };
+
 void noRuntime()
 {
     ObjectReference<GameObject> absent(123);
     require(!absent && absent.resolve() == nullptr, "Unbound reference without a runtime must be empty");
+    bool rejected = false;
+    try
+    {
+        platformator_detail::RuntimeAccess::gameManager();
+    }
+    catch (const std::logic_error &error)
+    {
+        rejected = std::string(error.what()) == "Platformator runtime is not active.";
+    }
+    require(rejected && Runtime::tryGetCurrent() == nullptr,
+            "Privileged manager access without a runtime rejects with the established error");
 }
+
+struct AccessOnDestroy : test_support::Behavior
+{
+    explicit AccessOnDestroy(std::function<void()> action) : action(std::move(action))
+    {
+    }
+
+    void onDestroy() override
+    {
+        action();
+    }
+
+    std::function<void()> action;
+};
+
+void runtimeAccessLifetime()
+{
+    bool observed = false;
+    {
+        Runtime runtime;
+        auto *manager = &platformator_detail::RuntimeAccess::gameManager();
+        runtime.createGameObject()
+            ->addComponent<ScriptComponent>()
+            ->getComponent<ScriptComponent>()
+            ->addBehavior(new AccessOnDestroy([&, manager] {
+                require(&platformator_detail::RuntimeAccess::runtime() == &runtime &&
+                            &platformator_detail::RuntimeAccess::gameManager() == manager,
+                        "Runtime and manager remain accessible throughout shutdown callbacks");
+                require(runtime.getRuntimeSerial() != 0,
+                        "Shutdown callback can read the live identity registry");
+                observed = true;
+            }));
+    }
+    require(observed, "Shutdown must deliver the access observation");
+    noRuntime();
+}
+
 void dispatchGrowth()
 {
     int survivorUpdates = 0, additions = 0;
@@ -59,16 +114,22 @@ void dispatchGrowth()
     auto *driver = runtime.createGameObject()->addComponent<ScriptComponent>();
     driver->getComponent<ScriptComponent>()->addBehavior(new Action([&] {
         for (int i = 0; i < 100; ++i)
-            runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
-                new Counter(additions));
+        {
+            runtime.createGameObject()
+                ->addComponent<ScriptComponent>()
+                ->getComponent<ScriptComponent>()
+                ->addBehavior(new Counter(additions));
+        }
     }));
     runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
         new Counter(survivorUpdates));
     runtime.simulateFrame(dt);
     require(survivorUpdates == 1 && additions == 0, "Dispatch must stay stable; additions start next step");
     runtime.simulateFrame(dt);
-    require(survivorUpdates == 2 && additions == 100, "New scripts start before their first ordinary dispatch");
+    require(survivorUpdates == 2 && additions == 100,
+            "New scripts start before their first ordinary dispatch");
 }
+
 void logicalRetirement()
 {
     int victimUpdates = 0, survivorUpdates = 0;
@@ -76,25 +137,32 @@ void logicalRetirement()
     auto *driver = runtime.createGameObject()->addComponent<ScriptComponent>();
     auto *victim = runtime.createGameObject()->addComponent<ScriptComponent>();
     auto *survivor = runtime.createGameObject()->addComponent<ScriptComponent>();
-    driver->getComponent<ScriptComponent>()->addBehavior(new Action([&] { victim->destroy(); }));
+    driver->getComponent<ScriptComponent>()->addBehavior(new Action([&] {
+        victim->destroy();
+    }));
     victim->getComponent<ScriptComponent>()->addBehavior(new Counter(victimUpdates));
     survivor->getComponent<ScriptComponent>()->addBehavior(new Counter(survivorUpdates));
     runtime.simulateFrame(dt);
-    require(victimUpdates == 0 && survivorUpdates == 1, "Retirement must suppress victim without skipping survivor");
+    require(victimUpdates == 0 && survivorUpdates == 1,
+            "Retirement must suppress victim without skipping survivor");
 }
+
 struct Teardown : test_support::Behavior
 {
     explicit Teardown(int &count) : count(count)
     {
     }
+
     void onDestroy() override
     {
         auto *box = getGameObject()->getComponent<BoxCollider>();
         require(box && box->getWidth() == 20, "Attached collider must remain readable during onDestroy");
         ++count;
     }
+
     int &count;
 };
+
 void hierarchy()
 {
     for (bool childFirst : {false, true})
@@ -108,14 +176,18 @@ void hierarchy()
             auto *child = childFirst ? first : second;
             parent->addChild(child);
             for (auto *object : {parent, child})
+            {
                 object->addComponent<BoxCollider>(20, 20)
                     ->addComponent<ScriptComponent>()
                     ->getComponent<ScriptComponent>()
                     ->addBehavior(new Teardown(destroyed));
+            }
         }
-        require(destroyed == 2, "Flat ownership must destroy each child and parent once in either allocation order");
+        require(destroyed == 2,
+                "Flat ownership must destroy each child and parent once in either allocation order");
     }
 }
+
 void identities()
 {
     ObjectReference<GameObject> old;
@@ -138,6 +210,7 @@ void identities()
     recreated.createGameObject();
     require(!old, "New runtime must not revive an old handle");
 }
+
 void resourceRetention()
 {
     AnimationClip clip;
@@ -152,17 +225,21 @@ void resourceRetention()
     runtime.clearScene();
     require(clip.referenceCount == 1, "Animator retirement must release its clip");
 }
+
 struct StartCounter : Counter
 {
     StartCounter(int &updates, int &starts) : Counter(updates), starts(starts)
     {
     }
+
     void start() override
     {
         ++starts;
     }
+
     int &starts;
 };
+
 void activation()
 {
     int updates = 0, starts = 0;
@@ -182,6 +259,7 @@ void activation()
     runtime.simulateFrame(dt);
     require(starts == 1 && updates == 2, "Reactivation must restore eligibility without repeating start");
 }
+
 void callbackFailure()
 {
     int updates = 0;
@@ -207,6 +285,7 @@ void callbackFailure()
     runtime.simulateFrame(dt);
     require(updates == 1, "Runtime phase must return to idle after callback failure");
 }
+
 void audioRetention()
 {
     const auto path = std::filesystem::current_path() / "assets/test_runtime/foundation.wav";
@@ -215,7 +294,9 @@ void audioRetention()
         std::ofstream wav(path, std::ios::binary);
         auto integer = [&](uint32_t value, int bytes) {
             for (int i = 0; i < bytes; ++i)
+            {
                 wav.put(static_cast<char>(value >> (8 * i)));
+            }
         };
         wav << "RIFF";
         integer(36 + 256, 4);
@@ -230,7 +311,9 @@ void audioRetention()
         wav << "data";
         integer(256, 4);
         for (int i = 0; i < 256; ++i)
+        {
             wav.put(0);
+        }
     }
     {
         Runtime runtime;
@@ -248,17 +331,23 @@ void audioRetention()
 int main(int argc, char **argv)
 {
     test_support::headlessEnvironment();
-    const std::pair<const char *, void (*)()> cases[] = {
-        {"no_runtime", noRuntime},          {"growth", dispatchGrowth},
-        {"retirement", logicalRetirement},  {"hierarchy", hierarchy},
-        {"identity", identities},           {"resources", resourceRetention},
-        {"activation", activation},         {"callback_failure", callbackFailure},
-        {"audio_resources", audioRetention}};
+    const std::pair<const char *, void (*)()> cases[] = {{"no_runtime", noRuntime},
+                                                         {"runtime_access_lifetime", runtimeAccessLifetime},
+                                                         {"growth", dispatchGrowth},
+                                                         {"retirement", logicalRetirement},
+                                                         {"hierarchy", hierarchy},
+                                                         {"identity", identities},
+                                                         {"resources", resourceRetention},
+                                                         {"activation", activation},
+                                                         {"callback_failure", callbackFailure},
+                                                         {"audio_resources", audioRetention}};
     int failures = 0;
     for (auto [name, run] : cases)
     {
         if (argc > 1 && std::string(argv[1]) != name)
+        {
             continue;
+        }
         try
         {
             run();

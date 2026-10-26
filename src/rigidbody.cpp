@@ -1,10 +1,10 @@
 #include "platformator/rigidbody.h"
-#include "platformator/boxcollider.h"
-#include "platformator/circlecollider.h"
 #include "constants.h"
 #include "gamemanager.h"
-#include "runtimeaccess.h"
 #include "inputvalidation.h"
+#include "platformator/boxcollider.h"
+#include "platformator/circlecollider.h"
+#include "runtimeaccess.h"
 
 Rigidbody::Rigidbody() : Rigidbody(nullptr, BodyType::DYNAMIC, true)
 {
@@ -18,8 +18,8 @@ Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity)
     : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), force(0.0f, 0.0f), mass(1.0f),
       inverseMass(1.0f / mass), angularVelocity(0.0f), torque(0.0f), momentOfInertia(1.0f),
       inverseMomentOfInertia(1.0f / momentOfInertia), friction(1.0f), restitution(0.0f), bodyType(bodyType),
-      gravity(gravity), sleeping(false), supportContactCount(0), sleepTimer(0.0), isRegisteredInPhysicsManager(false),
-      physicsManagerIndex(SIZE_MAX)
+      gravity(gravity), sleeping(false), supportContactCount(0), sleepTimer(0.0),
+      isRegisteredInPhysicsManager(false), physicsManagerIndex(SIZE_MAX)
 {
     initialize();
 }
@@ -31,7 +31,9 @@ Rigidbody::~Rigidbody()
 void Rigidbody::initialize()
 {
     if (bodyType < DYNAMIC || bodyType > KINEMATIC)
+    {
         throw std::invalid_argument("Unknown body type");
+    }
     refreshMomentOfInertiaCache();
 
     if (bodyType != BodyType::DYNAMIC)
@@ -148,7 +150,9 @@ bool Rigidbody::getGravity() const
 Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 {
     if (!velocity.allFinite())
+    {
         throw std::invalid_argument("body.velocity must be finite");
+    }
     if (getIsSleeping() && velocity.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -161,14 +165,18 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 
     this->velocity = velocity;
     if (bodyType == KINEMATIC)
+    {
         queueParticipationChange();
+    }
     return this;
 }
 
 Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 {
     if (!force.allFinite())
+    {
         throw std::invalid_argument("body.force must be finite");
+    }
     if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -181,7 +189,9 @@ Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 Rigidbody *Rigidbody::addForce(const Eigen::Vector2f &force)
 {
     if (!force.allFinite())
+    {
         throw std::invalid_argument("body.force must be finite");
+    }
     if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -195,7 +205,9 @@ Rigidbody *Rigidbody::setMass(const float mass)
 {
     platformator_detail::nonnegative(mass, "body.mass");
     if (bodyType == DYNAMIC && mass == 0)
+    {
         throw std::invalid_argument("Dynamic body mass must be positive");
+    }
     this->mass = mass > 0.0f ? mass : 0.0f;
     wakeUp();
     this->inverseMass = this->mass > 0.0f ? 1.0f / this->mass : 0.0f;
@@ -217,7 +229,9 @@ Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
 
     this->angularVelocity = angularVelocity;
     if (bodyType == KINEMATIC)
+    {
         queueParticipationChange();
+    }
     return this;
 }
 
@@ -245,7 +259,9 @@ Rigidbody *Rigidbody::setRestitution(const float restitution)
 {
     platformator_detail::nonnegative(restitution, "body.restitution");
     if (restitution > 1)
+    {
         throw std::invalid_argument("body.restitution must be <= 1");
+    }
     this->restitution = restitution;
     wakeUp();
     return this;
@@ -254,9 +270,13 @@ Rigidbody *Rigidbody::setRestitution(const float restitution)
 Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
 {
     if (bodyType < DYNAMIC || bodyType > KINEMATIC)
+    {
         throw std::invalid_argument("Unknown body type");
+    }
     if (bodyType == DYNAMIC)
+    {
         platformator_detail::positive(mass, "dynamic mass");
+    }
     this->bodyType = bodyType;
     queueParticipationChange();
     if (bodyType != BodyType::DYNAMIC)
@@ -265,8 +285,12 @@ Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
     }
     initialize();
     if (auto *object = getGameObject())
+    {
         if (auto *collider = object->getComponent<Collider>())
+        {
             collider->invalidateResponse();
+        }
+    }
     return this;
 }
 
@@ -281,7 +305,9 @@ Rigidbody *Rigidbody::setGravity(const bool gravity)
 Rigidbody *Rigidbody::applyForces(double timeDelta, const Eigen::Vector2f &gravityVector)
 {
     if (bodyType != DYNAMIC || !getGameObject()->getActive() || sleeping)
+    {
         return this;
+    }
     integrateForces(timeDelta, gravityVector);
     return this;
 }
@@ -302,9 +328,13 @@ Rigidbody *Rigidbody::move(double timeDelta)
     }
     const auto changes = integrateLocal(timeDelta);
     if (changes & 1)
+    {
         getGameObject()->queueTransform();
+    }
     else if (changes & 2)
+    {
         getGameObject()->updateCollider();
+    }
     return this;
 }
 
@@ -315,10 +345,14 @@ uint8_t Rigidbody::integrateLocal(double timeDelta)
 
     const bool translated = !velocity.isZero(0), rotated = angularVelocity != 0;
     if (!translated && !rotated)
+    {
         return 0;
+    }
     auto *object = getGameObject();
     if (translated)
+    {
         object->position += velocity * timeDelta;
+    }
     if (rotated)
     {
         object->rotation = std::fmod(object->rotation + angularVelocity * timeDelta, 2.0 * M_PI);
@@ -350,7 +384,9 @@ float Rigidbody::getInverseMomentOfInertia() const
 Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
 {
     if (!impulse.allFinite())
+    {
         throw std::invalid_argument("body.impulse must be finite");
+    }
     if (this->getBodyType() != BodyType::DYNAMIC || this->getGameObject()->getActive() == false)
     {
         return this;
@@ -379,21 +415,16 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
 
     this->sleeping = sleeping;
     queueParticipationChange();
+
     if (sleeping)
     {
-        // PLATFORMATOR_LOG("Rigidbody on GameObject '%s' is now sleeping.\n", getGameObject()->getName().c_str());
-        velocity = Eigen::Vector2f::Zero();
-        force = Eigen::Vector2f::Zero();
+        velocity.setZero();
+        force.setZero();
         angularVelocity = 0.0f;
         torque = 0.0f;
-        sleepTimer = 0.0;
-    }
-    else
-    {
-        // PLATFORMATOR_LOG("Rigidbody on GameObject '%s' woke up.\n", getGameObject()->getName().c_str());
-        sleepTimer = 0.0;
     }
 
+    sleepTimer = 0.0;
     return this;
 }
 
@@ -401,13 +432,18 @@ void Rigidbody::queueParticipationChange()
 {
     // Setters affecting active/sleep lists coalesce here. Awake dynamic solver impulses need no refresh.
     if (isRegisteredInPhysicsManager)
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyParticipationChange(this);
+    {
+        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyParticipationChange(
+            this);
+    }
 }
 
 void Rigidbody::applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm)
 {
     if (bodyType != DYNAMIC || sleeping)
+    {
         return;
+    }
     velocity += impulse * inverseMass;
     angularVelocity += inverseMomentOfInertia * (arm.x() * impulse.y() - arm.y() * impulse.x());
 }

@@ -2,33 +2,37 @@
 
 namespace
 {
-    void membership(std::vector<Rigidbody *> &list, Rigidbody *body, size_t Rigidbody::*index, bool desired)
+void membership(std::vector<Rigidbody *> &list, Rigidbody *body, size_t Rigidbody::*index, bool desired)
+{
+    auto &position = body->*index;
+    if (desired == (position != SIZE_MAX))
     {
-        auto &position = body->*index;
-        if (desired == (position != SIZE_MAX))
-            // if already a member and we want to put it somewhere, skip
-            return;
-
-        if (desired)
-        {
-            position = list.size();
-            list.push_back(body);
-        }
-        else
-        {
-            auto *moved = list.back();
-            list[position] = moved;
-            moved->*index = position;
-            list.pop_back();
-            position = SIZE_MAX;
-        }
+        return;
     }
+
+    if (desired)
+    {
+        position = list.size();
+        list.push_back(body);
+    }
+    else
+    {
+        auto *moved = list.back();
+        list[position] = moved;
+        moved->*index = position;
+        list.pop_back();
+        position = SIZE_MAX;
+    }
+}
 } // namespace
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {
     if (body->participationQueueIndex != SIZE_MAX)
+    {
         return;
+    }
+
     body->participationQueueIndex = pendingBodyChanges.size();
     pendingBodyChanges.push_back(body);
 }
@@ -36,7 +40,9 @@ void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 void PhysicsManager::cancelBodyParticipationChange(Rigidbody *body)
 {
     if (body->participationQueueIndex == SIZE_MAX)
+    {
         return;
+    }
 
     const auto index = body->participationQueueIndex;
     auto *moved = pendingBodyChanges.back();
@@ -65,22 +71,25 @@ void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
 
     if (!previouslyEligible && body->sleepCandidateIndex != SIZE_MAX)
     {
-
+        // Impact waking can admit this candidate after the integration reset.
         resetSleepIsland(body);
     }
 
     if (auto *collider = body->getGameObject()->getComponent<Collider>())
     {
-
         refreshSolverPairs(collider);
     }
 }
 
-Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)
+Rigidbody *PhysicsManager::findSleepRoot(Rigidbody *body)
 {
     auto *root = body;
     while (root->sleepParent != root)
+    {
         root = root->sleepParent;
+    }
+
+    // Compress the traversed path for subsequent lookups in this step.
     while (body->sleepParent != body)
     {
         auto *next = body->sleepParent;
@@ -93,16 +102,28 @@ Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)
 void PhysicsManager::mergeSleepIslands(Rigidbody *a, Rigidbody *b)
 {
     if (a->sleepCandidateIndex == SIZE_MAX || b->sleepCandidateIndex == SIZE_MAX)
+    {
         return;
-    a = sleepRoot(a);
-    b = sleepRoot(b);
+    }
+
+    a = findSleepRoot(a);
+    b = findSleepRoot(b);
+
     if (a == b)
+    {
         return;
+    }
+
     if (a->sleepRank < b->sleepRank)
+    {
         std::swap(a, b);
+    }
+
     b->sleepParent = a;
     if (a->sleepRank == b->sleepRank)
+    {
         ++a->sleepRank;
+    }
 }
 
 void PhysicsManager::reconcileChangedBodies()

@@ -1,0 +1,9 @@
+{
+  "benchmark/runtime_cleanup_probe.cpp": "63feb4824fee4ab767b3ea464919af6db8ae2a050d7273ddd9e5969edddbf19f",
+  "capture_driver": "ab568ff6e31264066572e555f4545b40a667b2ca405da9bb573a619fd9b06d92",
+  "origin_commit": "daa911d40ce00a882d8dffbccfa0d55cfde7d5be",
+  "baseline_binary_hashes": {
+    "platformator_benchmark_runner": "46382fad8580592950401e146de2b37d1fad647e1348a5cfce3ecd1ceebc2384",
+    "platformator_runtime_cleanup_probe": "35301007b923211d89d14510e3f3f5f227de8ede014ddaab43f728a14b33d49d"
+  }
+}

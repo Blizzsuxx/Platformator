@@ -1,0 +1,8 @@
+{
+  "initial_staged_patch_bytes": 136648,
+  "initial_staged_patch_sha256": "61351541f8dbc7efc455849124cf5ff6fc32a20de52a0667a6ffb1455608d91f",
+  "observed_staged_patch_bytes": 4482198,
+  "observed_staged_patch_sha256": "242597a2d1bb72ee30436fcc11e5f747d1c7953183eb171fd0e759adc6ccada0",
+  "head": "f6d1af73fcb9a9e623b735fe0a8269d6e65c8fba",
+  "note": "Index changed during execution; agent issued no staging or commit commands and leaves the observed index intact. Initial staged patch remains retained. Requirements checklist checksum unchanged."
+}

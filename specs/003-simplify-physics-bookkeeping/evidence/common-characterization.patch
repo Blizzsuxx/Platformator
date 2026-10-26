@@ -1,0 +1,201 @@
+diff --git a/tests/physics_support_test.cpp b/tests/physics_support_test.cpp
+index 19604ef..9cdfa37 100644
+--- a/tests/physics_support_test.cpp
++++ b/tests/physics_support_test.cpp
+@@ -156,6 +156,65 @@ void scriptsPreserveSleepingSupport()
+     require(!body->getIsSleeping() && body->getSupportContactCount() == 0,
+             "Losing final support wakes the replacement body");
+ }
++void netSupportTransfer(size_t workers)
++{
++    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
++    platformator::Runtime runtime(physicsOnly());
++    auto *object = runtime.createGameObject()->addComponent<BoxCollider>(20, 20)->addComponent<Rigidbody>(DYNAMIC, false);
++    auto *a = runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(STATIC, false);
++    auto *b = runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(STATIC, false);
++    b->getComponent<BoxCollider>()->setIsTrigger(true);
++    runtime.simulateFrame(dt);
++    auto *body = object->getComponent<Rigidbody>();
++    require(body->getSupportContactCount() == 1, "Transfer control starts with one real support");
++    body->setIsSleeping(true);
++    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
++        a->getComponent<BoxCollider>()->setIsTrigger(true);
++        b->getComponent<BoxCollider>()->setIsTrigger(false);
++    });
++    require(body->getSupportContactCount() == 1 && body->getIsSleeping(),
++            "A net-zero support transfer cannot wake a sleeping body at an intermediate zero");
++    b->getComponent<BoxCollider>()->setIsTrigger(true);
++    runtime.simulateFrame(dt);
++    require(body->getSupportContactCount() == 0 && !body->getIsSleeping(),
++            "Actual final committed support loss wakes the body");
++}
++struct RetiredSupportObserver : test_support::Behavior
++{
++    RetiredSupportObserver(Rigidbody *oldBody, GameObject *object, bool &observed)
++        : oldBody(oldBody), object(object), observed(observed) {}
++    void onDestroy() override
++    {
++        require(oldBody->getSupportContactCount() == 0,
++                "Old recipient loses its contribution before the retirement batch frees it");
++        auto *current = object->getComponent<Rigidbody>();
++        require(current && current != oldBody && current->getSupportContactCount() == 1,
++                "Unmoved contact credits the exact replacement body before destruction callbacks");
++        observed = true;
++    }
++    Rigidbody *oldBody;
++    GameObject *object;
++    bool &observed;
++};
++void replacementBeforeFree(size_t workers)
++{
++    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
++    bool observed = false;
++    platformator::Runtime runtime(physicsOnly());
++    auto *object = runtime.createGameObject()->addComponent<BoxCollider>(20, 20)->addComponent<Rigidbody>(DYNAMIC, false);
++    runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(STATIC, false);
++    runtime.simulateFrame(dt);
++    auto *oldBody = object->getComponent<Rigidbody>();
++    require(oldBody->getSupportContactCount() == 1, "Replacement control begins supported");
++    object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
++        new RetiredSupportObserver(oldBody, object, observed));
++    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
++        object->removeComponent(RIGID_BODY);
++        object->removeComponent(SCRIPT);
++        object->addComponent<Rigidbody>(DYNAMIC, false);
++    });
++    require(observed, "Support transfer was observed at the real destruction-before-free boundary");
++}
+ } // namespace
+ int main()
+ {
+@@ -176,6 +235,11 @@ int main()
+         stationary();
+         scriptsPreserveSleepingSupport();
+         referenceSwaps();
++        for (size_t workers : {size_t(1), size_t(6)})
++        {
++            netSupportTransfer(workers);
++            replacementBeforeFree(workers);
++        }
+         std::cout << "[PASS] deterministic supports and persistent contacts\n";
+         return 0;
+     }
+diff --git a/tests/physics_bookkeeping_test.cpp b/tests/physics_bookkeeping_test.cpp
+new file mode 100644
+index 0000000..e4afc2a
+--- /dev/null
++++ b/tests/physics_bookkeeping_test.cpp
+@@ -0,0 +1,113 @@
++#include "test_support.h"
++#include "gamemanager.h"
++#include "physicsmanager.h"
++#include "runtimeaccess.h"
++#include <oneapi/tbb/global_control.h>
++#include <platformator/boxcollider.h>
++#include <platformator/rigidbody.h>
++#include <iostream>
++#include <unordered_set>
++#include <vector>
++
++using namespace test_support;
++namespace
++{
++void baselineControls(size_t workers)
++{
++    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
++    platformator::Runtime runtime(physicsOnly());
++    auto *physics = platformator_detail::RuntimeAccess::physicsManager();
++    require(physics->getGrid().getPendingNarrowPhasePairs()->empty(), "Empty runtime has no pair work");
++    auto *object = runtime.createGameObject()->addComponent<Rigidbody>(DYNAMIC, false);
++    runtime.simulateFrame(dt);
++    require(object->getComponent<Rigidbody>()->getIsRegisteredInPhysicsManager(),
++            "The live body is registered before physical consumers run");
++    require(object->getPosition().isZero(), "A zero-velocity gravity-free body stays at rest");
++    require(physics->getGrid().getPendingNarrowPhasePairs()->empty(), "A body without shape has no contact work");
++}
++void queueLifecycle(size_t workers)
++{
++    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
++    platformator::Runtime runtime(physicsOnly());
++    auto *physics = platformator_detail::RuntimeAccess::physicsManager();
++    auto &manager = platformator_detail::RuntimeAccess::gameManager();
++    const auto pending = [&]() -> const auto & { return *physics->getGrid().getPendingNarrowPhasePairs(); };
++    const auto verifyQueue = [&] {
++        std::unordered_set<const ColliderPair *> distinct;
++        for (size_t i = 0; i < pending().size(); ++i)
++        {
++            const auto *pair = pending()[i];
++            require(pair->getIsQueuedForNarrowPhase() && pair->getNarrowPhaseQueueIndex() == i,
++                    "Queued entries have their actual slot, including swap-repaired entries");
++            require(distinct.insert(pair).second, "A pair is queued at most once");
++        }
++    };
++    for (int i = 0; i < 131; ++i)
++    {
++        auto *a = runtime.createGameObject()->setPosition({float(i * 40), 0})->addComponent<BoxCollider>(4, 4);
++        runtime.createGameObject()->setPosition({float(i * 40 + 1), 0})->addComponent<BoxCollider>(4, 4);
++        a->getComponent<BoxCollider>()->setIsTrigger(true);
++    }
++    manager.commitMutations();
++    require(pending().size() == 131, "The fixture has one independent queued pair per group");
++    verifyQueue();
++    auto *first = pending().front()->getObjectA()->getGameObject();
++    for (int i = 0; i < 3; ++i)
++    {
++        first->setPosition({float(i % 2), 0});
++        manager.commitMutations();
++        require(pending().size() == 131, "Repeated sync does not duplicate pending pairs");
++        verifyQueue();
++    }
++    for (int removal = 0; removal < 3; ++removal)
++    {
++        const auto before = pending().size();
++        const size_t index = removal == 0 ? 0 : removal == 1 ? before / 2 : before - 1;
++        pending()[index]->getObjectB()->setCollisionMask(0);
++        manager.commitMutations();
++        require(pending().size() == before - 1, "Excluded pre-evaluation pair is cancelled once");
++        verifyQueue();
++    }
++    require(pending().size() == 128, "Parallel-path fixture retains 128 actual changed pairs");
++    physics->checkForCollisions();
++    require(pending().empty() && physics->getPendingPhysicsEvents().size() == 128,
++            "Cancellation removes unconfirmed work and each surviving pair enters once");
++    physics->handlePendingPhysicsEvents(dt);
++    std::vector<GameObject *> endpoints;
++    for (const auto *pair : physics->getContactPairs())
++    {
++        require(!pair->getIsQueuedForNarrowPhase() && pair->getNarrowPhaseQueueIndex() == SIZE_MAX,
++                "Consumed entries retain no live queue membership");
++        endpoints.push_back(pair->getObjectB()->getGameObject());
++    }
++    for (auto *endpoint : endpoints)
++        endpoint->setPosition(endpoint->getPosition() + Eigen::Vector2f(0.25f, 0));
++    manager.commitMutations();
++    require(pending().size() == 128, "A consumed surviving pair can be queued again");
++    verifyQueue();
++    physics->checkForCollisions();
++    require(pending().empty() && physics->getPendingPhysicsEvents().empty(),
++            "Reevaluation of confirmed overlaps produces no duplicate Enter");
++    physics->checkForCollisions();
++    require(pending().empty(), "Empty evaluation batch is valid");
++}
++} // namespace
++int main()
++{
++    headlessEnvironment();
++    try
++    {
++        for (size_t workers : {size_t(1), size_t(6)})
++        {
++            baselineControls(workers);
++            queueLifecycle(workers);
++        }
++        std::cout << "[PASS] physics bookkeeping contracts\n";
++        return 0;
++    }
++    catch (const std::exception &error)
++    {
++        std::cerr << error.what() << '\n';
++        return 1;
++    }
++}

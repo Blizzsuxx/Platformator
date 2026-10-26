@@ -1,0 +1,10 @@
+{
+  "baseline_source_sha256": "5ca76cf38d163c353254d4f74f286888be050a32f1c88b7215c25b44faff1031",
+  "candidate_source_sha256": "b87bc7a61c539405ff6e77fc8f481a3fd2c6ad3510f2b089ca4c475dd27367db",
+  "source_archive": "/home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/candidate-final-source.tar.gz",
+  "source_archive_sha256": "dd6fa0b897c561bd74e72f0f6897551ae94eedf609edd395abcc9d7c2c313c13",
+  "final_raw_root": "/home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/captures-v2",
+  "final_followup_root": "/home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/followup-final",
+  "human_review": "pending",
+  "actual_branch": "001-cpp-engine-cleanup"
+}

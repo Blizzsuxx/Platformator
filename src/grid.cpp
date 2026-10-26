@@ -109,7 +109,6 @@ void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
     }
 
     pendingNarrowPhasePairs.pop_back();
-    pair->setIsQueuedForNarrowPhase(false);
     pair->setNarrowPhaseQueueIndex(SIZE_MAX);
 }
 
@@ -134,7 +133,6 @@ void Grid::queuePairForNarrowPhase(const ColliderPair *pair)
         return;
     }
 
-    pair->setIsQueuedForNarrowPhase(true);
     pair->setNarrowPhaseQueueIndex(pendingNarrowPhasePairs.size());
     pendingNarrowPhasePairs.push_back(pair);
 }
@@ -157,17 +155,7 @@ const std::vector<const ColliderPair *> *Grid::getTouchingPairs(Collider *collid
 
 void Grid::clearPendingNarrowPhasePairs()
 {
-    // tbb::parallel_for(size_t(0), pendingNarrowPhasePairs.size(), [&](size_t i)
-    //                   {
-    //     const ColliderPair *pair = pendingNarrowPhasePairs[i];
-    //     if (pair == nullptr)
-    //     {
-    //         return;
-    //     }
-
-    //     pair->setIsQueuedForNarrowPhase(false);
-    //     pair->setNarrowPhaseQueueIndex(SIZE_MAX); });
-
+    // Workers consumed their own indices. Their fixed pointer batch lives through the serial reduction.
     pendingNarrowPhasePairs.clear();
 }
 

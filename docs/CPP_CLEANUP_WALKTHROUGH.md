@@ -300,11 +300,11 @@ Workers now produce pair-owned manifold/support results. Canonical pair identiti
 
 ### Persistent contact/solver/event collections
 
-The engine maintains separate indexed collections for confirmed contacts and solver-eligible contacts. Membership uses insertion and swap-removal; solver membership is canonically ordered when changed. Resolution/debug consumers read the collision directly through solver pairs, without a second cached projection. Body-state changes refresh affected solver adjacency; script changes do not visit physical adjacency.
+The engine maintains separate indexed collections for confirmed contacts and solver-eligible contacts. Membership uses insertion and swap-removal. At the maintainer's request on 2026-10-26, solver-pair sorting and its dirty flag were removed; physical solving follows membership order without a determinism guarantee. Resolution/debug consumers read the collision directly through solver pairs, without a second cached projection. Body-state changes refresh affected solver adjacency; script changes do not visit physical adjacency.
 
 Enter and Exit are generated from confirmed-contact transitions after geometry workers finish, independently of scripts. Unchanged stationary/sleeping contacts generate no recurring event. Explicit pair removal queues Exit before erasure; pair destructors only free contact memory. Support and event transitions remain correct through filtering, body replacement, deactivation and retirement. Each delivery batch orders Exit before Enter and canonical endpoints; recipient eligibility is checked at delivery.
 
-An early corrected benchmark exposed an unnecessary full sort of the general contact-membership collection whenever anything changed. At 133,007 contacts this was expensive and its ordering had no consumer. That sort was removed; solver and observed-event lists retain their own required canonical ordering. Incomplete preliminary captures were excluded, not mixed into accepted results.
+An early corrected benchmark exposed an unnecessary full sort of the general contact-membership collection whenever anything changed. At 133,007 contacts this was expensive and its ordering had no consumer. That general-contact sort was removed. Solver ordering was also subsequently removed at the maintainer's request on 2026-10-26; current contact-event batches retain their separate canonical ordering. Incomplete preliminary captures were excluded, not mixed into accepted results.
 
 ### Geometry and manifold fixes
 
@@ -324,6 +324,10 @@ Support transitions, wake handling, stable contacts and coordinated sleeping of 
 Awake dynamic, kinematic, and sleep-eligible body collections have maintained membership indexes. Changes update affected bodies; integration avoids traversing irrelevant sleeping/static bodies solely to skip them. This is not a claim that all physics work is O(number of awake bodies): contact maintenance and actual constraints still cost work.
 
 **Files:** `src/physicsmanager.{h,cpp}`, new `src/physicscontacts.cpp`, `src/physicsgeometry.cpp`, `src/physicsbodyindexes.cpp`, `src/collision.cpp`, `src/colliderpair.{h,cpp}`, `src/rigidbody.cpp`, shape implementations, `src/inputvalidation.h` and related public headers.
+
+### Physics bookkeeping follow-up
+
+The subsequent [physics bookkeeping feature](../specs/003-simplify-physics-bookkeeping/validation.md) makes queue membership index-only and stores each pair’s support credit as two nullable exact body recipients. Body totals still commit net deltas before waking/freeing; cancellation and old-body lifetime remain explicit. Active lists now name awake dynamic bodies, moving kinematics and sleep candidates. Geometry has one internal pair/gravity entry in physicsgeometry.h; shape/clipping/fallback implementation is local, with no manager lookup. The shared sleep reset has one private-header definition so the force worker can inline it. See the linked validation for actual state reductions, eight audit routes and mixed performance/sanitizer findings.
 
 ## 10. One explicit simulation pipeline; separate interactive clock
 

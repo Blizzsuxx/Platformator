@@ -1,0 +1,26 @@
+{
+  "circleCircleCollision": {
+    "reachable_tokens": 268,
+    "equal": true
+  },
+  "circleBoxCollision": {
+    "reachable_tokens": 567,
+    "equal": true
+  },
+  "checkProjections": {
+    "reachable_tokens": 174,
+    "equal": true
+  },
+  "updateContactGeometry": {
+    "reachable_tokens": 369,
+    "equal": true
+  },
+  "calculateContactPoint": {
+    "reachable_tokens": 405,
+    "equal": true
+  },
+  "fallback_midpoint": {
+    "equal": true
+  },
+  "removed_unreachable_circle_branches": "Single clipping caller follows both returning exact-circle dispatches; no accessor/friend added."
+}

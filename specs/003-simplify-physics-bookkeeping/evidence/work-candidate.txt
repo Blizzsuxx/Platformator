@@ -1,0 +1,61 @@
+[0/2] Re-checking globbed directories...
+[1/39] Building CXX object CMakeFiles/platformator_engine.dir/src/audio.cpp.o
+[2/39] Building CXX object CMakeFiles/platformator_engine.dir/src/aabb.cpp.o
+[3/39] Building CXX object CMakeFiles/platformator_engine.dir/src/behavior.cpp.o
+[4/39] Building CXX object CMakeFiles/platformator_engine.dir/src/audiowrapperserializer.cpp.o
+[5/39] Building CXX object CMakeFiles/platformator_engine.dir/src/boxcollider.cpp.o
+[6/39] Building CXX object CMakeFiles/platformator_engine.dir/src/circlecollider.cpp.o
+[7/39] Building CXX object CMakeFiles/platformator_engine.dir/src/colliderpair.cpp.o
+[8/39] Building CXX object CMakeFiles/platformator_engine.dir/src/collider.cpp.o
+[9/39] Building CXX object CMakeFiles/platformator_engine.dir/src/collision.cpp.o
+[10/39] Building CXX object CMakeFiles/platformator_engine.dir/src/debugdraw.cpp.o
+[11/39] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobjectserializer.cpp.o
+[12/39] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobject.cpp.o
+[13/39] Building CXX object CMakeFiles/platformator_engine.dir/src/gamemanager.cpp.o
+[14/39] Building CXX object CMakeFiles/platformator_engine.dir/src/grid.cpp.o
+[15/39] Building CXX object CMakeFiles/platformator_engine.dir/src/gridcell.cpp.o
+[16/39] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsbodyindexes.cpp.o
+[17/39] Building CXX object CMakeFiles/platformator_engine.dir/src/physicscontacts.cpp.o
+[18/39] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o
+[19/39] Building CXX object CMakeFiles/platformator_engine.dir/src/referenceresolver.cpp.o
+[20/39] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbodyserializer.cpp.o
+[21/39] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbody.cpp.o
+[22/39] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+[23/39] Building CXX object CMakeFiles/platformator_engine.dir/src/runtime.cpp.o
+[24/39] Building CXX object CMakeFiles/platformator_engine.dir/src/runtimeaccess.cpp.o
+[25/39] Building CXX object CMakeFiles/platformator_engine.dir/src/scene.cpp.o
+[26/39] Building CXX object CMakeFiles/platformator_engine.dir/src/scenebuilder.cpp.o
+[27/39] Building CXX object CMakeFiles/platformator_engine.dir/src/scriptcomponent.cpp.o
+[28/39] Building CXX object CMakeFiles/platformator_engine.dir/src/segmentedintervallist.cpp.o
+[29/39] Building CXX object CMakeFiles/platformator_engine.dir/src/sdlwindow.cpp.o
+[30/39] Linking CXX static library libplatformator.a
+[31/39] Building CXX object CMakeFiles/platformator_physics_support_test.dir/tests/physics_support_test.cpp.o
+[32/39] Linking CXX executable platformator_physics_support_test
+[33/39] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[34/39] Building CXX object CMakeFiles/platformator_contact_events_test.dir/tests/contact_events_test.cpp.o
+[35/39] Linking CXX executable platformator_physics_bookkeeping_test
+[36/39] Linking CXX executable platformator_contact_events_test
+[37/39] Building CXX object CMakeFiles/platformator_runtime_work_test.dir/tests/runtime_work_test.cpp.o
+[38/39] Linking CXX executable platformator_runtime_work_test
+Test project /home/user/Projects/Platformator/bin/cleanup-work
+    Start 14: platformator_physics_support_test
+1/4 Test #14: platformator_physics_support_test .......   Passed    0.63 sec
+    Start 15: platformator_contact_events_test
+2/4 Test #15: platformator_contact_events_test ........   Passed    0.08 sec
+    Start 16: platformator_physics_bookkeeping_test
+3/4 Test #16: platformator_physics_bookkeeping_test ...   Passed    0.03 sec
+    Start 19: platformator_runtime_work_test
+4/4 Test #19: platformator_runtime_work_test ..........   Passed    0.04 sec
+
+100% tests passed out of 4
+
+Label Time Summary:
+determinism     =   0.74 sec*proc (3 tests)
+physics         =   0.77 sec*proc (4 tests)
+platformator    =   0.77 sec*proc (4 tests)
+work            =   0.04 sec*proc (1 test)
+
+Total Test time (real) =   0.78 sec
+idle allocations=0 geometry=0 transition_checks=0 event_records=0 solver_refresh_visits=0
+fixed-peak churn retained event_slots=256 contact_slots=512
+[PASS] affected-work counters workers=6

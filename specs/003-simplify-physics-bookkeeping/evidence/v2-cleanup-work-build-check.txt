@@ -1,0 +1,96 @@
+[0/2] Re-checking globbed directories...
+[1/89] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbbmalloc_proxy/CMakeFiles/tbbmalloc_proxy.dir/CXX.dd
+[2/87] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/CXX.dd
+[3/77] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbbbind/CMakeFiles/tbbbind_2_5.dir/CXX.dd
+[4/74] Building CXX object CMakeFiles/platformator_engine.dir/src/behavior.cpp.o
+[5/74] Building CXX object CMakeFiles/platformator_engine.dir/src/collider.cpp.o
+[6/74] Building CXX object CMakeFiles/platformator_engine.dir/src/collision.cpp.o
+[7/74] Building CXX object CMakeFiles/platformator_engine.dir/src/audiowrapperserializer.cpp.o
+[8/74] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsbodyindexes.cpp.o
+[9/74] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobject.cpp.o
+[10/74] Building CXX object CMakeFiles/platformator_engine.dir/src/grid.cpp.o
+[11/74] Building CXX object CMakeFiles/platformator_engine.dir/src/gamemanager.cpp.o
+[12/74] Building CXX object CMakeFiles/platformator_engine.dir/src/physicscontacts.cpp.o
+[13/74] Building CXX object CMakeFiles/platformator_engine.dir/src/referenceresolver.cpp.o
+[14/74] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+[15/74] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbody.cpp.o
+[16/74] Building CXX object CMakeFiles/platformator_engine.dir/src/runtime.cpp.o
+[17/74] Building CXX object CMakeFiles/platformator_engine.dir/src/runtimeaccess.cpp.o
+[18/74] Building CXX object CMakeFiles/platformator_engine.dir/src/scene.cpp.o
+[19/74] Building CXX object CMakeFiles/platformator_engine.dir/src/scriptcomponent.cpp.o
+[20/74] Building CXX object CMakeFiles/platformator_engine.dir/src/scenebuilder.cpp.o
+[21/74] Building CXX object CMakeFiles/platformator_engine.dir/src/sdlwindow.cpp.o
+[22/74] Linking CXX static library libplatformator.a
+[23/74] Building CXX object CMakeFiles/platformator_queued_deletion_safety_test.dir/tests/queued_deletion_safety_test.cpp.o
+[24/74] Building CXX object CMakeFiles/platformator_scene_script_roundtrip_test.dir/tests/scene_script_roundtrip_test.cpp.o
+[25/74] Building CXX object CMakeFiles/platformator_runtime_foundation_test.dir/tests/runtime_foundation_test.cpp.o
+[26/74] Building CXX object CMakeFiles/platformator_collider_pair_cleanup_test.dir/tests/collider_pair_cleanup_test.cpp.o
+[27/74] Building CXX object CMakeFiles/platformator_regression_tests.dir/tests/regression_tests.cpp.o
+[28/74] Building CXX object CMakeFiles/platformator_scene_transition_contract_test.dir/tests/scene_transition_contract_test.cpp.o
+[29/74] Building CXX object CMakeFiles/platformator_scene_transition_stress_test.dir/tests/scene_transition_stress_test.cpp.o
+[30/74] Building CXX object CMakeFiles/platformator_callback_mutation_test.dir/tests/callback_mutation_test.cpp.o
+[31/74] Building CXX object CMakeFiles/platformator_destruction_contract_test.dir/tests/destruction_contract_test.cpp.o
+[32/74] Building CXX object CMakeFiles/platformator_object_reference_contract_test.dir/tests/object_reference_contract_test.cpp.o
+[33/74] Building CXX object CMakeFiles/platformator_transform_hierarchy_test.dir/tests/transform_hierarchy_test.cpp.o
+[34/74] Building CXX object CMakeFiles/platformator_scene_io_contract_test.dir/tests/scene_io_contract_test.cpp.o
+[35/74] Building CXX object CMakeFiles/platformator_contact_events_test.dir/tests/contact_events_test.cpp.o
+[36/74] Building CXX object CMakeFiles/platformator_physics_geometry_test.dir/tests/physics_geometry_test.cpp.o
+[37/74] Building CXX object CMakeFiles/platformator_runtime_step_test.dir/tests/runtime_step_test.cpp.o
+[38/74] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[39/74] Building CXX object CMakeFiles/platformator_benchmark_contract_test.dir/tests/benchmark_contract_test.cpp.o
+[40/74] Building CXX object CMakeFiles/platformator_runtime_work_test.dir/tests/runtime_work_test.cpp.o
+[41/74] Building CXX object CMakeFiles/platformator_runner_failure_test.dir/tests/runner_failure_test.cpp.o
+[42/74] Building CXX object CMakeFiles/platformator_asset_root_contract_test.dir/tests/asset_root_contract_test.cpp.o
+[43/74] Linking CXX executable main
+[44/74] Linking CXX executable platformator_regression_tests
+[45/74] Linking CXX executable platformator_queued_deletion_safety_test
+[46/74] Linking CXX executable platformator_scene_script_roundtrip_test
+[47/74] Linking CXX executable platformator_runtime_recreation_test
+[48/74] Linking CXX executable platformator_collider_pair_cleanup_test
+[49/74] Linking CXX executable platformator_runtime_foundation_test
+[50/74] Linking CXX executable platformator_scene_transition_contract_test
+[51/74] Linking CXX executable platformator_scene_transition_stress_test
+[52/74] Linking CXX executable platformator_callback_mutation_test
+[53/74] Linking CXX executable platformator_destruction_contract_test
+[54/74] Linking CXX executable platformator_object_reference_contract_test
+[55/74] Linking CXX executable platformator_scene_io_contract_test
+[56/74] Linking CXX executable platformator_transform_hierarchy_test
+[57/74] Linking CXX executable platformator_physics_support_test
+[58/74] Linking CXX executable platformator_contact_events_test
+[59/74] Linking CXX executable platformator_physics_bookkeeping_test
+[60/74] Linking CXX executable platformator_physics_geometry_test
+[61/74] Linking CXX executable platformator_runtime_step_test
+[62/74] Linking CXX executable platformator_benchmark_contract_test
+[63/74] Linking CXX executable platformator_runtime_work_test
+[64/74] Linking CXX executable platformator_asset_root_contract_test
+[65/74] Linking CXX executable platformator_runner_failure_test
+[66/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_behavior.h.cpp.o
+[67/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_behaviorquery.h.cpp.o
+[68/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_boxcollider.h.cpp.o
+[69/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_circlecollider.h.cpp.o
+[70/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_collider.h.cpp.o
+[71/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_collision.h.cpp.o
+[72/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_rigidbody.h.cpp.o
+[73/74] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_scriptcomponent.h.cpp.o
+Test project /home/user/Projects/Platformator/bin/cleanup-work
+    Start 14: platformator_physics_support_test
+1/4 Test #14: platformator_physics_support_test .......   Passed    0.60 sec
+    Start 15: platformator_contact_events_test
+2/4 Test #15: platformator_contact_events_test ........   Passed    0.08 sec
+    Start 16: platformator_physics_bookkeeping_test
+3/4 Test #16: platformator_physics_bookkeeping_test ...   Passed    0.04 sec
+    Start 19: platformator_runtime_work_test
+4/4 Test #19: platformator_runtime_work_test ..........   Passed    0.03 sec
+
+100% tests passed out of 4
+
+Label Time Summary:
+determinism     =   0.72 sec*proc (3 tests)
+physics         =   0.75 sec*proc (4 tests)
+platformator    =   0.75 sec*proc (4 tests)
+work            =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   0.75 sec
+idle allocations=0 geometry=0 transition_checks=0 event_records=0 solver_refresh_visits=0
+fixed-peak churn retained event_slots=256 contact_slots=512
+[PASS] affected-work counters workers=6

@@ -1,0 +1,34 @@
+[0/2] Re-checking globbed directories...
+[1/35] Building CXX object CMakeFiles/platformator_engine.dir/src/boxcollider.cpp.o
+[2/35] Building CXX object CMakeFiles/platformator_engine.dir/src/circlecollider.cpp.o
+[3/35] Building CXX object CMakeFiles/platformator_engine.dir/src/behavior.cpp.o
+[4/35] Building CXX object CMakeFiles/platformator_engine.dir/src/audiowrapperserializer.cpp.o
+[5/35] Building CXX object CMakeFiles/platformator_engine.dir/src/collider.cpp.o
+[6/35] Building CXX object CMakeFiles/platformator_engine.dir/src/collision.cpp.o
+[7/35] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobject.cpp.o
+[8/35] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobjectserializer.cpp.o
+[9/35] Building CXX object CMakeFiles/platformator_engine.dir/src/gamemanager.cpp.o
+[10/35] Building CXX object CMakeFiles/platformator_engine.dir/src/grid.cpp.o
+[11/35] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o
+FAILED: [code=1] CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o 
+/usr/bin/c++ -DPLATFORMATOR_ENABLE_WORK_PROBES=0 -DTBB_USE_DEBUG -I/home/user/Projects/Platformator/include -I/home/user/Projects/Platformator/src -I/home/user/Projects/Platformator/bin/cleanup-debug/generated -I/home/user/Projects/Platformator/bin/cleanup-debug/vendored/SDL3-3.4.18/include-revision -I/home/user/Projects/Platformator/vendored/SDL3-3.4.18/include -I/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/include -I/home/user/Projects/Platformator/vendored/SDL3_image-3.4.8/include -I/home/user/Projects/Platformator/vendored/SDL3_ttf-3.2.2/include -I/home/user/Projects/Platformator/vendored/eigen-5.0.1 -I/home/user/Projects/Platformator/vendored/oneTBB-2022.3.0/src/tbb/../../include -I/home/user/Projects/Platformator/vendored/json -g -std=c++20 -fPIC -MD -MT CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o -MF CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o.d -o CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o -c /home/user/Projects/Platformator/src/physicsgeometry.cpp
+/home/user/Projects/Platformator/src/physicsgeometry.cpp: In function ‘void physics_geometry::{anonymous}::calculateBoxContactPoints(Collision*)’:
+/home/user/Projects/Platformator/src/physicsgeometry.cpp:231:48: error: ‘void Collision::generateFallbackContactPoint()’ is private within this context
+  231 |         collision->generateFallbackContactPoint();
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/user/Projects/Platformator/src/collision.h:3,
+                 from /home/user/Projects/Platformator/src/colliderpair.h:5,
+                 from /home/user/Projects/Platformator/src/physicsgeometry.cpp:2:
+/home/user/Projects/Platformator/include/platformator/collision.h:95:10: note: declared private here
+   95 |     void generateFallbackContactPoint();
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/user/Projects/Platformator/src/physicsgeometry.cpp:245:48: error: ‘void Collision::generateFallbackContactPoint()’ is private within this context
+  245 |         collision->generateFallbackContactPoint();
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+/home/user/Projects/Platformator/include/platformator/collision.h:95:10: note: declared private here
+   95 |     void generateFallbackContactPoint();
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[12/35] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsbodyindexes.cpp.o
+[13/35] Building CXX object CMakeFiles/platformator_engine.dir/src/physicscontacts.cpp.o
+[14/35] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+ninja: build stopped: subcommand failed.

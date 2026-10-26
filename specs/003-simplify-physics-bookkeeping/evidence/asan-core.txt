@@ -1,0 +1,23 @@
+["ctest", "--test-dir", "/home/user/Projects/Platformator/bin/cleanup-asan", "--output-on-failure", "--output-junit", "/home/user/Projects/Platformator/specs/003-simplify-physics-bookkeeping/evidence/asan-core.xml", "-R", "platformator_(physics_bookkeeping|contact_events|physics_support|physics_geometry|transform_hierarchy)_test"]
+Test project /home/user/Projects/Platformator/bin/cleanup-asan
+    Start 13: platformator_transform_hierarchy_test
+1/5 Test #13: platformator_transform_hierarchy_test ...   Passed    0.19 sec
+    Start 14: platformator_physics_support_test
+2/5 Test #14: platformator_physics_support_test .......   Passed    2.85 sec
+    Start 15: platformator_contact_events_test
+3/5 Test #15: platformator_contact_events_test ........   Passed    0.57 sec
+    Start 16: platformator_physics_bookkeeping_test
+4/5 Test #16: platformator_physics_bookkeeping_test ...   Passed    0.25 sec
+    Start 17: platformator_physics_geometry_test
+5/5 Test #17: platformator_physics_geometry_test ......   Passed    0.13 sec
+
+100% tests passed out of 5
+
+Label Time Summary:
+determinism     =   3.67 sec*proc (3 tests)
+geometry        =   0.13 sec*proc (1 test)
+physics         =   3.98 sec*proc (5 tests)
+platformator    =   3.98 sec*proc (5 tests)
+transform       =   0.19 sec*proc (1 test)
+
+Total Test time (real) =   3.99 sec

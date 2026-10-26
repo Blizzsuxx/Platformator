@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="16"
+	failures="2"
+	disabled="0"
+	skipped="1"
+	hostname=""
+	time="22"
+	timestamp="2026-10-25T17:10:05"
+	>
+	<testcase name="platformator_regression_tests" classname="platformator_regression_tests" time="4.24328" status="run">
+		<properties>
+			<property name="cmake_labels" value="physics;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider Regression Floor to grid cells in range (-1, -1) to (1, 0)
+Adding collider Regression Ball to grid cells in range (-1, -1) to (0, 0)
+Removing collider Regression Floor from grid cells in range (0, 1) to (2, 1)
+Removing collider Regression Ball from grid cells in range (0, 1) to (1, 1)
+[PASS] circle_collision_stability
+[PASS] warm_start_feature_reuse
+[PASS] clip_segment_feature_propagation
+Adding collider Sleep Floor to grid cells in range (-2, -1) to (1, 0)
+Adding collider Sleep Box to grid cells in range (-1, -1) to (0, 0)
+Removing collider Sleep Floor from grid cells in range (0, 1) to (2, 1)
+Removing collider Sleep Box from grid cells in range (1, 1) to (1, 1)
+[PASS] sleeping_on_support
+Adding collider Removed Support to grid cells in range (-2, -1) to (1, 0)
+Adding collider Woken Box to grid cells in range (-1, -1) to (0, 0)
+Removing collider Removed Support from grid cells in range (0, 1) to (2, 1)
+Removing collider Woken Box from grid cells in range (1, 1) to (1, ...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_queued_deletion_safety_test" classname="platformator_queued_deletion_safety_test" time="1.15633" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;physics;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider Queued Sync Victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider Queued Sync Victim from grid cells in range (0, 0) to (0, 0)
+Adding collider Exit Survivor to grid cells in range (-1, -1) to (0, 0)
+Adding collider Exit Victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider Exit Victim from grid cells in range (0, 0) to (1, 0)
+Removing collider Exit Survivor from grid cells in range (0, 0) to (1, 0)
+Adding collider Adjacency Anchor to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 0 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 1 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 2 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 3 to grid cells in range (-1, -1) to (0, 0)
+Removing collider Adjacency Victim 2 from grid cells in range (1, 0) to (1, 0)
+Removing collider Adjacency Victim 1 from grid cells in range (0, 0) to (0, 0)
+Removing collid...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_recreation_test" classname="platformator_runtime_recreation_test" time="0.151521" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Renderer Used: software
+[PASS] runtime_recreation_test
+</system-out>
+	</testcase>
+	<testcase name="platformator_collider_pair_cleanup_test" classname="platformator_collider_pair_cleanup_test" time="1.25027" status="run">
+		<properties>
+			<property name="cmake_labels" value="physics;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider Deletion Sync Survivor to grid cells in range (-1, -1) to (0, 0)
+Adding collider Deletion Sync Victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider Deletion Sync Victim from grid cells in range (-1, -1) to (0, 0)
+Removing collider Deletion Sync Survivor from grid cells in range (0, -1) to (0, 0)
+Renderer Used: software
+Adding collider Coverage Long to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Victim to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 0 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 1 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 2 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 3 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 4 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 5 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 6 to grid cells...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_foundation_test" classname="platformator_runtime_foundation_test" time="1.68229" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator;reference"/>
+		</properties>
+		<system-out>[PASS] no_runtime
+Renderer Used: software
+[PASS] growth
+Renderer Used: software
+[PASS] retirement
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+[PASS] hierarchy
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+[PASS] identity
+Renderer Used: software
+[PASS] resources
+Renderer Used: software
+[PASS] activation
+Renderer Used: software
+[PASS] callback_failure
+Renderer Used: software
+Freeing audio: assets/test_runti...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_scene_transition_contract_test" classname="platformator_scene_transition_contract_test" time="0.203079" status="fail">
+		<failure message="Failed"/>
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator;scene"/>
+		</properties>
+		<system-out>==================
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=60820)
+  Cycle in lock order graph: M0 (0x720c000005d0) =&gt; M1 (0x720c000008d0) =&gt; M0
+
+  Mutex M1 acquired here while holding mutex M0 in main thread:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 &lt;null&gt; &lt;null&gt; (libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_scene_transition_contract_test+0xf8314) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #6 SDLWindow::SDLWindow(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_scene_transition_contract_test+0xf7f56) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #7 std::__detail::_MakeUniq&lt;SDLWindow&gt;::__single_object std::make_unique&lt;SDLWindow, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0x77740) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #8 GameManager::GameManager(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_scene_transition_contract_test+0x6910f) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #9 std::__detail::_MakeUniq&lt;GameManager&gt;::__single_object std::make_unique&lt;GameManager, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0xd9b15) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&amp;) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_scene_transition_contract_test+0xd81a8) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #11 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:66 (platformator_scene_transition_contract_test+0xcec3) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+
+  Mutex M0 previously acquired by the same thread here:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 &lt;null&gt; &lt;null&gt; (libdbus-1.so.3+0x181df) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_scene_transition_contract_test+0xf8314) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #6 SDLWindow::SDLWindow(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_scene_transition_contract_test+0xf7f56) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #7 std::__detail::_MakeUniq&lt;SDLWindow&gt;::__single_object std::make_unique&lt;SDLWindow, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0x77740) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #8 GameManager::GameManager(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_scene_transition_contract_test+0x6910f) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #9 std::__detail::_MakeUniq&lt;GameManager&gt;::__single_object std::make_unique&lt;GameManager, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_scene_transition_contract_test+0xd9b15) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&amp;) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_scene_transition_contract_test+0xd81a8) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #11 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:66 (platformator_scene_transition_contract_test+0xcec3) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+
+  Mutex M0 acquired here while holding mutex M1 in main thread:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 &lt;null&gt; &lt;null&gt; (libdbus-1.so.3+0x16644) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_scene_transition_contract_test+0xf8a9c) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_scene_transition_contract_test+0xf8177) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #6 std::default_delete&lt;SDLWindow&gt;::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0x7ce5b) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #7 std::__uniq_ptr_impl&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0x7da07) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #8 std::unique_ptr&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0x782e4) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_scene_transition_contract_test+0x69555) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #10 std::default_delete&lt;GameManager&gt;::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0xd9fa9) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #11 std::__uniq_ptr_impl&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0xda273) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #12 std::unique_ptr&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0xd9c98) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_scene_transition_contract_test+0xd82e7) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #14 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:205 (platformator_scene_transition_contract_test+0xf0ad) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+
+  Mutex M1 previously acquired by the same thread here:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 dbus_connection_close &lt;null&gt; (libdbus-1.so.3+0x17340) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_scene_transition_contract_test+0xf8a9c) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_scene_transition_contract_test+0xf8177) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #6 std::default_delete&lt;SDLWindow&gt;::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0x7ce5b) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #7 std::__uniq_ptr_impl&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0x7da07) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #8 std::unique_ptr&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0x782e4) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_scene_transition_contract_test+0x69555) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #10 std::default_delete&lt;GameManager&gt;::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_scene_transition_contract_test+0xd9fa9) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #11 std::__uniq_ptr_impl&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_scene_transition_contract_test+0xda273) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #12 std::unique_ptr&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_scene_transition_contract_test+0xd9c98) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_scene_transition_contract_test+0xd82e7) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+    #14 main /home/user/Projects/Platformator/tests/scene_transition_contract_test.cpp:205 (platformator_scene_transition_contract_test+0xf0ad) (BuildId: f0db39703a1831b6bea961589ba01f3664f0236a)
+
+SUMMARY: ThreadSanitizer: lock-order-inversion (potential deadlock) (/usr/lib/../lib/libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a) 
+==================
+</system-out>
+	</testcase>
+	<testcase name="platformator_scene_transition_stress_test" classname="platformator_scene_transition_stress_test" time="2.15527" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator;scene"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider driver from grid cells in range (-1, -1) to (0, 0)
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Removing collider driver from grid cells in range (-1, -1) to (0, 0)
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider driver from grid cells in range (-1, -1) to (0, 0)
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Removing collider driver from grid cells in ran...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_callback_mutation_test" classname="platformator_callback_mutation_test" time="1.80298" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;mutation;platformator"/>
+		</properties>
+		<system-out>Behavior 'TestBehavior' on '' initialization failed: resolve failure
+Behavior 'TestBehavior' on '' initialization failed: start failure
+Behavior 'TestBehavior' on '' initialization failed: start failure
+Behavior 'TestBehavior' on '' initialization failed: unknown exception
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_destruction_contract_test" classname="platformator_destruction_contract_test" time="1.34826" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;mutation;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_transform_hierarchy_test" classname="platformator_transform_hierarchy_test" time="1.05761" status="run">
+		<properties>
+			<property name="cmake_labels" value="physics;platformator;transform"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (4, -1) to (5, 0)
+Removing collider  from grid cells in range (5, -1) to (6, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (4, -1) to (5, 0)
+Removing collider  from grid cells in range (5, -1) to (6, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (0, -1) to (0, 0)
+[PASS] hierarchy transforms
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_support_test" classname="platformator_physics_support_test" time="3.94667" status="run">
+		<properties>
+			<property name="cmake_labels" value="determinism;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-6, -1) to (5, 0)
+Adding collider  to grid cells in range (-6, 0) to (-6, 0)
+Adding collider  to grid cells in range (-6, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-4, 0) to (-4, 0)
+Adding collider  to grid cells in range (-4, 0) to (-4, 0)
+Adding collider  to g...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_contact_events_test" classname="platformator_contact_events_test" time="1.5085" status="run">
+		<properties>
+			<property name="cmake_labels" value="determinism;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider a0 to grid cells in range (-1, -1) to (0, 0)
+Adding collider b0 to grid cells in range (0, 0) to (0, 0)
+Adding collider a1 to grid cells in range (0, -1) to (0, 0)
+Adding collider b1 to grid cells in range (0, 0) to (0, 0)
+Adding collider a2 to grid cells in range (0, -1) to (0, 0)
+Adding collider b2 to grid cells in range (0, 0) to (0, 0)
+Adding collider a3 to grid cells in range (0, -1) to (0, 0)
+Adding collider b3 to grid cells in range (0, 0) to (0, 0)
+Adding collider a4 to grid cells in range (0, -1) to (0, 0)
+Adding collider b4 to grid cells in range (0, 0) to (0, 0)
+Adding collider a5 to grid cells in range (0, -1) to (0, 0)
+Adding collider b5 to grid cells in range (0, 0) to (0, 0)
+Adding collider a6 to grid cells in range (0, -1) to (0, 0)
+Adding collider b6 to grid cells in range (0, 0) to (0, 0)
+Adding collider a7 to grid cells in range (0, -1) to (0, 0)
+Adding collider b7 to grid cells in range (0, 0) to (0, 0)
+Adding collider a8 to grid cells in range (0, -1) to (0, 0)
+Adding coll...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_bookkeeping_test" classname="platformator_physics_bookkeeping_test" time="1.18217" status="run">
+		<properties>
+			<property name="cmake_labels" value="determinism;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (1, 0)
+Adding collider  to grid cells in range (0, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in ra...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_geometry_test" classname="platformator_physics_geometry_test" time="1.05534" status="run">
+		<properties>
+			<property name="cmake_labels" value="geometry;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_step_test" classname="platformator_runtime_step_test" time="0.154423" status="fail">
+		<failure message="Failed"/>
+		<properties>
+			<property name="cmake_labels" value="clock;lifecycle;platformator"/>
+		</properties>
+		<system-out>==================
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=61203)
+  Cycle in lock order graph: M0 (0x720c000005a0) =&gt; M1 (0x720c000008a0) =&gt; M0
+
+  Mutex M1 acquired here while holding mutex M0 in main thread:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 &lt;null&gt; &lt;null&gt; (libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_runtime_step_test+0x4d1a2) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #6 SDLWindow::SDLWindow(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_runtime_step_test+0x4cde4) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #7 std::__detail::_MakeUniq&lt;SDLWindow&gt;::__single_object std::make_unique&lt;SDLWindow, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x78def) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #8 GameManager::GameManager(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_runtime_step_test+0x69c21) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #9 std::__detail::_MakeUniq&lt;GameManager&gt;::__single_object std::make_unique&lt;GameManager, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x38f43) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&amp;) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_runtime_step_test+0x36fb2) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #11 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:61 (platformator_runtime_step_test+0xc834) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+
+  Mutex M0 previously acquired by the same thread here:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 &lt;null&gt; &lt;null&gt; (libdbus-1.so.3+0x181df) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_InitSubSystem_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:360 (libSDL3.so.0+0x40ef2) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Init_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:586 (libSDL3.so.0+0x41460) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDL_Init /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:638 (libSDL3.so.0+0xa5234) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #5 SDLWindow::init() /home/user/Projects/Platformator/src/sdlwindow.cpp:99 (platformator_runtime_step_test+0x4d1a2) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #6 SDLWindow::SDLWindow(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/sdlwindow.cpp:29 (platformator_runtime_step_test+0x4cde4) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #7 std::__detail::_MakeUniq&lt;SDLWindow&gt;::__single_object std::make_unique&lt;SDLWindow, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x78def) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #8 GameManager::GameManager(WindowSettings const&amp;, DebugSettings const&amp;) /home/user/Projects/Platformator/src/gamemanager.cpp:37 (platformator_runtime_step_test+0x69c21) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #9 std::__detail::_MakeUniq&lt;GameManager&gt;::__single_object std::make_unique&lt;GameManager, WindowSettings const&amp;, DebugSettings const&amp;&gt;(WindowSettings const&amp;, DebugSettings const&amp;) /usr/include/c++/16/bits/unique_ptr.h:1105 (platformator_runtime_step_test+0x38f43) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #10 platformator::Runtime::Runtime(RuntimeOptions const&amp;) /home/user/Projects/Platformator/src/runtime.cpp:22 (platformator_runtime_step_test+0x36fb2) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #11 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:61 (platformator_runtime_step_test+0xc834) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+
+  Mutex M0 acquired here while holding mutex M1 in main thread:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 &lt;null&gt; &lt;null&gt; (libdbus-1.so.3+0x16644) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_runtime_step_test+0x4d92a) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_runtime_step_test+0x4d005) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #6 std::default_delete&lt;SDLWindow&gt;::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x7dd79) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #7 std::__uniq_ptr_impl&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x7e89f) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #8 std::unique_ptr&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x79866) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_runtime_step_test+0x6a067) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #10 std::default_delete&lt;GameManager&gt;::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x3962f) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #11 std::__uniq_ptr_impl&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x398f9) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #12 std::unique_ptr&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x390c6) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_runtime_step_test+0x370f1) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #14 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:93 (platformator_runtime_step_test+0xce07) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+
+  Mutex M1 previously acquired by the same thread here:
+    #0 pthread_mutex_lock &lt;null&gt; (libtsan.so.2+0x60bb1) (BuildId: fad1b3f53c846e11570baa72e153cca909e3f7d2)
+    #1 dbus_connection_close &lt;null&gt; (libdbus-1.so.3+0x17340) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a)
+    #2 SDL_Quit_REAL /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/SDL.c:717 (libSDL3.so.0+0x417f5) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #3 SDL_Quit /home/user/Projects/Platformator/vendored/SDL3-3.4.18/src/dynapi/SDL_dynapi_procs.h:725 (libSDL3.so.0+0xa6b3c) (BuildId: 7c3e0f7e318952794f5c203fd7a228f3f43004d3)
+    #4 SDLWindow::close() /home/user/Projects/Platformator/src/sdlwindow.cpp:199 (platformator_runtime_step_test+0x4d92a) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #5 SDLWindow::~SDLWindow() /home/user/Projects/Platformator/src/sdlwindow.cpp:83 (platformator_runtime_step_test+0x4d005) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #6 std::default_delete&lt;SDLWindow&gt;::operator()(SDLWindow*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x7dd79) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #7 std::__uniq_ptr_impl&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x7e89f) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #8 std::unique_ptr&lt;SDLWindow, std::default_delete&lt;SDLWindow&gt; &gt;::reset(SDLWindow*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x79866) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #9 GameManager::~GameManager() /home/user/Projects/Platformator/src/gamemanager.cpp:48 (platformator_runtime_step_test+0x6a067) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #10 std::default_delete&lt;GameManager&gt;::operator()(GameManager*) const /usr/include/c++/16/bits/unique_ptr.h:92 (platformator_runtime_step_test+0x3962f) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #11 std::__uniq_ptr_impl&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:204 (platformator_runtime_step_test+0x398f9) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #12 std::unique_ptr&lt;GameManager, std::default_delete&lt;GameManager&gt; &gt;::reset(GameManager*) /usr/include/c++/16/bits/unique_ptr.h:530 (platformator_runtime_step_test+0x390c6) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #13 platformator::Runtime::~Runtime() /home/user/Projects/Platformator/src/runtime.cpp:32 (platformator_runtime_step_test+0x370f1) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+    #14 main /home/user/Projects/Platformator/tests/runtime_step_test.cpp:93 (platformator_runtime_step_test+0xce07) (BuildId: 5ccca03f820018ff9975c7af849ad0b7fd6474f6)
+
+SUMMARY: ThreadSanitizer: lock-order-inversion (potential deadlock) (/usr/lib/../lib/libdbus-1.so.3+0x154e1) (BuildId: 65f44f39f68b8f63de82c45fc6108bfc66c0247a) 
+==================
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_work_test" classname="platformator_runtime_work_test" time="0.0140789" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="physics;platformator;work"/>
+		</properties>
+		<system-out>[SKIP] configure PLATFORMATOR_ENABLE_WORK_PROBES=ON for the work oracle
+</system-out>
+	</testcase>
+</testsuite>

@@ -1,0 +1,6 @@
+{
+  "v2-asan-core": 0,
+  "v2-asan-full-leaks": 8,
+  "v2-asan-access": 0,
+  "v2-tsan-selection": 8
+}

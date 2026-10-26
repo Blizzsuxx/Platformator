@@ -1,0 +1,947 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 15a7631..573398a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -219,6 +219,7 @@ if(PLATFORMATOR_BUILD_TESTS)
+     platformator_add_test(platformator_transform_hierarchy_test tests/transform_hierarchy_test.cpp LABELS physics transform)
+     platformator_add_test(platformator_physics_support_test tests/physics_support_test.cpp LABELS physics determinism)
+     platformator_add_test(platformator_contact_events_test tests/contact_events_test.cpp INTERNAL LABELS physics determinism)
++    platformator_add_test(platformator_physics_bookkeeping_test tests/physics_bookkeeping_test.cpp INTERNAL LABELS physics determinism)
+     platformator_add_test(platformator_physics_geometry_test tests/physics_geometry_test.cpp LABELS physics geometry)
+     platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp INTERNAL LABELS lifecycle clock)
+     platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp INTERNAL LABELS physics work)
+diff --git a/include/platformator/collision.h b/include/platformator/collision.h
+index ce178ec..35344c7 100644
+--- a/include/platformator/collision.h
++++ b/include/platformator/collision.h
+@@ -92,5 +92,4 @@ class Collision
+     bool getSupportsIncidentBody() const;
+     void setSupportsReferenceBody(bool supports) const;
+     void setSupportsIncidentBody(bool supports) const;
+-    void generateFallbackContactPoint();
+ };
+diff --git a/include/platformator/rigidbody.h b/include/platformator/rigidbody.h
+index 5b8668e..cd7a096 100644
+--- a/include/platformator/rigidbody.h
++++ b/include/platformator/rigidbody.h
+@@ -106,8 +106,8 @@ class Rigidbody : public Component
+     size_t physicsManagerIndex;
+     int64_t supportDelta = 0;
+     size_t supportDeltaIndex = SIZE_MAX;
+-    size_t awakeIndex = SIZE_MAX, kinematicIndex = SIZE_MAX, sleepIndex = SIZE_MAX;
+-    size_t bodyQueueIndex = SIZE_MAX;
++    size_t awakeDynamicIndex = SIZE_MAX, movingKinematicIndex = SIZE_MAX, sleepCandidateIndex = SIZE_MAX;
++    size_t participationQueueIndex = SIZE_MAX;
+     Rigidbody *sleepParent = nullptr;
+     uint8_t sleepRank = 0;
+     bool islandQuiet = true;
+@@ -116,7 +116,7 @@ class Rigidbody : public Component
+     void initialize();
+     uint8_t integrateLocal(double timeDelta);
+     void integrateForces(double timeDelta, const Eigen::Vector2f &gravityVector);
+-    void bodyStateChanged();
++    void queueParticipationChange();
+     void applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm);
+     float calculateAutomaticMomentOfInertia() const;
+ };
+diff --git a/src/colliderpair.cpp b/src/colliderpair.cpp
+index f9b51a2..9ffc019 100644
+--- a/src/colliderpair.cpp
++++ b/src/colliderpair.cpp
+@@ -3,7 +3,7 @@
+ 
+ ColliderPair::ColliderPair(Collider *a, Collider *b)
+     : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1),
+-      isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX),
++      narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX),
+       adjacencyIndexB(SIZE_MAX), witnessCount(0)
+ {
+     if (a->getHandle() < b->getHandle())
+@@ -54,12 +54,7 @@ void ColliderPair::clearCollisionNoEvent() const
+ 
+ bool ColliderPair::getIsQueuedForNarrowPhase() const
+ {
+-    return isQueuedForNarrowPhase;
+-}
+-
+-void ColliderPair::setIsQueuedForNarrowPhase(bool queued) const
+-{
+-    isQueuedForNarrowPhase = queued;
++    return narrowPhaseQueueIndex != SIZE_MAX;
+ }
+ 
+ size_t ColliderPair::getNarrowPhaseQueueIndex() const
+diff --git a/src/colliderpair.h b/src/colliderpair.h
+index f7ff8fc..814cb16 100644
+--- a/src/colliderpair.h
++++ b/src/colliderpair.h
+@@ -25,7 +25,6 @@ class ColliderPair
+     void clearCollisionNoEvent() const;
+ 
+     bool getIsQueuedForNarrowPhase() const;
+-    void setIsQueuedForNarrowPhase(bool queued) const;
+     size_t getNarrowPhaseQueueIndex() const;
+     void setNarrowPhaseQueueIndex(size_t index) const;
+     size_t getAdjacencyIndexA() const;
+@@ -64,18 +63,16 @@ class ColliderPair
+     mutable Collision *collision;
+     mutable uint64_t objectAStateVersion;
+     mutable uint64_t objectBStateVersion;
+-    mutable bool isQueuedForNarrowPhase;
+     mutable size_t narrowPhaseQueueIndex;
+     mutable size_t adjacencyIndexA;
+     mutable size_t adjacencyIndexB;
+     mutable int witnessCount;
+     mutable size_t pairSlot = SIZE_MAX;
+-    mutable size_t activeIndex = SIZE_MAX;
++    mutable size_t contactIndex = SIZE_MAX;
+     mutable size_t solverIndex = SIZE_MAX;
+     mutable bool resultHadContact = false;
+     mutable bool resultTestedGeometry = false;
+-    mutable Rigidbody *supportBodyA = nullptr;
+-    mutable Rigidbody *supportBodyB = nullptr;
+-    mutable bool supportsA = false;
+-    mutable bool supportsB = false;
++    // Exact recipients of this pair's applied-or-queued support credit, not current component caches.
++    mutable Rigidbody *contributedSupportBodyA = nullptr;
++    mutable Rigidbody *contributedSupportBodyB = nullptr;
+ };
+diff --git a/src/collision.cpp b/src/collision.cpp
+index fc4a0ca..b93de3d 100644
+--- a/src/collision.cpp
++++ b/src/collision.cpp
+@@ -230,16 +230,3 @@ bool Collision::isHorizontalCollision() const
+ {
+     return !isVerticalCollision();
+ }
+-
+-void Collision::generateFallbackContactPoint()
+-{
+-    // As a fallback, we can use the midpoint between the two objects as the contact point, with a penetration of 0.
+-    Eigen::Vector2f positionA = referenceObject->getGameObject()->getPosition();
+-    Eigen::Vector2f positionB = incidentObject->getGameObject()->getPosition();
+-    Eigen::Vector2f midpoint = (positionA + positionB) * 0.5f;
+-
+-    ClipVertex fallbackContactPoint(midpoint, ContactFeature());
+-    ClipPoints fallbackClipPoints;
+-    fallbackClipPoints.add(fallbackContactPoint);
+-    setContactPoints(fallbackClipPoints);
+-}
+diff --git a/src/gamemanager.cpp b/src/gamemanager.cpp
+index 3d2821d..33d5d03 100644
+--- a/src/gamemanager.cpp
++++ b/src/gamemanager.cpp
+@@ -836,8 +836,9 @@ BaseObject *GameManager::resolveHandle(platformator::ObjectHandle handle, platfo
+ void GameManager::queueReconciliation(Component *component)
+ {
+     component->callbackEligible = false;
++    // Lifecycle reconciliation also updates bodies that are not yet physically registered.
+     if (component->getType() == RIGID_BODY)
+-        physicsManager->queueBodyChange(static_cast<Rigidbody *>(component));
++        physicsManager->queueBodyParticipationChange(static_cast<Rigidbody *>(component));
+     if (component->reconcileQueued)
+         return;
+     if (component->getType() == ComponentType::SCRIPT)
+@@ -1005,6 +1006,7 @@ void GameManager::reconcilePending(std::exception_ptr &error)
+         }
+         reconciliationDrain.clear();
+         synchronizeTransforms();
++        // Old support recipients remain allocated until this grid/support flush and notification drain.
+         physicsManager->flushPendingColliderOperations();
+         try
+         {
+diff --git a/src/grid.cpp b/src/grid.cpp
+index 6321516..75fa461 100644
+--- a/src/grid.cpp
++++ b/src/grid.cpp
+@@ -109,7 +109,6 @@ void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
+     }
+ 
+     pendingNarrowPhasePairs.pop_back();
+-    pair->setIsQueuedForNarrowPhase(false);
+     pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+ }
+ 
+@@ -134,7 +133,6 @@ void Grid::queuePairForNarrowPhase(const ColliderPair *pair)
+         return;
+     }
+ 
+-    pair->setIsQueuedForNarrowPhase(true);
+     pair->setNarrowPhaseQueueIndex(pendingNarrowPhasePairs.size());
+     pendingNarrowPhasePairs.push_back(pair);
+ }
+@@ -157,17 +155,7 @@ const std::vector<const ColliderPair *> *Grid::getTouchingPairs(Collider *collid
+ 
+ void Grid::clearPendingNarrowPhasePairs()
+ {
+-    // tbb::parallel_for(size_t(0), pendingNarrowPhasePairs.size(), [&](size_t i)
+-    //                   {
+-    //     const ColliderPair *pair = pendingNarrowPhasePairs[i];
+-    //     if (pair == nullptr)
+-    //     {
+-    //         return;
+-    //     }
+-
+-    //     pair->setIsQueuedForNarrowPhase(false);
+-    //     pair->setNarrowPhaseQueueIndex(SIZE_MAX); });
+-
++    // Workers consumed their own indices. Their fixed pointer batch lives through the serial reduction.
+     pendingNarrowPhasePairs.clear();
+ }
+ 
+diff --git a/src/physicsbodyindexes.cpp b/src/physicsbodyindexes.cpp
+index 4b0bc61..c880498 100644
+--- a/src/physicsbodyindexes.cpp
++++ b/src/physicsbodyindexes.cpp
+@@ -23,49 +23,54 @@ void membership(std::vector<Rigidbody *> &list, Rigidbody *body, size_t Rigidbod
+ }
+ } // namespace
+ 
+-void PhysicsManager::queueBodyChange(Rigidbody *body)
++void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
+ {
+-    if (body->bodyQueueIndex != SIZE_MAX)
++    if (body->participationQueueIndex != SIZE_MAX)
+         return;
+-    body->bodyQueueIndex = changedBodies.size();
+-    changedBodies.push_back(body);
++    body->participationQueueIndex = pendingBodyChanges.size();
++    pendingBodyChanges.push_back(body);
+ }
+ 
+-void PhysicsManager::cancelBodyChange(Rigidbody *body)
++void PhysicsManager::cancelBodyParticipationChange(Rigidbody *body)
+ {
+-    if (body->bodyQueueIndex == SIZE_MAX)
++    if (body->participationQueueIndex == SIZE_MAX)
+         return;
+-    const auto index = body->bodyQueueIndex;
+-    auto *moved = changedBodies.back();
+-    changedBodies[index] = moved;
+-    moved->bodyQueueIndex = index;
+-    changedBodies.pop_back();
+-    body->bodyQueueIndex = SIZE_MAX;
++    const auto index = body->participationQueueIndex;
++    auto *moved = pendingBodyChanges.back();
++    pendingBodyChanges[index] = moved;
++    moved->participationQueueIndex = index;
++    pendingBodyChanges.pop_back();
++    body->participationQueueIndex = SIZE_MAX;
+ }
+ 
+-void PhysicsManager::reconcileBody(Rigidbody *body)
++void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
+ {
++    // Derive memberships from current physical state after queued changes coalesce.
+     const bool live =
+         body->getIsRegisteredInPhysicsManager() && !body->isRetired() && body->getGameObject()->getActive();
+     const bool awake = live && body->getBodyType() == DYNAMIC && !body->getIsSleeping();
+-    membership(awakeBodies, body, &Rigidbody::awakeIndex, awake);
+-    membership(kinematicBodies, body, &Rigidbody::kinematicIndex,
++    membership(awakeDynamicBodies, body, &Rigidbody::awakeDynamicIndex, awake);
++    membership(movingKinematicBodies, body, &Rigidbody::movingKinematicIndex,
+                live && body->getBodyType() == KINEMATIC &&
+                    (!body->getVelocity().isZero(0) || body->getAngularVelocity() != 0));
+-    const bool previouslyEligible = body->sleepIndex != SIZE_MAX;
+-    membership(sleepEligibleBodies, body, &Rigidbody::sleepIndex,
++    const bool previouslyEligible = body->sleepCandidateIndex != SIZE_MAX;
++    membership(sleepCandidates, body, &Rigidbody::sleepCandidateIndex,
+                awake && (body->hasSupportContact() || !body->getGravity()));
+-    if (!previouslyEligible && body->sleepIndex != SIZE_MAX)
+-    {
+-        body->sleepParent = body;
+-        body->sleepRank = 0;
+-        body->islandQuiet = true;
+-        body->islandTimer = body->getSleepTimer();
+-    }
++    if (!previouslyEligible && body->sleepCandidateIndex != SIZE_MAX)
++        resetSleepIsland(body);
+     if (auto *collider = body->getGameObject()->getComponent<Collider>())
+         refreshSolverPairs(collider);
+ }
+ 
++void PhysicsManager::resetSleepIsland(Rigidbody *body)
++{
++    // Step-local aggregation: the solver merges these roots before the sleep decision.
++    body->sleepParent = body;
++    body->sleepRank = 0;
++    body->islandQuiet = true;
++    body->islandTimer = body->getSleepTimer();
++}
++
+ Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)
+ {
+     auto *root = body;
+@@ -82,7 +87,7 @@ Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)
+ 
+ void PhysicsManager::mergeSleepIslands(Rigidbody *a, Rigidbody *b)
+ {
+-    if (a->sleepIndex == SIZE_MAX || b->sleepIndex == SIZE_MAX)
++    if (a->sleepCandidateIndex == SIZE_MAX || b->sleepCandidateIndex == SIZE_MAX)
+         return;
+     a = sleepRoot(a);
+     b = sleepRoot(b);
+@@ -95,12 +100,13 @@ void PhysicsManager::mergeSleepIslands(Rigidbody *a, Rigidbody *b)
+         ++a->sleepRank;
+ }
+ 
+-void PhysicsManager::drainBodyChanges()
++void PhysicsManager::reconcileChangedBodies()
+ {
+-    for (auto *body : changedBodies)
++    // No integration or callback occurs here; participation and affected solver neighbors catch up.
++    for (auto *body : pendingBodyChanges)
+     {
+-        body->bodyQueueIndex = SIZE_MAX;
+-        reconcileBody(body);
++        body->participationQueueIndex = SIZE_MAX;
++        reconcileBodyParticipation(body);
+     }
+-    changedBodies.clear();
++    pendingBodyChanges.clear();
+ }
+diff --git a/src/physicscontacts.cpp b/src/physicscontacts.cpp
+index 0cb8884..8e1fa2b 100644
+--- a/src/physicscontacts.cpp
++++ b/src/physicscontacts.cpp
+@@ -45,6 +45,12 @@ namespace
+     {
+         return body && body->getBodyType() != STATIC && !body->getIsSleeping();
+     }
++    bool isLiveContact(const ColliderPair *pair)
++    {
++        return pair->getCollision() && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
++               pair->getObjectA()->getGameObject()->getActive() &&
++               pair->getObjectB()->getGameObject()->getActive();
++    }
+ } // namespace
+ 
+ void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
+@@ -59,7 +65,7 @@ void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
+     body->supportDelta += delta;
+ }
+ 
+-void PhysicsManager::reducePairSupport(const ColliderPair *pair)
++void PhysicsManager::reconcilePairSupport(const ColliderPair *pair)
+ {
+     auto *collision = pair->getCollision();
+     auto *a = pair->getObjectA()->getGameObject()->getComponent<Rigidbody>();
+@@ -69,23 +75,25 @@ void PhysicsManager::reducePairSupport(const ColliderPair *pair)
+                                          (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT));
+     const bool supportsB = collision && (collision->supportState &
+                                          (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE));
+-    const auto reduce = [&](Rigidbody *&oldBody, bool &oldSupport, Rigidbody *body, bool support)
+-    {
+-        if (oldBody == body && oldSupport == support)
+-            return;
+-        if (oldSupport)
+-            queueSupportDelta(oldBody, -1);
+-        if (support)
+-            queueSupportDelta(body, 1);
+-        oldBody = body;
+-        oldSupport = support;
+-    };
+-    reduce(pair->supportBodyA, pair->supportsA, a, supportsA);
+-    reduce(pair->supportBodyB, pair->supportsB, b, supportsB);
++    reconcileSupportContribution(pair->contributedSupportBodyA, supportsA ? a : nullptr);
++    reconcileSupportContribution(pair->contributedSupportBodyB, supportsB ? b : nullptr);
++}
++
++void PhysicsManager::reconcileSupportContribution(Rigidbody *&contributor, Rigidbody *desired)
++{
++    if (contributor == desired)
++        return;
++    // The old component survives until the queued credit transfer is flushed, even after replacement.
++    if (contributor)
++        queueSupportDelta(contributor, -1);
++    if (desired)
++        queueSupportDelta(desired, 1);
++    contributor = desired;
+ }
+ 
+ void PhysicsManager::flushSupportDeltas()
+ {
++    // Commit the net change once: losing and gaining support in this batch must not wake at an interim zero.
+     for (auto *body : supportDeltaBodies)
+     {
+         const auto next = static_cast<int64_t>(body->supportContactCount) + body->supportDelta;
+@@ -98,28 +106,24 @@ void PhysicsManager::flushSupportDeltas()
+         if (lostLast && !body->isRetired())
+             body->wakeUp();
+         if (changedSupport)
+-            queueBodyChange(body);
++            queueBodyParticipationChange(body);
+     }
+     supportDeltaBodies.clear();
+-    drainBodyChanges();
++    reconcileChangedBodies();
+ }
+ 
+-void PhysicsManager::refreshPairLists(const ColliderPair *pair)
++void PhysicsManager::refreshContactParticipation(const ColliderPair *pair)
+ {
+-    auto *collision = pair->getCollision();
+-    const bool live = collision && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
+-                      pair->getObjectA()->getGameObject()->getActive() &&
+-                      pair->getObjectB()->getGameObject()->getActive();
+-    membership(contactPairs, pair, &ColliderPair::activeIndex, live);
+-    refreshSolverPair(pair, live);
++    const bool live = isLiveContact(pair);
++    membership(contactPairs, pair, &ColliderPair::contactIndex, live);
++    refreshSolverParticipation(pair, live);
+ }
+ 
+-void PhysicsManager::refreshSolverPair(const ColliderPair *pair, bool live)
++void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool live)
+ {
+-    const auto *collision = pair->getCollision();
++    const auto response = live ? pair->getCollision()->getResolutionType() : Collision::NONE_COLLISIONS;
+     const bool solve = live &&
+-                       (collision->getResolutionType() == Collision::DYNAMIC ||
+-                        collision->getResolutionType() == Collision::KINEMATIC) &&
++                       (response == Collision::DYNAMIC || response == Collision::KINEMATIC) &&
+                        (movingBody(pair->getObjectA()->getGameObject()->getComponent<Rigidbody>()) ||
+                         movingBody(pair->getObjectB()->getGameObject()->getComponent<Rigidbody>()));
+     solverOrderDirty |= membership(solverPairs, pair, &ColliderPair::solverIndex, solve);
+@@ -131,10 +135,7 @@ void PhysicsManager::refreshSolverPairs(Collider *collider)
+         for (auto *pair : *pairs)
+         {
+             PLATFORMATOR_WORK_ADD(solverRefreshPairs, 1);
+-            const bool live = pair->getCollision() && !pair->getObjectA()->isRetired() &&
+-                              !pair->getObjectB()->isRetired() && pair->getObjectA()->getGameObject()->getActive() &&
+-                              pair->getObjectB()->getGameObject()->getActive();
+-            refreshSolverPair(pair, live);
++            refreshSolverParticipation(pair, isLiveContact(pair));
+         }
+ }
+ 
+@@ -145,8 +146,8 @@ void PhysicsManager::refreshResponse(Collider *collider)
+         {
+             if (auto *collision = pair->getCollision())
+                 collision->updateSupportState(gravityVectorNormalized);
+-            reducePairSupport(pair);
+-            refreshPairLists(pair);
++            reconcilePairSupport(pair);
++            refreshContactParticipation(pair);
+         }
+ }
+ 
+@@ -155,16 +156,13 @@ void PhysicsManager::removePair(const ColliderPair *pair)
+     // This is the explicit end boundary for contacts lost with their final cell witness.
+     if (pair->getCollision())
+         addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_EXIT, pair, nullptr));
+-    if (pair->supportsA)
+-        queueSupportDelta(pair->supportBodyA, -1);
+-    if (pair->supportsB)
+-        queueSupportDelta(pair->supportBodyB, -1);
+-    pair->supportsA = pair->supportsB = false;
+-    membership(contactPairs, pair, &ColliderPair::activeIndex, false);
++    reconcileSupportContribution(pair->contributedSupportBodyA, nullptr);
++    reconcileSupportContribution(pair->contributedSupportBodyB, nullptr);
++    membership(contactPairs, pair, &ColliderPair::contactIndex, false);
+     solverOrderDirty |= membership(solverPairs, pair, &ColliderPair::solverIndex, false);
+ }
+ 
+-void PhysicsManager::canonicalizePairs()
++void PhysicsManager::orderSolverPairs()
+ {
+     // Only solver consumption requires canonical order. Event batches contain transitions only.
+     order(solverPairs, &ColliderPair::solverIndex, solverOrderDirty);
+diff --git a/src/physicsgeometry.cpp b/src/physicsgeometry.cpp
+index 9606f74..d590c10 100644
+--- a/src/physicsgeometry.cpp
++++ b/src/physicsgeometry.cpp
+@@ -1,12 +1,37 @@
+-#include "physicsmanager.h"
++#include "physicsgeometry.h"
++#include "colliderpair.h"
++#include "constants.h"
++#include "debugdraw.h"
++#include "helpers.h"
+ #include "platformator/boxcollider.h"
+ #include "platformator/circlecollider.h"
+ #include <cmath>
+ #include <limits>
+-#include "constants.h"
+-#include "debugdraw.h"
++#include <span>
++
++namespace physics_geometry
++{
++namespace
++{
++// Circle dispatch builds its own manifold; clipping below is exclusively box/box.
++void calculateBoxContactPoints(Collision *collision);
++
++void generateFallbackContactPoint(Collision *collision)
++{
++    const auto *referenceObject = collision->getReferenceObject();
++    const auto *incidentObject = collision->getIncidentObject();
++    // As a fallback, we can use the midpoint between the two objects as the contact point, with a penetration of 0.
++    Eigen::Vector2f positionA = referenceObject->getGameObject()->getPosition();
++    Eigen::Vector2f positionB = incidentObject->getGameObject()->getPosition();
++    Eigen::Vector2f midpoint = (positionA + positionB) * 0.5f;
++
++    ClipVertex fallbackContactPoint(midpoint, ContactFeature());
++    ClipPoints fallbackClipPoints;
++    fallbackClipPoints.add(fallbackContactPoint);
++    collision->setContactPoints(fallbackClipPoints);
++}
+ 
+-void PhysicsManager::circleCircleCollision(const ColliderPair &pair)
++void circleCircleCollision(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+ {
+     const auto *a = static_cast<const CircleCollider *>(pair.getObjectA());
+     const auto *b = static_cast<const CircleCollider *>(pair.getObjectB());
+@@ -31,10 +56,10 @@ void PhysicsManager::circleCircleCollision(const ColliderPair &pair)
+                ContactFeature(0x100));
+     collision->setContactPoints(points);
+     collision->getContactPoints().points[0].separation = distance - radius;
+-    collision->updateSupportState(gravityVectorNormalized);
++    collision->updateSupportState(gravityDirection);
+ }
+ 
+-void PhysicsManager::circleBoxCollision(const ColliderPair &pair)
++void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+ {
+     const bool boxIsA = pair.getObjectA()->getColliderType() == ColliderType::BoxCollider;
+     const auto *box = static_cast<const BoxCollider *>(boxIsA ? pair.getObjectA() : pair.getObjectB());
+@@ -82,12 +107,12 @@ void PhysicsManager::circleBoxCollision(const ColliderPair &pair)
+     points.add(circle->getCachedWorldPosition() - normal * radius, ContactFeature(feature));
+     collision->setContactPoints(points);
+     collision->getContactPoints().points[0].separation = separation;
+-    collision->updateSupportState(gravityVectorNormalized);
++    collision->updateSupportState(gravityDirection);
+ }
+ 
+-bool PhysicsManager::checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
+-                                      const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
+-                                      const Collider *&realIncidentCollider)
++bool checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
++                      const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
++                      const Collider *&realIncidentCollider)
+ {
+     for (long unsigned int i = 0; i < normals.size(); i++)
+     {
+@@ -116,21 +141,22 @@ bool PhysicsManager::checkProjections(std::span<const Eigen::Vector2f> normals,
+ 
+     return true;
+ }
++} // namespace
+ 
+-void PhysicsManager::updateContactGeometry(const ColliderPair &pair)
++void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+ {
+     const Collider *referenceCollider = pair.getObjectA();
+     const Collider *incidentCollider = pair.getObjectB();
+     if (referenceCollider->getColliderType() == ColliderType::CircleCollider &&
+         incidentCollider->getColliderType() == ColliderType::CircleCollider)
+     {
+-        circleCircleCollision(pair);
++        circleCircleCollision(pair, gravityDirection);
+         return;
+     }
+     if (referenceCollider->getColliderType() == ColliderType::CircleCollider ||
+         incidentCollider->getColliderType() == ColliderType::CircleCollider)
+     {
+-        circleBoxCollision(pair);
++        circleBoxCollision(pair, gravityDirection);
+         return;
+     }
+ 
+@@ -173,7 +199,7 @@ void PhysicsManager::updateContactGeometry(const ColliderPair &pair)
+     // Store the corrected normal
+     collision->setNormal(minNormal);
+ 
+-    calculateContactPoint(collision);
++    calculateBoxContactPoints(collision);
+     // Float SAT can round a sub-ulp separating gap to overlap. Clipping must
+     // produce an actual manifold before this pair contributes events or support.
+     if (!collision->getContactPoints().count)
+@@ -181,10 +207,12 @@ void PhysicsManager::updateContactGeometry(const ColliderPair &pair)
+         pair.clearCollisionNoEvent();
+         return;
+     }
+-    collision->updateSupportState(gravityVectorNormalized);
++    collision->updateSupportState(gravityDirection);
+ }
+ 
+-void PhysicsManager::calculateContactPoint(Collision *collision)
++namespace
++{
++void calculateBoxContactPoints(Collision *collision)
+ {
+     const Collider *referenceCollider = collision->getReferenceObject();
+     const Collider *incidentCollider = collision->getIncidentObject();
+@@ -193,43 +221,6 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
+     const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
+     const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
+ 
+-    ColliderType referenceType = referenceCollider->getColliderType();
+-    ColliderType incidentType = incidentCollider->getColliderType();
+-
+-    if (incidentType == ColliderType::CircleCollider)
+-    {
+-        ClipPoints cp;
+-        cp.add(incidentEdge.max,
+-               makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
+-        collision->setContactPoints(cp);
+-        float max = normal.dot(referenceEdge.max);
+-        float separation = normal.dot(incidentEdge.max) - max;
+-        collision->getContactPoints().points[0].separation = separation;
+-        return;
+-    }
+-    else if (referenceType == ColliderType::CircleCollider)
+-    {
+-        ClipPoints cp;
+-        const Eigen::Vector2f circleCenter = referenceCollider->getGameObject()->worldPosition;
+-        const Eigen::Vector2f edgeVector = incidentEdge.getEdgeVector();
+-        const float edgeLengthSquared = edgeVector.squaredNorm();
+-
+-        float t = 0.0f;
+-        if (edgeLengthSquared > 1e-12f)
+-        {
+-            t = std::clamp((circleCenter - incidentEdge.v1).dot(edgeVector) / edgeLengthSquared, 0.0f, 1.0f);
+-        }
+-
+-        const Eigen::Vector2f closestPoint = incidentEdge.v1 + t * edgeVector;
+-        cp.add(closestPoint, makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
+-        collision->setContactPoints(cp);
+-
+-        const float max = normal.dot(referenceEdge.max);
+-        const float separation = normal.dot(closestPoint) - max;
+-        collision->getContactPoints().points[0].separation = separation;
+-        return;
+-    }
+-
+     // the edge vector
+     Eigen::Vector2f referenceEdgeVector = referenceEdge.getEdgeVector();
+     referenceEdgeVector.normalize();
+@@ -252,7 +243,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
+     if (clippedCount < 2)
+     {
+         PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
+-        collision->generateFallbackContactPoint();
++        generateFallbackContactPoint(collision);
+         return;
+     }
+ 
+@@ -266,7 +257,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
+     if (clippedCount < 2)
+     {
+         PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
+-        collision->generateFallbackContactPoint();
++        generateFallbackContactPoint(collision);
+         return;
+     }
+ 
+@@ -291,3 +282,5 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
+         contactPoints.points[i].separation = separation;
+     }
+ }
++} // namespace
++} // namespace physics_geometry
+diff --git a/src/physicsmanager.cpp b/src/physicsmanager.cpp
+index f76ca63..cc7892a 100644
+--- a/src/physicsmanager.cpp
++++ b/src/physicsmanager.cpp
+@@ -1,4 +1,5 @@
+ #include "physicsmanager.h"
++#include "physicsgeometry.h"
+ 
+ #include "platformator/boxcollider.h"
+ #include "benchmark.h"
+@@ -14,7 +15,7 @@
+ #include <tuple>
+ 
+ PhysicsManager::PhysicsManager()
+-    : rigidBodyComponents(), colliderComponents(), pendingPhysicsEvents(), grid(this),
++    : registeredBodies(), colliderComponents(), pendingPhysicsEvents(), grid(this),
+       gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
+ {
+ }
+@@ -25,27 +26,24 @@ PhysicsManager::~PhysicsManager()
+ 
+ void PhysicsManager::applyPhysics(double timeDelta)
+ {
+-    drainBodyChanges();
+-    PLATFORMATOR_WORK_ADD(forceBodies, awakeBodies.size());
+-    if (awakeBodies.empty())
++    reconcileChangedBodies();
++    PLATFORMATOR_WORK_ADD(forceBodies, awakeDynamicBodies.size());
++    if (awakeDynamicBodies.empty())
+         return;
+-    tbb::parallel_for(size_t(0), awakeBodies.size(), [&](size_t i) {
+-        auto *body = awakeBodies[i];
+-        body->sleepParent = body;
+-        body->sleepRank = 0;
+-        body->islandQuiet = true;
+-        body->islandTimer = body->getSleepTimer();
++    tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i) {
++        auto *body = awakeDynamicBodies[i];
++        resetSleepIsland(body);
+         body->integrateForces(timeDelta, gravityVector);
+     });
+ }
+ 
+ void PhysicsManager::applyMovement(double timeDelta)
+ {
+-    PLATFORMATOR_WORK_ADD(movingBodies, awakeBodies.size() + kinematicBodies.size());
+-    if (awakeBodies.empty() && kinematicBodies.empty())
++    PLATFORMATOR_WORK_ADD(movingBodies, awakeDynamicBodies.size() + movingKinematicBodies.size());
++    if (awakeDynamicBodies.empty() && movingKinematicBodies.empty())
+         return;
+-    tbb::parallel_for(size_t(0), awakeBodies.size() + kinematicBodies.size(), [&](size_t i) {
+-        auto *body = i < awakeBodies.size() ? awakeBodies[i] : kinematicBodies[i - awakeBodies.size()];
++    tbb::parallel_for(size_t(0), awakeDynamicBodies.size() + movingKinematicBodies.size(), [&](size_t i) {
++        auto *body = i < awakeDynamicBodies.size() ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeDynamicBodies.size()];
+         if (const auto changes = body->integrateLocal(timeDelta))
+             movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0});
+     });
+@@ -87,10 +85,10 @@ void PhysicsManager::addRigidBodyComponent(Rigidbody *rigidBodyComponent)
+         return;
+     }
+ 
+-    rigidBodyComponent->setPhysicsManagerIndex(rigidBodyComponents.size());
++    rigidBodyComponent->setPhysicsManagerIndex(registeredBodies.size());
+     rigidBodyComponent->setIsRegisteredInPhysicsManager(true);
+-    rigidBodyComponents.push_back(rigidBodyComponent);
+-    queueBodyChange(rigidBodyComponent);
++    registeredBodies.push_back(rigidBodyComponent);
++    queueBodyParticipationChange(rigidBodyComponent);
+ }
+ 
+ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
+@@ -121,20 +119,20 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
+     }
+ 
+     size_t removeIndex = rigidBodyComponent->getPhysicsManagerIndex();
+-    size_t lastIndex = rigidBodyComponents.size() - 1;
++    size_t lastIndex = registeredBodies.size() - 1;
+ 
+     if (removeIndex != lastIndex)
+     {
+-        Rigidbody *movedRigidBody = rigidBodyComponents[lastIndex];
+-        rigidBodyComponents[removeIndex] = movedRigidBody;
++        Rigidbody *movedRigidBody = registeredBodies[lastIndex];
++        registeredBodies[removeIndex] = movedRigidBody;
+         movedRigidBody->setPhysicsManagerIndex(removeIndex);
+     }
+ 
+-    rigidBodyComponents.pop_back();
++    registeredBodies.pop_back();
+     rigidBodyComponent->setPhysicsManagerIndex(SIZE_MAX);
+     rigidBodyComponent->setIsRegisteredInPhysicsManager(false);
+-    cancelBodyChange(rigidBodyComponent);
+-    reconcileBody(rigidBodyComponent);
++    cancelBodyParticipationChange(rigidBodyComponent);
++    reconcileBodyParticipation(rigidBodyComponent);
+ }
+ 
+ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
+@@ -197,11 +195,11 @@ void PhysicsManager::narrowPhase()
+         {
+             addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_ENTER, pair, pair->getCollision()));
+         }
+-        reducePairSupport(pair);
+-        refreshPairLists(pair);
++        reconcilePairSupport(pair);
++        refreshContactParticipation(pair);
+     }
+     flushSupportDeltas();
+-    canonicalizePairs();
++    orderSolverPairs();
+ 
+ #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+     for (auto *pair : solverPairs)
+@@ -224,13 +222,13 @@ void PhysicsManager::narrowPhase()
+ #if PLATFORMATOR_ENABLE_BENCHMARKS
+ size_t PhysicsManager::countAwakeDynamicBodies() const
+ {
+-    return awakeBodies.size();
++    return awakeDynamicBodies.size();
+ }
+ #endif
+ 
+ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair)
+ {
+-    pair->setIsQueuedForNarrowPhase(false);
++    // Structural queue mutation/erasure cannot overlap this distinct-pair worker batch.
+     pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+     pair->resultHadContact = pair->getCollision() != nullptr;
+     pair->resultTestedGeometry = false;
+@@ -243,7 +241,7 @@ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair)
+     if (pair->shouldUpdate())
+     {
+         pair->resultTestedGeometry = true;
+-        updateContactGeometry(*pair);
++        physics_geometry::updateContactGeometry(*pair, gravityVectorNormalized);
+     }
+ }
+ 
+@@ -287,7 +285,7 @@ void PhysicsManager::resolveCollisions(double timeDelta)
+         }
+     }
+ 
+-    drainBodyChanges();
++    reconcileChangedBodies();
+     updateSleepingStates(timeDelta);
+ 
+ #if PLATFORMATOR_ENABLE_BENCHMARKS
+@@ -557,15 +555,15 @@ void PhysicsManager::resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, con
+ 
+ void PhysicsManager::updateSleepingStates(double timeDelta)
+ {
+-    PLATFORMATOR_WORK_ADD(sleepBodies, sleepEligibleBodies.size());
+-    for (auto *body : sleepEligibleBodies)
++    PLATFORMATOR_WORK_ADD(sleepBodies, sleepCandidates.size());
++    for (auto *body : sleepCandidates)
+     {
+         auto *root = sleepRoot(body);
+         root->islandQuiet &= body->getVelocity().squaredNorm() <= LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD &&
+                              std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
+         root->islandTimer = std::min(root->islandTimer, body->getSleepTimer());
+     }
+-    for (auto *body : sleepEligibleBodies)
++    for (auto *body : sleepCandidates)
+     {
+         auto *root = sleepRoot(body);
+         const auto timer = root->islandQuiet ? root->islandTimer + timeDelta : 0;
+@@ -574,7 +572,8 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
+         else
+             body->setSleepTimer(timer);
+     }
+-    drainBodyChanges();
++    // Sleep decisions queue membership changes; drain only after both fixed-list traversals finish.
++    reconcileChangedBodies();
+ }
+ 
+ void PhysicsManager::addPendingPhysicsEvent(const PhysicsEvent &event)
+diff --git a/src/physicsmanager.h b/src/physicsmanager.h
+index dc67c32..3a3d036 100644
+--- a/src/physicsmanager.h
++++ b/src/physicsmanager.h
+@@ -6,7 +6,6 @@
+ #include <algorithm>
+ #include <oneapi/tbb/enumerable_thread_specific.h>
+ #include <vector>
+-#include <span>
+ #include "helpers.h"
+ #include "grid.h"
+ 
+@@ -72,40 +71,34 @@ class PhysicsManager
+     void broadPhase();
+     void narrowPhase();
+     void processNarrowPhasePair(const ColliderPair *pair);
+-    void refreshPairLists(const ColliderPair *pair);
+-    void refreshSolverPair(const ColliderPair *pair, bool live);
++    void refreshContactParticipation(const ColliderPair *pair);
++    void refreshSolverParticipation(const ColliderPair *pair, bool live);
+     void removePair(const ColliderPair *pair);
+-    void reducePairSupport(const ColliderPair *pair);
++    void reconcilePairSupport(const ColliderPair *pair);
++    void reconcileSupportContribution(Rigidbody *&contributor, Rigidbody *desired);
+     void queueSupportDelta(Rigidbody *body, int delta);
+     void flushSupportDeltas();
+-    void canonicalizePairs();
+-    void queueBodyChange(Rigidbody *body);
+-    void cancelBodyChange(Rigidbody *body);
+-    void reconcileBody(Rigidbody *body);
+-    void drainBodyChanges();
++    void orderSolverPairs();
++    void queueBodyParticipationChange(Rigidbody *body);
++    void cancelBodyParticipationChange(Rigidbody *body);
++    void reconcileBodyParticipation(Rigidbody *body);
++    void reconcileChangedBodies();
++    static void resetSleepIsland(Rigidbody *body);
+     Rigidbody *sleepRoot(Rigidbody *body);
+     void mergeSleepIslands(Rigidbody *a, Rigidbody *b);
+ #if PLATFORMATOR_ENABLE_BENCHMARKS
+     size_t countAwakeDynamicBodies() const;
+ #endif
+ 
+-    void updateContactGeometry(const ColliderPair &pair);
+-    void circleCircleCollision(const ColliderPair &pair);
+-    void circleBoxCollision(const ColliderPair &pair);
+-
+-    bool checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
+-                          const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
+-                          const Collider *&realIncidentCollider);
+     void preStepCollision(Collision *collision, float inverseTimeDelta);
+     void resolveCollision(const Collision *collision);
+     void resolveKinematicCollision(const Collision *collision);
+     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
+                                            float correctionDistance);
+-    void calculateContactPoint(Collision *collision);
+     PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair, Collision *collision);
+ 
+-    std::vector<Rigidbody *> rigidBodyComponents;
+-    std::vector<Rigidbody *> awakeBodies, kinematicBodies, sleepEligibleBodies, changedBodies;
++    std::vector<Rigidbody *> registeredBodies;
++    std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
+     std::vector<Collider *> colliderComponents;
+     std::vector<Collision *> dynamicCollisionScratch;
+     std::vector<const ColliderPair *> contactPairs;
+diff --git a/src/rigidbody.cpp b/src/rigidbody.cpp
+index bf45030..27a219b 100644
+--- a/src/rigidbody.cpp
++++ b/src/rigidbody.cpp
+@@ -161,7 +161,7 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
+ 
+     this->velocity = velocity;
+     if (bodyType == KINEMATIC)
+-        bodyStateChanged();
++        queueParticipationChange();
+     return this;
+ }
+ 
+@@ -217,7 +217,7 @@ Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
+ 
+     this->angularVelocity = angularVelocity;
+     if (bodyType == KINEMATIC)
+-        bodyStateChanged();
++        queueParticipationChange();
+     return this;
+ }
+ 
+@@ -258,7 +258,7 @@ Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
+     if (bodyType == DYNAMIC)
+         platformator_detail::positive(mass, "dynamic mass");
+     this->bodyType = bodyType;
+-    bodyStateChanged();
++    queueParticipationChange();
+     if (bodyType != BodyType::DYNAMIC)
+     {
+         setIsSleeping(false);
+@@ -274,7 +274,7 @@ Rigidbody *Rigidbody::setGravity(const bool gravity)
+ {
+     this->gravity = gravity;
+     wakeUp();
+-    bodyStateChanged();
++    queueParticipationChange();
+     return this;
+ }
+ 
+@@ -378,7 +378,7 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
+     }
+ 
+     this->sleeping = sleeping;
+-    bodyStateChanged();
++    queueParticipationChange();
+     if (sleeping)
+     {
+         // PLATFORMATOR_LOG("Rigidbody on GameObject '%s' is now sleeping.\n", getGameObject()->getName().c_str());
+@@ -397,10 +397,11 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
+     return this;
+ }
+ 
+-void Rigidbody::bodyStateChanged()
++void Rigidbody::queueParticipationChange()
+ {
++    // Setters affecting active/sleep lists coalesce here. Awake dynamic solver impulses need no refresh.
+     if (isRegisteredInPhysicsManager)
+-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyChange(this);
++        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyParticipationChange(this);
+ }
+ 
+ void Rigidbody::applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm)

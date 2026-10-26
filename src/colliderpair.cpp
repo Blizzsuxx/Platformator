@@ -3,7 +3,7 @@
 
 ColliderPair::ColliderPair(Collider *a, Collider *b)
     : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1),
-      isQueuedForNarrowPhase(false), narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX),
+      narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX),
       adjacencyIndexB(SIZE_MAX), witnessCount(0)
 {
     if (a->getHandle() < b->getHandle())
@@ -54,12 +54,7 @@ void ColliderPair::clearCollisionNoEvent() const
 
 bool ColliderPair::getIsQueuedForNarrowPhase() const
 {
-    return isQueuedForNarrowPhase;
-}
-
-void ColliderPair::setIsQueuedForNarrowPhase(bool queued) const
-{
-    isQueuedForNarrowPhase = queued;
+    return narrowPhaseQueueIndex != SIZE_MAX;
 }
 
 size_t ColliderPair::getNarrowPhaseQueueIndex() const

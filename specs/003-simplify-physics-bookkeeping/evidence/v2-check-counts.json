@@ -1,0 +1,50 @@
+{
+  "v2-full-debug": {
+    "registered": 26,
+    "passed": 24,
+    "failed": [],
+    "skipped": 2
+  },
+  "v2-asan-core": {
+    "registered": 5,
+    "passed": 5,
+    "failed": [],
+    "skipped": 0
+  },
+  "v2-asan-full-leaks": {
+    "registered": 25,
+    "passed": 9,
+    "failed": [
+      "platformator_regression_tests",
+      "platformator_scene_script_roundtrip_test",
+      "platformator_queued_deletion_safety_test",
+      "platformator_runtime_recreation_test",
+      "platformator_collider_pair_cleanup_test",
+      "platformator_runtime_foundation_test",
+      "platformator_scene_transition_contract_test",
+      "platformator_scene_transition_stress_test",
+      "platformator_callback_mutation_test",
+      "platformator_destruction_contract_test",
+      "platformator_object_reference_contract_test",
+      "platformator_scene_io_contract_test",
+      "platformator_runtime_step_test",
+      "platformator_asset_root_contract_test"
+    ],
+    "skipped": 2
+  },
+  "v2-asan-access": {
+    "registered": 25,
+    "passed": 23,
+    "failed": [],
+    "skipped": 2
+  },
+  "v2-tsan-selection": {
+    "registered": 16,
+    "passed": 13,
+    "failed": [
+      "platformator_scene_transition_contract_test",
+      "platformator_runtime_step_test"
+    ],
+    "skipped": 1
+  }
+}

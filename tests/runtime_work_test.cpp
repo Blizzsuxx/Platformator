@@ -1,10 +1,10 @@
-#include "test_support.h"
+#include "physicsmanager.h"
 #include "runtime_work_probe.h"
 #include "runtimeaccess.h"
-#include "physicsmanager.h"
-#include <iostream>
+#include "test_support.h"
 #include <atomic>
 #include <cstdlib>
+#include <iostream>
 #include <new>
 #include <oneapi/tbb/global_control.h>
 #include <platformator/boxcollider.h>
@@ -26,34 +26,20 @@ void *operator new(size_t bytes)
         return memory;
     throw std::bad_alloc();
 }
-void *operator new[](size_t bytes)
-{
-    return ::operator new(bytes);
-}
-void operator delete(void *memory) noexcept
-{
-    std::free(memory);
-}
-void operator delete[](void *memory) noexcept
-{
-    std::free(memory);
-}
-void operator delete(void *memory, size_t) noexcept
-{
-    std::free(memory);
-}
-void operator delete[](void *memory, size_t) noexcept
-{
-    std::free(memory);
-}
+void *operator new[](size_t bytes) { return ::operator new(bytes); }
+void operator delete(void *memory) noexcept { std::free(memory); }
+void operator delete[](void *memory) noexcept { std::free(memory); }
+void operator delete(void *memory, size_t) noexcept { std::free(memory); }
+void operator delete[](void *memory, size_t) noexcept { std::free(memory); }
 #endif
-int main()
+int main(int argc, char **argv)
 {
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     headlessEnvironment();
     try
     {
-        tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, 1);
+        const size_t workers = argc == 2 ? std::stoul(argv[1]) : 1;
+        tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
         platformator::Runtime runtime(physicsOnly());
         auto *root = runtime.createGameObject();
         for (int i = 0; i < 20; ++i)
@@ -81,7 +67,8 @@ int main()
         platformator_test::work = {};
         allocations = 0;
         countAllocations = true;
-        runtime.simulateFrame(dt);
+        for (int step = 0; step < 100; ++step)
+            runtime.simulateFrame(dt);
         countAllocations = false;
         auto work = platformator_test::work;
         require(work.hierarchyRebuilds == 0 && work.transformVisits == 0 && work.reconciliations == 0 &&
@@ -96,10 +83,12 @@ int main()
                   << " event_records=" << work.contactEventRecords
                   << " solver_refresh_visits=" << work.solverRefreshPairs << '\n';
         platformator_test::work = {};
-        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
-            root->setPosition({1, 0});
-            root->setPosition({2, 0});
-        });
+        runtime.simulateFrameWithCustomCallback(dt,
+                                                [&](double)
+                                                {
+                                                    root->setPosition({1, 0});
+                                                    root->setPosition({2, 0});
+                                                });
         work = platformator_test::work;
         require(work.hierarchyRebuilds == 0 && work.transformVisits == 21,
                 "One dirty root must visit only its affected subtree once");
@@ -130,23 +119,45 @@ int main()
                 "Body sleep transitions still reconcile actual physical adjacency");
         auto *physics = platformator_detail::RuntimeAccess::physicsManager();
         std::pair<size_t, size_t> retained;
+        auto *supported = runtime.createGameObject()
+                              ->setPosition({40000, 0})
+                              ->addComponent<BoxCollider>(20, 20)
+                              ->addComponent<Rigidbody>(KINEMATIC, false);
+        runtime.createGameObject()
+            ->setPosition({40000, 19})
+            ->addComponent<BoxCollider>(40, 20)
+            ->addComponent<Rigidbody>(STATIC, false);
+        runtime.simulateFrame(dt);
+        runtime.simulateFrame(dt);
+        require(supported->getComponent<Rigidbody>()->getSupportContactCount() == 1,
+                "Churn body-replacement control has a real physical support");
         const auto originalContacts = physics->getContactPairs().size();
         for (int cycle = 0; cycle < 5; ++cycle)
         {
             std::vector<GameObject *> churn;
-            runtime.simulateFrameWithCustomCallback(dt, [&](double) {
-                for (int i = 0; i < 16; ++i)
-                    for (int endpoint = 0; endpoint < 2; ++endpoint)
-                    {
-                        auto *object = runtime.createGameObject()
-                                           ->setPosition({30000.f + i * 40.f + endpoint, 0})
-                                           ->addComponent<BoxCollider>(4, 4);
-                        object->getComponent<BoxCollider>()->setIsTrigger(true);
-                        churn.push_back(object);
-                    }
-            });
+            runtime.simulateFrameWithCustomCallback(
+                dt,
+                [&](double)
+                {
+                    supported->removeComponent(RIGID_BODY);
+                    supported->addComponent<Rigidbody>(KINEMATIC, false);
+                    auto *cancelled = runtime.createGameObject()->addComponent<Rigidbody>(KINEMATIC, false);
+                    cancelled->getComponent<Rigidbody>()->setVelocity({10, 0});
+                    cancelled->destroy();
+                    for (int i = 0; i < 16; ++i)
+                        for (int endpoint = 0; endpoint < 2; ++endpoint)
+                        {
+                            auto *object = runtime.createGameObject()
+                                               ->setPosition({30000.f + i * 40.f + endpoint, 0})
+                                               ->addComponent<BoxCollider>(4, 4);
+                            object->getComponent<BoxCollider>()->setIsTrigger(true);
+                            churn.push_back(object);
+                        }
+                });
             runtime.simulateFrame(
                 dt); // Components created in the hook register at cleanup; confirm geometry next step.
+            require(supported->getComponent<Rigidbody>()->getSupportContactCount() == 1,
+                    "Fixed-peak replacement restores exactly one physical support to the new recipient");
             require(physics->getContactPairs().size() == originalContacts + 16,
                     "Each churn cycle must add sixteen real confirmed contacts");
             const auto capacity =
@@ -155,16 +166,18 @@ int main()
                 retained = capacity;
             else
                 require(capacity == retained, "Fixed-peak contact churn must reuse retained event/contact storage");
-            runtime.simulateFrameWithCustomCallback(dt, [&](double) {
-                for (auto *object : churn)
-                    object->destroy();
-            });
+            runtime.simulateFrameWithCustomCallback(dt,
+                                                    [&](double)
+                                                    {
+                                                        for (auto *object : churn)
+                                                            object->destroy();
+                                                    });
             require(physics->getContactPairs().size() == originalContacts,
                     "Churn removals must restore contact membership");
         }
         std::cout << "fixed-peak churn retained event_slots=" << retained.first << " contact_slots=" << retained.second
                   << '\n';
-        std::cout << "[PASS] affected-work counters\n";
+        std::cout << "[PASS] affected-work counters workers=" << workers << "\n";
         return 0;
     }
     catch (const std::exception &error)

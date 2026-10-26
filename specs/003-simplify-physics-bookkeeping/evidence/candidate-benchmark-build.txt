@@ -1,0 +1,349 @@
+-- dynamic libasound -> libasound.so.2
+-- Checking for module 'jack'
+--   Found jack, version 1.9.22
+-- dynamic libjack -> libjack.so.0
+-- Checking for module 'libpipewire-0.3>=0.3.44'
+--   Found libpipewire-0.3, version 1.6.8
+-- dynamic libpipewire-0.3 -> libpipewire-0.3.so.0
+-- Checking for module 'libpulse>=0.9.15'
+--   Found libpulse, version 17.0-98-gb096
+-- dynamic libpulse -> libpulse.so.0
+-- Checking for module 'sndio'
+--   Found sndio, version 1.10.0
+-- dynamic libsndio -> libsndio.so.7
+-- dynamic libX11 -> libX11.so.6
+-- dynamic libXext -> libXext.so.6
+-- dynamic libXcursor -> libXcursor.so.1
+-- dynamic libXi -> libXi.so.6
+-- dynamic libXfixes -> libXfixes.so.3
+-- dynamic libXrandr -> libXrandr.so.2
+-- dynamic libXrender -> libXrender.so.1
+-- dynamic libXss -> libXss.so.1
+-- dynamic libXtst -> libXtst.so.6
+-- Checking for module 'fribidi'
+--   Found fribidi, version 1.0.16
+-- dynamic libfribidi -> libfribidi.so.0
+-- Checking for module 'libthai'
+--   Found libthai, version 0.1.30
+-- dynamic libthai -> libthai.so.0
+-- Checking for module 'libdrm'
+--   Found libdrm, version 2.4.134
+-- Checking for module 'gbm'
+--   Found gbm, version 26.2.2-arch1.1
+-- dynamic libdrm -> libdrm.so.2
+-- dynamic libgbm -> libgbm.so.1
+-- Checking for modules 'wayland-client>=1.18;wayland-egl;wayland-cursor;egl;xkbcommon>=0.5.0'
+--   Found wayland-client, version 1.26.0
+--   Found wayland-egl, version 18.1.0
+--   Found wayland-cursor, version 1.26.0
+--   Found egl, version 1.5
+--   Found xkbcommon, version 1.13.2
+-- dynamic libwayland-client -> libwayland-client.so.0
+-- dynamic libwayland-egl -> libwayland-egl.so.1
+-- dynamic libwayland-cursor -> libwayland-cursor.so.0
+-- dynamic libxkbcommon -> libxkbcommon.so.0
+-- dynamic libdecor-0 -> libdecor-0.so.0
+-- dynamic libudev -> libudev.so.1
+-- Checking for one of the modules 'ibus-1.0;ibus'
+-- 
+-- SDL3 was configured with the following options:
+-- 
+-- Platform: Linux-6.18.49-1-MANJARO
+-- 64-bit:   TRUE
+-- Compiler: /usr/bin/cc
+-- Revision: SDL-release-3.4.18-0-g829a65d76
+-- Vendor:   
+-- 
+-- Subsystems:
+--   Audio:    ON
+--   Video:    ON
+--   GPU:      ON
+--   Render:   ON
+--   Camera:   ON
+--   Joystick: ON
+--   Haptic:   ON
+--   Hidapi:   ON
+--   Power:    ON
+--   Sensor:   ON
+--   Dialog:   ON
+--   Tray:     ON
+-- 
+-- Options:
+--   SDL_ALSA                    (Wanted: ON): ON
+--   SDL_ALSA_SHARED             (Wanted: ON): ON
+--   SDL_ALTIVEC                 (Wanted: OFF): OFF
+--   SDL_ARMNEON                 (Wanted: OFF): OFF
+--   SDL_ASAN                    (Wanted: OFF): OFF
+--   SDL_ASSEMBLY                (Wanted: ON): ON
+--   SDL_ASSERTIONS              (Wanted: auto): auto
+--   SDL_AVX                     (Wanted: ON): ON
+--   SDL_AVX2                    (Wanted: ON): ON
+--   SDL_AVX512F                 (Wanted: ON): ON
+--   SDL_BACKGROUNDING_SIGNAL    (Wanted: OFF): OFF
+--   SDL_CCACHE                  (Wanted: OFF): OFF
+--   SDL_CLANG_TIDY              (Wanted: OFF): OFF
+--   SDL_CLOCK_GETTIME           (Wanted: ON): ON
+--   SDL_COCOA                   (Wanted: OFF): OFF
+--   SDL_DBUS                    (Wanted: ON): ON
+--   SDL_DEPS_SHARED             (Wanted: ON): OFF
+--   SDL_DIRECTX                 (Wanted: OFF): OFF
+--   SDL_DISKAUDIO               (Wanted: ON): ON
+--   SDL_DLOPEN_NOTES            (Wanted: ON): ON
+--   SDL_DUMMYAUDIO              (Wanted: ON): ON
+--   SDL_DUMMYCAMERA             (Wanted: ON): ON
+--   SDL_DUMMYVIDEO              (Wanted: ON): ON
+--   SDL_EXAMPLES                (Wanted: OFF): OFF
+--   SDL_EXAMPLES_LINK_SHARED    (Wanted: ON): OFF
+--   SDL_FOREGROUNDING_SIGNAL    (Wanted: OFF): OFF
+--   SDL_FRIBIDI                 (Wanted: ON): ON
+--   SDL_FRIBIDI_SHARED          (Wanted: ON): ON
+--   SDL_GCC_ATOMICS             (Wanted: ON): ON
+--   SDL_HIDAPI                  (Wanted: ON): ON
+--   SDL_HIDAPI_JOYSTICK         (Wanted: ON): ON
+--   SDL_HIDAPI_LIBUSB           (Wanted: ON): ON
+--   SDL_HIDAPI_LIBUSB_SHARED    (Wanted: ON): ON
+--   SDL_IBUS                    (Wanted: ON): OFF
+--   SDL_INSTALL                 (Wanted: OFF): OFF
+--   SDL_INSTALL_TESTS           (Wanted: OFF): OFF
+--   SDL_JACK                    (Wanted: ON): ON
+--   SDL_JACK_SHARED             (Wanted: ON): ON
+--   SDL_KMSDRM                  (Wanted: ON): ON
+--   SDL_KMSDRM_SHARED           (Wanted: ON): ON
+--   SDL_LASX                    (Wanted: OFF): OFF
+--   SDL_LIBC                    (Wanted: ON): ON
+--   SDL_LIBICONV                (Wanted: OFF): OFF
+--   SDL_LIBTHAI                 (Wanted: ON): ON
+--   SDL_LIBTHAI_SHARED          (Wanted: ON): ON
+--   SDL_LIBUDEV                 (Wanted: ON): ON
+--   SDL_LIBURING                (Wanted: ON): ON
+--   SDL_LSX                     (Wanted: OFF): OFF
+--   SDL_METAL                   (Wanted: OFF): OFF
+--   SDL_MMX                     (Wanted: ON): ON
+--   SDL_OFFSCREEN               (Wanted: ON): ON
+--   SDL_OPENGL                  (Wanted: ON): ON
+--   SDL_OPENGLES                (Wanted: ON): ON
+--   SDL_OPENVR                  (Wanted: OFF): OFF
+--   SDL_OSS                     (Wanted: OFF): OFF
+--   SDL_PIPEWIRE                (Wanted: ON): ON
+--   SDL_PIPEWIRE_SHARED         (Wanted: ON): ON
+--   SDL_PTHREADS                (Wanted: ON): ON
+--   SDL_PTHREADS_SEM            (Wanted: ON): ON
+--   SDL_PULSEAUDIO              (Wanted: ON): ON
+--   SDL_PULSEAUDIO_SHARED       (Wanted: ON): ON
+--   SDL_RENDER_D3D              (Wanted: OFF): OFF
+--   SDL_RENDER_D3D11            (Wanted: OFF): OFF
+--   SDL_RENDER_D3D12            (Wanted: OFF): OFF
+--   SDL_RENDER_GPU              (Wanted: ON): ON
+--   SDL_RENDER_METAL            (Wanted: OFF): OFF
+--   SDL_RENDER_VULKAN           (Wanted: ON): ON
+--   SDL_ROCKCHIP                (Wanted: OFF): OFF
+--   SDL_RPATH                   (Wanted: ON): ON
+--   SDL_RPI                     (Wanted: OFF): OFF
+--   SDL_SNDIO                   (Wanted: ON): ON
+--   SDL_SNDIO_SHARED            (Wanted: ON): ON
+--   SDL_SSE                     (Wanted: ON): ON
+--   SDL_SSE2                    (Wanted: ON): ON
+--   SDL_SSE3                    (Wanted: ON): ON
+--   SDL_SSE4_1                  (Wanted: ON): ON
+--   SDL_SSE4_2                  (Wanted: ON): ON
+--   SDL_SYSTEM_ICONV            (Wanted: ON): ON
+--   SDL_TESTS                   (Wanted: OFF): OFF
+--   SDL_TESTS_LINK_SHARED       (Wanted: ON): OFF
+--   SDL_UNINSTALL               (Wanted: OFF): OFF
+--   SDL_VIRTUAL_JOYSTICK        (Wanted: ON): ON
+--   SDL_VIVANTE                 (Wanted: OFF): OFF
+--   SDL_VULKAN                  (Wanted: ON): ON
+--   SDL_WASAPI                  (Wanted: OFF): OFF
+--   SDL_WAYLAND                 (Wanted: ON): ON
+--   SDL_WAYLAND_LIBDECOR        (Wanted: ON): ON
+--   SDL_WAYLAND_LIBDECOR_SHARED (Wanted: ON): ON
+--   SDL_WAYLAND_SHARED          (Wanted: ON): ON
+--   SDL_X11                     (Wanted: ON): ON
+--   SDL_X11_SHARED              (Wanted: ON): ON
+--   SDL_X11_XCURSOR             (Wanted: ON): ON
+--   SDL_X11_XDBE                (Wanted: ON): ON
+--   SDL_X11_XFIXES              (Wanted: ON): ON
+--   SDL_X11_XINPUT              (Wanted: ON): ON
+--   SDL_X11_XRANDR              (Wanted: ON): ON
+--   SDL_X11_XSCRNSAVER          (Wanted: ON): ON
+--   SDL_X11_XSHAPE              (Wanted: ON): ON
+--   SDL_X11_XSYNC               (Wanted: ON): ON
+--   SDL_X11_XTEST               (Wanted: ON): ON
+--   SDL_XINPUT                  (Wanted: OFF): OFF
+-- 
+--  Build Shared Library: ON
+--  Build Static Library: OFF
+-- 
+-- Enabled backends:
+--   Video drivers: dummy kmsdrm(dynamic) offscreen wayland(dynamic) x11(dynamic)
+--   X11 libraries: xcursor xdbe xfixes xinput2 xrandr xscrnsaver xshape xsync xtest
+--   Render drivers: gpu ogl ogl_es2 vulkan
+--   GPU drivers: vulkan
+--   Audio drivers: alsa(dynamic) disk dummy jack(dynamic) pipewire(dynamic) pulseaudio(dynamic) sndio(dynamic)
+--   Joystick drivers: hidapi linux virtual
+--   Camera drivers: dummy pipewire(dynamic) v4l2
+-- 
+-- If something was not detected, although the libraries
+-- were installed, then make sure you have set the
+-- CMAKE_C_FLAGS and CMAKE_PREFIX_PATH CMake variables correctly.
+-- 
+-- Configuring SDL3_mixer 3.2.4
+-- Using system opusfile
+-- Dynamic opus (opusfile): libopusfile.so.0
+-- Using system vorbisfile
+-- Dynamic vorbisfile: libvorbisfile.so.3
+-- Using system libflac
+-- Dynamic libflac: $<TARGET_SONAME_FILE_NAME:FLAC::FLAC>
+-- Using system libgme
+-- Dynamic libgme: libgme.so.0
+-- Using system libxmp
+-- Dynamic libxmp: libxmp.so.4
+-- Using system mpg123
+-- Dynamic mpg123: libmpg123.so.0
+-- Using system FluidSynth
+-- Dynamic fluidsynth: libfluidsynth.so.3
+-- Using system WavPack
+-- Dynamic WavPack: libwavpack.so.1
+-- SDL3_mixer backends:
+-- - enabled:  opus vorbis_stb vorbis_vorbisfile flac_libflac flac_drflac gme mod_xmp mp3_drmp3 mp3_mpg123 midi_fluidsynth midi_timidity wave aiff voc au wavpack
+-- - disabled: vorbis_tremor
+-- Configuring SDL3_image 3.4.8
+-- SDL3_image: Using system libavif
+-- Dynamic libavif: $<TARGET_SONAME_FILE_NAME:avif>
+-- SDL3_image: Using system libpng
+-- Dynamic libpng: libpng16.so.16
+-- SDL3_image: Using system libtiff
+-- Dynamic libtiff: $<TARGET_SONAME_FILE_NAME:TIFF::tiff>
+-- SDL3_image: Using system libwebp
+-- Dynamic libwebpdemux: libwebpdemux.so.2
+-- Dynamic libwebpmux: libwebpmux.so.3
+-- Dynamic libwebp: libwebp.so.7
+-- SDL3_image backends:
+-- - enabled:  stb avif ani bmp gif jpg lbm pcx png apng pnm qoi svg tga tif webp xcf xpm xv
+-- - disabled: imageio wic jxl
+-- Configuring SDL3_ttf 3.2.2
+-- SDL3_ttf: Using system harfbuzz library
+-- SDL3_ttf: Using system freetype library
+-- Could NOT find plutovg (missing: plutovg_LIBRARY plutovg_INCLUDE_PATH) 
+-- Could NOT find plutosvg (missing: plutosvg_LIBRARY plutosvg_INCLUDE_PATH plutovg_FOUND) 
+-- plutosvg NOT found
+-- SDL3_ttf backends:
+-- - enabled:  harfbuzz freetype
+-- - disabled: plutosvg
+CMake Warning (deprecated) at vendored/eigen-5.0.1/CMakeLists.txt:29 (cmake_policy):
+  The OLD behavior for policy CMP0146 will be removed from a future version
+  of CMake.
+
+  The cmake-policies(7) manual explains that the OLD behaviors of all
+  policies are deprecated and that a policy should be set to OLD only under
+  specific short-term circumstances.  Projects should be ported to the NEW
+  behavior and not rely on setting a policy to OLD.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- 
+-- Configured Eigen 5.0.1-dev+f6d1af73
+-- 
+CMake Warning (deprecated) at vendored/oneTBB-2022.3.0/CMakeLists.txt:42 (cmake_policy):
+  The OLD behavior for policy CMP0148 will be removed from a future version
+  of CMake.
+
+  The cmake-policies(7) manual explains that the OLD behaviors of all
+  policies are deprecated and that a policy should be set to OLD only under
+  specific short-term circumstances.  Projects should be ported to the NEW
+  behavior and not rely on setting a policy to OLD.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- IPO enabled
+-- GNU Assembler version: 2.47  (2047)
+-- The tbbbind_2_5 target will be configured using the HWLOC 2.14.0
+-- Configuring done (2.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/user/Projects/Platformator/bin/cleanup-benchmark
+[0/2] Re-checking globbed directories...
+[1/120] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbb/CMakeFiles/tbb.dir/CXX.dd
+[2/86] Building CXX object CMakeFiles/platformator_engine.dir/src/audio.cpp.o
+[3/86] Building CXX object CMakeFiles/platformator_engine.dir/src/behavior.cpp.o
+[4/86] Building CXX object CMakeFiles/platformator_engine.dir/src/aabb.cpp.o
+[5/86] Building CXX object CMakeFiles/platformator_engine.dir/src/audiowrapperserializer.cpp.o
+[6/86] Building CXX object CMakeFiles/platformator_engine.dir/src/boxcollider.cpp.o
+[7/86] Building CXX object CMakeFiles/platformator_engine.dir/src/circlecollider.cpp.o
+[8/86] Building CXX object CMakeFiles/platformator_engine.dir/src/colliderpair.cpp.o
+[9/86] Building CXX object CMakeFiles/platformator_engine.dir/src/collider.cpp.o
+[10/86] Building CXX object CMakeFiles/platformator_engine.dir/src/benchmark.cpp.o
+[11/86] Building CXX object CMakeFiles/platformator_engine.dir/src/collision.cpp.o
+[12/86] Building CXX object CMakeFiles/platformator_engine.dir/src/debugdraw.cpp.o
+[13/86] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobject.cpp.o
+[14/86] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobjectserializer.cpp.o
+[15/86] Building CXX object CMakeFiles/platformator_engine.dir/src/gamemanager.cpp.o
+[16/86] Building CXX object CMakeFiles/platformator_engine.dir/src/gridcell.cpp.o
+[17/86] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsbodyindexes.cpp.o
+[18/86] Building CXX object CMakeFiles/platformator_engine.dir/src/grid.cpp.o
+[19/86] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o
+[20/86] Building CXX object CMakeFiles/platformator_engine.dir/src/physicscontacts.cpp.o
+[21/86] Building CXX object CMakeFiles/platformator_engine.dir/src/referenceresolver.cpp.o
+[22/86] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+[23/86] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbody.cpp.o
+[24/86] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbodyserializer.cpp.o
+[25/86] Building CXX object CMakeFiles/platformator_engine.dir/src/runtime.cpp.o
+[26/86] Building CXX object CMakeFiles/platformator_engine.dir/src/runtimeaccess.cpp.o
+[27/86] Building CXX object CMakeFiles/platformator_engine.dir/src/scriptcomponent.cpp.o
+[28/86] Building CXX object CMakeFiles/platformator_engine.dir/src/scene.cpp.o
+[29/86] Building CXX object CMakeFiles/platformator_engine.dir/src/sdlwindow.cpp.o
+[30/86] Building CXX object CMakeFiles/platformator_engine.dir/src/scenebuilder.cpp.o
+[31/86] Building CXX object CMakeFiles/platformator_engine.dir/src/segmentedintervallist.cpp.o
+[32/86] Linking CXX static library libplatformator.a
+[33/86] Building CXX object CMakeFiles/platformator_queued_deletion_safety_test.dir/tests/queued_deletion_safety_test.cpp.o
+[34/86] Building CXX object CMakeFiles/platformator_collider_pair_cleanup_test.dir/tests/collider_pair_cleanup_test.cpp.o
+[35/86] Building CXX object CMakeFiles/platformator_benchmark_runner.dir/src/benchmark_main.cpp.o
+[36/86] Building CXX object CMakeFiles/platformator_scene_script_roundtrip_test.dir/tests/scene_script_roundtrip_test.cpp.o
+[37/86] Building CXX object CMakeFiles/platformator_runtime_foundation_test.dir/tests/runtime_foundation_test.cpp.o
+[38/86] Building CXX object CMakeFiles/platformator_regression_tests.dir/tests/regression_tests.cpp.o
+[39/86] Building CXX object CMakeFiles/platformator_scene_transition_contract_test.dir/tests/scene_transition_contract_test.cpp.o
+[40/86] Building CXX object CMakeFiles/platformator_scene_transition_stress_test.dir/tests/scene_transition_stress_test.cpp.o
+[41/86] Building CXX object CMakeFiles/platformator_destruction_contract_test.dir/tests/destruction_contract_test.cpp.o
+[42/86] Building CXX object CMakeFiles/platformator_callback_mutation_test.dir/tests/callback_mutation_test.cpp.o
+[43/86] Building CXX object CMakeFiles/platformator_transform_hierarchy_test.dir/tests/transform_hierarchy_test.cpp.o
+[44/86] Building CXX object CMakeFiles/platformator_object_reference_contract_test.dir/tests/object_reference_contract_test.cpp.o
+[45/86] Building CXX object CMakeFiles/platformator_physics_support_test.dir/tests/physics_support_test.cpp.o
+[46/86] Building CXX object CMakeFiles/platformator_scene_io_contract_test.dir/tests/scene_io_contract_test.cpp.o
+[47/86] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[48/86] Building CXX object CMakeFiles/platformator_physics_geometry_test.dir/tests/physics_geometry_test.cpp.o
+[49/86] Building CXX object CMakeFiles/platformator_contact_events_test.dir/tests/contact_events_test.cpp.o
+[50/86] Building CXX object CMakeFiles/platformator_runtime_step_test.dir/tests/runtime_step_test.cpp.o
+[51/86] Linking CXX executable main
+[52/86] Linking CXX executable platformator_benchmark_runner
+[53/86] Linking CXX executable platformator_regression_tests
+[54/86] Linking CXX executable platformator_scene_script_roundtrip_test
+[55/86] Linking CXX executable platformator_queued_deletion_safety_test
+[56/86] Linking CXX executable platformator_runtime_recreation_test
+[57/86] Linking CXX executable platformator_collider_pair_cleanup_test
+[58/86] Linking CXX executable platformator_runtime_foundation_test
+[59/86] Linking CXX executable platformator_scene_transition_contract_test
+[60/86] Linking CXX executable platformator_scene_transition_stress_test
+[61/86] Linking CXX executable platformator_callback_mutation_test
+[62/86] Linking CXX executable platformator_destruction_contract_test
+[63/86] Building CXX object CMakeFiles/platformator_runtime_work_test.dir/tests/runtime_work_test.cpp.o
+[64/86] Linking CXX executable platformator_object_reference_contract_test
+[65/86] Linking CXX executable platformator_scene_io_contract_test
+[66/86] Linking CXX executable platformator_transform_hierarchy_test
+[67/86] Linking CXX executable platformator_physics_support_test
+[68/86] Linking CXX executable platformator_contact_events_test
+[69/86] Linking CXX executable platformator_physics_bookkeeping_test
+[70/86] Linking CXX executable platformator_physics_geometry_test
+[71/86] Linking CXX executable platformator_runtime_step_test
+[72/86] Linking CXX executable platformator_runtime_work_test
+[73/86] Linking CXX executable platformator_benchmark_contract_test
+[74/86] Building CXX object CMakeFiles/platformator_runner_failure_test.dir/tests/runner_failure_test.cpp.o
+[75/86] Linking CXX executable platformator_runner_failure_test
+[76/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_behavior.h.cpp.o
+[77/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_behaviorquery.h.cpp.o
+[78/86] Building CXX object CMakeFiles/platformator_asset_root_contract_test.dir/tests/asset_root_contract_test.cpp.o
+[79/86] Linking CXX executable platformator_asset_root_contract_test
+[80/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_boxcollider.h.cpp.o
+[81/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_circlecollider.h.cpp.o
+[82/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_collider.h.cpp.o
+[83/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_collision.h.cpp.o
+[84/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_rigidbody.h.cpp.o
+[85/86] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_scriptcomponent.h.cpp.o

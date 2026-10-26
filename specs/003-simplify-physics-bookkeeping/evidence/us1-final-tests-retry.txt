@@ -1,0 +1,59 @@
+[0/2] Re-checking globbed directories...
+[1/38] Building CXX object CMakeFiles/platformator_engine.dir/src/audio.cpp.o
+[2/38] Building CXX object CMakeFiles/platformator_engine.dir/src/aabb.cpp.o
+[3/38] Building CXX object CMakeFiles/platformator_engine.dir/src/behavior.cpp.o
+[4/38] Building CXX object CMakeFiles/platformator_engine.dir/src/audiowrapperserializer.cpp.o
+[5/38] Building CXX object CMakeFiles/platformator_engine.dir/src/colliderpair.cpp.o
+[6/38] Building CXX object CMakeFiles/platformator_engine.dir/src/collider.cpp.o
+[7/38] Building CXX object CMakeFiles/platformator_engine.dir/src/collision.cpp.o
+[8/38] Building CXX object CMakeFiles/platformator_engine.dir/src/debugdraw.cpp.o
+[9/38] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobject.cpp.o
+[10/38] Building CXX object CMakeFiles/platformator_engine.dir/src/gamemanager.cpp.o
+[11/38] Building CXX object CMakeFiles/platformator_engine.dir/src/gridcell.cpp.o
+[12/38] Building CXX object CMakeFiles/platformator_engine.dir/src/grid.cpp.o
+[13/38] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsbodyindexes.cpp.o
+[14/38] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o
+[15/38] Building CXX object CMakeFiles/platformator_engine.dir/src/physicscontacts.cpp.o
+[16/38] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+[17/38] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbodyserializer.cpp.o
+[18/38] Building CXX object CMakeFiles/platformator_engine.dir/src/referenceresolver.cpp.o
+[19/38] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbody.cpp.o
+[20/38] Building CXX object CMakeFiles/platformator_engine.dir/src/runtime.cpp.o
+[21/38] Building CXX object CMakeFiles/platformator_engine.dir/src/runtimeaccess.cpp.o
+[22/38] Building CXX object CMakeFiles/platformator_engine.dir/src/scene.cpp.o
+[23/38] Building CXX object CMakeFiles/platformator_engine.dir/src/scenebuilder.cpp.o
+[24/38] Building CXX object CMakeFiles/platformator_engine.dir/src/segmentedintervallist.cpp.o
+[25/38] Building CXX object CMakeFiles/platformator_engine.dir/src/scriptcomponent.cpp.o
+[26/38] Building CXX object CMakeFiles/platformator_engine.dir/src/sdlwindow.cpp.o
+[27/38] Linking CXX static library libplatformator.a
+[28/38] Building CXX object CMakeFiles/platformator_physics_support_test.dir/tests/physics_support_test.cpp.o
+[29/38] Building CXX object CMakeFiles/platformator_contact_events_test.dir/tests/contact_events_test.cpp.o
+[30/38] Linking CXX executable platformator_physics_support_test
+[31/38] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[32/38] Building CXX object CMakeFiles/platformator_regression_tests.dir/tests/regression_tests.cpp.o
+[33/38] Building CXX object CMakeFiles/platformator_physics_geometry_test.dir/tests/physics_geometry_test.cpp.o
+[34/38] Linking CXX executable platformator_contact_events_test
+[35/38] Linking CXX executable platformator_physics_bookkeeping_test
+[36/38] Linking CXX executable platformator_regression_tests
+[37/38] Linking CXX executable platformator_physics_geometry_test
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start  1: platformator_regression_tests
+1/5 Test  #1: platformator_regression_tests ...........   Passed    0.80 sec
+    Start 14: platformator_physics_support_test
+2/5 Test #14: platformator_physics_support_test .......   Passed    0.69 sec
+    Start 15: platformator_contact_events_test
+3/5 Test #15: platformator_contact_events_test ........   Passed    0.08 sec
+    Start 16: platformator_physics_bookkeeping_test
+4/5 Test #16: platformator_physics_bookkeeping_test ...   Passed    0.03 sec
+    Start 17: platformator_physics_geometry_test
+5/5 Test #17: platformator_physics_geometry_test ......   Passed    0.01 sec
+
+100% tests passed out of 5
+
+Label Time Summary:
+determinism     =   0.80 sec*proc (3 tests)
+geometry        =   0.01 sec*proc (1 test)
+physics         =   1.61 sec*proc (5 tests)
+platformator    =   1.61 sec*proc (5 tests)
+
+Total Test time (real) =   1.61 sec

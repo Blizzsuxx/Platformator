@@ -1,0 +1,121 @@
+COMMAND ['cmake', '--build', '--preset', 'cleanup-debug', '--parallel', '4']
+[0/2] Re-checking globbed directories...
+[1/55] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbbmalloc_proxy/CMakeFiles/tbbmalloc_proxy.dir/CXX.dd
+[2/53] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbbbind/CMakeFiles/tbbbind_2_5.dir/CXX.dd
+[3/50] Generating CXX dyndep file vendored/oneTBB-2022.3.0/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/CXX.dd
+[4/40] Building CXX object CMakeFiles/platformator_queued_deletion_safety_test.dir/tests/queued_deletion_safety_test.cpp.o
+[5/40] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o
+[6/40] Building CXX object CMakeFiles/platformator_scene_script_roundtrip_test.dir/tests/scene_script_roundtrip_test.cpp.o
+[7/40] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+[8/40] Building CXX object CMakeFiles/platformator_runtime_foundation_test.dir/tests/runtime_foundation_test.cpp.o
+[9/40] Linking CXX static library libplatformator.a
+[10/40] Building CXX object CMakeFiles/platformator_collider_pair_cleanup_test.dir/tests/collider_pair_cleanup_test.cpp.o
+[11/40] Building CXX object CMakeFiles/platformator_transform_hierarchy_test.dir/tests/transform_hierarchy_test.cpp.o
+[12/40] Linking CXX executable main
+[13/40] Linking CXX executable platformator_regression_tests
+[14/40] Building CXX object CMakeFiles/platformator_physics_support_test.dir/tests/physics_support_test.cpp.o
+[15/40] Linking CXX executable platformator_scene_script_roundtrip_test
+[16/40] Building CXX object CMakeFiles/platformator_runtime_work_test.dir/tests/runtime_work_test.cpp.o
+[17/40] Linking CXX executable platformator_queued_deletion_safety_test
+[18/40] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[19/40] Linking CXX executable platformator_runtime_recreation_test
+[20/40] Linking CXX executable platformator_collider_pair_cleanup_test
+[21/40] Linking CXX executable platformator_runtime_foundation_test
+[22/40] Linking CXX executable platformator_scene_transition_contract_test
+[23/40] Linking CXX executable platformator_scene_transition_stress_test
+[24/40] Linking CXX executable platformator_callback_mutation_test
+[25/40] Linking CXX executable platformator_destruction_contract_test
+[26/40] Linking CXX executable platformator_object_reference_contract_test
+[27/40] Linking CXX executable platformator_scene_io_contract_test
+[28/40] Linking CXX executable platformator_transform_hierarchy_test
+[29/40] Linking CXX executable platformator_physics_support_test
+[30/40] Linking CXX executable platformator_contact_events_test
+[31/40] Linking CXX executable platformator_runtime_work_test
+[32/40] Linking CXX executable platformator_physics_bookkeeping_test
+[33/40] Linking CXX executable platformator_physics_geometry_test
+[34/40] Linking CXX executable platformator_benchmark_contract_test
+[35/40] Linking CXX executable platformator_runtime_step_test
+[36/40] Linking CXX executable platformator_asset_root_contract_test
+[37/40] Linking CXX executable platformator_runner_failure_test
+[38/40] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_rigidbody.h.cpp.o
+[39/40] Building CXX object CMakeFiles/platformator_public_headers.dir/header-checks/platformator_collision.h.cpp.o
+COMMAND ['ctest', '--test-dir', '/home/user/Projects/Platformator/bin/cleanup-debug', '--output-on-failure', '-L', 'platformator']
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+      Start  1: platformator_regression_tests
+ 1/26 Test  #1: platformator_regression_tests .................   Passed    0.80 sec
+      Start  2: platformator_scene_script_roundtrip_test
+ 2/26 Test  #2: platformator_scene_script_roundtrip_test ......   Passed    0.13 sec
+      Start  3: platformator_queued_deletion_safety_test
+ 3/26 Test  #3: platformator_queued_deletion_safety_test ......   Passed    0.15 sec
+      Start  4: platformator_runtime_recreation_test
+ 4/26 Test  #4: platformator_runtime_recreation_test ..........   Passed    0.15 sec
+      Start  5: platformator_collider_pair_cleanup_test
+ 5/26 Test  #5: platformator_collider_pair_cleanup_test .......   Passed    0.23 sec
+      Start  6: platformator_runtime_foundation_test
+ 6/26 Test  #6: platformator_runtime_foundation_test ..........   Passed    0.74 sec
+      Start  7: platformator_scene_transition_contract_test
+ 7/26 Test  #7: platformator_scene_transition_contract_test ...   Passed    0.08 sec
+      Start  8: platformator_scene_transition_stress_test
+ 8/26 Test  #8: platformator_scene_transition_stress_test .....   Passed    0.31 sec
+      Start  9: platformator_callback_mutation_test
+ 9/26 Test  #9: platformator_callback_mutation_test ...........   Passed    0.88 sec
+      Start 10: platformator_destruction_contract_test
+10/26 Test #10: platformator_destruction_contract_test ........   Passed    0.37 sec
+      Start 11: platformator_object_reference_contract_test
+11/26 Test #11: platformator_object_reference_contract_test ...   Passed    0.15 sec
+      Start 12: platformator_scene_io_contract_test
+12/26 Test #12: platformator_scene_io_contract_test ...........   Passed    0.10 sec
+      Start 13: platformator_transform_hierarchy_test
+13/26 Test #13: platformator_transform_hierarchy_test .........   Passed    0.01 sec
+      Start 14: platformator_physics_support_test
+14/26 Test #14: platformator_physics_support_test .............   Passed    0.71 sec
+      Start 15: platformator_contact_events_test
+15/26 Test #15: platformator_contact_events_test ..............   Passed    0.08 sec
+      Start 16: platformator_physics_bookkeeping_test
+16/26 Test #16: platformator_physics_bookkeeping_test .........   Passed    0.03 sec
+      Start 17: platformator_physics_geometry_test
+17/26 Test #17: platformator_physics_geometry_test ............   Passed    0.01 sec
+      Start 18: platformator_runtime_step_test
+18/26 Test #18: platformator_runtime_step_test ................   Passed    0.08 sec
+      Start 19: platformator_runtime_work_test
+19/26 Test #19: platformator_runtime_work_test ................***Skipped   0.00 sec
+      Start 20: platformator_asset_root_contract_test
+20/26 Test #20: platformator_asset_root_contract_test .........   Passed    0.15 sec
+      Start 21: platformator_runner_failure_test
+21/26 Test #21: platformator_runner_failure_test ..............   Passed    0.01 sec
+      Start 22: platformator_runner_startup_failure
+22/26 Test #22: platformator_runner_startup_failure ...........   Passed    0.00 sec
+      Start 23: platformator_physics_only_startup
+23/26 Test #23: platformator_physics_only_startup .............   Passed    0.01 sec
+      Start 24: platformator_package_smoke
+24/26 Test #24: platformator_package_smoke ....................   Passed   91.52 sec
+      Start 25: platformator_benchmark_contract_test
+25/26 Test #25: platformator_benchmark_contract_test ..........***Skipped   0.00 sec
+      Start 26: platformator_benchmark_sweep_test
+26/26 Test #26: platformator_benchmark_sweep_test .............   Passed    0.11 sec
+
+100% tests passed out of 26
+
+Label Time Summary:
+asset           =   0.15 sec*proc (1 test)
+benchmark       =   0.11 sec*proc (2 tests)
+clock           =   0.08 sec*proc (1 test)
+determinism     =   0.82 sec*proc (3 tests)
+geometry        =   0.01 sec*proc (1 test)
+install         =  91.52 sec*proc (1 test)
+lifecycle       =   2.77 sec*proc (8 tests)
+mutation        =   1.26 sec*proc (2 tests)
+package         =  91.69 sec*proc (5 tests)
+physics         =   2.02 sec*proc (9 tests)
+platformator    =  96.83 sec*proc (26 tests)
+reference       =   0.99 sec*proc (3 tests)
+runner          =   0.02 sec*proc (3 tests)
+scene           =   0.78 sec*proc (5 tests)
+transform       =   0.01 sec*proc (1 test)
+work            =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  96.84 sec
+
+The following tests did not run:
+	 19 - platformator_runtime_work_test (Skipped)
+	 25 - platformator_benchmark_contract_test (Skipped)

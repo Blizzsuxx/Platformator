@@ -25,7 +25,6 @@ class ColliderPair
     void clearCollisionNoEvent() const;
 
     bool getIsQueuedForNarrowPhase() const;
-    void setIsQueuedForNarrowPhase(bool queued) const;
     size_t getNarrowPhaseQueueIndex() const;
     void setNarrowPhaseQueueIndex(size_t index) const;
     size_t getAdjacencyIndexA() const;
@@ -64,18 +63,18 @@ class ColliderPair
     mutable Collision *collision;
     mutable uint64_t objectAStateVersion;
     mutable uint64_t objectBStateVersion;
-    mutable bool isQueuedForNarrowPhase;
     mutable size_t narrowPhaseQueueIndex;
     mutable size_t adjacencyIndexA;
     mutable size_t adjacencyIndexB;
     mutable int witnessCount;
     mutable size_t pairSlot = SIZE_MAX;
-    mutable size_t activeIndex = SIZE_MAX;
+    mutable size_t contactIndex = SIZE_MAX;
     mutable size_t solverIndex = SIZE_MAX;
     mutable bool resultHadContact = false;
+#if PLATFORMATOR_ENABLE_WORK_PROBES
     mutable bool resultTestedGeometry = false;
-    mutable Rigidbody *supportBodyA = nullptr;
-    mutable Rigidbody *supportBodyB = nullptr;
-    mutable bool supportsA = false;
-    mutable bool supportsB = false;
+#endif
+    // Exact recipients of this pair's applied-or-queued support credit, not current component caches.
+    mutable Rigidbody *contributedSupportBodyA = nullptr;
+    mutable Rigidbody *contributedSupportBodyB = nullptr;
 };

@@ -1,0 +1,44 @@
+COMMAND ['ctest', '--test-dir', '/home/user/Projects/Platformator/bin/cleanup-benchmark', '--output-on-failure', '-L', 'benchmark']
+Test project /home/user/Projects/Platformator/bin/cleanup-benchmark
+    Start 25: platformator_benchmark_contract_test
+1/3 Test #25: platformator_benchmark_contract_test ............   Passed    0.08 sec
+    Start 26: platformator_benchmark_persistent_zero_warmup
+2/3 Test #26: platformator_benchmark_persistent_zero_warmup ...   Passed    0.01 sec
+    Start 27: platformator_benchmark_sweep_test
+3/3 Test #27: platformator_benchmark_sweep_test ...............   Passed    0.10 sec
+
+100% tests passed out of 3
+
+Label Time Summary:
+benchmark       =   0.18 sec*proc (3 tests)
+platformator    =   0.18 sec*proc (3 tests)
+
+Total Test time (real) =   0.19 sec
+COMMAND ['python3', '-m', 'unittest', 'discover', '-s', 'benchmark/tests', '-v']
+test_failed_process_never_produces_aggregate (test_sweep_scaling.PlotAndFailureContract.test_failed_process_never_produces_aggregate) ... [Sweep] broad_phase count=10 run=1/5
+ok
+test_odd_population_is_preserved (test_sweep_scaling.PlotAndFailureContract.test_odd_population_is_preserved) ... ok
+test_plot_rejects_legacy_missing_metrics_and_validation (test_sweep_scaling.PlotAndFailureContract.test_plot_rejects_legacy_missing_metrics_and_validation) ... ok
+test_five_processes_per_population_preserve_raw_artifacts (test_sweep_scaling.SweepContract.test_five_processes_per_population_preserve_raw_artifacts) ... [Sweep] broad_phase count=10 run=1/5
+[Sweep] broad_phase count=10 run=2/5
+[Sweep] broad_phase count=10 run=3/5
+[Sweep] broad_phase count=10 run=4/5
+[Sweep] broad_phase count=10 run=5/5
+[Sweep] broad_phase count=20 run=1/5
+[Sweep] broad_phase count=20 run=2/5
+[Sweep] broad_phase count=20 run=3/5
+[Sweep] broad_phase count=20 run=4/5
+[Sweep] broad_phase count=20 run=5/5
+ok
+test_legacy_and_incomplete_data_reject (test_sweep_scaling.SweepContract.test_legacy_and_incomplete_data_reject) ... ok
+test_missing_build_provenance_rejects (test_sweep_scaling.SweepContract.test_missing_build_provenance_rejects) ... ok
+test_missing_manifest_and_failed_invariants_reject (test_sweep_scaling.SweepContract.test_missing_manifest_and_failed_invariants_reject) ... ok
+test_persistent_contact_count_and_recipient_arguments (test_sweep_scaling.SweepContract.test_persistent_contact_count_and_recipient_arguments) ... ok
+test_raw_removed_or_duplicate_counter_rejects (test_sweep_scaling.SweepContract.test_raw_removed_or_duplicate_counter_rejects) ... ok
+test_schema_three_is_live_and_two_is_historical (test_sweep_scaling.SweepContract.test_schema_three_is_live_and_two_is_historical) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.021s
+
+OK
+[Sweep] Wrote /tmp/tmppdrx2hb3/aggregate.csv; raw records retained in /tmp/tmppdrx2hb3/aggregate.runs

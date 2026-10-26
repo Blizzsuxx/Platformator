@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <oneapi/tbb/enumerable_thread_specific.h>
 #include <vector>
-#include <span>
 #include "helpers.h"
 #include "grid.h"
 
@@ -72,46 +71,46 @@ class PhysicsManager
     void broadPhase();
     void narrowPhase();
     void processNarrowPhasePair(const ColliderPair *pair);
-    void refreshPairLists(const ColliderPair *pair);
-    void refreshSolverPair(const ColliderPair *pair, bool live);
+    void refreshContactParticipation(const ColliderPair *pair);
+    void refreshSolverParticipation(const ColliderPair *pair, bool live);
     void removePair(const ColliderPair *pair);
-    void reducePairSupport(const ColliderPair *pair);
+    void reconcilePairSupport(const ColliderPair *pair);
+    void reconcileSupportContribution(Rigidbody *&contributor, Rigidbody *desired);
     void queueSupportDelta(Rigidbody *body, int delta);
     void flushSupportDeltas();
-    void canonicalizePairs();
-    void queueBodyChange(Rigidbody *body);
-    void cancelBodyChange(Rigidbody *body);
-    void reconcileBody(Rigidbody *body);
-    void drainBodyChanges();
+    void queueBodyParticipationChange(Rigidbody *body);
+    void cancelBodyParticipationChange(Rigidbody *body);
+    void reconcileBodyParticipation(Rigidbody *body);
+    void reconcileChangedBodies();
+    static void resetSleepIsland(Rigidbody *body)
+    {
+        // Step-local aggregation: the solver merges these roots before the sleep decision.
+        body->sleepParent = body;
+        body->sleepRank = 0;
+        body->islandQuiet = true;
+        body->islandTimer = body->getSleepTimer();
+    }
     Rigidbody *sleepRoot(Rigidbody *body);
     void mergeSleepIslands(Rigidbody *a, Rigidbody *b);
 #if PLATFORMATOR_ENABLE_BENCHMARKS
     size_t countAwakeDynamicBodies() const;
 #endif
 
-    void updateContactGeometry(const ColliderPair &pair);
-    void circleCircleCollision(const ColliderPair &pair);
-    void circleBoxCollision(const ColliderPair &pair);
-
-    bool checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
-                          const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
-                          const Collider *&realIncidentCollider);
     void preStepCollision(Collision *collision, float inverseTimeDelta);
     void resolveCollision(const Collision *collision);
     void resolveKinematicCollision(const Collision *collision);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
-    void calculateContactPoint(Collision *collision);
     PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair, Collision *collision);
 
-    std::vector<Rigidbody *> rigidBodyComponents;
-    std::vector<Rigidbody *> awakeBodies, kinematicBodies, sleepEligibleBodies, changedBodies;
+    std::vector<Rigidbody *> registeredBodies;
+    std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
     std::vector<Collider *> colliderComponents;
     std::vector<Collision *> dynamicCollisionScratch;
     std::vector<const ColliderPair *> contactPairs;
+    // Append/swap-remove order; physical solving does not require canonical pair order.
     std::vector<const ColliderPair *> solverPairs;
     std::vector<Rigidbody *> supportDeltaBodies;
-    bool solverOrderDirty = false;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
     struct MovedObject
     {

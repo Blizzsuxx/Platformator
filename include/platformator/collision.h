@@ -92,5 +92,4 @@ class Collision
     bool getSupportsIncidentBody() const;
     void setSupportsReferenceBody(bool supports) const;
     void setSupportsIncidentBody(bool supports) const;
-    void generateFallbackContactPoint();
 };

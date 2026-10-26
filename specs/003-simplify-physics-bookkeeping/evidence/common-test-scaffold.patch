@@ -1,0 +1,60 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 15a7631..573398a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -219,6 +219,7 @@ if(PLATFORMATOR_BUILD_TESTS)
+     platformator_add_test(platformator_transform_hierarchy_test tests/transform_hierarchy_test.cpp LABELS physics transform)
+     platformator_add_test(platformator_physics_support_test tests/physics_support_test.cpp LABELS physics determinism)
+     platformator_add_test(platformator_contact_events_test tests/contact_events_test.cpp INTERNAL LABELS physics determinism)
++    platformator_add_test(platformator_physics_bookkeeping_test tests/physics_bookkeeping_test.cpp INTERNAL LABELS physics determinism)
+     platformator_add_test(platformator_physics_geometry_test tests/physics_geometry_test.cpp LABELS physics geometry)
+     platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp INTERNAL LABELS lifecycle clock)
+     platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp INTERNAL LABELS physics work)
+diff --git a/tests/physics_bookkeeping_test.cpp b/tests/physics_bookkeeping_test.cpp
+new file mode 100644
+index 0000000..592da5d
+--- /dev/null
++++ b/tests/physics_bookkeeping_test.cpp
+@@ -0,0 +1,42 @@
++#include "test_support.h"
++#include "gamemanager.h"
++#include "physicsmanager.h"
++#include "runtimeaccess.h"
++#include <oneapi/tbb/global_control.h>
++#include <platformator/boxcollider.h>
++#include <platformator/rigidbody.h>
++#include <iostream>
++
++using namespace test_support;
++namespace
++{
++void baselineControls(size_t workers)
++{
++    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
++    platformator::Runtime runtime(physicsOnly());
++    auto *physics = platformator_detail::RuntimeAccess::physicsManager();
++    require(physics->getGrid().getPendingNarrowPhasePairs()->empty(), "Empty runtime has no pair work");
++    auto *object = runtime.createGameObject()->addComponent<Rigidbody>(DYNAMIC, false);
++    runtime.simulateFrame(dt);
++    require(object->getComponent<Rigidbody>()->getIsRegisteredInPhysicsManager(),
++            "The live body is registered before physical consumers run");
++    require(object->getPosition().isZero(), "A zero-velocity gravity-free body stays at rest");
++    require(physics->getGrid().getPendingNarrowPhasePairs()->empty(), "A body without shape has no contact work");
++}
++} // namespace
++int main()
++{
++    headlessEnvironment();
++    try
++    {
++        for (size_t workers : {size_t(1), size_t(6)})
++            baselineControls(workers);
++        std::cout << "[PASS] physics bookkeeping contracts\n";
++        return 0;
++    }
++    catch (const std::exception &error)
++    {
++        std::cerr << error.what() << '\n';
++        return 1;
++    }
++}

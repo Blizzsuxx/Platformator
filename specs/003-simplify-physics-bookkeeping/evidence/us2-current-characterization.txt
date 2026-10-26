@@ -1,0 +1,26 @@
+[0/2] Re-checking globbed directories...
+[1/5] Building CXX object CMakeFiles/platformator_physics_support_test.dir/tests/physics_support_test.cpp.o
+[2/5] Linking CXX executable platformator_physics_support_test
+[3/5] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[4/5] Linking CXX executable platformator_physics_bookkeeping_test
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start  3: platformator_queued_deletion_safety_test
+1/5 Test  #3: platformator_queued_deletion_safety_test ...   Passed    0.16 sec
+    Start  5: platformator_collider_pair_cleanup_test
+2/5 Test  #5: platformator_collider_pair_cleanup_test ....   Passed    0.23 sec
+    Start 14: platformator_physics_support_test
+3/5 Test #14: platformator_physics_support_test ..........   Passed    0.71 sec
+    Start 15: platformator_contact_events_test
+4/5 Test #15: platformator_contact_events_test ...........   Passed    0.09 sec
+    Start 16: platformator_physics_bookkeeping_test
+5/5 Test #16: platformator_physics_bookkeeping_test ......   Passed    0.03 sec
+
+100% tests passed out of 5
+
+Label Time Summary:
+determinism     =   0.83 sec*proc (3 tests)
+lifecycle       =   0.16 sec*proc (1 test)
+physics         =   1.22 sec*proc (5 tests)
+platformator    =   1.22 sec*proc (5 tests)
+
+Total Test time (real) =   1.23 sec

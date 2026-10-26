@@ -1,0 +1,55 @@
+[0/2] Re-checking globbed directories...
+[1/33] Building CXX object CMakeFiles/platformator_engine.dir/src/aabb.cpp.o
+[2/33] Building CXX object CMakeFiles/platformator_engine.dir/src/behavior.cpp.o
+[3/33] Building CXX object CMakeFiles/platformator_engine.dir/src/collider.cpp.o
+[4/33] Building CXX object CMakeFiles/platformator_engine.dir/src/audiowrapperserializer.cpp.o
+[5/33] Building CXX object CMakeFiles/platformator_engine.dir/src/colliderpair.cpp.o
+[6/33] Building CXX object CMakeFiles/platformator_engine.dir/src/collision.cpp.o
+[7/33] Building CXX object CMakeFiles/platformator_engine.dir/src/debugdraw.cpp.o
+[8/33] Building CXX object CMakeFiles/platformator_engine.dir/src/gamemanager.cpp.o
+[9/33] Building CXX object CMakeFiles/platformator_engine.dir/src/gameobject.cpp.o
+[10/33] Building CXX object CMakeFiles/platformator_engine.dir/src/gridcell.cpp.o
+[11/33] Building CXX object CMakeFiles/platformator_engine.dir/src/grid.cpp.o
+[12/33] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsbodyindexes.cpp.o
+[13/33] Building CXX object CMakeFiles/platformator_engine.dir/src/physicscontacts.cpp.o
+[14/33] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsgeometry.cpp.o
+[15/33] Building CXX object CMakeFiles/platformator_engine.dir/src/referenceresolver.cpp.o
+[16/33] Building CXX object CMakeFiles/platformator_engine.dir/src/rigidbody.cpp.o
+[17/33] Building CXX object CMakeFiles/platformator_engine.dir/src/physicsmanager.cpp.o
+[18/33] Building CXX object CMakeFiles/platformator_engine.dir/src/runtime.cpp.o
+[19/33] Building CXX object CMakeFiles/platformator_engine.dir/src/runtimeaccess.cpp.o
+[20/33] Building CXX object CMakeFiles/platformator_engine.dir/src/scene.cpp.o
+[21/33] Building CXX object CMakeFiles/platformator_engine.dir/src/scenebuilder.cpp.o
+[22/33] Building CXX object CMakeFiles/platformator_engine.dir/src/scriptcomponent.cpp.o
+[23/33] Building CXX object CMakeFiles/platformator_engine.dir/src/segmentedintervallist.cpp.o
+[24/33] Building CXX object CMakeFiles/platformator_engine.dir/src/sdlwindow.cpp.o
+[25/33] Linking CXX static library libplatformator.a
+[26/33] Linking CXX executable platformator_physics_support_test
+[27/33] Building CXX object CMakeFiles/platformator_contact_events_test.dir/tests/contact_events_test.cpp.o
+[28/33] Building CXX object CMakeFiles/platformator_physics_bookkeeping_test.dir/tests/physics_bookkeeping_test.cpp.o
+[29/33] Building CXX object CMakeFiles/platformator_runtime_work_test.dir/tests/runtime_work_test.cpp.o
+[30/33] Linking CXX executable platformator_contact_events_test
+[31/33] Linking CXX executable platformator_runtime_work_test
+[32/33] Linking CXX executable platformator_physics_bookkeeping_test
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start 14: platformator_physics_support_test
+1/4 Test #14: platformator_physics_support_test .......   Passed    0.69 sec
+    Start 15: platformator_contact_events_test
+2/4 Test #15: platformator_contact_events_test ........   Passed    0.07 sec
+    Start 16: platformator_physics_bookkeeping_test
+3/4 Test #16: platformator_physics_bookkeeping_test ...   Passed    0.03 sec
+    Start 19: platformator_runtime_work_test
+4/4 Test #19: platformator_runtime_work_test ..........***Skipped   0.00 sec
+
+100% tests passed out of 4
+
+Label Time Summary:
+determinism     =   0.80 sec*proc (3 tests)
+physics         =   0.80 sec*proc (4 tests)
+platformator    =   0.80 sec*proc (4 tests)
+work            =   0.00 sec*proc (1 test)
+
+Total Test time (real) =   0.81 sec
+
+The following tests did not run:
+	 19 - platformator_runtime_work_test (Skipped)

@@ -1,12 +1,37 @@
-#include "physicsmanager.h"
+#include "physicsgeometry.h"
+#include "colliderpair.h"
+#include "constants.h"
+#include "debugdraw.h"
+#include "helpers.h"
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
 #include <cmath>
 #include <limits>
-#include "constants.h"
-#include "debugdraw.h"
+#include <span>
 
-void PhysicsManager::circleCircleCollision(const ColliderPair &pair)
+namespace physics_geometry
+{
+namespace
+{
+// Circle dispatch builds its own manifold; clipping below is exclusively box/box.
+void calculateBoxContactPoints(Collision *collision);
+
+void generateFallbackContactPoint(Collision *collision)
+{
+    const auto *referenceObject = collision->getReferenceObject();
+    const auto *incidentObject = collision->getIncidentObject();
+    // As a fallback, we can use the midpoint between the two objects as the contact point, with a penetration of 0.
+    Eigen::Vector2f positionA = referenceObject->getGameObject()->getPosition();
+    Eigen::Vector2f positionB = incidentObject->getGameObject()->getPosition();
+    Eigen::Vector2f midpoint = (positionA + positionB) * 0.5f;
+
+    ClipVertex fallbackContactPoint(midpoint, ContactFeature());
+    ClipPoints fallbackClipPoints;
+    fallbackClipPoints.add(fallbackContactPoint);
+    collision->setContactPoints(fallbackClipPoints);
+}
+
+void circleCircleCollision(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
     const auto *a = static_cast<const CircleCollider *>(pair.getObjectA());
     const auto *b = static_cast<const CircleCollider *>(pair.getObjectB());
@@ -31,10 +56,10 @@ void PhysicsManager::circleCircleCollision(const ColliderPair &pair)
                ContactFeature(0x100));
     collision->setContactPoints(points);
     collision->getContactPoints().points[0].separation = distance - radius;
-    collision->updateSupportState(gravityVectorNormalized);
+    collision->updateSupportState(gravityDirection);
 }
 
-void PhysicsManager::circleBoxCollision(const ColliderPair &pair)
+void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
     const bool boxIsA = pair.getObjectA()->getColliderType() == ColliderType::BoxCollider;
     const auto *box = static_cast<const BoxCollider *>(boxIsA ? pair.getObjectA() : pair.getObjectB());
@@ -82,12 +107,12 @@ void PhysicsManager::circleBoxCollision(const ColliderPair &pair)
     points.add(circle->getCachedWorldPosition() - normal * radius, ContactFeature(feature));
     collision->setContactPoints(points);
     collision->getContactPoints().points[0].separation = separation;
-    collision->updateSupportState(gravityVectorNormalized);
+    collision->updateSupportState(gravityDirection);
 }
 
-bool PhysicsManager::checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
-                                      const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
-                                      const Collider *&realIncidentCollider)
+bool checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
+                      const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
+                      const Collider *&realIncidentCollider)
 {
     for (long unsigned int i = 0; i < normals.size(); i++)
     {
@@ -116,21 +141,22 @@ bool PhysicsManager::checkProjections(std::span<const Eigen::Vector2f> normals, 
 
     return true;
 }
+} // namespace
 
-void PhysicsManager::updateContactGeometry(const ColliderPair &pair)
+void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
     const Collider *referenceCollider = pair.getObjectA();
     const Collider *incidentCollider = pair.getObjectB();
     if (referenceCollider->getColliderType() == ColliderType::CircleCollider &&
         incidentCollider->getColliderType() == ColliderType::CircleCollider)
     {
-        circleCircleCollision(pair);
+        circleCircleCollision(pair, gravityDirection);
         return;
     }
     if (referenceCollider->getColliderType() == ColliderType::CircleCollider ||
         incidentCollider->getColliderType() == ColliderType::CircleCollider)
     {
-        circleBoxCollision(pair);
+        circleBoxCollision(pair, gravityDirection);
         return;
     }
 
@@ -173,7 +199,7 @@ void PhysicsManager::updateContactGeometry(const ColliderPair &pair)
     // Store the corrected normal
     collision->setNormal(minNormal);
 
-    calculateContactPoint(collision);
+    calculateBoxContactPoints(collision);
     // Float SAT can round a sub-ulp separating gap to overlap. Clipping must
     // produce an actual manifold before this pair contributes events or support.
     if (!collision->getContactPoints().count)
@@ -181,10 +207,12 @@ void PhysicsManager::updateContactGeometry(const ColliderPair &pair)
         pair.clearCollisionNoEvent();
         return;
     }
-    collision->updateSupportState(gravityVectorNormalized);
+    collision->updateSupportState(gravityDirection);
 }
 
-void PhysicsManager::calculateContactPoint(Collision *collision)
+namespace
+{
+void calculateBoxContactPoints(Collision *collision)
 {
     const Collider *referenceCollider = collision->getReferenceObject();
     const Collider *incidentCollider = collision->getIncidentObject();
@@ -192,43 +220,6 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
 
     const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
     const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
-
-    ColliderType referenceType = referenceCollider->getColliderType();
-    ColliderType incidentType = incidentCollider->getColliderType();
-
-    if (incidentType == ColliderType::CircleCollider)
-    {
-        ClipPoints cp;
-        cp.add(incidentEdge.max,
-               makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
-        collision->setContactPoints(cp);
-        float max = normal.dot(referenceEdge.max);
-        float separation = normal.dot(incidentEdge.max) - max;
-        collision->getContactPoints().points[0].separation = separation;
-        return;
-    }
-    else if (referenceType == ColliderType::CircleCollider)
-    {
-        ClipPoints cp;
-        const Eigen::Vector2f circleCenter = referenceCollider->getGameObject()->worldPosition;
-        const Eigen::Vector2f edgeVector = incidentEdge.getEdgeVector();
-        const float edgeLengthSquared = edgeVector.squaredNorm();
-
-        float t = 0.0f;
-        if (edgeLengthSquared > 1e-12f)
-        {
-            t = std::clamp((circleCenter - incidentEdge.v1).dot(edgeVector) / edgeLengthSquared, 0.0f, 1.0f);
-        }
-
-        const Eigen::Vector2f closestPoint = incidentEdge.v1 + t * edgeVector;
-        cp.add(closestPoint, makeContactFeature(referenceEdge.edgeNumber, NO_EDGE, incidentEdge.edgeNumber, NO_EDGE));
-        collision->setContactPoints(cp);
-
-        const float max = normal.dot(referenceEdge.max);
-        const float separation = normal.dot(closestPoint) - max;
-        collision->getContactPoints().points[0].separation = separation;
-        return;
-    }
 
     // the edge vector
     Eigen::Vector2f referenceEdgeVector = referenceEdge.getEdgeVector();
@@ -252,7 +243,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (clippedCount < 2)
     {
         PLATFORMATOR_LOG("Clipping failed at first reference vertex\n");
-        collision->generateFallbackContactPoint();
+        generateFallbackContactPoint(collision);
         return;
     }
 
@@ -266,7 +257,7 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
     if (clippedCount < 2)
     {
         PLATFORMATOR_LOG("Clipping failed at second reference vertex\n");
-        collision->generateFallbackContactPoint();
+        generateFallbackContactPoint(collision);
         return;
     }
 
@@ -291,3 +282,5 @@ void PhysicsManager::calculateContactPoint(Collision *collision)
         contactPoints.points[i].separation = separation;
     }
 }
+} // namespace
+} // namespace physics_geometry

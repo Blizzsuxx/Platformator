@@ -1,4 +1,5 @@
 #include "test_support.h"
+#include <cmath>
 #include <iostream>
 #include <oneapi/tbb/global_control.h>
 #include <platformator/boxcollider.h>
@@ -23,13 +24,7 @@ struct Events : test_support::Behavior
         ++exit;
     }
 };
-struct Snapshot
-{
-    std::vector<int> trace;
-    Eigen::Vector2f position, velocity;
-    float rotation, angular;
-};
-Snapshot supports(size_t workers)
+std::vector<int> supports(size_t workers)
 {
     tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
     platformator::Runtime runtime(physicsOnly());
@@ -46,14 +41,14 @@ Snapshot supports(size_t workers)
                              ->setPosition({-1016.f + i * 16.f, 19})
                              ->addComponent<BoxCollider>(15, 20)
                              ->addComponent<Rigidbody>(STATIC, false));
-    const auto freeze = [&](double) {
+    const auto freeze = [&](double)
+    {
         object->setPosition({0, 0})->setRotation(0);
         body->setVelocity({0, 0})->setAngularVelocity(0);
     };
     runtime.simulateFrameWithCustomCallback(dt, freeze);
     require(body->getSupportContactCount() == 128, "Frozen 128-support layout must count every contribution exactly");
-    const Snapshot snapshot{events->trace, object->getPosition(), body->getVelocity(), object->getRotation(),
-                            body->getAngularVelocity()};
+    const auto trace = events->trace;
     for (int i = 0; i < 4; ++i)
     {
         runtime.simulateFrameWithCustomCallback(dt, freeze);
@@ -78,7 +73,10 @@ Snapshot supports(size_t workers)
     floors[0]->removeComponent(RIGID_BODY);
     runtime.simulateFrameWithCustomCallback(dt, freeze);
     require(body->getSupportContactCount() == 127, "Removing a body must remove its old support relationship");
-    return snapshot;
+    require(object->getPosition().allFinite() && body->getVelocity().allFinite() &&
+                std::isfinite(object->getRotation()) && std::isfinite(body->getAngularVelocity()),
+            "Support churn must preserve finite physical state at each worker count");
+    return trace;
 }
 void referenceSwaps()
 {
@@ -92,11 +90,14 @@ void referenceSwaps()
             STATIC, false);
     for (int i = 0; i < 20; ++i)
     {
-        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
-            a->setPosition({0, 0})->setRotation(i % 2 ? 0 : 0.4f);
-            b->setRotation(i % 2 ? 0.4f : 0);
-            a->getComponent<Rigidbody>()->setVelocity({0, 0})->setAngularVelocity(0);
-        });
+        runtime.simulateFrameWithCustomCallback(
+            dt,
+            [&](double)
+            {
+                a->setPosition({0, 0})->setRotation(i % 2 ? 0 : 0.4f);
+                b->setRotation(i % 2 ? 0.4f : 0);
+                a->getComponent<Rigidbody>()->setVelocity({0, 0})->setAngularVelocity(0);
+            });
         require(a->getComponent<Rigidbody>()->getSupportContactCount() == 1,
                 "Reference/incident changes cannot drop or duplicate canonical support contributions");
     }
@@ -118,11 +119,13 @@ void stationary()
     b->getComponent<BoxCollider>()->setCollisionMask(1);
     runtime.simulateFrame(dt);
     require(events->enter == 2, "Re-enabled unchanged overlap must enter again");
-    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
-        b->setActive(false)->setActive(true);
-        b->getComponent<BoxCollider>()->setCollisionMask(0);
-        b->getComponent<BoxCollider>()->setCollisionMask(1);
-    });
+    runtime.simulateFrameWithCustomCallback(dt,
+                                            [&](double)
+                                            {
+                                                b->setActive(false)->setActive(true);
+                                                b->getComponent<BoxCollider>()->setCollisionMask(0);
+                                                b->getComponent<BoxCollider>()->setCollisionMask(1);
+                                            });
     require(events->enter == 2 && events->exit == 1, "Net-unchanged toggles cannot manufacture exit/enter");
     b->destroy();
     require(events->exit == 2, "Eligible survivor receives the retirement exit synchronously while idle");
@@ -156,6 +159,78 @@ void scriptsPreserveSleepingSupport()
     require(!body->getIsSleeping() && body->getSupportContactCount() == 0,
             "Losing final support wakes the replacement body");
 }
+void netSupportTransfer(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    auto *object =
+        runtime.createGameObject()->addComponent<BoxCollider>(20, 20)->addComponent<Rigidbody>(DYNAMIC, false);
+    auto *a =
+        runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(
+            STATIC, false);
+    auto *b =
+        runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(
+            STATIC, false);
+    b->getComponent<BoxCollider>()->setIsTrigger(true);
+    runtime.simulateFrame(dt);
+    auto *body = object->getComponent<Rigidbody>();
+    require(body->getSupportContactCount() == 1, "Transfer control starts with one real support");
+    body->setIsSleeping(true);
+    runtime.simulateFrameWithCustomCallback(dt,
+                                            [&](double)
+                                            {
+                                                a->getComponent<BoxCollider>()->setIsTrigger(true);
+                                                b->getComponent<BoxCollider>()->setIsTrigger(false);
+                                            });
+    require(body->getSupportContactCount() == 1 && body->getIsSleeping(),
+            "A net-zero support transfer cannot wake a sleeping body at an intermediate zero");
+    b->getComponent<BoxCollider>()->setIsTrigger(true);
+    runtime.simulateFrame(dt);
+    require(body->getSupportContactCount() == 0 && !body->getIsSleeping(),
+            "Actual final committed support loss wakes the body");
+}
+struct RetiredSupportObserver : test_support::Behavior
+{
+    RetiredSupportObserver(Rigidbody *oldBody, GameObject *object, bool &observed)
+        : oldBody(oldBody), object(object), observed(observed)
+    {
+    }
+    void onDestroy() override
+    {
+        require(oldBody->getSupportContactCount() == 0,
+                "Old recipient loses its contribution before the retirement batch frees it");
+        auto *current = object->getComponent<Rigidbody>();
+        require(current && current != oldBody && current->getSupportContactCount() == 1,
+                "Unmoved contact credits the exact replacement body before destruction callbacks");
+        observed = true;
+    }
+    Rigidbody *oldBody;
+    GameObject *object;
+    bool &observed;
+};
+void replacementBeforeFree(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    bool observed = false;
+    platformator::Runtime runtime(physicsOnly());
+    auto *object =
+        runtime.createGameObject()->addComponent<BoxCollider>(20, 20)->addComponent<Rigidbody>(DYNAMIC, false);
+    runtime.createGameObject()->setPosition({0, 19})->addComponent<BoxCollider>(40, 20)->addComponent<Rigidbody>(STATIC,
+                                                                                                                 false);
+    runtime.simulateFrame(dt);
+    auto *oldBody = object->getComponent<Rigidbody>();
+    require(oldBody->getSupportContactCount() == 1, "Replacement control begins supported");
+    object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
+        new RetiredSupportObserver(oldBody, object, observed));
+    runtime.simulateFrameWithCustomCallback(dt,
+                                            [&](double)
+                                            {
+                                                object->removeComponent(RIGID_BODY);
+                                                object->removeComponent(SCRIPT);
+                                                object->addComponent<Rigidbody>(DYNAMIC, false);
+                                            });
+    require(observed, "Support transfer was observed at the real destruction-before-free boundary");
+}
 } // namespace
 int main()
 {
@@ -166,17 +241,17 @@ int main()
         for (int i = 0; i < 5; ++i)
         {
             const auto parallel = supports(6);
-            require(parallel.trace == reference.trace, "Canonical event order must not depend on worker completion");
-            require((parallel.position - reference.position).norm() <= 1e-5f &&
-                        (parallel.velocity - reference.velocity).norm() <= 1e-5f &&
-                        std::abs(parallel.rotation - reference.rotation) <= 1e-5f &&
-                        std::abs(parallel.angular - reference.angular) <= 1e-5f,
-                    "Frozen serial/parallel physical snapshots must agree within 1e-5");
+            require(parallel == reference, "Canonical event order must not depend on worker completion");
         }
         stationary();
         scriptsPreserveSleepingSupport();
         referenceSwaps();
-        std::cout << "[PASS] deterministic supports and persistent contacts\n";
+        for (size_t workers : {size_t(1), size_t(6)})
+        {
+            netSupportTransfer(workers);
+            replacementBeforeFree(workers);
+        }
+        std::cout << "[PASS] support accounting and persistent contacts\n";
         return 0;
     }
     catch (const std::exception &error)

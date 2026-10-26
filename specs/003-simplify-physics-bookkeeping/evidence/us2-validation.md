@@ -1,0 +1,7 @@
+# US2 technical checkpoint
+
+Support and queue reductions pass their baseline characterization and affected Debug/work controls. Shared isLiveContact now defines live contact once; solver participation derives resolution once and retains the same nonstatic/nonsleeping-body predicate. Contact membership remains distinct from solver membership and the independent oracle remains. Response-only refresh, post-geometry reconciliation and final-witness removal remain separate operations. Source names now describe contact participation and solver ordering rather than generic list/canonicalization work.
+
+Five focused Debug checks pass after centralization (us2-participation-tests.txt): bookkeeping, supports, contact events, pair cleanup and queued deletion. They cover unchanged geometry response/filter/trigger changes, replacement, script isolation, 128-pair workers and multi-cell lifetimes. Earlier four work-configuration checks pass after support reduction; final work/sanitizer/full validation remains scheduled.
+
+No current pair support flags or queue boolean/setter remain. Nullable contributor identity retains old-body credit through removal/replacement; per-body batching and worker barriers are unchanged. Four pair support fields became two; queue flag+index became one index. No replacement cache, scan or owning layer was added. This is an objective state reduction, not a byte, timing or maintainer-comprehension claim.

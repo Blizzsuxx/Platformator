@@ -1,0 +1,2 @@
+Final Release physicsmanager.cpp.o has no reference or emitted out-of-line symbol for resetSleepIsland; its definition is available for inlining in the private header.
+Source fingerprint: b87bc7a61c539405ff6e77fc8f481a3fd2c6ad3510f2b089ca4c475dd27367db

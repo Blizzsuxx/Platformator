@@ -1,0 +1,5 @@
+# Reset helper investigation
+
+The initial candidate introduced an out-of-line resetSleepIsland definition in physicsbodyindexes.cpp, called for each awake body from a worker in physicsmanager.cpp. Without LTO that adds a call that the baseline's direct stores did not require. The small100-body/six-worker mean is +6.36% in the initial matrix and +5.22% in the targeted fresh follow-up; this makes the affected hot integration path worth addressing, though the measurements do not isolate that call as the sole cause.
+
+Move the single private helper definition into PhysicsManager's internal header so the integration caller can inline it, preserving every store and existing getter/phase boundary. No new state or duplicated definition is added. Original candidate source fingerprint6d095977a927bd8170521f61894abd01eabd8dc2349d3b376926771e96de4c41 is retained in bin/physics-bookkeeping-20261025/candidate-v1-source.tar.gz, candidate-v1-runtime.patch and original raw captures/follow-ups. Final candidate v2 requires affected revalidation, fresh physical captures and matched timing; old measurements are not overwritten or silently relabeled.

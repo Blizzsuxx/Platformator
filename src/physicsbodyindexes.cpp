@@ -2,68 +2,78 @@
 
 namespace
 {
-void membership(std::vector<Rigidbody *> &list, Rigidbody *body, size_t Rigidbody::*index, bool desired)
-{
-    auto &position = body->*index;
-    if (desired == (position != SIZE_MAX))
-        return;
-    if (desired)
+    void membership(std::vector<Rigidbody *> &list, Rigidbody *body, size_t Rigidbody::*index, bool desired)
     {
-        position = list.size();
-        list.push_back(body);
+        auto &position = body->*index;
+        if (desired == (position != SIZE_MAX))
+            // if already a member and we want to put it somewhere, skip
+            return;
+
+        if (desired)
+        {
+            position = list.size();
+            list.push_back(body);
+        }
+        else
+        {
+            auto *moved = list.back();
+            list[position] = moved;
+            moved->*index = position;
+            list.pop_back();
+            position = SIZE_MAX;
+        }
     }
-    else
-    {
-        auto *moved = list.back();
-        list[position] = moved;
-        moved->*index = position;
-        list.pop_back();
-        position = SIZE_MAX;
-    }
-}
 } // namespace
 
-void PhysicsManager::queueBodyChange(Rigidbody *body)
+void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {
-    if (body->bodyQueueIndex != SIZE_MAX)
+    if (body->participationQueueIndex != SIZE_MAX)
         return;
-    body->bodyQueueIndex = changedBodies.size();
-    changedBodies.push_back(body);
+    body->participationQueueIndex = pendingBodyChanges.size();
+    pendingBodyChanges.push_back(body);
 }
 
-void PhysicsManager::cancelBodyChange(Rigidbody *body)
+void PhysicsManager::cancelBodyParticipationChange(Rigidbody *body)
 {
-    if (body->bodyQueueIndex == SIZE_MAX)
+    if (body->participationQueueIndex == SIZE_MAX)
         return;
-    const auto index = body->bodyQueueIndex;
-    auto *moved = changedBodies.back();
-    changedBodies[index] = moved;
-    moved->bodyQueueIndex = index;
-    changedBodies.pop_back();
-    body->bodyQueueIndex = SIZE_MAX;
+
+    const auto index = body->participationQueueIndex;
+    auto *moved = pendingBodyChanges.back();
+
+    pendingBodyChanges[index] = moved;
+    moved->participationQueueIndex = index;
+    pendingBodyChanges.pop_back();
+    body->participationQueueIndex = SIZE_MAX;
 }
 
-void PhysicsManager::reconcileBody(Rigidbody *body)
+void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
 {
+    // Derive memberships from current physical state after queued changes coalesce.
     const bool live =
         body->getIsRegisteredInPhysicsManager() && !body->isRetired() && body->getGameObject()->getActive();
+
     const bool awake = live && body->getBodyType() == DYNAMIC && !body->getIsSleeping();
-    membership(awakeBodies, body, &Rigidbody::awakeIndex, awake);
-    membership(kinematicBodies, body, &Rigidbody::kinematicIndex,
+    membership(awakeDynamicBodies, body, &Rigidbody::awakeDynamicIndex, awake);
+    membership(movingKinematicBodies, body, &Rigidbody::movingKinematicIndex,
                live && body->getBodyType() == KINEMATIC &&
                    (!body->getVelocity().isZero(0) || body->getAngularVelocity() != 0));
-    const bool previouslyEligible = body->sleepIndex != SIZE_MAX;
-    membership(sleepEligibleBodies, body, &Rigidbody::sleepIndex,
+
+    const bool previouslyEligible = body->sleepCandidateIndex != SIZE_MAX;
+    membership(sleepCandidates, body, &Rigidbody::sleepCandidateIndex,
                awake && (body->hasSupportContact() || !body->getGravity()));
-    if (!previouslyEligible && body->sleepIndex != SIZE_MAX)
+
+    if (!previouslyEligible && body->sleepCandidateIndex != SIZE_MAX)
     {
-        body->sleepParent = body;
-        body->sleepRank = 0;
-        body->islandQuiet = true;
-        body->islandTimer = body->getSleepTimer();
+
+        resetSleepIsland(body);
     }
+
     if (auto *collider = body->getGameObject()->getComponent<Collider>())
+    {
+
         refreshSolverPairs(collider);
+    }
 }
 
 Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)
@@ -82,7 +92,7 @@ Rigidbody *PhysicsManager::sleepRoot(Rigidbody *body)
 
 void PhysicsManager::mergeSleepIslands(Rigidbody *a, Rigidbody *b)
 {
-    if (a->sleepIndex == SIZE_MAX || b->sleepIndex == SIZE_MAX)
+    if (a->sleepCandidateIndex == SIZE_MAX || b->sleepCandidateIndex == SIZE_MAX)
         return;
     a = sleepRoot(a);
     b = sleepRoot(b);
@@ -95,12 +105,13 @@ void PhysicsManager::mergeSleepIslands(Rigidbody *a, Rigidbody *b)
         ++a->sleepRank;
 }
 
-void PhysicsManager::drainBodyChanges()
+void PhysicsManager::reconcileChangedBodies()
 {
-    for (auto *body : changedBodies)
+    // No integration or callback occurs here; participation and affected solver neighbors catch up.
+    for (auto *body : pendingBodyChanges)
     {
-        body->bodyQueueIndex = SIZE_MAX;
-        reconcileBody(body);
+        body->participationQueueIndex = SIZE_MAX;
+        reconcileBodyParticipation(body);
     }
-    changedBodies.clear();
+    pendingBodyChanges.clear();
 }

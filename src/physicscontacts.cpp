@@ -4,18 +4,12 @@
 
 namespace
 {
-    bool canonicalLess(const ColliderPair *a, const ColliderPair *b)
-    {
-        if (a->getObjectA()->getHandle() != b->getObjectA()->getHandle())
-            return a->getObjectA()->getHandle() < b->getObjectA()->getHandle();
-        return a->getObjectB()->getHandle() < b->getObjectB()->getHandle();
-    }
-    bool membership(std::vector<const ColliderPair *> &list, const ColliderPair *pair, size_t ColliderPair::*index,
+    void membership(std::vector<const ColliderPair *> &list, const ColliderPair *pair, size_t ColliderPair::*index,
                     bool desired)
     {
         auto &position = const_cast<ColliderPair *>(pair)->*index;
         if (desired == (position != SIZE_MAX))
-            return false;
+            return;
 
         if (desired)
         {
@@ -30,20 +24,16 @@ namespace
             list.pop_back();
             position = SIZE_MAX;
         }
-        return true;
-    }
-    void order(std::vector<const ColliderPair *> &list, size_t ColliderPair::*index, bool &dirty)
-    {
-        if (!dirty)
-            return;
-        std::sort(list.begin(), list.end(), canonicalLess);
-        for (size_t i = 0; i < list.size(); ++i)
-            const_cast<ColliderPair *>(list[i])->*index = i;
-        dirty = false;
     }
     bool movingBody(const Rigidbody *body)
     {
         return body && body->getBodyType() != STATIC && !body->getIsSleeping();
+    }
+    bool isLiveContact(const ColliderPair *pair)
+    {
+        return pair->getCollision() && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
+               pair->getObjectA()->getGameObject()->getActive() &&
+               pair->getObjectB()->getGameObject()->getActive();
     }
 } // namespace
 
@@ -59,7 +49,7 @@ void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
     body->supportDelta += delta;
 }
 
-void PhysicsManager::reducePairSupport(const ColliderPair *pair)
+void PhysicsManager::reconcilePairSupport(const ColliderPair *pair)
 {
     auto *collision = pair->getCollision();
     auto *a = pair->getObjectA()->getGameObject()->getComponent<Rigidbody>();
@@ -69,23 +59,25 @@ void PhysicsManager::reducePairSupport(const ColliderPair *pair)
                                          (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT));
     const bool supportsB = collision && (collision->supportState &
                                          (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE));
-    const auto reduce = [&](Rigidbody *&oldBody, bool &oldSupport, Rigidbody *body, bool support)
-    {
-        if (oldBody == body && oldSupport == support)
-            return;
-        if (oldSupport)
-            queueSupportDelta(oldBody, -1);
-        if (support)
-            queueSupportDelta(body, 1);
-        oldBody = body;
-        oldSupport = support;
-    };
-    reduce(pair->supportBodyA, pair->supportsA, a, supportsA);
-    reduce(pair->supportBodyB, pair->supportsB, b, supportsB);
+    reconcileSupportContribution(pair->contributedSupportBodyA, supportsA ? a : nullptr);
+    reconcileSupportContribution(pair->contributedSupportBodyB, supportsB ? b : nullptr);
+}
+
+void PhysicsManager::reconcileSupportContribution(Rigidbody *&contributor, Rigidbody *desired)
+{
+    if (contributor == desired)
+        return;
+    // The old component survives until the queued credit transfer is flushed, even after replacement.
+    if (contributor)
+        queueSupportDelta(contributor, -1);
+    if (desired)
+        queueSupportDelta(desired, 1);
+    contributor = desired;
 }
 
 void PhysicsManager::flushSupportDeltas()
 {
+    // Commit the net change once: losing and gaining support in this batch must not wake at an interim zero.
     for (auto *body : supportDeltaBodies)
     {
         const auto next = static_cast<int64_t>(body->supportContactCount) + body->supportDelta;
@@ -98,44 +90,40 @@ void PhysicsManager::flushSupportDeltas()
         if (lostLast && !body->isRetired())
             body->wakeUp();
         if (changedSupport)
-            queueBodyChange(body);
+            queueBodyParticipationChange(body);
     }
     supportDeltaBodies.clear();
-    drainBodyChanges();
+    reconcileChangedBodies();
 }
 
-void PhysicsManager::refreshPairLists(const ColliderPair *pair)
+void PhysicsManager::refreshContactParticipation(const ColliderPair *pair)
 {
-    auto *collision = pair->getCollision();
-    const bool live = collision && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
-                      pair->getObjectA()->getGameObject()->getActive() &&
-                      pair->getObjectB()->getGameObject()->getActive();
-    membership(contactPairs, pair, &ColliderPair::activeIndex, live);
-    refreshSolverPair(pair, live);
+    const bool live = isLiveContact(pair);
+    membership(contactPairs, pair, &ColliderPair::contactIndex, live);
+    refreshSolverParticipation(pair, live);
 }
 
-void PhysicsManager::refreshSolverPair(const ColliderPair *pair, bool live)
+void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool live)
 {
-    const auto *collision = pair->getCollision();
+    const auto response = live ? pair->getCollision()->getResolutionType() : Collision::NONE_COLLISIONS;
     const bool solve = live &&
-                       (collision->getResolutionType() == Collision::DYNAMIC ||
-                        collision->getResolutionType() == Collision::KINEMATIC) &&
+                       (response == Collision::DYNAMIC || response == Collision::KINEMATIC) &&
                        (movingBody(pair->getObjectA()->getGameObject()->getComponent<Rigidbody>()) ||
                         movingBody(pair->getObjectB()->getGameObject()->getComponent<Rigidbody>()));
-    solverOrderDirty |= membership(solverPairs, pair, &ColliderPair::solverIndex, solve);
+
+    membership(solverPairs, pair, &ColliderPair::solverIndex, solve);
 }
 
 void PhysicsManager::refreshSolverPairs(Collider *collider)
 {
     if (const auto *pairs = grid.getTouchingPairs(collider))
+    {
         for (auto *pair : *pairs)
         {
             PLATFORMATOR_WORK_ADD(solverRefreshPairs, 1);
-            const bool live = pair->getCollision() && !pair->getObjectA()->isRetired() &&
-                              !pair->getObjectB()->isRetired() && pair->getObjectA()->getGameObject()->getActive() &&
-                              pair->getObjectB()->getGameObject()->getActive();
-            refreshSolverPair(pair, live);
+            refreshSolverParticipation(pair, isLiveContact(pair));
         }
+    }
 }
 
 void PhysicsManager::refreshResponse(Collider *collider)
@@ -145,8 +133,8 @@ void PhysicsManager::refreshResponse(Collider *collider)
         {
             if (auto *collision = pair->getCollision())
                 collision->updateSupportState(gravityVectorNormalized);
-            reducePairSupport(pair);
-            refreshPairLists(pair);
+            reconcilePairSupport(pair);
+            refreshContactParticipation(pair);
         }
 }
 
@@ -155,17 +143,8 @@ void PhysicsManager::removePair(const ColliderPair *pair)
     // This is the explicit end boundary for contacts lost with their final cell witness.
     if (pair->getCollision())
         addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_EXIT, pair, nullptr));
-    if (pair->supportsA)
-        queueSupportDelta(pair->supportBodyA, -1);
-    if (pair->supportsB)
-        queueSupportDelta(pair->supportBodyB, -1);
-    pair->supportsA = pair->supportsB = false;
-    membership(contactPairs, pair, &ColliderPair::activeIndex, false);
-    solverOrderDirty |= membership(solverPairs, pair, &ColliderPair::solverIndex, false);
-}
-
-void PhysicsManager::canonicalizePairs()
-{
-    // Only solver consumption requires canonical order. Event batches contain transitions only.
-    order(solverPairs, &ColliderPair::solverIndex, solverOrderDirty);
+    reconcileSupportContribution(pair->contributedSupportBodyA, nullptr);
+    reconcileSupportContribution(pair->contributedSupportBodyB, nullptr);
+    membership(contactPairs, pair, &ColliderPair::contactIndex, false);
+    membership(solverPairs, pair, &ColliderPair::solverIndex, false);
 }

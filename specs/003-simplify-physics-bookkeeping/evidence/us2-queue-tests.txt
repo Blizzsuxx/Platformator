@@ -1,0 +1,21 @@
+Test project /home/user/Projects/Platformator/bin/cleanup-debug
+    Start  3: platformator_queued_deletion_safety_test
+1/5 Test  #3: platformator_queued_deletion_safety_test ...   Passed    0.15 sec
+    Start  5: platformator_collider_pair_cleanup_test
+2/5 Test  #5: platformator_collider_pair_cleanup_test ....   Passed    0.23 sec
+    Start 14: platformator_physics_support_test
+3/5 Test #14: platformator_physics_support_test ..........   Passed    0.69 sec
+    Start 15: platformator_contact_events_test
+4/5 Test #15: platformator_contact_events_test ...........   Passed    0.08 sec
+    Start 16: platformator_physics_bookkeeping_test
+5/5 Test #16: platformator_physics_bookkeeping_test ......   Passed    0.03 sec
+
+100% tests passed out of 5
+
+Label Time Summary:
+determinism     =   0.79 sec*proc (3 tests)
+lifecycle       =   0.15 sec*proc (1 test)
+physics         =   1.17 sec*proc (5 tests)
+platformator    =   1.17 sec*proc (5 tests)
+
+Total Test time (real) =   1.17 sec

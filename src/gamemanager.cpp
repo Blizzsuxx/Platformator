@@ -836,8 +836,9 @@ BaseObject *GameManager::resolveHandle(platformator::ObjectHandle handle, platfo
 void GameManager::queueReconciliation(Component *component)
 {
     component->callbackEligible = false;
+    // Lifecycle reconciliation also updates bodies that are not yet physically registered.
     if (component->getType() == RIGID_BODY)
-        physicsManager->queueBodyChange(static_cast<Rigidbody *>(component));
+        physicsManager->queueBodyParticipationChange(static_cast<Rigidbody *>(component));
     if (component->reconcileQueued)
         return;
     if (component->getType() == ComponentType::SCRIPT)
@@ -1005,6 +1006,7 @@ void GameManager::reconcilePending(std::exception_ptr &error)
         }
         reconciliationDrain.clear();
         synchronizeTransforms();
+        // Old support recipients remain allocated until this grid/support flush and notification drain.
         physicsManager->flushPendingColliderOperations();
         try
         {

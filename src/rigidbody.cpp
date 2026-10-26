@@ -161,7 +161,7 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 
     this->velocity = velocity;
     if (bodyType == KINEMATIC)
-        bodyStateChanged();
+        queueParticipationChange();
     return this;
 }
 
@@ -217,7 +217,7 @@ Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
 
     this->angularVelocity = angularVelocity;
     if (bodyType == KINEMATIC)
-        bodyStateChanged();
+        queueParticipationChange();
     return this;
 }
 
@@ -258,7 +258,7 @@ Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
     if (bodyType == DYNAMIC)
         platformator_detail::positive(mass, "dynamic mass");
     this->bodyType = bodyType;
-    bodyStateChanged();
+    queueParticipationChange();
     if (bodyType != BodyType::DYNAMIC)
     {
         setIsSleeping(false);
@@ -274,7 +274,7 @@ Rigidbody *Rigidbody::setGravity(const bool gravity)
 {
     this->gravity = gravity;
     wakeUp();
-    bodyStateChanged();
+    queueParticipationChange();
     return this;
 }
 
@@ -378,7 +378,7 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
     }
 
     this->sleeping = sleeping;
-    bodyStateChanged();
+    queueParticipationChange();
     if (sleeping)
     {
         // PLATFORMATOR_LOG("Rigidbody on GameObject '%s' is now sleeping.\n", getGameObject()->getName().c_str());
@@ -397,10 +397,11 @@ Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
     return this;
 }
 
-void Rigidbody::bodyStateChanged()
+void Rigidbody::queueParticipationChange()
 {
+    // Setters affecting active/sleep lists coalesce here. Awake dynamic solver impulses need no refresh.
     if (isRegisteredInPhysicsManager)
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyChange(this);
+        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyParticipationChange(this);
 }
 
 void Rigidbody::applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm)

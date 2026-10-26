@@ -1,0 +1,5 @@
+# US1 technical checkpoint
+
+The expanded body, support, contact, geometry and complete physics regression hosts pass 5/5 after the final extraction (us1-final-tests-retry.txt). The initial extraction's private fallback access failure is retained in us1-final-tests.txt; moving unchanged fallback math to geometry resolved it without a public API addition. Token comparison of every reachable shape/SAT/clipping body and fallback passes (geometry-comparison.json, compare_geometry.py); only documented interface normalization and proven-unreachable circle branches are excluded. Formatting does not change those tokens.
+
+Body predicates and phase order are unchanged, and public registration/support methods remain. Final body and geometry source paths are mapped for all eight journeys in audit-after.md, with baseline comparison in audit-before.md and inventory. No new cache, global scan, owner subsystem or worker infrastructure was introduced. Full normal/package, work, safety, physical matrix and timings remain US3 work. This technical checkpoint does not certify maintainer readability; SC-001 is pending actual review.

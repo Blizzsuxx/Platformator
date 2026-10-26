@@ -1,0 +1,52 @@
+["ctest", "--test-dir", "/home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-debug", "--output-on-failure", "-L", "physics|lifecycle"]
+Test project /home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-debug
+      Start  1: platformator_regression_tests
+ 1/15 Test  #1: platformator_regression_tests .................   Passed    0.85 sec
+      Start  3: platformator_queued_deletion_safety_test
+ 2/15 Test  #3: platformator_queued_deletion_safety_test ......   Passed    0.15 sec
+      Start  4: platformator_runtime_recreation_test
+ 3/15 Test  #4: platformator_runtime_recreation_test ..........   Passed    0.15 sec
+      Start  5: platformator_collider_pair_cleanup_test
+ 4/15 Test  #5: platformator_collider_pair_cleanup_test .......   Passed    0.23 sec
+      Start  6: platformator_runtime_foundation_test
+ 5/15 Test  #6: platformator_runtime_foundation_test ..........   Passed    0.74 sec
+      Start  7: platformator_scene_transition_contract_test
+ 6/15 Test  #7: platformator_scene_transition_contract_test ...   Passed    0.08 sec
+      Start  8: platformator_scene_transition_stress_test
+ 7/15 Test  #8: platformator_scene_transition_stress_test .....   Passed    0.29 sec
+      Start  9: platformator_callback_mutation_test
+ 8/15 Test  #9: platformator_callback_mutation_test ...........   Passed    0.88 sec
+      Start 10: platformator_destruction_contract_test
+ 9/15 Test #10: platformator_destruction_contract_test ........   Passed    0.37 sec
+      Start 13: platformator_transform_hierarchy_test
+10/15 Test #13: platformator_transform_hierarchy_test .........   Passed    0.01 sec
+      Start 14: platformator_physics_support_test
+11/15 Test #14: platformator_physics_support_test .............   Passed    0.67 sec
+      Start 15: platformator_contact_events_test
+12/15 Test #15: platformator_contact_events_test ..............   Passed    0.08 sec
+      Start 16: platformator_physics_geometry_test
+13/15 Test #16: platformator_physics_geometry_test ............   Passed    0.01 sec
+      Start 17: platformator_runtime_step_test
+14/15 Test #17: platformator_runtime_step_test ................   Passed    0.08 sec
+      Start 18: platformator_runtime_work_test
+15/15 Test #18: platformator_runtime_work_test ................***Skipped   0.00 sec
+
+100% tests passed out of 15
+
+Label Time Summary:
+clock           =   0.08 sec*proc (1 test)
+determinism     =   0.75 sec*proc (2 tests)
+geometry        =   0.01 sec*proc (1 test)
+lifecycle       =   2.74 sec*proc (8 tests)
+mutation        =   1.25 sec*proc (2 tests)
+physics         =   2.00 sec*proc (8 tests)
+platformator    =   4.59 sec*proc (15 tests)
+reference       =   0.74 sec*proc (1 test)
+scene           =   0.37 sec*proc (2 tests)
+transform       =   0.01 sec*proc (1 test)
+work            =   0.00 sec*proc (1 test)
+
+Total Test time (real) =   4.60 sec
+
+The following tests did not run:
+	 18 - platformator_runtime_work_test (Skipped)

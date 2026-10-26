@@ -106,8 +106,8 @@ class Rigidbody : public Component
     size_t physicsManagerIndex;
     int64_t supportDelta = 0;
     size_t supportDeltaIndex = SIZE_MAX;
-    size_t awakeIndex = SIZE_MAX, kinematicIndex = SIZE_MAX, sleepIndex = SIZE_MAX;
-    size_t bodyQueueIndex = SIZE_MAX;
+    size_t awakeDynamicIndex = SIZE_MAX, movingKinematicIndex = SIZE_MAX, sleepCandidateIndex = SIZE_MAX;
+    size_t participationQueueIndex = SIZE_MAX;
     Rigidbody *sleepParent = nullptr;
     uint8_t sleepRank = 0;
     bool islandQuiet = true;
@@ -116,7 +116,7 @@ class Rigidbody : public Component
     void initialize();
     uint8_t integrateLocal(double timeDelta);
     void integrateForces(double timeDelta, const Eigen::Vector2f &gravityVector);
-    void bodyStateChanged();
+    void queueParticipationChange();
     void applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm);
     float calculateAutomaticMomentOfInertia() const;
 };

@@ -1,0 +1,13 @@
+baseline
+	libSDL3_mixer.so.0 => /home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-benchmark/libSDL3_mixer.so.0 (0x00007efec5d22000)
+	libSDL3_image.so.0 => /home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-benchmark/libSDL3_image.so.0 (0x00007efec5cbf000)
+	libSDL3_ttf.so.0 => /home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-benchmark/libSDL3_ttf.so.0 (0x00007efec5c95000)
+	libSDL3.so.0 => /home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-benchmark/libSDL3.so.0 (0x00007efec5800000)
+	libtbb.so.12 => /home/user/Projects/Platformator/bin/physics-bookkeeping-20261025/baseline-source/bin/cleanup-benchmark/gnu_16.2_cxx20_64_release/libtbb.so.12 (0x00007efec5c31000)
+
+candidate
+	libSDL3_mixer.so.0 => /home/user/Projects/Platformator/bin/cleanup-benchmark/libSDL3_mixer.so.0 (0x00007f20f5a2e000)
+	libSDL3_image.so.0 => /home/user/Projects/Platformator/bin/cleanup-benchmark/libSDL3_image.so.0 (0x00007f20f59cb000)
+	libSDL3_ttf.so.0 => /home/user/Projects/Platformator/bin/cleanup-benchmark/libSDL3_ttf.so.0 (0x00007f20f59a1000)
+	libSDL3.so.0 => /home/user/Projects/Platformator/bin/cleanup-benchmark/libSDL3.so.0 (0x00007f20f5400000)
+	libtbb.so.12 => /home/user/Projects/Platformator/bin/cleanup-benchmark/gnu_16.2_cxx20_64_release/libtbb.so.12 (0x00007f20f593d000)

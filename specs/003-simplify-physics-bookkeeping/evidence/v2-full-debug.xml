@@ -1,0 +1,491 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="26"
+	failures="0"
+	disabled="0"
+	skipped="2"
+	hostname=""
+	time="77"
+	timestamp="2026-10-25T17:30:59"
+	>
+	<testcase name="platformator_regression_tests" classname="platformator_regression_tests" time="0.822051" status="run">
+		<properties>
+			<property name="cmake_labels" value="physics;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider Regression Floor to grid cells in range (-1, -1) to (1, 0)
+Adding collider Regression Ball to grid cells in range (-1, -1) to (0, 0)
+Removing collider Regression Floor from grid cells in range (0, 1) to (2, 1)
+Removing collider Regression Ball from grid cells in range (0, 1) to (1, 1)
+[PASS] circle_collision_stability
+[PASS] warm_start_feature_reuse
+[PASS] clip_segment_feature_propagation
+Adding collider Sleep Floor to grid cells in range (-2, -1) to (1, 0)
+Adding collider Sleep Box to grid cells in range (-1, -1) to (0, 0)
+Removing collider Sleep Floor from grid cells in range (0, 1) to (2, 1)
+Removing collider Sleep Box from grid cells in range (1, 1) to (1, 1)
+[PASS] sleeping_on_support
+Adding collider Removed Support to grid cells in range (-2, -1) to (1, 0)
+Adding collider Woken Box to grid cells in range (-1, -1) to (0, 0)
+Removing collider Removed Support from grid cells in range (0, 1) to (2, 1)
+Removing collider Woken Box from grid cells in range (1, 1) to (1, ...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_scene_script_roundtrip_test" classname="platformator_scene_script_roundtrip_test" time="0.15151" status="run">
+		<properties>
+			<property name="cmake_labels" value="platformator;scene"/>
+		</properties>
+		<system-out>Renderer Used: software
+Freeing audio: assets/audio/jump.wav
+Freeing animation clip: assets/test_runtime/scene_v2_roundtrip.animset
+Freeing texture: assets/ball.png
+Freeing audio: assets/audio/jump.wav
+Freeing animation clip: assets/test_runtime/scene_v2_roundtrip.animset
+Freeing texture: assets/ball.png
+[PASS] scene_version2_round_trip
+[PASS] scene_zero_ids_and_duplicate_rejection
+[PASS] scene_unknown_behaviors_reject
+Adding collider Ball to grid cells in range (1, 1) to (1, 1)
+Adding collider Wall South to grid cells in range (0, 2) to (3, 2)
+Adding collider Wall North to grid cells in range (0, 0) to (3, 0)
+Adding collider Wall West to grid cells in range (0, 0) to (0, 2)
+Adding collider Wall East to grid cells in range (2, 0) to (3, 2)
+Adding collider Dynamic Box to grid cells in range (2, 1) to (2, 1)
+Removing collider Dynamic Box from grid cells in range (2, 1) to (2, 1)
+Removing collider Wall North from grid cells in range (0, 0) to (3, 0)
+Removing collider Wall South from grid cells in range (0, 2) to...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_queued_deletion_safety_test" classname="platformator_queued_deletion_safety_test" time="0.157677" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;physics;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider Queued Sync Victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider Queued Sync Victim from grid cells in range (0, 0) to (0, 0)
+Adding collider Exit Survivor to grid cells in range (-1, -1) to (0, 0)
+Adding collider Exit Victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider Exit Victim from grid cells in range (0, 0) to (1, 0)
+Removing collider Exit Survivor from grid cells in range (0, 0) to (1, 0)
+Adding collider Adjacency Anchor to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 0 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 1 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 2 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Adjacency Victim 3 to grid cells in range (-1, -1) to (0, 0)
+Removing collider Adjacency Victim 0 from grid cells in range (0, 0) to (0, 0)
+Removing collider Adjacency Victim 1 from grid cells in range (0, 0) to (0, 0)
+Removing collid...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_recreation_test" classname="platformator_runtime_recreation_test" time="0.159515" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Renderer Used: software
+[PASS] runtime_recreation_test
+</system-out>
+	</testcase>
+	<testcase name="platformator_collider_pair_cleanup_test" classname="platformator_collider_pair_cleanup_test" time="0.239169" status="run">
+		<properties>
+			<property name="cmake_labels" value="physics;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider Deletion Sync Survivor to grid cells in range (-1, -1) to (0, 0)
+Adding collider Deletion Sync Victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider Deletion Sync Victim from grid cells in range (-1, -1) to (0, 0)
+Removing collider Deletion Sync Survivor from grid cells in range (0, -1) to (0, 0)
+Renderer Used: software
+Adding collider Coverage Long to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Victim to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 0 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 1 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 2 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 3 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 4 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 5 to grid cells in range (-1, -1) to (0, 0)
+Adding collider Coverage Filler 6 to grid cells...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_foundation_test" classname="platformator_runtime_foundation_test" time="0.75171" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator;reference"/>
+		</properties>
+		<system-out>[PASS] no_runtime
+Renderer Used: software
+[PASS] growth
+Renderer Used: software
+[PASS] retirement
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+[PASS] hierarchy
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+[PASS] identity
+Renderer Used: software
+[PASS] resources
+Renderer Used: software
+[PASS] activation
+Renderer Used: software
+[PASS] callback_failure
+Renderer Used: software
+Freeing audio: assets/test_runti...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_scene_transition_contract_test" classname="platformator_scene_transition_contract_test" time="0.0819537" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator;scene"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider survivor to grid cells in range (-1, -1) to (0, 0)
+Adding collider victim to grid cells in range (-1, -1) to (0, 0)
+Removing collider victim from grid cells in range (-1, -1) to (0, 0)
+Removing collider survivor from grid cells in range (-1, -1) to (0, 0)
+[PASS] scene_transition_contract
+</system-out>
+	</testcase>
+	<testcase name="platformator_scene_transition_stress_test" classname="platformator_scene_transition_stress_test" time="0.344641" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;platformator;scene"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider driver from grid cells in range (-1, -1) to (0, 0)
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Removing collider driver from grid cells in range (-1, -1) to (0, 0)
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider driver from grid cells in range (-1, -1) to (0, 0)
+Adding collider driver to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Removing collider driver from grid cells in ran...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_callback_mutation_test" classname="platformator_callback_mutation_test" time="0.899746" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;mutation;platformator"/>
+		</properties>
+		<system-out>Behavior 'TestBehavior' on '' initialization failed: resolve failure
+Behavior 'TestBehavior' on '' initialization failed: start failure
+Behavior 'TestBehavior' on '' initialization failed: start failure
+Behavior 'TestBehavior' on '' initialization failed: unknown exception
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software
+Renderer Used: software...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_destruction_contract_test" classname="platformator_destruction_contract_test" time="0.374205" status="run">
+		<properties>
+			<property name="cmake_labels" value="lifecycle;mutation;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Renderer Used: software
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_object_reference_contract_test" classname="platformator_object_reference_contract_test" time="0.153227" status="run">
+		<properties>
+			<property name="cmake_labels" value="platformator;reference;scene"/>
+		</properties>
+		<system-out>Renderer Used: software
+Adding collider target to grid cells in range (-1, -1) to (0, 0)
+Removing collider target from grid cells in range (-1, -1) to (0, 0)
+Renderer Used: software
+[PASS] public reference contracts
+</system-out>
+	</testcase>
+	<testcase name="platformator_scene_io_contract_test" classname="platformator_scene_io_contract_test" time="0.102984" status="run">
+		<properties>
+			<property name="cmake_labels" value="platformator;reference;scene"/>
+		</properties>
+		<system-out>Behavior 'RequiredTarget' on 'committed' initialization failed: Field 'target': Missing reference target or wrong kind for ID 999
+Behavior 'RequiredTarget' on 'committed' initialization failed: Field 'target': Missing reference target or wrong kind for ID 2
+Behavior 'RequiredTexture' on 'committed' initialization failed: Field 'texture': Required asset not found: 'assets/textures/missing-startup-resource.png' beneath '/home/user/Projects/Platformator/bin/cleanup-debug/assets'
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failure
+Behavior 'TestBehavior' on 'committed' initialization failed: intentional resolver failu...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_transform_hierarchy_test" classname="platformator_transform_hierarchy_test" time="0.0117838" status="run">
+		<properties>
+			<property name="cmake_labels" value="physics;platformator;transform"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (4, -1) to (5, 0)
+Removing collider  from grid cells in range (5, -1) to (6, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (4, -1) to (5, 0)
+Removing collider  from grid cells in range (5, -1) to (6, 0)
+Removing collider  from grid cells in range (4, -1) to (5, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (0, -1) to (0, 0)
+[PASS] hierarchy transforms
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_support_test" classname="platformator_physics_support_test" time="0.762928" status="run">
+		<properties>
+			<property name="cmake_labels" value="determinism;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-6, -1) to (5, 0)
+Adding collider  to grid cells in range (-6, 0) to (-6, 0)
+Adding collider  to grid cells in range (-6, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-5, 0) to (-5, 0)
+Adding collider  to grid cells in range (-4, 0) to (-4, 0)
+Adding collider  to grid cells in range (-4, 0) to (-4, 0)
+Adding collider  to g...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_contact_events_test" classname="platformator_contact_events_test" time="0.0894926" status="run">
+		<properties>
+			<property name="cmake_labels" value="determinism;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider a0 to grid cells in range (-1, -1) to (0, 0)
+Adding collider b0 to grid cells in range (0, 0) to (0, 0)
+Adding collider a1 to grid cells in range (0, -1) to (0, 0)
+Adding collider b1 to grid cells in range (0, 0) to (0, 0)
+Adding collider a2 to grid cells in range (0, -1) to (0, 0)
+Adding collider b2 to grid cells in range (0, 0) to (0, 0)
+Adding collider a3 to grid cells in range (0, -1) to (0, 0)
+Adding collider b3 to grid cells in range (0, 0) to (0, 0)
+Adding collider a4 to grid cells in range (0, -1) to (0, 0)
+Adding collider b4 to grid cells in range (0, 0) to (0, 0)
+Adding collider a5 to grid cells in range (0, -1) to (0, 0)
+Adding collider b5 to grid cells in range (0, 0) to (0, 0)
+Adding collider a6 to grid cells in range (0, -1) to (0, 0)
+Adding collider b6 to grid cells in range (0, 0) to (0, 0)
+Adding collider a7 to grid cells in range (0, -1) to (0, 0)
+Adding collider b7 to grid cells in range (0, 0) to (0, 0)
+Adding collider a8 to grid cells in range (0, -1) to (0, 0)
+Adding coll...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_bookkeeping_test" classname="platformator_physics_bookkeeping_test" time="0.0369791" status="run">
+		<properties>
+			<property name="cmake_labels" value="determinism;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (1, 0)
+Adding collider  to grid cells in range (0, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in range (1, -1) to (1, 0)
+Adding collider  to grid cells in ra...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_geometry_test" classname="platformator_physics_geometry_test" time="0.0104795" status="run">
+		<properties>
+			<property name="cmake_labels" value="geometry;physics;platformator"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (0, 0) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (0, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+Adding collider  to grid cells in range (-1, -1) to (0, 0)...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_step_test" classname="platformator_runtime_step_test" time="0.0802177" status="run">
+		<properties>
+			<property name="cmake_labels" value="clock;lifecycle;platformator"/>
+		</properties>
+		<system-out>Renderer Used: software
+[PASS] simulation step and clock contracts
+</system-out>
+	</testcase>
+	<testcase name="platformator_runtime_work_test" classname="platformator_runtime_work_test" time="0.00442894" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="physics;platformator;work"/>
+		</properties>
+		<system-out>[SKIP] configure PLATFORMATOR_ENABLE_WORK_PROBES=ON for the work oracle
+</system-out>
+	</testcase>
+	<testcase name="platformator_asset_root_contract_test" classname="platformator_asset_root_contract_test" time="0.155068" status="run">
+		<properties>
+			<property name="cmake_labels" value="asset;package;platformator"/>
+		</properties>
+		<system-out>Optional asset 'assets/absent.png' uses fallback 'assets/textures/missing.png'
+Optional asset 'assets/absent.wav' uses fallback 'assets/audio/missing.wav'
+Optional asset 'assets/absent.animset' uses fallback 'assets/animations/missing.animset'
+Behavior 'StartupTexture' on 'case' initialization failed: Field 'texture': Asset paths must use assets/...: ../textures/MiXeD.PNG
+Renderer Used: software
+Freeing animation clip: assets/animations/nested/Valid.animset
+Freeing animation clip: assets/animations/missing.animset
+Freeing audio: assets/audio/missing.wav
+Freeing texture: assets/textures/missing.png
+Freeing texture: assets/textures/MiXeD.PNG
+Renderer Used: software
+[PASS] explicit/default asset roots
+</system-out>
+	</testcase>
+	<testcase name="platformator_runner_failure_test" classname="platformator_runner_failure_test" time="0.00621963" status="run">
+		<properties>
+			<property name="cmake_labels" value="package;platformator;runner"/>
+		</properties>
+		<system-out>Platformator: Scene '/home/user/Projects/Platformator/bin/cleanup-debug/missing-runner.scene': Cannot open scene
+Platformator: Scene '/home/user/Projects/Platformator/bin/cleanup-debug/runner-failure.scene': [json.exception.parse_error.101] parse error at line 1, column 1: syntax error while parsing value - invalid literal; last read: 'm'
+Platformator: --smoke-steps must be a positive integer
+[PASS] runner failure statuses
+</system-out>
+	</testcase>
+	<testcase name="platformator_runner_startup_failure" classname="platformator_runner_startup_failure" time="0.00607759" status="run">
+		<properties>
+			<property name="cmake_labels" value="package;platformator;runner"/>
+		</properties>
+		<system-out>SDL could not initialize! SDL_Error: platformator-invalid-driver not available
+</system-out>
+	</testcase>
+	<testcase name="platformator_physics_only_startup" classname="platformator_physics_only_startup" time="0.00646055" status="run">
+		<properties>
+			<property name="cmake_labels" value="package;platformator;runner"/>
+		</properties>
+		<system-out>Adding collider  to grid cells in range (-1, -1) to (0, 0)
+Removing collider  from grid cells in range (-1, -1) to (0, 0)
+</system-out>
+	</testcase>
+	<testcase name="platformator_package_smoke" classname="platformator_package_smoke" time="72.2241" status="run">
+		<properties>
+			<property name="cmake_labels" value="install;package;platformator"/>
+		</properties>
+		<system-out>-- Checking: /usr/bin/cmake;-S;/home/user/Projects/Platformator;-B;/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/core;-G;Ninja;-DCMAKE_BUILD_TYPE=Release;-DPLATFORMATOR_BUILD_TESTS=OFF;-DPLATFORMATOR_BUILD_EXAMPLES=OFF;-DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF;-DPLATFORMATOR_INSTALL=ON
+-- Checking: /usr/bin/cmake;--build;/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/core;--parallel;3
+-- Checking: /usr/bin/cmake;--install;/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/core;--prefix;/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/prefix
+-- Checking: /usr/bin/cmake;-S;/home/user/Projects/Platformator/tests/consumer;-B;/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/consumer;-G;Ninja;-DCMAKE_BUILD_TYPE=Release;-DCMAKE_PREFIX_PATH=/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/prefix
+-- Checking: /usr/bin/cmake;--build;/home/user/Projects/Platformator/bin/cleanup-debug/package-smoke/consumer;--parallel;3
+-- Chec...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="platformator_benchmark_contract_test" classname="platformator_benchmark_contract_test" time="0.00654772" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="benchmark;platformator"/>
+		</properties>
+		<system-out>[SKIP] benchmark instrumentation is disabled
+</system-out>
+	</testcase>
+	<testcase name="platformator_benchmark_sweep_test" classname="platformator_benchmark_sweep_test" time="0.130409" status="run">
+		<properties>
+			<property name="cmake_labels" value="benchmark;platformator"/>
+		</properties>
+		<system-out>test_failed_process_never_produces_aggregate (test_sweep_scaling.PlotAndFailureContract.test_failed_process_never_produces_aggregate) ... [Sweep] broad_phase count=10 run=1/5
+ok
+test_odd_population_is_preserved (test_sweep_scaling.PlotAndFailureContract.test_odd_population_is_preserved) ... ok
+test_plot_rejects_legacy_missing_metrics_and_validation (test_sweep_scaling.PlotAndFailureContract.test_plot_rejects_legacy_missing_metrics_and_validation) ... ok
+test_five_processes_per_population_preserve_raw_artifacts (test_sweep_scaling.SweepContract.test_five_processes_per_population_preserve_raw_artifacts) ... [Sweep] broad_phase count=10 run=1/5
+[Sweep] broad_phase count=10 run=2/5
+[Sweep] broad_phase count=10 run=3/5
+[Sweep] broad_phase count=10 run=4/5
+[Sweep] broad_phase count=10 run=5/5
+[Sweep] broad_phase count=20 run=1/5
+[Sweep] broad_phase count=20 run=2/5
+[Sweep] broad_phase count=20 run=3/5
+[Sweep] broad_phase count=20 run=4/5
+[Sweep] broad_phase count=20 run=5/5
+ok
+test_legacy_and_incomplete_data_reject...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+</testsuite>

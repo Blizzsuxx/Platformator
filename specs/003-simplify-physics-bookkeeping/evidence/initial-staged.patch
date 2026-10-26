@@ -1,0 +1,1006 @@
+diff --git a/specs/003-simplify-physics-bookkeeping/checklists/requirements.md b/specs/003-simplify-physics-bookkeeping/checklists/requirements.md
+new file mode 100644
+index 0000000..88d2700
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/checklists/requirements.md
+@@ -0,0 +1,40 @@
++# Specification Quality Checklist: Simplify Physics Bookkeeping
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-10-25
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [X] No implementation details (languages, frameworks, APIs)
++- [X] Focused on user value and business needs
++- [X] Written for non-technical stakeholders
++- [X] All mandatory sections completed
++
++## Requirement Completeness
++
++- [X] No [NEEDS CLARIFICATION] markers remain
++- [X] Requirements are testable and unambiguous
++- [X] Success criteria are measurable
++- [X] Success criteria are technology-agnostic (no implementation details)
++- [X] All acceptance scenarios are defined
++- [X] Edge cases are identified
++- [X] Scope is clearly bounded
++- [X] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [X] All functional requirements have clear acceptance criteria
++- [X] User scenarios cover primary flows
++- [X] Feature meets measurable outcomes defined in Success Criteria
++- [X] No implementation details leak into specification
++
++## Notes
++
++- Reviewed against the resolved specification template and constitution 1.1.0 on 2026-10-25; all 16 specification-quality criteria pass. These marks concern specification quality, not implementation completion or future maintainer approval.
++- Human value: User Story 1 defines eight concrete audit journeys; SC-001 requires actual maintainer walkthrough findings and explicitly leaves unperformed review pending.
++- Testability: FR-002–FR-005 and SC-002 require an inventory and demonstrated reduction in state or update dependencies. The requirement that "cosmetic changes alone do not count as simplification" prevents a documentation-only result.
++- Scope and compatibility: FR-001 permits related changes beyond the historical commit, while Assumptions bound unrelated work. FR-006–FR-009 and FR-012 preserve current physical, contact, lifetime, worker, and compatibility guarantees.
++- Evidence: FR-010–FR-011 and SC-005 define workload dimensions and regression treatment without inventing a performance threshold. No language, framework, new API, class design, or collection algorithm is prescribed.
++- No blocking clarification is needed: the current post-contact-simplification engine is the behavioral baseline; the historical commit is a review starting point. Planning will choose implementation boundaries and comparison methods.
++- Items marked incomplete require spec updates before `$speckit-clarify` or `$speckit-plan`.
+diff --git a/specs/003-simplify-physics-bookkeeping/contracts/physics-lifecycle.md b/specs/003-simplify-physics-bookkeeping/contracts/physics-lifecycle.md
+new file mode 100644
+index 0000000..98a3aef
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/contracts/physics-lifecycle.md
+@@ -0,0 +1,48 @@
++# Contract: Physics State and External Compatibility
++
++## Existing authoring interface
++
++This is an internal refactor. Preserve installed Rigidbody/Collider/Behavior/Runtime operations, return values, validation errors, scene serialization, object handles and callback payload lifetimes. Do not remove public registration/support accessors while simplifying internal metadata. Public object layout may change only with the existing engine/consumer rebuild model; no new ABI guarantee is created. Run installed/relocated consumer checks.
++
++Body type, velocities, gravity, activation and component replacement take effect at the same established runtime/physics boundaries. Preserve collision math/tolerances, feature IDs, warm-start impulse reuse and reference-face behavior. Existing physical behavior is the baseline, not the pre-7906959 engine. No new trigger-event family, contact-query surface, or recurring callback is introduced.
++
++## Body and contact participation
++
++- Exactly one registered instance participates for each current body/collider under existing lifecycle rules. Pending work must not keep a retired instance alive beyond the designated runtime retention boundary or use it after free.
++- Awake dynamic, moving kinematic and sleep candidate memberships obey data-model.md. An internal name or file change cannot change the predicates or their visibility timing.
++- Several cell witnesses identify one candidate pair. Candidate presence is not confirmed contact. Losing one witness cannot end a still-covered contact; final removal cancels queued evaluation before pair erasure.
++- The optional Collision remains confirmed-contact presence. Workers own distinct pairs; support counts, lists and events are mutated only after joining.
++- Body/response changes may refresh physical eligibility without recomputing geometry. A response-only refresh must not synthesize Enter/Exit, change notification history or rely on scripts.
++
++## Support ownership
++
++Each nonnull `contributedSupportBodyA/B` records one applied-or-scheduled contribution to that exact Rigidbody. It is not an assertion that the body remains the collider's current component. Reference/incident support bits must map to canonical endpoints on every reconcile.
++
++Queue -1 for the previous recipient and +1 for the desired recipient only when identity differs. Pair removal queues both old contributions away and clears the ledger. Net per-body support changes commit at the existing batch boundary, with no negative totals and no spurious wake from intermediate zero. Final committed support loss wakes under the existing contract. Retired recipients remain allocated until their deltas have been consumed.
++
++## Events and callbacks
++
++Retain the [contact transition contract](../../002-simplify-contact-events/contracts/contact-events.md): one pair-level Enter for absent→present, one Exit for present→absent, no Stay or repeated event for unchanged contact, generation independent of scripts, no replay, delivery-time recipient eligibility. Exit before Enter, canonical pair order, then canonical endpoint A/B delivery remain unchanged. Callback exceptions must not prevent cleanup or independent eligible deliveries required by the established contract.
++
++Scene replacement flushes/cancels old work under the existing lifecycle contract before its storage is freed and new-scene work is published. No event may leak to the replacement scene.
++
++## Internal geometry interface
++
++Add only an internal header, not an installed API:
++
++```cpp
++namespace physics_geometry {
++void updateContactGeometry(const ColliderPair &pair,
++                           const Eigen::Vector2f &gravityDirection);
++}
++```
++
++The call can mutate/reuse/delete only this pair's contact, its geometry version stamps, manifold and derived Collision support bits. Collider identity is unchanged. No event append, Grid mutation, body-counter write, structural mutation or runtime lookup is allowed in the geometry module. Inputs are the stable collider state and explicit normalized gravity direction. Preserve current operation order and contact allocation/reuse behavior; do not return a newly allocated manifold or introduce an owning geometry object. Shape/SAT/clipping helpers remain private to the implementation. Worker completion precedes shared reduction and every reader of updated contact state.
++
++The const pair reference reflects the stable key in Grid's unordered set; intentionally mutable non-key state does not permit changing hash/equality fields while stored. This feature does not redesign that storage.
++
++## Narrow-phase queue interface
++
++Grid's queue index is the sole mutable membership fact. A read-only queued query derives from it; remove the boolean setter. Enqueue, duplicate rejection and cancellation remain O(1), with moved-entry repair after swap removal. Only the worker owning an entry consumes its index during the fixed batch. Do not enqueue, cancel, erase pairs or mutate queue storage until the worker batch and serial reduction finish.
++
++No new publicly supported interface, scene version or benchmark schema change is required.
+diff --git a/specs/003-simplify-physics-bookkeeping/contracts/validation-evidence.md b/specs/003-simplify-physics-bookkeeping/contracts/validation-evidence.md
+new file mode 100644
+index 0000000..7a93f38
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/contracts/validation-evidence.md
+@@ -0,0 +1,44 @@
++# Contract: Validation and Human Review Evidence
++
++## Required evidence, without a new reporting framework
++
++Implementation produces concise `evidence/` reports and a feature `validation.md`. Preserve machine-readable raw benchmark outputs in a new ignored capture directory, recording its exact path, source snapshots/patches and checksums. Avoid duplicating the same prose across reports; the final review links to raw evidence and the eight walkthroughs. This plan does not create tasks.md or claim implementation checks have run.
++
++## Fresh baseline
++
++Planning source: `f6d1af73fcb9a9e623b735fe0a8269d6e65c8fba`. At implementation start, record actual HEAD, dirty patches and source fingerprints before runtime edits. If source changed since planning, review the delta and update the inventory before freezing the baseline. Use a separate complete source/build tree so candidate rebuilds cannot overwrite baseline libraries. Record vendored dependency versions and any common fixture patch. Do not copy only a dynamically linked runner.
++
++Both stages use current schema 3 with the same eight scopes, eleven counters, validation labeling and resolved fixture parameters. Preserve strict current readers and archived captures. Feature 002's old schema-2 baseline cannot substitute for this baseline. Its candidate timings are historical context, not automatically a current control. Keep benchmark instrumentation enabled in both timing builds, work/debug/sanitizer instrumentation disabled, and do not alter measured boundaries in this refactor.
++
++## Correctness and queue/support oracle
++
++Existing public and INTERNAL tests remain. Add targeted regressions before refactoring where current assertions do not cover:
++
++- Duplicate enqueue, first/middle/last swap-remove cancellation, removed-before-evaluation, consumed-then-requeued pair, and zero pending batch; include ≥128 changed pairs to exercise the parallel path and selected worker counts.
++- Support begin/end with unchanged recipient, replacement by a different body, reference/endpoint support swaps, geometry deletion, multi-pair net loss/gain cancellation, and final-witness pair deletion. Check committed totals, sleeping/waking and exact generated event histories, not just absence of crashes.
++- Static/kinematic/dynamic changes, kinematic zero/nonzero linear/angular velocity, repeated cancelling changes before drain, sleep/wake and lifecycle removal while queued. Exercise supported and unsupported bodies and old-body retirement with pending support changes.
++- Preserve geometry, warm-start, lifecycle, callback-exception, script-isolation and component/scene tests; extending one real path is preferable to duplicating a suite that mirrors helpers.
++
++Use independent physical/oracle comparisons, not the candidate's own membership predicate as expected output. Keep getContactPairs and the existing all-contact oracle. Position/velocity/separation tolerance is 1e-4; rotation/angular velocity/contact normals 1e-5, matching benchmark/capture_cleanup.py. Identity, support counts, sleeping state, contact feature identity and ordered transition histories compare exactly. Do not widen tolerances merely to pass a refactor.
++
++The 36-group correctness matrix is separate from timing. Compare all stage/worker snapshots: 18 one/multiworker pairs per stage and 36 baseline/candidate groups. Per-step validation remains `timing_eligible=false`. Correct boundary snapshots alone do not prove every intermediate state; preserve the per-step oracle and focused histories.
++
++## Work, storage and timing
++
++The exact matrix and runnable commands are in quickstart.md. For each stage: 36 groups × five independent timing processes = 180 timing processes, plus 36 validation-only processes. Keep 120 warmup, 600 measured, seed 0 and dt 1/120; record resolved counts, bodies, contacts and supports. Do not silently lengthen only one stage. If warmup does not exercise expected supported/sleeping populations, extend matched captures for both stages and label them.
++
++Use one worker and a physically appropriate multiworker count (reference six) with matching CPU affinity. Retain the same scenario/count job list; use recorded deterministic random ordering, preferably interleave immutable baseline/candidate runs to limit drift. No competing deliberate builds, tests or probes during timing. A matrix harness may orchestrate existing runner/readers; do not fork their measurement semantics.
++
++Retain per-run complete-step and nested-scope mean, median, p95/p99/max, raw samples and run spread; report independent run variation and worker ratios. Never sum nested timings, treat sample count as independent process count, or infer significance from overlapping run ranges. Investigate every positive delta, including tail/allocation/storage/scaling changes. Reproduce important uncertain regressions with matched alternating runs. Correct faster/scaling designs take precedence under the constitution; comparable alternatives favor simplicity. A known retained inefficiency requires the constitution's local EFFICIENCY explanation and concrete replacement work. Missing evidence is unverified, not a pass.
++
++Work evidence: warmed idle 100-update check with zero force/movement/sleep/geometry/transition/event/adjacency visits when no work is eligible, zero C++ new/new[] allocations, and script-only changes causing no physical refresh. Nonquiet body changes may require local neighbor refresh. Extend existing fixed-peak churn to queue cancellation and body replacement; record actual contact/body membership, support restoration, relevant vector capacities and layout bytes. Distinguish C++ allocations from all allocator activity; measure per-child RSS without inherited compiler high-water marks. No assumed byte or RSS benefit from deleting booleans.
++
++## Safety and compatibility
++
++Run focused and full normal suites, Production/public-header and package consumers, work/benchmark configurations, changed-path ASan/UBSan and TSan, and the appropriate full selections. Record commands, registrations, passes, skips and failures. Leak-disabled checks are memory-access checks only. Previously observed FluidSynth leaks and SDL/libdbus lock-order findings remain visible; re-evaluate stacks if reproduced and never label an unresolved failure a pass. Sandbox detector restrictions are environment limitations. No blanket suppression or disabling of race/deadlock detection to obtain acceptance. This refactor makes no new allocation-failure recovery guarantee.
++
++## Human acceptance
++
++Before/after inventory rows include source links, independent state facts, update triggers, validity boundaries, consumers and retention/removal rationale. For J4/J5 and J6, enumerate the old and new independently maintained facts and mutation sites; account for replacements elsewhere so wrapper code cannot hide equivalent coordination. At least one real journey must show a concrete reduction; the chosen design intends both support and queue reductions.
++
++Provide all eight concise cause→owner→pending work→consumer→cleanup walkthroughs, with final code links and local invariant comments for non-obvious boundaries. Ask the maintainer to walk the final paths and record understood/unresolved findings for each. The implementing agent can prepare and check the evidence but cannot self-certify the maintainer's comprehension. Keep SC-001 human review pending until the maintainer actually performs it. Documentation volume, class/file count and automatic test passes do not stand in for that result. No changes to the feature requirements checklist are authorized by implementation.
+diff --git a/specs/003-simplify-physics-bookkeeping/data-model.md b/specs/003-simplify-physics-bookkeeping/data-model.md
+new file mode 100644
+index 0000000..c3784cc
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/data-model.md
+@@ -0,0 +1,113 @@
++# Data Model and Ownership: Simplify Physics Bookkeeping
++
++This is the inspected baseline and intended design, not a claim that fields have already changed. Source baseline: `f6d1af73fcb9a9e623b735fe0a8269d6e65c8fba`. The implementation review must update the final disposition and concrete source links for every row. Physical properties such as mass, velocity, shapes and transforms remain authoritative authoring/simulation inputs; this inventory concerns information maintained around them.
++
++## Authority and derived state
++
++- Body type, velocities, gravity, activation/retirement and committed sleeping state determine participation.
++- A pair's optional Collision is confirmed-contact presence. Cell witness counts describe spatial coverage, not contact.
++- Collision support bits describe current geometry/response eligibility. Pair contributor identities describe which exact bodies have been credited or scheduled. Committed body support count is updated only at the net-delta boundary.
++- Lists and indexes accelerate consumption/removal; they do not redefine physical facts. Pending queues encode work not yet reconciled. Sleep-island fields are temporary aggregation state, rebuilt for the current step.
++
++## Baseline inventory and planned disposition
++
++In the boundary column, “serial” means the existing main-thread phase after relevant worker joins. No new flags or global scans are proposed.
++
++| Mechanism: baseline → intended | Owner and meaning | Triggers, validity and consumers | Disposition and reason |
++| --- | --- | --- | --- |
++| Registered body vector, `physicsManagerIndex`, registration boolean → retained | PhysicsManager registration; Rigidbody stores its membership metadata | Add/remove during lifecycle commit; valid after registration reconciliation; removal repairs moved index before cancellation/participation reconciliation | Public registration accessors and lifetime participation have existing consumers; do not silently derive one public setter from another |
++| Collider vector, physics index/registration flag → retained | PhysicsManager collider registration | Lifecycle commit → Grid operations; enumeration and destruction consumers | Independent of cell placement; preserve public behavior |
++| `awakeBodies/awakeIndex` → descriptively named awake dynamic membership | PhysicsManager list, per-body removal index | Body participation reconciliation; force and movement consumers | Avoid all-static/sleeping scans; only live awake dynamic bodies |
++| `kinematicBodies/kinematicIndex` → descriptively named moving kinematic membership | PhysicsManager list, per-body removal index | Kinematic velocity/angular/type/lifecycle changes; movement consumer | Only nonzero linear/angular motion participates; retain existing predicate |
++| `sleepEligibleBodies/sleepIndex` → descriptively named sleep candidates | PhysicsManager list, per-body removal index | Awake dynamic and (support or gravity disabled); sleeping aggregation consumer | Physical subset, not a redundant awake list |
++| `changedBodies/bodyQueueIndex` → retained, explicit participation-change naming | PhysicsManager pending bodies, index deduplicates and cancels | Rigidbody setters, GameManager lifecycle, support and sleep; drained at existing boundaries | Coalesces repeated changes, O(1) cancellation; not the lifecycle reconciliation queue |
++| `sleepParent/sleepRank` → retained | Per-body union-find scratch for connected awake bodies | Reset by current integration/reconciliation paths; merge in collision pre-step; root lookup in sleep update | Keep group sleep behavior and path compression; name/reset operation explicitly |
++| `islandQuiet/islandTimer` → retained | Per-root quiet conjunction and minimum timer | Initialized with body timer; aggregate in sleep update, used before sleep decisions | Different meaning from each body's timer; no new persistent island registry |
++| `supportContactCount` → retained | Body's committed support total | Net flush and existing public support methods; `hasSupportContact` and sleep eligibility consume | Last committed value remains public contract |
++| `supportDelta/supportDeltaIndex/supportDeltaBodies` → retained | PhysicsManager net pending support change per touched body | Pair reconciliation queues; serial flush commits/wakes and queues body participation | Queue membership cannot derive from delta: cancelling changes may leave a queued zero delta |
++| `supportBodyA/supportsA` → nullable `contributedSupportBodyA` | Pair's contribution identity for canonical endpoint A | Serial support reconciliation after geometry/response; final-witness removal clears; body flush consumes deltas | Removes separate flag and unsupported current-body snapshot |
++| `supportBodyB/supportsB` → nullable `contributedSupportBodyB` | Same for canonical endpoint B | Same rules; A/B independent even if contributors happen to be equal | Preserve endpoint identity without assuming only one can contribute |
++| `Collision::supportState` → retained | Geometry/response-derived reference/incident support bits | Geometry and response refresh; serial pair ledger reads | Not interchangeable with old applied/scheduled contributor after deletion or body replacement |
++| `Collision*` → retained | Pair-owned optional contact including manifold/warm-start data | Distinct-pair geometry mutates/reuses/deletes; serial reduction and solver consume; destructor frees | Sole confirmed-contact presence; no destructor event side effect |
++| Pair `objectA/objectB` → retained immutable canonical identity while stored | Grid set key | Construction orders handles; hashing, adjacency, canonical ordering and events consume | Non-key fields may mutate through const pair pointers; do not mutate set identity |
++| `objectAStateVersion/objectBStateVersion` → retained | Pair's last geometry-evaluated collider versions | Contact create/clear updates stamps; `shouldUpdate` consumes | Avoid redundant geometry; no body eligibility decision inferred solely from these stamps |
++| `isQueuedForNarrowPhase + narrowPhaseQueueIndex` → index only | Grid pending queue; worker consumes own entry | Enqueue/dedup/cancel before worker launch; sentinel at worker entry; batch clear after reduction | Removes independent boolean and all dual writes; query derives from index |
++| `adjacencyIndexA/B` and `pairAdjacency` → retained | Grid endpoint-local pair lookup and O(1) removal | First witness adds; final witness/removal repairs swapped endpoint's correct index | Localize response and solver refresh to affected neighbors |
++| `witnessCount` → retained | Grid net number of spatial observations | Joined cell deltas; 0→positive publishes pair, positive→0 removes | Losing one cell does not remove a still-covered pair |
++| `pairSlot/pairSlots/freePairSlots` → retained | Grid stable pair enumeration and reusable holes | Pair insertion/removal serially; oracle/candidate enumeration consumers | Lifetime/index purpose separate from contact/solver lists; measure fixed-peak retention |
++| `contactPairs/activeIndex` → retained | All live confirmed-contact membership | Serial contact reconciliation/removal; benchmark count and independent oracle | Do not remove oracle merely to simplify candidate implementation |
++| `solverPairs/solverIndex` → retained | Physical response-eligible membership | Contact/body/response reconciliation; canonical solver/debug consumers | Subset differs from all contacts; no mirrored Collision pointer cache added |
++| `solverOrderDirty` → retained | Solver membership order needs canonicalization | Set on membership change; reset by sort/reindex before solving | Sorting each quiet step would add work; keep one definition of contact/solver eligibility |
++| `resultHadContact` → retained, explicitly transient | Per-pair worker result | Capture before geometry; serial transition reduction after join | No event vector in workers; previous presence still needed after Collision deletion |
++| `resultTestedGeometry` → retained as existing work-result instrumentation | Per-pair evaluation result | Worker sets; serial reduction adds work counters | No parallel write to global test counters; no new production scan |
++| `pendingPhysicsEvents` → retained | PhysicsManager transition batch | Serial transition/removal append; canonical delivery then clear | No unchanged-contact scan, Stay, or script subscription list |
++| `dynamicCollisionScratch` → retained | Solver subset reused across iterations | Pre-step fills; iterative solve consumes | Distinct purpose; preserve capacity reuse |
++| `movedObjects` → retained | oneTBB thread-local movement results | Independent integration appends locally; serial transform/collider synchronization drains | Worker ownership and main-thread structural boundary retained |
++| Collider dirty flags, state versions, pending-operation index, cached cell ranges → retained | Collider/Grid synchronization | Transform, filter, shape, response, activation and registration changes; current Grid flush consumes | Trace as external boundary to this review; no duplicate dirty-reason system added |
++| Grid cell operation/empty queues, pair delta collector/scratch → retained | Grid cell workers and serial consolidation | Independent cell work produces; joins precede reduction and erasure | Spatial algorithms unchanged; targeted multi-cell/migration regressions required |
++| GameManager lifecycle queues, eligibility and retirement state → retained | Runtime lifecycle owner | Public structural changes → reconciliation → physics flush → notifications → free | Different contract from body participation and support queues; do not merge them |
++
++## Derived participation rules
++
++One body reconciliation operation derives the three existing memberships from current authoritative state. It does not integrate the body or regenerate geometry.
++
++| Membership | Established rule | Consumer |
++| --- | --- | --- |
++| Awake dynamic | Registered, not retired, owner active, DYNAMIC, not sleeping | Forces, movement, island reset |
++| Moving kinematic | Registered, not retired, owner active, KINEMATIC, nonzero velocity or angular velocity | Movement |
++| Sleep candidate | Awake dynamic and (positive committed support or gravity disabled) | Sleep aggregation |
++| Live contact | Collision exists; neither collider retired; both owners active | All-contact and solver derivation |
++| Solver contact | Live contact; resolution is DYNAMIC or KINEMATIC; at least one nonstatic, nonsleeping body under the existing predicate | Ordered response |
++
++Do not add a new cached eligibility field. `reconcileBodyParticipation` is the single body derivation point; a shared live-contact helper and solver derivation replace the current duplicate predicates. Public setter and runtime lifecycle triggers remain distinct callers with explicit reasons.
++
++## Support state transitions
++
++For endpoint X, desired contributor is its current Rigidbody if the current contact supports X, otherwise null. Map the support bit through the current reference/incident orientation, not the canonical handle order.
++
++| Old contributor | Desired contributor | Queued changes | New ledger value |
++| --- | --- | --- | --- |
++| null | null | None | null |
++| A | A | None | A |
++| null | B | B +1 | B |
++| A | null | A -1 | null |
++| A | B, A ≠ B | A -1, B +1 | B |
++
++The pair ledger changes when the deltas are queued. Body totals change later at the same existing flush. Net zero support change must not transiently wake a body. Old recipients survive through that flush even if their component was replaced. Remove a pair by reconciling both contributions to null, removing contact/solver membership, and only then erasing it. A deleted Collision must not be needed to undo the old ledger.
++
++## Narrow-phase queue transitions
++
++1. **Absent:** index sentinel. First enqueue stores the queue position; duplicate enqueue does nothing.
++2. **Queued:** before launch, index identifies a slot containing that pair. Cancellation swap-removes and repairs the moved pair's index.
++3. **Consumed in a fixed batch:** the worker clears its own index at entry. The batch vector still holds the pointer while the worker and serial reduction use it. Structural enqueue/cancel/erase cannot overlap this period.
++4. **Drained:** after join and reduction, the batch vector is cleared. A later change can enqueue the surviving pair again.
++
++These are explanatory stages, not a new enum/flag. Preserve current exception/lifecycle boundaries; do not claim new transactional recovery from allocation failure.
++
++## Trigger and visibility table
++
++| Trigger | Pending work | Required boundary before consumer |
++| --- | --- | --- |
++| Kinematic linear/angular velocity changes | Body participation | Before movement membership is used |
++| Dynamic wake/sleep, body type or gravity change | Body participation; body type also invalidates collider response | Existing integration/support/sleep and response flush boundaries |
++| Registration or lifecycle activity/retirement | GameManager reconciliation and affected body work | Registration update/cancellation before physical work or free |
++| Geometry changes | Affected pair evaluation | After collider/cell flush; workers joined before shared reduction |
++| Trigger/body response changes | Affected adjacency response and membership | Current response flush without synthetic contact events |
++| Support zero/nonzero transition | Net support commit then affected body participation | Before sleep/solver membership consumers at the established boundary |
++| Final witness or collider removal | Queue cancellation, contribution release, memberships, Exit | Before pair erase; endpoint allocations retained through delivery |
++| Scene replacement/callback retirement | Lifecycle reconciliation and physics cleanup | Old-scene flush/dispatch before retirement free and replacement publication |
++
++## Eight review journeys and expected simplification
++
++| Journey | Code-backed route to record before and after | Candidate effect |
++| --- | --- | --- |
++| J1 Motion start/stop | Rigidbody setters → body change queue → body reconciliation → active movement → transform sync | Name and document one derivation; preserve queue coalescing |
++| J2 Body type | setBodyType → participation + response invalidation → neighbor refresh → solver/sleep consumers | Shared live/solver rules; no extra dirty flags |
++| J3 Sleep/wake | body state → participation → island initialization/merge → aggregation → sleep state | Explicit island scratch lifetime and common reset operation |
++| J4 One/final support loss | geometry/response → pair contribution identities → net body delta → wake/participation | Four ledger fields → two; one identity comparison per endpoint |
++| J5 Component replacement/removal | retirement/invalidateResponse → registration/cancel → old contribution removal/new credit → flush → free | No independently synchronized support flags; old recipient explicit |
++| J6 Contact lifetime | Grid witness → queue index → pair geometry → serial transition/support/membership → delivery | Queue flag removed; geometry boundary has explicit input/side effect |
++| J7 Filter/activation | dirty collider/runtime reconciliation → Grid pair/response refresh → support/membership/transition boundaries | One live-contact predicate; no script-driven physical refresh |
++| J8 Callback/scene | dispatch/exception capture → commit/reconcile → physics flush/Exit → retirement → new scene | Preserve ordering; add precise links, not a new lifecycle abstraction |
++
++Implementation evidence must count independent state facts and maintenance edges on J4/J5 and J6 before/after. Deleted bools are demonstrable reductions; compiler padding may hide byte savings. Supporting naming/extraction work does not satisfy that reduction by itself. SC-001 remains pending until the maintainer walks these routes in the final code.
+diff --git a/specs/003-simplify-physics-bookkeeping/plan.md b/specs/003-simplify-physics-bookkeeping/plan.md
+new file mode 100644
+index 0000000..f817190
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/plan.md
+@@ -0,0 +1,165 @@
++# Implementation Plan: Simplify Physics Bookkeeping
++
++**Branch**: `001-cpp-engine-cleanup` (actual Git branch) | **Feature**: `003-simplify-physics-bookkeeping` | **Date**: 2026-10-25 | **Spec**: [spec.md](spec.md)
++
++**Input**: Feature specification from `specs/003-simplify-physics-bookkeeping/spec.md`.
++
++The setup script reports `BRANCH=003-simplify-physics-bookkeeping` from the selected feature path. It does not switch Git branches. Preserve the existing checkout, prior feature artifacts and user changes.
++
++## Summary
++
++Make physics state maintenance easier for the maintainer to trace and change. Review the bookkeeping introduced by `7906959` and current related paths; use the current post-contact-event engine, not the historical parent, as the behavioral and cost baseline.
++
++The concrete design removes redundant queue membership and support flags, centralizes live-contact/solver eligibility, clarifies the existing body participation/sleep derivation, and isolates geometry behind one internal function with explicit inputs. Keep incremental body/contact indexes, per-body batched support deltas, deterministic ordering and lifetime barriers because they serve different consumers. No new owning subsystem, generic indexed-container framework, global scan or synchronization layer is proposed.
++
++A before-and-after inventory and eight code-backed walkthroughs accompany actual state reductions. Tests and measurements verify behavior and costs; only the maintainer can supply the human-readability finding. This command ends at design. Runtime changes, new tests, captures, tasks.md and acceptance review belong to later commands.
++
++## Technical Context
++
++**Language/Version**: C++20 runtime; Python 3 benchmark tooling. Available local tools inspected: GCC 16.2.1, CMake 4.4.3, Python 3.14.7. Repository minimum CMake 3.16; no toolchain upgrade is part of this feature.
++
++**Primary Dependencies**: Existing vendored Eigen 5.0.1, oneTBB 2022.3.0, SDL3 3.4.18 and SDL image/mixer/font stack, nlohmann JSON, CMake/Ninja. No added package or framework.
++
++**Storage**: In-memory bodies, Grid-owned stable pair keys and their contact objects, indexed lists and reusable queues/scratch; scene serialization unchanged. Evidence uses Markdown plus current schema-3 CSV/JSON/raw captures in a fresh retained directory.
++
++**Testing**: Existing standalone CTest hosts, installed/relocated public consumers, independent geometry/support/contact oracle, work/allocation probes, Python benchmark contracts, ASan/UBSan and TSan. Add one focused INTERNAL bookkeeping test and extend existing support/work assertions for uncovered cases.
++
++**Target Platform**: Existing supported desktop library/runner platforms; reference execution on Linux, headless SDL tests. Validate one and suitable multiple workers (reference six), recording real CPU affinity/topology. No untested-platform certification.
++
++**Project Type**: Native C++ runtime/library with runner/example consumers and Python measurement tools; this feature changes internal physics and dependent lifecycle plumbing only.
++
++**Performance Goals**: Fewer independent facts/update dependencies on real audit paths; retain affected-work behavior, warmed allocation reuse and meaningful runtime/scaling benefits. No arbitrary speedup or acceptable-slowdown percentage. Compare complete-step means/tails/run variation and worker scaling; investigate every regression.
++
++**Constraints**: Preserve authoring/scene/reporting contracts, exact contact histories and established physical tolerances; no Stay, replay, script-dependent generation, new global scans or discarded oracle. Keep component lifetime/worker boundaries and net support reduction. Missing safety/performance evidence and pending maintainer review remain explicitly unverified.
++
++**Scale/Scope**: Four discussed physics files plus ColliderPair, relevant Rigidbody/Grid/GameManager boundaries and tests. Eight audit journeys, ≥128 changed pairs for parallel-path coverage, existing 128-support and large idle/churn fixtures. Timing matrix: 36 groups/stage × five processes, plus separate correctness captures; populations small/large, static/quiet/moving, dense/uneven, churn/migration, recipients 0/1/2 and workers one/multiple.
++
++## Constitution Check
++
++Initial gate was evaluated after loading the spec and constitution 1.1.0, before selecting the design. All seven principles permit a focused internal simplification with explicit evidence. Historical pre-constitution origin is not an exemption or rollback mandate.
++
++| Principle | Before research | Post-design check and implementation obligation |
++| --- | --- | --- |
++| I. Performance/scalability first | PASS: compare state reductions with scans, immediate updates and new ownership layers | PASS at design: O(1) indexed queue/body operations and local neighbor work retained; eliminate three independent booleans, no byte/RSS claim. Measure complete-step/mean/tails/work/storage/allocations; investigate any cost of helper boundaries. Known retained inefficiency, if found, needs the local EFFICIENCY cost/frequency/reason/alternative/replacement-work comment and evidence; no such exception is assumed now. |
++| II. oneTBB/multicore | PASS: independent integration/cell/pair workers; serial shared consumers | PASS at design: no shared ledger/list writes in workers. Existing small-pair threshold 64 retained. Join precedes support/list/event reduction, solver, callbacks and erasure. Assess task granularity, skew, scheduling, cache/bandwidth and serial work with one/multiworker evidence; no unsupported load-balance or parallel speedup claim. |
++| III. Research-backed collision architecture | PASS: no foundational broad-phase redesign | PASS at design: reviewed local paper §§3.1–3.3; only redundant consumer-queue flag changes in Grid. Keep cell witness deduplication, endpoint ties, checkpoint/fast-motion/split/merge behavior and conservative candidates. Existing foundational regressions remain; changing those algorithms would reopen research/scope gates. |
++| IV. Simplicity/KISS | PASS: code must actually reduce coordination | PASS at design: two nullable support contributors replace pointer+flag pairs; one queue index replaces flag+index. One uncached live predicate, direct body derivation and geometry free function. No extra framework, dirty-reason flags, replacement state copies or owning classes. Human audit and inventory must verify complexity was not merely relocated. |
++| V. Developer experience | PASS: authoring behavior preserved | PASS at design: no public method removal, scene migration, callback or reporting break. Geometry header remains internal. Package/header consumers test compatibility. No new claim about Unity behavior. |
++| VI. Evidence before performance claims | PASS: fresh baseline required | PASS at design: current schema-3 baseline isolated before edits; fixed 36-group matrix, five processes, raw/provenance/checksums, separate oracle and timing, all regression investigations. Old schema-2 results remain historical. No measurements or speedup claimed by planning. |
++| VII. Correctness/integrity | PASS: safety and determinism are gates | PASS at design: preserve net-support boundary and old recipient lifetime, queue cancellation before erasure, geometry math/warm-start, worker ownership and Exit-before-Enter delivery. Add changed-path characterization and reuse independent oracle/lifecycle tests. Actual sanitizer findings remain visible; pending maintainer review cannot be self-certified. |
++
++Post-design result: no known unjustified constitutional violation or unresolved design clarification. These are design gates, not evidence that implementation checks passed. A discovered incompatibility, unsafe boundary, uninvestigated regression or unverified requirement blocks the corresponding acceptance claim and requires a revised decision.
++
++## Project Structure
++
++### Documentation (this feature)
++
++```text
++specs/003-simplify-physics-bookkeeping/
++├── spec.md
++├── plan.md
++├── research.md
++├── data-model.md
++├── quickstart.md
++├── contracts/
++│   ├── physics-lifecycle.md
++│   └── validation-evidence.md
++├── checklists/requirements.md       # Existing specification-quality review; read-only in implement
++├── tasks.md                         # Future speckit-tasks output; not generated by this command
++├── evidence/                        # Future implementation inventory/traces/raw indexes/reports
++└── validation.md                    # Future actual results and maintainer-review status
++```
++
++### Source Code (repository root)
++
++```text
++src/
++├── physicsmanager.{h,cpp}            # Phase orchestration, solver and event delivery
++├── physicsbodyindexes.cpp           # Body participation, changed-body queue, sleep-island helpers
++├── physicscontacts.cpp              # Pair participation and net support contribution reconciliation
++├── physicsgeometry.{h,cpp}           # New internal header; explicit pair + gravity geometry entry
++├── colliderpair.{h,cpp}              # Remove redundant queue/support facts; preserve stable identity
++├── grid.{h,cpp}                      # Queue index transitions only; witnesses/spatial algorithms retained
++├── rigidbody.cpp                    # Participation notification callers; preserve setter semantics
++└── gamemanager.cpp                  # Existing registration, reconciliation and retirement boundaries
++include/platformator/
++└── rigidbody.h                      # Only required private helper/name adjustments; public API preserved
++tests/
++├── physics_bookkeeping_test.cpp     # Planned INTERNAL target for uncovered queue/body state paths
++├── physics_support_test.cpp         # Net support/replacement/reference assertions
++├── runtime_work_test.cpp            # Quiet work, one/multiworker and fixed-peak storage
++├── runtime_work_probe.h             # Existing counters, extend only for a demonstrated assertion gap
++├── contact_events_test.cpp          # Existing generated histories/order and recipient controls
++└── ...                             # Existing geometry/lifecycle/public-consumer guardrails retained
++benchmark/
++├── sweep_scaling.py                 # Existing strict schema-3 reader/runner interface
++├── capture_cleanup.py               # Reuse oracle comparator/tolerances, not hardcoded topology/matrix
++└── tests/                          # Existing contracts; no schema migration
++```
++
++**Structure Decision**: Keep small domain-local functions in the current files. File count is not a success criterion. Add only an internal geometry header and one focused test host where needed; no new state-owning physics hierarchy. Do not broaden a refactor simply to touch every listed file. Source dependencies justify neighboring edits.
++
++## Phase 0: Research and decisions
++
++Completed design research is in [research.md](research.md). Three read-only investigations covered body/sleep state, contact/support/geometry and validation. All technical unknowns are resolved for planning:
++
++1. Queue bool duplicates index state, including cancellation and worker consumption.
++2. Per-endpoint support pointer+flag can become one nullable contribution identity, while net per-body deltas remain essential.
++3. Body and contact/solver lists have distinct physical/oracle consumers and avoid global scans.
++4. Geometry needs explicit gravity input and a pair-owned contact boundary; it does not need a new owner class or manifold-result allocation.
++5. Deferred body/support/lifecycle queues have different visibility/cancellation rules; retain and name them rather than merge them.
++6. A fresh equivalent schema-3 baseline and actual maintainer review are required; old captures and automatic tests cannot substitute.
++
++Review implementation-start source drift before treating this inspected baseline as current. No new network/dependency research is needed for these local design decisions.
++
++## Phase 1: Design
++
++### A. Support ledger: four fields to two contribution identities
++
++Use nullable `contributedSupportBodyA/B` in ColliderPair. A pointer means this pair has one applied-or-scheduled contribution to that exact body. Derive the desired pointer from the current Collision support bit mapped to canonical endpoint and its current body. Compare identity, queue removal/addition only on a change, then update the ledger. Use the same operation to release both contributions on final pair removal.
++
++Preserve per-body net delta queue and the existing flush/wake rule. A replaced old body must survive through decrement and flush even though component lookup already returns the new body. Geometry can delete Collision before reduction; old contribution identity remains available. Do not read current components to infer who received old credit. See the transition table and lifetime rules in data-model.md and physics-lifecycle.md.
++
++### B. Narrow-phase queue: one mutable membership fact
++
++Remove the queue flag and its setter; derive the read-only query from the index sentinel. Keep Grid's O(1) enqueue/dedup/swap-remove cancellation and moved-entry repair. At existing worker entry clear only the owned index, then evaluate. The batch pointers remain fixed and live through serial reduction; structural queue changes and erasure are forbidden until after join. Clear the batch without a new scan. Remove obsolete commented dual-clear code and add boundary assertions in test/debug contexts where useful.
++
++### C. Body and pair participation: direct derivation, explicit reasons
++
++Rename internal collections/functions where necessary to state their actual predicates: awake dynamic bodies, moving kinematic bodies, sleep candidates and `reconcileBodyParticipation`. Preserve indexed membership and change-queue semantics. Put the trigger/visibility table beside the relevant logic or in concise linked audit material; local non-obvious boundaries need local comments. A small shared sleep-island reset helper may remove duplicated initialization without new state.
++
++Use one uncached live-contact predicate and one solver derivation. Keep geometry-completion reduction, response-only reconciliation and final-witness removal separate and clearly named. Share support/list maintenance only where semantics match. Do not emit transitions from response refresh, refresh physical neighbors for script changes, alter solver order or restore a duplicate Collision vector. Preserve public registration flags/accessors despite their apparent duplication; changing their contract is outside this feature.
++
++### D. Geometry boundary
++
++Expose one internal namespace function in physicsgeometry.h with explicit pair and gravity-direction inputs. Move shape helpers out of PhysicsManager's declaration into implementation-local functions. Preserve operation order, math constants, Collision reuse, cache version updates, feature IDs and warm-start impulse transfer. No new result container, heap layer, virtual dispatch or runtime lookup. The existing worker calls this function; serial support/event/list ownership is unchanged. Verify mechanical math preservation and public geometry/physical oracle outputs.
++
++### E. Complexity and mutation boundaries
++
++For P pending pairs, S solver contacts, E generated transitions, B changed bodies and A affected adjacency visits: preserve parallel per-pair geometry + serial O(P) reduction; dirty-only O(S log S) solver ordering; O(E log E) event ordering; O(B) body drain plus O(A) neighbor refresh; O(touched support bodies) net flush. Queue/index changes do not add an all-body or all-contact pass. Cost constants and cache/layout effects require measurement. Compound operations stay in existing ownership phases; const-key pair storage is not a license for concurrent arbitrary mutation.
++
++### F. Compatibility, validation and human audit
++
++Contracts are in [physics-lifecycle.md](contracts/physics-lifecycle.md) and [validation-evidence.md](contracts/validation-evidence.md). Entities, fields, consumers, proposed dispositions, state transitions and eight audit routes are in [data-model.md](data-model.md). [quickstart.md](quickstart.md) supplies existing runnable checks, planned target prerequisites, baseline isolation, the exact matrix and capture examples.
++
++At implementation, first freeze baseline/provenance and characterize gaps, then make support and queue reductions in bounded steps, then eligibility/body/geometry boundary changes. Check affected paths between steps. Final correctness precedes timing, and any later runtime fix requires affected revalidation/recapture. The plan does not prescribe breaking passing tests before an observationally equivalent refactor; targeted characterization must pass against the baseline before code changes.
++
++## Acceptance and handoff to task generation
++
++Generate dependency-ordered tasks for: baseline/provenance; inventory and characterization; support reduction; queue reduction; body/eligibility clarification; geometry boundary; focused/full/package/sanitizer/work validation; separate physical captures and comparable timing; regression investigation; final inventory/eight walkthroughs and actual maintainer review. Preserve requirements checklist markers. Tasks must keep the independent oracle, raw captures, worker/lifetime assertions, and conditional investigation work rather than declaring checks complete on limited evidence.
++
++| Requirement group | Design/evidence responsibility |
++| --- | --- |
++| FR-001–FR-003, SC-001 | Scope rationale, inventory, eight code-linked journeys, local invariants, actual maintainer result |
++| FR-004–FR-005, SC-002 | Support/queue facts and mutation-site comparison; retained structure rationale; no relocated equivalent machinery |
++| FR-006, FR-008, SC-003/SC-006 | Physical oracle, net support/replacement/lifecycle tests, fixed-peak work/storage and safety checks |
++| FR-007, SC-004 | Existing contact/recipient/order tests, 100-update quiet controls, unchanged public contact contract |
++| FR-009 | Worker ownership and one/multiworker physical/ordered-history comparison; TSan and actual limitations |
++| FR-010–FR-011, SC-005 | Fresh source/build baseline, 36-group raw matrix, work/allocations/layout/RSS, regression investigations |
++| FR-012 | Compatible authoring/scenes/reporting, package/header tests, concise final review and pending/actual human findings |
++
++The implementation agent prepares concrete reviewable code and evidence before requesting the maintainer walkthrough. It may finish independently authorized checks while review is pending, but cannot mark SC-001 human acceptance passed on the maintainer's behalf.
++
++## Complexity Tracking
++
++No constitutional exception is proposed. Existing body indexes, support batching, sleep union-find, pair adjacency/witnesses, separate contact/solver membership and deterministic sorting retain explicit purposes in the inventory. Revisit these decisions if implementation evidence identifies a simpler comparable or faster design. A discovered known inefficiency cannot be silently grandfathered; apply the constitution's evidence and local-comment requirements or fix it within scope.
+diff --git a/specs/003-simplify-physics-bookkeeping/quickstart.md b/specs/003-simplify-physics-bookkeeping/quickstart.md
+new file mode 100644
+index 0000000..b7476e9
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/quickstart.md
+@@ -0,0 +1,148 @@
++# Validation Guide: Simplify Physics Bookkeeping
++
++This is a plan for implementation validation. Existing commands below use current presets, tests and benchmark schema 3. The focused `platformator_physics_bookkeeping_test` target is planned and must be added before its command is used. No runtime checks or new measurements are claimed by this planning artifact. See [state ownership](data-model.md), [behavior contract](contracts/physics-lifecycle.md) and [evidence contract](contracts/validation-evidence.md).
++
++## Preserve a fresh baseline before runtime edits
++
++Run from the repository root with the current C++20/CMake/Ninja/Python toolchain. Baseline HEAD at planning was `f6d1af73fcb9a9e623b735fe0a8269d6e65c8fba`. Record a newer HEAD/patch if the source changed. Keep baseline and candidate full source/build trees separate; rebuilding the candidate must not overwrite baseline shared libraries. The historical `7906959` and feature 002's schema-2 baseline are not equivalent controls.
++
++```bash
++export BOOKKEEPING_PROJECT="$PWD"
++mkdir -p "$BOOKKEEPING_PROJECT/bin"
++export BOOKKEEPING_CAPTURE_ROOT="$(mktemp -d "$BOOKKEEPING_PROJECT/bin/physics-bookkeeping.XXXXXX")"
++export BOOKKEEPING_BASELINE_SOURCE="$BOOKKEEPING_CAPTURE_ROOT/baseline-source"
++export BOOKKEEPING_MULTI_WORKERS=6
++export BOOKKEEPING_ONE_CPUS=0
++export BOOKKEEPING_MULTI_CPUS=0,2,4,6,8,10
++
++git rev-parse HEAD > "$BOOKKEEPING_CAPTURE_ROOT/baseline-revision.txt"
++git status --short > "$BOOKKEEPING_CAPTURE_ROOT/baseline-status.txt"
++git diff --binary HEAD > "$BOOKKEEPING_CAPTURE_ROOT/baseline-tracked.patch"
++git clone --local --no-hardlinks "$BOOKKEEPING_PROJECT" "$BOOKKEEPING_BASELINE_SOURCE"
++if [ -s "$BOOKKEEPING_CAPTURE_ROOT/baseline-tracked.patch" ]; then
++  git -C "$BOOKKEEPING_BASELINE_SOURCE" apply "$BOOKKEEPING_CAPTURE_ROOT/baseline-tracked.patch"
++fi
++cd "$BOOKKEEPING_BASELINE_SOURCE"
++cmake --preset cleanup-benchmark
++cmake --build --preset cleanup-benchmark --parallel 4
++export BOOKKEEPING_BASELINE_RUNNER="$BOOKKEEPING_BASELINE_SOURCE/bin/cleanup-benchmark/platformator_benchmark_runner"
++cd "$BOOKKEEPING_PROJECT"
++```
++
++This copies tracked committed and dirty content. Inspect baseline-status.txt and separately preserve/apply any untracked runtime/test/fixture files; do not mistake their omission for an equivalent baseline. The new planning documents need not be copied into the baseline runner. Record source fingerprints, actual flags, vendored dependency versions, CPU topology/governor and supported affinity. Choose appropriate CPUs/workers for the host rather than assuming the reference topology exists. Pin both stages identically. Baseline retains its own .git metadata, sources and built dependencies. No current checkout branch switch or commit is required.
++
++Run baseline characterization and the validation matrix before runtime changes. Complete both builds before interleaved final timing. If a new common fixture or observation surface is needed, apply identical fixture changes to both sources before baseline captures and retain that patch. Do not alter physical algorithms to create the baseline. Archive the capture directory before cleaning ignored bin/ outputs.
++
++## Focused characterization, then refactor
++
++```bash
++cmake --preset cleanup-debug
++cmake --build --preset cleanup-debug --parallel 4
++ctest --test-dir bin/cleanup-debug --output-on-failure \
++  -R 'platformator_(contact_events|physics_support|physics_geometry|callback_mutation|scene_transition_stress|queued_deletion_safety|collider_pair_cleanup)_test|platformator_regression_tests'
++```
++
++Preserve existing passing assertions. Add the INTERNAL `tests/physics_bookkeeping_test.cpp` target for queue cancellation/deduplication, type/kinematic changes and pending body replacement gaps, then establish its pre-refactor characterization result:
++
++```bash
++cmake --build --preset cleanup-debug --target platformator_physics_bookkeeping_test --parallel 4
++ctest --test-dir bin/cleanup-debug --output-on-failure -R '^platformator_physics_bookkeeping_test$'
++```
++
++Expected outcomes are in the contracts. Test observable membership/results, committed support and exact event histories, not private helper call sequences. Queue tests need first/middle/last cancellation, moved-index repair, duplicate enqueue, removed-before-evaluation and consumed-then-requeued entries. Include 128 changed pairs under workers one and the selected multiworker count (current pair threshold 64). Keep worker control local to fixtures.
++
++Support tests must distinguish old and replacement recipients, current and deleted geometry, reference/endpoint changes, and net loss/gain cancellation within one flush. Body tests must cover static/kinematic/dynamic changes, zero/nonzero linear and angular velocity, sleep/wake, gravity eligibility, repeated changes and retirement before drain. Use real safe runtime boundaries; no new public queue inspection interface.
++
++## Work and storage
++
++```bash
++cmake --preset cleanup-work
++cmake --build --preset cleanup-work --parallel 4
++ctest --test-dir bin/cleanup-work --output-on-failure \
++  -R 'platformator_(runtime_work|physics_bookkeeping|contact_events|physics_support)_test'
++```
++
++Extend runtime_work_test only where evidence is missing: 100 warmed unchanged updates, one/multiworker coverage, pending replacement/cancellation and fixed-peak churn. Require zero eligible-work counters and zero C++ new/new[] allocations in the warmed idle control. Verify that script-only changes do not refresh physics. For churn, assert real contact/body counts and support restoration as well as capacities; allocation/storage assertions without a populated fixture are insufficient. Measure pair layout and per-child peak RSS, reporting noise and allocator scope. Do not require padding to yield a specific byte reduction.
++
++## Full checks and sanitizers
++
++```bash
++ctest --test-dir bin/cleanup-debug --output-on-failure -L platformator
++cmake --preset production
++cmake --build --preset production --parallel 4
++cmake --preset cleanup-asan
++cmake --build --preset cleanup-asan --parallel 4
++ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
++  ctest --test-dir bin/cleanup-asan --output-on-failure \
++  -R 'platformator_(physics_bookkeeping|contact_events|physics_support|physics_geometry|transform_hierarchy)_test'
++ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
++  ctest --test-dir bin/cleanup-asan --output-on-failure -L platformator -E platformator_package_smoke
++cmake --preset cleanup-tsan
++cmake --build --preset cleanup-tsan --parallel 4
++TSAN_OPTIONS=halt_on_error=1 ctest --test-dir bin/cleanup-tsan --output-on-failure \
++  -L 'physics|mutation|lifecycle'
++```
++
++The full normal suite includes installed/relocated SDK consumers; package smoke's independently rebuilt consumers are not a sanitized-engine check. The second ASan command is explicitly a memory-access/UB check with leaks disabled. Also attempt the full non-package leak-enabled selection where supported, recording actual findings. Prior [feature 002 sanitizer results](../002-simplify-contact-events/evidence/sanitizers.md) include FluidSynth initialization leaks, LeakSanitizer thread-inspection restrictions inside the tool sandbox and two SDL/libdbus lock-order warnings. Record and compare actual stacks; unresolved findings and unavailable detectors do not become passes. No TSan suppression or deadlock-detector disabling is part of this plan.
++
++## Representative matrix and reporting compatibility
++
++```bash
++cmake --preset cleanup-benchmark
++cmake --build --preset cleanup-benchmark --parallel 4
++ctest --test-dir bin/cleanup-benchmark --output-on-failure -L benchmark
++python3 -m unittest discover -s benchmark/tests -v
++export BOOKKEEPING_CANDIDATE_RUNNER="$BOOKKEEPING_PROJECT/bin/cleanup-benchmark/platformator_benchmark_runner"
++```
++
++Both stages must retain strict schema 3: eight scopes, eleven counters, identical boundaries and event meanings. Use each source tree's matching sweep/runner and inspect physical populations in manifests. Persistent contacts are a quiet/notification guard, not a support-ledger timing fixture. The rigid-body container supplies moving response/support work; explicit sleeping/quiet controls are established by focused/work tests. Record actual sleeping/support populations rather than assuming the container settles by warmup.
++
++| Scenario | Counts | Additional options | Purpose |
++| --- | --- | --- | --- |
++| broad_phase | 100,1000 | none | Uniform placement/movement guard |
++| broad_phase_stress | 50,300 | none | Uneven/dense spatial work |
++| narrow_phase | 10,200 | none | Small/large changed-pair batches and geometry boundary |
++| rigid_body_container | 100,1000 | none | Mixed shapes, dynamic response and support |
++| add_and_remove | 10,1000 | --steady-count 1000 | Registration/retirement and queue churn |
++| moving_add_and_remove | 10,1000 | --steady-count 1000 | Churn plus movement/cell migration |
++| persistent_contacts | 10,1000 | Repeat --scripted-endpoints 0,1,2 | Quiet contacts and script independence |
++
++This is 18 scenario/count/recipient combinations × two worker choices = 36 groups per stage. For correctness use one process per group, 120 warmup, 600 measured, seed 0 and dt 1/120, with --validate-invariants. For timing use five independent processes per group without the per-step oracle: 180 processes per stage, 360 total. Preserve exact job order/affinity and source/build metadata; add workloads only for a demonstrated gap, applying them to both stages.
++
++The following runnable example covers one no-script persistent group at one worker. Repeat using the table, recipient choices and the selected multiworker count/affinity. Give every stage/mode/scenario/worker/recipient an unused raw/output path.
++
++```bash
++export BOOKKEEPING_STAGE=baseline
++export BOOKKEEPING_STAGE_SOURCE="$BOOKKEEPING_BASELINE_SOURCE"
++export BOOKKEEPING_RUNNER="$BOOKKEEPING_BASELINE_RUNNER"
++mkdir -p "$BOOKKEEPING_CAPTURE_ROOT/$BOOKKEEPING_STAGE"
++taskset -c "$BOOKKEEPING_ONE_CPUS" python3 "$BOOKKEEPING_STAGE_SOURCE/benchmark/sweep_scaling.py" \
++  --runner "$BOOKKEEPING_RUNNER" --scenario persistent_contacts --counts 10,1000 \
++  --scripted-endpoints 0 --workers 1 --seed 0 --dt 0.008333333333333333 \
++  --warmup-frames 120 --measure-frames 600 --repetitions 1 --validate-invariants \
++  --raw-output-dir "$BOOKKEEPING_CAPTURE_ROOT/$BOOKKEEPING_STAGE/persistent-r0-w1-validate" \
++  --output "$BOOKKEEPING_CAPTURE_ROOT/$BOOKKEEPING_STAGE/persistent-r0-w1-validate.csv"
++```
++
++For candidate use BOOKKEEPING_STAGE=candidate, BOOKKEEPING_STAGE_SOURCE=$BOOKKEEPING_PROJECT and BOOKKEEPING_RUNNER=$BOOKKEEPING_CANDIDATE_RUNNER. Compare all 36 groups baseline/candidate and 18 worker pairs per stage with benchmark/capture_cleanup.py's existing compare function. Never aggregate oracle timings as performance.
++
++Only after all correctness checks and builds finish, execute matched timing jobs. This example uses a fresh timing destination:
++
++```bash
++taskset -c "$BOOKKEEPING_ONE_CPUS" python3 "$BOOKKEEPING_STAGE_SOURCE/benchmark/sweep_scaling.py" \
++  --runner "$BOOKKEEPING_RUNNER" --scenario persistent_contacts --counts 10,1000 \
++  --scripted-endpoints 0 --workers 1 --seed 0 --dt 0.008333333333333333 \
++  --warmup-frames 120 --measure-frames 600 --repetitions 5 \
++  --raw-output-dir "$BOOKKEEPING_CAPTURE_ROOT/$BOOKKEEPING_STAGE/persistent-r0-w1-time" \
++  --output "$BOOKKEEPING_CAPTURE_ROOT/$BOOKKEEPING_STAGE/persistent-r0-w1-time.csv"
++```
++
++Final capture orchestration should record a deterministic matched job order (shuffle seed 1), preferably alternate immutable baseline/candidate jobs, preserve command logs and checksums, and refuse overwrites. Adapt the previous feature's small capture script to this matrix/runner paths during implementation if needed; do not reuse its hardcoded paths, schema-2 control, counts or CPU masks without review. The examples above validate the runner interface; they do not implement the final scheduling harness.
++
++Report complete-step and relevant nested-scope means/median/p95/p99/max and independent-run spread, worker ratios, work/allocation and retained-storage results. Investigate every regression; use matched follow-up captures for important uncertainty. Do not sum nested scopes, declare equivalence from overlapping ranges, or claim speedups from removed field counts. Freeze runtime source before final timing; a later fix requires affected correctness and comparable recaptures.
++
++## Human review and completion evidence
++
++Produce concise inventory and code-linked walkthroughs for J1–J8 from data-model.md. For support replacement and queue cancellation, show old/new independent facts and maintenance sites, including any complexity moved elsewhere. The intended changes remove three independent booleans across these paths; actual reduction and behavior must be verified in the final code.
++
++Record execution evidence and limitations in validation.md. Prepare the final code for the maintainer to walk each route and identify who changes a fact and when it becomes valid. Leave the human-readability outcome pending until that review happens. This is separate from the already completed specification-quality checklist; implementation must not change its markers.
+diff --git a/specs/003-simplify-physics-bookkeeping/research.md b/specs/003-simplify-physics-bookkeeping/research.md
+new file mode 100644
+index 0000000..4abcb48
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/research.md
+@@ -0,0 +1,89 @@
++# Research: Simplify Physics Bookkeeping
++
++## Scope and evidence
++
++Planning inspected current source at `f6d1af73fcb9a9e623b735fe0a8269d6e65c8fba` and the physics changes in `79069591488a68223f8e71ce5f24ddf2d37fb609`. The historical commit introduced body indexes, changed-body reconciliation, support deltas, sleeping-island state and contact participation lists. It is review context, not a rollback target. The current post-Stay-removal engine is the baseline.
++
++Three read-only research investigations covered body/sleep participation, contact/support/geometry ownership, and existing correctness/measurement coverage. Findings below resolve the design questions. No runtime edits, new measurements, or readability approval occurred during planning.
++
++## 1. Reduce redundant representations before adding subsystems
++
++**Decision:** Implement two concrete state reductions: derive narrow-phase queued status from its existing queue index, and replace each support-body-plus-flag combination with a nullable contributing-body pointer. Consolidate repeated live-contact eligibility and make body reconciliation responsibilities explicit. Isolate geometry behind one internal function with explicit gravity input, without a new state-owning class.
++
++**Rationale:** These changes remove independently coordinated facts and clarify real ownership boundaries. They do not require replacing proven incremental structures or disguising them behind a framework. Queue cancellation and support replacement are concrete before/after audit examples for FR-004 and SC-002.
++
++**Alternatives considered:** File moves or naming alone cannot satisfy the spec. A PhysicsWorld/BodyRegistry/ContactManager hierarchy would add ownership and interfaces before demonstrating a need. Deleting every cache in favor of per-frame scans sacrifices quiet-scene behavior. Keeping all current state with more comments would leave the main request unsatisfied.
++
++## 2. One source for narrow-phase queue membership
++
++**Decision:** Remove `ColliderPair::isQueuedForNarrowPhase` and its writable setter. The existing query derives from `narrowPhaseQueueIndex != SIZE_MAX`. Grid owns enqueue, deduplication, swap-remove cancellation and moved-entry index repair. The pair worker marks its own entry consumed by clearing the index at the current worker-entry boundary. Grid clears the consumed pointer batch after the join/reduction.
++
++**Evidence:** `src/grid.cpp::{queuePairForNarrowPhase,dequeuePairFromNarrowPhase}` currently update both flag and index. `src/physicsmanager.cpp::processNarrowPhasePair` clears both; no independent flag meaning was found. Grid's old commented clearing loop is obsolete. No public installed API exposes this internal pair queue.
++
++**Important distinction:** Before worker launch, a non-sentinel index is a live queue slot. During evaluation, the vector still holds the fixed batch, but a consumed pair's index is already sentinel. Enqueue, cancellation, pair erasure and structural mutation cannot overlap that worker batch. Do not assert a bijection between all batch slots and live indices during processing, or add another phase flag to recreate the deleted state.
++
++**Alternatives considered:** Linear duplicate/cancellation search changes O(1) operations to O(P). A new queue container or generation stamp adds machinery without a need. Clearing all indexes in a new post-worker scan adds work; retain the existing worker-local consumption boundary.
++
++## 3. Nullable support contribution per canonical endpoint
++
++**Decision:** Replace `supportBodyA/supportsA` and `supportBodyB/supportsB` with `contributedSupportBodyA/B`. Null means this pair owns no contribution for that endpoint. A nonnull pointer identifies the exact body for which one contribution has been applied or scheduled. Compute desired contributors using the current Collision support bits mapped from reference/incident to canonical A/B and each endpoint's current Rigidbody. Reconcile old versus desired identity, enqueueing a decrement/increment only when identity changes. Pair removal reconciles both to null before erasure.
++
++**Evidence:** Only `src/physicscontacts.cpp::{reducePairSupport,removePair}` consumes the four old fields. The old pointer is stored even when its support flag is false. `Collision::updateSupportState` produces no bits for triggers or missing bodies. Reference/incident ownership can change independently of canonical pair order. `GameObject` body replacement invalidates response, while `GameManager::reconcilePending` flushes collider operations and support changes before `drainRetirements` frees the old body.
++
++**Rationale:** This reduces four fields and a two-variable consistency rule to two contribution identities. It preserves old-body identity when a new body replaces it, without assuming the current component lookup identifies the recipient of the old decrement. No structure-size or RSS saving is claimed before measuring padding and process noise.
++
++**Alternatives considered:** Recompute all support counts from contacts every step: loses affected-work scaling. Read old body from the current collider at removal: wrong after replacement. Store only flags: loses old-body identity. Store only current Collision bits: wrong after geometry deletes or replaces a contact. A separately allocated support-record object adds allocation and indirection.
++
++## 4. Preserve net support reduction and lifecycle barriers
++
++**Decision:** Retain per-body `supportContactCount`, signed `supportDelta`, `supportDeltaIndex`, and the manager's touched-body queue. Apply the net delta once at the existing flush boundary; wake only on committed positive-to-zero support and reconcile participation on zero/nonzero changes. Do not move this decision into individual pair updates.
++
++**Rationale:** Losing and gaining supports in the same batch must not cause a transient wake. `supportDeltaIndex` remains necessary even when a queued body's delta cancels to zero; deriving queued status from delta would lose deduplication. The pair ledger describes scheduled intent; the public count describes the last committed result. These are different facts, not duplication.
++
++**Lifetime:** Geometry workers may delete the Collision; they do not dereference old contribution recipients or mutate body totals. The serial reduction removes old contributions after joining. Retirement drains grid operations, support deltas and notifications before freeing components. Normal callback exceptions preserve that ordering. This design does not promise new strong exception safety for allocation failure during delta-queue insertion; the current code already lacks transactional insertion there.
++
++**Alternatives considered:** Immediate count edits cause order-dependent wakes. A whole-scene support pass adds scans. Combining body and support queues confuses different validity boundaries and cancellation rules.
++
++## 5. Keep body indexes, make participation derivation auditable
++
++**Decision:** Retain registered bodies, awake dynamic bodies, moving kinematic bodies and sleep candidates, their indexes, and the deduplicated changed-body queue. Use descriptive internal names and one `reconcileBodyParticipation` derivation point. Document a trigger table covering Rigidbody setters, registration/removal, GameManager lifecycle reconciliation, support reduction and sleep transitions. Keep registration/removal and queue cancellation ordering intact. Share the existing sleep-island initialization operation between reconciliation and force integration if it improves directness without new state.
++
++**Evidence:** `src/physicsbodyindexes.cpp` is small but spans body participation and sleep union-find. Its lists have separate consumers in force integration, movement, sleeping and solver-neighbor refresh. `Rigidbody::bodyStateChanged` is gated by registration; lifecycle reconciliation may queue bodies through a different entry. Kinematic velocity/angular changes require reconciliation even when geometry is unchanged. Dynamic velocity writes do not always require it because awake dynamic membership is already valid. Removing that distinction could add per-solver-impulse queue work.
++
++**Rationale:** These lists avoid visiting every static/sleeping body on each force/movement pass. A full scan is a comparison alternative, not the selected design. This plan does not relocate all physics fields into a new registry or remove publicly declared registration accessors. Naming and initialization cleanup supplement the concrete reductions in decisions 2–3.
++
++**Alternatives considered:** Single scan for all body work, immediate per-setter physical-neighbor refresh, more dirty-reason flags, or separate owning classes. Each either adds quiet/churn work, weakens batching, or moves complexity without eliminating it. No sleep algorithm or threshold change is justified here.
++
++## 6. Explicit pair reconciliation and geometry boundary
++
++**Decision:** Use one uncached `isLiveContact` predicate and one solver-eligibility derivation. Retain narrow-phase transition reduction, response-only refresh and final-witness removal as distinct, explicitly named operations. Share support contribution reconciliation and contact/solver membership maintenance where their semantics match; response-only refresh must never emit events or replay geometry. Keep the two small body/pair membership operations local; no generic indexed-container framework.
++
++**Geometry decision:** Add internal `src/physicsgeometry.h` with a single `physics_geometry::updateContactGeometry(const ColliderPair &, const Eigen::Vector2f &gravityDirection)` entry. Keep shape/SAT/clipping helpers implementation-local in physicsgeometry.cpp. Remove their declarations from PhysicsManager; the manager supplies gravity and calls the entry from its existing distinct-pair worker. Preserve Collision reuse, warm-start features, cached version updates and every math/tolerance operation. Geometry may mutate only its pair's contact and derived support bits, not queues, body counters or callbacks.
++
++**Rationale:** PhysicsManager currently supplies only gravity to geometry. This function boundary makes allowed inputs and side effects visible without a heap object, virtual dispatch, result copying or new storage. The pair is held as a const set key because canonical collider identity is immutable; mutable contact/bookkeeping does not alter hashing. A global const/mutable rewrite is unnecessary.
++
++**Alternatives considered:** A new immutable manifold result per evaluation risks extra copies/allocations and warm-start behavior; an owning GeometrySystem is unnecessary. Merging response refresh, geometry and removal into a flag-driven universal reconcile function would hide their different event/lifetime meanings. Existing all-contact membership is retained for the independent oracle and benchmark counts; solver membership is separate physical work, not an interchangeable copy.
++
++## 7. Parallelism and collision architecture
++
++**Decision:** Retain oneTBB over independent cells, active body integration and sufficiently large distinct-pair batches. Keep current thresholds. Support/list/event reduction, shared-body solver, callback dispatch and reclamation remain serial at established join boundaries.
++
++**Assessment:** Tiny quiet batches do not benefit from more tasks. Per-pair support reconciliation must not become a shared worker write. Larger pair batches retain parallel geometry but serial O(P) reduction; dirty solver ordering remains O(S log S), transition ordering O(E log E). Body membership updates remain O(1), neighbor refresh O(degree), and support flushing O(touched bodies). Existing scratch capacities are reused. No new atomics, pools, locks or parallel sorting are needed.
++
++**Risks to evaluate:** Small-work task overhead, skewed cell/pair loads, shared-body solver dependency, allocation/cache effects and serial reduction limits. One/multiworker correctness and timings can expose effects, but do not by themselves identify false sharing, bandwidth or load imbalance as causes. No profiling-based causal claim without such evidence.
++
++**Foundation:** Reviewed the repository's `paper/paper.txt` §§3.1–3.3: subdivision requires deduplicating cell witnesses; segmented lists/checkpoints localize changes, including fast-motion cancellation and split/merge repair; overlap-change output avoids enumerating stable overlaps. This work changes only the consumer queue's redundant membership representation. Endpoint ordering, chunk bindings/checkpoints, pair witnesses and grid algorithms remain unchanged. Paper constants are not adopted as modern tuning evidence.
++
++## 8. Fresh baseline and human acceptance
++
++**Decision:** Capture the current schema-3 engine before runtime changes, in an isolated source/build tree with dependencies preserved. Reuse existing fixtures and readers. Use the fixed 36-group matrix in quickstart.md, five independent timing processes per group, separate per-step correctness captures, and work/storage probes. If an additional fixture is needed, land its identical common patch in both stages before baseline capture.
++
++**Rationale:** Feature 002's schema-2 baseline includes different event semantics. Its current candidate and sanitizer findings are context, not a fresh equivalent baseline. Preserve raw samples, fingerprints, build/hardware, affinity, resolved populations, ordering and checksums; investigate every regression. Existing core tests cover most contact/support behavior; add focused queue-cancellation, replacement/net-support and body-type/kinematic transition gaps before refactoring.
++
++**Human decision:** Provide before/after inventory and eight code-backed walkthroughs, including a count of independent facts and maintenance dependencies for changed paths. A pending maintainer review stays pending. A machine-generated assertion, line count or large document is not readability evidence. Documentation and function moves cannot substitute for the selected queue/support reductions.
++
++**Alternatives considered:** Reusing old raw captures uncritically, comparing only narrow-phase scope, claiming no regression from overlapping ranges, or treating passing tests as readability approval. All would leave required evidence missing.
++
++## Resolved questions
++
++The implementation language/dependencies, internal boundary, candidate state reductions, retained invariants, worker strategy, compatibility, baseline and validation approach are resolved. No blocking clarification remains. Actual correctness, performance, layout/RSS effects and maintainer readability remain implementation/acceptance work; they are not planning findings.
+diff --git a/specs/003-simplify-physics-bookkeeping/spec.md b/specs/003-simplify-physics-bookkeeping/spec.md
+new file mode 100644
+index 0000000..e0f5746
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/spec.md
+@@ -0,0 +1,122 @@
++# Feature Specification: Simplify Physics Bookkeeping
++
++**Feature Branch**: `001-cpp-engine-cleanup` (existing branch; feature directory is independent)
++
++**Created**: 2026-10-25
++
++**Status**: Draft
++
++**Input**: User description: "Review and simplify the physics bookkeeping introduced by `7906959` as we just now discussed. You do not have to limit yourself to just changes made by the discussed commit—the goal of this spec is simplifying the codebase and making it more readable and easier to audit by a human (me)."
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Follow a physics change from cause to effect (Priority: P1)
++
++As the engine maintainer, I want to follow an ordinary physics change through the code and explain which state changes, who owns it, and when it becomes valid, so I can review or modify the engine without reconstructing hidden dependencies.
++
++**Why this priority**: Human understanding is the requested outcome. Existing complexity must earn its place through a clear correctness or performance purpose, rather than survive because an earlier change introduced it.
++
++**Independent Test**: Review the before-and-after code for the eight audit journeys below. Starting from each triggering operation, trace the resulting physical work and identify state owners, update boundaries, and consumers. Have the maintainer perform the same walkthrough against the final code and record any unresolved questions.
++
++**Acceptance Scenarios**:
++
++1. **Given** a stationary body, **When** it begins moving, changes velocity, and stops, **Then** a reviewer can trace how it becomes eligible or ineligible for force and movement work, including changes that occur more than once before a physics update.
++2. **Given** a registered body, **When** its type changes among static, kinematic, and dynamic, **Then** a reviewer can trace the consequences for movement, collision response, and sleeping without discovering an undocumented secondary update path.
++3. **Given** supported bodies at rest, **When** they sleep and subsequently wake, **Then** a reviewer can explain how individual and connected bodies become eligible for work and when that decision takes effect.
++4. **Given** a body with several supports, **When** it loses one support and then its final support, **Then** a reviewer can trace each support contribution and explain why waking is required or unnecessary.
++5. **Given** registered bodies and colliders with pending work, **When** a component is removed or replaced, **Then** a reviewer can identify how old participation is cancelled, remaining contacts are updated, and obsolete references stop being used.
++6. **Given** a collider pair, **When** contact begins, persists, ends, and begins again, **Then** a reviewer can distinguish spatial candidates, confirmed contacts, physical response, and notifications throughout the lifetime.
++7. **Given** existing contacts, **When** filtering or object activation changes, **Then** a reviewer can trace which physical participation changes and when resulting contact transitions become observable.
++8. **Given** pending physics work and notifications, **When** a callback retires an object or requests scene replacement, **Then** a reviewer can locate the boundaries that finish or cancel work before memory is reclaimed or the replacement scene starts.
++
++---
++
++### User Story 2 - Maintain a smaller, coherent state model (Priority: P1)
++
++As the engine maintainer, I want unnecessary bookkeeping and duplicated update responsibilities removed, so a correct change requires fewer independently coordinated facts and the code itself communicates the remaining rules.
++
++**Why this priority**: A review report or a new file arrangement does not by itself make future changes easier. The feature must simplify actual state maintenance while preserving the behavior that state serves.
++
++**Independent Test**: Compare the bookkeeping inventory and the eight audit journeys before and after the change. Demonstrate a concrete reduction in independently maintained state or update dependencies, and verify that each remaining mechanism has an identifiable owner, rule, and consumer.
++
++**Acceptance Scenarios**:
++
++1. **Given** a retained piece of bookkeeping, **When** a reviewer asks why it exists, **Then** its owner, meaning, update triggers, validity boundary, consumers, and correctness or scaling benefit are identifiable in the code and supporting review material.
++2. **Given** multiple representations or maintenance paths for the same physical fact, **When** a simpler equivalent is feasible under the project constraints, **Then** the redundant state or coordination is removed and the new source of truth is clear.
++3. **Given** a proposed simplification, **When** its before-and-after walkthrough is reviewed, **Then** the code requires fewer independently maintained facts or update dependencies on at least one audit journey, without concealing equivalent complexity behind new names or indirection.
++4. **Given** an existing mechanism whose benefit justifies retention, **When** simpler alternatives are considered, **Then** the retained mechanism has a specific rationale and the comparison does not assume that all existing optimizations must remain or that all bookkeeping must disappear.
++
++---
++
++### User Story 3 - Trust the engine after simplification (Priority: P1)
++
++As a game author and engine maintainer, I want the simplification to preserve gameplay behavior, safe lifetimes, and useful scaling, so improved readability does not introduce physical regressions or turn quiet scenes into repeated global work.
++
++**Why this priority**: Correctness and performance remain constitutional constraints on the readability goal. The current transition-driven contact contract is the baseline for this feature.
++
++**Independent Test**: Exercise the audit journeys against a recorded pre-change baseline. Compare physical results and ordered event histories with one and multiple workers, then compare work performed, allocations, memory, and average and tail step times on equivalent representative workloads.
++
++**Acceptance Scenarios**:
++
++1. **Given** equivalent scenes and inputs before and after simplification, **When** the eight audit journeys execute, **Then** contact completeness, response, support, sleeping, wake-up, and lifecycle behavior agree under recorded tolerances and exact ordering rules.
++2. **Given** a contact sequence with zero, one, or two eligible script recipients, **When** contact begins, persists, and ends, **Then** generated Enter/Exit histories remain independent of scripts, unchanged contacts produce no recurring notifications, and Stay remains absent.
++3. **Given** equivalent runs with one and multiple workers, **When** worker completion orders vary, **Then** observable notification order and physical results remain consistent with the established contract and no unsafe concurrent mutation or premature reclamation is introduced.
++4. **Given** quiet scenes and scenes with movement, dense contacts, churn, or uneven spatial occupancy, **When** before-and-after measurements are compared, **Then** the maintainer can assess saved complexity against actual runtime, allocation, and memory costs, with every regression and unresolved limitation explicitly reported.
++
++### Edge Cases
++
++- Repeated or cancelling changes before work is consumed must not leave a body or contact participating twice, absent when needed, or carrying stale participation after removal.
++- A body can change type, gravity usage, velocity, activation, or sleeping state while contacts remain geometrically unchanged; physical eligibility must still be updated at the correct boundary.
++- One support disappearing must not wake a body solely because intermediate bookkeeping temporarily reaches zero when another support is added during the same established reduction boundary. Losing final support must retain the existing wake-up behavior.
++- Several spatial observations of the same pair must not duplicate contact participation or end contact while valid coverage remains elsewhere.
++- Components can be replaced while previous instances still have pending support changes, notifications, or body work. New instances must not inherit stale participation or references.
++- Callback exceptions, self-removal, removal of the other endpoint, and both endpoints retiring must retain existing completion, delivery eligibility, and cleanup guarantees.
++- Empty scenes, isolated bodies, sleeping populations, large connected groups, and repeated add/remove cycles must remain valid, with retained storage and work growth accounted for.
++- Contact or shape recomputation may be necessary without a new contact lifetime; internal refresh must not manufacture Enter/Exit or reintroduce script-driven physical maintenance.
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: The review MUST cover the physics bookkeeping introduced by `79069591488a68223f8e71ce5f24ddf2d37fb609` and the current related code needed to understand or simplify it. Commit provenance and the four initially discussed files MUST NOT be treated as hard boundaries. Expansion MUST be justified by a dependency on an audit journey; this is not an unrestricted repository rewrite. Acceptance: all eight journeys in User Story 1 and the scope rationale.
++- **FR-002**: The feature MUST establish a before-and-after inventory of body participation, pending changes, contact participation, response eligibility, support, sleeping relationships, and ordering state. For every retained, removed, consolidated, or added mechanism, the inventory MUST identify its meaning, owner, update triggers, validity boundary, consumers, and disposition rationale. Acceptance: User Story 2, scenarios 1, 2, and 4.
++- **FR-003**: The final code and concise supporting explanation MUST allow a reviewer to follow all eight audit journeys from trigger through consumption and cleanup, including deferred updates and worker boundaries. Necessary explanations of non-obvious invariants MUST be available beside the code they govern; documentation alone MUST NOT substitute for simplifying confusing control flow. Acceptance: User Story 1 and the maintainer walkthrough.
++- **FR-004**: The implementation MUST remove or consolidate avoidable state maintenance or update dependencies and demonstrate the reduction on at least one audit journey. Renaming, reformatting, moving functions between files, or adding explanatory material alone MUST NOT satisfy this requirement. Acceptance: User Story 2, scenarios 2 and 3, with a before-and-after comparison.
++- **FR-005**: Each retained or new bookkeeping mechanism MUST have a clear purpose and consistent maintenance rules. Duplicated representations, repeated eligibility decisions, cross-system invalidation, and generalized machinery MUST be challenged against simpler alternatives; retention MUST be justified by correctness, measured performance, or an explicit scaling need. Acceptance: User Story 2, scenarios 1 and 4.
++- **FR-006**: The simplification MUST preserve existing physical behavior for body registration and type changes, movement, contact detection and response, support, sleeping, and waking. It MUST preserve candidate/contact distinctions and pair deduplication. Existing algorithms and state layouts MAY change only where the equivalence and benefit are demonstrated within this feature's scope. Acceptance: User Story 3, scenario 1, and the physical edge cases.
++- **FR-007**: The current contact contract MUST remain intact: Enter/Exit follow confirmed transitions independently of scripts; persistent contacts generate no recurring notifications; late script changes create no replay or synthetic transitions; recipient eligibility is checked at delivery; Stay remains removed. Acceptance: User Story 3, scenario 2, and the existing contact specification.
++- **FR-008**: Component replacement, retirement, callback mutation and exceptions, deferred destruction, and scene replacement MUST preserve their existing behavior and valid lifetimes. Removed objects MUST cease participating before their storage is reclaimed. Acceptance: User Story 1, scenarios 5 and 8; User Story 3, scenarios 1 and 3; lifecycle edge cases.
++- **FR-009**: Mutation ownership, ordering, and visibility boundaries MUST remain explicit and correct with one and multiple workers. Changes MUST preserve deterministic event histories and physical results within declared numerical tolerances, and MUST NOT introduce races, deadlocks, or overlapping access to reclaimed state. Acceptance: User Story 3, scenario 3.
++- **FR-010**: Simplification MUST be assessed against a recorded current baseline for small and large scenes, quiet and moving populations, contact churn and cell migration, uniform and uneven spatial distributions, and one and multiple workers. Evidence MUST include complete-step means and tails, run variation, affected work, allocations, and retained memory. Changed measurement boundaries MUST be labeled rather than presented as equivalent. Acceptance: User Story 3, scenario 4.
++- **FR-011**: The feature MUST preserve efficient handling of unchanged or unaffected state unless a measured and explicitly justified tradeoff supports an alternative. Every timing, allocation, memory, or scaling regression MUST be investigated before acceptance; correct designs with meaningful measured performance or scaling advantages take precedence, while comparable designs favor simplicity. An unexplained regression or missing measurement MUST NOT be reported as a successful optimization. Acceptance: User Story 2, scenario 4; User Story 3, scenario 4; project constitution.
++- **FR-012**: The completion review MUST include code-backed walkthroughs, the state inventory comparison, behavioral and cost evidence, and unresolved findings. The maintainer MUST be able to assess readability from the final code; automated checks or documentation quantity MUST NOT be reported as proof of human readability. Existing public authoring behavior, scene formats, and maintained reporting MUST remain compatible. Acceptance: all three stories, with a separate maintainer-readability finding.
++
++### Key Entities *(include if feature involves data)*
++
++- **Physics body**: An object with physical properties whose current state determines whether it receives forces, moves, responds to contacts, sleeps, or wakes.
++- **Collider pair and confirmed contact**: A potential interaction and its physically confirmed touching relationship, distinct from spatial coverage and notification recipients.
++- **Support relationship**: A contact contribution that affects whether a body is supported and how loss of support changes sleeping or waking.
++- **Bookkeeping mechanism**: Maintained information or pending work used to avoid recomputation, preserve ordering, or coordinate physical state. Each has an owner and a defined point at which consumers may rely on it.
++- **Audit journey**: One of the eight representative changes in User Story 1, followed from its cause through physical consequences and cleanup.
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: All eight audit journeys have a before-and-after walkthrough identifying owners, update timing, consumers, and cleanup. At final maintainer review, each journey can be explained from the code and concise accompanying material, with zero unresolved questions about who updates a fact or when it becomes valid. Pending maintainer review is reported as pending, not inferred to have passed.
++- **SC-002**: Every bookkeeping mechanism in the reviewed scope has a recorded disposition and rationale. The final implementation demonstrates fewer independently maintained facts or update dependencies on at least one audit journey, with no equivalent hidden coordination introduced elsewhere. Every added mechanism has an explicit benefit; cosmetic changes alone do not count as simplification.
++- **SC-003**: All eight journeys and their applicable edge cases preserve established physical and lifecycle behavior against the recorded baseline. Equivalent one-worker and multiworker runs agree within declared physical tolerances and produce identical ordered transition histories.
++- **SC-004**: Across 100 unchanged updates, persistent contacts with zero, one, and two eligible script recipients produce zero additional contact events or event-production visits to unchanged contacts. Subsequent separation produces exactly one pair-level Exit, with delivery governed by existing eligibility rules.
++- **SC-005**: The representative workload comparison covers every dimension in FR-010 and reports means, tails, variation, work, allocation, memory, and worker scaling. All regressions have an investigation and disposition; missing or inconclusive evidence remains explicitly unverified. No arbitrary speedup target or universal performance claim is required.
++- **SC-006**: Repeated fixed-peak add/remove and replacement cycles restore the expected physical participation without stale references, duplicate events, or continuing unexplained growth in retained storage. The final review records executed safety checks and their actual limitations without treating unrelated or unresolved findings as passes.
++
++## Assumptions
++
++- The primary user is the human engine maintainer who requested this work. Readability is judged by their ability to audit the code, alongside objective before-and-after state and dependency evidence; it is not inferred from line count, file size, class count, or documentation volume.
++- Commit `79069591488a68223f8e71ce5f24ddf2d37fb609` is historical context for the confusion, not a rollback target or the required behavioral baseline. The constitution applies to this new work even though it was written after that commit.
++- The baseline is the current engine after [Simplify Contact Events](../002-simplify-contact-events/spec.md), including its transition-driven event contract. Existing correctness, lifetime, benchmark, and affected-work coverage are dependencies to preserve or strengthen.
++- The initially discussed areas are physics body indexing, contacts, geometry, and orchestration. Related body, collider, spatial, or runtime lifecycle code is in scope when needed to simplify their state maintenance. Discovery outside the old commit is expected; unrelated editor, packaging, audio, and asset-system rewrites are excluded.
++- This specification does not prescribe new classes, a particular file layout, a generic collection abstraction, deletion of all indexes, or wholesale replacement of incremental work with global scans. Planning must compare alternatives against the current constitution and the audit journeys.
++- New physical features, a deliberate solver or broad-phase algorithm redesign, and solver parallelization are separate objectives. Local changes needed for simpler bookkeeping remain possible under FR-006 and FR-009; a material algorithm redesign requires a separately scoped proposal.
++- Human readability and performance are both acceptance concerns. There is no blanket permission for an arbitrary slowdown, and no requirement to retain an optimization solely because it already exists. Tradeoffs follow the constitution rather than invented percentage thresholds.
++- Previously recorded desktop leak and lock-order findings remain visible validation context. This feature must distinguish pre-existing limitations from introduced defects; fixing unrelated dependencies is not its purpose.
+diff --git a/specs/003-simplify-physics-bookkeeping/tasks.md b/specs/003-simplify-physics-bookkeeping/tasks.md
+new file mode 100644
+index 0000000..37e7929
+--- /dev/null
++++ b/specs/003-simplify-physics-bookkeeping/tasks.md
+@@ -0,0 +1,183 @@
++# Tasks: Simplify Physics Bookkeeping
++
++**Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.md), [physics contract](contracts/physics-lifecycle.md), [evidence contract](contracts/validation-evidence.md), and [quickstart.md](quickstart.md).
++
++**Prerequisites**: Read those artifacts and `.specify/memory/constitution.md`. The active feature is `specs/003-simplify-physics-bookkeeping`; preserve the actual Git branch and user changes. All tasks below are pending. Paths are repository-relative unless a capture manifest records an absolute external path.
++
++**Tests**: Explicitly required by the specification. Add missing characterization before changing the relevant implementation, and establish the expected passing behavior on the baseline. This is an observationally equivalent refactor: do not manufacture a failing behavior test simply to satisfy the sample template's red-test wording. Use independent expected physical results and lifecycle histories, not a mirror of a private helper.
++
++**Organization**: Setup → foundation → US2 state reductions → US1 code readability → US3 confidence/evidence → completion and maintainer review. All three stories are P1. The order follows the plan's shared-file and final-walkthrough dependencies, rather than pretending these refactors can safely edit the same runtime concurrently.
++
++## Format: `[ID] [P?] [Story?] Description`
++
++- Every task has an unchecked box, sequential ID and concrete file/output paths.
++- `[P]` means the task may run alongside its explicitly listed peer after their common prerequisite, with distinct file ownership. It does not authorize extra agents by itself or override measurement/resource isolation.
++- Story-phase tasks have `[US1]`, `[US2]` or `[US3]`; setup, foundation and polish tasks have no story label.
++- Evidence paths are outputs to create, not proof already collected. Large raw captures may live in a fresh ignored `bin/physics-bookkeeping.*` directory with exact location, source snapshots, manifests and checksums recorded in feature evidence.
++
++## Phase 1: Setup (Preserve the Current Baseline)
++
++**Purpose**: Establish equivalent source, build and measurement infrastructure before runtime edits. The historical commit is context, not the performance or behavioral control.
++
++- [ ] T001 Record actual HEAD, dirty tracked/untracked changes, toolchain, dependency/build options, CPU topology/governor, worker counts/affinity and initial scope in `specs/003-simplify-physics-bookkeeping/evidence/baseline-provenance.md`; compare current physics/lifecycle code with planned baseline `f6d1af73fcb9a9e623b735fe0a8269d6e65c8fba` and historical `79069591488a68223f8e71ce5f24ddf2d37fb609`, update stale assumptions, verify existing ignore rules protect new raw captures, and preserve existing user artifacts without changing checklist markers.
++- [ ] T002 [P] After T001, create the complete isolated baseline source/build/dependency tree described in `specs/003-simplify-physics-bookkeeping/quickstart.md`, including relevant dirty/untracked inputs; build current `cleanup-debug`, `cleanup-work` and `cleanup-benchmark` configurations and record runner/library/source locations in `specs/003-simplify-physics-bookkeeping/evidence/baseline-provenance.md`, ensuring candidate rebuilds cannot overwrite the baseline or its runtime libraries.
++- [ ] T003 [P] After T001, adapt capture orchestration into `specs/003-simplify-physics-bookkeeping/evidence/capture_matrix.py` using `benchmark/sweep_scaling.py` and `benchmark/capture_cleanup.py` as existing strict schema-3 reader/comparator interfaces; parameterize immutable baseline/candidate runner paths, output root, workers and CPU masks, implement the exact 36-group matrix from quickstart.md, separate validation/timing, record seed-1 matched job order and commands, refuse existing artifacts, verify resolved workload/build metadata, and retain raw files, aggregates and checksums without changing runner semantics.
++- [ ] T004 After T002 and T003, run existing baseline physics/contact/lifecycle, work and benchmark contract checks and record actual results in `specs/003-simplify-physics-bookkeeping/evidence/baseline-correctness.md`; record initial quiet-work/storage, pair layout and per-child RSS methodology in `specs/003-simplify-physics-bookkeeping/evidence/baseline-work-memory.md`, distinguishing pre-existing failures/skips and allocation scope from passes and retaining raw logs. Do not start timing while builds/tests are active.
++
++**Checkpoint**: Baseline runtime is preserved and existing behavior/cost observations are recorded. No runtime changes yet; final equivalent baseline capture follows the common characterization setup in Phase 2.
++
++## Phase 2: Foundational (Shared Audit and Characterization Infrastructure)
++
++**Purpose**: Freeze the baseline inventory, test access boundaries and separate physical validation before either refactor story starts.
++
++- [ ] T005 [P] After Phase 1, create `specs/003-simplify-physics-bookkeeping/evidence/state-inventory.md` and `specs/003-simplify-physics-bookkeeping/evidence/audit-before.md` from every row of data-model.md and journeys J1–J8; link actual source owners, triggers, validity boundaries, consumers and cleanup, count independent facts and maintenance sites for J4/J5/J6, record retention/removal alternatives, and justify any neighboring scope expansion. Preserve the constraints "Non-key fields may mutate through const pair pointers; do not mutate set identity" and "Do not add a new cached eligibility field."
++- [ ] T006 [P] After Phase 1, add the INTERNAL `platformator_physics_bookkeeping_test` target in `CMakeLists.txt` and reusable safe-phase fixture/observation support in `tests/physics_bookkeeping_test.cpp`, with physics/determinism labels and baseline empty/registered controls; use RuntimeAccess/Grid's existing internal interfaces and selected one/multiworker control, without introducing public queue queries, new runtime state or a second contact oracle. Record and apply any common test/CMake-only patch to the isolated baseline before source fingerprint freeze.
++- [ ] T007 After T005 and T006, rebuild affected isolated baseline targets, freeze source/build fingerprints and common fixture patch in `specs/003-simplify-physics-bookkeeping/evidence/baseline-provenance.md`, and capture all 36 baseline validation-only groups with `evidence/capture_matrix.py`; verify strict schema 3 and all 18 one/multiworker snapshot comparisons, recording raw/checksum paths and actual results in `specs/003-simplify-physics-bookkeeping/evidence/baseline-results.md`. Keep per-step oracle data `timing_eligible=false`; preserve the isolated runner for final matched timing after all candidate builds/checks finish.
++
++**Checkpoint**: Foundation complete. Runtime edits are now allowed after the corresponding story's characterization gate. Baseline fixtures and source fingerprints must remain explainable if later test-only patches are shared.
++
++## Phase 3: User Story 2 — Maintain a Smaller, Coherent State Model (Priority: P1) — MVP
++
++**Goal**: Remove three independent booleans and their dual-update rules, while preserving local indexed work, old support-recipient identity, net support commit and deterministic contact behavior.
++
++**Independent Test**: Queue cancellation/requeue and support replacement/loss scenarios retain exact physical/event outcomes. A before/after comparison shows four endpoint ledger fields becoming two contribution identities and flag+index queue membership becoming index-only, with no equivalent hidden state added.
++
++### Tests and Characterization
++
++- [ ] T008 [P] [US2] After Phase 2, extend only missing support assertions in `tests/physics_support_test.cpp` for old/new body recipients, unchanged supported recipients, reference/endpoint support changes, deleted geometry, net multi-pair loss/gain cancellation, final-support wake, final-witness removal and callback retirement with pending support; test real committed totals and safe lifetimes at established flush boundaries, including cases with more than one support and with trigger/response changes.
++- [ ] T009 [P] [US2] After Phase 2, add queue lifecycle characterization in `tests/physics_bookkeeping_test.cpp` for duplicate enqueue, first/middle/last swap-remove cancellation and moved-index repair, removal before evaluation, consumed-then-requeued pairs, empty batches and at least 128 changed pairs with one/multiple workers; use existing observable queue queries and physical/event results, without depending on the soon-to-be-removed flag setter or private helper call order.
++- [ ] T010 [US2] After T008 and T009, build and run support/bookkeeping plus relevant contact, cleanup and queued-deletion controls against unchanged runtime; share required test-only inputs with the isolated baseline and record commands, fixtures, assertions and results in `specs/003-simplify-physics-bookkeeping/evidence/us2-characterization.md`. Resolve unexpected baseline failures or explicitly revise scope before changing runtime ownership.
++
++### Implementation and Integration
++
++- [ ] T011 [US2] After T010, replace `ColliderPair::{supportBodyA,supportsA,supportBodyB,supportsB}` with nullable `contributedSupportBodyA/B` in `src/colliderpair.h`, and implement shared identity reconciliation in `src/physicscontacts.cpp`; preserve verbatim "For endpoint X, desired contributor is its current Rigidbody if the current contact supports X, otherwise null." and "Map the support bit through the current reference/incident orientation, not the canonical handle order." Queue -1 old/+1 desired only when identity changes, then update the ledger; release both recipients on pair removal without consulting a deleted Collision or inferring the old recipient from current component lookup.
++- [ ] T012 [US2] Validate T011 with support/contact/bookkeeping and work checks, and document the ledger lifetime/commit invariant beside `src/physicscontacts.cpp` and in `specs/003-simplify-physics-bookkeeping/evidence/us2-support.md`; retain `supportContactCount`, signed `supportDelta`, `supportDeltaIndex` and touched-body queue under "Queue membership cannot derive from delta: cancelling changes may leave a queued zero delta", "Net zero support change must not transiently wake a body." and "Old recipients survive through that flush even if their component was replaced." Do not add a new strong allocation-failure recovery guarantee.
++- [ ] T013 [US2] After T012, remove `ColliderPair::isQueuedForNarrowPhase` and its writable setter in `src/colliderpair.h`/`src/colliderpair.cpp`, derive the existing read-only query from `narrowPhaseQueueIndex != SIZE_MAX`, and update `src/grid.cpp` and `src/physicsmanager.cpp::processNarrowPhasePair` to write only the index; preserve O(1) dedup/cancellation, moved-entry repair, and "Structural enqueue/cancel/erase cannot overlap this period." Clear each owned index at existing worker entry and clear the batch only after join/reduction; remove obsolete commented dual-clear code without adding a phase flag or clearing scan.
++- [ ] T014 [US2] Run queue/bookkeeping, multi-cell contact, pair-cleanup and queued-deletion cases after T013 with the selected worker counts; verify the before-launch index/slot relation, consumed-but-still-referenced batch lifetime and later requeue, recording results and actual deleted mutation sites in `specs/003-simplify-physics-bookkeeping/evidence/us2-queue.md`. Do not assert that every fixed batch slot still has a live index while its worker is processing it.
++- [ ] T015 [US2] After T014, centralize uncached live-contact and solver eligibility in `src/physicscontacts.cpp` and required declarations in `src/physicsmanager.h`; preserve "Collision exists; neither collider retired; both owners active" and "Live contact; resolution is DYNAMIC or KINEMATIC; at least one nonstatic, nonsleeping body under the existing predicate". Keep geometry-result reduction, response-only refresh and final-witness removal distinct; share only matching support/list maintenance, retain dirty-only canonical sorting and the independent `contactPairs` oracle, and introduce no generic container layer or mirrored Collision list.
++- [ ] T016 [US2] Verify T015 through unchanged-geometry response, trigger/filter/activation, body replacement, multi-witness and generated-event scenarios in `tests/physics_support_test.cpp`, `tests/contact_events_test.cpp` and `tests/physics_bookkeeping_test.cpp`; extend only uncovered assertions and record results in `specs/003-simplify-physics-bookkeeping/evidence/us2-validation.md`, proving response refresh does not synthesize contact events or replay geometry and script-only changes do not affect physical participation.
++- [ ] T017 [US2] Update actual support/queue/contact dispositions in `specs/003-simplify-physics-bookkeeping/evidence/state-inventory.md` and record J4/J5/J6 state-fact and maintenance-site reductions in `specs/003-simplify-physics-bookkeeping/evidence/audit-after.md`, including any replacement coordination, retained index purposes and why changed-body/support/lifecycle queues remain separate. Do not claim bytes or RSS savings from deleted booleans without measurements.
++- [ ] T018 [US2] Complete the independently runnable US2 checkpoint in `specs/003-simplify-physics-bookkeeping/evidence/us2-validation.md`: confirm characterization/affected regressions pass, queue/support flags have no live consumers, expected physical work and lifetime barriers remain, and at least one real audit path has fewer independently maintained facts or dependencies. Record unresolved evidence honestly and make no timing or human-readability acceptance claim yet.
++
++## Phase 4: User Story 1 — Follow a Physics Change from Cause to Effect (Priority: P1)
++
++**Goal**: Make body participation, pair transitions, geometry and lifecycle boundaries directly traceable in code, using US2's smaller state model.
++
++**Independent Test**: All eight final code-linked journeys identify cause, owner, pending work, validity, consumer and cleanup; body and geometry characterization remains unchanged. Human comprehension is assessed separately after final executable evidence is ready.
++
++### Tests and Characterization
++
++- [ ] T019 [P] [US1] After US2's checkpoint, add missing body participation characterization in `tests/physics_bookkeeping_test.cpp` for static/kinematic/dynamic changes, kinematic zero/nonzero linear/angular velocity, gravity eligibility, sleep/wake, supported/unsupported bodies, repeated cancelling changes before drain, and removal/replacement while queued; verify physical outcomes and exact eligibility at safe phase boundaries rather than asserting the current helper implementation.
++- [ ] T020 [P] [US1] After US2's checkpoint, preserve and record geometry/manifold/reference-face/warm-start characterization from `tests/physics_geometry_test.cpp` and `tests/regression_tests.cpp` in `specs/003-simplify-physics-bookkeeping/evidence/us1-geometry-before.md`, adding assertions only for an uncovered mechanical extraction risk; retain existing contact reuse, feature IDs, version-stamp behavior and operation/tolerance reference for the extraction.
++- [ ] T021 [US1] After T019 and T020, establish passing pre-cleanup body/geometry checks and record them in `specs/003-simplify-physics-bookkeeping/evidence/us1-characterization.md`; verify all currently identified Rigidbody setters, registration/removal, GameManager lifecycle, support and sleep triggers are represented in `evidence/audit-before.md` before changing the derivation or call boundaries.
++
++### Implementation and Integration
++
++- [ ] T022 [US1] After T021, clarify internal collection names and consolidate the existing body derivation as `reconcileBodyParticipation` in `src/physicsbodyindexes.cpp`, `src/physicsmanager.h` and `src/physicsmanager.cpp`, updating required private declarations in `include/platformator/rigidbody.h`; retain indexed memberships and verbatim predicates "Registered, not retired, owner active, DYNAMIC, not sleeping", "Registered, not retired, owner active, KINEMATIC, nonzero velocity or angular velocity", and "Awake dynamic and (positive committed support or gravity disabled)". Share sleep-island initialization only if it removes repeated intent without new state; preserve union-find/group sleep behavior and public registration/support accessors.
++- [ ] T023 [US1] Complete direct trigger/visibility naming and necessary local invariant comments in `src/rigidbody.cpp`, `src/gamemanager.cpp`, `src/physicsbodyindexes.cpp`, `src/physicscontacts.cpp` and `src/physicsmanager.cpp`; trace queueing, cancellation, response refresh and retirement through one body participation derivation without merging queues or adding dirty-reason flags. Preserve the distinction between kinematic velocity changes, dynamic wake transitions and solver impulses, avoid gratuitous neighbor refresh, and retain existing integration/support/sleep/cleanup boundaries.
++- [ ] T024 [US1] Add the internal `src/physicsgeometry.h` entry `physics_geometry::updateContactGeometry(const ColliderPair &, const Eigen::Vector2f &gravityDirection)`, convert shape/SAT/clipping helpers in `src/physicsgeometry.cpp` to implementation-local functions, remove their manager declarations from `src/physicsmanager.h`, and update its worker call in `src/physicsmanager.cpp`; preserve "The optional Collision remains confirmed-contact presence." and stable pair key identity, pass normalized gravity explicitly, and introduce no geometry owner class, result allocation/copy, runtime lookup, queue/body-counter mutation or math/tolerance change.
++- [ ] T025 [US1] Build and run affected body/bookkeeping, support, contact and geometry tests after T022–T024; compare relocated geometry operations against the frozen baseline with only the documented interface/name/gravity-parameter substitutions normalized, and record mechanical comparison plus independent oracle/warm-start results in `specs/003-simplify-physics-bookkeeping/evidence/us1-validation.md`. Review implementation drift if math differs instead of silently widening tolerances.
++- [ ] T026 [US1] Complete concise final J1–J8 walkthroughs in `specs/003-simplify-physics-bookkeeping/evidence/audit-after.md` with actual code links, trigger/owner/pending-work/consumer/cleanup boundaries and relevant retained invariants; update every inventory disposition in `evidence/state-inventory.md`, account for geometry/body/helper dependencies rather than equating fewer manager methods with less complexity, and retain the distinct support and queue reductions as objective evidence.
++- [ ] T027 [US1] Record the US1 technical checkpoint in `specs/003-simplify-physics-bookkeeping/evidence/us1-validation.md`: all eight routes can be followed through actual code, local non-obvious rules are explained, body/geometry guardrails pass and no public interface/scene/reporting break was introduced. Keep SC-001 human comprehension pending; preparing or agent-reviewing walkthroughs does not complete the maintainer's review.
++
++## Phase 5: User Story 3 — Trust the Engine after Simplification (Priority: P1)
++
++**Goal**: Establish physical/lifecycle equivalence, worker safety, quiet work/storage reuse, compatible consumers and measured performance with explicit regression dispositions.
++
++**Independent Test**: The current baseline and candidate agree on the eight journeys, exact ordered contact histories and supported physical tolerances; equivalent workload measurements and safety results support each stated conclusion without certifying unperformed checks.
++
++### Tests and Contract Coverage
++
++- [ ] T028 [P] [US3] After the US1 technical checkpoint, extend `tests/runtime_work_test.cpp` and `tests/runtime_work_probe.h` only as needed for 100 warmed unchanged updates, selected one/multiworker runs, pending replacement/cancellation, and repeated fixed-peak real-contact churn; retain zero idle force/movement/sleep/geometry/transition/event/solver-adjacency visits and zero C++ new/new[] allocations, prove script-only edits cause no physical refresh, and assert actual body/contact/support restoration as well as stable capacities.
++- [ ] T029 [P] [US3] After the US1 technical checkpoint, audit all eight journeys and preserved external contracts in `tests/contact_events_test.cpp`, `tests/callback_mutation_test.cpp`, `tests/scene_transition_stress_test.cpp`, `tests/queued_deletion_safety_test.cpp` and current benchmark contract tests; add only missing observable assertions and create `specs/003-simplify-physics-bookkeeping/evidence/contract-coverage.md` linking recipient counts 0/1/2, quiet 100 updates, real re-contact, mixed Exit-before-Enter, callback exceptions, component/scene retirement, schema-3 eight scopes/eleven counters and public consumer checks to their actual tests.
++
++### Execution, Measurements and Regression Investigation
++
++- [ ] T030 [US3] After T028 and T029, run matching baseline/candidate work and fixed-peak churn controls, sharing test-only inputs without changing either physical runtime, and measure pair layout plus repeated per-child RSS using reproducible helpers under `specs/003-simplify-physics-bookkeeping/evidence/`; write `evidence/affected-work-memory.md` with counts, capacities, allocator scope, method, raw paths and noise. Account for baseline fingerprint changes if a shared CMake/common-fixture patch changes instrumented sources; never mix those capture revisions silently.
++- [ ] T031 [US3] Complete final `cleanup-debug` normal CTest, Production/public-header build, installed/relocated SDK consumers, benchmark C++/runner contracts and Python reader suite from `specs/003-simplify-physics-bookkeeping/quickstart.md`; retain complete output and actual registration/pass/skip/failure counts in `specs/003-simplify-physics-bookkeeping/evidence/final-correctness.md`. Preserve old examples, scene serialization, public operations and strict schema-3 reporting; do not broaden tests after a clean final run without a new change or unresolved concern.
++- [ ] T032 [US3] Run changed-path and appropriate full ASan/UBSan selections with `cleanup-asan`, including leak-enabled physics/bookkeeping hosts, full non-package leak-enabled checks where supported and a separately labeled leak-disabled memory-access/UB check; write commands, actual failures/skips, stacks and attribution limits to `specs/003-simplify-physics-bookkeeping/evidence/sanitizers.md`. Distinguish sandbox thread-inspection restrictions and prior FluidSynth leaks from introduced failures; do not turn unavailable or failing leak checks into passes or promise stronger allocation-failure semantics.
++- [ ] T033 [US3] After or resource-isolated from T032, run changed-path and appropriate physics/mutation/lifecycle TSan checks with `cleanup-tsan`, covering worker ownership, shared support/body state and callback retirement, and append actual commands/findings to `specs/003-simplify-physics-bookkeeping/evidence/sanitizers.md`; compare any SDL/libdbus lock-order findings with prior evidence without assuming exclusive dependency attribution, and introduce no blanket suppression, race-detector bypass or deadlock-detector disabling to claim acceptance.
++- [ ] T034 [US3] Capture all 36 candidate per-step validation groups with `specs/003-simplify-physics-bookkeeping/evidence/capture_matrix.py` and verify all 18 candidate worker comparisons plus all 36 baseline/candidate physical comparisons; retain independent oracle support/contact checks and exact identities/support/sleep/features, use position/velocity/separation 1e-4 and rotation/angular/normals 1e-5, and record raw/checksum paths and results in `evidence/physical-validation.md`. Separately confirm ordered event histories; do not widen tolerances to mask an internal refactor.
++- [ ] T035 [US3] After all builds/tests/probes and T030–T034 checks finish, freeze source and run the matched baseline/candidate Release timing matrix through `specs/003-simplify-physics-bookkeeping/evidence/capture_matrix.py`: 36 groups per stage, five independent processes each, 120 warmup and 600 measured, seed 0, dt 1/120, matched CPU masks/workers and recorded shuffled/interleaved order. Keep sanitizers/work/debug probes and competing jobs out; verify complete raw files/manifests/checksums and report all 360 processes in `evidence/candidate-results.md` and `evidence/baseline-results.md` without overwriting earlier captures.
++- [ ] T036 [US3] Analyze comparable complete-step and relevant nested-scope means, median, p95/p99/max, independent-run spread and worker ratios in `specs/003-simplify-physics-bookkeeping/evidence/performance-analysis.md`, retaining machine-readable comparisons and raw-source links; verify physical populations, build/hardware/dependencies, reporting boundaries and both schema-3 fingerprints, report every positive timing/allocation/storage/scaling delta, and do not infer equivalence from overlapping ranges, sum nested scopes or claim causation from deleted booleans alone.
++- [ ] T037 [US3] Investigate each regression or important uncertainty from T030–T036 and record a disposition in `specs/003-simplify-physics-bookkeeping/evidence/performance-analysis.md`; run matched alternating follow-up captures where needed and fix feasible affected inefficiencies in the concrete source paths identified by evidence, then rerun affected correctness and comparable physical/timing captures. If a known inefficiency must remain, add the constitution-required local `EFFICIENCY:` cost/frequency/reason/alternative/replacement-work comment; missing or inconclusive measurement remains unverified rather than a completed optimization claim.
++- [ ] T038 [US3] Complete the US3 checkpoint in `specs/003-simplify-physics-bookkeeping/evidence/us3-validation.md`, linking actual physical/worker/contract/work/storage/timing/safety results to all eight journeys, explaining retained body/contact indexes and support/solver/serial-worker tradeoffs, and distinguishing introduced defects from pre-existing limits. Do not mark this checkpoint passed with unresolved introduced correctness defects, absent required measurements or unexplained regressions; human readability remains a separate outstanding acceptance result.
++
++## Phase 6: Polish, Cross-Cutting Review and Maintainer Acceptance
++
++**Purpose**: Make the concrete implementation and actual evidence reviewable, then obtain the specified human walkthrough outcome. Preparing evidence is independently executable; human review is not inferred from silence.
++
++- [ ] T039 Update `specs/003-simplify-physics-bookkeeping/data-model.md`, `research.md`, `plan.md` and `quickstart.md` to the actual chosen implementation and runnable commands, linking inventory/walkthrough evidence instead of duplicating it; update relevant current explanations in `docs/CPP_CLEANUP_WALKTHROUGH.md` only where names/ownership changed, preserve historical specs/captures and benchmark schema, and clearly separate final results from design expectations.
++- [ ] T040 Write `specs/003-simplify-physics-bookkeeping/validation.md` with every FR/SC mapped to actual code/evidence, before/after independent facts and maintenance dependencies, baseline/candidate source/build/raw provenance, actual checks and sanitizer limits, investigated costs, compatibility, and all seven constitution findings; keep SC-001 and any unverified performance/safety requirement explicitly pending rather than claiming the entire feature is accepted.
++- [ ] T041 Review final source/diff and `specs/003-simplify-physics-bookkeeping/evidence/state-inventory.md` for deleted support/queue flags, duplicate eligibility rules, unintended geometry/lifecycle/API changes, hidden replacement coordination and undocumented retained inefficiencies; verify evidence links, quickstart shell syntax, current task status and whitespace, preserve requirement checklist markers and user edits, and record the scoped final review in `evidence/final-review.md`. Execute applicable after_implement hooks under the implementation skill before reporting its completion; no commit or publication is implied.
++- [ ] T042 Prepare `specs/003-simplify-physics-bookkeeping/evidence/human-review.md` as a concrete maintainer walkthrough of J1–J8 with concise questions, before/after source links, expected owners/visibility/cleanup and open findings; ensure executable checks and reviewable code are already available, ask only for the actual comprehension findings needed by SC-001, and leave each unperformed human judgment pending. This task prepares the review; it does not certify the maintainer's understanding.
++- [ ] T043 Conduct the actual maintainer walkthrough using `specs/003-simplify-physics-bookkeeping/evidence/human-review.md`, record understood/unresolved findings for all eight journeys and resolve readability issues in the relevant code with affected revalidation/recapture where necessary; update `specs/003-simplify-physics-bookkeeping/validation.md` and task status only from the actual outcome. Leave this task and SC-001 pending until the maintainer has reviewed the final paths with zero unresolved ownership/validity questions; continue other independently authorized work while awaiting that input and report technical readiness separately from full acceptance.
++
++## Dependencies & Execution Order
++
++### Phase Dependencies
++
++```text
++T001 → {T002, T003} → T004
++  → {T005, T006} → T007
++  → {T008, T009} → T010 → T011 → T012 → T013 → T014
++  → T015 → T016 → T017 → T018                         US2 technical MVP
++  → {T019, T020} → T021 → T022 → T023 → T024
++  → T025 → T026 → T027                                 US1 technical checkpoint
++  → {T028, T029} → T030 → T031 → T032 → T033 → T034
++  → T035 → T036 → T037 → T038                          US3 evidence checkpoint
++  → T039 → T040 → T041 → T042 → T043                   Maintainer acceptance
++```
++
++T032/T033 may use independent instrumentation build trees after source freeze if resources allow, but are not marked `[P]`: resource contention and detector restrictions warrant deliberate scheduling. Timing T035 starts only after all competing deliberate work ends. T037 fixes loop back through affected characterization, builds, work/safety/physical and matched timing checks before final analysis and T038; a late T043 code fix has the same obligation.
++
++### User Story Dependencies
++
++| Story | Prerequisites | Independently observable outcome |
++| --- | --- | --- |
++| US2 (P1) | Phase 2; support/queue characterization | Fewer state facts/dual writes with matching support, queue and contact outcomes; no US1 geometry extraction needed |
++| US1 (P1) | US2 checkpoint, because final body/geometry routes consume the simplified pair state | Explicit code boundaries and eight complete walkthroughs with unchanged body/geometry behavior; final human judgment still pending |
++| US3 (P1) | US1 technical checkpoint; same final runtime source under test | Baseline/candidate physical/work/worker/cost evidence, compatible consumers and actual safety limits; cannot substitute for human review |
++| Final human acceptance | Reviewable final code, all independently executable evidence and T042 | Actual maintainer comprehension of all eight paths, with fixes verified if needed |
++
++Tests and evidence may be developed incrementally, but no runtime edit precedes the baseline freeze and its relevant characterization. Do not use pending human review as a reason to leave unrelated authorized checks unfinished. Conversely, a prepared review or user silence never completes T043.
++
++### Parallel Opportunities and Per-Story Examples
++
++| Group | Tasks | Common prerequisite | Distinct files/work |
++| --- | --- | --- | --- |
++| Setup | T002 + T003 | T001 | Isolated baseline source/build vs current feature capture script |
++| Foundation | T005 + T006 | Phase 1 | Inventory/walkthrough documents vs CMake and new test fixture |
++| US2 tests | T008 + T009 | T007 | Existing support test vs new bookkeeping test |
++| US1 tests | T019 + T020 | T018 | Body characterization host vs geometry/regression hosts and geometry reference evidence |
++| US3 coverage | T028 + T029 | T027 | Work test/probe vs contact/lifecycle tests and contract matrix |
++
++All ten `[P]` tasks belong to these five explicit pairs. Each pair joins before its following build/check or runtime edit. Do not parallelize runtime edits sharing ColliderPair, PhysicsManager, contact/body state or CMake. Examples are safe scheduling opportunities, not a requirement to delegate work to additional agents.
++
++## Requirement and Constraint Coverage
++
++| Requirement / outcome | Main tasks | Verification / completion |
++| --- | --- | --- |
++| FR-001 scope beyond historical commit | T001, T005 | T026, T039–T041 |
++| FR-002 inventory and disposition | T005, T017, T026 | T040, T041 |
++| FR-003 / SC-001 eight human-auditable routes | T019–T027, T042 | T043 actual maintainer review; never automatic |
++| FR-004 / SC-002 actual state reduction | T011, T013, T015, T017 | T012, T014, T016, T018, T041 |
++| FR-005 retained/new mechanism justification | T005, T017, T022–T026 | T030, T036–T041 |
++| FR-006 physical equivalence | T008–T016, T019–T025 | T031–T034, T038 |
++| FR-007 / SC-004 Enter/Exit-only and quiet 100 updates | T016, T028, T029 | T030, T031, T034 |
++| FR-008 / SC-006 lifetime and fixed-peak restoration | T008–T014, T019, T028, T029 | T030–T034, T038 |
++| FR-009 / SC-003 worker/ordering correctness | T009, T013–T014, T019, T024 | T025, T029, T031–T034 |
++| FR-010–FR-011 / SC-005 comparable costs/regressions | T001–T004, T007, T030 | T035–T038, T040 |
++| FR-012 compatibility and honest human evidence | T026–T027, T029, T031 | T039–T043 |
++| Explicit nullable support, queue sentinel and body/contact predicates | T011–T015, T022 | Relevant quoted constraints and targeted tests; no new flags or cache |
++| Constitution parallel/ownership/architecture/evidence gates | T001, T005, T011–T015, T022–T024 | T030–T041, final implementation hook check |
++
++## Implementation Strategy
++
++1. Preserve and characterize the current engine before simplifying it. Build/test scaffolding may be shared with the isolated baseline, with patches and fingerprints recorded; keep all physical fixture/runtime changes distinguishable.
++2. Deliver US2 as the smallest substantive technical MVP: support identities and queue index replace redundant facts. It is independently testable and materially simplifies state without requiring new classes or the geometry extraction.
++3. Complete US1 with direct participation rules, explicit geometry inputs, concise local invariants and all eight final walkthroughs. Naming and file moves supplement the state reductions; they cannot replace them.
++4. Complete US3 on the final runtime: focused/full/public checks, probes/safety, separate physical validation and isolated matched timing, then investigate regressions. Reuse coverage rather than building a second verification framework.
++5. Finish reviewable code/evidence before the maintainer walkthrough. Report independently completed technical work while human review is pending; mark full acceptance only after the actual review and any resulting fixes are verified.
++
++**Inventory**: 43 tasks total: setup 4; foundation 3; US2 11; US1 9; US3 11; polish/human acceptance 5. Ten `[P]` tasks form five explicit parallel pairs. All 43 tasks are pending; no implementation check or human judgment is implied by task generation.

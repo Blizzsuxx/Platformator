@@ -61,6 +61,62 @@ void exerciseDeepJsonCleanup()
 }
 
 template <typename T, typename Load>
+void exerciseReferenceFailures(const std::string &name, const std::string &path,
+                               const fs::path &file, Load load, platformator::Runtime &runtime)
+{
+    AssetReference<T> owner(load(path));
+    auto *original = owner.get();
+    targetSize = path.size() + 1;
+    auto failCopy = [&](auto &&action, long budget = 0) {
+        injected = false;
+        failAfter = budget;
+        try { action(); }
+        catch (const std::bad_alloc &) { failAfter = -1; require(injected, name + " unexpected failure"); return; }
+        failAfter = -1;
+        require(false, name + " must exercise a path allocation failure");
+    };
+    AssetReference<T> destination;
+    failCopy([&] { AssetReference<T> adopted(original); });
+    require(owner.get() == original, name + " failed construction must preserve ownership");
+    failCopy([&] { destination.set(original); });
+    require(!destination && owner.get() == original, name + " failed set must preserve ownership");
+    destination.set(original);
+    destination.clear();
+    failCopy([&] { destination = owner; });
+    require(!destination && owner.get() == original, name + " failed assignment must preserve ownership");
+    destination = owner;
+    failCopy([&] { destination.setFilePath(path); });
+    require(destination.get() == original, name + " failed path replacement must preserve ownership");
+    destination.clear();
+    failCopy([&] { AssetReference<T> copy(owner); });
+    require(owner.get() == original, name + " failed copy construction must preserve ownership");
+    AssetReference<T> pending(path);
+    failCopy([&] { pending.resolve(runtime); }, 1);
+    require(!pending && owner.get() == original, name + " failed runtime resolution must preserve ownership");
+    require(pending.resolve(runtime) == original, name + " runtime resolution retry must succeed");
+    pending.clear();
+    {
+        SceneBuildContext context(platformator_detail::RuntimeAccess::gameManager());
+        AssetReference<T> staged(path);
+        failCopy([&] { staged.resolve(context); }, 1);
+        require(!staged && owner.get() == original, name + " failed staged resolution must preserve ownership");
+        require(staged.resolve(context) == original, name + " staged resolution retry must succeed");
+    }
+    owner.clear();
+    auto *fresh = load(path);
+    failCopy([&] { destination.set(fresh); });
+    require(!destination, name + " failed adoption must not retain a pointer");
+    const auto backup = file.string() + ".backup";
+    fs::rename(file, backup);
+    bool rejected = false;
+    try { load(path); } catch (const std::exception &) { rejected = true; }
+    fs::rename(backup, file);
+    require(rejected, name + " failed adoption must evict the unowned resource");
+    { AssetReference<T> retry(load(path)); }
+    std::cout << name << " reference allocation failures and retries verified\n";
+}
+
+template <typename T, typename Load>
 void exerciseLoad(const std::string &name, const std::string &path, Load load)
 {
     targetSize = path.size() + 1;
@@ -264,6 +320,19 @@ int main()
             exerciseExisting<AnimationClip>("animation", animationPath, "animations/missing.animset", [&](const auto &path) { return runtime.loadAnimationClip(path); });
             exerciseNestedPublication(runtime, root, source / "textures/missing.png");
             exerciseScenePreparation(runtime, scenePath, texturePath.size());
+            const std::string longName(80, 'x');
+            const auto texture = root / "textures" / (longName + ".png");
+            const auto audio = root / "audio" / (longName + ".wav");
+            const auto animation = root / "animations" / (longName + ".animset");
+            fs::copy_file(source / "textures/missing.png", texture, fs::copy_options::overwrite_existing);
+            fs::copy_file(source / "audio/missing.wav", audio, fs::copy_options::overwrite_existing);
+            fs::copy_file(source / "animations/missing.animset", animation, fs::copy_options::overwrite_existing);
+            exerciseReferenceFailures<TextureWrapper>("texture", "assets/textures/" + longName + ".png", texture,
+                [&](const auto &path) { return runtime.loadTexture(path); }, runtime);
+            exerciseReferenceFailures<AudioWrapper>("audio", "assets/audio/" + longName + ".wav", audio,
+                [&](const auto &path) { return runtime.loadAudio(path); }, runtime);
+            exerciseReferenceFailures<AnimationClip>("animation", "assets/animations/" + longName + ".animset", animation,
+                [&](const auto &path) { return runtime.loadAnimationClip(path); }, runtime);
         }
         fs::remove_all(root);
         std::cout << "[PASS] runtime asset allocation failures and scene preparation\n";

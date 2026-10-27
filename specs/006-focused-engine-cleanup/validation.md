@@ -29,3 +29,7 @@ Updated work and timing results are appended to `evidence/work-memory.md` and `e
 ## Phase 8 convergence follow-up
 
 The user's updated JSON header and a small local fix for partially initialized containers now pass an exhaustive allocation-failure and retry sweep, including animation, discarded scene preparation and nested texture release, as well as 512-level nonallocating destruction. Filesystem-operation failures now retain the exact original request and underlying context, including through scene loading. See `evidence/convergence/results.md` for counts, sanitizer coverage, dependency provenance and remaining limitations. The earlier broad-failure paragraph records the historical result before this fix.
+
+## Phase 9 convergence follow-up
+
+`AssetReference` now prepares ownership changes transactionally when path copying fails, including cleanup of a newly loaded unowned resource. Long-path allocation-failure tests cover all three asset types, existing owners, staged and runtime resolution, retries and final eviction; debug and ASan/UBSan checks passed with leak detection disabled. See `evidence/convergence/results.md` for coverage and limits.

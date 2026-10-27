@@ -4,6 +4,7 @@
 #include <cassert>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include <json.hpp>
 
@@ -68,12 +69,8 @@ template <typename T> class AssetReference
             return *this;
         }
 
-        releaseObject();
-        object = other.get();
-        runtimeSerial = other.runtimeSerial;
-        filePath = other.filePath;
-        retainObject();
-        return *this;
+        AssetReference copy(other);
+        return *this = std::move(copy);
     }
 
     AssetReference &operator=(AssetReference &&other) noexcept
@@ -119,18 +116,31 @@ template <typename T> class AssetReference
             return;
         }
 
+        // Retain first so a failed path copy cannot leave an unowned pointer or
+        // strand a freshly loaded, zero-reference resource in the cache.
+        if (value) value->addReference();
+        std::optional<std::string> newPath;
+        try
+        {
+            if (value) newPath = value->getFilePath();
+        }
+        catch (...)
+        {
+            if (value) value->removeReferenceAndFreeIfNoReferences();
+            throw;
+        }
+        const auto newSerial = value ? value->getRuntimeSerial() : 0;
         releaseObject();
         object = value;
-        runtimeSerial = value ? value->getRuntimeSerial() : 0;
-        filePath = value == nullptr ? std::nullopt : std::optional<std::string>(value->getFilePath());
-        retainObject();
+        runtimeSerial = newSerial;
+        filePath = std::move(newPath);
     }
 
     void setFilePath(const std::string &value)
     {
+        std::optional<std::string> newPath(value);
         releaseObject();
-        object = nullptr;
-        filePath = value;
+        filePath = std::move(newPath);
     }
 
     void clear()

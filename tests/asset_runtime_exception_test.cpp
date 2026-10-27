@@ -44,6 +44,22 @@ namespace
 using test_support::require;
 namespace fs = std::filesystem;
 
+void exerciseDeepJsonCleanup()
+{
+    nlohmann::json nested = 1;
+    for (int depth = 0; depth < 512; ++depth)
+    {
+        nlohmann::json parent = nlohmann::json::array();
+        parent.push_back(std::move(nested));
+        nested = std::move(parent);
+    }
+    injected = false;
+    failAfter = 0;
+    nested = nullptr;
+    failAfter = -1;
+    require(!injected, "Deep JSON cleanup must not allocate");
+}
+
 template <typename T, typename Load>
 void exerciseLoad(const std::string &name, const std::string &path, Load load)
 {
@@ -57,8 +73,13 @@ void exerciseLoad(const std::string &name, const std::string &path, Load load)
     require(total > 0, name + " fixture did not allocate");
 
     std::vector<size_t> budgets;
-    for (size_t i = 0; i < total && i < 8; ++i) budgets.push_back(i);
-    for (size_t i = total > 18 ? total - 18 : 8; i < total; ++i) budgets.push_back(i);
+    if (failAllSizes)
+        for (size_t i = 0; i < total; ++i) budgets.push_back(i);
+    else
+    {
+        for (size_t i = 0; i < total && i < 8; ++i) budgets.push_back(i);
+        for (size_t i = total > 18 ? total - 18 : 8; i < total; ++i) budgets.push_back(i);
+    }
     size_t failures = 0;
     for (const auto budget : budgets)
     {
@@ -172,7 +193,7 @@ void exerciseScenePreparation(platformator::Runtime &runtime, const fs::path &sc
     const size_t total = allocations;
     require(total > 0, "Scene preparation fixture did not allocate");
     size_t failures = 0;
-    for (size_t budget = total > 24 ? total - 24 : 0; budget < total; ++budget)
+    for (size_t budget = failAllSizes ? 0 : (total > 24 ? total - 24 : 0); budget < total; ++budget)
     {
         {
             SceneBuildContext context(manager);
@@ -189,8 +210,15 @@ void exerciseScenePreparation(platformator::Runtime &runtime, const fs::path &sc
         }
         require(runtime.getGameObject("still-live") == existing,
                 "Failed or discarded preparation must preserve the existing scene");
-        SceneBuildContext retry(manager);
-        retry.prepare(scene);
+        const auto textureFile = scenePath.parent_path() / "textures/missing.png";
+        fs::remove(textureFile);
+        bool rejected = false;
+        try { runtime.loadTexture("assets/textures/missing.png"); }
+        catch (const std::exception &) { rejected = true; }
+        require(rejected, "Discarded scene preparation must release its nested texture");
+        const auto source = fs::path(__FILE__).parent_path().parent_path() / "assets/textures/missing.png";
+        fs::copy_file(source, textureFile);
+        { SceneBuildContext retry(manager); retry.prepare(scene); }
     }
     require(failures > 0, "Scene preparation did not exercise allocation failures");
     std::cout << "scene allocations=" << total << " injected_failures=" << failures << '\n';
@@ -227,6 +255,7 @@ int main()
         {
             RuntimeOptions options; options.assetRoot = root.string();
             platformator::Runtime runtime(options);
+            exerciseDeepJsonCleanup();
             exerciseLoad<TextureWrapper>("texture", texturePath, [&](const auto &path) { return runtime.loadTexture(path); });
             exerciseLoad<AudioWrapper>("audio", audioPath, [&](const auto &path) { return runtime.loadAudio(path); });
             exerciseLoad<AnimationClip>("animation", animationPath, [&](const auto &path) { return runtime.loadAnimationClip(path); });

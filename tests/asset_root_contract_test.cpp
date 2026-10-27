@@ -105,6 +105,26 @@ int main()
             missing("assets/absent.png", [&](const auto &path) { runtime.loadTexture(path); });
             missing("assets/absent.wav", [&](const auto &path) { runtime.loadAudio(path); });
             missing("assets/absent.animset", [&](const auto &path) { runtime.loadAnimationClip(path); });
+            fs::create_symlink("loop", root / "loop");
+            const std::string filesystemError = "assets\\loop\\file.png";
+            const auto reportsFilesystemError = [&](auto &&load) {
+                try
+                {
+                    load(filesystemError);
+                    throw std::runtime_error("Filesystem error unexpectedly accepted");
+                }
+                catch (const std::runtime_error &error)
+                {
+                    const std::string message = error.what();
+                    require(message.find(filesystemError) != std::string::npos &&
+                                message.find("unexpectedly accepted") == std::string::npos &&
+                                message.find("loop") != std::string::npos,
+                            "Filesystem errors retain the original request and underlying context");
+                }
+            };
+            reportsFilesystemError([&](const auto &path) { runtime.loadTexture(path); });
+            reportsFilesystemError([&](const auto &path) { runtime.loadAudio(path); });
+            reportsFilesystemError([&](const auto &path) { runtime.loadAnimationClip(path); });
             for (const auto &name : {"broken.png", "broken.wav", "broken.animset"})
             {
                 std::ofstream broken(root / name);
@@ -219,6 +239,11 @@ int main()
                 require(checked, "Saved scene must include the behavior asset fields");
             }
             auto *committed = runtime.getGameObject("case");
+            document[0]["components"][0]["textureFilePath"] = filesystemError;
+            { std::ofstream file(scene); file << document; }
+            reportsFilesystemError([&](const auto &) { runtime.loadScene(scene.string()); });
+            require(runtime.getGameObject("case") == committed,
+                    "Filesystem errors during scene preparation preserve the committed scene");
             document[0]["components"][0]["textureFilePath"] = "../textures/MiXeD.PNG";
             {
                 std::ofstream file(scene);

@@ -37487,11 +37487,11 @@ private:
         {
             if (v.m_data.m_type == value_t::array)
             {
-                return v.m_data.m_value.array->empty();
+                return v.m_data.m_value.array == nullptr || v.m_data.m_value.array->empty();
             }
             if (v.m_data.m_type == value_t::object)
             {
-                return v.m_data.m_value.object->empty();
+                return v.m_data.m_value.object == nullptr || v.m_data.m_value.object->empty();
             }
             return true;
         }
@@ -37643,6 +37643,13 @@ public:
         // nested deeper is handed to destroy_walk(), which uses no call stack.
         static void destroy_bounded(basic_json& v, std::size_t depth) noexcept
         {
+            // Parsing may leave a typed but uninitialized child when allocation fails.
+            if ((v.m_data.m_type == value_t::array && v.m_data.m_value.array == nullptr) ||
+                    (v.m_data.m_type == value_t::object && v.m_data.m_value.object == nullptr))
+            {
+                v.m_data.m_type = value_t::null;
+                return;
+            }
             if (JSON_HEDLEY_UNLIKELY(depth >= detail::recursion_depth_limit()))
             {
                 destroy_walk(v);

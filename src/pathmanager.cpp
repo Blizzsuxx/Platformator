@@ -59,7 +59,15 @@ std::string PathManager::canonicalizeAssetPath(const std::string &raw) const
     for (const auto &component : path)
         if (component == "..")
             throw std::invalid_argument("Asset paths cannot contain '..': " + raw);
-    const auto candidate = fs::weakly_canonical(root / path.lexically_relative("assets"));
+    fs::path candidate;
+    try
+    {
+        candidate = fs::weakly_canonical(root / path.lexically_relative("assets"));
+    }
+    catch (const fs::filesystem_error &error)
+    {
+        throw std::runtime_error("Cannot resolve asset request '" + raw + "': " + error.what());
+    }
     if (!beneath(root, candidate))
         throw std::invalid_argument("Asset path escapes configured root: " + raw);
     return (fs::path("assets") / candidate.lexically_relative(root)).generic_string();
@@ -84,7 +92,16 @@ ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw) const
 {
     const auto canonical = canonicalizeAssetPath(raw);
     const auto absolute = root / fs::path(canonical).lexically_relative("assets");
-    if (canonical.empty() || !fs::is_regular_file(absolute))
+    bool regular = false;
+    try
+    {
+        regular = !canonical.empty() && fs::is_regular_file(absolute);
+    }
+    catch (const fs::filesystem_error &error)
+    {
+        throw std::runtime_error("Cannot inspect asset request '" + raw + "': " + error.what());
+    }
+    if (!regular)
         throw std::runtime_error("Required asset not found: '" + raw + "' beneath '" + root.string() + "'");
     return {canonical, absolute.string()};
 }

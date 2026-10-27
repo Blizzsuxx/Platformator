@@ -119,8 +119,6 @@ class GameObject : public BaseObject
 
   private:
     GameObject();
-    GameObject(float rotation, bool active, const Eigen::Vector2f &position, const Eigen::Vector2f &scale,
-               const std::string &name, const std::string &tag);
     ~GameObject();
 
     float rotation;
@@ -133,7 +131,6 @@ class GameObject : public BaseObject
     Eigen::Vector2f worldPosition = Eigen::Vector2f::Zero();
     size_t transformQueueIndex = SIZE_MAX;
     size_t hierarchyOrder = 0;
-    size_t hierarchyDepth = 0;
     uint64_t transformStamp = 0;
     Eigen::Vector2f scale;
     std::string name;
@@ -157,7 +154,6 @@ class GameObject : public BaseObject
     GameObject *setGameManagerIteratorIndex(size_t index);
     bool getIsRegisteredInGameManager() const;
     void addComponentsToGameManager();
-    void removeComponentsFromGameManager();
 };
 
 template <typename T> struct ComponentTypeFor;

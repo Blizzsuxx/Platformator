@@ -1,0 +1,5 @@
+# Full correctness checks
+
+The complete debug-tools-on and production debug-tools-off CTest suites passed on both frozen baseline and candidate: 24 passed and the same two instrumentation-only tests skipped in each configuration. Both candidate package-smoke runs passed, covering source and relocated installed consumers and Mario; the public-header compilation target built successfully. The benchmark-enabled `platformator_benchmark_contract_test` also passed on the candidate. Full normal-suite and benchmark-tool logs are in `/tmp/platformator-dead-state-0j46vn51/` (`baseline-{debug,production}-ctest.log`, `candidate-{debug,production}-ctest.log`, and `candidate-benchmark-contract.log`). Sanitizer failures and visual limitations are documented separately in `sanitizers.md` and `debug-overlays.md`.
+
+The temporary directory holding the ordinary-suite logs was subsequently removed between turns, so those original detailed logs are no longer available. The outcomes above were recorded before the loss; archived invariant and sanitizer diagnostics remain available.

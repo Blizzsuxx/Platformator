@@ -29,7 +29,7 @@ Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool auto
 
 Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, float loopCount)
     : Component(gameObject, ComponentType::AUDIO), audioWrapper(nullptr), gain(gain), loopCount(loopCount),
-      autoPlay(autoPlay), gameManagerIndex(SIZE_MAX)
+      autoPlay(autoPlay)
 {
     auto *mixer = platformator_detail::RuntimeAccess::window()->getMixer();
     if (mixer)
@@ -210,16 +210,6 @@ const std::string &Audio::getFilePath() const
 bool Audio::getAutoPlay() const
 {
     return autoPlay;
-}
-
-size_t Audio::getGameManagerIndex() const
-{
-    return gameManagerIndex;
-}
-
-void Audio::setGameManagerIndex(size_t index)
-{
-    gameManagerIndex = index;
 }
 
 bool Audio::playAndForget(AudioWrapper *audioWrapper)

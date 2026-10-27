@@ -2,6 +2,8 @@
 
 Recorded: 26 October 2026. Reviewed baseline: `61949f4ef8766bef04a5c4099d858ef56ef9d21f`.
 
+**27 October 2026 supersession:** Feature 005 removes the unused C01 pair-slot table and its recycling bookkeeping. This audit remains a historical account of the reviewed baseline; current implementation and validation are tracked under `specs/005-cleanup-dead-state/`.
+
 This document records the cleanup investigation and subsequent history tracing. It is a backlog for creating several focused feature specifications, not an implementation plan or authorization to change runtime behavior.
 
 ## Scope and evidence

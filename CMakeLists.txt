@@ -240,6 +240,10 @@ if(PLATFORMATOR_BUILD_TESTS)
         target_link_libraries(platformator_runtime_cleanup_probe PRIVATE Platformator::platformator)
         target_include_directories(platformator_runtime_cleanup_probe PRIVATE
             "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/tests" "${PROJECT_BINARY_DIR}/generated")
+        add_executable(platformator_dead_state_pair_churn_probe benchmark/dead_state_pair_churn_probe.cpp)
+        target_link_libraries(platformator_dead_state_pair_churn_probe PRIVATE Platformator::platformator)
+        target_include_directories(platformator_dead_state_pair_churn_probe PRIVATE
+            "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/tests" "${PROJECT_BINARY_DIR}/generated")
     endif()
     if(TARGET platformator_benchmark_runner)
         add_test(NAME platformator_benchmark_persistent_zero_warmup

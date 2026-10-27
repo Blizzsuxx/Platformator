@@ -1,0 +1,11 @@
+CAPACITY pair size=1 capacity=1 candidates=1
+CAPACITY pair size=2 capacity=2 candidates=2
+CAPACITY pair size=3 capacity=4 candidates=3
+CAPACITY pair size=5 capacity=8 candidates=5
+CAPACITY pair size=9 capacity=16 candidates=9
+CAPACITY free size=1 capacity=1 candidates=10
+CAPACITY free size=2 capacity=2 candidates=9
+CAPACITY free size=3 capacity=4 candidates=8
+CAPACITY free size=5 capacity=8 candidates=6
+CAPACITY free size=9 capacity=16 candidates=2
+[PASS] pair churn count=10 workers=6

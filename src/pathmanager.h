@@ -16,7 +16,6 @@ enum class AssetPathType
 
 struct ResolvedAssetPath
 {
-    std::string requestedPath;
     std::string canonicalPath;
     std::string absolutePath;
     bool usedFallback;

@@ -187,17 +187,6 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
     {
         auto [it, in] = candidateCollisions.emplace(colliderA, colliderB);
         pair = &(*it);
-        if (freePairSlots.empty())
-        {
-            pair->pairSlot = pairSlots.size();
-            pairSlots.push_back(pair);
-        }
-        else
-        {
-            pair->pairSlot = freePairSlots.back();
-            freePairSlots.pop_back();
-            pairSlots[pair->pairSlot] = pair;
-        }
     }
     else
     {
@@ -297,8 +286,6 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
 
         if (owner)
             owner->removePair(pair);
-        pairSlots[pair->pairSlot] = nullptr;
-        freePairSlots.push_back(pair->pairSlot);
         candidateCollisions.erase(candidateCollisions.find(ColliderPair(colliderA, colliderB)));
     }
 }
@@ -403,17 +390,6 @@ void Grid::syncCollider(Collider *collider)
             queueForOperations(cell);
         });
     }
-}
-
-void Grid::finishColliderSync(Collider *collider)
-{
-    if (collider == nullptr || collider->getGameObject()->getIsMarkedForDeletion() ||
-        !collider->getGameObject()->getActive())
-    {
-        return;
-    }
-
-    queuePairsForCollider(collider);
 }
 
 void Grid::queueForEmptyCheck(GridCell *cell)

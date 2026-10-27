@@ -27,11 +27,6 @@ size_t BoundingRadiusProjectionProxy::getChunkIndex() const
     return chunkIndex;
 }
 
-void BoundingRadiusProjectionProxy::setBoundingProjection(BoundingRadiusProjection *projection)
-{
-    this->projection = projection;
-}
-
 void BoundingRadiusProjectionProxy::setChunk(LocalSortArray *chunk)
 {
     this->chunk = chunk;

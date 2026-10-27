@@ -33,16 +33,3 @@ BoundingRadiusProjectionAxisBinding::BoundingRadiusProjectionAxisBinding(Boundin
     : minProxy(axis->getMin(), nullptr), maxProxy(axis->getMax(), nullptr)
 {
 }
-
-void BoundingRadiusProjectionAxisBinding::bind(BoundingRadiusProjectionAxis *axis)
-{
-    minProxy.setBoundingProjection(axis->getMin());
-    minProxy.setChunk(nullptr);
-    minProxy.setChunkIndex(SIZE_MAX);
-    minProxy.updateCachedProjectedPosition();
-
-    maxProxy.setBoundingProjection(axis->getMax());
-    maxProxy.setChunk(nullptr);
-    maxProxy.setChunkIndex(SIZE_MAX);
-    maxProxy.updateCachedProjectedPosition();
-}

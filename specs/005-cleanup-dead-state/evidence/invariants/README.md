@@ -1,0 +1,3 @@
+# Invariant captures
+
+`captures.tar.xzdata` contains the frozen-baseline and candidate raw schema-3 manifests, per-step samples, logs and schedules for all 18 capture jobs per side. Run `../compare_invariants.py` on the extracted directories to regenerate `comparison.txt`. Both sets use 120 warmup steps, 600 measured steps, seed 0 and matched one/six-worker affinity; timings in these validated captures are ineligible for performance analysis. All controlled snapshots and 600-step candidate/contact/enter/exit pair-churn traces match. Rigid-body differences are recorded under the established waiver; each run separately passed finite-state, population and support invariants.

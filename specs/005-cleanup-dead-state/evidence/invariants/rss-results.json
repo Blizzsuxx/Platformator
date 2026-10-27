@@ -1,0 +1,70 @@
+[
+  {
+    "label": "baseline-w1",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-dead-state-0j46vn51/baseline-source/bin/cleanup-benchmark/platformator_dead_state_pair_churn_probe",
+      "1000",
+      "1",
+      "120",
+      "600",
+      "1",
+      "/tmp/platformator-dead-state-0j46vn51/rss-wait4/baseline-w1.csv"
+    ],
+    "exit": 0,
+    "peak_rss_kib": 20528
+  },
+  {
+    "label": "baseline-w6",
+    "command": [
+      "taskset",
+      "-c",
+      "0,2,4,6,8,10",
+      "/tmp/platformator-dead-state-0j46vn51/baseline-source/bin/cleanup-benchmark/platformator_dead_state_pair_churn_probe",
+      "1000",
+      "6",
+      "120",
+      "600",
+      "1",
+      "/tmp/platformator-dead-state-0j46vn51/rss-wait4/baseline-w6.csv"
+    ],
+    "exit": 0,
+    "peak_rss_kib": 21988
+  },
+  {
+    "label": "candidate-w1",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_dead_state_pair_churn_probe",
+      "1000",
+      "1",
+      "120",
+      "600",
+      "1",
+      "/tmp/platformator-dead-state-0j46vn51/rss-wait4/candidate-w1.csv"
+    ],
+    "exit": 0,
+    "peak_rss_kib": 20656
+  },
+  {
+    "label": "candidate-w6",
+    "command": [
+      "taskset",
+      "-c",
+      "0,2,4,6,8,10",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_dead_state_pair_churn_probe",
+      "1000",
+      "6",
+      "120",
+      "600",
+      "1",
+      "/tmp/platformator-dead-state-0j46vn51/rss-wait4/candidate-w6.csv"
+    ],
+    "exit": 0,
+    "peak_rss_kib": 22372
+  }
+]

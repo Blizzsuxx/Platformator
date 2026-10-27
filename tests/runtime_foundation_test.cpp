@@ -324,6 +324,18 @@ void audioRetention()
         owner->destroy();
         require(retained->getAudio() != nullptr, "Audio component must not release another owner's asset");
     }
+    {
+        Runtime runtime;
+        auto *cached = runtime.loadAudio("assets/test_runtime/foundation.wav");
+        auto *owner = runtime.createGameObject()->addComponent<Audio>(cached);
+        auto *audio = owner->getComponent<Audio>();
+        audio->setLoopCount(-1);
+        require(audio->playAndForget(), "Transient playback must start");
+        owner->destroy();
+        require(runtime.loadAudio("assets/test_runtime/foundation.wav") == cached,
+                "Transient playback must retain its audio after component destruction");
+        runtime.simulateFrame(dt);
+    }
     std::filesystem::remove(path);
 }
 } // namespace

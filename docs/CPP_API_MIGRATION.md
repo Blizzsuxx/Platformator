@@ -2,6 +2,12 @@
 
 Include public headers as `<platformator/runtime.h>` etc.; link `Platformator::platformator`. Private `src` forwarding headers are removed. C++20 and transitive bundled dependencies are exported by the target. The installed SDK includes fallback assets independently of Mario.
 
+## Dead-state cleanup
+
+Rebuild the library and all consumer translation units together. The private `GameObject::hierarchyDepth` field was removed, changing the installed class layout; previously compiled consumers must not be assumed ABI-compatible. `ClipPointWithData::accumulatedNormalImpulseBias` was removed: remove references to that unused field, retaining the normal and tangent accumulated impulses and active bias as appropriate.
+
+`Audio::getGameManagerIndex()` and `Audio::setGameManagerIndex()` and their backing field were removed; remove calls to these methods. Audio components were not stored in a manager-indexed collection. The public `BoundingRadiusProjectionAxisBinding::bind()` and `BoundingRadiusProjectionProxy::setBoundingProjection()` methods were removed; stop using these rebinding operations. Normal binding construction and collider usage remain available. These changes do not require scene or asset serialization migration.
+
 ## Scenes and callbacks
 
 `Runtime::loadScene(path)` now **replaces** the single scene. At idle it prepares and commits synchronously. From ordinary script/animation/collision callbacks it queues a replacement and returns; use `requestLoadScene(path)` / `requestClearScene()` to make this explicit. Requests share one last-wins slot latched once at the end of the step. No recursive simulation occurs. Requests emitted by retirement exits belong to the next step. `clearScene()` leaves an empty scene, including no camera; a loaded camera-less scene gets a fallback camera.

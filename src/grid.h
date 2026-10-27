@@ -46,7 +46,6 @@ class Grid
     void queueAddCollider(Collider *collider);
 
     void syncCollider(Collider *collider);
-    void finishColliderSync(Collider *collider);
     void flushDeferredPairDeltas();
     void flushPendingCellUpdates();
 
@@ -67,8 +66,6 @@ class Grid
     void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
     void queueCollider(Collider *collider);
     PhysicsManager *owner;
-    std::vector<const ColliderPair *> pairSlots;
-    std::vector<size_t> freePairSlots;
     std::vector<PairDelta> pairDeltaScratch;
 
     tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> cells;

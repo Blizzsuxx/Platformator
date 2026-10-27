@@ -68,13 +68,6 @@ void GameManager::createMainCameraIfNoMainCameraExists()
     createGameObject()->setName("Main Camera")->addComponent<Camera>();
 }
 
-GameObject *GameManager::addGameObject(GameObject *gameObject)
-{
-    registerGameObjectSubtree(gameObject);
-    flushIfIdle();
-    return gameObject;
-}
-
 void GameManager::registerGameObjectSubtree(GameObject *gameObject)
 {
     if (gameObject == nullptr || gameObject->getIsRegisteredInGameManager())
@@ -105,7 +98,6 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
     else
     {
         gameObject->hierarchyOrder = SIZE_MAX;
-        gameObject->hierarchyDepth = 0;
     }
     queueTransform(gameObject);
 
@@ -322,7 +314,6 @@ void GameManager::loop()
         std::this_thread::sleep_until(now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                 std::chrono::duration<double>(FRAME_TIME)));
     }
-    droppedSimulationSteps += clock.droppedSteps();
 }
 
 void GameManager::simulateFrame(double timeDelta)
@@ -473,11 +464,6 @@ void GameManager::notifyComponentAdded(Component *component)
         registry.add(*component, kind);
         idToObjectMap[component->getId()] = component;
     }
-    queueReconciliation(component);
-}
-
-void GameManager::notifyComponentRemoved(Component *component)
-{
     queueReconciliation(component);
 }
 
@@ -913,13 +899,12 @@ void GameManager::cancelTransform(GameObject *object)
     }
 }
 
-void GameManager::rebuildHierarchyOrder(GameObject *object, size_t depth)
+void GameManager::rebuildHierarchyOrder(GameObject *object)
 {
-    object->hierarchyDepth = depth;
     object->hierarchyOrder = nextHierarchyOrder++;
     for (auto *child : object->children)
     {
-        rebuildHierarchyOrder(child, depth + 1);
+        rebuildHierarchyOrder(child);
     }
 }
 
@@ -961,7 +946,7 @@ void GameManager::synchronizeTransforms()
         {
             if (!object->parent)
             {
-                rebuildHierarchyOrder(object, 0);
+                rebuildHierarchyOrder(object);
             }
         }
         hierarchyDirty = false;

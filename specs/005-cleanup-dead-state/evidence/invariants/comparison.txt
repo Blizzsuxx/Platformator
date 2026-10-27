@@ -1,0 +1,68 @@
+MATCH baseline/candidate add_and_remove-w1/population-000010/run-00.manifest.json
+MATCH baseline/candidate add_and_remove-w1/population-000100/run-00.manifest.json
+MATCH baseline/candidate add_and_remove-w1/population-001000/run-00.manifest.json
+MATCH baseline/candidate add_and_remove-w6/population-000010/run-00.manifest.json
+MATCH baseline/candidate add_and_remove-w6/population-000100/run-00.manifest.json
+MATCH baseline/candidate add_and_remove-w6/population-001000/run-00.manifest.json
+MATCH baseline/candidate broad_phase-w1/population-000100/run-00.manifest.json
+MATCH baseline/candidate broad_phase-w1/population-001000/run-00.manifest.json
+MATCH baseline/candidate broad_phase-w6/population-000100/run-00.manifest.json
+MATCH baseline/candidate broad_phase-w6/population-001000/run-00.manifest.json
+MATCH baseline/candidate broad_phase_stress-w1/population-000050/run-00.manifest.json
+MATCH baseline/candidate broad_phase_stress-w1/population-000300/run-00.manifest.json
+MATCH baseline/candidate broad_phase_stress-w6/population-000050/run-00.manifest.json
+MATCH baseline/candidate broad_phase_stress-w6/population-000300/run-00.manifest.json
+MATCH baseline/candidate moving_add_and_remove-w1/population-000010/run-00.manifest.json
+MATCH baseline/candidate moving_add_and_remove-w1/population-000100/run-00.manifest.json
+MATCH baseline/candidate moving_add_and_remove-w1/population-001000/run-00.manifest.json
+MATCH baseline/candidate moving_add_and_remove-w6/population-000010/run-00.manifest.json
+MATCH baseline/candidate moving_add_and_remove-w6/population-000100/run-00.manifest.json
+MATCH baseline/candidate moving_add_and_remove-w6/population-001000/run-00.manifest.json
+MATCH baseline/candidate narrow_phase-w1/population-000010/run-00.manifest.json
+MATCH baseline/candidate narrow_phase-w1/population-000200/run-00.manifest.json
+MATCH baseline/candidate narrow_phase-w6/population-000010/run-00.manifest.json
+MATCH baseline/candidate narrow_phase-w6/population-000200/run-00.manifest.json
+MATCH baseline/candidate persistent_contacts-w1/population-000010/run-00.manifest.json
+MATCH baseline/candidate persistent_contacts-w1/population-001000/run-00.manifest.json
+MATCH baseline/candidate persistent_contacts-w6/population-000010/run-00.manifest.json
+MATCH baseline/candidate persistent_contacts-w6/population-001000/run-00.manifest.json
+MATCH baseline/candidate rigid_body_container-w1/population-000100/run-00.manifest.json
+MATCH baseline/candidate rigid_body_container-w1/population-001000/run-00.manifest.json
+WAIVED baseline/candidate rigid_body_container-w6/population-000100/run-00.manifest.json Serial/parallel invariant differs: support_total
+WAIVED baseline/candidate rigid_body_container-w6/population-001000/run-00.manifest.json Serial/parallel invariant differs: support_total
+MATCH workers baseline-invariants add_and_remove-w1/population-000010/run-00.manifest.json
+MATCH workers baseline-invariants add_and_remove-w1/population-000100/run-00.manifest.json
+MATCH workers baseline-invariants add_and_remove-w1/population-001000/run-00.manifest.json
+MATCH workers baseline-invariants broad_phase-w1/population-000100/run-00.manifest.json
+MATCH workers baseline-invariants broad_phase-w1/population-001000/run-00.manifest.json
+MATCH workers baseline-invariants broad_phase_stress-w1/population-000050/run-00.manifest.json
+MATCH workers baseline-invariants broad_phase_stress-w1/population-000300/run-00.manifest.json
+MATCH workers baseline-invariants moving_add_and_remove-w1/population-000010/run-00.manifest.json
+MATCH workers baseline-invariants moving_add_and_remove-w1/population-000100/run-00.manifest.json
+MATCH workers baseline-invariants moving_add_and_remove-w1/population-001000/run-00.manifest.json
+MATCH workers baseline-invariants narrow_phase-w1/population-000010/run-00.manifest.json
+MATCH workers baseline-invariants narrow_phase-w1/population-000200/run-00.manifest.json
+MATCH workers baseline-invariants persistent_contacts-w1/population-000010/run-00.manifest.json
+MATCH workers baseline-invariants persistent_contacts-w1/population-001000/run-00.manifest.json
+WAIVED workers baseline-invariants rigid_body_container-w1/population-000100/run-00.manifest.json Serial/parallel invariant differs: support_total
+WAIVED workers baseline-invariants rigid_body_container-w1/population-001000/run-00.manifest.json Serial/parallel invariant differs: support_total
+MATCH workers candidate-invariants add_and_remove-w1/population-000010/run-00.manifest.json
+MATCH workers candidate-invariants add_and_remove-w1/population-000100/run-00.manifest.json
+MATCH workers candidate-invariants add_and_remove-w1/population-001000/run-00.manifest.json
+MATCH workers candidate-invariants broad_phase-w1/population-000100/run-00.manifest.json
+MATCH workers candidate-invariants broad_phase-w1/population-001000/run-00.manifest.json
+MATCH workers candidate-invariants broad_phase_stress-w1/population-000050/run-00.manifest.json
+MATCH workers candidate-invariants broad_phase_stress-w1/population-000300/run-00.manifest.json
+MATCH workers candidate-invariants moving_add_and_remove-w1/population-000010/run-00.manifest.json
+MATCH workers candidate-invariants moving_add_and_remove-w1/population-000100/run-00.manifest.json
+MATCH workers candidate-invariants moving_add_and_remove-w1/population-001000/run-00.manifest.json
+MATCH workers candidate-invariants narrow_phase-w1/population-000010/run-00.manifest.json
+MATCH workers candidate-invariants narrow_phase-w1/population-000200/run-00.manifest.json
+MATCH workers candidate-invariants persistent_contacts-w1/population-000010/run-00.manifest.json
+MATCH workers candidate-invariants persistent_contacts-w1/population-001000/run-00.manifest.json
+MATCH workers candidate-invariants rigid_body_container-w1/population-000100/run-00.manifest.json
+WAIVED workers candidate-invariants rigid_body_container-w1/population-001000/run-00.manifest.json Serial/parallel invariant differs: support_total
+MATCH pair transitions pair-churn-n10-w1-r0.samples.csv 600
+MATCH pair transitions pair-churn-n10-w6-r0.samples.csv 600
+MATCH pair transitions pair-churn-n1000-w1-r0.samples.csv 600
+MATCH pair transitions pair-churn-n1000-w6-r0.samples.csv 600

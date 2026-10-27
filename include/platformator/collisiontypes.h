@@ -117,17 +117,16 @@ struct ClipPointWithData
     float separation;
     float accumulatedNormalImpulse;
     float accumulatedTangentImpulse;
-    float accumulatedNormalImpulseBias;
     float massNormal;
     float massTangent;
     float bias;
 
-    ClipPointWithData() : point(Eigen::Vector2f::Zero(), ContactFeature()), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), accumulatedNormalImpulseBias(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
+    ClipPointWithData() : point(Eigen::Vector2f::Zero(), ContactFeature()), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
     {
     }
 
     explicit ClipPointWithData(const ClipVertex &point)
-        : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), accumulatedNormalImpulseBias(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
+        : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
     {
     }
 };

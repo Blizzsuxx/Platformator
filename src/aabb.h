@@ -71,12 +71,6 @@ class AABB
         {
         }
 
-        void bind(Collider *newCollider)
-        {
-            collider = newCollider;
-            xBinding.bind(newCollider->getXProjections());
-            yBinding.bind(newCollider->getYProjections());
-        }
     };
 
     AABB(Grid *owner);

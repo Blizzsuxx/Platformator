@@ -88,8 +88,4 @@ class Collision
     mutable bool blockSolve = false;
     mutable float solverFriction = 0;
 
-    bool getSupportsReferenceBody() const;
-    bool getSupportsIncidentBody() const;
-    void setSupportsReferenceBody(bool supports) const;
-    void setSupportsIncidentBody(bool supports) const;
 };

@@ -33,14 +33,10 @@ class ColliderPair
     void setAdjacencyIndexB(size_t index) const;
 
 
-    void setObjectA(Collider *colliderA);
-    void setObjectB(Collider *colliderB);
 
     Collider *getObjectA() const;
     Collider *getObjectB() const;
 
-    void incrementWitnessCount() const;
-    void decrementWitnessCount() const;
     int getWitnessCount() const;
     void addToWitnessCount(int delta) const;
 
@@ -67,7 +63,6 @@ class ColliderPair
     mutable size_t adjacencyIndexA;
     mutable size_t adjacencyIndexB;
     mutable int witnessCount;
-    mutable size_t pairSlot = SIZE_MAX;
     mutable size_t contactIndex = SIZE_MAX;
     mutable size_t solverIndex = SIZE_MAX;
     mutable bool resultHadContact = false;

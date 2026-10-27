@@ -1,0 +1,9 @@
+# Work and memory measurements
+
+Release compiler flags from each build’s `compile_commands.json` were used to compile the same standalone `sizeof` probe (`layout_probe.cpp`). On this x86-64 host: `ColliderPair` 120 → 112 bytes, `ClipPointWithData` 40 → 36 bytes, `Audio` 112 → 104 bytes, and `GameObject` 280 → 272 bytes. These are per-object layout measurements, not process RSS or a speedup. The baseline additionally maintained one pointer slot per peak pair and a free-slot vector; their measured capacities are described below.
+
+The `cleanup-work` test passed at one and two workers on both baseline and candidate. Both reported zero idle allocations, geometry work, transition checks, event records and solver-refresh visits. Both reported fixed-peak retained event and contact slots of 256. Logs are `/tmp/platformator-dead-state-0j46vn51/{baseline,candidate}-work-{1,2}.log`. These are affected-work measurements, not timings. Pair-table capacity and process RSS are measured below.
+
+A separate validated 1,000-pair churn process measured peak RSS with `wait4`, one process per cell: baseline/candidate 20,528/20,656 KiB at one worker and 21,988/22,372 KiB at six workers. See `measure_rss.py` and `invariants/rss-results.json`. These process-wide single observations are noisy and do not establish a memory regression or improvement.
+
+An isolated instrumented copy of baseline `Grid` (see `measure_pair_capacity.py`; excluded from timings) reports that for 1,000 simultaneously cycling pairs, both vectors grew to capacity 1,024 at one and six workers. Each made 11 capacity-growth allocations, retaining 16,384 bytes of element storage together on this 64-bit build, excluding vector and allocator overhead; the maximum logical population was 1,000. At 10 pairs each capacity reached 16. The candidate removes both vectors, so this particular retained storage and these growth operations no longer occur. Raw capacity-change logs are in `pair-capacity/`.

@@ -388,10 +388,8 @@ void testWarmStartFeatureReuse()
     ClipPointsWithData &cachedContacts = collision.getContactPoints();
     cachedContacts.points[0].accumulatedNormalImpulse = 1.25f;
     cachedContacts.points[0].accumulatedTangentImpulse = -0.5f;
-    cachedContacts.points[0].accumulatedNormalImpulseBias = 0.2f;
     cachedContacts.points[1].accumulatedNormalImpulse = 2.5f;
     cachedContacts.points[1].accumulatedTangentImpulse = 0.75f;
-    cachedContacts.points[1].accumulatedNormalImpulseBias = 0.4f;
 
     ClipPoints reorderedContacts;
     reorderedContacts.add(Eigen::Vector2f(31.0f, 41.0f), featureB);
@@ -402,13 +400,11 @@ void testWarmStartFeatureReuse()
     require(remappedContacts.count == 2, "Warm-start feature regression expected both contacts to survive remapping.");
     require(remappedContacts.points[0].point.feature.key == featureB.key &&
                 std::abs(remappedContacts.points[0].accumulatedNormalImpulse - 2.5f) <= 1e-6f &&
-                std::abs(remappedContacts.points[0].accumulatedTangentImpulse - 0.75f) <= 1e-6f &&
-                std::abs(remappedContacts.points[0].accumulatedNormalImpulseBias - 0.4f) <= 1e-6f,
+                std::abs(remappedContacts.points[0].accumulatedTangentImpulse - 0.75f) <= 1e-6f,
             "Warm-start feature regression failed to remap the first contact by feature id.");
     require(remappedContacts.points[1].point.feature.key == featureA.key &&
                 std::abs(remappedContacts.points[1].accumulatedNormalImpulse - 1.25f) <= 1e-6f &&
-                std::abs(remappedContacts.points[1].accumulatedTangentImpulse + 0.5f) <= 1e-6f &&
-                std::abs(remappedContacts.points[1].accumulatedNormalImpulseBias - 0.2f) <= 1e-6f,
+                std::abs(remappedContacts.points[1].accumulatedTangentImpulse + 0.5f) <= 1e-6f,
             "Warm-start feature regression failed to remap the second contact by feature id.");
 
     ClipPoints partiallyNewContacts;
@@ -422,8 +418,7 @@ void testWarmStartFeatureReuse()
             "Warm-start feature regression failed to preserve the cached impulse for a stable feature.");
     require(updatedContacts.points[1].point.feature.key == featureC.key &&
                 std::abs(updatedContacts.points[1].accumulatedNormalImpulse) <= 1e-6f &&
-                std::abs(updatedContacts.points[1].accumulatedTangentImpulse) <= 1e-6f &&
-                std::abs(updatedContacts.points[1].accumulatedNormalImpulseBias) <= 1e-6f,
+                std::abs(updatedContacts.points[1].accumulatedTangentImpulse) <= 1e-6f,
             "Warm-start feature regression expected a new feature to start without cached impulses.");
 }
 

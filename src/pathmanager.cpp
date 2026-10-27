@@ -100,7 +100,7 @@ ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw, AssetPat
     auto canonical = canonicalizeAssetPath(raw);
     auto absolute = root / fs::path(canonical).lexically_relative("assets");
     if (!canonical.empty() && fs::is_regular_file(absolute))
-        return {raw, canonical, absolute.string(), false};
+        return {canonical, absolute.string(), false};
     if (required)
         throw std::runtime_error("Required asset not found: '" + raw + "' beneath '" + root.string() + "'");
     canonical = getFallbackAssetPath(type);
@@ -110,5 +110,5 @@ ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw, AssetPat
     const auto key = std::to_string(static_cast<int>(type)) + ':' + raw;
     if (warnedFallbacks.insert(key).second)
         std::fprintf(stderr, "Optional asset '%s' uses fallback '%s'\n", raw.c_str(), canonical.c_str());
-    return {raw, canonical, absolute.string(), true};
+    return {canonical, absolute.string(), true};
 }

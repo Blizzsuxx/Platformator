@@ -165,7 +165,7 @@ class GameManager
     void queueTransform(GameObject *object);
     void cancelTransform(GameObject *object);
     void synchronizeTransforms();
-    void rebuildHierarchyOrder(GameObject *object, size_t depth);
+    void rebuildHierarchyOrder(GameObject *object);
     void synchronizeSubtree(GameObject *object);
     void queueReconciliation(Component *component);
     void retireComponent(Component *component);
@@ -183,14 +183,12 @@ class GameManager
 
     std::unique_ptr<PhysicsManager> physicsManager;
 
-    uint64_t droppedSimulationSteps = 0;
 
     void createMainCameraIfNoMainCameraExists();
     void registerGameObjectSubtree(GameObject *gameObject);
     void runSimulationStep(double timeDelta);
     void startDeletingGameObject(GameObject *gameObject);
 
-    GameObject *addGameObject(GameObject *gameObject);
     void removeGameObject(GameObject *gameObject);
 
     void notifyPhysicsManagerOfComponentAdded(Component *component);
@@ -202,7 +200,6 @@ class GameManager
     void notifyRuntimeOfComponentAdded(Component *component);
     void notifyRuntimeOfComponentRemoved(Component *component);
     void notifyComponentAdded(Component *component);
-    void notifyComponentRemoved(Component *component);
 
     PhysicsManager *getPhysicsManager() const;
     void fixedUpdateScriptComponents(double timeDelta);

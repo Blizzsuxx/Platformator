@@ -18,14 +18,6 @@ GameObject::GameObject()
 {
 }
 
-GameObject::GameObject(const float rotation, const bool active, const Eigen::Vector2f &position,
-                       const Eigen::Vector2f &scale, const std::string &name, const std::string &tag)
-    : rotation(rotation), sinRotation(std::sin(rotation)), cosRotation(std::cos(rotation)), parent(nullptr),
-      position(position), scale(scale), name(name), tag(tag), components(), children(), gameManagerIteratorIndex(0),
-      flags(static_cast<uint8_t>(active ? IS_ACTIVE : GAME_OBJECT_NONE))
-{
-}
-
 GameObject::~GameObject()
 {
     for (auto *component : components)
@@ -399,17 +391,6 @@ void GameObject::addComponentsToGameManager()
         if (component != nullptr)
         {
             platformator_detail::RuntimeAccess::gameManager().notifyComponentAdded(component);
-        }
-    }
-}
-
-void GameObject::removeComponentsFromGameManager()
-{
-    for (Component *component : components)
-    {
-        if (component != nullptr)
-        {
-            platformator_detail::RuntimeAccess::gameManager().notifyComponentRemoved(component);
         }
     }
 }

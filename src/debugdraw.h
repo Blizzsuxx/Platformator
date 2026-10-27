@@ -72,13 +72,7 @@ class DebugDraw
 
     void render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight);
 
-    void drawBoxCollider(SDL_Renderer *renderer, Camera *camera, const BoxCollider *collider);
-    void drawCircleCollider(SDL_Renderer *renderer, Camera *camera, const CircleCollider *collider);
-    void drawContactPoint(SDL_Renderer *renderer, Camera *camera, const Collision *collision);
-    void drawNormal(SDL_Renderer *renderer, Camera *camera, const Collision *collision);
 
-    void drawCircle(SDL_Renderer *renderer, int centerX, int centerY, int radius);
-    void drawCross(SDL_Renderer *renderer, int centerX, int centerY, int size);
 
     std::vector<DebugObject> debugObjectsBuffer;
 

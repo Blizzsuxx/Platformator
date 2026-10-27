@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <oneapi/tbb/global_control.h>
 #include <stdexcept>
 #include <string>
 
@@ -221,27 +222,40 @@ void runMultiWitnessTransitions()
     a->getComponent<BoxCollider>()->setIsTrigger(true);
     auto *counter = new CollisionCounterBehavior;
     a->getComponent<ScriptComponent>()->addBehavior(counter);
+    // Populate the initial narrow-phase batch beyond its parallel threshold.
+    for (int i = 0; i < 70; ++i)
+    {
+        const float x = 10000.0f + i * 400.0f;
+        createStaticBox(runtime, "parallel witness a", x, 0, 10, 10)->getComponent<BoxCollider>()->setIsTrigger(true);
+        createStaticBox(runtime, "parallel witness b", x, 0, 10, 10);
+    }
     runtime.simulateFrame(kTimeStep);
     require(counter->enterCount == 1, "Multiple cell witnesses produce one Enter");
     b->setPosition({210, 0});
     runtime.simulateFrame(kTimeStep);
     runtime.simulateFrame(kTimeStep);
     require(counter->enterCount == 1 && counter->exitCount == 0, "Losing only some witnesses preserves contact");
+    b->setPosition({2000, 0});
+    runtime.simulateFrame(kTimeStep);
+    require(counter->exitCount == 1, "Losing the final witness ends contact once");
+    b->setPosition({50, 0});
+    runtime.simulateFrame(kTimeStep);
+    require(counter->enterCount == 2, "Returning after final witness loss creates a new contact");
     b->getComponent<BoxCollider>()->setCollisionMask(0);
     runtime.simulateFrame(kTimeStep);
-    require(counter->exitCount == 1, "Filter exclusion ends contact once");
+    require(counter->exitCount == 2, "Filter exclusion ends contact once");
     b->getComponent<BoxCollider>()->setCollisionMask(1);
     runtime.simulateFrame(kTimeStep);
-    require(counter->enterCount == 2, "Re-enabled overlap begins a new lifetime");
+    require(counter->enterCount == 3, "Re-enabled overlap begins a new lifetime");
     b->setActive(false);
-    require(counter->exitCount == 2, "Idle deactivation exits before reclamation");
+    require(counter->exitCount == 3, "Idle deactivation exits before reclamation");
     b->setActive(true);
     runtime.simulateFrame(kTimeStep);
-    require(counter->enterCount == 3, "Reactivation confirms a fresh contact");
+    require(counter->enterCount == 4, "Reactivation confirms a fresh contact");
     b->removeComponent(COLLIDER);
     for (int i = 0; i < 3; ++i)
         runtime.simulateFrame(kTimeStep);
-    require(counter->exitCount == 3, "Collider removal closes only its own contact lifetime");
+    require(counter->exitCount == 4, "Collider removal closes only its own contact lifetime");
 }
 } // namespace
 
@@ -253,7 +267,11 @@ int main()
     {
         runDestroyedVictimCleanupScenario();
         runNonPrimaryRemovalCoverageScenario();
-        runMultiWitnessTransitions();
+        for (size_t workers : {size_t(1), size_t(6)})
+        {
+            tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+            runMultiWitnessTransitions();
+        }
 
         std::cout << "[PASS] collider_pair_cleanup_test\n";
         return 0;

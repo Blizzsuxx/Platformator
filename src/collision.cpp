@@ -69,8 +69,6 @@ void Collision::setContactPoints(const ClipPoints &newContactPoints) const
                 contactPoints.points[index].accumulatedNormalImpulse;
             contactPointsWithData.points[i].accumulatedTangentImpulse =
                 contactPoints.points[index].accumulatedTangentImpulse;
-            contactPointsWithData.points[i].accumulatedNormalImpulseBias =
-                contactPoints.points[index].accumulatedNormalImpulseBias;
         }
         else
         {
@@ -183,40 +181,6 @@ void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalize
 void Collision::clearSupportState() const
 {
     supportState = NONE_SUPPORT;
-}
-
-bool Collision::getSupportsReferenceBody() const
-{
-    return supportState & SUPPORTS_REFERENCE;
-}
-
-bool Collision::getSupportsIncidentBody() const
-{
-    return supportState & SUPPORTS_INCIDENT;
-}
-
-void Collision::setSupportsReferenceBody(bool supports) const
-{
-    if (supports)
-    {
-        supportState |= SUPPORTS_REFERENCE;
-    }
-    else
-    {
-        supportState &= ~SUPPORTS_REFERENCE;
-    }
-}
-
-void Collision::setSupportsIncidentBody(bool supports) const
-{
-    if (supports)
-    {
-        supportState |= SUPPORTS_INCIDENT;
-    }
-    else
-    {
-        supportState &= ~SUPPORTS_INCIDENT;
-    }
 }
 
 bool Collision::isVerticalCollision() const

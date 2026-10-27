@@ -54,7 +54,6 @@ class BoundingRadiusProjectionProxy
     LocalSortArray *getChunk() const;
     size_t getChunkIndex() const;
 
-    void setBoundingProjection(BoundingRadiusProjection *projection);
     void setChunk(LocalSortArray *chunk);
     void setChunkIndex(size_t chunkIndex);
     void updateCachedProjectedPosition();
@@ -101,7 +100,6 @@ struct BoundingRadiusProjectionAxisBinding
     BoundingRadiusProjectionProxy maxProxy;
 
     explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis);
-    void bind(BoundingRadiusProjectionAxis *axis);
 };
 
 enum class ColliderType

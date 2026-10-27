@@ -87,18 +87,6 @@ void ColliderPair::setAdjacencyIndexB(size_t index) const
     adjacencyIndexB = index;
 }
 
-void ColliderPair::setObjectA(Collider *colliderA)
-{
-    objectA = colliderA;
-    objectAStateVersion = colliderA ? colliderA->getStateVersion() : -1;
-}
-
-void ColliderPair::setObjectB(Collider *colliderB)
-{
-    objectB = colliderB;
-    objectBStateVersion = colliderB ? colliderB->getStateVersion() : -1;
-}
-
 Collider *ColliderPair::getObjectA() const
 {
     return objectA;
@@ -127,16 +115,6 @@ bool ColliderPair::operator==(const ColliderPair &other) const
 {
     return (objectA == other.objectA && objectB == other.objectB) ||
            (objectA == other.objectB && objectB == other.objectA);
-}
-
-void ColliderPair::incrementWitnessCount() const
-{
-    witnessCount++;
-}
-
-void ColliderPair::decrementWitnessCount() const
-{
-    witnessCount--;
 }
 
 int ColliderPair::getWitnessCount() const

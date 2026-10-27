@@ -71,6 +71,16 @@ int main()
                                         "assets/scenes/../textures/MiXeD.PNG", "assets/../outside.png", "assets"})
                 rejects([&] { runtime.loadTexture(invalid); });
             rejects([&] { runtime.loadTexture((root / "textures/MiXeD.PNG").string()); });
+            try
+            {
+                runtime.loadTexture("assets/../original-request.png");
+                throw std::runtime_error("Invalid traversal unexpectedly accepted");
+            }
+            catch (const std::invalid_argument &error)
+            {
+                require(std::string(error.what()).find("assets/../original-request.png") != std::string::npos,
+                        "Invalid asset diagnostics retain the original requested path");
+            }
             rejects([&] { runtime.loadAudio("audio/missing.wav"); });
             rejects([&] { runtime.loadAnimationClip("animations/missing.animset"); });
             fs::copy_file(source / "textures/missing.png", directory / "outside.png",

@@ -10,14 +10,6 @@
 
 class Grid;
 
-enum Axis : uint8_t
-{
-    NONE = 0,
-    X = 1,
-    Y = 2,
-    ALL_AXES = 3
-};
-
 class AABBPair
 {
   public:
@@ -88,8 +80,8 @@ class AABB
     bool getIsEmpty() const;
 
   private:
-    void axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis);
-    void axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis);
+    void axisOverlapBegin(Collider *colliderA, Collider *colliderB);
+    void axisOverlapEnd(Collider *colliderA, Collider *colliderB);
     void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);
     void overlapEndCheckpoint(Collider *colliderA, Collider *colliderB);
     bool checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const;

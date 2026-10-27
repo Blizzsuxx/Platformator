@@ -1,0 +1,682 @@
+[
+  {
+    "count": 100,
+    "rep": 5,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4991413\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 3,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4740407\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 1,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4896844\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 0,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4966877\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 6,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5306099\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 2,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5323272\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 9,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5095540\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 7,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4964332\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 8,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4832872\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 7,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=44999689\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 2,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=50008205\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 8,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=45468208\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 6,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4959402\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 1,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5142098\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 8,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5203354\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 8,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=54128145\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 2,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=48934158\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 9,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=52152170\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 4,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=48924962\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 2,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4642912\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 5,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4810931\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 6,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=50760211\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 4,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5499226\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 6,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=46838496\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 5,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=51840218\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 0,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=48070121\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 3,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=5474438\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 4,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4570525\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 1,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=46162564\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 0,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=48630894\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 3,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=49807895\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 7,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=47642480\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 0,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4687456\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 4,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=44784402\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 7,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4550276\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 3,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=45190883\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 100,
+    "rep": 9,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=100 warmup=2 elapsed_ns=4653933\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "100",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 9,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=46790946\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 5,
+    "stage": "baseline",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=46330303\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/tmp/platformator-006-baseline/source/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/tmp/platformator-006-baseline/source/assets"
+    ]
+  },
+  {
+    "count": 1000,
+    "rep": 1,
+    "stage": "candidate",
+    "returncode": 0,
+    "stdout": "mode=asset-churn count=1000 warmup=2 elapsed_ns=51761319\n",
+    "stderr": "",
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/home/user/Projects/Platformator/bin/cleanup-benchmark/platformator_focused_cleanup_probe",
+      "asset-churn",
+      "1000",
+      "/home/user/Projects/Platformator/assets"
+    ]
+  }
+]

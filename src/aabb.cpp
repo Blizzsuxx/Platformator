@@ -2,8 +2,8 @@
 #include "grid.h"
 
 AABB::AABB(Grid *owner)
-    : intervalListX(this, Axis::X, true),
-      intervalListY(this, Axis::Y, false),
+    : intervalListX(this, true),
+      intervalListY(this, false),
       pairsWithBothAxisOverlapping(),
       colliderBindings(),
       owner(owner)
@@ -99,7 +99,7 @@ SegmentedIntervalList *AABB::getIntervalListY()
     return &intervalListY;
 }
 
-void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
+void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
 {
     bool isOverlappingOnBothAxes = checkOverlapOnAxis(colliderA, colliderB);
 
@@ -128,7 +128,7 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB, Axis axis)
     owner->recordPairDelta(colliderA, colliderB, 1);
 }
 
-void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
+void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB)
 {
     AABBPair pair(colliderA, colliderB);
     auto iterator = pairsWithBothAxisOverlapping.find(pair);
@@ -143,12 +143,12 @@ void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB, Axis axis)
 
 void AABB::overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB)
 {
-    axisOverlapBegin(colliderA, colliderB, Axis::ALL_AXES);
+    axisOverlapBegin(colliderA, colliderB);
 }
 
 void AABB::overlapEndCheckpoint(Collider *colliderA, Collider *colliderB)
 {
-    axisOverlapEnd(colliderA, colliderB, Axis::ALL_AXES);
+    axisOverlapEnd(colliderA, colliderB);
 }
 
 bool AABB::checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const

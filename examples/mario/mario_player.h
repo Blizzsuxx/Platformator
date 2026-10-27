@@ -27,8 +27,6 @@ namespace mario
         void stopForWin();
 
         Rigidbody *getBody() const;
-        const Eigen::Vector2f &getPositionBeforePhysics() const;
-        const Eigen::Vector2f &getVelocityBeforePhysics() const;
 
     private:
         Rigidbody *body;

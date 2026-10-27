@@ -1,0 +1,1 @@
+These captures predate the removal of unused internal PathManager parameters and are historical.

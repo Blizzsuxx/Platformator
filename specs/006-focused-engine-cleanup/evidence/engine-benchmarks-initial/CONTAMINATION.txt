@@ -1,0 +1,1 @@
+Initial timing may overlap with an unrelated measurement-fixture compilation; do not use it for performance conclusions.

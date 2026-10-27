@@ -1,0 +1,104 @@
+{
+  "asset_root": "/tmp/platformator-006-baseline/source/assets",
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup"
+  },
+  "build": {
+    "commit": "",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": false,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "aaebfebec72bc58993c0bce0dc44a49b86cd5bfabf3acc3cbd9c57c55cdabecf",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "SDL_ttf": "3.2.2",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "initial_state": {
+    "bodies": 50,
+    "colliders": 50,
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 50,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.18.49-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 60,
+  "physical_invariants": {
+    "bodies": 50,
+    "colliders": 50,
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 50,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "render_samples": 0,
+  "rendering": false,
+  "repetition_index": 3,
+  "repetitions": 5,
+  "requested_measured_steps": 60,
+  "resolved_parameters": {
+    "body_count": 50,
+    "box_height": 48.0,
+    "box_width": 48.0,
+    "collision_mask": 0,
+    "columns": 8,
+    "gravity": [
+      0.0,
+      98.0999984741211
+    ],
+    "layout_size": [
+      90.0,
+      84.0
+    ],
+    "phase_offset": 320.0,
+    "seed_policy": "deterministic velocity/pattern phase; seed zero preserves historical layouts",
+    "solver_iterations": 10,
+    "spawn_step": [
+      6.0,
+      6.0
+    ]
+  },
+  "sample_capacity": 4096,
+  "scenario": "broad_phase_stress",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": true,
+  "total_render_samples": 0,
+  "total_steps": 60,
+  "validation_mode": "boundary-only",
+  "warmup_steps": 20,
+  "workers": 1
+}

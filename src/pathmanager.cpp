@@ -80,35 +80,11 @@ fs::path PathManager::resolveScenePath(const std::string &raw) const
     return (startupBase / path).lexically_normal();
 }
 
-std::string PathManager::getFallbackAssetPath(AssetPathType type) const
+ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw) const
 {
-    switch (type)
-    {
-    case AssetPathType::Texture:
-        return "assets/textures/missing.png";
-    case AssetPathType::Audio:
-        return "assets/audio/missing.wav";
-    case AssetPathType::AnimationClip:
-        return "assets/animations/missing.animset";
-    default:
-        return {};
-    }
-}
-
-ResolvedAssetPath PathManager::resolveAssetPath(const std::string &raw, AssetPathType type, bool required) const
-{
-    auto canonical = canonicalizeAssetPath(raw);
-    auto absolute = root / fs::path(canonical).lexically_relative("assets");
-    if (!canonical.empty() && fs::is_regular_file(absolute))
-        return {canonical, absolute.string(), false};
-    if (required)
-        throw std::runtime_error("Required asset not found: '" + raw + "' beneath '" + root.string() + "'");
-    canonical = getFallbackAssetPath(type);
-    absolute = root / fs::path(canonical).lexically_relative("assets");
+    const auto canonical = canonicalizeAssetPath(raw);
+    const auto absolute = root / fs::path(canonical).lexically_relative("assets");
     if (canonical.empty() || !fs::is_regular_file(absolute))
-        throw std::runtime_error("Fallback asset is missing for '" + raw + "': " + absolute.string());
-    const auto key = std::to_string(static_cast<int>(type)) + ':' + raw;
-    if (warnedFallbacks.insert(key).second)
-        std::fprintf(stderr, "Optional asset '%s' uses fallback '%s'\n", raw.c_str(), canonical.c_str());
-    return {canonical, absolute.string(), true};
+        throw std::runtime_error("Required asset not found: '" + raw + "' beneath '" + root.string() + "'");
+    return {canonical, absolute.string()};
 }

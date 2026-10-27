@@ -1,0 +1,5 @@
+# Membership baseline
+
+Frozen debug and production `platformator_physics_bookkeeping_test`, `platformator_contact_events_test` and `platformator_physics_support_test` passed. `physics_bookkeeping_test` includes 1/6-worker body participation, repeated changes, sleep and queue first/middle/last repair; contact and support cases cover relevant transitions. Whether any further pair-list-specific middle/last cases are missing remains to be assessed before T019 completion. Baseline logs are retained under `/tmp/platformator-006-baseline/`.
+
+Added behavior controls remove first, middle and last contact memberships, verifying unaffected contacts remain; separate moving-kinematic controls deactivate bodies corresponding to first, middle and last entries and verify each survivor continues to move. Both checks run at one and six workers. The same test-only overlay passed the frozen baseline and candidate (`membership-baseline-test.log`, `membership-candidate-test.log`), and the baseline source was restored. Existing tests cover repeated desired-state updates, pending retirement, support and contact participation.

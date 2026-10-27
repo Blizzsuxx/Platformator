@@ -100,6 +100,61 @@ void queueLifecycle(size_t workers)
     require(pending().empty(), "Empty evaluation batch is valid");
 }
 
+void contactMembershipRemoval(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+    for (int i = 0; i < 5; ++i)
+    {
+        auto *a = runtime.createGameObject()->setPosition({float(i * 40), 0})->addComponent<BoxCollider>(4, 4);
+        a->getComponent<BoxCollider>()->setIsTrigger(true);
+        runtime.createGameObject()->setPosition({float(i * 40 + 1), 0})->addComponent<BoxCollider>(4, 4);
+    }
+    manager.commitMutations();
+    physics->checkForCollisions();
+    require(physics->getContactPairs().size() == 5, "Fixture starts with five independent contacts");
+    for (int removal = 0; removal < 3; ++removal)
+    {
+        const auto &pairs = physics->getContactPairs();
+        const size_t before = pairs.size();
+        const size_t index = removal == 0 ? 0 : removal == 1 ? before / 2 : before - 1;
+        pairs[index]->getObjectA()->setCollisionMask(0);
+        manager.commitMutations();
+        physics->checkForCollisions();
+        require(physics->getContactPairs().size() == before - 1,
+                "Removing first, middle and last contacts preserves all other memberships");
+    }
+}
+
+void bodyMembershipRemoval(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    std::vector<GameObject *> objects;
+    for (int i = 0; i < 5; ++i)
+    {
+        auto *object = runtime.createGameObject()->addComponent<Rigidbody>(KINEMATIC, false);
+        object->getComponent<Rigidbody>()->setVelocity({12, 0});
+        objects.push_back(object);
+    }
+    runtime.simulateFrame(dt);
+    for (int removal : {0, 2, 3})
+    {
+        objects[removal]->setActive(false);
+        std::vector<float> before;
+        for (auto *object : objects) before.push_back(object->getPosition().x());
+        runtime.simulateFrame(dt);
+        for (size_t i = 0; i < objects.size(); ++i)
+        {
+            const float expected = objects[i]->getActive() ? 0.1f : 0.0f;
+            require(std::abs(objects[i]->getPosition().x() - before[i] - expected) < 1e-5f,
+                    "Removing active body memberships preserves movement for all survivors");
+        }
+    }
+}
+
 void bodyParticipation(size_t workers)
 {
     tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
@@ -228,6 +283,8 @@ int main()
         {
             baselineControls(workers);
             queueLifecycle(workers);
+            contactMembershipRemoval(workers);
+            bodyMembershipRemoval(workers);
             bodyParticipation(workers);
             sleepTransitionsAndGroups(workers);
         }

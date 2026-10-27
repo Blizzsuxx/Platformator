@@ -1,30 +1,10 @@
 #include "physicsmanager.h"
 #include "workprobe.h"
+#include "physicsmembership.h"
 #include <cassert>
 
 namespace
 {
-    void membership(std::vector<const ColliderPair *> &list, const ColliderPair *pair, size_t ColliderPair::*index,
-                    bool desired)
-    {
-        auto &position = const_cast<ColliderPair *>(pair)->*index;
-        if (desired == (position != SIZE_MAX))
-            return;
-
-        if (desired)
-        {
-            position = list.size();
-            list.push_back(pair);
-        }
-        else
-        {
-            const auto *moved = list.back();
-            list[position] = moved;
-            const_cast<ColliderPair *>(moved)->*index = position;
-            list.pop_back();
-            position = SIZE_MAX;
-        }
-    }
     bool movingBody(const Rigidbody *body)
     {
         return body && body->getBodyType() != STATIC && !body->getIsSleeping();

@@ -6,6 +6,7 @@
 #include "sdlwindow.h"
 
 #include "objectregistry.h"
+#include "assetrequestaliases.h"
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -174,6 +175,7 @@ class GameManager
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> scriptComponents;
+    platformator_detail::AssetRequestAliases textureAliases, audioAliases, animationAliases;
     std::unordered_map<std::string, std::unique_ptr<TextureWrapper>> textureCache;
     std::unordered_map<std::string, std::unique_ptr<AudioWrapper>> audioCache;
     std::unordered_map<std::string, std::unique_ptr<AnimationClip>> animationClipCache;

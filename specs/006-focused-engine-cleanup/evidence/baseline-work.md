@@ -1,0 +1,5 @@
+# Preliminary baseline work
+
+The common Release probe was built from the frozen snapshot and successfully exercised 100 retained texture requests, 100 validated equivalent-separator requests and 10 reference-release/reload operations with the dummy SDL drivers. No timings from these exploratory runs are treated as comparative results. The fixture does not currently count filesystem operations, allocations, debug copies or moves, and its debug mode is unavailable in the debug-disabled benchmark preset; these measurements remain unverified. Physics baseline suites and other worker/checkpoint controls are being run separately; full outcomes are not yet recorded here.
+
+The frozen debug suite passed the existing physics bookkeeping, contact, geometry and pair-cleanup hosts; the bookkeeping and pair-cleanup tests themselves exercise one and six worker settings, including multicell witness survival/final removal and re-entry. The debug-object copy/move counts and the direct resolution-call counts remain unverified as above. The instrumentation-only work host was skipped in this build. Logs: `/tmp/platformator-006-baseline/ctest-debug.log`.

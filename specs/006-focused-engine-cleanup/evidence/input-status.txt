@@ -1,0 +1,13 @@
+A  specs/006-focused-engine-cleanup/checklists/requirements.md
+A  specs/006-focused-engine-cleanup/contracts/asset-loading.md
+A  specs/006-focused-engine-cleanup/contracts/physics-and-compatibility.md
+A  specs/006-focused-engine-cleanup/contracts/validation.md
+A  specs/006-focused-engine-cleanup/data-model.md
+A  specs/006-focused-engine-cleanup/plan.md
+A  specs/006-focused-engine-cleanup/quickstart.md
+A  specs/006-focused-engine-cleanup/research.md
+A  specs/006-focused-engine-cleanup/spec.md
+A  specs/006-focused-engine-cleanup/tasks.md
+M  src/gamemanager.cpp
+?? specs/006-focused-engine-cleanup/evidence/input-head.txt
+?? specs/006-focused-engine-cleanup/evidence/input-status.txt

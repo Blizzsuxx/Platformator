@@ -23,7 +23,7 @@ class Collision
 
     Collision();
     Collision(Collider *colliderA, Collider *colliderB);
-    Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints,
+    Collision(const Eigen::Vector2f &normal, const ClipPointsWithData &contactPoints,
               Collider *colliderA, Collider *colliderB);
     ~Collision();
 

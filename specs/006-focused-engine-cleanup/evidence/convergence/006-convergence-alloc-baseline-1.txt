@@ -1,0 +1,2 @@
+ALLOC malloc_calloc_realloc=4408 frees=4249
+mode=asset-hit count=1 warmup=100 elapsed_ns=10510

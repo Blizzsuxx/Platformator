@@ -52,6 +52,8 @@ class Runtime
     uint64_t getRuntimeSerial() const;
     Camera *getMainCamera() const;
     void createMainCameraIfNoMainCameraExists();
+    // Nonempty asset requests must exist and load successfully; failures throw.
+    // A retained cached resource is reused without rechecking its filesystem path.
     AnimationClip *loadAnimationClip(const std::string &filePath) const;
     AudioWrapper *loadAudio(const std::string &filePath) const;
     void loadScene(Scene &scene);

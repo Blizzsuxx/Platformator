@@ -7,14 +7,13 @@
 #include "localsortarray.h"
 
 class AABB;
-enum Axis : uint8_t;
 
 class SegmentedIntervalList
 {
     friend class LocalSortArray;
 
 public:
-    SegmentedIntervalList(AABB *owner, Axis axis, bool isPrimary);
+    SegmentedIntervalList(AABB *owner, bool isPrimary);
     ~SegmentedIntervalList();
 
     void clear();
@@ -56,7 +55,6 @@ private:
 
     std::vector<LocalSortArray *> chunks;
     AABB *owner;
-    Axis axis;
 
     // we only need to check for collisions in one of the axes when inserting or removing an interval, so we can use this to know if we should emit a collision or not
     bool isPrimary;

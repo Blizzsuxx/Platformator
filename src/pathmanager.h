@@ -2,23 +2,11 @@
 
 #include <string>
 #include <filesystem>
-#include <unordered_set>
-
-enum class AssetPathType
-{
-    Texture,
-    Audio,
-    AnimationClip,
-    Model,
-    Script,
-    Generic,
-};
 
 struct ResolvedAssetPath
 {
     std::string canonicalPath;
     std::string absolutePath;
-    bool usedFallback;
 };
 
 class PathManager
@@ -34,11 +22,8 @@ class PathManager
 
     std::string canonicalizeAssetPath(const std::string &rawPath) const;
     std::string getAssetsRootAbsolutePath() const;
-    std::string getFallbackAssetPath(AssetPathType assetPathType) const;
-    ResolvedAssetPath resolveAssetPath(const std::string &rawPath, AssetPathType assetPathType,
-                                       bool required = false) const;
+    ResolvedAssetPath resolveAssetPath(const std::string &rawPath) const;
 
   private:
     std::filesystem::path root, startupBase;
-    mutable std::unordered_set<std::string> warnedFallbacks;
 };

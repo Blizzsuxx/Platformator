@@ -18,12 +18,10 @@ namespace mario
         MarioCameraRig();
 
         void lateUpdate(double timeDelta) override;
-        void start() override;
 
     private:
         ObjectReference<Camera> camera;
         ObjectReference<GameObject> target;
-        Rigidbody *targetBody;
         float cameraLead;
 
         SERIALIZABLE_SCRIPT(

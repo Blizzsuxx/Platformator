@@ -14,11 +14,6 @@ namespace mario
     {
     }
 
-    void MarioCameraRig::start()
-    {
-        targetBody = target.get()->getComponent<Rigidbody>();
-    }
-
     void MarioCameraRig::lateUpdate(double)
     {
         SDL_FRect cameraRect = camera.get()->getCamera();

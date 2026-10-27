@@ -115,6 +115,21 @@ int main()
             runtime.loadScene(original.string());
             committed = runtime.getGameObject("committed");
         };
+        for (const auto &asset : std::vector<std::pair<Json, std::string>>{
+                 {{{"id", 2}, {"type", AUDIO}, {"filePath", "assets/audio/not-present.wav"},
+                   {"gain", 1}, {"loopCount", 0}, {"autoPlay", false}}, "assets/audio/not-present.wav"},
+                 {{{"id", 2}, {"type", ANIMATOR}, {"animationClipFilePath", "assets/animations/not-present.animset"},
+                   {"currentFrameIndex", 0}, {"playbackSpeed", 1}, {"playing", false}}, "assets/animations/not-present.animset"}})
+        {
+            auto missingObject = base;
+            missingObject["components"] = Json::array({asset.first});
+            write(candidate, Json::array({missingObject}));
+            const auto message = failure([&] { runtime.loadScene(candidate.string()); });
+            require(message.find(asset.second) != std::string::npos,
+                    "Missing scene asset diagnostic must contain the requested path");
+            require(runtime.getGameObject("committed") == committed,
+                    "Missing scene asset must preserve the committed scene");
+        }
         auto bad = base;
         bad["id"] = -1;
         rejects(Json::array({bad}));

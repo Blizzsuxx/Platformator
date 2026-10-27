@@ -1,0 +1,265 @@
+{
+  "seed": 42,
+  "runs": [
+    {
+      "stage": "final",
+      "repetition": 9,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1903302\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1771952\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 7,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1733400\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1626725\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1783157\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 6,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1683159\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 7,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1712200\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 9,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1622421\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1730087\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 6,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1614780\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 8,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1725771\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 5,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1677894\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1824600\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 5,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=2022327\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1748321\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 8,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1754005\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1867039\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1604125\n",
+      "stderr": ""
+    },
+    {
+      "stage": "prior",
+      "repetition": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-prior-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1622339\n",
+      "stderr": ""
+    },
+    {
+      "stage": "final",
+      "repetition": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/tmp/006-final-alias-eviction"
+      ],
+      "exit": 0,
+      "stdout": "count=300 warmup=5 repetitions=50 elapsed_ns=1691814\n",
+      "stderr": ""
+    }
+  ]
+}

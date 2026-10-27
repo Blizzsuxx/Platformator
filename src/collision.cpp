@@ -17,7 +17,7 @@ Collision::Collision(Collider *colliderA, Collider *colliderB)
 {
 }
 
-Collision::Collision(const Eigen::Vector2f &normal, float penetration, const ClipPointsWithData &contactPoints,
+Collision::Collision(const Eigen::Vector2f &normal, const ClipPointsWithData &contactPoints,
                      Collider *colliderA, Collider *colliderB)
     : normal(normal), contactPoints(contactPoints), referenceObject(colliderA), incidentObject(colliderB),
       supportState(SupportState::NONE_SUPPORT)

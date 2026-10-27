@@ -203,7 +203,8 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
         throw std::invalid_argument("Simulation timestep must be finite and positive");
     }
 
-    auto stage = [&](Phase next, auto &&work) {
+    auto stage = [&](Phase next, auto &&work)
+    {
         PhaseGuard guard(*this, next);
         work();
     };
@@ -212,39 +213,33 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     PLATFORMATOR_BENCH_FRAME_BEGIN();
     try
     {
-        stage(Phase::Starting, [&] {
-            startPendingScripts();
-        });
-        stage(Phase::StepHook, [&] {
+        stage(Phase::Starting, [&]
+              { startPendingScripts(); });
+        stage(Phase::StepHook, [&]
+              {
             if (customCallback)
             {
                 customCallback(timeDelta);
-            }
-        });
-        stage(Phase::FixedUpdate, [&] {
-            fixedUpdateScriptComponents(timeDelta);
-        });
-        stage(Phase::Physics, [&] {
+            } });
+        stage(Phase::FixedUpdate, [&]
+              { fixedUpdateScriptComponents(timeDelta); });
+        stage(Phase::Physics, [&]
+              {
             PLATFORMATOR_BENCH_SCOPE(Physics);
             synchronizeTransforms();
             physicsManager->checkForCollisions();
             physicsManager->applyPhysics(timeDelta);
             physicsManager->resolveCollisions(timeDelta);
             physicsManager->applyMovement(timeDelta);
-            synchronizeTransforms();
-        });
-        stage(Phase::CollisionDispatch, [&] {
-            physicsManager->handlePendingPhysicsEvents(timeDelta);
-        });
-        stage(Phase::Update, [&] {
-            updateScriptComponents(timeDelta);
-        });
-        stage(Phase::Animation, [&] {
-            updateAnimatorComponents(timeDelta);
-        });
-        stage(Phase::LateUpdate, [&] {
-            lateUpdateScriptComponents(timeDelta);
-        });
+            synchronizeTransforms(); });
+        stage(Phase::CollisionDispatch, [&]
+              { physicsManager->handlePendingPhysicsEvents(timeDelta); });
+        stage(Phase::Update, [&]
+              { updateScriptComponents(timeDelta); });
+        stage(Phase::Animation, [&]
+              { updateAnimatorComponents(timeDelta); });
+        stage(Phase::LateUpdate, [&]
+              { lateUpdateScriptComponents(timeDelta); });
     }
     catch (...)
     {
@@ -378,14 +373,17 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath, bool requi
         }
         return nullptr;
     }
-    const auto resolved =
-        PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Texture, required);
-    if (required && resolved.usedFallback)
+    if (const auto *canonical = textureAliases.find(filePath))
     {
-        throw std::runtime_error("Required texture not found: " + filePath);
+        auto found = textureCache.find(*canonical);
+        if (found != textureCache.end()) return found->second.get();
+        throw std::logic_error("Stale asset request alias");
     }
+    const auto resolved =
+        PathManager::getInstance().resolveAssetPath(filePath);
     if (auto found = textureCache.find(resolved.canonicalPath); found != textureCache.end())
     {
+        textureAliases.add(filePath, resolved.canonicalPath);
         return found->second.get();
     }
     if (!window->getRenderer())
@@ -396,18 +394,13 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath, bool requi
         IMG_LoadTexture(window->getRenderer(), resolved.absolutePath.c_str()), SDL_DestroyTexture);
     if (!texture)
     {
-        if (required)
-        {
-            throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
-        }
-        return nullptr;
+        throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
     }
     auto wrapper = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
     texture.release();
     wrapper->runtimeSerial = registry.serial();
-    auto *result = wrapper.get();
-    textureCache.emplace(resolved.canonicalPath, std::move(wrapper));
-    return result;
+    return platformator_detail::publishAsset(textureCache, textureAliases, filePath,
+                                             resolved.canonicalPath, std::move(wrapper));
 }
 
 void GameManager::freeTexture(TextureWrapper *textureWrapper)
@@ -417,19 +410,22 @@ void GameManager::freeTexture(TextureWrapper *textureWrapper)
     auto it = textureCache.find(textureWrapper->getFilePath());
     if (it != textureCache.end())
     {
+        textureAliases.remove(it->first);
         textureCache.erase(it);
     }
 }
 
 void GameManager::freeAllTextures()
 {
+    textureAliases.clear();
     textureCache.clear();
 }
 
 GameObject *GameManager::createGameObject()
 {
     assertCanMutate();
-    auto cleanup = [](GameObject *object) {
+    auto cleanup = [](GameObject *object)
+    {
         delete object;
     };
     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
@@ -710,14 +706,17 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath, bool required)
         }
         return nullptr;
     }
-    const auto resolved =
-        PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::Audio, required);
-    if (required && resolved.usedFallback)
+    if (const auto *canonical = audioAliases.find(filePath))
     {
-        throw std::runtime_error("Required audio not found: " + filePath);
+        auto found = audioCache.find(*canonical);
+        if (found != audioCache.end()) return found->second.get();
+        throw std::logic_error("Stale asset request alias");
     }
+    const auto resolved =
+        PathManager::getInstance().resolveAssetPath(filePath);
     if (auto found = audioCache.find(resolved.canonicalPath); found != audioCache.end())
     {
+        audioAliases.add(filePath, resolved.canonicalPath);
         return found->second.get();
     }
     if (!window->getMixer())
@@ -728,18 +727,13 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath, bool required)
         MIX_LoadAudio(window->getMixer(), resolved.absolutePath.c_str(), true), MIX_DestroyAudio);
     if (!audio)
     {
-        if (required)
-        {
-            throw std::runtime_error("Audio '" + filePath + "': " + SDL_GetError());
-        }
-        return nullptr;
+        throw std::runtime_error("Audio '" + filePath + "': " + SDL_GetError());
     }
     auto wrapper = std::make_unique<AudioWrapper>(audio.get(), resolved.canonicalPath);
     audio.release();
     wrapper->runtimeSerial = registry.serial();
-    auto *result = wrapper.get();
-    audioCache.emplace(resolved.canonicalPath, std::move(wrapper));
-    return result;
+    return platformator_detail::publishAsset(audioCache, audioAliases, filePath,
+                                             resolved.canonicalPath, std::move(wrapper));
 }
 
 void GameManager::freeAudio(AudioWrapper *audioWrapper)
@@ -748,12 +742,14 @@ void GameManager::freeAudio(AudioWrapper *audioWrapper)
     auto it = audioCache.find(audioWrapper->getFilePath());
     if (it != audioCache.end())
     {
+        audioAliases.remove(it->first);
         audioCache.erase(it);
     }
 }
 
 void GameManager::freeAllAudio()
 {
+    audioAliases.clear();
     audioCache.clear();
 }
 
@@ -770,12 +766,14 @@ void GameManager::freeAnimationClip(AnimationClip *animationClip)
     auto it = animationClipCache.find(animationClip->getFilePath());
     if (it != animationClipCache.end())
     {
+        animationAliases.remove(it->first);
         animationClipCache.erase(it);
     }
 }
 
 void GameManager::freeAllAnimationClips()
 {
+    animationAliases.clear();
     animationClipCache.clear();
 }
 
@@ -791,6 +789,7 @@ void GameManager::queueScriptStart(ScriptComponent *script)
 
 void GameManager::cancelScriptStart(ScriptComponent *script)
 {
+    // Do not swap this out like the other ones. this can be called during other script starts
     const auto index = script->pendingStartIndex;
     if (index == SIZE_MAX)
     {
@@ -965,9 +964,8 @@ void GameManager::synchronizeTransforms()
     }
     if (transformOrderNeeded)
     {
-        std::sort(dirtyTransforms.begin(), dirtyTransforms.end(), [](auto *a, auto *b) {
-            return a->hierarchyOrder < b->hierarchyOrder;
-        });
+        std::sort(dirtyTransforms.begin(), dirtyTransforms.end(), [](auto *a, auto *b)
+                  { return a->hierarchyOrder < b->hierarchyOrder; });
     }
 
     ++transformStamp;
@@ -997,7 +995,8 @@ void GameManager::runDestructionCallbacks(ScriptComponent *script, std::exceptio
     script->lifecycle = ObjectLifecycle::DestroyCallbacks;
     PhaseGuard callbackPhase(*this, Phase::DestructionCallbacks);
     cancelScriptStart(script);
-    const auto destroy = [&](Behavior *behavior) {
+    const auto destroy = [&](Behavior *behavior)
+    {
         try
         {
             behavior->onDestroy();
@@ -1265,32 +1264,37 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath,
         }
         return nullptr;
     }
-    const auto resolved =
-        PathManager::getInstance().resolveAssetPath(filePath, AssetPathType::AnimationClip, required);
-    if (required && resolved.usedFallback)
+    if (const auto *canonical = animationAliases.find(filePath))
     {
-        throw std::runtime_error("Required animation not found: " + filePath);
+        auto found = animationClipCache.find(*canonical);
+        if (found != animationClipCache.end()) return found->second.get();
+        throw std::logic_error("Stale asset request alias");
     }
+    const auto resolved =
+        PathManager::getInstance().resolveAssetPath(filePath);
     if (auto found = animationClipCache.find(resolved.canonicalPath); found != animationClipCache.end())
     {
+        animationAliases.add(filePath, resolved.canonicalPath);
         return found->second.get();
     }
     std::ifstream file(resolved.absolutePath);
     if (!file)
     {
-        if (required)
-        {
-            throw std::runtime_error("Cannot open animation: " + resolved.absolutePath);
-        }
-        return nullptr;
+        throw std::runtime_error("Cannot open animation: " + filePath);
     }
     auto clip = std::make_unique<AnimationClip>();
-    deserialize(nlohmann::json::parse(file), *clip, resolver);
+    try
+    {
+        deserialize(nlohmann::json::parse(file), *clip, resolver);
+    }
+    catch (const std::exception &error)
+    {
+        throw std::runtime_error("Animation '" + filePath + "': " + error.what());
+    }
     clip->setFilePath(resolved.canonicalPath);
     clip->runtimeSerial = registry.serial();
-    auto *result = clip.get();
-    animationClipCache.emplace(resolved.canonicalPath, std::move(clip));
-    return result;
+    return platformator_detail::publishAsset(animationClipCache, animationAliases, filePath,
+                                             resolved.canonicalPath, std::move(clip));
 }
 
 void GameManager::requestScene(std::optional<std::string> path)

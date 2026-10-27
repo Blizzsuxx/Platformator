@@ -1,0 +1,742 @@
+diff --git a/specs/006-focused-engine-cleanup/checklists/requirements.md b/specs/006-focused-engine-cleanup/checklists/requirements.md
+new file mode 100644
+index 0000000..decf8f7
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/checklists/requirements.md
+@@ -0,0 +1,36 @@
++# Specification Quality Checklist: Focused Engine and Example Cleanup
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-10-27
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [ ] No implementation details (languages, frameworks, APIs)
++- [x] Focused on user value and business needs
++- [x] Written for the intended project stakeholders
++- [x] All mandatory sections completed
++
++## Requirement Completeness
++
++- [x] No [NEEDS CLARIFICATION] markers remain
++- [x] Requirements are testable and unambiguous
++- [x] Success criteria are measurable
++- [x] Success criteria are technology-agnostic
++- [x] All acceptance scenarios are defined
++- [x] Edge cases are identified
++- [x] Scope is clearly bounded
++- [x] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [x] All functional requirements have clear acceptance criteria
++- [x] User scenarios cover primary flows
++- [x] Feature meets measurable outcomes defined in Success Criteria
++- [ ] No implementation details leak into specification
++
++## Notes
++
++- Requirements-quality review completed on 2026-10-27. Checked items describe specification quality, not completed implementation.
++- The two unchecked items reflect an intentional exception: the user explicitly requested merging the two specific physics membership helpers and excluding broader S06 work. FR-011 preserves that implementation constraint so the user's scope is not lost. Audit identifiers and public compatibility decisions are also included to make the technical cleanup reviewable.
++- The specification is ready for planning with this explicit exception; no clarification markers remain.
+diff --git a/specs/006-focused-engine-cleanup/contracts/asset-loading.md b/specs/006-focused-engine-cleanup/contracts/asset-loading.md
+new file mode 100644
+index 0000000..f8f950d
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/contracts/asset-loading.md
+@@ -0,0 +1,9 @@
++# Asset Loading Contract
++
++Applies to nonempty texture, audio and animation requests from public Runtime, path-based components, scene and active resolvers, behavior references and nested animation frames.
++
++1. First request validates `assets/...` syntax, rejects absolute or traversal paths, resolves against the configured runtime root, rejects symlink escapes, checks the requested regular file, and loads/decodes it. Failure throws with the original request in the message and never substitutes a fallback. Nested failures retain useful context and the offending request. Existing empty/unset paths remain unset where previously supported.
++2. Successful requests identify a resource by type and canonical asset path. Previously validated equivalent spellings resolve to the same retained resource. Once a particular raw request has succeeded, repeating that exact request while its resource remains cached returns that resource without filesystem resolution or revalidation, even after deletion/replacement or symlink change. An unseen spelling, even one that used to be equivalent, is validated independently.
++3. A request alias is visible only after successful resource association; no failed load or aborted scene transaction may leave a stale alias. Loaded resources follow existing reference and scene-acquisition rules. When the resource is evicted, all of its aliases must be removed before its memory is reclaimed. Cache teardown must make aliases unusable. A subsequent request revalidates against current filesystem state. Tests must include multiple aliases and release/rollback/recreation boundaries.
++4. Explicit requests for files formerly used as fallback are allowed like any other valid files. No default fallback selection or fallback warning remains. Document the change for runtime callers and components that previously received defaults.
++5. Actual filesystem changes and missing-file behavior are intentional differences from baseline. Measure filesystem calls separately from timing and compare resource ownership/scene outcomes, not obsolete fallback results.
+diff --git a/specs/006-focused-engine-cleanup/contracts/physics-and-compatibility.md b/specs/006-focused-engine-cleanup/contracts/physics-and-compatibility.md
+new file mode 100644
+index 0000000..e1bd4c3
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/contracts/physics-and-compatibility.md
+@@ -0,0 +1,14 @@
++# Physics, Rendering and Compatibility Contract
++
++## Physics and membership
++
++- Axis plumbing removed by S01 carries no semantic data; preserve `isPrimary` checkpoint processing, extrema tie/order, endpoint/chunk binding repair, fast-motion cancellation, split/merge and per-cell placement/migration. Conservative overlap coverage and first/final net witness changes remain unchanged, including multicell pairs and large AABBs.
++- Cell work and pair-local narrow-phase work complete before serial witness/contact/support reduction, callbacks, structural reclamation and pair freeing. Preserve existing oneTBB partitioning, solver order, event and callback eligibility rules.
++- Shared membership code preserves exact add/no-op/swap-remove behavior and all per-list indexes for bodies and pairs; test middle and last removal, repeated requests, membership transitions, and retirement. Existing queue-drain boundaries and script-start tombstones are unchanged.
++- Removing the unused public collision-constructor penetration argument does not change separation-based bias, warm start, normal/tangent impulses or contact solving. Document old and new signatures and rebuild needs; update in-repository consumers. Do not add a second penetration value.
++
++## Other interfaces
++
++- `getCurrentClip()` is preferred; `getCurrentAnimationClip()` remains an equivalent source/binary-compatible forwarding alias where feasible. Verify playing/stopped/scene-roundtrip results and document both names.
++- Existing serialized Mario `cameraLead` stays accepted and round-trippable, with existing inert behavior. Remove only independently verified dead example fields, constants and declarations. Build and exercise Mario under the installed consumer smoke path.
++- Debug-enabled vector growth may move objects; member ownership, scene rendering, draw order and controls remain unchanged. Debug-disabled builds continue to work. If screenshots cannot be obtained, record visual equivalence as unverified.
+diff --git a/specs/006-focused-engine-cleanup/contracts/validation.md b/specs/006-focused-engine-cleanup/contracts/validation.md
+new file mode 100644
+index 0000000..5f50422
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/contracts/validation.md
+@@ -0,0 +1,19 @@
++# Validation and Evidence Contract
++
++## Baseline and scope
++
++Record HEAD, branch, status, tracked/staged patch and relevant untracked input hashes, toolchain, dependencies, host/affinity and build flags. Preserve the existing `src/gamemanager.cpp` edits. Freeze source including common pre-production fixture changes and all needed nonignored untracked inputs; verify a manifest and keep it and logs until archived. Do not label a dirty snapshot as a clean commit. Run baseline/candidate comparable controls; intentionally different fallback/error behavior receives separate explicit expectations.
++
++## Correctness and safety
++
++- Characterize asset paths for all three kinds and each runtime/component/scene/reference path, absent/unreadable/decode errors including nested frames, no-asset values, initial invalid paths and symlink escapes, aliases and canonical identity. Verify retained hits after file deletion/symlink replacement, eviction of all aliases after last release, revalidation after eviction, scene rollback, runtime teardown/recreation and no stale references. Count actual filesystem resolution calls outside timing; repeated same-request hit must do none.
++- Check physics invariants with one and multiple workers, including endpoint ties, long intervals, chunk split/merge, fast motion, grid migration, overlapping multi-cell witnesses, insertion/removal, contact transitions and relevant lifecycle/retirement cases. Compare deterministic contract traces and declared physical tolerances; do not demand exact unconstrained solver trajectories. Test first/middle/last membership removals, redundant desired state and swapped index repair for both types.
++- Exercise animation getters, collision public constructor migration, behavior lookup, scene compatibility, Mario smoke and public/relocated consumer builds. Compare debug tools on/off; capture equivalent overlays on a real renderer if possible and record unavailable verification explicitly.
++- Run relevant ASan/UBSan and TSan baseline/candidate attempts including leak-enabled configuration. Archive diagnostics and separate environmental or dependency failures from introduced issues; leak-disabled runs do not establish leak safety. Existing prior SDL-audio TSan and LeakSanitizer environment reports are historical, not current passes.
++
++## Work and timing
++
++- Use identical common fixtures with retained references for representative repeated same and alias requests at small/large counts; include miss/load and eviction/churn controls. Measure calls, allocations and alias storage separately; verify no accidental asset release and no filesystem calls on a timed hit. Keep instrumentation out of Release timing.
++- Compare debug-object insertion/growth for small and large populations, capturing copies/moves/allocations separately from runtime; use equivalent baseline/candidate overlay state and actual rendering where available. No claim for debug-off builds.
++- Run relevant engine workloads with one and available multiple workers, static/dynamic and small/large broad-phase populations, dense and migration/churn controls; compare complete-step and relevant subsystem average and tail, never sum nested scopes. For any runtime claim use `benchmark/README.md`: equivalent Release binaries, recorded source/build and CPU affinity, same fixtures/seed/warmup/sample counts, at least five independent processes per cell, interleaved or shuffled order, retained raw samples/manifests and run variance. Investigate material regressions and workload-count differences; report incomplete captures and uncertainty.
++- Do not claim a speedup or visual equivalence when measurement or graphical access is unavailable. Document the retained memory and eviction-time cost of alias bookkeeping, and any observed regression.
+diff --git a/specs/006-focused-engine-cleanup/data-model.md b/specs/006-focused-engine-cleanup/data-model.md
+new file mode 100644
+index 0000000..45bba93
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/data-model.md
+@@ -0,0 +1,26 @@
++# Data Model: Focused Engine and Example Cleanup
++
++## Request alias
++
++- **Identity**: exact nonempty original request string within an asset type and runtime. A previously unseen spelling is a new request and undergoes full validation; a different kind cannot collide.
++- **Value**: canonical resource identity or safe reference to an entry owned by the matching resource cache; never an owning asset reference that extends resource lifetime.
++- **Creation**: only after validation, resolution, successful decode/deserialization and association with a live canonical resource; a separately validated alias can map to an already loaded resource.
++- **Removal**: before associated resource is freed, remove every alias pointing to it. Clear all aliases during cache teardown. Failed resolution/loading and failed scene preparation must not leave a mapping to freed storage. Explicitly define rollback ownership in implementation.
++- **Invariant**: every alias points to a currently live resource in the same kind/runtime. Alias storage is bounded by successfully resolved request strings for currently retained resources. Exact hit skips all filesystem checks; a miss performs first-time validation.
++
++## Retained asset
++
++- Canonical identity and type identify one runtime-owned texture, audio wrapper or animation clip. Equivalent validated aliases share this resource. Resource references retain existing acquisition/release behavior; final release removes the cached resource and all aliases. Explicitly loaded zero-reference cache entries follow existing ownership behavior, not a new retention policy.
++- On nonempty miss: validate syntax and root containment, resolve the canonical file, check/load it, then add or associate a resource. A missing/unreadable/undecodable request is an error with original path; no default asset substitution. Empty no-asset values retain their existing entry-point semantics.
++- Scene preparation may temporarily retain resources and must unwind partial acquisitions safely on failure. Animation clips may own nested texture references; destruction order and reentrant cache deletion must not invalidate active operations.
++
++## Body / pair membership
++
++- Each eligible body or pair belongs to zero or one position in each applicable vector; its corresponding index is `SIZE_MAX` when absent.
++- Desired present + absent -> append and record index. Desired absent + present -> move last entry into removed position, repair moved index, pop, set removed index absent. Unchanged request -> no change. Last-element and alias-to-self cases must be safe.
++- Each vector keeps its existing owner, eligibility predicate, update phase, and order semantics. Script-start queues use tombstones during callback traversal and are not this model.
++
++## Debug object and Mario compatibility data
++
++- Debug objects own names/vertices and can be moved during buffer growth without changing the rendered primitives. Debug-only storage remains unavailable in debug-off builds.
++- Existing Mario camera scene records may include `cameraLead`; it remains accepted and serialized as before but has no camera behavior. Dead pointers/constants and undefined unused declarations have no live owner or consumer.
+diff --git a/specs/006-focused-engine-cleanup/plan.md b/specs/006-focused-engine-cleanup/plan.md
+new file mode 100644
+index 0000000..1f90582
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/plan.md
+@@ -0,0 +1,78 @@
++# Implementation Plan: Focused Engine and Example Cleanup
++
++**Branch**: `001-cpp-engine-cleanup` (actual checkout) | **Date**: 2026-10-27 | **Spec**: [spec.md](spec.md)
++
++**Input**: `specs/006-focused-engine-cleanup/spec.md`. The setup script reports the selected feature name as `BRANCH` because feature selection is directory-based; it did not switch the actual checkout.
++
++## Summary
++
++Unify all nonempty texture, audio and animation requests under required loading, and cache previously resolved requests for as long as their canonical resource is retained. Remove S01–S05's unused plumbing/duplicate paths, merge only the two physics membership helpers, enable inexpensive DebugObject moves, and remove verified dead Mario state/declarations while preserving the existing serialized camera field. Characterize the dirty input first and compare behavior, affected work and matched measurements against a frozen baseline. Public collision signature and missing-asset behavior change; preserve and document the existing animation alias.
++
++## Technical Context
++
++**Language/Version**: C++20; Python 3 only for existing benchmark tooling.
++
++**Primary Dependencies**: CMake/Ninja, SDL3, SDL_image, SDL_mixer, Eigen, oneTBB; existing bundled dependencies and project test framework.
++
++**Storage**: Configured asset root and serialized scenes; runtime-owned canonical asset caches plus bounded-lifetime request mappings.
++
++**Testing**: CTest physics, asset, scene, reference, lifecycle, package/consumer and example tests; ASan/UBSan and TSan where available; reproducible controlled probes and matched Release benchmarks.
++
++**Target Platform**: Existing supported desktop hosts, with Linux validation where available; debug-on and debug-off builds.
++
++**Project Type**: Native game engine/library, runner and Mario example.
++
++**Performance Goals**: Avoid filesystem resolution on repeated identical retained requests and avoid debug-object copies during growth; no invented speedup threshold. Assess full-step and relevant subsystem impact where applicable and report uncertainty.
++
++**Constraints**: Preserve user edits; strict first-time path validation; no fallback substitution; no stale resource pointers; retain broad-phase/parallel and callback semantics; preserve empty-path meaning and old serialized camera field. Same-request hits deliberately ignore later file or symlink changes; previously unseen aliases still validate.
++
++**Scale/Scope**: Repeated shared texture/audio/animation requests, different aliases, churn and nested loads; overlay growth; representative small/large, quiet/dynamic, dense/sparse and worker-count physics controls. Excludes P02/P03/P05/P06/P07, Python editor findings and S06 beyond the named helpers.
++
++## Constitution Check
++
++**Before research — pass subject to evidence during implementation:**
++
++- **I, IV — Performance and simplicity**: Exact-request lookup adds owned bookkeeping proportional to live request aliases, eliminated on eviction; no global scans per load or unbounded lifetime cache. Compare reverse-index vs per-resource alias storage and record costs; do not add generic container frameworks. Profile and measure representative repeated loads, debug growth and relevant engine steps.
++- **II, VII — Parallelism and integrity**: Preserve existing worker partition, per-cell ownership and joins. Asset caches retain their existing runtime-thread ownership; do not introduce shared mutable parallel loading. Body/contact membership reconciles at existing prescribed serial boundaries. Compare one/multiple workers and validate pair lifetimes, callbacks and deferred mutation.
++- **III — Research-backed collision**: Reviewed `paper/paper.txt` §§3.1–3.3: cell subdivision duplicates witnesses, segmented chunks/checkpoints preserve large overlaps and fast-motion cancellation, and event output reduces net witness transitions after cell work. S01 removes only an unused axis value; preserve `isPrimary`, endpoint ordering, bindings, checkpoint/split/merge repair, witness counting, collision/event separation and worker completion. Validate ties, fast moves, large intervals, split/merge, migration and multi-cell final witness.
++- **V — Developer experience**: Required asset loading changes runtime behavior deliberately; document diagnostics/migration. Remove the ignored public collision constructor argument with migration notes; preserve animation compatibility and existing scene fields. No unsupported claims about Unity behavior.
++- **VI — Evidence**: Retain dirty baseline provenance, comparable fixtures and raw results. Separate correctness/work probes from timing. Benchmark per `benchmark/README.md` with matched builds/workloads, recorded affinity/workers and independent repetitions; report failures, skips and visual/sanitizer limits rather than asserting success.
++
++**After design — pass with implementation evidence required:** The request map has a specific owner and eviction boundary; shared membership retains current type-specific eligibility and mutable-index access; physics algorithm and synchronization are unchanged. The following are not yet demonstrated: contract tests, performance measurements, visual equivalence and sanitizer results. They are execution gates, not planning results.
++
++## Project Structure
++
++### Documentation
++
++```text
++specs/006-focused-engine-cleanup/
++├── spec.md
++├── plan.md
++├── research.md
++├── data-model.md
++├── contracts/
++│   ├── asset-loading.md
++│   ├── physics-and-compatibility.md
++│   └── validation.md
++├── quickstart.md
++└── tasks.md                 # generated later, not by this command
++```
++
++### Source Code
++
++```text
++src/                         # loaders, path manager, physics, debug and internal helpers
++include/platformator/        # public collision, animation and asset interfaces
++examples/mario/              # camera/enemy/player cleanup and existing scene
++assets/                      # asset fixtures and scenes
++cmake/ CMakeLists.txt        # builds and focused tests/probes if necessary
++tests/                       # asset, scene, physics, lifecycle and consumer contracts
++benchmark/                   # existing measurement methodology and tooling
++docs/                        # API and behavior migration documentation
++```
++
++**Structure Decision**: Extend existing engine, test and documentation locations. Add a small private membership primitive only for the two existing helpers and narrow benchmark fixtures only if existing tooling cannot measure the named operation. Do not modify the Python editor or unrelated work.
++
++## Complexity Tracking
++
++No constitution exception proposed. Request aliases and eviction coordination add state specifically to remove repeat filesystem work; reverse associations must be proportional to live aliases and cleaned with their resource. Their time/memory cost and evidence are part of validation.
+diff --git a/specs/006-focused-engine-cleanup/quickstart.md b/specs/006-focused-engine-cleanup/quickstart.md
+new file mode 100644
+index 0000000..9f69180
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/quickstart.md
+@@ -0,0 +1,91 @@
++# Validation Quickstart: Focused Engine and Example Cleanup
++
++This is a guide for implementation, not a claim that checks have run. See [asset contract](contracts/asset-loading.md), [physics and compatibility](contracts/physics-and-compatibility.md), and [validation evidence](contracts/validation.md). Use the actual current source and preserve all existing user edits. Paths below are absolute or anchored to the project root.
++
++## 1. Capture and freeze input
++
++Requires the project's C++20 toolchain, CMake/Ninja, bundled dependencies, Python 3 and Linux affinity utilities where available. Prepare any common test-only fixtures first; keep them identical in baseline and candidate, but use separate expected results for the intentionally changed missing-asset policy.
++
++```bash
++cd /home/user/Projects/Platformator
++export FOCUSED_PROJECT="$PWD"
++export FOCUSED_CAPTURE="$(mktemp -d /tmp/platformator-focused-cleanup.XXXXXX)"
++export SDL_VIDEODRIVER=dummy
++export SDL_AUDIODRIVER=dummy
++export SDL_RENDER_DRIVER=software
++
++git rev-parse HEAD > "$FOCUSED_CAPTURE/head.txt"
++git branch --show-current > "$FOCUSED_CAPTURE/branch.txt"
++git status --porcelain=v1 --untracked-files=all > "$FOCUSED_CAPTURE/status.txt"
++git diff --binary HEAD > "$FOCUSED_CAPTURE/tracked-changes.patch"
++lscpu > "$FOCUSED_CAPTURE/cpu.txt"
++taskset -pc $$ > "$FOCUSED_CAPTURE/allowed-cpus.txt"
++mkdir -p "$FOCUSED_CAPTURE/baseline-source"
++git ls-files --cached --others --exclude-standard --deduplicate -z -- \
++  CMakeLists.txt CMakePresets.json cmake include src vendored assets tests benchmark examples \
++  | tar --null -T - -cf - | tar -xf - -C "$FOCUSED_CAPTURE/baseline-source"
++export FOCUSED_BASELINE="$FOCUSED_CAPTURE/baseline-source"
++```
++
++Check the status for deletions and include any required ignored inputs; do not assume the snapshot is a clean commit. Save compiler/CMake/dependency versions, build settings, fixture and source hashes and a snapshot manifest. Keep all captured files until comparisons and evidence are archived. Capture baseline behavior, including fallback results, before production edits.
++
++## 2. Correctness, consumers and example
++
++In each tree run the following, starting with `FOCUSED_SOURCE="$FOCUSED_BASELINE"` and repeating with `FOCUSED_SOURCE="$FOCUSED_PROJECT"`. Preserve logs and exit codes. The old optional-fallback assertions need explicitly different candidate expectations; do not discard unrelated baseline failures or silently count skips as passes.
++
++```bash
++export FOCUSED_SOURCE="$FOCUSED_BASELINE"
++cd "$FOCUSED_SOURCE"
++cmake --preset cleanup-debug
++cmake --build --preset cleanup-debug --parallel 4
++ctest --test-dir bin/cleanup-debug --output-on-failure \
++  -R 'platformator_(asset_root_contract|scene_io_contract|scene_script_roundtrip|runtime_foundation|runtime_recreation|scene_transition_contract|callback_mutation|collider_pair_cleanup|contact_events|physics_bookkeeping|physics_support|physics_geometry|transform_hierarchy)_test|platformator_regression_tests'
++ctest --test-dir bin/cleanup-debug --output-on-failure -L platformator
++cmake --build bin/cleanup-debug --target platformator_public_headers --parallel 4
++cmake --preset production
++cmake --build --preset production --parallel 4
++ctest --test-dir bin/production --output-on-failure -L platformator
++```
++
++Run and document the added focused alias/eviction/scene-rollback and body/pair membership tests, including one and available multiple workers; use existing worker controls or a small controlled host as needed. Package smoke includes the installed/relocated consumer and Mario smoke; verify that it ran, and explicitly build Mario with `PLATFORMATOR_BUILD_EXAMPLES=ON` where the selected preset disables examples. Compare debug-on/off builds. Use the same scene/settings on a real renderer to compare debug overlays and Mario behavior; save captures or record why unavailable.
++
++## 3. Safety checks
++
++Repeat in both trees; record full diagnostics, skips and exit codes. Adjust parallelism to the host.
++
++```bash
++cd "$FOCUSED_SOURCE"
++cmake --preset cleanup-asan
++cmake --build --preset cleanup-asan --parallel 4
++ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
++  ctest --test-dir bin/cleanup-asan --output-on-failure \
++  -R 'platformator_(asset_root_contract|scene_io_contract|runtime_foundation|runtime_recreation|collider_pair_cleanup|physics_bookkeeping|contact_events)_test'
++cmake --preset cleanup-tsan
++cmake --build --preset cleanup-tsan --parallel 4
++TSAN_OPTIONS=halt_on_error=1 ctest --test-dir bin/cleanup-tsan --output-on-failure \
++  -L 'physics|mutation|lifecycle' -E '^platformator_package_smoke$'
++```
++
++If leak detection cannot run, report it unavailable; a separate `detect_leaks=0` diagnostic is not a leak check. Classify any previously observed SDL audio reports using the actual baseline and candidate diagnostics.
++
++## 4. Separate operation checks and timing
++
++Measure filesystem-resolution calls for first request, exact retained hit, independently resolved aliases, multiple-alias eviction and reload; assert zero further resolution calls on a retained exact hit. Measure debug-object copies/moves and allocations during vector growth in debug-on mode. Record fixture identities, population, memory, operation counts and any inability to observe. Perform these checks in instrumented runs, not in Release timing aggregates.
++
++Build matched Release baselines/candidates after correctness work. Use the same asset and overlay workloads, hold references throughout the timed portion, use recorded CPU affinity, warmup and at least five independent processes per cell, preserve raw samples and interleave versions. Compare small/large repeated hits and asset churn; include relevant one/multiple-worker quiet, dense, movement and migration/churn engine controls. The repository sweep tool provides reproducible existing engine workloads:
++
++```bash
++cd "$FOCUSED_SOURCE"
++cmake --preset cleanup-benchmark
++cmake --build --preset cleanup-benchmark --parallel 4
++ctest --test-dir bin/cleanup-benchmark --output-on-failure -L benchmark
++python3 benchmark/sweep_scaling.py \
++  --runner bin/cleanup-benchmark/platformator_benchmark_runner \
++  --scenario broad_phase --counts 100,500,1000 --workers 1 --seed 0 \
++  --warmup-frames 120 --measure-frames 600 --dt 0.008333333333333333 \
++  --repetitions 1 --validate-invariants \
++  --raw-output-dir "$FOCUSED_CAPTURE/baseline-broad-validation" \
++  --output "$FOCUSED_CAPTURE/baseline-broad-validation.csv"
++```
++
++Use unique destinations for each stage. This example is an invariant check, not timing or the entire matrix; follow `benchmark/README.md` and [validation contract](contracts/validation.md) for matched timing, raw manifests, worker counts, variance and renderer limitations. Existing benchmark scenarios do not automatically prove asset-hit or debug-copy behavior; add a small common fixture if needed. Do not claim a speedup without comparable evidence.
+diff --git a/specs/006-focused-engine-cleanup/research.md b/specs/006-focused-engine-cleanup/research.md
+new file mode 100644
+index 0000000..353a241
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/research.md
+@@ -0,0 +1,41 @@
++# Research: Focused Engine and Example Cleanup
++
++## Required assets and request reuse
++
++**Decision:** A nonempty request for texture, audio or animation, including animation-frame and behavior references, must either resolve and load the requested resource or throw an actionable error containing the original request. Preserve supported empty-path no-asset cases. Remove the optional fallback selection/warning path and stale required-fallback guards. Keep assets explicitly requested by their `missing.*` names as normal files. First check an exact raw request in a per-type runtime-owned alias lookup; on miss validate/canonicalize/resolve using current root policy, find or load by canonical identity, then publish the alias only after successful acquisition. Evict every alias for a resource before destruction and clear all on shutdown; failed decode/load publishes no alias. Preserve transactional scene preparation and rollback and nested animation frame ownership.
++
++**Rationale:** `src/gamemanager.cpp` resolves before checking the canonical cache; `PathManager` invokes `weakly_canonical`, root containment and `is_regular_file` each time. Refcount releases call `freeTexture`, `freeAudio` and `freeAnimationClip`. Exact request keys avoid accidentally accepting a previously unseen invalid or changed symlink path. Canonical maps still deduplicate separately resolved aliases. Per-type ownership prevents cross-kind collisions.
++
++**Alternatives:** Keep resolving on every hit (contradicts requested policy); globally cache paths forever (stale resources, unbounded lifetime); normalize paths before lookup (could skip first-time validation of a distinct spelling); invalidate on filesystem changes (explicitly excluded). Reverse alias-to-resource associations or per-resource alias lists both meet the contract; choose the simplest bounded deletion approach with measured eviction and retained-memory cost. Avoid O(all cached aliases) scans per eviction if they produce significant churn costs.
++
++## Engine simplification
++
++**Decision:** Remove the unused axis constructor/field/handler argument but retain `isPrimary` and the broad-phase algorithm. Remove unreachable fallback checks; remove ignored `Collision` constructor parameter, updating any live callers; remove the uncalled free behavior lookup. Prefer `getCurrentClip()` as canonical because existing implementation and serializer already use it; retain `getCurrentAnimationClip()` as a documented forwarding compatibility alias.
++
++**Rationale:** The axis receiver ignores the value; checkpoints depend on the separate primary flag. Actual penetration correction uses contact separation; the public constructor argument is unused. Existing member behavior lookup is supported. Both animation getters currently return the same pointer.
++
++**Alternatives:** Keep all duplication or silently remove the public animation alias; both lose clarity or needlessly break callers. The collision signature change is intentional and must be documented, including rebuild/relink considerations.
++
++## Shared membership primitive
++
++**Decision:** Factor only the body and pair `membership` implementations into a private typed helper; callers retain their eligibility predicates, list ownership and mutation boundaries. Use existing member access rules and mutable pair indexes where valid; do not spread `const_cast` or change externally observable ordering.
++
++**Rationale:** Both use the same no-op/add/swap-remove/moved-index-repair algorithm. Pair and body state remain distinct. `cancelScriptStart` is an actively traversed callback queue and continues to leave holes.
++
++**Alternatives:** Refactor every indexed list (out of scope and different semantics); retain exact duplicated code (contrary to explicit user request); generic container with policy machinery (unnecessary).
++
++## Debug and Mario
++
++**Decision:** Remove the empty user-declared DebugObject destructor if member ownership permits implicit moves; verify move/copy behavior and rendering. Retain copy operations if existing consumers need them. Remove unobserved Mario `targetBody`, enemy `collider`, three unused constants, and the two undefined player declarations after a fresh usage search. Preserve serialized `cameraLead` as an inert compatibility field, including existing scene data.
++
++**Rationale:** The destructor suppresses implicit moves and vector growth may copy owned strings/vertices. The Mario field occurs in `examples/mario/level1.scene`; no implementation of camera lead is requested.
++
++**Alternatives:** Delete the scene field or implement camera lead (unrequested behavior/serialization change); optimize unrelated drawing paths (outside scope).
++
++## Validation approach
++
++**Decision:** Freeze actual tracked and nonignored untracked inputs plus user diff and test-only shared fixtures; run baseline/candidate common behavior and separately test intentionally changed fallback behavior. Use focused independent work probes for filesystem calls and debug copies and matched process-level timing, plus normal engine benchmark workloads. Check debug on/off, public headers, installed consumers and Mario; record graphical/sanitizer limitations honestly.
++
++**Rationale:** The baseline intentionally implements fallback, so raw expected outcomes cannot all match candidate; uncontrolled solver trajectories and headless graphical output also do not justify exact equivalence claims. Static slot-removal style timing is not a substitute for shared-load or debug-growth workloads.
++
++**Alternatives:** Treat old tests as the desired contract or count timing probes as Release timings; both conceal intentional changes or distort results.
+diff --git a/specs/006-focused-engine-cleanup/spec.md b/specs/006-focused-engine-cleanup/spec.md
+new file mode 100644
+index 0000000..251a30a
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/spec.md
+@@ -0,0 +1,108 @@
++# Feature Specification: Focused Engine and Example Cleanup
++
++**Feature Branch**: `001-cpp-engine-cleanup` (existing checkout)
++
++**Created**: 2026-10-27
++
++**Status**: Draft
++
++**Input**: Cleanup audit S01–S05, P01 and P04, Mario findings E01–E02, and only the merger of the two physics membership helpers from S06. All requested assets are required; successfully loaded assets may be reused without rechecking the filesystem.
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Predictable, reusable asset loading (Priority: P1)
++
++A game developer loads assets through runtime, component, scene, or behavior paths and receives the requested asset or an actionable error. Repeated requests reuse loaded resources without repeated filesystem checks.
++
++**Why this priority**: It establishes one predictable loading policy and removes repeated work for shared assets.
++
++**Independent Test**: Load shared assets through runtime and scene paths, request missing assets through each supported path, and repeat requests after filesystem changes while the resource remains loaded.
++
++**Acceptance Scenarios**:
++
++1. **Given** a valid nonempty request for a missing texture, audio asset, or animation, **When** it is loaded through a runtime, component, scene, or reference path, **Then** loading fails with an error identifying the request and no fallback is substituted.
++2. **Given** an asset successfully loaded and still retained, **When** it is requested again using a previously resolved request after the file or symlink changes, **Then** the already loaded asset is returned without filesystem revalidation.
++3. **Given** a loaded resource is released from the resource cache, **When** its path is requested again, **Then** it is resolved and loaded anew or fails according to current filesystem state.
++4. **Given** equivalent valid path spellings, **When** each is resolved, **Then** they share the same retained asset and maintain canonical asset identity.
++
++### User Story 2 - Maintain focused engine logic (Priority: P1)
++
++An engine maintainer can follow collision, asset, animation and physics membership behavior without unused parameters, unreachable checks or duplicate helpers hiding their responsibilities.
++
++**Why this priority**: Reduces maintenance work while preserving the physics and lifecycle contracts.
++
++**Independent Test**: Exercise overlap and contact transitions with one and multiple workers; use the collision and animation interfaces; verify body and pair membership transitions and moved-index repair.
++
++**Acceptance Scenarios**:
++
++1. **Given** overlapping objects and changing body/contact participation, **When** objects move, change state or are removed, **Then** collision coverage, membership, event and solver behavior remain consistent with the existing contracts.
++2. **Given** an animation is playing or stopped, **When** callers inspect its current clip, **Then** the result remains correct and the supported name and any compatibility alias are documented.
++3. **Given** collision contacts, **When** penetration correction is calculated, **Then** it continues to use actual contact separation and does not acquire a second penetration authority.
++
++### User Story 3 - Keep debug rendering and the Mario example clear (Priority: P2)
++
++A developer uses debug overlays and the Mario example with unchanged visible behavior while unnecessary copying, unused example state, and unimplemented declarations are removed.
++
++**Why this priority**: Cleans up developer-facing code without expanding gameplay scope.
++
++**Independent Test**: Build and exercise the example and debug-enabled and debug-disabled configurations; check debug output and scene compatibility against the baseline.
++
++**Acceptance Scenarios**:
++
++1. **Given** debug overlays with growing collections, **When** overlays are rendered, **Then** visual output and controls are preserved and avoidable debug-object copying is reduced.
++2. **Given** existing Mario scenes, **When** the example loads and runs, **Then** its camera and enemy behavior remains unchanged and obsolete declarations and unused state no longer suggest nonexistent functionality.
++
++### Edge Cases
++
++- Empty paths used to represent an intentionally unset optional component remain distinct from nonempty requests for missing assets; existing no-asset behavior is preserved where supported.
++- Invalid paths and first-time symlink escapes must still be rejected; errors must identify the original request.
++- A retained asset continues to be returned for an already resolved request if its file is deleted, replaced, or its symlink changes; after eviction a fresh request revalidates it.
++- Different path spellings can refer to the same retained asset; evicting that asset must invalidate all cached request mappings to it. Unresolved aliases still undergo first-time validation.
++- Failure to read or decode an existing asset is an error, not an invitation to substitute a fallback.
++- Membership removal of the last entry and of a middle entry must leave all retained indexes correct; callback-time script startup cancellation remains unchanged.
++- Existing scenes containing the serialized Mario camera lead field continue to load; remove it only if compatibility is deliberately handled and documented.
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: Every nonempty texture, audio and animation asset request, including nested references, MUST load the requested asset or report failure with the original request; no implicit fallback asset may be selected.
++- **FR-002**: Existing supported empty-path/no-asset behavior MUST remain distinct from missing nonempty asset requests.
++- **FR-003**: First-time asset requests MUST preserve path validation, configured-root containment and canonical resource identity. A retained, previously resolved request MUST return its loaded asset without rechecking filesystem existence or symlink state.
++- **FR-004**: Asset request mappings MUST remain valid only while their associated resource is retained; release or cache teardown MUST remove mappings so subsequent requests cannot return stale resources. Equivalent valid paths MUST share the same asset.
++- **FR-005**: The change MUST document the shift from fallback behavior to required loading, affected public consumers, errors and migration actions; intentionally requested assets whose names happen to be fallback names remain ordinary assets.
++- **FR-006**: Remove unused axis information from overlap plumbing while preserving the primary-axis distinction and all broad-phase overlap, witness and event semantics. (S01)
++- **FR-007**: Remove unreachable required-fallback checks made obsolete by the single required-loading policy. (S02)
++- **FR-008**: Remove the ignored collision-construction penetration argument and update supported consumers; retain contact separation as the source of penetration correction and document source compatibility impact. (S03)
++- **FR-009**: Establish one preferred animation current-clip name; retain the other as a documented compatibility alias unless current usage and migration evidence justify its removal. Both supported names MUST return the same result. (S04)
++- **FR-010**: Remove the unused internal duplicate behavior-lookup helper while preserving the supported behavior query. (S05)
++- **FR-011**: Consolidate the two existing body and pair membership helpers into one understandable internal implementation, preserving each list's membership, swap-removal index repair, ownership and visibility invariants. No broader indexed-container refactor or change to script-start cancellation is in scope. (Narrow S06)
++- **FR-012**: Remove the obstacle to moving debug objects and preserve overlay output and controls, including debug-enabled and debug-disabled configurations. (P01)
++- **FR-013**: Remove verified unused Mario camera/enemy state, constants and undefined unused player declarations without changing existing gameplay or scene loading. Preserve the serialized camera-lead field as an inert compatibility field unless a safe migration is established. (E01–E02)
++- **FR-014**: Validate affected behavior, reference lifetimes, scene and asset loading, debug output, public consumers and one/multiple-worker physics. Establish comparable baseline and candidate measurements for repeated asset requests and debug-object copying; report measured results and limitations without assuming a speedup.
++- **FR-015**: Preserve existing user changes and preserve existing broad-phase, callback, scene publication and asset ownership invariants; document any intentional source or binary compatibility changes.
++
++### Key Entities
++
++- **Asset request**: A nonempty user-supplied path and asset kind to be validated and associated with a resource.
++- **Retained asset**: A successfully loaded resource with a canonical identity and a lifetime governed by existing ownership rules.
++- **Membership**: Whether a body or collision pair belongs to a specific active collection and the index used to maintain that collection.
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: All tested nonempty missing texture, audio and animation requests fail without fallback across runtime and scene/reference loading paths, with the requested path in the diagnostic.
++- **SC-002**: In controlled repeated-load checks, 100% of requests for an already resolved, retained asset reuse the same resource without further filesystem resolution; a request after eviction is resolved anew.
++- **SC-003**: All relevant baseline collision, membership, scene, asset and example behavior checks pass after the change, including one-worker and multiworker cases.
++- **SC-004**: Debug overlays and Mario scene behavior match the baseline in available comparisons; any unavailable visual verification is explicitly reported as unverified.
++- **SC-005**: The selected findings S01–S05, P01, P04, E01–E02 and the two-helper merger each have a documented disposition, with consumer migration guidance for intentional compatibility changes.
++- **SC-006**: Comparative measurements report the effect on repeated asset loading and debug-object copying under equivalent workloads; no unmeasured runtime speedup is claimed.
++
++## Assumptions
++
++- Existing loaded resources are stable for the duration of their retention; changes to files or symlinks are deliberately ignored on a previously resolved cache hit.
++- Resource eviction permits a subsequent load to observe the current filesystem. Failed loads are not promised to remain cached.
++- Keeping the existing animation alias and serialized camera-lead field by default avoids unnecessary breaks while still addressing the audit findings; any removal needs evidence and migration handling.
++- P02, P03, P05, P06, P07, editor findings E03–E05 and S06 beyond the two membership helpers are outside this feature. Python editor removal is a separate decision.
++- Current working-tree edits are user input and must not be overwritten. Existing audit findings are rechecked against the actual source before changes.
+diff --git a/specs/006-focused-engine-cleanup/tasks.md b/specs/006-focused-engine-cleanup/tasks.md
+new file mode 100644
+index 0000000..eee2487
+--- /dev/null
++++ b/specs/006-focused-engine-cleanup/tasks.md
+@@ -0,0 +1,148 @@
++---
++description: "Dependency-ordered implementation tasks for focused engine and example cleanup"
++---
++
++# Tasks: Focused Engine and Example Cleanup
++
++**Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.md), and [contracts/](contracts/).
++
++**Scope**: S01–S05, P01, P04, E01–E02, and only the two physics `membership` helpers from S06. P02/P03/P05/P06/P07, editor findings E03–E05 and other S06 refactors are excluded. All nonempty asset requests are required. Preserve existing working-tree edits, including `src/gamemanager.cpp`, and do not switch branches merely to match the feature directory.
++
++**Format**: `- [ ] Tnnn [P?] [USn?] Action with exact paths`. `[P]` means independent files and no dependency on an unfinished task in the same batch. A task is complete when its stated work and evidence exist, not merely when a command was attempted. Distinguish skipped/unavailable checks from passes.
++
++## Phase 1: Setup (Shared Infrastructure)
++
++**Purpose**: Record the actual input and recheck the audit before changing production code.
++
++- [ ] T001 Create `specs/006-focused-engine-cleanup/evidence/` and record branch, HEAD, staged/unstaged/nonignored untracked status, binary patches, CMake/compiler/dependency versions, hardware, allowed CPU affinity and worker settings in `specs/006-focused-engine-cleanup/evidence/provenance.md` following `specs/006-focused-engine-cleanup/quickstart.md`; explicitly preserve the existing `src/gamemanager.cpp` edits.
++- [ ] T002 [P] Recheck S01–S05, P01, P04, E01–E02 and both physics `membership` helpers against `src/`, `include/platformator/`, `examples/mario/`, `tests/` and `docs/CODE_CLEANUP_AUDIT.md`; record callers, public compatibility, candidate removals and serialized `cameraLead` uses in `specs/006-focused-engine-cleanup/evidence/inventory.md`.
++- [ ] T003 [P] Review `paper/paper.txt` §§3.1–3.3 with `src/grid.cpp`, `src/gridcell.cpp`, `src/aabb.cpp` and `src/segmentedintervallist.cpp`; document primary-axis checkpoints, endpoint and chunk repair, fast-motion cancellation, cell witnesses, worker completion and serial reduction in `specs/006-focused-engine-cleanup/evidence/physics-invariants.md`.
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++**Purpose**: Establish common fixtures and reproducible baseline evidence before production edits.
++
++- [ ] T004 Inspect `tests/asset_root_contract_test.cpp`, `tests/scene_io_contract_test.cpp`, `tests/physics_bookkeeping_test.cpp`, `tests/collider_pair_cleanup_test.cpp`, `tests/contact_events_test.cpp` and `tests/regression_tests.cpp`; record current coverage, needed baseline-compatible fixture additions and intentional differences in `specs/006-focused-engine-cleanup/evidence/coverage.md`.
++- [ ] T005 Create the smallest shared measurement fixtures needed for repeated retained asset requests, validated aliases, load/eviction churn and debug-object growth under `benchmark/` and register them in `CMakeLists.txt` only where necessary; provide separate correctness/work and uninstrumented timing modes, actual populations/operation counts, fixed inputs, and no production hooks solely for timing. If a fixture cannot be constructed, record the affected claim as unverified in `specs/006-focused-engine-cleanup/evidence/coverage.md`.
++- [ ] T006 Freeze the actual working-tree source, nonignored untracked inputs and common T005 fixtures before production edits using `specs/006-focused-engine-cleanup/quickstart.md`; capture content hashes, manifest and source/build fingerprints in `specs/006-focused-engine-cleanup/evidence/baseline-provenance.md`, retain the snapshot and logs, and do not attribute a dirty snapshot to clean HEAD.
++- [ ] T007 Build the frozen baseline with `cleanup-debug`, `production` and `cleanup-benchmark` presets and run applicable suites, public-header/package/consumer and Mario smoke checks from `specs/006-focused-engine-cleanup/quickstart.md`; record counts, commands, skips, failures, old optional-fallback behavior and fixture hashes in `specs/006-focused-engine-cleanup/evidence/baseline.md`.
++- [ ] T008 Run baseline correctness/work fixtures for repeated asset hits, debug growth, one/multiple-worker physics, multicell witness and endpoint/chunk controls; characterize source-visible filesystem calls, copies/moves, populations and limitations in `specs/006-focused-engine-cleanup/evidence/baseline-work.md` without presenting instrumented durations as performance results.
++
++**Checkpoint**: Baseline identity, input, fixture equivalence and observable behavior are recorded. All stories can proceed subject to shared-file dependencies below.
++
++## Phase 3: User Story 1 — Predictable, reusable asset loading (Priority: P1) 🎯 MVP
++
++**Goal**: Load every nonempty requested asset or fail, and reuse previously validated retained resources without repeat filesystem resolution.
++
++**Independent Test**: Exercise texture/audio/animation via runtime, component, scene and behavior/nested reference paths; verify missing/decode failures, exact retained hits after filesystem changes, multiple aliases, eviction and revalidation.
++
++### Tests and characterization
++
++- [ ] T009 [US1] Extend `tests/asset_root_contract_test.cpp` to cover required missing/nonempty texture, audio and animation requests, original-path diagnostics, intentionally empty/no-asset values, invalid/traversal paths, first-time symlink escape and explicit loading of formerly fallback-named files; retain baseline characterizations separately and mark new behavior expectations as intentionally failing before implementation.
++- [ ] T010 [P] [US1] Extend `tests/scene_io_contract_test.cpp` and `tests/scene_script_roundtrip_test.cpp` only for uncovered required scene, behavior and nested animation-frame missing/unreadable/undecodable paths, original request context and failed-scene rollback; verify baseline failure behavior where already required and preserve scene ownership/reference tests.
++- [ ] T011 [US1] Add behavior-oriented retained-hit, valid distinct-alias, file deletion/replacement, symlink-change, final-reference eviction, all-alias invalidation, reload and runtime recreation checks in `tests/asset_root_contract_test.cpp` and `tests/runtime_recreation_test.cpp`; verify the first unseen alias still validates and assert that no request maps to freed storage. Use T005 instrumentation to check zero filesystem resolutions for an exact retained hit, outside timing.
++- [ ] T012 [US1] Run T009–T011 against the frozen baseline in `specs/006-focused-engine-cleanup/quickstart.md`, preserving baseline-compatible results and separately recording expected failures for the intentional required-loading/cache changes in `specs/006-focused-engine-cleanup/evidence/us1-characterization.md`.
++
++### Implementation and validation
++
++- [ ] T013 [US1] Replace the optional/fallback policy in `src/pathmanager.h` and `src/pathmanager.cpp` with required resolution for nonempty requests: preserve syntax, configured-root containment and first-time symlink checks; report the original request on missing/unreadable failures; remove unused fallback selection/warning state only after searching callers; keep intentionally requested `missing.*` files ordinary assets.
++- [ ] T014 [US1] Update texture/audio/animation loading and error propagation in `src/gamemanager.h`, `src/gamemanager.cpp`, `src/scenebuilder.cpp`, `src/referenceresolver.cpp` and relevant nested serializers so all nonempty requests fail rather than return a fallback or silent decode failure; remove unreachable `required && resolved.usedFallback` checks (S02), preserve entry-point empty-path semantics and scene rollback, and update every affected call site.
++- [ ] T015 [US1] Implement per-type runtime-owned request shortcuts in `src/gamemanager.h` and `src/gamemanager.cpp` with these constraints from `specs/006-focused-engine-cleanup/data-model.md`: "Identity: exact nonempty original request string within an asset type and runtime"; "Creation: only after validation, resolution, successful decode/deserialization and association with a live canonical resource"; "every alias points to a currently live resource in the same kind/runtime". Keep first-time aliases validated and canonical resource deduplication intact; do not retain an owning reference merely for an alias.
++- [ ] T016 [US1] Complete shortcut eviction in `src/gamemanager.cpp` and the ownership paths in `src/texturewrapper.cpp`, `src/audiowrapper.cpp`, `src/animationclip.cpp` and `src/scenebuilder.cpp` as needed: "before associated resource is freed, remove every alias pointing to it"; "clear all aliases during cache teardown"; ensure failed loads and aborted scene preparation cannot leave stale mappings, including nested animation destruction and reentrant release. Record alias-storage and eviction complexity in `specs/006-focused-engine-cleanup/evidence/us1-design.md`.
++- [ ] T017 [US1] Rebuild and run T009–T011, relevant `tests/runtime_foundation_test.cpp`, `tests/scene_transition_contract_test.cpp` and `tests/scene_script_roundtrip_test.cpp` against the candidate; record actual outcomes, filesystem-call counts, first-load/hit behavior, ownership and baseline differences in `specs/006-focused-engine-cleanup/evidence/us1-validation.md`.
++- [ ] T018 [US1] Document required-only asset behavior, no-asset cases, cache-hit stability, explicit `missing.*` requests, changed failure diagnostics and consumer migration in `docs/CPP_API_MIGRATION.md` and relevant public asset-loading documentation in `include/platformator/runtime.h`.
++
++**Checkpoint**: US1 provides required-only loading and safe retained-resource reuse with its independent contract checks.
++
++## Phase 4: User Story 2 — Maintain focused engine logic (Priority: P1)
++
++**Goal**: Simplify selected engine paths and merge only the two membership bookkeeping helpers without changing collision, lifecycle or worker behavior.
++
++**Independent Test**: Exercise contact and body membership transitions, moved-index repair, overlap/witness invariants at one and multiple workers, collision correction and both animation getter names.
++
++### Tests and characterization
++
++- [ ] T019 [P] [US2] Review `tests/physics_bookkeeping_test.cpp`, `tests/contact_events_test.cpp` and `tests/physics_support_test.cpp`; add only missing behavior-oriented body/pair membership cases for add, unchanged requests, middle/last removal, moved-index repair, contact/solver participation and retirement. Run unchanged logic on the baseline and record expected traces in `specs/006-focused-engine-cleanup/evidence/us2-membership-baseline.md`.
++- [ ] T020 [P] [US2] Review `tests/collider_pair_cleanup_test.cpp`, `tests/physics_geometry_test.cpp` and `tests/regression_tests.cpp`; add only uncovered baseline-passing controls for endpoint ties, long intervals, fast motion, split/merge, cell migration and first/final multicell witnesses; record coverage and one/multiple-worker expectations in `specs/006-focused-engine-cleanup/evidence/us2-overlap-baseline.md`.
++- [ ] T021 [P] [US2] Extend `tests/scene_script_roundtrip_test.cpp` and, if needed, `tests/consumer/` to verify both animation getter names agree for playing/stopped clips and serialization; identify any current public `Collision` constructor consumers in `specs/006-focused-engine-cleanup/evidence/us2-api-baseline.md` before the signature change.
++
++### Implementation and validation
++
++- [ ] T022 [US2] Remove only unused axis storage and arguments from `src/segmentedintervallist.h`, `src/segmentedintervallist.cpp`, `src/aabb.h`, `src/aabb.cpp` and their callers such as `src/gridcell.cpp` (S01); preserve `isPrimary`, endpoint tie/order, checkpoint/fast-motion/split/merge repair and worker/witness boundaries.
++- [ ] T023 [P] [US2] Remove the unused penetration parameter from the public `Collision` constructor in `include/platformator/collision.h` and `src/collision.cpp`, update actual callers, and preserve separation-based penetration bias and normal/tangent solver paths (S03); record the old/new signatures and rebuild implications in `specs/006-focused-engine-cleanup/evidence/us2-api-baseline.md`.
++- [ ] T024 [P] [US2] Remove the unused free behavior lookup from `src/helpers.h` after confirming no live callers; retain `include/platformator/behaviorquery.h` and the public member query and its required includes (S05).
++- [ ] T025 [P] [US2] Make `getCurrentClip()` the preferred getter in `include/platformator/animator.h` and `src/animator.cpp`, and keep `getCurrentAnimationClip()` as a documented forwarding compatibility alias returning the same pointer (S04); preserve playback and `src/animatorserializer.cpp` behavior.
++- [ ] T026 [US2] Merge only the two existing `membership` helpers from `src/physicsbodyindexes.cpp` and `src/physicscontacts.cpp` into a small private typed primitive, for example `src/physicsmembership.h`; preserve "Desired present + absent -> append and record index", "Desired absent + present -> move last entry into removed position, repair moved index, pop, set removed index absent" and "Unchanged request -> no change". Keep list ownership, eligibility, current ordering and serial reconciliation boundaries; use existing mutable index access where valid and do not alter `GameManager::cancelScriptStart`.
++- [ ] T027 [US2] Rebuild and run T019–T021 and existing geometry/contact/support/transform and lifecycle tests against baseline and candidate with one and available multiple workers; compare contract traces and declared tolerances, and document checkpoint/witness/worker/retirement results plus any limitations in `specs/006-focused-engine-cleanup/evidence/us2-validation.md`.
++- [ ] T028 [US2] Update `docs/CPP_API_MIGRATION.md` after T018 and T023–T025 with collision signature changes, source/rebuild implications and the preferred animation getter/alias; verify public headers and `tests/consumer/` use the supported API.
++
++**Checkpoint**: US2 preserves physical behavior and externally supported animation access while removing the requested duplication.
++
++## Phase 5: User Story 3 — Keep debug rendering and Mario clear (Priority: P2)
++
++**Goal**: Reduce debug-object copying and remove verified dead Mario state without changing visible output or scene compatibility.
++
++**Independent Test**: Build debug-on/off and Mario, compare overlay output on the same scene when graphical access is available, and load/round-trip the existing Mario scene including `cameraLead`.
++
++### Tests and characterization
++
++- [ ] T029 [P] [US3] Use T005's common debug-growth fixture to record baseline copies/moves, allocation behavior, populations and available overlay-capture method in `specs/006-focused-engine-cleanup/evidence/us3-debug-baseline.md`; mark graphical comparison unavailable if no renderer is accessible.
++- [ ] T030 [P] [US3] Inspect `examples/mario/level1.scene`, all Mario scene files and `tests/package_smoke.cmake`; establish baseline example build/smoke and `cameraLead` load/round-trip coverage, adding only missing behavior-oriented checks in `tests/scene_script_roundtrip_test.cpp` or the Mario consumer host, and record results in `specs/006-focused-engine-cleanup/evidence/us3-mario-baseline.md`.
++
++### Implementation and validation
++
++- [ ] T031 [P] [US3] Remove the empty move-suppressing `DebugObject` destructor or otherwise enable safe implicit moves in `src/debugdraw.h` and `src/debugdraw.cpp` (P01); preserve member ownership, required copying, primitive output, draw order, debug controls and debug-off compilation.
++- [ ] T032 [P] [US3] Remove verified unused camera/enemy pointers and assignments in `examples/mario/mario_camera_rig.h`, `examples/mario/mario_camera_rig.cpp`, `examples/mario/mario_patrol_enemy.h` and `examples/mario/mario_patrol_enemy.cpp`, and unused constants in `examples/mario/mario_constants.h` (E01); retain the serialized `cameraLead` field and its current inert behavior.
++- [ ] T033 [P] [US3] Remove only the unimplemented unused `getPositionBeforePhysics` and `getVelocityBeforePhysics` declarations from `examples/mario/mario_player.h` after rechecking callers (E02).
++- [ ] T034 [US3] Rebuild debug-on/off and Mario with examples enabled, run T029–T030, package smoke and matching baseline/candidate overlay comparisons using `specs/006-focused-engine-cleanup/quickstart.md`; record debug copy/move counts, scene compatibility and visual availability in `specs/006-focused-engine-cleanup/evidence/us3-validation.md`.
++
++**Checkpoint**: US3 is independently validated, including explicit visual verification status.
++
++## Phase 6: Polish & Cross-Cutting Concerns
++
++- [ ] T035 Run full applicable debug-on and production CTest suites, `platformator_public_headers`, package/relocated consumer, Mario and benchmark contract checks as described in `specs/006-focused-engine-cleanup/quickstart.md`; compare with T007 and record exact passes, skips and failures in `specs/006-focused-engine-cleanup/evidence/final-correctness.md`.
++- [ ] T036 Run applicable `cleanup-asan` ASan/UBSan including leak-enabled attempts and `cleanup-tsan` physics/lifecycle selections for baseline and candidate using `specs/006-focused-engine-cleanup/quickstart.md`; retain logs and diagnose baseline versus candidate issues in `specs/006-focused-engine-cleanup/evidence/sanitizers.md`; leak-disabled retries and unavailable hosts are not passes.
++- [ ] T037 Run separate baseline/candidate operation and allocation checks for exact retained hits, initial aliases, multiple-alias eviction/reload and debug-object growth using T005 fixtures; record call counts, copies/moves, allocations, alias retained memory and eviction cost in `specs/006-focused-engine-cleanup/evidence/work-memory.md`, excluding these instrumented runs from timing aggregates.
++- [ ] T038 Capture matched baseline/candidate Release timing for small/large retained repeated loads, first-load and churn controls and debug-on growth/rendering where available; use equivalent fixtures, at least five independent processes per cell, recorded affinity/warmup/inputs, interleaved schedule and retained raw results under `specs/006-focused-engine-cleanup/evidence/timings/`; record unavailable fixture or rendering groups as unverified.
++- [ ] T039 Run one/multiple-worker baseline/candidate engine invariant and Release timing controls using `benchmark/README.md`, `benchmark/sweep_scaling.py` and `specs/006-focused-engine-cleanup/contracts/validation.md`, including small/large, quiet/dynamic, sparse/dense and migration/churn cases; retain manifests, snapshots and raw outputs under `specs/006-focused-engine-cleanup/evidence/engine-benchmarks/` and compare complete-step and relevant nested scopes without summing them.
++- [ ] T040 Analyze T037–T039 for average/tail timing, run variation, scaling, allocations, retained memory and eviction cost; investigate regressions or unequal workloads and record bounded conclusions and unavailable claims in `specs/006-focused-engine-cleanup/evidence/performance-analysis.md` without inventing speedup thresholds.
++- [ ] T041 Review final code and documentation against `specs/006-focused-engine-cleanup/spec.md`, `specs/006-focused-engine-cleanup/contracts/` and `.specify/memory/constitution.md`; reconcile S01–S05, P01, P04, E01–E02 and narrow S06 dispositions, public migration, user changes, multicore/lifetime boundaries and actual checks in `specs/006-focused-engine-cleanup/validation.md`. Update `specs/006-focused-engine-cleanup/quickstart.md` only for commands actually used or documented justified differences.
++
++## Dependencies & Execution Order
++
++### Phase dependencies
++
++- Setup T001–T003 precedes foundational work; T004–T005 precede frozen baseline T006, and T007–T008 establish characterization before production edits.
++- US1, US2 and US3 can be independently delivered after the foundation. Shared files require coordination: T018 precedes T028 because both edit `docs/CPP_API_MIGRATION.md`; T021 and T030 must not edit `tests/scene_script_roundtrip_test.cpp` concurrently; T009 and T011 must be sequential because both edit `tests/asset_root_contract_test.cpp`.
++- US1: T009–T011 and T012 precede T013–T016; T013 precedes T014, T014 precedes T015, T015 precedes T016, and T017 validates the integrated changes. T018 documents the actual implemented behavior.
++- US2: T019–T021 precede T022–T026; T027 follows the implementation; T028 follows the integrated API changes and T018. T023 and T025 are parallel with T022/T024/T026 only when their target files remain distinct and no shared build/test mutation occurs.
++- US3: T029–T030 precede T031–T033; T034 follows those changes. T029 relies on the common T005 fixture.
++- T035–T041 follow all stories. T036 and T037 can be scheduled independently once builds and source are fixed, but sanitizer/work runs must finish before matched timing in T038–T039. T040 requires measurements; T041 integrates the evidence. Do not run timing concurrently with builds or other active captures.
++
++### Parallel opportunities
++
++- Setup: T002 and T003 inspect different areas and write separate records.
++- US1: T010 can proceed independently of T009; T011 follows T009 due to its shared asset test file.
++- US2: T019 and T020 use separate physics test hosts; T021 uses scene/consumer tests. After characterization, T023, T024 and T025 edit different production files; T022 and T026 may also be separate if their verified caller edits do not overlap.
++- US3: T029 and T030 characterize separate fixtures; T031, T032 and T033 edit separate debug, Mario camera/enemy and Mario player files.
++- Parallel labels indicate available work, not a requirement to use multiple agents. Preserve all dependent edits and evidence capture order.
++
++### Requirement coverage
++
++| Requirement | Tasks |
++| --- | --- |
++| FR-001–FR-005 / SC-001–SC-002 | T004–T018, T035–T038, T040–T041 |
++| FR-006 / SC-003 | T003, T020, T022, T027, T035–T036, T039 |
++| FR-007 | T013–T014 |
++| FR-008–FR-010 | T021, T023–T025, T027–T028, T035 |
++| FR-011 | T019, T026–T027, T035–T036 |
++| FR-012 / SC-004 | T005, T008, T029, T031, T034, T037–T040 |
++| FR-013 / SC-004 | T002, T030, T032–T034, T035 |
++| FR-014–FR-015 / SC-005–SC-006 | T001–T008, T017–T018, T027–T028, T034–T041 |
++
++## Implementation Strategy
++
++1. Establish the dirty-input baseline and common probes (T001–T008).
++2. Deliver US1 (T009–T018) as the MVP and independently verify required-only loading, reuse and eviction.
++3. Deliver US2 and US3 independently, respecting shared-file dependencies and preserving public/scene compatibility.
++4. Finish cross-cutting correctness, safety, measurement and evidence review. No speedup, graphical equivalence or sanitizer pass is claimed without corresponding evidence.
+diff --git a/src/gamemanager.cpp b/src/gamemanager.cpp
+index 263a856..0a2aca2 100644
+--- a/src/gamemanager.cpp
++++ b/src/gamemanager.cpp
+@@ -203,7 +203,8 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
+         throw std::invalid_argument("Simulation timestep must be finite and positive");
+     }
+ 
+-    auto stage = [&](Phase next, auto &&work) {
++    auto stage = [&](Phase next, auto &&work)
++    {
+         PhaseGuard guard(*this, next);
+         work();
+     };
+@@ -212,39 +213,33 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
+     PLATFORMATOR_BENCH_FRAME_BEGIN();
+     try
+     {
+-        stage(Phase::Starting, [&] {
+-            startPendingScripts();
+-        });
+-        stage(Phase::StepHook, [&] {
++        stage(Phase::Starting, [&]
++              { startPendingScripts(); });
++        stage(Phase::StepHook, [&]
++              {
+             if (customCallback)
+             {
+                 customCallback(timeDelta);
+-            }
+-        });
+-        stage(Phase::FixedUpdate, [&] {
+-            fixedUpdateScriptComponents(timeDelta);
+-        });
+-        stage(Phase::Physics, [&] {
++            } });
++        stage(Phase::FixedUpdate, [&]
++              { fixedUpdateScriptComponents(timeDelta); });
++        stage(Phase::Physics, [&]
++              {
+             PLATFORMATOR_BENCH_SCOPE(Physics);
+             synchronizeTransforms();
+             physicsManager->checkForCollisions();
+             physicsManager->applyPhysics(timeDelta);
+             physicsManager->resolveCollisions(timeDelta);
+             physicsManager->applyMovement(timeDelta);
+-            synchronizeTransforms();
+-        });
+-        stage(Phase::CollisionDispatch, [&] {
+-            physicsManager->handlePendingPhysicsEvents(timeDelta);
+-        });
+-        stage(Phase::Update, [&] {
+-            updateScriptComponents(timeDelta);
+-        });
+-        stage(Phase::Animation, [&] {
+-            updateAnimatorComponents(timeDelta);
+-        });
+-        stage(Phase::LateUpdate, [&] {
+-            lateUpdateScriptComponents(timeDelta);
+-        });
++            synchronizeTransforms(); });
++        stage(Phase::CollisionDispatch, [&]
++              { physicsManager->handlePendingPhysicsEvents(timeDelta); });
++        stage(Phase::Update, [&]
++              { updateScriptComponents(timeDelta); });
++        stage(Phase::Animation, [&]
++              { updateAnimatorComponents(timeDelta); });
++        stage(Phase::LateUpdate, [&]
++              { lateUpdateScriptComponents(timeDelta); });
+     }
+     catch (...)
+     {
+@@ -429,7 +424,8 @@ void GameManager::freeAllTextures()
+ GameObject *GameManager::createGameObject()
+ {
+     assertCanMutate();
+-    auto cleanup = [](GameObject *object) {
++    auto cleanup = [](GameObject *object)
++    {
+         delete object;
+     };
+     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
+@@ -791,6 +787,7 @@ void GameManager::queueScriptStart(ScriptComponent *script)
+ 
+ void GameManager::cancelScriptStart(ScriptComponent *script)
+ {
++    // Do not swap this out like the other ones. this can be called during other script starts
+     const auto index = script->pendingStartIndex;
+     if (index == SIZE_MAX)
+     {
+@@ -965,9 +962,8 @@ void GameManager::synchronizeTransforms()
+     }
+     if (transformOrderNeeded)
+     {
+-        std::sort(dirtyTransforms.begin(), dirtyTransforms.end(), [](auto *a, auto *b) {
+-            return a->hierarchyOrder < b->hierarchyOrder;
+-        });
++        std::sort(dirtyTransforms.begin(), dirtyTransforms.end(), [](auto *a, auto *b)
++                  { return a->hierarchyOrder < b->hierarchyOrder; });
+     }
+ 
+     ++transformStamp;
+@@ -997,7 +993,8 @@ void GameManager::runDestructionCallbacks(ScriptComponent *script, std::exceptio
+     script->lifecycle = ObjectLifecycle::DestroyCallbacks;
+     PhaseGuard callbackPhase(*this, Phase::DestructionCallbacks);
+     cancelScriptStart(script);
+-    const auto destroy = [&](Behavior *behavior) {
++    const auto destroy = [&](Behavior *behavior)
++    {
+         try
+         {
+             behavior->onDestroy();

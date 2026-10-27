@@ -4,8 +4,6 @@
 #include "platformator/collider.h"
 #include "collision.h"
 
-enum Axis : uint8_t;
-
 class ColliderPair
 {
     friend class Grid;

@@ -332,6 +332,14 @@ void testSceneVersion2RoundTrip()
                     animator->getCurrentAnimationClip()->getName() == "idle",
                 "Scene v2 round-trip test failed to restore the animator clip asset.");
 
+        require(animator->getCurrentClip() == animator->getCurrentAnimationClip(),
+                "Animation clip getter names must remain equivalent");
+        const bool wasPlaying = animator->getIsPlaying();
+        animator->stop();
+        require(animator->getCurrentClip() == animator->getCurrentAnimationClip(),
+                "Animation clip getter names must remain equivalent while stopped");
+        if (wasPlaying) animator->resume();
+
         ScriptComponent *scriptComponent = scriptedObject->getComponent<ScriptComponent>();
         require(scriptComponent != nullptr && scriptComponent->getId() == 203,
                 "Scene v2 round-trip test failed to restore the script component id.");

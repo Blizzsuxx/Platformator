@@ -45,7 +45,7 @@ bool Animator::getIsPaused() const
 
 const AnimationClip *Animator::getCurrentAnimationClip() const
 {
-    return currentAnimationClip;
+    return getCurrentClip();
 }
 
 bool Animator::play(const AnimationClip *animationClip)

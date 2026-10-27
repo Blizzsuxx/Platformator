@@ -141,6 +141,26 @@ GameObject *createDynamicCircle(Runtime &runtime, const std::string &name, float
         ->setPosition(Eigen::Vector2f(x, y));
 }
 
+void runEqualEndpointsAndMigration()
+{
+    RuntimeOptions options;
+    options.windowSettings.headless = true;
+    Runtime runtime(options);
+    auto *a = createStaticBox(runtime, "equal endpoints a", 0, 0, 4, 4);
+    a->getComponent<BoxCollider>()->setIsTrigger(true);
+    auto *b = createStaticBox(runtime, "equal endpoints b", 0, 0, 4, 4);
+    auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    runtime.simulateFrame(kTimeStep);
+    require(physics->getContactPairs().size() == 1,
+            "Identical endpoint coordinates retain one confirmed overlap");
+    b->setPosition({1000, 0});
+    runtime.simulateFrame(kTimeStep);
+    require(physics->getContactPairs().empty(), "Migration removes the old equal-endpoint overlap");
+    b->setPosition({0, 0});
+    runtime.simulateFrame(kTimeStep);
+    require(physics->getContactPairs().size() == 1, "Migration back restores the equal-endpoint overlap");
+}
+
 void runDestroyedVictimCleanupScenario()
 {
     Runtime runtime;
@@ -271,6 +291,7 @@ int main()
         {
             tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
             runMultiWitnessTransitions();
+            runEqualEndpointsAndMigration();
         }
 
         std::cout << "[PASS] collider_pair_cleanup_test\n";

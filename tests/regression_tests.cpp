@@ -1619,32 +1619,32 @@ void testAudioComponentControls()
     require(!audio->isPlaying() && !audio->isPaused(), "Audio regression expected the track to be idle after stop().");
 }
 
-void testPathManagerCanonicalizationAndFallback()
+void testPathManagerCanonicalizationAndMissingAsset()
 {
     PathManager &pathManager = PathManager::getInstance();
 
     const ResolvedAssetPath sanitizedTexturePath =
-        pathManager.resolveAssetPath("assets\\ball.png", AssetPathType::Texture);
-    require(!sanitizedTexturePath.usedFallback,
-            "PathManager regression unexpectedly used a fallback for an explicit assets path.");
+        pathManager.resolveAssetPath("assets\\ball.png");
     require(sanitizedTexturePath.canonicalPath == "assets/ball.png",
             "PathManager regression failed to normalize separators in an assets path.");
     require(std::filesystem::is_regular_file(sanitizedTexturePath.absolutePath),
             "PathManager regression failed to resolve the canonical texture path to a real file on disk.");
 
-    const ResolvedAssetPath missingTexturePath =
-        pathManager.resolveAssetPath("assets\\textures\\DOES_NOT_EXIST.PNG", AssetPathType::Texture);
-    require(missingTexturePath.usedFallback,
-            "PathManager regression failed to switch to the texture fallback for a missing asset.");
-    require(missingTexturePath.canonicalPath == "assets/textures/missing.png",
-            "PathManager regression returned the wrong texture fallback path.");
-    require(std::filesystem::is_regular_file(missingTexturePath.absolutePath),
-            "PathManager regression resolved the texture fallback to a missing file.");
+    bool missingRejected = false;
+    try
+    {
+        pathManager.resolveAssetPath("assets/textures/DOES_NOT_EXIST.PNG");
+    }
+    catch (const std::runtime_error &)
+    {
+        missingRejected = true;
+    }
+    require(missingRejected, "Missing assets must fail without fallback.");
 
     bool rejected = false;
     try
     {
-        pathManager.resolveAssetPath("/tmp/not_in_assets/default_cube.obj", AssetPathType::Model);
+        pathManager.resolveAssetPath("/tmp/not_in_assets/default_cube.obj");
     }
     catch (const std::invalid_argument &)
     {
@@ -1664,10 +1664,8 @@ void testPathManagerLookupDoesNotDependOnCurrentWorkingDirectory()
     std::filesystem::current_path(temporaryWorkingDirectory);
 
     const ResolvedAssetPath resolvedTexturePath =
-        pathManager.resolveAssetPath("assets/ball.png", AssetPathType::Texture);
+        pathManager.resolveAssetPath("assets/ball.png");
 
-    require(!resolvedTexturePath.usedFallback, "PathManager regression unexpectedly used a fallback when resolving an "
-                                               "asset after changing the working directory.");
     require(resolvedTexturePath.canonicalPath == "assets/ball.png",
             "PathManager regression changed the canonical asset path after the working directory changed.");
     require(std::filesystem::is_regular_file(resolvedTexturePath.absolutePath),
@@ -1874,7 +1872,7 @@ int main()
         {"animator_advanced_playback", testAnimatorAdvancedPlayback},
         {"animationclip_file_round_trip", testAnimationClipFileRoundTrip},
         {"audio_component_controls", testAudioComponentControls},
-        {"path_manager_canonicalization_and_fallback", testPathManagerCanonicalizationAndFallback},
+        {"path_manager_canonicalization_and_missing_asset", testPathManagerCanonicalizationAndMissingAsset},
         {"path_manager_lookup_does_not_depend_on_current_working_directory",
          testPathManagerLookupDoesNotDependOnCurrentWorkingDirectory},
         {"scene_lookup_does_not_depend_on_current_working_directory",

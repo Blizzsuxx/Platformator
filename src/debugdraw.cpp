@@ -259,8 +259,4 @@ DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g
 {
 }
 
-DebugObject::~DebugObject()
-{
-}
-
 #endif

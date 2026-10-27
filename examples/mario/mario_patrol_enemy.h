@@ -30,7 +30,6 @@ namespace mario
 
     private:
         Rigidbody *body;
-        Collider *collider;
         Animator *animator;
         Sprite *sprite;
         Audio *audio;

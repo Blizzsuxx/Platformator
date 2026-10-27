@@ -1,30 +1,6 @@
 #include "physicsmanager.h"
 
-namespace
-{
-void membership(std::vector<Rigidbody *> &list, Rigidbody *body, size_t Rigidbody::*index, bool desired)
-{
-    auto &position = body->*index;
-    if (desired == (position != SIZE_MAX))
-    {
-        return;
-    }
-
-    if (desired)
-    {
-        position = list.size();
-        list.push_back(body);
-    }
-    else
-    {
-        auto *moved = list.back();
-        list[position] = moved;
-        moved->*index = position;
-        list.pop_back();
-        position = SIZE_MAX;
-    }
-}
-} // namespace
+#include "physicsmembership.h"
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {

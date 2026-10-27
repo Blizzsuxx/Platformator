@@ -15,7 +15,6 @@ namespace mario
 {
     MarioPatrolEnemy::MarioPatrolEnemy()
         : body(nullptr),
-          collider(nullptr),
           animator(nullptr),
           sprite(nullptr),
           direction(-1.0f),
@@ -34,7 +33,6 @@ namespace mario
     void MarioPatrolEnemy::start()
     {
         body = getGameObject()->getComponent<Rigidbody>();
-        collider = getGameObject()->getComponent<Collider>();
         animator = getGameObject()->getComponent<Animator>();
         sprite = getGameObject()->getComponent<Sprite>();
         Eigen::Vector2f velocity = body->getVelocity();

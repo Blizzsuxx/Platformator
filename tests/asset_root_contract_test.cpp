@@ -88,13 +88,82 @@ int main()
             fs::remove(root / "outside-link.png");
             fs::create_symlink(directory / "outside.png", root / "outside-link.png");
             rejects([&] { runtime.loadTexture("assets/outside-link.png"); });
-            AssetReference<TextureWrapper> fallback(runtime.loadTexture("assets/absent.png"));
-            require(fallback && fallback->getFilePath() == "assets/textures/missing.png",
-                    "Missing optional textures use the packaged fallback");
-            AssetReference<AudioWrapper> audio(runtime.loadAudio("assets/absent.wav"));
-            AssetReference<AnimationClip> animation(runtime.loadAnimationClip("assets/absent.animset"));
-            require(audio && animation && !animation->getFrames().empty(),
-                    "All intentional fallback assets must be usable without Mario");
+            const auto missing = [](const std::string &path, auto &&load) {
+                try
+                {
+                    load(path);
+                    throw std::runtime_error("Missing asset was unexpectedly accepted: " + path);
+                }
+                catch (const std::runtime_error &error)
+                {
+                    require(std::string(error.what()).find(path) != std::string::npos,
+                            "Missing asset diagnostic must include the original request");
+                    require(std::string(error.what()).find("unexpectedly accepted") == std::string::npos,
+                            "Missing asset must fail rather than use a fallback");
+                }
+            };
+            missing("assets/absent.png", [&](const auto &path) { runtime.loadTexture(path); });
+            missing("assets/absent.wav", [&](const auto &path) { runtime.loadAudio(path); });
+            missing("assets/absent.animset", [&](const auto &path) { runtime.loadAnimationClip(path); });
+            for (const auto &name : {"broken.png", "broken.wav", "broken.animset"})
+            {
+                std::ofstream broken(root / name);
+                broken << "not a valid asset";
+            }
+            missing("assets/broken.png", [&](const auto &path) { runtime.loadTexture(path); });
+            missing("assets/broken.wav", [&](const auto &path) { runtime.loadAudio(path); });
+            missing("assets/broken.animset", [&](const auto &path) { runtime.loadAnimationClip(path); });
+            AssetReference<TextureWrapper> explicitMissing(runtime.loadTexture("assets/textures/missing.png"));
+            require(static_cast<bool>(explicitMissing), "Explicit formerly-fallback file remains loadable");
+            require(runtime.loadTexture("") == nullptr && runtime.loadAudio("") == nullptr &&
+                        runtime.loadAnimationClip("") == nullptr,
+                    "Empty paths still represent no asset");
+
+            fs::copy_file(source / "textures/missing.png", root / "textures/temporary.png",
+                          fs::copy_options::overwrite_existing);
+            {
+                AssetReference<TextureWrapper> held(runtime.loadTexture("assets/textures/temporary.png"));
+                auto *expected = held.get();
+                require(runtime.loadTexture("assets\\textures\\temporary.png") == expected,
+                        "Validated aliases share the same resource");
+                fs::remove(root / "textures/temporary.png");
+                require(runtime.loadTexture("assets/textures/temporary.png") == expected &&
+                            runtime.loadTexture("assets\\textures\\temporary.png") == expected,
+                        "Previously resolved aliases reuse retained resources after deletion");
+            }
+            missing("assets/textures/temporary.png", [&](const auto &path) { runtime.loadTexture(path); });
+            missing("assets\\textures\\temporary.png", [&](const auto &path) { runtime.loadTexture(path); });
+            fs::copy_file(source / "audio/missing.wav", root / "audio/temporary.wav",
+                          fs::copy_options::overwrite_existing);
+            {
+                AssetReference<AudioWrapper> held(runtime.loadAudio("assets/audio/temporary.wav"));
+                auto *expected = held.get();
+                fs::remove(root / "audio/temporary.wav");
+                require(runtime.loadAudio("assets/audio/temporary.wav") == expected,
+                        "Retained audio request survives file deletion");
+            }
+            missing("assets/audio/temporary.wav", [&](const auto &path) { runtime.loadAudio(path); });
+            fs::copy_file(root / "animations/nested/Valid.animset", root / "animations/nested/temporary.animset",
+                          fs::copy_options::overwrite_existing);
+            {
+                AssetReference<AnimationClip> held(runtime.loadAnimationClip("assets/animations/nested/temporary.animset"));
+                auto *expected = held.get();
+                fs::remove(root / "animations/nested/temporary.animset");
+                require(runtime.loadAnimationClip("assets/animations/nested/temporary.animset") == expected,
+                        "Retained animation request survives file deletion");
+            }
+            missing("assets/animations/nested/temporary.animset", [&](const auto &path) { runtime.loadAnimationClip(path); });
+            fs::create_symlink(root / "textures/MiXeD.PNG", root / "cached-link.png");
+            {
+                AssetReference<TextureWrapper> link(runtime.loadTexture("assets/cached-link.png"));
+                auto *expected = link.get();
+                fs::remove(root / "cached-link.png");
+                fs::create_symlink(directory / "outside.png", root / "cached-link.png");
+                require(runtime.loadTexture("assets/cached-link.png") == expected,
+                        "Previously validated request remains stable after symlink change");
+                rejects([&] { runtime.loadTexture("assets\\cached-link.png"); });
+            }
+            fs::remove(root / "cached-link.png");
             fs::create_directories(directory / "Elsewhere");
             fs::current_path(directory / "Elsewhere");
             require(runtime.loadTexture("assets/textures/MiXeD.PNG") == texture.get(),
@@ -191,6 +260,22 @@ int main()
                 file << clipDocument;
             }
             rejects([&] { runtime.loadAnimationClip("assets/animations/nested/Invalid.animset"); });
+            clipDocument["frames"][0]["textureWrapperFilePath"] = "assets/textures/missing-nested.png";
+            {
+                std::ofstream file(root / "animations/nested/MissingFrame.animset");
+                file << clipDocument;
+            }
+            try
+            {
+                runtime.loadAnimationClip("assets/animations/nested/MissingFrame.animset");
+                throw std::runtime_error("Missing nested frame unexpectedly accepted");
+            }
+            catch (const std::exception &error)
+            {
+                require(std::string(error.what()).find("assets/textures/missing-nested.png") != std::string::npos,
+                        "Nested frame failure identifies the missing frame request");
+            }
+
         }
         fs::current_path(previous);
         {

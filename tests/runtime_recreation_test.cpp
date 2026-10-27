@@ -104,6 +104,28 @@ int main()
         require(firstSerial != secondSerial && platformator::Runtime::tryGetCurrent() == nullptr,
                 "Recreation publishes a distinct identity lifetime and clears access again");
 
+        const auto assetRoot = std::filesystem::current_path() / "runtime_recreation_assets";
+        std::filesystem::create_directories(assetRoot / "textures");
+        std::filesystem::copy_file(std::filesystem::path(SDL_GetBasePath()) / "assets/textures/missing.png",
+                                   assetRoot / "textures/recreated.png", std::filesystem::copy_options::overwrite_existing);
+        RuntimeOptions assetOptions;
+        assetOptions.assetRoot = assetRoot.string();
+        {
+            platformator::Runtime first(assetOptions);
+            require(first.loadTexture("assets/textures/recreated.png") != nullptr, "Initial asset must load");
+            std::filesystem::remove(assetRoot / "textures/recreated.png");
+            require(first.loadTexture("assets/textures/recreated.png") != nullptr,
+                    "Retained cached request survives file deletion");
+        }
+        {
+            platformator::Runtime second(assetOptions);
+            bool rejected = false;
+            try { second.loadTexture("assets/textures/recreated.png"); }
+            catch (const std::exception &) { rejected = true; }
+            require(rejected, "A new runtime cannot reuse a previous runtime's asset alias");
+        }
+        std::filesystem::remove_all(assetRoot);
+
         cleanup();
         std::cout << "[PASS] runtime_recreation_test\n";
         return 0;

@@ -2,8 +2,8 @@
 #include "aabb.h"
 #include "buildconfig.h"
 
-SegmentedIntervalList::SegmentedIntervalList(AABB *owner, Axis axis, bool isPrimary)
-    : chunks(), owner(owner), axis(axis), isPrimary(isPrimary)
+SegmentedIntervalList::SegmentedIntervalList(AABB *owner, bool isPrimary)
+    : chunks(), owner(owner), isPrimary(isPrimary)
 {
     chunks.push_back(new LocalSortArray(this));
 }
@@ -459,12 +459,12 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
 
 void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB)
 {
-    owner->axisOverlapBegin(colliderA, colliderB, axis);
+    owner->axisOverlapBegin(colliderA, colliderB);
 }
 
 void SegmentedIntervalList::removeCollision(Collider *colliderA, Collider *colliderB)
 {
-    owner->axisOverlapEnd(colliderA, colliderB, axis);
+    owner->axisOverlapEnd(colliderA, colliderB);
 }
 
 void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted)

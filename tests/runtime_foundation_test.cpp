@@ -1,4 +1,5 @@
 #include "runtimeaccess.h"
+#include "buildconfig.h"
 #include "test_support.h"
 
 #include <filesystem>
@@ -286,38 +287,26 @@ void callbackFailure()
     require(updates == 1, "Runtime phase must return to idle after callback failure");
 }
 
+constexpr const char *audioPath = "assets/audio/jump.wav";
+constexpr const char *otherAudioPath = "assets/audio/missing.wav";
+
+bool waitForAudio(const std::function<bool()> &complete)
+{
+    const auto deadline = SDL_GetTicks() + 2000;
+    do
+    {
+        if (complete())
+            return true;
+        SDL_Delay(5);
+    } while (SDL_GetTicks() < deadline);
+    return false;
+}
+
 void audioRetention()
 {
-    const auto path = std::filesystem::current_path() / "assets/test_runtime/foundation.wav";
-    std::filesystem::create_directories(path.parent_path());
-    {
-        std::ofstream wav(path, std::ios::binary);
-        auto integer = [&](uint32_t value, int bytes) {
-            for (int i = 0; i < bytes; ++i)
-            {
-                wav.put(static_cast<char>(value >> (8 * i)));
-            }
-        };
-        wav << "RIFF";
-        integer(36 + 256, 4);
-        wav << "WAVEfmt ";
-        integer(16, 4);
-        integer(1, 2);
-        integer(1, 2);
-        integer(8000, 4);
-        integer(16000, 4);
-        integer(2, 2);
-        integer(16, 2);
-        wav << "data";
-        integer(256, 4);
-        for (int i = 0; i < 256; ++i)
-        {
-            wav.put(0);
-        }
-    }
     {
         Runtime runtime;
-        auto *cached = runtime.loadAudio("assets/test_runtime/foundation.wav");
+        auto *cached = runtime.loadAudio(audioPath);
         require(cached, "Audio fixture must load");
         AssetReference<AudioWrapper> retained(cached);
         auto *owner = runtime.createGameObject()->addComponent<Audio>(cached);
@@ -326,18 +315,131 @@ void audioRetention()
     }
     {
         Runtime runtime;
-        auto *cached = runtime.loadAudio("assets/test_runtime/foundation.wav");
+        auto *cached = runtime.loadAudio(audioPath);
         auto *owner = runtime.createGameObject()->addComponent<Audio>(cached);
         auto *audio = owner->getComponent<Audio>();
         audio->setLoopCount(-1);
         require(audio->playAndForget(), "Transient playback must start");
         owner->destroy();
-        require(runtime.loadAudio("assets/test_runtime/foundation.wav") == cached,
+        require(runtime.loadAudio(audioPath) == cached,
                 "Transient playback must retain its audio after component destruction");
+        cached->addReference();
+        runtime.stopTransientAudio();
+        require(cached->removeReferenceAndFreeIfNoReferences(),
+                "Stopping transient audio must release the looping playback's resource reference");
         runtime.simulateFrame(dt);
     }
-    std::filesystem::remove(path);
 }
+
+void audioTransientCleanup()
+{
+    RuntimeOptions options;
+    options.debugSettings.startPaused = true;
+    Runtime runtime(options);
+    auto *cached = runtime.loadAudio(audioPath);
+    cached->addReference();
+    auto *owner = runtime.createGameObject()->addComponent<Audio>(cached);
+    require(owner->getComponent<Audio>()->playAndForget(), "Finite transient playback must start");
+    owner->destroy();
+    int steps = 0;
+    require(waitForAudio([&] {
+        runtime.simulateAndRenderFrameWithCustomCallback(dt, [&](double) { ++steps; });
+        // Release our probe reference, restoring it while playback still retains the asset.
+        if (cached->removeReferenceAndFreeIfNoReferences())
+            return true;
+        cached->addReference();
+        return false;
+    }), "Runtime frames must release completed transient audio");
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    require(steps == 0, "Paused audio cleanup must not advance simulation");
+#endif
+}
+
+void audioAutoplay()
+{
+    Runtime runtime;
+    auto *cached = runtime.loadAudio(audioPath);
+    auto *owner = runtime.createGameObject()->setActive(false)->addComponent<Audio>(cached, 1.0f, true, -1.0f);
+    auto *audio = owner->getComponent<Audio>();
+    require(!audio->isPlaying(), "Autoplay must wait for an inactive owner to become active");
+    auto *pathOwner = runtime.createGameObject()->setActive(false)->addComponent<Audio>(audioPath, 1.0f, true, -1.0f);
+    require(!pathOwner->getComponent<Audio>()->isPlaying(), "Path-based autoplay also waits for activation");
+    owner->setActive(true);
+    require(audio->isPlaying(), "Activation starts autoplay");
+    owner->setActive(false);
+    require(!audio->isPlaying(), "Deactivation stops component playback");
+    owner->setActive(true);
+    require(audio->isPlaying(), "Reactivation restarts autoplay");
+    require(audio->playAndForget(), "Independent looping playback must start");
+    runtime.stopTransientAudio();
+    require(audio->isPlaying(), "Stopping transient tracks must not stop the component track");
+}
+
+void checkAudioReplayCompletion(bool paused)
+{
+    RuntimeOptions options;
+    options.debugSettings.startPaused = paused;
+    Runtime runtime(options);
+    auto *original = runtime.loadAudio(audioPath);
+    auto *next = runtime.loadAudio(otherAudioPath);
+    require(original && next && original != next, "Replay requires two distinct audio assets");
+    auto *owner = runtime.createGameObject()->addComponent<Audio>(original, 1.0f, true, -1.0f);
+    auto *audio = owner->getComponent<Audio>();
+    require(audio->replay(next, 800), "Replay must schedule a fade-out");
+    require(audio->getAudioWrapper() == original, "The original sound stays bound until the fade finishes");
+    int steps = 0;
+    require(waitForAudio([&] {
+        if (paused)
+            runtime.simulateAndRenderFrameWithCustomCallback(dt, [&](double) { ++steps; });
+        else
+            runtime.simulateFrame(dt);
+        return audio->getAudioWrapper() == next && audio->isPlaying();
+    }), "Replay must start the distinct target after fading");
+    require(MIX_GetTrackAudio(audio->getTrack()) == next->getAudio(), "The mixer must use the replacement asset");
+    require(MIX_GetTrackFadeFrames(audio->getTrack()) == 0, "The restarted track is no longer fading");
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    if (paused)
+        require(steps == 0, "Paused replay must advance without a simulation step");
+#endif
+}
+
+void audioReplayCompletion()
+{
+    checkAudioReplayCompletion(false);
+}
+
+void audioReplayWhilePaused()
+{
+    checkAudioReplayCompletion(true);
+}
+
+void audioReplayCancellation()
+{
+    Runtime runtime;
+    AssetReference<AudioWrapper> original(runtime.loadAudio(audioPath));
+    auto *owner = runtime.createGameObject()->addComponent<Audio>(original.get(), 1.0f, true, -1.0f);
+    auto *audio = owner->getComponent<Audio>();
+    require(audio->replay(original.get(), 480000), "Replay can queue the current sound");
+    require(MIX_GetTrackFadeFrames(audio->getTrack()) < 0, "Replay retains the requested fade-out");
+    require(audio->stop(), "Stopping cancels a pending replay");
+    runtime.simulateFrame(dt);
+    require(!audio->isPlaying(), "A cancelled replay must not restart");
+    require(audio->play(), "Playback can restart after cancellation");
+    auto *next = runtime.loadAudio(otherAudioPath);
+    require(audio->replay(next, 480000), "A different sound can be queued for replay");
+    require(audio->replay(next, 480000), "Replacing a pending replay retains its target");
+    audio->setAudio(next);
+    runtime.simulateFrame(dt);
+    require(audio->getAudioWrapper() == next, "Setting a pending target keeps it alive");
+    require(audio->replay(original.get(), 480000), "Replay must schedule before deactivation");
+    owner->setActive(false);
+    runtime.simulateFrame(dt);
+    require(!audio->isPlaying() && audio->getAudioWrapper() == next, "Deactivation cancels a pending replay");
+    owner->setActive(true);
+    require(audio->replay(original.get(), 480000), "Replay must schedule before destruction");
+    runtime.simulateFrameWithCustomCallback(dt, [&](double) { owner->destroy(); });
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -352,7 +454,12 @@ int main(int argc, char **argv)
                                                          {"resources", resourceRetention},
                                                          {"activation", activation},
                                                          {"callback_failure", callbackFailure},
-                                                         {"audio_resources", audioRetention}};
+                                                         {"audio_resources", audioRetention},
+                                                         {"audio_transient_cleanup", audioTransientCleanup},
+                                                         {"audio_autoplay", audioAutoplay},
+                                                         {"audio_replay_completion", audioReplayCompletion},
+                                                         {"audio_replay_paused", audioReplayWhilePaused},
+                                                         {"audio_replay_cancellation", audioReplayCancellation}};
     int failures = 0;
     for (auto [name, run] : cases)
     {

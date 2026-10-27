@@ -42,6 +42,8 @@ class Runtime
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
     void clearScene();
+    // Stop and release all independent fire-and-forget tracks.
+    void stopTransientAudio();
     void requestClearScene();
     void requestLoadScene(const std::string &sceneFilePath);
     GameObject *getGameObject(const std::string &name) const;

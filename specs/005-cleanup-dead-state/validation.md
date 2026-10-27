@@ -1,5 +1,7 @@
 # Implementation validation
 
+**Subsequent Audio follow-up:** The Audio lifecycle and replay behavior were changed after this feature's measurements. Its new pending-replay state changes the Audio layout again; the measurements and test results below describe the feature 005 snapshot, not the later Audio changes.
+
 All 14 selected dead-state/internal-code findings were removed. Active pair ownership, witness reduction, support/solver and hierarchy/lifecycle paths remain; the cleanup adds no solver reordering or new pair storage. Detailed dispositions are in `evidence/dispositions.md`, and installed C++ declaration/layout changes and rebuild requirements are in `../../docs/CPP_API_MIGRATION.md`.
 
 - Debug-tools-on and production suites each passed 24 tests, with two matching instrumentation-only skips, on baseline and candidate; package/relocated consumer and Mario checks passed. The benchmark contract and one-/two-worker work checks passed. The original temporary ordinary-suite logs were subsequently lost; recorded summaries remain in `evidence/final-correctness.md`.

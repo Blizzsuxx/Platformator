@@ -36,6 +36,8 @@ class Audio : public Component
 
     bool play();
     bool play(AudioWrapper *audioWrapper);
+    // A positive fade on a playing track queues the new sound until the fade ends.
+    // Returns whether playback started or the replay was scheduled.
     bool replay(AudioWrapper *audioWrapper, Sint64 fadeOutFrames = 0);
     bool playAndForget(AudioWrapper *audioWrapper);
     bool playAndForget();
@@ -49,13 +51,17 @@ class Audio : public Component
 
 
   private:
+    friend class SDLWindow;
     AudioWrapper *audioWrapper;
+    AudioWrapper *pendingReplay = nullptr;
     std::unique_ptr<MIX_Track, decltype(&MIX_DestroyTrack)> track{nullptr, MIX_DestroyTrack};
     float gain;
     int loopCount;
     bool autoPlay;
 
     void freeAudio();
+    void cancelPendingReplay();
+    void finishPendingReplay();
 };
 
 template <> struct ComponentTypeFor<Audio>

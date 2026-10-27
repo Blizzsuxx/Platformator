@@ -254,7 +254,7 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     try
     {
         PLATFORMATOR_BENCH_SCOPE(Cleanup);
-        window->updateTransientAudio();
+        window->updateAudio();
         commitMutations();
     }
     catch (...)
@@ -307,6 +307,9 @@ void GameManager::loop()
         {
             break;
         }
+        // Simulation steps update audio themselves; paused and zero-step frames still need it.
+        if (steps == 0)
+            window->updateAudio();
         {
             PhaseGuard renderPhase(*this, Phase::Rendering);
             window->render();
@@ -352,6 +355,10 @@ bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<v
         window->clearDebugObjects();
 #endif
         runSimulationStepWithCustomCallback(customCallback, timeDelta);
+    }
+    else
+    {
+        window->updateAudio();
     }
     PhaseGuard renderPhase(*this, Phase::Rendering);
     window->render();

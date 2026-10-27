@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <iostream>
+#include <memory>
 
 #include <SDL3/SDL_properties.h>
 
 #include "platformator/audiowrapper.h"
+#include "platformator/audio.h"
 #include "gamemanager.h"
 #include "runtimeaccess.h"
 #include "platformator/sprite.h"
@@ -424,15 +426,14 @@ bool SDLWindow::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCo
         return false;
     }
 
-    MIX_Track *track = MIX_CreateTrack(mixer);
+    std::unique_ptr<MIX_Track, decltype(&MIX_DestroyTrack)> track(MIX_CreateTrack(mixer), MIX_DestroyTrack);
 
-    if (!MIX_SetTrackAudio(track, audioWrapper->getAudio()))
+    if (!track || !MIX_SetTrackAudio(track.get(), audioWrapper->getAudio()))
     {
-        MIX_DestroyTrack(track);
         return false;
     }
 
-    MIX_SetTrackGain(track, std::max(0.0f, gain));
+    MIX_SetTrackGain(track.get(), std::max(0.0f, gain));
 
     SDL_PropertiesID options = 0;
     if (loopCount != 0)
@@ -445,12 +446,11 @@ bool SDLWindow::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCo
                 SDL_DestroyProperties(options);
             }
 
-            MIX_DestroyTrack(track);
             return false;
         }
     }
 
-    const bool played = MIX_PlayTrack(track, options);
+    const bool played = MIX_PlayTrack(track.get(), options);
     if (options != 0)
     {
         SDL_DestroyProperties(options);
@@ -458,16 +458,16 @@ bool SDLWindow::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCo
 
     if (!played)
     {
-        MIX_DestroyTrack(track);
         return false;
     }
 
+    transientAudioPlaybacks.push_back({track.get(), audioWrapper});
     audioWrapper->addReference();
-    transientAudioPlaybacks.push_back({track, audioWrapper});
+    track.release();
     return true;
 }
 
-void SDLWindow::updateTransientAudio()
+void SDLWindow::updateAudio()
 {
     size_t index = 0;
     while (index < transientAudioPlaybacks.size())
@@ -480,6 +480,41 @@ void SDLWindow::updateTransientAudio()
         }
 
         index++;
+    }
+
+    index = 0;
+    while (index < pendingAudioReplays.size())
+    {
+        Audio *audio = pendingAudioReplays[index];
+        auto *owner = audio->getGameObject();
+        if (audio->isRetired() || (owner && (owner->isRetired() || !owner->getActive())))
+        {
+            audio->cancelPendingReplay();
+            continue;
+        }
+        if (audio->isPlaying() || audio->isPaused())
+        {
+            ++index;
+            continue;
+        }
+        pendingAudioReplays[index] = pendingAudioReplays.back();
+        pendingAudioReplays.pop_back();
+        audio->finishPendingReplay();
+    }
+}
+
+void SDLWindow::scheduleAudioReplay(Audio *audio)
+{
+    pendingAudioReplays.push_back(audio);
+}
+
+void SDLWindow::cancelAudioReplay(Audio *audio)
+{
+    auto found = std::find(pendingAudioReplays.begin(), pendingAudioReplays.end(), audio);
+    if (found != pendingAudioReplays.end())
+    {
+        *found = pendingAudioReplays.back();
+        pendingAudioReplays.pop_back();
     }
 }
 

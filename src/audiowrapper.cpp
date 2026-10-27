@@ -1,6 +1,22 @@
 #include "platformator/audiowrapper.h"
 #include "runtimeaccess.h"
 
+void AudioWrapper::ReleaseReference::operator()(AudioWrapper *audio) const
+{
+    audio->removeReferenceAndFreeIfNoReferences();
+}
+
+AudioWrapper::Reference AudioWrapper::retain(AudioWrapper *audio)
+{
+    if (audio)
+    {
+
+        audio->addReference();
+    }
+
+    return Reference(audio);
+}
+
 AudioWrapper::AudioWrapper(MIX_Audio *audio, const std::string &filePath)
     : Asset(filePath), audio(audio), referenceCount(0)
 {

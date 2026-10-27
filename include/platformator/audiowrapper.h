@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
 
 #include <SDL3_mixer/SDL_mixer.h>
@@ -11,6 +12,15 @@
 class AudioWrapper : public Asset
 {
 public:
+    struct ReleaseReference
+    {
+        void operator()(AudioWrapper *audio) const;
+    };
+
+    // Owns one existing reference; use retain() to acquire a new reference.
+    using Reference = std::unique_ptr<AudioWrapper, ReleaseReference>;
+    static Reference retain(AudioWrapper *audio);
+
     AudioWrapper(MIX_Audio *audio, const std::string &filePath);
     ~AudioWrapper();
 

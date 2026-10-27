@@ -13,6 +13,7 @@
 #include "debugdraw.h"
 #include "platformator/windowsettings.h"
 
+class Audio;
 class AudioWrapper;
 class Sprite;
 
@@ -46,8 +47,10 @@ class SDLWindow
     Camera *getMainCamera() const;
 
     bool playAndForget(AudioWrapper *audioWrapper, float gain = 1.0f, int loopCount = 0);
-    void updateTransientAudio();
+    void updateAudio();
     void clearTransientAudio();
+    void scheduleAudioReplay(Audio *audio);
+    void cancelAudioReplay(Audio *audio);
 
   private:
     struct TransientAudioPlayback
@@ -73,6 +76,7 @@ class SDLWindow
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event, double)>> listeners;
     std::vector<TransientAudioPlayback> transientAudioPlaybacks;
+    std::vector<Audio *> pendingAudioReplays;
 
     bool init();
     void close();

@@ -70,6 +70,12 @@ void Runtime::clearScene()
     gameManager->clearObjects();
 }
 
+void Runtime::stopTransientAudio()
+{
+    gameManager->assertCanMutate();
+    gameManager->getWindow()->clearTransientAudio();
+}
+
 void Runtime::requestClearScene()
 {
     gameManager->requestScene(std::nullopt);

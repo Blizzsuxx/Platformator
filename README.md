@@ -4,7 +4,9 @@ A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based object
 
 ## Build and test
 
-Use a C++20 compiler, CMake 3.21+ with presets, Ninja, and SDL system development prerequisites. Dependencies are bundled. Python 3 is used by benchmark tooling/tests; the Python GUI is unnecessary.
+Use a C++20/C17 toolchain, CMake 3.22+ with presets, Ninja, and SDL system development prerequisites. Dependencies are bundled. Python 3 is used by benchmark tooling/tests; the Python GUI is unnecessary.
+
+The engine archive includes a private [Box2D 3.2.0 dynamic-tree subset](vendored/box2d-3.2.0/README.platformator.md) and adapter for future BVH prototypes. The current collider broad phase and sprite rendering are unchanged. Installed SDK consumers need no separate Box2D dependency.
 
 ```sh
 cmake --preset cleanup-debug

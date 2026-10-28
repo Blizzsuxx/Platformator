@@ -1,5 +1,0 @@
-root = true
-
-[*.{c,h,cpp,inl}]
-guidelines = 100
-guidelines_style = 1px dotted gray

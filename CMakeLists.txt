@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 
 project(Platformator VERSION 0.1.0 LANGUAGES CXX C)
 
@@ -66,6 +66,9 @@ add_subdirectory(vendored/SDL3_image-3.4.8 ${platformator_dependency_exclusion})
 add_subdirectory(vendored/SDL3_ttf-3.2.2 ${platformator_dependency_exclusion})
 add_subdirectory(vendored/eigen-5.0.1 ${platformator_dependency_exclusion})
 add_subdirectory(vendored/oneTBB-2022.3.0 ${platformator_dependency_exclusion})
+add_subdirectory(vendored/box2d-3.2.0)
+target_sources(platformator_box2d_tree PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/box2d_tree_bridge.c")
+target_include_directories(platformator_box2d_tree PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 add_library(nlohmann_json INTERFACE)
 add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
@@ -102,6 +105,12 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*")
     list(APPEND platformator_fingerprint_inputs "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c")
+    file(GLOB_RECURSE platformator_tree_inputs CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/src/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/include/*")
+    list(APPEND platformator_fingerprint_inputs ${platformator_tree_inputs}
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/UPSTREAM.sha256")
     list(SORT platformator_fingerprint_inputs)
     set(platformator_source_hashes "")
     foreach(source_file IN LISTS platformator_fingerprint_inputs)
@@ -124,6 +133,9 @@ set(PLATFORMATOR_BENCHMARK_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmar
 list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}" "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}")
 
 add_library(platformator_engine STATIC ${PLATFORMATOR_SOURCES})
+# Bundle the private dependency into the engine archive, including installed SDKs.
+# Referencing the objects avoids an exported dependency on a separate Box2D target.
+target_sources(platformator_engine PRIVATE $<TARGET_OBJECTS:platformator_box2d_tree>)
 add_library(Platformator::platformator ALIAS platformator_engine)
 target_compile_features(platformator_engine PUBLIC cxx_std_20)
 set_target_properties(platformator_engine PROPERTIES EXPORT_NAME platformator)
@@ -142,7 +154,11 @@ target_include_directories(platformator_engine PUBLIC
 target_include_directories(platformator_engine PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/include>
 )
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(platformator_engine PRIVATE m)
+endif()
 
 target_link_libraries(platformator_engine PUBLIC
     SDL3::SDL3
@@ -224,6 +240,24 @@ if(PLATFORMATOR_BUILD_TESTS)
     platformator_add_test(platformator_asset_alias_exception_test tests/asset_alias_exception_test.cpp INTERNAL LABELS asset)
     platformator_add_test(platformator_asset_runtime_exception_test tests/asset_runtime_exception_test.cpp INTERNAL LABELS asset scene)
     platformator_add_test(platformator_physics_geometry_test tests/physics_geometry_test.cpp LABELS physics geometry)
+    platformator_add_test(platformator_dynamic_aabb_tree_test tests/dynamic_aabb_tree_test.cpp INTERNAL LABELS physics geometry)
+    add_executable(platformator_box2d_tree_test tests/box2d_tree_test.c
+        vendored/box2d-3.2.0/test/test_dynamic_tree.c
+        $<TARGET_OBJECTS:platformator_box2d_tree>)
+    set_target_properties(platformator_box2d_tree_test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED YES)
+    target_include_directories(platformator_box2d_tree_test PRIVATE
+        vendored/box2d-3.2.0/include vendored/box2d-3.2.0/src vendored/box2d-3.2.0/test)
+    target_compile_definitions(platformator_box2d_tree_test PRIVATE
+        "$<$<CONFIG:Debug>:BOX2D_VALIDATE>"
+        "$<$<CONFIG:RelWithDebInfo>:B2_ENABLE_ASSERT>")
+    if(EMSCRIPTEN)
+        target_compile_options(platformator_box2d_tree_test PRIVATE -msimd128 -msse2)
+    endif()
+    if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+        target_link_libraries(platformator_box2d_tree_test PRIVATE m)
+    endif()
+    add_test(NAME platformator_box2d_tree_test COMMAND platformator_box2d_tree_test)
+    set_tests_properties(platformator_box2d_tree_test PROPERTIES LABELS "platformator;physics;geometry;vendor")
     platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp INTERNAL LABELS lifecycle clock)
     platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp INTERNAL LABELS physics work)
     set_tests_properties(platformator_runtime_work_test PROPERTIES SKIP_RETURN_CODE 77)
@@ -289,6 +323,9 @@ if(PLATFORMATOR_INSTALL)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/platformator/"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/platformator" FILES_MATCHING PATTERN "*.h")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/vendored/json/json.hpp" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(FILES vendored/box2d-3.2.0/LICENSE vendored/box2d-3.2.0/README.platformator.md
+        vendored/box2d-3.2.0/UPSTREAM.sha256
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Platformator/box2d-tree")
     set(PLATFORMATOR_PACKAGE_CONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/Platformator")
     configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/PlatformatorConfig.cmake.in"
         "${CMAKE_CURRENT_BINARY_DIR}/PlatformatorConfig.cmake" INSTALL_DESTINATION "${PLATFORMATOR_PACKAGE_CONFIG_DIR}")

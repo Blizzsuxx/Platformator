@@ -1,0 +1,14 @@
+SDL=3004018 renderer=software output=1280x720
+verified edges camera=1280x720 sprites=200 hash=11143273436291025851
+verified edges camera=2560x720 sprites=200 hash=8529584917094518917
+verified edges camera=640x1440 sprites=200 hash=13220984991879116549
+verified count=1000 visible=1 rotated=0 hash=10279496922017199109
+verified count=1000 visible=1 rotated=1 hash=16388556504848440211
+verified count=1000 visible=100 rotated=0 hash=12866278943162417509
+verified count=1000 visible=100 rotated=1 hash=13416826024714258427
+verified count=10000 visible=1 rotated=0 hash=12402586185654666957
+verified count=10000 visible=1 rotated=1 hash=7790809846059646163
+verified count=10000 visible=100 rotated=0 hash=17122535643684044461
+verified count=10000 visible=100 rotated=1 hash=2284983017144539127
+verified count=100000 visible=1 rotated=0 hash=8924282873908008745
+verified count=100000 visible=1 rotated=1 hash=5618541382211745880

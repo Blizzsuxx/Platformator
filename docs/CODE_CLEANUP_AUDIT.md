@@ -4,6 +4,8 @@ Recorded: 26 October 2026. Reviewed baseline: `61949f4ef8766bef04a5c4099d858ef56
 
 **27 October 2026 supersession:** Feature 005 removes the unused C01 pair-slot table and its recycling bookkeeping. This audit remains a historical account of the reviewed baseline; current implementation and validation are tracked under `specs/005-cleanup-dead-state/`.
 
+**28 October 2026 follow-up:** [P03 sprite rendering investigation](P03_SPRITE_RENDERING_INVESTIGATION.md) compares conservative culling, cached bounds, a separate instance of the existing sweep-and-prune/grid machinery, and the bundled Eigen BVH. It records exploratory measurements and limitations; runtime implementation is unchanged.
+
 This document records the cleanup investigation and subsequent history tracing. It is a backlog for creating several focused feature specifications, not an implementation plan or authorization to change runtime behavior.
 
 ## Scope and evidence

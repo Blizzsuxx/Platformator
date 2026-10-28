@@ -1,0 +1,3 @@
+verified separate AABB/grid/BVH/flat count=1000; sprite pairs filtered; workers=1
+verified separate AABB/grid/BVH/flat count=10000; sprite pairs filtered; workers=1
+verified separate AABB/grid/BVH/flat count=100000; sprite pairs filtered; workers=1

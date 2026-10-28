@@ -38,6 +38,7 @@ class Runtime
     static Runtime &current();
     static Runtime *tryGetCurrent();
     const std::filesystem::path &getAssetRoot() const;
+    const SpatialSettings &getSpatialSettings() const;
 
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
@@ -82,6 +83,7 @@ class Runtime
     std::unique_ptr<PathManager> paths;
     std::unique_ptr<GameManager> gameManager;
     uint64_t smokeStepLimit = 0;
+    SpatialSettings spatialSettings{};
     std::string currentSceneFilePath;
 };
 } // namespace platformator

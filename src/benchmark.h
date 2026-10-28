@@ -10,6 +10,9 @@
 #include <vector>
 #include <json.hpp>
 
+#include "spatialreplay.h"
+#include "platformator/spatialsettings.h"
+
 namespace platformator_detail
 {
 enum class BenchmarkScopeId : uint8_t
@@ -22,6 +25,15 @@ enum class BenchmarkScopeId : uint8_t
     BroadPhase,
     NarrowPhase,
     ResolveCollisions,
+    SpatialUpdate,
+    RenderCulling,
+    RenderSubmit,
+    SpatialReplay,
+    BoundsPrepare,
+    IndexUpdate,
+    IndexMaintenance,
+    IndexQuery,
+    ResultReduce,
     COUNT
 };
 enum class BenchmarkCounterId : uint8_t
@@ -37,6 +49,29 @@ enum class BenchmarkCounterId : uint8_t
     QueuedRemoveCount,
     CollisionEnterEventCount,
     CollisionExitEventCount,
+    SpatialProxyCount,
+    ChangedBoundsCount,
+    FilterChangeCount,
+    ProxyInsertCount,
+    ProxyRemoveCount,
+    ProxyMoveCount,
+    EnvelopeReuseCount,
+    QueryCount,
+    RawDiscoveryCount,
+    ExactOverlapCount,
+    PairAddCount,
+    PairRemoveCount,
+    RebuildCallCount,
+    RebuildItemCount,
+    TreeHeight,
+    TreeNodeCount,
+    SpriteCount,
+    VisibleCandidateCount,
+    SubmittedSpriteCount,
+    UncullableSpriteCount,
+    CullingBypassCount,
+    VisibilityCacheHitCount,
+    VisibilityCellCount,
     COUNT
 };
 constexpr size_t BENCHMARK_SCOPE_COUNT = static_cast<size_t>(BenchmarkScopeId::COUNT);
@@ -54,6 +89,11 @@ class BenchmarkRecorder
     void configure(size_t expectedSamples, nlohmann::json metadata);
     void beginFrame();
     void endFrame();
+    void setInitializationActive(bool active);
+    uint64_t initializationScopeNanoseconds(BenchmarkScopeId scope) const;
+    int64_t initializationCounterValue(BenchmarkCounterId counter) const;
+    void beginRender();
+    void cancelRenderSample();
     void enterScope(BenchmarkScopeId scope);
     void leaveScope(BenchmarkScopeId scope, uint64_t nanoseconds);
     bool scopeActive(BenchmarkScopeId scope) const;
@@ -87,12 +127,21 @@ class BenchmarkRecorder
     uint64_t totalRenders = 0;
     std::chrono::steady_clock::time_point frameStartTime;
     BenchmarkFrameStats currentFrame;
+    BenchmarkFrameStats currentRender;
+    bool renderActive = false;
+    bool suppressCurrentRender = false;
+    bool initializationActive = false;
+    BenchmarkFrameStats initializationStats;
     std::array<unsigned, BENCHMARK_SCOPE_COUNT> activeScopes{};
     std::vector<BenchmarkFrameStats> frames;
-    std::vector<uint64_t> renders;
+    std::vector<BenchmarkFrameStats> renders;
     nlohmann::json metadata;
     std::string csvOutputPath;
 };
+
+void writeSpatialReplayOutputs(const std::string &path, const std::string &tracePath, const SpatialTrace &trace,
+                               const SpatialSettings &settings, const SpatialReplayRun &run, bool validationMode,
+                               bool resourceMode = false, nlohmann::json resourceData = nlohmann::json::object());
 class BenchmarkScopeTimer
 {
   public:
@@ -113,6 +162,11 @@ class BenchmarkScopeTimer
 #define PLATFORMATOR_BENCH_SCOPE_IF(scope, enabled)                                                                    \
     platformator_detail::BenchmarkScopeTimer PLATFORMATOR_BENCH_CONCAT(benchmarkScope_, __LINE__)(                     \
         platformator_detail::BenchmarkScopeId::scope, enabled)
+#define PLATFORMATOR_BENCH_BEGIN_RENDER() platformator_detail::BenchmarkRecorder::getInstance().beginRender()
+#define PLATFORMATOR_BENCH_CANCEL_RENDER() platformator_detail::BenchmarkRecorder::getInstance().cancelRenderSample()
+#define PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(scope, nanoseconds)                                                       \
+    platformator_detail::BenchmarkRecorder::getInstance().addScopeDuration(                                            \
+        platformator_detail::BenchmarkScopeId::scope, static_cast<uint64_t>(nanoseconds))
 #define PLATFORMATOR_BENCH_FRAME_BEGIN() platformator_detail::BenchmarkRecorder::getInstance().beginFrame()
 #define PLATFORMATOR_BENCH_FRAME_END() platformator_detail::BenchmarkRecorder::getInstance().endFrame()
 #define PLATFORMATOR_BENCH_SET_COUNTER(counter, value)                                                                 \
@@ -130,6 +184,9 @@ class BenchmarkScopeTimer
 #else
 #define PLATFORMATOR_BENCH_SCOPE(scope) ((void)0)
 #define PLATFORMATOR_BENCH_SCOPE_IF(scope, enabled) ((void)0)
+#define PLATFORMATOR_BENCH_BEGIN_RENDER() ((void)0)
+#define PLATFORMATOR_BENCH_CANCEL_RENDER() ((void)0)
+#define PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(scope, nanoseconds) ((void)0)
 #define PLATFORMATOR_BENCH_FRAME_BEGIN() ((void)0)
 #define PLATFORMATOR_BENCH_FRAME_END() ((void)0)
 #define PLATFORMATOR_BENCH_SET_COUNTER(counter, value) ((void)0)

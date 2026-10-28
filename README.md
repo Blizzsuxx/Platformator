@@ -6,7 +6,7 @@ A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based object
 
 Use a C++20/C17 toolchain, CMake 3.22+ with presets, Ninja, and SDL system development prerequisites. Dependencies are bundled. Python 3 is used by benchmark tooling/tests; the Python GUI is unnecessary.
 
-The engine archive includes a private [Box2D 3.2.0 dynamic-tree subset](vendored/box2d-3.2.0/README.platformator.md) and adapter for future BVH prototypes. The current collider broad phase and sprite rendering are unchanged. Installed SDK consumers need no separate Box2D dependency.
+The engine includes a private [Box2D 3.2.0 dynamic-tree subset](vendored/box2d-3.2.0/README.platformator.md), used by opt-in BVH collision and visibility indexes. The installed SDK exposes no Box2D types and consumers need no separate Box2D dependency. Rebuild the SDK and client translation units together after changing spatial settings or upgrading the engine; no binary ABI guarantee is made.
 
 ```sh
 cmake --preset cleanup-debug
@@ -58,3 +58,17 @@ python3 benchmark/sweep_scaling.py --runner bin/cleanup-benchmark/platformator_b
 ```
 
 [Benchmark documentation](benchmark/README.md) explains schema v2, complete-step boundaries, independent repetitions, validation instrumentation and historical-result limitations. Preserve the original [pre-cleanup reference](benchmark/baselines/pre-cleanup-e01526b/RESULTS.md).
+
+### Spatial index selection
+
+`RuntimeOptions::spatialSettings` is copied when a runtime is constructed and remains fixed for that runtime. Defaults preserve segmented collision broad phase and direct sprite submission. All eight combinations are supported:
+
+| Setting | Choices | Default |
+| --- | --- | --- |
+| Collision broad phase | `segmented`, `bvh` | `segmented` |
+| Sprite visibility | `none`, `linear`, `bvh`, `segmented` | `none` |
+| BVH maintenance | `native-partial`, `full-rebuild` | `native-partial` |
+| BVH padding | finite nonnegative world units | `0` |
+| BVH query execution | `serial`, `parallel` | `parallel` |
+
+The CLI accepts the same choices through `--broad-phase`, `--render-culling`, `--bvh-maintenance`, `--bvh-padding`, and `--bvh-query-execution`. Selection alone does not enable drawing; `--render` creates an actual SDL renderer. Render culling is inactive in headless or camera-less frames. Unsupported individual sprites are submitted in draw order; unsupported camera/view state uses a reported submit-all fallback. Grid diagnostics remain Grid-specific and are unavailable when the BVH is selected. See the [runtime selection contract](specs/007-integrate-bvh-culling/contracts/runtime-selection.md) and [spatial benchmark guide](benchmark/README.md) for schema versions, limitations and retained evidence.

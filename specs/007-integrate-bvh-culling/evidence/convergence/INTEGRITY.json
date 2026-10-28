@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "source_sha256": "f1c6298f8b6e7baaa3d4374236a9650e5345a2567f210dbfa3efcb3197b0aba1",
+  "verified_checksum_files": 19201,
+  "verified_bytes": 1107885683,
+  "stage_counts": {
+    "calibration/validation": 80,
+    "calibration/timing": 400,
+    "engine/validation": 176,
+    "engine/timing": 880,
+    "engine/resources": 176,
+    "replay/validation": 248,
+    "replay/timing": 1240,
+    "replay/resources": 248,
+    "controls/validation": 40,
+    "controls/timing": 200,
+    "controls/resources": 40,
+    "startup/validation": 176,
+    "startup/timing": 880
+  },
+  "elapsed_seconds": 7.224162340164185
+}

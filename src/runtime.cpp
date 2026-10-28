@@ -1,6 +1,7 @@
 #include "platformator/runtime.h"
 
 #include <memory>
+#include <cmath>
 #include <stdexcept>
 
 #include "constants.h"
@@ -11,15 +12,61 @@
 
 namespace platformator
 {
+namespace
+{
+void validateSpatialSettings(const SpatialSettings &settings)
+{
+    switch (settings.broadPhase)
+    {
+    case BroadPhaseMode::Segmented:
+    case BroadPhaseMode::DynamicBvh:
+        break;
+    default:
+        throw std::invalid_argument("Invalid spatial setting: broadPhase");
+    }
+    switch (settings.renderCulling)
+    {
+    case RenderCullingMode::None:
+    case RenderCullingMode::Linear:
+    case RenderCullingMode::DynamicBvh:
+    case RenderCullingMode::Segmented:
+        break;
+    default:
+        throw std::invalid_argument("Invalid spatial setting: renderCulling");
+    }
+    switch (settings.bvhMaintenance)
+    {
+    case BvhMaintenance::NativePartial:
+    case BvhMaintenance::FullRebuild:
+        break;
+    default:
+        throw std::invalid_argument("Invalid spatial setting: bvhMaintenance");
+    }
+    switch (settings.bvhQueryExecution)
+    {
+    case BvhQueryExecution::Serial:
+    case BvhQueryExecution::Parallel:
+        break;
+    default:
+        throw std::invalid_argument("Invalid spatial setting: bvhQueryExecution");
+    }
+    if (!std::isfinite(settings.bvhPadding) || settings.bvhPadding < 0.0f)
+        throw std::invalid_argument("Invalid spatial setting: bvhPadding must be finite and nonnegative");
+}
+} // namespace
+
 Runtime::Runtime(const RuntimeOptions &runtimeOptions)
 {
+    validateSpatialSettings(runtimeOptions.spatialSettings);
     if (activeRuntime() != nullptr)
     {
         throw std::logic_error("Only one Platformator runtime can be active at a time.");
     }
     paths = std::make_unique<PathManager>(runtimeOptions.assetRoot);
     smokeStepLimit = runtimeOptions.smokeSteps;
-    gameManager = std::make_unique<GameManager>(runtimeOptions.windowSettings, runtimeOptions.debugSettings);
+    spatialSettings = runtimeOptions.spatialSettings;
+    gameManager = std::make_unique<GameManager>(runtimeOptions.windowSettings, runtimeOptions.debugSettings,
+                                                spatialSettings);
     activeRuntime() = this;
 }
 
@@ -53,6 +100,11 @@ Runtime *Runtime::tryGetCurrent()
 const std::filesystem::path &Runtime::getAssetRoot() const
 {
     return paths->getRoot();
+}
+
+const SpatialSettings &Runtime::getSpatialSettings() const
+{
+    return spatialSettings;
 }
 
 GameObject *Runtime::createGameObject()

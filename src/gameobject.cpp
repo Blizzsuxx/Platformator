@@ -9,6 +9,7 @@
 #include "platformator/rigidbody.h"
 #include "runtimeaccess.h"
 #include "platformator/runtime.h"
+#include "sdlwindow.h"
 #include "inputvalidation.h"
 
 GameObject::GameObject()
@@ -119,6 +120,8 @@ GameObject *GameObject::setRotation(const float rotation)
         body->wakeUp();
 
     updateCollider();
+    if (getIsRegisteredInGameManager())
+        platformator_detail::RuntimeAccess::gameManager().getWindow()->markGameObjectDirty(this);
     return this;
 }
 
@@ -193,6 +196,8 @@ GameObject *GameObject::setScale(const Eigen::Vector2f &scale)
     }
 
     updateCollider();
+    if (getIsRegisteredInGameManager())
+        platformator_detail::RuntimeAccess::gameManager().getWindow()->markGameObjectDirty(this);
     return this;
 }
 

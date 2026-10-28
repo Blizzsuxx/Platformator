@@ -14,8 +14,12 @@
 #include <limits>
 #include <tuple>
 
-PhysicsManager::PhysicsManager()
-    : registeredBodies(), colliderComponents(), pendingPhysicsEvents(), grid(this),
+PhysicsManager::PhysicsManager(const SpatialSettings &settings)
+    : registeredBodies(), colliderComponents(), pendingPhysicsEvents(), pairState(this),
+      grid(settings.broadPhase == BroadPhaseMode::Segmented ? std::make_unique<Grid>(this, &pairState) : nullptr),
+      spatialIndex(settings.broadPhase == BroadPhaseMode::DynamicBvh
+                       ? std::make_unique<platformator_detail::PhysicsSpatialIndex>(this, &pairState, settings)
+                       : nullptr),
       gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
 {
 }
@@ -79,7 +83,34 @@ void PhysicsManager::checkForCollisions()
 
 const Grid &PhysicsManager::getGrid() const
 {
-    return grid;
+    if (!grid)
+        throw std::logic_error("Grid diagnostics are unavailable when the BVH broad phase is selected");
+    return *grid;
+}
+
+const Grid *PhysicsManager::getGridIfActive() const
+{
+    return grid.get();
+}
+
+const platformator_detail::PhysicsSpatialIndex *PhysicsManager::getSpatialIndexIfActive() const
+{
+    return spatialIndex.get();
+}
+
+size_t PhysicsManager::getSpatialIndexOwnedCapacityBytes() const
+{
+    return spatialIndex ? spatialIndex->getOwnedCapacityBytes() : grid ? grid->getOwnedCapacityBytes() : 0;
+}
+
+size_t PhysicsManager::getSpatialCommonPairCapacityBytes() const
+{
+    return pairState.getOwnedCapacityBytes();
+}
+
+size_t PhysicsManager::getSpatialScratchCapacityBytes() const
+{
+    return pairState.getScratchCapacityBytes();
 }
 
 const std::vector<Collider *> &PhysicsManager::getColliders() const
@@ -113,12 +144,18 @@ void PhysicsManager::addColliderComponent(Collider *colliderComponent)
     colliderComponent->setIsRegisteredInPhysicsManager(true);
     colliderComponents.push_back(colliderComponent);
 
-    grid.queueAddCollider(colliderComponent);
+    if (spatialIndex)
+        spatialIndex->queueAdd(colliderComponent);
+    else
+        grid->queueAddCollider(colliderComponent);
 }
 
 void PhysicsManager::queueColliderSync(Collider *colliderComponent)
 {
-    grid.queueSyncCollider(colliderComponent);
+    if (spatialIndex)
+        spatialIndex->queueSync(colliderComponent);
+    else
+        grid->queueSyncCollider(colliderComponent);
 }
 
 void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
@@ -166,12 +203,18 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
     colliderComponent->setPhysicsManagerIndex(SIZE_MAX);
     colliderComponent->setIsRegisteredInPhysicsManager(false);
 
-    grid.queueRemoveCollider(colliderComponent);
+    if (spatialIndex)
+        spatialIndex->queueRemove(colliderComponent);
+    else
+        grid->queueRemoveCollider(colliderComponent);
 }
 
 void PhysicsManager::flushPendingColliderOperations()
 {
-    grid.flushPendingCellUpdates();
+    if (spatialIndex)
+        spatialIndex->flush();
+    else
+        grid->flushPendingCellUpdates();
     flushSupportDeltas();
 }
 
@@ -179,17 +222,21 @@ void PhysicsManager::broadPhase()
 {
     PLATFORMATOR_BENCH_SCOPE(BroadPhase);
 
-    grid.flushPendingCellUpdates();
+    if (spatialIndex)
+        spatialIndex->flush();
+    else
+        grid->flushPendingCellUpdates();
 
-    PLATFORMATOR_BENCH_SET_COUNTER(OccupiedCellCount, grid.getCells().size());
-    PLATFORMATOR_BENCH_SET_COUNTER(CandidatePairCount, grid.getCandidatePairCount());
+    PLATFORMATOR_BENCH_SET_COUNTER(OccupiedCellCount, grid ? grid->getCells().size() : 0);
+    PLATFORMATOR_BENCH_SET_COUNTER(CandidatePairCount, pairState.getCandidatePairCount());
+    PLATFORMATOR_BENCH_SET_COUNTER(SpatialProxyCount, colliderComponents.size());
 }
 
 void PhysicsManager::narrowPhase()
 {
     PLATFORMATOR_BENCH_SCOPE(NarrowPhase);
 
-    const auto &pendingPairs = *grid.getPendingNarrowPhasePairs();
+    const auto &pendingPairs = *pairState.getPendingNarrowPhasePairs();
     if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
     {
         for (auto *pair : pendingPairs)
@@ -240,7 +287,7 @@ void PhysicsManager::narrowPhase()
 
 #endif
 
-    grid.clearPendingNarrowPhasePairs();
+    pairState.clearPendingNarrowPhasePairs();
 }
 
 #if PLATFORMATOR_ENABLE_BENCHMARKS

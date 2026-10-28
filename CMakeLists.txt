@@ -100,27 +100,9 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
     if(platformator_git_changes)
         set(PLATFORMATOR_BENCH_DIRTY 1)
     endif()
-    file(GLOB_RECURSE platformator_fingerprint_inputs CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/*" "${CMAKE_CURRENT_SOURCE_DIR}/include/platformator/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*")
-    list(APPEND platformator_fingerprint_inputs "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c")
-    file(GLOB_RECURSE platformator_tree_inputs CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/src/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/include/*")
-    list(APPEND platformator_fingerprint_inputs ${platformator_tree_inputs}
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/UPSTREAM.sha256")
-    list(SORT platformator_fingerprint_inputs)
-    set(platformator_source_hashes "")
-    foreach(source_file IN LISTS platformator_fingerprint_inputs)
-        if(NOT IS_DIRECTORY "${source_file}")
-            file(SHA256 "${source_file}" source_hash)
-            file(RELATIVE_PATH source_name "${CMAKE_CURRENT_SOURCE_DIR}" "${source_file}")
-            string(APPEND platformator_source_hashes "${source_name}:${source_hash}\n")
-        endif()
-    endforeach()
-    string(SHA256 PLATFORMATOR_BENCH_SOURCE_SHA256 "${platformator_source_hashes}")
+    include(cmake/PlatformatorBenchmarkFingerprint.cmake)
+    platformator_compute_benchmark_source_fingerprint(
+        "${CMAKE_CURRENT_SOURCE_DIR}" PLATFORMATOR_BENCH_SOURCE_SHA256 platformator_fingerprint_inputs)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${platformator_fingerprint_inputs})
     string(TOUPPER "${CMAKE_BUILD_TYPE}" platformator_config_upper)
     set(PLATFORMATOR_BENCH_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${platformator_config_upper}}")
@@ -187,10 +169,12 @@ if(PLATFORMATOR_BUILD_RUNNER)
     endif()
 
     if(PLATFORMATOR_ENABLE_BENCHMARKS)
-        add_executable(platformator_benchmark_runner "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}")
+        add_executable(platformator_benchmark_runner "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/spatial_fixtures.cpp")
         target_link_libraries(platformator_benchmark_runner PRIVATE Platformator::platformator)
         target_include_directories(platformator_benchmark_runner PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_SOURCE_DIR}/benchmark"
             "${CMAKE_CURRENT_BINARY_DIR}/generated"
         )
 
@@ -198,6 +182,21 @@ if(PLATFORMATOR_BUILD_RUNNER)
             set_target_properties(platformator_benchmark_runner PROPERTIES
                 INSTALL_RPATH "${PLATFORMATOR_INSTALL_RPATH}"
             )
+        endif()
+
+        add_executable(platformator_spatial_resource_runner "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/spatial_fixtures.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/spatial_resource_hooks.cpp")
+        target_link_libraries(platformator_spatial_resource_runner PRIVATE Platformator::platformator)
+        target_include_directories(platformator_spatial_resource_runner PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_SOURCE_DIR}/benchmark"
+            "${CMAKE_CURRENT_SOURCE_DIR}/vendored/box2d-3.2.0/include"
+            "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_compile_definitions(platformator_spatial_resource_runner PRIVATE PLATFORMATOR_RESOURCE_RUNNER=1)
+        if(DEFINED PLATFORMATOR_INSTALL_RPATH)
+            set_target_properties(platformator_spatial_resource_runner PROPERTIES
+                INSTALL_RPATH "${PLATFORMATOR_INSTALL_RPATH}")
         endif()
     endif()
 endif()
@@ -219,6 +218,7 @@ if(PLATFORMATOR_BUILD_TESTS)
     # The roundtrip audio fixture is independent of building Mario.
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/examples/mario/assets/audio/jump.wav" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/assets/audio")
     enable_testing()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     include(cmake/PlatformatorTests.cmake)
     platformator_add_test(platformator_regression_tests tests/regression_tests.cpp INTERNAL LABELS physics)
     platformator_add_test(platformator_scene_script_roundtrip_test tests/scene_script_roundtrip_test.cpp INTERNAL LABELS scene)
@@ -241,6 +241,21 @@ if(PLATFORMATOR_BUILD_TESTS)
     platformator_add_test(platformator_asset_runtime_exception_test tests/asset_runtime_exception_test.cpp INTERNAL LABELS asset scene)
     platformator_add_test(platformator_physics_geometry_test tests/physics_geometry_test.cpp LABELS physics geometry)
     platformator_add_test(platformator_dynamic_aabb_tree_test tests/dynamic_aabb_tree_test.cpp INTERNAL LABELS physics geometry)
+    platformator_add_spatial_test(platformator_spatial_pair_state_test tests/spatial_pair_state_test.cpp INTERNAL LABELS physics)
+    platformator_add_spatial_test(platformator_spatial_segmented_test tests/spatial_segmented_test.cpp INTERNAL LABELS physics)
+    platformator_add_spatial_test(platformator_collision_broad_phase_test tests/collision_broad_phase_test.cpp INTERNAL LABELS physics)
+    platformator_add_spatial_test(platformator_spatial_physics_integration_test tests/spatial_physics_integration_test.cpp INTERNAL LABELS physics lifecycle)
+    platformator_add_spatial_test(platformator_spatial_selection_test tests/spatial_selection_test.cpp INTERNAL LABELS physics benchmark)
+    platformator_add_spatial_test(platformator_spatial_replay_test tests/spatial_replay_test.cpp INTERNAL LABELS benchmark)
+    platformator_add_spatial_python_test(platformator_spatial_benchmark_contract_test tests/test_spatial_benchmarks.py)
+    platformator_add_spatial_python_test(platformator_spatial_sweep_test tests/test_spatial_sweep.py)
+    platformator_add_spatial_test(platformator_render_culling_test tests/render_culling_test.cpp INTERNAL LABELS rendering)
+    platformator_add_spatial_test(platformator_render_culling_image_test tests/render_culling_image_test.cpp INTERNAL LABELS rendering)
+    platformator_add_spatial_test(platformator_render_culling_lifecycle_test tests/render_culling_lifecycle_test.cpp INTERNAL LABELS rendering lifecycle)
+    set_tests_properties(platformator_render_culling_image_test PROPERTIES
+        ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software;PLATFORMATOR_RENDER_EVIDENCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/specs/007-integrate-bvh-culling/evidence/render-images")
+    set_tests_properties(platformator_render_culling_lifecycle_test PROPERTIES
+        ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software;PLATFORMATOR_RENDER_LIFECYCLE_EVIDENCE=${CMAKE_CURRENT_SOURCE_DIR}/specs/007-integrate-bvh-culling/evidence/render-lifecycle.csv")
     add_executable(platformator_box2d_tree_test tests/box2d_tree_test.c
         vendored/box2d-3.2.0/test/test_dynamic_tree.c
         $<TARGET_OBJECTS:platformator_box2d_tree>)
@@ -261,6 +276,20 @@ if(PLATFORMATOR_BUILD_TESTS)
     platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp INTERNAL LABELS lifecycle clock)
     platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp INTERNAL LABELS physics work)
     set_tests_properties(platformator_runtime_work_test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME platformator_runtime_work_bvh_serial COMMAND platformator_runtime_work_test bvh 1)
+    add_test(NAME platformator_runtime_work_bvh_parallel COMMAND platformator_runtime_work_test bvh 6)
+    set_tests_properties(platformator_runtime_work_bvh_serial platformator_runtime_work_bvh_parallel PROPERTIES
+        SKIP_RETURN_CODE 77
+        LABELS "platformator;physics;work;spatial"
+        ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+    foreach(render_mode none linear bvh segmented)
+        add_test(NAME platformator_runtime_work_render_${render_mode}
+            COMMAND platformator_runtime_work_test render ${render_mode} 1)
+        set_tests_properties(platformator_runtime_work_render_${render_mode} PROPERTIES
+            SKIP_RETURN_CODE 77
+            LABELS "platformator;work;spatial;rendering"
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+    endforeach()
     platformator_add_test(platformator_asset_root_contract_test tests/asset_root_contract_test.cpp LABELS package asset)
     platformator_add_test(platformator_runner_failure_test tests/runner_failure_test.cpp LABELS package runner)
     add_test(NAME platformator_runner_startup_failure COMMAND platformator_runner_failure_test startup)
@@ -287,14 +316,60 @@ if(PLATFORMATOR_BUILD_TESTS)
             "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/tests" "${PROJECT_BINARY_DIR}/generated")
     endif()
     if(TARGET platformator_benchmark_runner)
+        add_test(NAME platformator_benchmark_fingerprint_test
+            COMMAND "${CMAKE_COMMAND}"
+                -DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
+                -DDISPOSABLE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/benchmark-fingerprint-fixture
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_fingerprint_test.cmake)
+        set_tests_properties(platformator_benchmark_fingerprint_test PROPERTIES LABELS "platformator;benchmark")
+        add_test(NAME platformator_spatial_engine_fixture_contract_test
+            COMMAND "${CMAKE_COMMAND}"
+                -DRUNNER=$<TARGET_FILE:platformator_benchmark_runner>
+                -DPYTHON=${Python3_EXECUTABLE}
+                -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
+                -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/spatial-engine-fixture-contract
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/spatial_engine_fixture_contract.cmake)
+        set_tests_properties(platformator_spatial_engine_fixture_contract_test PROPERTIES
+            LABELS "platformator;spatial;benchmark"
+            ENVIRONMENT "SDL_VIDEODRIVER=offscreen;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+        if(TARGET platformator_spatial_resource_runner)
+            add_test(NAME platformator_spatial_resource_runner_contract_test
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/spatial_resource_runner_contract.py"
+                    "$<TARGET_FILE:platformator_spatial_resource_runner>"
+                    "$<TARGET_FILE:platformator_benchmark_runner>"
+                    "${CMAKE_CURRENT_BINARY_DIR}/spatial-resource-contract")
+            set_tests_properties(platformator_spatial_resource_runner_contract_test PROPERTIES
+                LABELS "platformator;spatial;benchmark;resource"
+                ENVIRONMENT "SDL_VIDEODRIVER=offscreen;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+        endif()
+        add_test(NAME platformator_spatial_cli_contract_test
+            COMMAND "${CMAKE_COMMAND}"
+                -DRUNNER=$<TARGET_FILE:platformator_benchmark_runner>
+                -DTRACE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/spatial_trace_cli.jsonl
+                -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/spatial-cli-contract
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/spatial_cli_contract.cmake)
+        add_test(NAME platformator_spatial_capture_contract_test
+            COMMAND "${CMAKE_COMMAND}"
+                -DRUNNER=$<TARGET_FILE:platformator_benchmark_runner>
+                -DTRACE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/spatial_trace_cli.jsonl
+                -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/spatial-capture-contract
+                -DPYTHON=${Python3_EXECUTABLE}
+                -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/spatial_capture_contract.cmake)
         add_test(NAME platformator_benchmark_persistent_zero_warmup
             COMMAND platformator_benchmark_runner --scenario persistent_contacts --contact-pair-count 10
                 --scripted-endpoints 0 --workers 1 --warmup-frames 0 --measure-frames 2 --validate-invariants)
         set_tests_properties(platformator_benchmark_persistent_zero_warmup PROPERTIES
             LABELS "platformator;benchmark"
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+        add_test(NAME platformator_spatial_selection_runner_test
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_spatial_selection.py"
+                "$<TARGET_FILE:platformator_benchmark_runner>")
+        set_tests_properties(platformator_spatial_selection_runner_test PROPERTIES
+            LABELS "platformator;spatial;benchmark"
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
     endif()
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME platformator_benchmark_sweep_test COMMAND "${Python3_EXECUTABLE}" -m unittest discover
         -s "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests" -v)
     set_tests_properties(platformator_benchmark_sweep_test PROPERTIES LABELS "platformator;benchmark")

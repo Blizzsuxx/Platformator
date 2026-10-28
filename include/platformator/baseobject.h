@@ -9,6 +9,7 @@ namespace platformator_detail
 {
 class ObjectRegistry;
 }
+class PhysicsPairState;
 enum class ObjectLifecycle : uint8_t
 {
     Staged,
@@ -22,6 +23,7 @@ enum class ObjectLifecycle : uint8_t
 class BaseObject
 {
     friend class platformator_detail::ObjectRegistry;
+    friend class PhysicsPairState;
     friend class GameManager;
 
   protected:

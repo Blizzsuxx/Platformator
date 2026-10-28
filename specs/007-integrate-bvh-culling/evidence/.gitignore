@@ -1,0 +1,9 @@
+# Keep reports, compact tables and reproduction scripts in this directory.
+# Raw capture bundles stay available locally but do not belong in Git.
+/*/
+!/convergence/
+
+# This small suppression file documents the sanitizer verification setup.
+!/final-validation/
+/final-validation/*
+!/final-validation/*.supp

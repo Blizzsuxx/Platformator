@@ -1,8 +1,10 @@
 #include "dynamicaabbtree.h"
 #include "box2d_tree_bridge.h"
+#include "workprobe.h"
 #include <box2d/constants.h>
 
 #include <cmath>
+#include <exception>
 #include <stdexcept>
 
 namespace platformator_detail
@@ -20,10 +22,30 @@ b2AABB toBox(const DynamicAabbTree::Bounds &bounds)
 b2AABB toProxyBox(const DynamicAabbTree::Bounds &bounds)
 {
     const auto box = toBox(bounds);
-    // Match the upstream move-operation limits before crossing its assertion boundary.
-    if (double(bounds.maxX) - bounds.minX >= B2_HUGE || double(bounds.maxY) - bounds.minY >= B2_HUGE)
-        throw std::invalid_argument("Tree proxy extent exceeds Box2D's supported range");
+    if (double(bounds.maxX) - bounds.minX >= 100000.0 || double(bounds.maxY) - bounds.minY >= 100000.0)
+        throw std::invalid_argument("Tree proxy extent must be strictly below 100,000 units");
     return box;
+}
+
+struct QueryCallbackState
+{
+    DynamicAabbTree::QueryCallback callback;
+    void *context;
+    std::exception_ptr exception;
+};
+
+bool queryCallbackTrampoline(DynamicAabbTree::ProxyId proxy, std::uint64_t userData, void *context) noexcept
+{
+    auto &state = *static_cast<QueryCallbackState *>(context);
+    try
+    {
+        return state.callback(proxy, userData, state.context);
+    }
+    catch (...)
+    {
+        state.exception = std::current_exception();
+        return false;
+    }
 }
 } // namespace
 
@@ -45,6 +67,12 @@ DynamicAabbTree::ProxyId DynamicAabbTree::add(const Bounds &bounds, std::uint64_
     return b2CreateTreeProxy(tree, toProxyBox(bounds), categoryBits, userData);
 }
 
+DynamicAabbTree::ProxyId DynamicAabbTree::addMarked(const Bounds &bounds, std::uint64_t categoryBits,
+                                                    std::uint64_t userData)
+{
+    return platformator_box2d_tree_create_proxy_marked(tree, toProxyBox(bounds), categoryBits, userData);
+}
+
 void DynamicAabbTree::remove(ProxyId proxy)
 {
     b2DestroyTreeProxy(tree, proxy);
@@ -53,6 +81,11 @@ void DynamicAabbTree::remove(ProxyId proxy)
 void DynamicAabbTree::update(ProxyId proxy, const Bounds &bounds)
 {
     b2DynamicTree_MoveProxy(tree, proxy, toProxyBox(bounds));
+}
+
+void DynamicAabbTree::updateMarked(ProxyId proxy, const Bounds &bounds)
+{
+    platformator_box2d_tree_move_proxy_marked(tree, proxy, toProxyBox(bounds));
 }
 
 void DynamicAabbTree::setCategoryBits(ProxyId proxy, std::uint64_t categoryBits)
@@ -76,19 +109,43 @@ DynamicAabbTree::QueryStats DynamicAabbTree::query(const Bounds &bounds, std::ui
 {
     if (callback == nullptr)
         throw std::invalid_argument("Tree query callback must not be null");
-    const auto stats = b2DynamicTree_OverlapAABB(tree, toBox(bounds), maskBits, callback, context);
+    QueryCallbackState state{callback, context, nullptr};
+    const auto stats = b2DynamicTree_OverlapAABB(tree, toBox(bounds), maskBits, queryCallbackTrampoline, &state);
+    if (state.exception)
+        std::rethrow_exception(state.exception);
     return {stats.nodeVisits, stats.leafVisits};
 }
 
 int DynamicAabbTree::rebuild()
 {
-    return platformator_box2d_tree_rebuild(tree);
+    return rebuild(MaintenancePolicy::FullRebuild).rebuildItemCount;
+}
+
+DynamicAabbTree::RebuildStats DynamicAabbTree::rebuild(MaintenancePolicy policy)
+{
+    const bool fullBuild = policy == MaintenancePolicy::FullRebuild;
+    if (!fullBuild && policy != MaintenancePolicy::NativePartial)
+        throw std::invalid_argument("Unknown dynamic tree maintenance policy");
+    const int itemCount = platformator_box2d_tree_rebuild(tree, fullBuild);
+    ++maintenanceStats.callCount;
+    maintenanceStats.rebuildItemCount += itemCount;
+    return {maintenanceStats.callCount, itemCount};
+}
+
+DynamicAabbTree::RebuildStats DynamicAabbTree::getMaintenanceStats() const
+{
+    return maintenanceStats;
 }
 
 DynamicAabbTree::Metrics DynamicAabbTree::getMetrics() const
 {
-    return {b2DynamicTree_GetProxyCount(tree), b2DynamicTree_GetHeight(tree),
-            b2DynamicTree_GetAreaRatio(tree), b2DynamicTree_GetByteCount(tree)};
+    return {b2DynamicTree_GetProxyCount(tree), b2DynamicTree_GetHeight(tree), b2DynamicTree_GetByteCount(tree)};
+}
+
+float DynamicAabbTree::getQualityAreaRatio() const
+{
+    PLATFORMATOR_WORK_ADD(bvhQualityScans, 1);
+    return b2DynamicTree_GetAreaRatio(tree);
 }
 
 void DynamicAabbTree::validate() const

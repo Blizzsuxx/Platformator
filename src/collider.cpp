@@ -86,7 +86,7 @@ void Collider::setIsTrigger(const bool isTrigger)
 
 bool Collider::getIsQueuedForAdd() const
 {
-    return gridQueueIndex != SIZE_MAX && desiredInGrid && !getIsRegisteredInGrid();
+    return broadPhaseQueueIndex != SIZE_MAX && desiredInBroadPhase && !getIsRegisteredInBroadPhase();
 }
 
 void Collider::scheduleSync()
@@ -104,13 +104,18 @@ void Collider::prepareSync()
 
 void Collider::prepareSyncFromCache()
 {
+    prepareGeometrySyncFromCache();
+    calculateGridCellRange();
+}
+
+void Collider::prepareGeometrySyncFromCache()
+{
     const auto *object = getGameObject();
     cachedWorldPosition =
         object->worldPosition +
         Eigen::Vector2f(offset.x() * object->getCosRotation() - offset.y() * object->getSinRotation(),
                         offset.x() * object->getSinRotation() + offset.y() * object->getCosRotation());
     updateCollider();
-    calculateGridCellRange();
     stateVersion++;
 }
 
@@ -177,6 +182,11 @@ const GridCellRange &Collider::getGridCellRange() const
     return gridCellRange;
 }
 
+bool Collider::getIsRegisteredInBroadPhase() const
+{
+    return (flags & IS_REGISTERED_IN_BROAD_PHASE) != 0;
+}
+
 void Collider::calculateGridCellRange()
 {
     int minX = static_cast<int>(std::floor(xProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
@@ -189,7 +199,7 @@ void Collider::calculateGridCellRange()
 
 bool Collider::getIsQueuedForSync() const
 {
-    return gridQueueIndex != SIZE_MAX && desiredInGrid && dirty;
+    return broadPhaseQueueIndex != SIZE_MAX && desiredInBroadPhase && dirty;
 }
 
 bool Collider::hasValidGridCellRange() const
@@ -217,6 +227,14 @@ void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
     {
         flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
     }
+}
+
+void Collider::setIsRegisteredInBroadPhase(bool isRegistered)
+{
+    if (isRegistered)
+        flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_BROAD_PHASE);
+    else
+        flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_BROAD_PHASE);
 }
 
 void Collider::setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
@@ -248,12 +266,12 @@ const GridCellRange &Collider::getGridCellRangeCache() const
 
 bool Collider::getIsQueuedForRemove() const
 {
-    return gridQueueIndex != SIZE_MAX && !desiredInGrid;
+    return broadPhaseQueueIndex != SIZE_MAX && !desiredInBroadPhase;
 }
 
 bool Collider::getIsQueuedForAnything() const
 {
-    return gridQueueIndex != SIZE_MAX;
+    return broadPhaseQueueIndex != SIZE_MAX;
 }
 
 void Collider::invalidateResponse()

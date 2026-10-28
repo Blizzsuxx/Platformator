@@ -4,6 +4,8 @@
 
 #include "constants.h"
 #include "platformator/sprite.h"
+#include "runtimeaccess.h"
+#include "sdlwindow.h"
 
 Camera::Camera() : Component(ComponentType::CAMERA), width(SCREEN_WIDTH), height(SCREEN_HEIGHT)
 {
@@ -89,12 +91,22 @@ float Camera::getHeight() const
 
 void Camera::setWidth(float width)
 {
-    this->width = std::max(1.0f, width);
+    const float nextWidth = std::max(1.0f, width);
+    if (this->width == nextWidth)
+        return;
+    this->width = nextWidth;
+    if (getGameObject() && getHandle())
+        platformator_detail::RuntimeAccess::window()->markViewDirty();
 }
 
 void Camera::setHeight(float height)
 {
-    this->height = std::max(1.0f, height);
+    const float nextHeight = std::max(1.0f, height);
+    if (this->height == nextHeight)
+        return;
+    this->height = nextHeight;
+    if (getGameObject() && getHandle())
+        platformator_detail::RuntimeAccess::window()->markViewDirty();
 }
 
 float Camera::getScaleX(int outputWidth) const

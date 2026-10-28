@@ -81,6 +81,21 @@ Collider *BoundingRadiusProjectionProxy::getCollider()
     return projection->getCollider();
 }
 
+void *BoundingRadiusProjectionProxy::getOwner() const
+{
+    return projection->getOwner();
+}
+
+ProjectionOwnerKind BoundingRadiusProjectionProxy::getOwnerKind() const
+{
+    return projection->getOwnerKind();
+}
+
+ProjectionOwner BoundingRadiusProjectionProxy::getEndpoint() const
+{
+    return projection->getEndpoint();
+}
+
 float BoundingRadiusProjectionProxy::getProjectedPosition() const
 {
     return projection->getProjectedPosition();

@@ -48,7 +48,9 @@ Set `RuntimeOptions::assetRoot` or `--asset-root`. Relative explicit roots resol
 
 `windowSettings.headless = true` / `--headless` skips video/audio device initialization. Desktop startup errors throw (CLI exits nonzero). `--smoke-steps N` runs a finite positive number of explicit ticks. Linux/GCC is the validated environment; other SDL-supported platforms need their own validation.
 
-Benchmark CSV is schema v2: `complete_step` includes cleanup, while rendering is separate. Legacy partial `frame` data is not equivalent. See [benchmark documentation](../benchmark/README.md) and [validation evidence](../specs/001-cpp-engine-cleanup/validation.md).
+`RuntimeOptions` adds `SpatialSettings` after the existing fields, preserving positional aggregate initializers. The default collision method remains segmented and the default render-culling method remains none. Choose among `BroadPhaseMode::{Segmented, DynamicBvh}` and `RenderCullingMode::{None, Linear, DynamicBvh, Segmented}` before constructing `Runtime`; maintenance, padding and query execution are also immutable runtime settings. All eight method pairs are valid. Rebuild the library and consumers together; binary ABI compatibility is not promised. `Collider::getIsRegisteredInBroadPhase()` distinguishes BVH membership from the existing Grid-specific registration/range APIs. Grid diagnostics do not report BVH state.
+
+Benchmark readers preserve historical schema-3 captures and dispatch schema-4 spatial captures explicitly. Schema-4 records keep step, render and replay samples separate and distinguish inapplicable values from measured zeroes. Actual-render validation includes renderer/output-view provenance; headless replay cannot qualify renderer timings. See [benchmark documentation](../benchmark/README.md), the [runtime selection contract](../specs/007-integrate-bvh-culling/contracts/runtime-selection.md), and [validation evidence](../specs/001-cpp-engine-cleanup/validation.md).
 
 ## Required asset loading and cache hits
 

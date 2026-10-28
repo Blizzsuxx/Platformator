@@ -9,7 +9,8 @@ LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoints(other->owner->getIsPrimary() ? other->checkpoints : std::unordered_set<Collider *>()), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
+    : size(0), array(), checkpoints(other->owner->getIsPrimary() ? other->checkpoints : std::unordered_set<void *>()),
+      leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
 {
     const size_t oldSize = other->size;
     const size_t movedCount = oldSize / 2;
@@ -48,11 +49,11 @@ LocalSortArray::LocalSortArray(LocalSortArray *other)
 
         if (array[i]->getIsMaxima())
         {
-            other->addCheckpointInternal(array[i]->getCollider());
+            other->addCheckpointInternal(array[i]->getOwner());
         }
         else
         {
-            other->removeCheckpointInternal(array[i]->getCollider());
+            other->removeCheckpointInternal(array[i]->getOwner());
         }
     }
 }
@@ -164,7 +165,7 @@ void LocalSortArray::clear()
     checkpointCache.clear();
 }
 
-void LocalSortArray::addCheckpoint(Collider *collider)
+void LocalSortArray::addCheckpoint(void *collider)
 {
     if (checkpointCache.find(collider) != checkpointCache.end())
     {
@@ -175,12 +176,12 @@ void LocalSortArray::addCheckpoint(Collider *collider)
     addCheckpointInternal(collider);
 }
 
-void LocalSortArray::addCheckpointInternal(Collider *collider)
+void LocalSortArray::addCheckpointInternal(void *collider)
 {
     checkpoints.insert(collider);
 }
 
-void LocalSortArray::removeCheckpoint(Collider *collider)
+void LocalSortArray::removeCheckpoint(void *collider)
 {
     size_t numberOfErasedMembers = removeCheckpointInternal(collider);
 
@@ -190,7 +191,7 @@ void LocalSortArray::removeCheckpoint(Collider *collider)
     }
 }
 
-size_t LocalSortArray::removeCheckpointInternal(Collider *collider)
+size_t LocalSortArray::removeCheckpointInternal(void *collider)
 {
     return checkpoints.erase(collider);
 }
@@ -221,7 +222,7 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
     return low;
 }
 
-std::unordered_set<Collider *> *LocalSortArray::getCheckpoints()
+std::unordered_set<void *> *LocalSortArray::getCheckpoints()
 {
     return &checkpoints;
 }
@@ -307,4 +308,10 @@ LocalSortArray *LocalSortArray::tryMergeWithLeftChunk()
     }
 
     return nullptr;
+}
+
+size_t LocalSortArray::getOwnedCapacityBytes() const
+{
+    return (checkpoints.bucket_count() + checkpointCache.bucket_count()) * sizeof(void *) +
+           (checkpoints.size() + checkpointCache.size()) * 3 * sizeof(void *);
 }

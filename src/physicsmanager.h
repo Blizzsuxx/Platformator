@@ -3,8 +3,10 @@
 #include "collision.h"
 #include "grid.h"
 #include "helpers.h"
+#include "physicspairstate.h"
 #include "platformator/collider.h"
 #include "platformator/rigidbody.h"
+#include "spatialindex.h"
 #include <algorithm>
 #include <oneapi/tbb/enumerable_thread_specific.h>
 #include <vector>
@@ -29,10 +31,12 @@ class PhysicsManager
 {
     friend class GameManager;
     friend class Grid;
+    friend class PhysicsPairState;
     friend class Rigidbody;
+    friend class platformator_detail::PhysicsSpatialIndex;
 
   public:
-    PhysicsManager();
+    explicit PhysicsManager(const SpatialSettings &settings = {});
     ~PhysicsManager();
 
     void applyPhysics(double timeDelta);
@@ -41,6 +45,11 @@ class PhysicsManager
     void checkForCollisions();
     void resolveCollisions(double timeDelta);
     const Grid &getGrid() const;
+    const Grid *getGridIfActive() const;
+    const platformator_detail::PhysicsSpatialIndex *getSpatialIndexIfActive() const;
+    size_t getSpatialIndexOwnedCapacityBytes() const;
+    size_t getSpatialCommonPairCapacityBytes() const;
+    size_t getSpatialScratchCapacityBytes() const;
     const std::vector<Collider *> &getColliders() const;
 
     const std::vector<const ColliderPair *> &getContactPairs() const
@@ -124,7 +133,9 @@ class PhysicsManager
     };
 
     tbb::enumerable_thread_specific<std::vector<MovedObject>> movedObjects;
-    Grid grid;
+    PhysicsPairState pairState;
+    std::unique_ptr<Grid> grid;
+    std::unique_ptr<platformator_detail::PhysicsSpatialIndex> spatialIndex;
 
     Eigen::Vector2f gravityVector;
     Eigen::Vector2f gravityVectorNormalized;

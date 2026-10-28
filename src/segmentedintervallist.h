@@ -24,6 +24,8 @@ public:
     bool getIsPrimary() const;
     bool getIsEmpty() const;
     size_t getChunkCount() const;
+    // Owned dynamic payload; excludes allocator headers and the inline owner object.
+    size_t getOwnedCapacityBytes() const;
 
 private:
     template <typename EmitFn>
@@ -49,8 +51,8 @@ private:
     void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
     void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
 
-    void emitCollision(Collider *colliderA, Collider *colliderB);
-    void removeCollision(Collider *colliderA, Collider *colliderB);
+    void emitCollision(ProjectionOwner endpointA, ProjectionOwner endpointB);
+    void removeCollision(ProjectionOwner endpointA, ProjectionOwner endpointB);
     void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
 
     std::vector<LocalSortArray *> chunks;

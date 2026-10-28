@@ -5,6 +5,12 @@ BoundingRadiusProjectionAxis::BoundingRadiusProjectionAxis(Collider *collider, f
 {
 }
 
+BoundingRadiusProjectionAxis::BoundingRadiusProjectionAxis(void *owner, ProjectionOwnerKind ownerKind, float min, float max)
+    : min(BoundingRadiusProjection(owner, ownerKind, min, false)),
+      max(BoundingRadiusProjection(owner, ownerKind, max, true))
+{
+}
+
 BoundingRadiusProjectionAxis::~BoundingRadiusProjectionAxis()
 {
 }

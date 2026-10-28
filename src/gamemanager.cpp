@@ -22,11 +22,18 @@
 #include "scenecomponentio.h"
 #include <limits>
 
-GameManager::GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
-    : window(std::make_unique<SDLWindow>(windowSettings, debugSettings)),
-      physicsManager(std::make_unique<PhysicsManager>())
+GameManager::GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings,
+                         const SpatialSettings &spatialSettings)
+    : spatialSettings(spatialSettings),
+      window(std::make_unique<SDLWindow>(windowSettings, debugSettings, spatialSettings, registry.serial())),
+      physicsManager(std::make_unique<PhysicsManager>(spatialSettings))
 {
     PLATFORMATOR_BENCH_RESET();
+}
+
+const SpatialSettings &GameManager::getSpatialSettings() const
+{
+    return spatialSettings;
 }
 
 GameManager::~GameManager()
@@ -302,6 +309,7 @@ void GameManager::loop()
         {
             break;
         }
+        synchronizeTransforms();
         // Simulation steps update audio themselves; paused and zero-step frames still need it.
         if (steps == 0)
             window->updateAudio();
@@ -355,6 +363,7 @@ bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<v
     {
         window->updateAudio();
     }
+    synchronizeTransforms();
     PhaseGuard renderPhase(*this, Phase::Rendering);
     window->render();
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
@@ -927,6 +936,7 @@ void GameManager::synchronizeSubtree(GameObject *object)
         object->parent ? (object->parent->worldPosition + object->position).eval() : object->position;
     if (previous != object->worldPosition)
     {
+        window->markGameObjectDirty(object);
         if (auto *body = object->getComponent<Rigidbody>())
         {
             body->wakeUp();

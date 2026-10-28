@@ -2,6 +2,7 @@
 
 #include "physicsmanager.h"
 #include "platformator/debugsettings.h"
+#include "platformator/spatialsettings.h"
 #include "platformator/windowsettings.h"
 #include "sdlwindow.h"
 
@@ -105,7 +106,8 @@ class GameManager
     GameManager(GameManager &) = delete;
     GameManager &operator=(const GameManager &) = delete;
 
-    GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
+    GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings,
+                const SpatialSettings &spatialSettings = {});
     ~GameManager();
 
     GameObject *getGameObject(std::string name);
@@ -135,6 +137,7 @@ class GameManager
     BaseObject *getObjectById(int id) const;
     const Eigen::Vector2f &getGravityVector() const;
     const Eigen::Vector2f &getGravityVectorNormalized() const;
+    const SpatialSettings &getSpatialSettings() const;
 
   private:
     Phase phase = Phase::Idle;
@@ -142,6 +145,7 @@ class GameManager
     platformator_detail::ObjectRegistry registry;
     bool shutdownComplete = false;
     bool shuttingDown = false;
+    SpatialSettings spatialSettings{};
 
     struct SceneRequest
     {

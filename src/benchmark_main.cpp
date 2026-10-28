@@ -1,20 +1,27 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <deque>
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include <charconv>
+#include <limits>
 #include <thread>
 #include <oneapi/tbb/global_control.h>
 #include <unordered_map>
 #include "runtimeaccess.h"
 #include "physicsmanager.h"
+#include "sdlwindow.h"
 
 #include "benchmark.h"
+#include "spatialresourcehooks.h"
+#include "spatialreplay.h"
+#include "spatial_fixtures.h"
 #include "constants.h"
+#include "spatialsettingsparse.h"
 #include "platformator/boxcollider.h"
 #include "platformator/scriptcomponent.h"
 #include "platformator/camera.h"
@@ -180,6 +187,8 @@ enum class BenchmarkScenario
     AddAndRemove,
     MovingAddAndRemove,
     PersistentContacts,
+    SpriteVisibility,
+    SpatialCombined,
 };
 
 bool isAddRemoveScenario(const BenchmarkScenario scenario)
@@ -208,6 +217,15 @@ struct BenchmarkRunnerOptions
     int repetitions = 1, runIndex = 0;
     bool validateInvariants = false;
     int contactPairCount = 100, scriptedEndpoints = 2;
+    int spriteCount = 1000;
+    double visiblePercent = 10.0, changedPercent = 10.0;
+    std::string spatialVariant = "static";
+    std::string spatialTracePath;
+    bool captureModeExplicit = false;
+    bool warmupExplicit = false, measureExplicit = false, dtExplicit = false, seedExplicit = false;
+    std::string captureMode = "performance";
+    std::string caseId;
+    std::string caseSha256;
 };
 
 BenchmarkScenario parseScenario(const std::string &value)
@@ -246,6 +264,10 @@ BenchmarkScenario parseScenario(const std::string &value)
 
     if (value == "persistent_contacts")
         return BenchmarkScenario::PersistentContacts;
+    if (value == "sprite_visibility")
+        return BenchmarkScenario::SpriteVisibility;
+    if (value == "spatial_combined")
+        return BenchmarkScenario::SpatialCombined;
 
     throw std::runtime_error("Unknown benchmark scenario: " + value);
 }
@@ -268,11 +290,83 @@ const char *scenarioName(const BenchmarkScenario scenario)
         return "moving_add_and_remove";
     case BenchmarkScenario::PersistentContacts:
         return "persistent_contacts";
+    case BenchmarkScenario::SpriteVisibility:
+        return "sprite_visibility";
+    case BenchmarkScenario::SpatialCombined:
+        return "spatial_combined";
     case BenchmarkScenario::None:
         return "scene";
     }
 
     return "scene";
+}
+
+const char *broadPhaseName(BroadPhaseMode mode)
+{
+    switch (mode)
+    {
+    case BroadPhaseMode::Segmented: return "segmented";
+    case BroadPhaseMode::DynamicBvh: return "bvh";
+    }
+    return "invalid";
+}
+
+const char *renderCullingName(RenderCullingMode mode)
+{
+    switch (mode)
+    {
+    case RenderCullingMode::None: return "none";
+    case RenderCullingMode::Linear: return "linear";
+    case RenderCullingMode::DynamicBvh: return "bvh";
+    case RenderCullingMode::Segmented: return "segmented";
+    }
+    return "invalid";
+}
+
+const char *maintenanceName(BvhMaintenance policy)
+{
+    switch (policy)
+    {
+    case BvhMaintenance::NativePartial: return "native-partial";
+    case BvhMaintenance::FullRebuild: return "full-rebuild";
+    }
+    return "invalid";
+}
+
+const char *queryExecutionName(BvhQueryExecution execution)
+{
+    switch (execution)
+    {
+    case BvhQueryExecution::Serial: return "serial";
+    case BvhQueryExecution::Parallel: return "parallel";
+    }
+    return "invalid";
+}
+
+nlohmann::json spatialSelectionMetadata(const BenchmarkRunnerOptions &options)
+{
+    const auto &settings = options.runtimeOptions.spatialSettings;
+    const nlohmann::json requested = {
+        {"broad_phase", broadPhaseName(settings.broadPhase)},
+        {"render_culling", renderCullingName(settings.renderCulling)},
+        {"bvh_maintenance", maintenanceName(settings.bvhMaintenance)},
+        {"bvh_padding", settings.bvhPadding},
+        {"bvh_query_execution", queryExecutionName(settings.bvhQueryExecution)}};
+    const bool physicsUsesBvh = settings.broadPhase == BroadPhaseMode::DynamicBvh;
+    const bool renderUsesBvh = options.renderFrames && settings.renderCulling == RenderCullingMode::DynamicBvh;
+    const bool usesBvh = physicsUsesBvh || renderUsesBvh;
+    const char *renderStatus = !options.renderFrames ? "disabled_no_render"
+                               : settings.renderCulling == RenderCullingMode::None ? "none_selected"
+                                                                                   : "active";
+    const nlohmann::json effective = {
+        {"broad_phase", broadPhaseName(settings.broadPhase)},
+        {"render_culling", options.renderFrames ? renderCullingName(settings.renderCulling) : "none"},
+        {"bvh_maintenance", usesBvh ? maintenanceName(settings.bvhMaintenance) : "not_applicable"},
+        {"bvh_padding", usesBvh ? nlohmann::json(settings.bvhPadding) : nlohmann::json(nullptr)},
+        {"bvh_query_execution", physicsUsesBvh ? queryExecutionName(settings.bvhQueryExecution)
+                                             : renderUsesBvh ? "serial" : "not_applicable"},
+        {"render_culling_status", renderStatus}};
+    return {{"requested", requested}, {"effective", effective}, {"rendering_requested", options.renderFrames}};
 }
 
 std::string formatIndexedName(const std::string &prefix, const size_t index)
@@ -968,7 +1062,8 @@ void buildPersistentContacts(platformator::Runtime &runtime, const BenchmarkRunn
 }
 
 void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options,
-                   BroadPhaseStressScenarioState *broadPhaseStressState, AddRemoveScenarioState *addRemoveState)
+                   BroadPhaseStressScenarioState *broadPhaseStressState, AddRemoveScenarioState *addRemoveState,
+                   platformator_benchmark::SpatialFixture *spatialFixture)
 {
     switch (options.scenario)
     {
@@ -998,6 +1093,14 @@ void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions 
         return;
     case BenchmarkScenario::PersistentContacts:
         buildPersistentContacts(runtime, options);
+        return;
+    case BenchmarkScenario::SpriteVisibility:
+    case BenchmarkScenario::SpatialCombined:
+        if (spatialFixture == nullptr)
+            throw std::runtime_error("Spatial visibility scenario requires fixture storage");
+        *spatialFixture = platformator_benchmark::buildSpatialFixture(
+            runtime, {static_cast<size_t>(options.spriteCount), options.visiblePercent, options.changedPercent,
+                      options.spatialVariant, options.scenario == BenchmarkScenario::SpatialCombined});
         return;
     case BenchmarkScenario::None:
         return;
@@ -1036,7 +1139,8 @@ SDL_FRect fitCameraRectToWindowAspect(const SDL_FRect &cameraRect, const WindowS
 
 void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options,
                              const BroadPhaseStressScenarioState *broadPhaseStressState,
-                             const AddRemoveScenarioState *addRemoveState)
+                             const AddRemoveScenarioState *addRemoveState,
+                             platformator_benchmark::SpatialFixture *spatialFixture)
 {
     if (options.renderFrames == false)
     {
@@ -1113,6 +1217,12 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
     case BenchmarkScenario::PersistentContacts:
         mainCamera->setCamera(SDL_FRect{-10, -10, 2600, 2600});
         return;
+    case BenchmarkScenario::SpriteVisibility:
+    case BenchmarkScenario::SpatialCombined:
+        if (spatialFixture == nullptr)
+            throw std::runtime_error("Spatial visibility scenario requires fixture storage");
+        platformator_benchmark::configureSpatialFixtureCamera(runtime, *spatialFixture);
+        return;
     case BenchmarkScenario::None:
         return;
     }
@@ -1172,10 +1282,44 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
     for (int index = 1; index < argc; index++)
     {
         const std::string argument = args[index];
+        if (platformator_detail::isSpatialSettingsOption(argument))
+        {
+            platformator_detail::parseSpatialSettingsOption(
+                argument, requireArgumentValue(argc, args, index, argument), options.runtimeOptions.spatialSettings);
+            continue;
+        }
         if (argument == "--contact-pair-count")
         {
             options.contactPairCount =
                 parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            continue;
+        }
+        if (argument == "--sprite-count")
+        {
+            options.spriteCount = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            continue;
+        }
+        if (argument == "--visible-percent" || argument == "--changed-percent")
+        {
+            const auto value = requireArgumentValue(argc, args, index, argument);
+            size_t consumed = 0;
+            const double parsed = std::stod(value, &consumed);
+            if (consumed != value.size() || !std::isfinite(parsed) || parsed < 0.0 || parsed > 100.0)
+                throw std::runtime_error(argument + " must be between 0 and 100");
+            if (argument == "--visible-percent")
+                options.visiblePercent = parsed;
+            else
+                options.changedPercent = parsed;
+            continue;
+        }
+        if (argument == "--spatial-variant")
+        {
+            options.spatialVariant = requireArgumentValue(argc, args, index, argument);
+            if (options.spatialVariant != "static" && options.spatialVariant != "moving" &&
+                options.spatialVariant != "pan" && options.spatialVariant != "jump" &&
+                options.spatialVariant != "resize" && options.spatialVariant != "animation" &&
+                options.spatialVariant != "churn")
+                throw std::runtime_error("Unsupported --spatial-variant: " + options.spatialVariant);
             continue;
         }
         if (argument == "--scripted-endpoints")
@@ -1189,6 +1333,41 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
         if (argument == "--validate-invariants")
         {
             options.validateInvariants = true;
+            continue;
+        }
+        if (argument == "--capture-mode")
+        {
+            options.captureMode = requireArgumentValue(argc, args, index, argument);
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+            if (options.captureMode != "resource")
+                throw std::runtime_error("platformator_spatial_resource_runner only supports --capture-mode resource");
+#else
+            if (options.captureMode != "performance" && options.captureMode != "validate")
+                throw std::runtime_error("--capture-mode must be performance or validate; use the resource runner for resource captures");
+#endif
+            options.captureModeExplicit = true;
+            continue;
+        }
+        if (argument == "--case-id")
+        {
+            options.caseId = requireArgumentValue(argc, args, index, argument);
+            continue;
+        }
+        if (argument == "--case-sha256")
+        {
+            options.caseSha256 = requireArgumentValue(argc, args, index, argument);
+            if (options.caseSha256.size() != 64 ||
+                !std::all_of(options.caseSha256.begin(), options.caseSha256.end(), [](unsigned char c) {
+                    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+                }))
+                throw std::runtime_error("--case-sha256 must be 64 lowercase hexadecimal characters");
+            continue;
+        }
+        if (argument == "--spatial-trace")
+        {
+            if (!options.spatialTracePath.empty())
+                throw std::runtime_error("--spatial-trace may be specified only once");
+            options.spatialTracePath = requireArgumentValue(argc, args, index, argument);
             continue;
         }
         if (argument == "--repetitions")
@@ -1212,6 +1391,7 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
             const auto parsed = std::from_chars(value.data(), value.data() + value.size(), options.seed);
             if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
                 throw std::runtime_error("--seed must be a nonnegative integer");
+            options.seedExplicit = true;
             continue;
         }
         if (argument == "--asset-root")
@@ -1247,6 +1427,7 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
         {
             options.warmupFrameCount =
                 parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
+            options.warmupExplicit = true;
             continue;
         }
 
@@ -1254,12 +1435,14 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
         {
             options.measureFrameCount =
                 parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            options.measureExplicit = true;
             continue;
         }
 
         if (argument == "--dt")
         {
             options.timeDelta = parsePositiveDouble(requireArgumentValue(argc, args, index, argument), argument);
+            options.dtExplicit = true;
             continue;
         }
 
@@ -1354,6 +1537,10 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
         throw std::runtime_error("rigid_body_container scenario requires at least one box or circle.");
     }
 
+    if ((options.scenario == BenchmarkScenario::SpriteVisibility ||
+         options.scenario == BenchmarkScenario::SpatialCombined) && !options.renderFrames)
+        throw std::runtime_error("sprite_visibility and spatial_combined require --render");
+
     if (isAddRemoveScenario(options.scenario))
     {
         if (options.boxCount + options.circleCount <= 0)
@@ -1368,6 +1555,24 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
                 "add/remove benchmark scenarios require matching --add-count and --remove-count values so the active "
                 "population stays stable. Use --churn-count for the common case.");
         }
+    }
+
+    if (options.validateInvariants && options.captureModeExplicit && options.captureMode != "validate")
+        throw std::runtime_error("--validate-invariants conflicts with --capture-mode performance");
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    if (!options.captureModeExplicit)
+        options.captureMode = "resource";
+    if (options.captureMode != "resource" || options.validateInvariants)
+        throw std::runtime_error("platformator_spatial_resource_runner is resource-only; omit validation flags and use --capture-mode resource");
+#endif
+    if (options.captureMode == "validate")
+        options.validateInvariants = true;
+    if (!options.spatialTracePath.empty())
+    {
+        if (options.scenario != BenchmarkScenario::None || scenePathSpecified)
+            throw std::runtime_error("--spatial-trace cannot be combined with a scene or --scenario");
+        if (options.renderFrames)
+            throw std::runtime_error("--spatial-trace is headless replay and cannot be combined with --render");
     }
 
     return options;
@@ -1447,6 +1652,22 @@ nlohmann::json resolvedParameters(const BenchmarkRunnerOptions &options)
                        {"box_size", {4, 4}},
                        {"pair_spacing", 80},
                        {"triggers", true}});
+    if (options.scenario == BenchmarkScenario::SpriteVisibility ||
+        options.scenario == BenchmarkScenario::SpatialCombined)
+    {
+        const auto rounded = [](int count, double percent) {
+            return static_cast<size_t>(std::llround(static_cast<double>(count) * percent / 100.0));
+        };
+        result.update({{"sprite_count", options.spriteCount},
+                       {"visible_percent", options.visiblePercent},
+                       {"visible_count", rounded(options.spriteCount, options.visiblePercent)},
+                       {"changed_percent", options.changedPercent},
+                       {"changed_count", rounded(options.spriteCount, options.changedPercent)},
+                       {"variant", options.spatialVariant},
+                       {"combined_collider_count", options.scenario == BenchmarkScenario::SpatialCombined ? 128 : 0},
+                       {"sprite_geometry", {16, 16}},
+                       {"camera_view", {1600, 900}}});
+    }
     return result;
 }
 size_t expectedPopulation(const BenchmarkRunnerOptions &options)
@@ -1466,6 +1687,10 @@ size_t expectedPopulation(const BenchmarkRunnerOptions &options)
         return options.addRemoveSteadyCount + camera;
     case BenchmarkScenario::PersistentContacts:
         return size_t(options.contactPairCount) * 2 + camera;
+    case BenchmarkScenario::SpriteVisibility:
+        return size_t(options.spriteCount) + camera;
+    case BenchmarkScenario::SpatialCombined:
+        return size_t(options.spriteCount) + 128 + camera;
     case BenchmarkScenario::None:
         return 0;
     }
@@ -1599,23 +1824,63 @@ nlohmann::json validatePhysicalState(const platformator::Runtime &runtime, const
 void runBenchmark(const BenchmarkRunnerOptions &options)
 {
     tbb::global_control workers(tbb::global_control::max_allowed_parallelism, options.workers);
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    platformator_detail::spatialResourceStart();
+#endif
+    const auto initializationStarted = std::chrono::steady_clock::now();
     platformator::Runtime runtime(options.runtimeOptions);
+    auto &recorder = platformator_detail::BenchmarkRecorder::getInstance();
+    recorder.setInitializationActive(true);
     AddRemoveScenarioState addRemoveState;
     BroadPhaseStressScenarioState broadPhaseStressState;
+    platformator_benchmark::SpatialFixture spatialFixture;
+    const bool spatialFixtureScenario = options.scenario == BenchmarkScenario::SpriteVisibility ||
+                                        options.scenario == BenchmarkScenario::SpatialCombined;
+    const platformator_benchmark::SpatialFixtureSettings spatialFixtureSettings{
+        static_cast<size_t>(options.spriteCount), options.visiblePercent, options.changedPercent,
+        options.spatialVariant, options.scenario == BenchmarkScenario::SpatialCombined};
     std::function<void(double)> callback;
     if (options.scenario == BenchmarkScenario::None)
         runtime.loadScene(options.runtimeOptions.sceneFilePath);
     else
         buildScenario(runtime, options,
                       options.scenario == BenchmarkScenario::BroadPhaseStress ? &broadPhaseStressState : nullptr,
-                      isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr);
+                      isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr,
+                      spatialFixtureScenario ? &spatialFixture : nullptr);
     configureScenarioCamera(runtime, options,
                             options.scenario == BenchmarkScenario::BroadPhaseStress ? &broadPhaseStressState : nullptr,
-                            isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr);
+                            isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr,
+                            spatialFixtureScenario ? &spatialFixture : nullptr);
     if (isAddRemoveScenario(options.scenario))
         callback = [&](double) { applyAddRemoveScenarioChurn(runtime, addRemoveState, options.renderFrames); };
     else if (options.scenario == BenchmarkScenario::BroadPhaseStress)
         callback = [&](double) { applyBroadPhaseStressScenarioMotion(broadPhaseStressState); };
+    else if (spatialFixtureScenario)
+        callback = [&](double dt) {
+            platformator_benchmark::stepSpatialFixture(runtime, spatialFixture, spatialFixtureSettings, dt);
+        };
+    const auto initializationNanoseconds = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - initializationStarted).count());
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    const auto recordOwnedCapacitySnapshot = [] {
+        auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+        platformator_detail::spatialResourceSetOwnedCapacity(
+            platformator_detail::SpatialResourceTag::PhysicsIndex, physics->getSpatialIndexOwnedCapacityBytes());
+        platformator_detail::spatialResourceSetOwnedCapacity(
+            platformator_detail::SpatialResourceTag::PhysicsCommonPairs, physics->getSpatialCommonPairCapacityBytes());
+        platformator_detail::spatialResourceSetOwnedCapacity(
+            platformator_detail::SpatialResourceTag::Scratch, physics->getSpatialScratchCapacityBytes());
+        platformator_detail::spatialResourceSetOwnedCapacity(
+            platformator_detail::SpatialResourceTag::VisibilityIndex,
+            platformator_detail::RuntimeAccess::window()->getRenderCullingOwnedCapacityBytes());
+    };
+    recordOwnedCapacitySnapshot();
+    recorder.setInitializationActive(false);
+    platformator_detail::spatialResourceMarkInitial();
+#else
+    recorder.setInitializationActive(false);
+#endif
+    platformator_detail::RuntimeAccess::window()->setImageValidationEnabled(options.validateInvariants && options.renderFrames);
     const auto step = [&]() {
         bool running = true;
         if (options.renderFrames)
@@ -1627,6 +1892,9 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
             runtime.simulateFrame(options.timeDelta);
         if (options.validateInvariants)
             validatePhysicalState(runtime, options);
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+        recordOwnedCapacitySnapshot();
+#endif
         return running;
     };
     int warmup = 0;
@@ -1638,9 +1906,10 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
             break;
         }
     const auto initial = validatePhysicalState(runtime, options, false, warmup != 0);
-    auto &recorder = platformator_detail::BenchmarkRecorder::getInstance();
     recorder.configure(options.measureFrameCount,
                        {{"scenario", scenarioName(options.scenario)},
+                        {"case_id", options.caseId.empty() ? scenarioName(options.scenario) : options.caseId},
+                        {"case_sha256", options.caseSha256},
                         {"seed", options.seed},
                         {"workers", tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism)},
                         {"dt", options.timeDelta},
@@ -1649,7 +1918,18 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                         {"repetitions", options.repetitions},
                         {"repetition_index", options.runIndex},
                         {"rendering", options.renderFrames},
+                        {"initialization_ns", initializationNanoseconds},
+                        {"renderer_signature", platformator_detail::RuntimeAccess::window()->getRendererSignature()},
+                        {"headless", platformator_detail::RuntimeAccess::window()->isHeadless()},
+                        {"camera_available", platformator_detail::RuntimeAccess::window()->getMainCamera() != nullptr},
+                        {"spatial_settings", spatialSelectionMetadata(options)},
                         {"validation_mode", options.validateInvariants ? "per-step" : "boundary-only"},
+                        {"capture_mode", options.captureMode},
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+                        {"resource_hooks", true},
+#else
+                        {"resource_hooks", false},
+#endif
                         {"timing_eligible", !options.validateInvariants},
                         {"asset_root", runtime.getAssetRoot().string()},
                         {"resolved_parameters", resolvedParameters(options)},
@@ -1657,6 +1937,9 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
     for (int i = 0; running && i < options.measureFrameCount; ++i)
         running = step();
     const auto final = validatePhysicalState(runtime, options, options.validateInvariants);
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    recordOwnedCapacitySnapshot();
+#endif
     for (const auto &sample : recorder.samples())
         if (options.scenario != BenchmarkScenario::None &&
             sample.counters[static_cast<size_t>(platformator_detail::BenchmarkCounterId::ObjectCount)] !=
@@ -1667,10 +1950,79 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                 .back()
                 .counters[static_cast<size_t>(platformator_detail::BenchmarkCounterId::ActiveCollisionCount)] == 0)
         throw std::runtime_error("Narrow-phase workload produced no accepted contacts");
-    recorder.updateMetadata({{"physical_invariants", final}, {"stopped_on_quit", !running}});
+    recorder.updateMetadata({{"image_validation", platformator_detail::RuntimeAccess::window()->getImageValidationProof()},
+                             {"physical_invariants", final}, {"stopped_on_quit", !running},
+                             {"render_fallback_reason",
+                              platformator_detail::RuntimeAccess::window()->getRenderCullingStats().fallbackReason}});
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    recorder.updateMetadata({{"resource_data", platformator_detail::spatialResourceFinish()}});
+#endif
     if (!options.csvOutputPath.empty())
         recorder.writeOutputs(options.csvOutputPath);
     recorder.printSummary();
+}
+
+void runSpatialReplayBenchmark(const BenchmarkRunnerOptions &options)
+{
+    if (options.csvOutputPath.empty())
+        throw std::runtime_error("--spatial-trace requires --csv-output so the replay capture is retained");
+    const auto trace = platformator_detail::parseSpatialTraceFile(options.spatialTracePath);
+    const auto &header = trace.header;
+    if (options.warmupExplicit && static_cast<size_t>(options.warmupFrameCount) != header.warmupSteps)
+        throw std::runtime_error("--warmup-frames contradicts the spatial trace header");
+    if (options.measureExplicit && static_cast<size_t>(options.measureFrameCount) != header.measureSteps)
+        throw std::runtime_error("--measure-frames contradicts the spatial trace header");
+    if (options.dtExplicit && std::abs(options.timeDelta - header.dt) >
+                                 std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(header.dt)) * 4.0)
+        throw std::runtime_error("--dt contradicts the spatial trace header");
+    if (options.seedExplicit && options.seed != header.seed)
+        throw std::runtime_error("--seed contradicts the spatial trace header");
+
+    tbb::global_control workers(tbb::global_control::max_allowed_parallelism, options.workers);
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    platformator_detail::spatialResourceStart();
+#endif
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+    const auto resourceCapacityObserver = [](const platformator_detail::SpatialReplayOwnedCapacitySnapshot &snapshot,
+                                             bool initial, void *) {
+        using platformator_detail::SpatialResourceTag;
+        platformator_detail::spatialResourceSetOwnedCapacity(SpatialResourceTag::PhysicsIndex,
+                                                              snapshot.physicsIndexBytes);
+        platformator_detail::spatialResourceSetOwnedCapacity(SpatialResourceTag::PhysicsCommonPairs,
+                                                              snapshot.physicsCommonPairsBytes);
+        platformator_detail::spatialResourceSetOwnedCapacity(SpatialResourceTag::VisibilityIndex,
+                                                              snapshot.visibilityIndexBytes);
+        platformator_detail::spatialResourceSetOwnedCapacity(SpatialResourceTag::Scratch, snapshot.scratchBytes);
+        if (initial)
+            platformator_detail::spatialResourceMarkInitial();
+    };
+    const auto replay = platformator_detail::executeSpatialReplay(
+        trace, options.runtimeOptions.spatialSettings, options.validateInvariants, resourceCapacityObserver);
+    auto resourceData = platformator_detail::spatialResourceFinish();
+    resourceData["owned_capacity_snapshots"] = {
+        {"status", "complete"},
+        {"sampling", "after initialization and each complete replay step, outside measured intervals"},
+        {"source", "spatial owner capacity APIs; fixture records and allocator metadata are excluded"},
+        {"domains", trace.header.domain == platformator_detail::SpatialTraceDomain::Collision
+                        ? nlohmann::json::array({"physics_index", "physics_common_pairs", "scratch"})
+                        : nlohmann::json::array({"visibility_index"})}};
+#else
+    const auto replay = platformator_detail::executeSpatialReplay(
+        trace, options.runtimeOptions.spatialSettings, options.validateInvariants);
+    nlohmann::json resourceData = nlohmann::json::object();
+#endif
+    platformator_detail::writeSpatialReplayOutputs(options.csvOutputPath, options.spatialTracePath, trace,
+                                                    options.runtimeOptions.spatialSettings, replay,
+                                                    options.validateInvariants,
+#if defined(PLATFORMATOR_RESOURCE_RUNNER)
+                                                    true,
+#else
+                                                    false,
+#endif
+                                                    std::move(resourceData));
+    std::fprintf(stdout, "[Benchmark] schema_version=4 replay_domain=%s measured_steps=%zu initialization_ns=%llu\n",
+                 header.domain == platformator_detail::SpatialTraceDomain::Collision ? "collision" : "visibility",
+                 replay.measuredSamples.size(), static_cast<unsigned long long>(replay.initializationNanoseconds));
 }
 
 void printUsage(FILE *output)
@@ -1683,7 +2035,12 @@ void printUsage(FILE *output)
         "[--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] "
         "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--steady-count N] [--add-count N] "
         "[--remove-count N] [--churn-count N] [--csv-output "
-        "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render]\n");
+        "path] [--workers N] [--seed N] [--capture-mode performance|validate] [--validate-invariants] "
+        "[--spatial-trace file] [--asset-root path] [--render] "
+        "[--broad-phase segmented|bvh] [--render-culling none|linear|bvh|segmented] "
+        "[--bvh-maintenance native-partial|full-rebuild] [--bvh-padding units] "
+        "[--bvh-query-execution serial|parallel]\n");
+    std::fprintf(output, "--render-culling selects visibility independently; it does not enable --render.\n");
 }
 } // namespace
 
@@ -1691,7 +2048,11 @@ int main(int argc, char *args[])
 {
     try
     {
-        runBenchmark(parseBenchmarkRunnerOptions(argc, args));
+        const auto options = parseBenchmarkRunnerOptions(argc, args);
+        if (options.spatialTracePath.empty())
+            runBenchmark(options);
+        else
+            runSpatialReplayBenchmark(options);
         return 0;
     }
     catch (const std::exception &exception)

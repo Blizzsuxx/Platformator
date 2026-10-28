@@ -1,3 +1,5 @@
+#include <stdexcept>
+#include <cstring>
 #include "sdlwindow.h"
 
 #include <algorithm>
@@ -5,6 +7,7 @@
 #include <memory>
 
 #include <SDL3/SDL_properties.h>
+#include <SDL3/SDL_version.h>
 
 #include "platformator/audiowrapper.h"
 #include "platformator/audio.h"
@@ -12,13 +15,16 @@
 #include "runtimeaccess.h"
 #include "platformator/sprite.h"
 #include "benchmark.h"
+#include "workprobe.h"
 
-SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
+SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings,
+                     const SpatialSettings &spatialSettings, uint64_t runtimeSerial)
     : window(nullptr), renderer(nullptr), mixer(nullptr), mainCamera(nullptr), sdlEvent(),
       debugDraw(DebugDraw::getInstance()), rendererName(nullptr), windowSettings(windowSettings),
-      renderWidth(windowSettings.width), renderHeight(windowSettings.height), quit(false),
-      paused(debugSettings.startPaused), advanceFrameRequested(false), spriteComponents(), listeners(),
-      transientAudioPlaybacks()
+      spatialSettings(spatialSettings), runtimeSerial(runtimeSerial), renderWidth(windowSettings.width),
+      renderHeight(windowSettings.height), quit(false), paused(debugSettings.startPaused),
+      advanceFrameRequested(false), spriteComponents(), renderCulling(), renderCullingStats(), geometryRevision(0),
+      viewRevision(0), drawOrderRevision(0), listeners(), transientAudioPlaybacks()
 {
     try
     {
@@ -33,6 +39,8 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
             const std::string error = SDL_GetError();
             throw std::runtime_error("Cannot initialize Platformator backends: " + error);
         }
+        if (renderer != nullptr && spatialSettings.renderCulling != RenderCullingMode::None)
+            renderCulling = std::make_unique<platformator_detail::RenderCulling>(this, spatialSettings, runtimeSerial);
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         listeners.push_back([this](SDL_Event event, double) {
@@ -171,6 +179,7 @@ bool SDLWindow::init()
 void SDLWindow::close()
 {
     clearTransientAudio();
+    renderCulling.reset();
 
     if (mixer != nullptr)
     {
@@ -228,16 +237,25 @@ void SDLWindow::handleSDLEvents(double deltaTime)
 
 void SDLWindow::render()
 {
+    renderCullingStats = {};
+    renderCullingStats.geometryRevision = geometryRevision;
+    renderCullingStats.viewRevision = viewRevision;
+    renderCullingStats.drawOrderRevision = drawOrderRevision;
     if (renderer == nullptr)
     {
         return;
     }
+    renderCullingStats.candidateCount = spriteComponents.size();
+    PLATFORMATOR_BENCH_BEGIN_RENDER();
     PLATFORMATOR_BENCH_SCOPE(Render);
 
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(renderer);
+    PLATFORMATOR_BENCH_SET_COUNTER(SpriteCount, spriteComponents.size());
     if (!mainCamera)
     {
+        renderCullingStats.fallbackReason = "no-camera";
+        PLATFORMATOR_BENCH_CANCEL_RENDER();
         SDL_RenderPresent(renderer);
         return;
     }
@@ -246,10 +264,9 @@ void SDLWindow::render()
     PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
     if (shouldSimulateFrame())
     {
-        for (const auto &cellEntry : physicsManager->getGrid().getCells())
-        {
-            debugDraw.addGridCellDebugObject(cellEntry.first);
-        }
+        if (const Grid *grid = physicsManager->getGridIfActive())
+            for (const auto &cellEntry : grid->getCells())
+                debugDraw.addGridCellDebugObject(cellEntry.first);
     }
 #endif
 
@@ -270,20 +287,147 @@ void SDLWindow::render()
     }
 #endif
 
-    for (Sprite *spriteComponent : spriteComponents)
+    const std::vector<Sprite *> *submissionOrder = &spriteComponents;
+    if (renderCulling)
     {
-        if (!spriteComponent->getGameObject()->getActive())
-        {
-            continue;
-        }
-
-        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
+        PLATFORMATOR_BENCH_SCOPE(RenderCulling);
+        submissionOrder = &renderCulling->prepare(mainCamera, renderWidth, renderHeight, renderer, spriteComponents,
+                                                  geometryRevision, viewRevision, drawOrderRevision);
+        renderCullingStats = renderCulling->getFrameStats();
+        renderCullingStats.geometryRevision = geometryRevision;
+        renderCullingStats.viewRevision = viewRevision;
+        renderCullingStats.drawOrderRevision = drawOrderRevision;
+        PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(BoundsPrepare, renderCullingStats.boundsPrepareNanoseconds);
+        PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(IndexUpdate, renderCullingStats.indexUpdateNanoseconds);
+        PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(IndexMaintenance, renderCullingStats.indexMaintenanceNanoseconds);
+        PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(IndexQuery, renderCullingStats.indexQueryNanoseconds);
+        PLATFORMATOR_BENCH_ADD_SCOPE_DURATION(ResultReduce, renderCullingStats.resultReduceNanoseconds);
+    }
+    else
+    {
+        renderCullingStats.candidateCount = spriteComponents.size();
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        platformator_test::work.renderFullOrderWalks += spriteComponents.size();
+#endif
     }
 
+    uint64_t outputOrderHash = 1469598103934665603ull;
+    {
+        PLATFORMATOR_BENCH_SCOPE(RenderSubmit);
+        size_t previousIndex = 0;
+        bool firstSubmission = true;
+        for (Sprite *spriteComponent : *submissionOrder)
+        {
+            if (!spriteComponent->getGameObject()->getActive())
+            {
+                continue;
+            }
+
+            mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
+            const uint64_t index = spriteComponent->getWindowIndex();
+            if (imageValidationEnabled && !firstSubmission && index <= previousIndex)
+                throw std::runtime_error("Image qualification: retained sprite submission order differs from submit-all");
+            previousIndex = index;
+            firstSubmission = false;
+            for (unsigned byte = 0; byte < sizeof(index); ++byte)
+            {
+                outputOrderHash ^= (index >> (byte * 8)) & 0xffu;
+                outputOrderHash *= 1099511628211ull;
+            }
+            ++renderCullingStats.submittedCount;
+            PLATFORMATOR_WORK_RENDER_SUBMISSION(spriteComponent->getWindowIndex());
+        }
+    }
+    renderCullingStats.outputOrderHash = outputOrderHash;
+    PLATFORMATOR_BENCH_SET_COUNTER(SpatialProxyCount, renderCullingStats.indexProxyCount);
+    PLATFORMATOR_BENCH_SET_COUNTER(ChangedBoundsCount, renderCullingStats.boundsPrepared);
+    PLATFORMATOR_BENCH_SET_COUNTER(ProxyInsertCount, renderCullingStats.proxyInserts);
+    PLATFORMATOR_BENCH_SET_COUNTER(ProxyRemoveCount, renderCullingStats.proxyRemoves);
+    PLATFORMATOR_BENCH_SET_COUNTER(ProxyMoveCount, renderCullingStats.proxyMoves);
+    PLATFORMATOR_BENCH_SET_COUNTER(QueryCount, renderCullingStats.visibilityQueries);
+    PLATFORMATOR_BENCH_SET_COUNTER(RawDiscoveryCount, renderCullingStats.rawDiscoveries);
+    PLATFORMATOR_BENCH_SET_COUNTER(ExactOverlapCount, renderCullingStats.exactChecks);
+    PLATFORMATOR_BENCH_SET_COUNTER(RebuildCallCount, renderCullingStats.rebuildCalls);
+    PLATFORMATOR_BENCH_SET_COUNTER(RebuildItemCount, renderCullingStats.rebuildItems);
+    PLATFORMATOR_BENCH_SET_COUNTER(TreeHeight, renderCullingStats.treeHeight);
+    PLATFORMATOR_BENCH_SET_COUNTER(TreeNodeCount, renderCullingStats.treeNodes);
+    PLATFORMATOR_BENCH_SET_COUNTER(VisibleCandidateCount, renderCulling ? renderCullingStats.visibleCount : 0);
+    PLATFORMATOR_BENCH_SET_COUNTER(SubmittedSpriteCount, renderCullingStats.submittedCount);
+    PLATFORMATOR_BENCH_SET_COUNTER(UncullableSpriteCount, renderCullingStats.uncullableCount);
+    PLATFORMATOR_BENCH_SET_COUNTER(CullingBypassCount,
+                                   renderCullingStats.fallbackReason.empty() ? 0 : 1);
+    PLATFORMATOR_BENCH_SET_COUNTER(VisibilityCacheHitCount, renderCullingStats.resultCacheHit ? 1 : 0);
+    PLATFORMATOR_BENCH_SET_COUNTER(VisibilityCellCount, renderCullingStats.visibilityCells);
+
+    if (imageValidationEnabled) validateSubmitAllImage();
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
 #endif
     SDL_RenderPresent(renderer);
+}
+
+void SDLWindow::setImageValidationEnabled(bool enabled)
+{
+    imageValidationEnabled = enabled;
+    imageValidationFrames = 0;
+    imageReferenceHash = imageResultHash = 1469598103934665603ull;
+}
+
+void SDLWindow::validateSubmitAllImage()
+{
+    using Surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
+    const auto read = [&]() {
+        Surface raw(SDL_RenderReadPixels(renderer, nullptr), SDL_DestroySurface);
+        if (!raw) throw std::runtime_error(std::string("Image qualification readback failed: ") + SDL_GetError());
+        Surface converted(SDL_ConvertSurface(raw.get(), SDL_PIXELFORMAT_RGBA32), SDL_DestroySurface);
+        if (!converted) throw std::runtime_error("Image qualification pixel conversion failed");
+        return converted;
+    };
+    auto result = read();
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderClear(renderer);
+    for (Sprite *sprite : spriteComponents)
+        if (sprite->getGameObject()->getActive())
+            mainCamera->render(sprite, renderer, renderWidth, renderHeight);
+    auto reference = read();
+    if (result->w != reference->w || result->h != reference->h)
+        throw std::runtime_error("Image qualification output dimensions differ");
+    for (int y=0; y<result->h; ++y)
+    {
+        const auto *actual = static_cast<const unsigned char *>(result->pixels) + y * result->pitch;
+        const auto *expected = static_cast<const unsigned char *>(reference->pixels) + y * reference->pitch;
+        if (std::memcmp(actual, expected, size_t(result->w)*4) != 0)
+            throw std::runtime_error("Image qualification: culled output differs from submit-all pixels");
+        // Hash whole words after the exact comparison. SDL_crc32 computes its polynomial
+        // bit by bit; it made renderer qualification dominate these validation-only runs.
+        const size_t byteCount = size_t(result->w)*4;
+        size_t x = 0;
+        for (; x + sizeof(uint64_t) <= byteCount; x += sizeof(uint64_t))
+        {
+            uint64_t actualWord, expectedWord;
+            std::memcpy(&actualWord, actual + x, sizeof(uint64_t));
+            std::memcpy(&expectedWord, expected + x, sizeof(uint64_t));
+            actualWord = SDL_Swap64LE(actualWord);
+            expectedWord = SDL_Swap64LE(expectedWord);
+            imageResultHash = (imageResultHash ^ actualWord) * 1099511628211ull;
+            imageReferenceHash = (imageReferenceHash ^ expectedWord) * 1099511628211ull;
+        }
+        for (; x < byteCount; ++x)
+        {
+            imageResultHash = (imageResultHash ^ actual[x]) * 1099511628211ull;
+            imageReferenceHash = (imageReferenceHash ^ expected[x]) * 1099511628211ull;
+        }
+    }
+    ++imageValidationFrames;
+}
+
+nlohmann::json SDLWindow::getImageValidationProof() const
+{
+    return {{"status", imageValidationFrames ? "passed" : "not_run"},
+            {"method", "same-frame-submit-all-rgba32"}, {"order_status", imageValidationFrames ? "passed" : "not_run"},
+            {"frames", imageValidationFrames}, {"tolerance", 0},
+            {"reference_hash", std::to_string(imageReferenceHash)}, {"result_hash", std::to_string(imageResultHash)},
+            {"hash_algorithm", "fnv64-le-word-rgba32-frame-stream"}, {"renderer_signature", getRendererSignature()}};
 }
 
 void SDLWindow::clearDebugObjects()
@@ -321,6 +465,68 @@ int SDLWindow::getRenderHeight() const
 bool SDLWindow::isHeadless() const
 {
     return windowSettings.headless;
+}
+
+const platformator_detail::RenderCullingFrameStats &SDLWindow::getRenderCullingStats() const
+{
+    return renderCullingStats;
+}
+
+size_t SDLWindow::getRenderCullingOwnedCapacityBytes() const
+{
+    return renderCulling ? renderCulling->getOwnedCapacityBytes() : 0;
+}
+
+nlohmann::json SDLWindow::getRendererSignature() const
+{
+    const int version = SDL_GetVersion();
+    nlohmann::json signature = {
+        {"sdl_version", std::to_string(SDL_VERSIONNUM_MAJOR(version)) + '.' +
+                             std::to_string(SDL_VERSIONNUM_MINOR(version)) + '.' +
+                             std::to_string(SDL_VERSIONNUM_MICRO(version))},
+        {"backend", rendererName ? rendererName : "Unknown"},
+        {"output_size", nullptr},
+        {"window_pixel_size", nullptr},
+        {"target", nullptr},
+        {"viewport", nullptr},
+        {"renderer_scale", nullptr},
+        {"logical_presentation", nullptr},
+        {"vsync", nullptr}};
+    if (renderer == nullptr)
+    {
+        signature["status"] = "unavailable";
+        signature["reason"] = "renderer-unavailable";
+        return signature;
+    }
+    int width = 0, height = 0;
+    if (SDL_GetCurrentRenderOutputSize(renderer, &width, &height))
+        signature["output_size"] = {width, height};
+    if (window != nullptr && SDL_GetWindowSizeInPixels(window, &width, &height))
+        signature["window_pixel_size"] = {width, height};
+    SDL_Texture *target = SDL_GetRenderTarget(renderer);
+    if (target == nullptr)
+        signature["target"] = {{"kind", "window"}};
+    else
+    {
+        float targetWidth = 0, targetHeight = 0;
+        SDL_GetTextureSize(target, &targetWidth, &targetHeight);
+        signature["target"] = {{"kind", "texture"}, {"size", {targetWidth, targetHeight}}};
+    }
+    SDL_Rect viewport{};
+    if (SDL_GetRenderViewport(renderer, &viewport))
+        signature["viewport"] = {viewport.x, viewport.y, viewport.w, viewport.h};
+    float scaleX = 0, scaleY = 0;
+    if (SDL_GetRenderScale(renderer, &scaleX, &scaleY))
+        signature["renderer_scale"] = {scaleX, scaleY};
+    int logicalWidth = 0, logicalHeight = 0;
+    SDL_RendererLogicalPresentation presentation = SDL_LOGICAL_PRESENTATION_DISABLED;
+    if (SDL_GetRenderLogicalPresentation(renderer, &logicalWidth, &logicalHeight, &presentation))
+        signature["logical_presentation"] = {logicalWidth, logicalHeight, static_cast<int>(presentation)};
+    int vsync = 0;
+    if (SDL_GetRenderVSync(renderer, &vsync))
+        signature["vsync"] = vsync;
+    signature["status"] = "available";
+    return signature;
 }
 
 bool SDLWindow::isRunning() const
@@ -364,6 +570,10 @@ void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
     spriteComponent->setWindowIndex(spriteComponents.size());
     spriteComponent->setIsRegisteredInWindow(true);
     spriteComponents.push_back(spriteComponent);
+    ++geometryRevision;
+    ++drawOrderRevision;
+    if (renderCulling)
+        renderCulling->addSprite(spriteComponent);
 }
 
 void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
@@ -384,13 +594,46 @@ void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
     }
 
     spriteComponents.pop_back();
+    if (renderCulling)
+        renderCulling->removeSprite(spriteComponent);
     spriteComponent->setWindowIndex(SIZE_MAX);
     spriteComponent->setIsRegisteredInWindow(false);
+    ++geometryRevision;
+    ++drawOrderRevision;
 }
 
 void SDLWindow::setMainCamera(Camera *mainCamera)
 {
+    if (this->mainCamera == mainCamera)
+        return;
     this->mainCamera = mainCamera;
+    if (renderCulling)
+        renderCulling->setCamera(mainCamera);
+    markViewDirty();
+}
+
+void SDLWindow::markSpriteDirty(Sprite *sprite)
+{
+    if (sprite == nullptr || !sprite->getIsRegisteredInWindow())
+        return;
+    ++geometryRevision;
+    if (renderCulling)
+        renderCulling->markSpriteDirty(sprite);
+}
+
+void SDLWindow::markGameObjectDirty(GameObject *gameObject)
+{
+    if (!gameObject)
+        return;
+    if (auto *sprite = gameObject->getComponent<Sprite>())
+        markSpriteDirty(sprite);
+    if (mainCamera && mainCamera->getGameObject() == gameObject)
+        markViewDirty();
+}
+
+void SDLWindow::markViewDirty()
+{
+    ++viewRevision;
 }
 
 void SDLWindow::addSdlListener(const std::function<void(SDL_Event, double)> &listener)
@@ -405,10 +648,14 @@ Camera *SDLWindow::getMainCamera() const
 
 void SDLWindow::updateRenderSize()
 {
+    const int previousWidth = renderWidth;
+    const int previousHeight = renderHeight;
     if (renderer != nullptr && SDL_GetRenderOutputSize(renderer, &renderWidth, &renderHeight))
     {
         renderWidth = std::max(1, renderWidth);
         renderHeight = std::max(1, renderHeight);
+        if (renderWidth != previousWidth || renderHeight != previousHeight)
+            markViewDirty();
         return;
     }
 
@@ -416,6 +663,8 @@ void SDLWindow::updateRenderSize()
     {
         renderWidth = std::max(1, renderWidth);
         renderHeight = std::max(1, renderHeight);
+        if (renderWidth != previousWidth || renderHeight != previousHeight)
+            markViewDirty();
     }
 }
 

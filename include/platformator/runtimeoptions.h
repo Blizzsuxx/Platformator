@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "platformator/debugsettings.h"
+#include "platformator/spatialsettings.h"
 #include "platformator/windowsettings.h"
 
 struct RuntimeOptions
@@ -13,6 +14,7 @@ struct RuntimeOptions
     DebugSettings debugSettings;
     std::string assetRoot;
     uint64_t smokeSteps = 0;
+    SpatialSettings spatialSettings{};
 };
 
 RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &defaultScenePath);

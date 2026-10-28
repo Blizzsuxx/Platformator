@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <charconv>
 
+#include "spatialsettingsparse.h"
+
 namespace
 {
 int parsePositiveInteger(const std::string &value, const std::string &argumentName)
@@ -197,6 +199,13 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
         if (argument == "--start-paused")
         {
             runtimeOptions.debugSettings.startPaused = true;
+            continue;
+        }
+
+        if (platformator_detail::isSpatialSettingsOption(argument))
+        {
+            platformator_detail::parseSpatialSettingsOption(
+                argument, requireArgumentValue(argc, args, index, argument), runtimeOptions.spatialSettings);
             continue;
         }
 

@@ -1,0 +1,3 @@
+# SDL 3.4.18 audio conversion/playback thread races observed in the unfiltered run.
+race:SDL_SetAudioStreamFormat_REAL
+race:SDL_PlaybackAudioThreadIterate

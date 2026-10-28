@@ -96,7 +96,7 @@ void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool l
 
 void PhysicsManager::refreshSolverPairs(Collider *collider)
 {
-    if (const auto *pairs = grid.getTouchingPairs(collider))
+    if (const auto *pairs = pairState.getTouchingPairs(collider))
     {
         for (auto *pair : *pairs)
         {
@@ -108,7 +108,7 @@ void PhysicsManager::refreshSolverPairs(Collider *collider)
 
 void PhysicsManager::refreshResponse(Collider *collider)
 {
-    if (const auto *pairs = grid.getTouchingPairs(collider))
+    if (const auto *pairs = pairState.getTouchingPairs(collider))
         for (auto *pair : *pairs)
         {
             if (auto *collision = pair->getCollision())

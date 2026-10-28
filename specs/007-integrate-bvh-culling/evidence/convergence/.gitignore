@@ -1,0 +1,14 @@
+# Keep top-level reports, summary data, reproduction scripts and final figures.
+# Ignore raw runs, generated traces, image fixtures and interim capture bundles.
+/*/
+/checksums.sha256
+
+# Preserve the frozen settings used by the reported comparisons.
+!/calibration/
+/calibration/*
+!/calibration/frozen-profile.json
+
+# Small historical reports explain the corrections without retaining raw runs.
+!/historical-reports/
+/historical-reports/*
+!/historical-reports/*.md

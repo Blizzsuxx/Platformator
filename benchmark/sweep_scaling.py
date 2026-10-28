@@ -8,6 +8,7 @@ from pathlib import Path
 import statistics
 import subprocess
 import time
+from spatial_results import read_schema4_capture
 
 SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions")
 COUNTERS = ("object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
@@ -47,6 +48,9 @@ def _number(value, field):
 
 def load_manifest(path):
     manifest = json.loads(Path(path).with_suffix(".manifest.json").read_text())
+    if manifest.get("schema_version") == 4:
+        read_schema4_capture(path)
+        return manifest
     required = {"schema_version", "workers", "seed", "dt", "measured_steps", "requested_measured_steps", "warmup_steps", "repetitions",
                 "rendering", "render_samples", "complete_capture", "physical_invariants", "build", "machine", "dependencies", "boundaries", "scenario"}
     if not required <= manifest.keys() or manifest["schema_version"] != 3:
@@ -74,6 +78,23 @@ def load_manifest(path):
 def parse_benchmark_csv(csv_path):
     """Reject legacy/partial/unknown metrics, missing metadata and incomplete raw data."""
     path = Path(csv_path)
+    with path.open(newline="", encoding="utf-8") as handle:
+        version_reader = csv.DictReader(handle)
+        versions = {row.get("schema_version") for row in version_reader}
+    if versions == {"4"}:
+        with path.open(newline="", encoding="utf-8") as handle:
+            fieldnames = set(csv.DictReader(handle).fieldnames or ())
+        if {"case_id", "eligible_process_count", "capture_mode"} <= fieldnames:
+            raise ValueError("Schema-4 spatial sweep summaries cannot enter legacy schema-3 aggregates")
+        capture = read_schema4_capture(path)
+        metrics = {}
+        for (category, name), values in capture["summary"].items():
+            if values is not None:
+                for field, value in values.items():
+                    metrics[f"{category}.{name}.{field}"] = value
+        return metrics
+    if versions != {"3"}:
+        raise ValueError("Benchmark aggregate cannot mix schemas or use an unknown version")
     metrics, seen, sample_counts = {}, set(), {}
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -244,6 +265,8 @@ def main(argv=None):
                 subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
             metrics = parse_benchmark_csv(csv_path)
             manifest = load_manifest(csv_path)
+            if manifest.get("schema_version") != 3:
+                raise ValueError("Schema-4 replay captures cannot enter legacy schema-3 engine aggregates; use sweep_spatial.py")
             build = manifest["build"]
             if manifest.get("validation_mode") != ("per-step" if args.validate_invariants else "boundary-only"):
                 raise ValueError("Validation instrumentation does not match the requested mode")

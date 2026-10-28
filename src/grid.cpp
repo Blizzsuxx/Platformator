@@ -1,13 +1,20 @@
 #include "grid.h"
 #include "benchmark.h"
+#include "spatialresourcehooks.h"
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <limits>
 #include "constants.h"
 #include <cstdio>
 #include "physicsmanager.h"
+#include "workprobe.h"
+#include <memory>
 
-Grid::Grid(PhysicsManager *owner)
-    : owner(owner), cells(), candidateCollisions(), pendingNarrowPhasePairs(), pairAdjacency(), potentiallyEmptyCells(),
-      cellsWithOperations(), pendingColliderOperations(), activePairDeltaCollector()
+Grid::Grid(PhysicsManager *owner, PhysicsPairState *pairState)
+    : owner(owner), localPairState(pairState ? nullptr : std::make_unique<PhysicsPairState>(owner)),
+      pairStateValue(pairState ? pairState : localPairState.get()), cells(), potentiallyEmptyCells(), cellsWithOperations(),
+      pendingColliderOperations()
 {
 }
 
@@ -45,11 +52,12 @@ GridCell &Grid::getOrCreateCell(const GridCellKey &key)
 
 void Grid::addColliderInternal(Collider *collider)
 {
-    collider->prepareSyncFromCache();
+    if (preparedBoundsMode) collider->calculateGridCellRange();
+    else collider->prepareSyncFromCache();
     collider->updateGridCellRange();
     const GridCellRange &cachedRange = collider->getGridCellRange();
 
-    PLATFORMATOR_LOG("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n",
+    if (!preparedBoundsMode) PLATFORMATOR_LOG("Adding collider %s to grid cells in range (%d, %d) to (%d, %d)\n",
                      collider->getGameObject()->getName().c_str(), cachedRange.minX, cachedRange.minY, cachedRange.maxX,
                      cachedRange.maxY);
 
@@ -60,13 +68,14 @@ void Grid::addColliderInternal(Collider *collider)
     });
 
     collider->setIsRegisteredInGrid(true);
+    collider->setIsRegisteredInBroadPhase(true);
 }
 
 void Grid::removeColliderInternal(Collider *collider)
 {
     const GridCellRange &range = collider->getGridCellRange();
 
-    PLATFORMATOR_LOG("Removing collider %s from grid cells in range (%d, %d) to (%d, %d)\n",
+    if (!preparedBoundsMode) PLATFORMATOR_LOG("Removing collider %s from grid cells in range (%d, %d) to (%d, %d)\n",
                      collider->getGameObject()->getName().c_str(), range.minX, range.minY, range.maxX, range.maxY);
 
     range.forEachCell([&](const GridCellKey &key) {
@@ -79,6 +88,7 @@ void Grid::removeColliderInternal(Collider *collider)
     });
 
     collider->setIsRegisteredInGrid(false);
+    collider->setIsRegisteredInBroadPhase(false);
 }
 
 void Grid::addCollider(Collider *collider)
@@ -93,232 +103,48 @@ void Grid::removeCollider(Collider *collider)
 
 void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
 {
-    if (pair == nullptr || !pair->getIsQueuedForNarrowPhase())
-    {
-        return;
-    }
-
-    size_t removeIndex = pair->getNarrowPhaseQueueIndex();
-    size_t lastIndex = pendingNarrowPhasePairs.size() - 1;
-
-    if (removeIndex != lastIndex)
-    {
-        const ColliderPair *movedPair = pendingNarrowPhasePairs[lastIndex];
-        pendingNarrowPhasePairs[removeIndex] = movedPair;
-        movedPair->setNarrowPhaseQueueIndex(removeIndex);
-    }
-
-    pendingNarrowPhasePairs.pop_back();
-    pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+    pairStateValue->dequeuePairFromNarrowPhase(pair);
 }
 
 void Grid::queuePairsForCollider(Collider *collider)
 {
-    const std::vector<const ColliderPair *> *touchingPairs = getTouchingPairs(collider);
-    if (touchingPairs == nullptr)
-    {
-        return;
-    }
-
-    for (const ColliderPair *pair : *touchingPairs)
-    {
-        queuePairForNarrowPhase(pair);
-    }
+    pairStateValue->queuePairsForCollider(collider);
 }
 
 void Grid::queuePairForNarrowPhase(const ColliderPair *pair)
 {
-    if (pair == nullptr || pair->getIsQueuedForNarrowPhase())
-    {
-        return;
-    }
-
-    pair->setNarrowPhaseQueueIndex(pendingNarrowPhasePairs.size());
-    pendingNarrowPhasePairs.push_back(pair);
+    pairStateValue->queuePairForNarrowPhase(pair);
 }
 
 const std::vector<const ColliderPair *> *Grid::getPendingNarrowPhasePairs() const
 {
-    return &pendingNarrowPhasePairs;
+    return pairStateValue->getPendingNarrowPhasePairs();
 }
 
 const std::vector<const ColliderPair *> *Grid::getTouchingPairs(Collider *collider) const
 {
-    auto iterator = pairAdjacency.find(collider);
-    if (iterator == pairAdjacency.end())
-    {
-        return nullptr;
-    }
-
-    return &iterator->second;
+    return pairStateValue->getTouchingPairs(collider);
 }
 
 void Grid::clearPendingNarrowPhasePairs()
 {
-    // Workers consumed their own indices. Their fixed pointer batch lives through the serial reduction.
-    pendingNarrowPhasePairs.clear();
+    pairStateValue->clearPendingNarrowPhasePairs();
 }
 
 void Grid::recordPairDelta(Collider *colliderA, Collider *colliderB, int delta)
 {
-    if (delta == 0)
-    {
-        return;
-    }
-
-    activePairDeltaCollector.record(colliderA, colliderB, delta);
-}
-
-void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta)
-{
-    if (delta == 0)
-    {
-        return;
-    }
-
-    auto iteratorPair = candidateCollisions.find(ColliderPair(colliderA, colliderB));
-    if (iteratorPair == candidateCollisions.end() && delta < 0)
-    {
-        return;
-    }
-
-    const ColliderPair *pair;
-    if (iteratorPair == candidateCollisions.end())
-    {
-        auto [it, in] = candidateCollisions.emplace(colliderA, colliderB);
-        pair = &(*it);
-    }
-    else
-    {
-        pair = &(*iteratorPair);
-    }
-
-    int previousWitnessCount = pair->getWitnessCount();
-    if (delta > 0)
-    {
-        pair->addToWitnessCount(delta);
-
-        if (previousWitnessCount != 0)
-        {
-            return;
-        }
-
-        Collider *objectA = pair->getObjectA();
-        Collider *objectB = pair->getObjectB();
-
-        std::vector<const ColliderPair *> &adjacencyA = pairAdjacency[objectA];
-        pair->setAdjacencyIndexA(adjacencyA.size());
-        adjacencyA.push_back(pair);
-
-        std::vector<const ColliderPair *> &adjacencyB = pairAdjacency[objectB];
-        pair->setAdjacencyIndexB(adjacencyB.size());
-        adjacencyB.push_back(pair);
-
-        queuePairForNarrowPhase(pair);
-        return;
-    }
-    else
-    {
-
-        pair->addToWitnessCount(delta);
-
-        if (pair->getWitnessCount() > 0)
-        {
-            return;
-        }
-
-        Collider *objectA = pair->getObjectA();
-        Collider *objectB = pair->getObjectB();
-
-        dequeuePairFromNarrowPhase(pair);
-
-        auto adjacencyA = pairAdjacency.find(objectA);
-        if (adjacencyA != pairAdjacency.end())
-        {
-            std::vector<const ColliderPair *> &pairsA = adjacencyA->second;
-            size_t removeIndexA = pair->getAdjacencyIndexA();
-            size_t lastIndexA = pairsA.size() - 1;
-            if (removeIndexA != lastIndexA)
-            {
-                const ColliderPair *movedPair = pairsA[lastIndexA];
-                pairsA[removeIndexA] = movedPair;
-                if (movedPair->getObjectA() == objectA)
-                {
-                    movedPair->setAdjacencyIndexA(removeIndexA);
-                }
-                else
-                {
-                    movedPair->setAdjacencyIndexB(removeIndexA);
-                }
-            }
-            pairsA.pop_back();
-            if (pairsA.empty())
-            {
-                pairAdjacency.erase(adjacencyA);
-            }
-        }
-
-        auto adjacencyB = pairAdjacency.find(objectB);
-        if (adjacencyB != pairAdjacency.end())
-        {
-            std::vector<const ColliderPair *> &pairsB = adjacencyB->second;
-            size_t removeIndexB = pair->getAdjacencyIndexB();
-            size_t lastIndexB = pairsB.size() - 1;
-            if (removeIndexB != lastIndexB)
-            {
-                const ColliderPair *movedPair = pairsB[lastIndexB];
-                pairsB[removeIndexB] = movedPair;
-                if (movedPair->getObjectA() == objectB)
-                {
-                    movedPair->setAdjacencyIndexA(removeIndexB);
-                }
-                else
-                {
-                    movedPair->setAdjacencyIndexB(removeIndexB);
-                }
-            }
-            pairsB.pop_back();
-            if (pairsB.empty())
-            {
-                pairAdjacency.erase(adjacencyB);
-            }
-        }
-
-        if (owner)
-            owner->removePair(pair);
-        candidateCollisions.erase(candidateCollisions.find(ColliderPair(colliderA, colliderB)));
-    }
+    pairStateValue->recordPairDelta(colliderA, colliderB, delta);
 }
 
 void Grid::applyCollectedPairDeltas()
 {
-    pairDeltaScratch.clear();
-    for (auto &local : activePairDeltaCollector.localPairDeltas)
+    const auto stats = pairStateValue->applyCollectedPairDeltas();
+    if (preparedBoundsMode)
     {
-        for (auto delta : local)
-        {
-            if (delta.colliderB->getHandle() < delta.colliderA->getHandle())
-                std::swap(delta.colliderA, delta.colliderB);
-            pairDeltaScratch.push_back(delta);
-        }
-        local.clear();
-    }
-    std::sort(pairDeltaScratch.begin(), pairDeltaScratch.end(), [](const auto &a, const auto &b) {
-        if (a.colliderA->getHandle() != b.colliderA->getHandle())
-            return a.colliderA->getHandle() < b.colliderA->getHandle();
-        return a.colliderB->getHandle() < b.colliderB->getHandle();
-    });
-    for (size_t i = 0; i < pairDeltaScratch.size();)
-    {
-        const auto first = pairDeltaScratch[i];
-        int delta = 0;
-        do
-        {
-            delta += pairDeltaScratch[i++].delta;
-        } while (i < pairDeltaScratch.size() && pairDeltaScratch[i].colliderA == first.colliderA &&
-                 pairDeltaScratch[i].colliderB == first.colliderB);
-        if (delta)
-            applyPairWitnessDelta(first.colliderA, first.colliderB, delta);
+        replayStats.rawDiscoveries = stats.rawDiscoveries;
+        replayStats.exactOverlaps = stats.exactChecks;
+        replayStats.pairAdds = stats.pairAdds;
+        replayStats.pairRemoves = stats.pairRemoves;
     }
 }
 
@@ -345,7 +171,18 @@ bool Grid::containsCellPair(Collider *colliderA, Collider *colliderB) const
 
 size_t Grid::getCandidatePairCount() const
 {
-    return candidateCollisions.size();
+    return pairStateValue->getCandidatePairCount();
+}
+
+size_t Grid::getOwnedCapacityBytes() const
+{
+    size_t bytes = sizeof(*this) + cells.unsafe_bucket_count() * sizeof(void *) +
+                   cells.size() * (sizeof(decltype(cells)::value_type) + 2*sizeof(void *)) +
+                   pendingColliderOperations.capacity() * sizeof(Collider *) +
+                   potentiallyEmptyCells.capacity() * sizeof(GridCell *) +
+                   cellsWithOperations.capacity() * sizeof(GridCell *);
+    for (const auto &entry : cells) bytes += entry.second.getOwnedCapacityBytes();
+    return bytes;
 }
 
 void Grid::flushDeferredPairDeltas()
@@ -358,7 +195,10 @@ void Grid::syncCollider(Collider *collider)
     const bool geometry = collider->dirty & Collider::Geometry;
     const bool filter = collider->dirty & Collider::Filter;
     if (geometry)
-        collider->prepareSyncFromCache();
+    {
+        if (preparedBoundsMode) collider->calculateGridCellRange();
+        else collider->prepareSyncFromCache();
+    }
     if (!geometry && !filter)
         return;
     const auto oldRange = collider->getGridCellRange();
@@ -404,24 +244,63 @@ void Grid::queueForEmptyCheck(GridCell *cell)
 
 void Grid::flushPendingCellUpdates()
 {
+    platformator_detail::SpatialResourceTagScope resourceTag(platformator_detail::SpatialResourceTag::PhysicsIndex);
+    PLATFORMATOR_BENCH_SCOPE(SpatialUpdate);
     if (pendingColliderOperations.empty() && cellsWithOperations.empty() && potentiallyEmptyCells.empty())
         return;
-    tbb::parallel_for(size_t(0), pendingColliderOperations.size(), [&](size_t i) {
-        auto *collider = pendingColliderOperations[i];
-        if (!collider->desiredInGrid)
+    const auto updateStarted = std::chrono::steady_clock::now();
+    if (preparedBoundsMode)
+        for (const auto *collider : pendingColliderOperations)
         {
-            if (collider->getIsRegisteredInGrid())
-                removeColliderInternal(collider);
+            replayStats.proxyInserts += collider->desiredInBroadPhase && !collider->getIsRegisteredInGrid();
+            replayStats.proxyRemoves += !collider->desiredInBroadPhase && collider->getIsRegisteredInGrid();
+            replayStats.proxyMoves += collider->desiredInBroadPhase && collider->getIsRegisteredInGrid() && (collider->dirty & Collider::Geometry);
         }
-        else if (!collider->getIsRegisteredInGrid())
-            addColliderInternal(collider);
-        else if (collider->dirty)
-            syncCollider(collider);
-    });
-    tbb::parallel_for(size_t(0), cellsWithOperations.size(),
-                      [&](size_t i) { cellsWithOperations[i]->flushPendingOperations(); });
+    {
+        PLATFORMATOR_BENCH_SCOPE(BoundsPrepare);
+        for (const auto *collider : pendingColliderOperations)
+        {
+            if (!collider) continue;
+            if ((collider->dirty & Collider::Geometry) != 0)
+                PLATFORMATOR_BENCH_ADD_COUNTER(ChangedBoundsCount, 1);
+            if ((collider->dirty & Collider::Filter) != 0)
+                PLATFORMATOR_BENCH_ADD_COUNTER(FilterChangeCount, 1);
+            if (collider->desiredInBroadPhase && !collider->getIsRegisteredInGrid())
+                PLATFORMATOR_BENCH_ADD_COUNTER(ProxyInsertCount, 1);
+            else if (!collider->desiredInBroadPhase && collider->getIsRegisteredInGrid())
+                PLATFORMATOR_BENCH_ADD_COUNTER(ProxyRemoveCount, 1);
+            else if ((collider->dirty & Collider::Geometry) != 0)
+                PLATFORMATOR_BENCH_ADD_COUNTER(ProxyMoveCount, 1);
+        }
+        tbb::parallel_for(size_t(0), pendingColliderOperations.size(), [&](size_t i) {
+            auto *collider = pendingColliderOperations[i];
+            if (!collider->desiredInBroadPhase)
+            {
+                if (collider->getIsRegisteredInGrid())
+                    removeColliderInternal(collider);
+            }
+            else if (!collider->getIsRegisteredInGrid())
+                addColliderInternal(collider);
+            else if (collider->dirty)
+                syncCollider(collider);
+        });
+    }
+    PLATFORMATOR_BENCH_ADD_COUNTER(QueryCount, cellsWithOperations.size());
+    PLATFORMATOR_WORK_ADD(gridCellOperations, cellsWithOperations.size());
+    {
+        PLATFORMATOR_BENCH_SCOPE(IndexUpdate);
+        tbb::parallel_for(size_t(0), cellsWithOperations.size(), [&](size_t i) {
+            PLATFORMATOR_WORK_CELL_SCOPE(cellOperationScope);
+            cellsWithOperations[i]->flushPendingOperations();
+        });
+    }
     cellsWithOperations.clear();
-    applyCollectedPairDeltas();
+    if (preparedBoundsMode) replayStats.updateNanoseconds = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-updateStarted).count());
+    const auto reduceStarted = std::chrono::steady_clock::now();
+    {
+        PLATFORMATOR_BENCH_SCOPE(ResultReduce);
+        applyCollectedPairDeltas();
+    }
     for (auto *cell : potentiallyEmptyCells)
     {
         cell->clearQueuedForEmpty();
@@ -430,14 +309,17 @@ void Grid::flushPendingCellUpdates()
     potentiallyEmptyCells.clear();
     for (auto *collider : pendingColliderOperations)
     {
-        if (collider->desiredInGrid)
+        if (collider->desiredInBroadPhase)
             queuePairsForCollider(collider);
         if (owner && (collider->dirty & Collider::Response))
             owner->refreshResponse(collider);
-        collider->gridQueueIndex = SIZE_MAX;
+        collider->broadPhaseQueueIndex = SIZE_MAX;
         collider->dirty = 0;
     }
     pendingColliderOperations.clear();
+    if (preparedBoundsMode) replayStats.reduceNanoseconds = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-reduceStarted).count());
+    PLATFORMATOR_BENCH_SET_COUNTER(SpatialProxyCount, owner ? owner->getColliders().size() : 0);
+    PLATFORMATOR_BENCH_SET_COUNTER(OccupiedCellCount, cells.size());
 }
 
 void Grid::queueForOperations(GridCell *cell)
@@ -452,7 +334,7 @@ void Grid::queueForOperations(GridCell *cell)
 
 void Grid::queueAddCollider(Collider *collider)
 {
-    collider->desiredInGrid = true;
+    collider->desiredInBroadPhase = true;
     collider->dirty |= Collider::Geometry;
     queueCollider(collider);
     PLATFORMATOR_BENCH_ADD_COUNTER(QueuedAddCount, 1);
@@ -460,7 +342,7 @@ void Grid::queueAddCollider(Collider *collider)
 
 void Grid::queueRemoveCollider(Collider *collider)
 {
-    collider->desiredInGrid = false;
+    collider->desiredInBroadPhase = false;
     queueCollider(collider);
     PLATFORMATOR_BENCH_ADD_COUNTER(QueuedRemoveCount, 1);
 }
@@ -472,8 +354,50 @@ void Grid::queueSyncCollider(Collider *collider)
 }
 void Grid::queueCollider(Collider *collider)
 {
-    if (collider->gridQueueIndex != SIZE_MAX)
+    if (collider->broadPhaseQueueIndex != SIZE_MAX)
         return;
-    collider->gridQueueIndex = pendingColliderOperations.size();
+    collider->broadPhaseQueueIndex = pendingColliderOperations.size();
     pendingColliderOperations.push_back(collider);
+}
+
+void Grid::queuePreparedBounds(Collider *collider, const platformator_detail::SpatialBounds &bounds,
+                              uint64_t group, uint64_t mask, bool active)
+{
+    if (owner || !collider)
+        throw std::invalid_argument("Prepared Grid bounds require isolated replay endpoints");
+    if (!bounds.isFiniteOrdered()) throw std::invalid_argument("Prepared Grid bounds must be finite and ordered");
+    // Preflight coordinate conversion before touching a queued endpoint.
+    const auto cell = [](float value) {
+        const double coordinate = std::floor(double(value) / GRID_CELL_SIZE);
+        if (coordinate <= std::numeric_limits<int>::min() || coordinate >= std::numeric_limits<int>::max())
+            throw std::out_of_range("Prepared Grid coordinate is out of range");
+    };
+    cell(bounds.minX); cell(bounds.maxX); cell(bounds.minY); cell(bounds.maxY);
+    preparedBoundsMode = true;
+    auto *x=collider->getXProjections(); auto *y=collider->getYProjections();
+    const bool geometry = !collider->getIsRegisteredInGrid() ||
+        x->getMin()->getProjectedPosition()!=bounds.minX || x->getMax()->getProjectedPosition()!=bounds.maxX ||
+        y->getMin()->getProjectedPosition()!=bounds.minY || y->getMax()->getProjectedPosition()!=bounds.maxY;
+    if (geometry) collider->dirty |= Collider::Geometry;
+    if (collider->collisionGroup != group || collider->collisionMask != mask) collider->dirty |= Collider::Filter;
+    x->getMin()->setProjectedPosition(bounds.minX); x->getMax()->setProjectedPosition(bounds.maxX);
+    y->getMin()->setProjectedPosition(bounds.minY); y->getMax()->setProjectedPosition(bounds.maxY);
+    collider->collisionGroup=group; collider->collisionMask=mask;
+    collider->desiredInBroadPhase=active;
+    queueCollider(collider);
+}
+
+platformator_detail::SpatialReplayIndexStats Grid::flushPreparedBounds()
+{
+    replayStats = {};
+    flushPendingCellUpdates();
+    return replayStats;
+}
+
+bool Grid::eligiblePair(Collider *a, Collider *b) const
+{
+    const bool active = preparedBoundsMode ? a->desiredInBroadPhase && b->desiredInBroadPhase
+        : a->getGameObject()->getActive() && b->getGameObject()->getActive();
+    return active && (a->getCollisionGroup() & b->getCollisionMask()) != 0 &&
+                     (b->getCollisionGroup() & a->getCollisionMask()) != 0;
 }

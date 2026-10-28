@@ -1,0 +1,46 @@
+{
+  "status": "complete",
+  "source_sha256": "f1c6298f8b6e7baaa3d4374236a9650e5345a2567f210dbfa3efcb3197b0aba1",
+  "completed_tasks": 93,
+  "captures": {
+    "calibration": {
+      "validation": 80,
+      "timing": 400
+    },
+    "engine": {
+      "validation": 176,
+      "timing": 880,
+      "resources": 176
+    },
+    "replay": {
+      "validation": 248,
+      "timing": 1240,
+      "resources": 248
+    },
+    "controls": {
+      "validation": 40,
+      "timing": 200,
+      "resources": 40
+    },
+    "startup": {
+      "validation": 176,
+      "timing": 880
+    }
+  },
+  "report_sha256": {
+    "RESULTS.md": "968ad2c097a080c710f68693b1a82c2d58e2ca268eb96ab674aca5494db56bec",
+    "acceptance.md": "e88a1c50df7b9f27161c53dc9a7834387acdcedeec0919379cbcce0e84fe454c",
+    "final-validation.md": "7469e3273794927cd14b3de12db877f4cdc26cccf54036e17670fc17b0c701dd",
+    "calibration.md": "2852be5c9c45deb1b62c965de7caf47755645f843837265fc737f98e1952cfd7",
+    "us3-acceptance.md": "5701bf142a8283571ce7c3be97c9cd084d7817826d885a80a6eae9bd60d500e7",
+    "quickstart-validation.md": "1cdd44f2254c99b6db405b5f0cbf97d77ea61dd6fc0bb0648bdaf9c04d92fb6e"
+  },
+  "limits": [
+    "software renderer only",
+    "unpinned CPUs and no external contention monitor",
+    "sampled owner-capacity estimates and declared allocation exclusions",
+    "LeakSanitizer disabled under ptrace restriction",
+    "narrow external SDL-audio TSan suppressions",
+    "no universal algorithm/library optimum or tuned query crossover"
+  ]
+}

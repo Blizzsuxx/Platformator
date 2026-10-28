@@ -34,12 +34,12 @@ Bounds must be finite and ordered. Proxy widths/heights must be below upstream's
 subject to that proxy-size restriction. The adapter rejects invalid bounds
 before they reach Box2D assertions.
 
-`src/box2d_tree_bridge.c` provides explicit rebuild access through Box2D's
-internal header. This is deliberately tied to the pinned subset. Updates use
-the public remove/reinsert operation; fat-bound policies and batch refitting
-remain future prototype choices. Public move operations do not mark leaves
-for Box2D's internal incremental rebuild bookkeeping, so the adapter exposes
-full rebuilds rather than promising partial rebuild behavior.
+`src/box2d_tree_bridge.c` provides marked create/move operations and explicit
+rebuild access through Box2D's internal header. This bridge is deliberately
+tied to the pinned subset. Marked moves preserve Box2D's incremental rebuild
+bookkeeping, so `NativePartial` can refit changed paths while retaining
+untouched subtrees; `FullRebuild` remains available as a control. Fat-bound
+policies and batch refitting remain future prototype choices.
 
 Debug builds enable Box2D's internal validation; Release builds use upstream's
 normal optimized behavior. C17, default single-precision bounds, the upstream
@@ -48,5 +48,6 @@ upstream build settings. Platformator sanitizer options also instrument these
 objects. Linux/GCC is validated; other platforms remain unverified.
 
 CTest runs the retained upstream dynamic-tree suite and adapter integration
-tests. This addition prepares a dependency for future BVH experiments; the
-current collider broad phase and sprite rendering remain unchanged.
+tests. Platformator's physics and visibility BVHs use the adapter in separate
+owner-scoped contexts. No Box2D world, solver, or gameplay object is exposed
+or linked as a separate installed dependency.

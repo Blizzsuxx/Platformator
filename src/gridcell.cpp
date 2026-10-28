@@ -1,7 +1,14 @@
 #include "gridcell.h"
+#include "grid.h"
 
 GridCell::GridCell(GridCellKey key, Grid *owner)
-    : aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), bindingsToRemove(), bindingsToSync()
+    : preparedEndpoints(owner && owner->usesPreparedBounds()), aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), bindingsToRemove(), bindingsToSync()
+{
+}
+
+GridCell::GridCell(GridCellKey key, AABB::PairPolicy pairPolicy)
+    : aabb(pairPolicy), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(),
+      bindingsToRemove(), bindingsToSync()
 {
 }
 
@@ -17,6 +24,22 @@ void GridCell::addCollider(Collider *collider)
 void GridCell::removeCollider(Collider *collider)
 {
     aabb.remove(collider);
+}
+
+void GridCell::addEndpoint(ProjectionOwner endpoint, BoundingRadiusProjectionAxis *xAxis,
+                           BoundingRadiusProjectionAxis *yAxis)
+{
+    aabb.add(endpoint, xAxis, yAxis);
+}
+
+void GridCell::removeEndpoint(ProjectionOwner endpoint)
+{
+    aabb.remove(endpoint);
+}
+
+void GridCell::repairEndpoint(ProjectionOwner endpoint)
+{
+    aabb.repair(endpoint);
 }
 
 AABB *GridCell::getAABB()
@@ -85,18 +108,23 @@ void GridCell::flushPendingOperations()
 
     for (AABB::ColliderBinding *binding : bindingsToSync)
     {
-        if (binding == nullptr || binding->collider == nullptr || binding->collider->getIsQueuedForRemove() || binding->collider->getGameObject()->getIsMarkedForDeletion() || !binding->collider->getGameObject()->getActive())
+        if (binding == nullptr || aabb.pairPolicy.endpointKind != ProjectionOwnerKind::Collider ||
+            binding->endpoint == nullptr)
         {
             continue;
         }
 
+        auto *collider = static_cast<Collider *>(binding->endpoint);
+        if (collider->getIsQueuedForRemove() || (!preparedEndpoints && (collider->getGameObject()->getIsMarkedForDeletion() ||
+            !collider->getGameObject()->getActive())))
+            continue;
         aabb.repair(binding);
     }
     bindingsToSync.clear();
 
     for (Collider *collider : collidersToAdd)
     {
-        if (collider == nullptr || collider->getIsQueuedForRemove() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+        if (collider == nullptr || collider->getIsQueuedForRemove() || (!preparedEndpoints && (collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())))
         {
             continue;
         }
@@ -106,4 +134,10 @@ void GridCell::flushPendingOperations()
     collidersToAdd.clear();
 
     clearQueuedForOperations();
+}
+
+size_t GridCell::getOwnedCapacityBytes() const
+{
+    return aabb.getOwnedCapacityBytes() + collidersToAdd.capacity() * sizeof(Collider *) +
+           (bindingsToRemove.capacity() + bindingsToSync.capacity()) * sizeof(AABB::ColliderBinding *);
 }

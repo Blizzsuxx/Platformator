@@ -11,6 +11,7 @@ class GridCell
 {
   public:
     GridCell(GridCellKey key, Grid *owner);
+    GridCell(GridCellKey key, AABB::PairPolicy pairPolicy);
     ~GridCell();
     GridCell(const GridCell &) = delete;
     GridCell &operator=(const GridCell &) = delete;
@@ -19,6 +20,10 @@ class GridCell
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
+    void addEndpoint(ProjectionOwner endpoint, BoundingRadiusProjectionAxis *xAxis,
+                    BoundingRadiusProjectionAxis *yAxis);
+    void removeEndpoint(ProjectionOwner endpoint);
+    void repairEndpoint(ProjectionOwner endpoint);
     AABB *getAABB();
     const AABB *getAABB() const;
     const GridCellKey &getCellKey() const;
@@ -30,8 +35,11 @@ class GridCell
     void queueAddCollider(Collider *collider);
     void queueSyncBinding(AABB::ColliderBinding *binding);
     void flushPendingOperations();
+    // Owned dynamic payload; excludes allocator headers and the inline owner object.
+    size_t getOwnedCapacityBytes() const;
 
   private:
+    bool preparedEndpoints = false;
     AABB aabb;
     GridCellKey key;
     std::atomic_bool queuedForEmpty;

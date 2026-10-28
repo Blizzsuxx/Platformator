@@ -1,12 +1,19 @@
 #include "platformator/collider.h"
 #include "localsortarray.h"
 
-BoundingRadiusProjection::BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isMaxima(false)
+BoundingRadiusProjection::BoundingRadiusProjection()
+    : owner(nullptr), projectedPosition(0.0f), ownerKind(ProjectionOwnerKind::Collider), isMaxima(false)
 {
 }
 
 BoundingRadiusProjection::BoundingRadiusProjection(Collider *collider, float projectedPosition, bool end)
-    : collider(collider), projectedPosition(projectedPosition), isMaxima(end)
+    : BoundingRadiusProjection(static_cast<void *>(collider), ProjectionOwnerKind::Collider, projectedPosition, end)
+{
+}
+
+BoundingRadiusProjection::BoundingRadiusProjection(void *owner, ProjectionOwnerKind ownerKind, float projectedPosition,
+                                                   bool end)
+    : owner(owner), projectedPosition(projectedPosition), ownerKind(ownerKind), isMaxima(end)
 {
 }
 
@@ -16,7 +23,22 @@ BoundingRadiusProjection::~BoundingRadiusProjection()
 
 Collider *BoundingRadiusProjection::getCollider()
 {
-    return collider;
+    return ownerKind == ProjectionOwnerKind::Collider ? static_cast<Collider *>(owner) : nullptr;
+}
+
+void *BoundingRadiusProjection::getOwner() const
+{
+    return owner;
+}
+
+ProjectionOwnerKind BoundingRadiusProjection::getOwnerKind() const
+{
+    return ownerKind;
+}
+
+ProjectionOwner BoundingRadiusProjection::getEndpoint() const
+{
+    return {owner, ownerKind};
 }
 
 float BoundingRadiusProjection::getProjectedPosition() const
@@ -31,7 +53,13 @@ bool BoundingRadiusProjection::getIsMaxima() const
 
 void BoundingRadiusProjection::setCollider(Collider *collider)
 {
-    this->collider = collider;
+    setOwner(collider, ProjectionOwnerKind::Collider);
+}
+
+void BoundingRadiusProjection::setOwner(void *owner, ProjectionOwnerKind ownerKind)
+{
+    this->owner = owner;
+    this->ownerKind = ownerKind;
 }
 
 void BoundingRadiusProjection::setProjectedPosition(float projectedPosition)

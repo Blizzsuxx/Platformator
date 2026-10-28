@@ -25,11 +25,13 @@ class LocalSortArray
     BoundingRadiusProjectionProxy *getMax();
     BoundingRadiusProjectionProxy *getMin();
     size_t getSize() const;
+    // Owned dynamic payload; excludes allocator headers and the inline owner object.
+    size_t getOwnedCapacityBytes() const;
     BoundingRadiusProjectionProxy **getArray();
     void clear();
-    void addCheckpoint(Collider *element);
-    void removeCheckpoint(Collider *element);
-    std::unordered_set<Collider *> *getCheckpoints();
+    void addCheckpoint(void *element);
+    void removeCheckpoint(void *element);
+    std::unordered_set<void *> *getCheckpoints();
 
     size_t find(BoundingRadiusProjectionProxy *element);
 
@@ -46,8 +48,8 @@ class LocalSortArray
 
   private:
     size_t binarySearch(BoundingRadiusProjectionProxy *element);
-    void addCheckpointInternal(Collider *element);
-    std::size_t removeCheckpointInternal(Collider *element);
+    void addCheckpointInternal(void *element);
+    std::size_t removeCheckpointInternal(void *element);
 
     size_t size;
     BoundingRadiusProjectionProxy *array[MAX_CHUNK_SIZE];
@@ -60,8 +62,8 @@ class LocalSortArray
     // Needed even in an event driven model (let's say (Amin, Bmax), (Cmin, Dmax), (Cmax, Amax),
     // and we want to add Emin and Emax at Cmin Dmax place, we need to check checkpoints for A (and we cannot see it
     // with events))
-    std::unordered_set<Collider *> checkpoints;
-    std::unordered_set<Collider *> checkpointCache;
+    std::unordered_set<void *> checkpoints;
+    std::unordered_set<void *> checkpointCache;
 
     LocalSortArray *leftChunk;
     LocalSortArray *rightChunk;

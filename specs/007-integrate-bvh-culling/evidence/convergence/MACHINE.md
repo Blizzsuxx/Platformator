@@ -1,0 +1,9 @@
+# Capture environment
+
+Linux, AMD Ryzen 5 7535HS (6 cores / 12 threads), GNU 16.2.1, Release `-O3 -DNDEBUG`, SDL 3.4.18 and oneTBB 2022.3.0. Worker allowances: 1 and 6. Actual rendering: `SDL_VIDEODRIVER=offscreen SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy`, output 1600×900, vsync off. Complete renderer/presentation signatures are retained per capture.
+
+Timing executables have no sanitizer, work probes, debug tools or resource allocation interceptors. Resource executables intercept C++/Box2D allocations and are timing-ineligible. Validation compares independent collision references and, for actual rendered cases, every frame against a submit-all redraw using exact RGBA32 comparison and separately retained matching word-stream hashes. Reference drawing/readback occurs only in validation mode.
+
+Calibration uses separate seed-2026 inputs, 5 warmup / 40 measured steps. Evaluation replay uses seed 0, 10 / 30 steps; engine and seed-0 same-method controls use 120 / 600 frames. Cold first-frame variants use the same engine fixtures with zero warmup/one measured frame and separate matching validation; setup and first publication are reported separately from steady state. Every reported timing configuration uses five fresh processes. Timing sweeps run sequentially; builds, regression tests and resource captures do not overlap timing sweeps. CPU affinity is unpinned and unrelated host load is not monitored. Results describe this host; process spread is reported without claiming cross-machine confidence.
+
+Hardware rendering remains unverified. The live-engine matrix is bounded to its specified 31 cases; populations through 10,000 are covered by replay. Earlier raw bundles and interim captures preserve their original source identities; current tables use only matched eligible new captures.

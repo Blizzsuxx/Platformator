@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include "platformator/collisiontypes.h"
@@ -15,19 +16,64 @@ class SegmentedIntervalList;
 class Collision;
 class Grid;
 class AABB;
+namespace platformator_detail
+{
+class PhysicsSpatialIndex;
+}
+
+// Interval endpoints can belong to physics or to the independent render visibility index.
+// Keep this compact: endpoint comparisons only inspect positions and min/max ordering.
+enum class ProjectionOwnerKind : uint8_t
+{
+    Collider,
+    Visibility
+};
+
+struct ProjectionOwner
+{
+    void *pointer = nullptr;
+    ProjectionOwnerKind kind = ProjectionOwnerKind::Collider;
+
+    ProjectionOwner() = default;
+    ProjectionOwner(void *pointer, ProjectionOwnerKind kind) : pointer(pointer), kind(kind)
+    {
+    }
+    ProjectionOwner(Collider *collider) : pointer(collider), kind(ProjectionOwnerKind::Collider)
+    {
+    }
+
+    bool operator==(const ProjectionOwner &other) const
+    {
+        return pointer == other.pointer && kind == other.kind;
+    }
+};
+
+struct ProjectionOwnerHash
+{
+    size_t operator()(const ProjectionOwner &owner) const
+    {
+        return std::hash<void *>{}(owner.pointer) ^
+               (static_cast<size_t>(owner.kind) * size_t(0x9e3779b9));
+    }
+};
 
 class BoundingRadiusProjection
 {
   public:
     BoundingRadiusProjection();
     BoundingRadiusProjection(Collider *collider, float projectedPosition, bool isEnd);
+    BoundingRadiusProjection(void *owner, ProjectionOwnerKind ownerKind, float projectedPosition, bool isEnd);
     ~BoundingRadiusProjection();
 
     Collider *getCollider();
+    void *getOwner() const;
+    ProjectionOwnerKind getOwnerKind() const;
+    ProjectionOwner getEndpoint() const;
     float getProjectedPosition() const;
     bool getIsMaxima() const;
 
     void setCollider(Collider *collider);
+    void setOwner(void *owner, ProjectionOwnerKind ownerKind);
     void setProjectedPosition(float projectedPosition);
     void setIsMaxima(bool isMaxima);
 
@@ -39,8 +85,9 @@ class BoundingRadiusProjection
     bool operator>=(const BoundingRadiusProjection &other) const;
 
   private:
-    Collider *collider;
+    void *owner;
     float projectedPosition;
+    ProjectionOwnerKind ownerKind;
     bool isMaxima;
 };
 
@@ -59,6 +106,9 @@ class BoundingRadiusProjectionProxy
     void updateCachedProjectedPosition();
 
     Collider *getCollider();
+    void *getOwner() const;
+    ProjectionOwnerKind getOwnerKind() const;
+    ProjectionOwner getEndpoint() const;
     float getProjectedPosition() const;
     bool getIsMaxima() const;
     float getCachedProjectedPosition() const;
@@ -81,6 +131,7 @@ class BoundingRadiusProjectionAxis
 {
   public:
     BoundingRadiusProjectionAxis(Collider *collider, float min, float max);
+    BoundingRadiusProjectionAxis(void *owner, ProjectionOwnerKind ownerKind, float min, float max);
     ~BoundingRadiusProjectionAxis();
 
     BoundingRadiusProjection *getMin();
@@ -112,7 +163,8 @@ enum ColliderFlags : uint8_t
 {
     IS_TRIGGER = 1 << 0,
     IS_REGISTERED_IN_GRID = 1 << 4,
-    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 5
+    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 5,
+    IS_REGISTERED_IN_BROAD_PHASE = 1 << 6
 };
 
 class Collider : public Component
@@ -121,6 +173,7 @@ class Collider : public Component
     friend class PhysicsManager;
     friend class Grid;
     friend class GridCell;
+    friend class platformator_detail::PhysicsSpatialIndex;
 
   public:
     Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType);
@@ -168,6 +221,9 @@ class Collider : public Component
     uint64_t getStateVersion() const;
 
     const GridCellRange &getGridCellRange() const;
+    // True when registered in the selected physics broad phase. Grid diagnostics below retain
+    // literal Grid membership and are not set by BVH membership.
+    bool getIsRegisteredInBroadPhase() const;
     void calculateGridCellRange();
     const GridCellRange &getGridCellRangeCache() const;
     bool hasValidGridCellRange() const;
@@ -210,8 +266,10 @@ class Collider : public Component
         Response = 4
     };
     uint8_t dirty = Geometry;
-    bool desiredInGrid = false;
-    size_t gridQueueIndex = SIZE_MAX;
+    bool desiredInBroadPhase = false;
+    size_t broadPhaseQueueIndex = SIZE_MAX;
+    void setIsRegisteredInBroadPhase(bool isRegistered);
+    void prepareGeometrySyncFromCache();
     void prepareSyncFromCache();
 };
 

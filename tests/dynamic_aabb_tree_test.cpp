@@ -1,4 +1,5 @@
 #include "dynamicaabbtree.h"
+#include "workprobe.h"
 
 #include <algorithm>
 #include <cmath>
@@ -30,6 +31,19 @@ std::vector<std::uint64_t> query(const Tree &tree, const Tree::Bounds &bounds, s
     tree.query(bounds, mask, collect, &hits);
     std::sort(hits.begin(), hits.end());
     return hits;
+}
+
+void cheapMetricsDoNotScan()
+{
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    Tree tree;
+    for (int i = 0; i < 1000; ++i) tree.addMarked({float(i*2),0,float(i*2+1),1},1,i);
+    platformator_test::work = {};
+    for (int i = 0; i < 20; ++i) require(tree.getMetrics().proxyCount == 1000, "Cheap gauges retain the population");
+    require(platformator_test::work.bvhQualityScans == 0, "Routine metrics must not scan tree quality");
+    require(tree.getQualityAreaRatio() > 0 && platformator_test::work.bvhQualityScans == 1,
+            "Quality traversal is available only when explicitly requested");
+#endif
 }
 
 void operations()
@@ -73,6 +87,7 @@ void invalidBounds()
     Tree tree;
     for (const auto &bounds : {Tree::Bounds{2, 0, 1, 1}, Tree::Bounds{0, 2, 1, 1},
                               Tree::Bounds{0, 0, std::numeric_limits<float>::infinity(), 1},
+                              Tree::Bounds{0, 0, 100000, 1},
                               Tree::Bounds{0, 0, 1000000, 1},
                               Tree::Bounds{0, 0, std::numeric_limits<float>::quiet_NaN(), 1}})
     {
@@ -152,15 +167,84 @@ void movingBoundsOracle()
         }
     }
 }
+
+bool throwFromCallback(Tree::ProxyId, std::uint64_t, void *)
+{
+    throw std::runtime_error("query callback failure");
+}
+
+void markedMaintenanceAndReuse()
+{
+    using Policy = Tree::MaintenancePolicy;
+    Tree tree(1);
+    std::vector<Tree::ProxyId> proxies;
+    for (uint64_t i = 0; i < 128; ++i)
+    {
+        const float x = static_cast<float>((i % 16) * 40);
+        const float y = static_cast<float>((i / 16) * 40);
+        proxies.push_back(tree.addMarked({x, y, x + 8, y + 8}, UINT64_C(1) << (i % 4), i));
+    }
+    const auto initial = tree.rebuild(Policy::NativePartial);
+    require(initial.callCount == 1 && initial.rebuildItemCount > 0 && initial.rebuildItemCount <= 128,
+            "Marked creation receives one native partial maintenance pass with actual item metrics");
+    tree.validate();
+
+    tree.updateMarked(proxies[37], {900, 900, 908, 908});
+    const auto moved = tree.rebuild(Policy::NativePartial);
+    require(moved.callCount == 2 && moved.rebuildItemCount > 0 && moved.rebuildItemCount <= 128,
+            "A marked move rebuilds changed paths while retaining untouched subtrees");
+    tree.validate();
+
+    const auto beforeCategory = tree.getMaintenanceStats();
+    tree.setCategoryBits(proxies[37], UINT64_C(1) << 63);
+    const auto categoryOnly = tree.rebuild(Policy::NativePartial);
+    require(categoryOnly.callCount == beforeCategory.callCount + 1 && categoryOnly.rebuildItemCount == 0,
+            "Category-only changes update filtering without falsely marking spatial rebuild work");
+    require(query(tree, {899, 899, 909, 909}, UINT64_C(1) << 63) == std::vector<std::uint64_t>{37},
+            "Category changes are visible immediately to immutable queries");
+
+    const auto full = tree.rebuild(Policy::FullRebuild);
+    require(full.rebuildItemCount == 128, "Full rebuild reports the complete proxy population");
+    tree.validate();
+
+    const size_t highWaterBytes = tree.getMetrics().memoryBytes;
+    for (int cycle = 0; cycle < 100; ++cycle)
+    {
+        const float x = static_cast<float>(cycle * 3);
+        const auto proxy = tree.addMarked({x, -10, x + 1, -9}, 1, UINT64_C(1000) + cycle);
+        tree.rebuild(Policy::NativePartial);
+        tree.remove(proxy);
+        tree.rebuild(Policy::NativePartial);
+        require(tree.getMetrics().memoryBytes <= highWaterBytes,
+                "Repeated churn reuses the high-water tree and rebuild capacity");
+        tree.validate();
+    }
+    const auto maintenance = tree.getMaintenanceStats();
+    require(maintenance.callCount == 204 && maintenance.rebuildItemCount >= 0,
+            "Maintenance metrics count calls and actual returned build items");
+
+    bool callbackThrew = false;
+    try
+    {
+        tree.query({-20, -20, 1000, 1000}, UINT64_MAX, throwFromCallback, nullptr);
+    }
+    catch (const std::runtime_error &error)
+    {
+        callbackThrew = std::string(error.what()) == "query callback failure";
+    }
+    require(callbackThrew, "C callback trampoline reports C++ exceptions after the tree query returns");
+}
 } // namespace
 
 int main()
 {
     try
     {
+        cheapMetricsDoNotScan();
         operations();
         invalidBounds();
         movingBoundsOracle();
+        markedMaintenanceAndReuse();
         std::cout << "Dynamic AABB tree adapter passed\n";
     }
     catch (const std::exception &error)

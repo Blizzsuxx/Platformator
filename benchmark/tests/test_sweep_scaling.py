@@ -5,8 +5,11 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import sys
 
-SPEC = importlib.util.spec_from_file_location("sweep_scaling", Path(__file__).resolve().parents[1] / "sweep_scaling.py")
+BENCHMARK_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BENCHMARK_DIR))
+SPEC = importlib.util.spec_from_file_location("sweep_scaling", BENCHMARK_DIR / "sweep_scaling.py")
 sweep = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sweep)
 

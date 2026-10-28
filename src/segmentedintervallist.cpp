@@ -17,7 +17,7 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
 {
     BoundingRadiusProjection *lowerProjection = binding->minProxy.getProjection();
     BoundingRadiusProjection *upperProjection = binding->maxProxy.getProjection();
-    Collider *collider = lowerProjection->getCollider();
+    void *endpoint = lowerProjection->getOwner();
 
     BoundingRadiusProjectionProxy *lowerProxy = &binding->minProxy;
     BoundingRadiusProjectionProxy *upperProxy = &binding->maxProxy;
@@ -42,7 +42,7 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
     {
         while (currentChunk != chunkWhereItWasInserted2)
         {
-            currentChunk->addCheckpoint(collider);
+            currentChunk->addCheckpoint(endpoint);
             currentChunk = currentChunk->getRightChunk();
         }
     }
@@ -52,7 +52,7 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
 
 void SegmentedIntervalList::remove(BoundingRadiusProjectionAxisBinding *binding)
 {
-    Collider *collider = binding->minProxy.getCollider();
+    void *endpoint = binding->minProxy.getOwner();
     BoundingRadiusProjectionProxy *lowerProxy = &binding->minProxy;
     BoundingRadiusProjectionProxy *upperProxy = &binding->maxProxy;
 
@@ -71,7 +71,7 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxisBinding *binding)
     {
         while (currentChunk != upperChunk)
         {
-            currentChunk->removeCheckpoint(collider);
+            currentChunk->removeCheckpoint(endpoint);
             currentChunk = currentChunk->getRightChunk();
         }
     }
@@ -397,8 +397,8 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
     // left is maximum - add to checkpoint (left chunk) - maximum crossing right into a chunk
     // right is maximum - remove from checkpoint (left chunk) - maximum crossing left out of a chunk
 
-    Collider *colliderA = leftRadiusProjection->getCollider();
-    Collider *colliderB = rightRadiusProjection->getCollider();
+    void *endpointA = leftRadiusProjection->getOwner();
+    void *endpointB = rightRadiusProjection->getOwner();
 
     LocalSortArray *leftChunk = leftRadiusProjection->getChunk();
     LocalSortArray *rightChunk = rightRadiusProjection->getChunk();
@@ -409,17 +409,19 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
     leftRadiusProjection->setChunkIndex(rightRadiusProjectionIndex);
 
     // first emit collision events for the two colliders if they are now overlapping
-    if (colliderA != colliderB)
+    if (endpointA != endpointB)
     {
         if (!leftRadiusProjection->getIsMaxima() && rightRadiusProjection->getIsMaxima())
         {
             // remove collision
-            removeCollision(colliderA, colliderB);
+            removeCollision({endpointA, owner->pairPolicy.endpointKind},
+                            {endpointB, owner->pairPolicy.endpointKind});
         }
         else if (leftRadiusProjection->getIsMaxima() && !rightRadiusProjection->getIsMaxima())
         {
             // add collision
-            emitCollision(colliderA, colliderB);
+            emitCollision({endpointA, owner->pairPolicy.endpointKind},
+                          {endpointB, owner->pairPolicy.endpointKind});
         }
     }
 
@@ -437,34 +439,34 @@ void SegmentedIntervalList::swap(BoundingRadiusProjectionProxy *leftRadiusProjec
         // left is minimum - remove from checkpoint (left chunk) - minimum crossing right out of a chunk
         if (!leftRadiusProjection->getIsMaxima())
         {
-            leftChunk->removeCheckpoint(colliderA);
+            leftChunk->removeCheckpoint(endpointA);
         }
         // left is maximum - add to checkpoint (left chunk) - maximum crossing right into a chunk
         else
         {
-            leftChunk->addCheckpoint(colliderA);
+            leftChunk->addCheckpoint(endpointA);
         }
         // right is minimum - add to checkpoint (left chunk) - minimum crossing left into a chunk
         if (!rightRadiusProjection->getIsMaxima())
         {
-            leftChunk->addCheckpoint(colliderB);
+            leftChunk->addCheckpoint(endpointB);
         }
         // right is maximum - remove from checkpoint (left chunk) - maximum crossing left out of a chunk
         else
         {
-            leftChunk->removeCheckpoint(colliderB);
+            leftChunk->removeCheckpoint(endpointB);
         }
     }
 }
 
-void SegmentedIntervalList::emitCollision(Collider *colliderA, Collider *colliderB)
+void SegmentedIntervalList::emitCollision(ProjectionOwner endpointA, ProjectionOwner endpointB)
 {
-    owner->axisOverlapBegin(colliderA, colliderB);
+    owner->axisOverlapBegin(endpointA, endpointB);
 }
 
-void SegmentedIntervalList::removeCollision(Collider *colliderA, Collider *colliderB)
+void SegmentedIntervalList::removeCollision(ProjectionOwner endpointA, ProjectionOwner endpointB)
 {
-    owner->axisOverlapEnd(colliderA, colliderB);
+    owner->axisOverlapEnd(endpointA, endpointB);
 }
 
 void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted)
@@ -474,9 +476,9 @@ void SegmentedIntervalList::addCollisionsForNewlyAddedProjection(BoundingRadiusP
         lowerIndexInsideChunkWhereItWasInserted,
         upperProjection,
         upperIndexInsideChunkWhereItWasInserted,
-        [this](Collider *colliderA, Collider *colliderB)
+        [this](ProjectionOwner endpointA, ProjectionOwner endpointB)
         {
-            owner->overlapBeginCheckpoint(colliderA, colliderB);
+            owner->overlapBeginCheckpoint(endpointA, endpointB);
         });
 }
 
@@ -487,9 +489,9 @@ void SegmentedIntervalList::removeCollisionsForRemovedProjection(BoundingRadiusP
         lowerIndexInsideChunkWhereItWasRemoved,
         upperProjection,
         upperIndexInsideChunkWhereItWasRemoved,
-        [this](Collider *colliderA, Collider *colliderB)
+        [this](ProjectionOwner endpointA, ProjectionOwner endpointB)
         {
-            owner->overlapEndCheckpoint(colliderA, colliderB);
+            owner->overlapEndCheckpoint(endpointA, endpointB);
         });
 }
 
@@ -503,13 +505,15 @@ void SegmentedIntervalList::processProjectionCollisions(
 {
     LocalSortArray *lowerChunk = lowerProjection->getChunk();
     LocalSortArray *upperChunk = upperProjection->getChunk();
-    Collider *collider = lowerProjection->getCollider();
+    void *endpoint = lowerProjection->getOwner();
+    const ProjectionOwnerKind endpointKind = owner->pairPolicy.endpointKind;
+    const auto makeEndpoint = [endpointKind](void *pointer) { return ProjectionOwner{pointer, endpointKind}; };
 
-    std::array<Collider *, MAX_CHUNK_SIZE> minimaSeenAfterUpper{};
+    std::array<void *, MAX_CHUNK_SIZE> minimaSeenAfterUpper{};
     size_t minimaSeenAfterUpperCount = 0;
     bool hasReachedUpper = (lowerChunk != upperChunk);
 
-    auto containsMinimaSeenAfterUpper = [&](Collider *target)
+    auto containsMinimaSeenAfterUpper = [&](void *target)
     {
         for (size_t i = 0; i < minimaSeenAfterUpperCount; ++i)
         {
@@ -527,20 +531,21 @@ void SegmentedIntervalList::processProjectionCollisions(
         for (size_t i = upperIndexInsideChunk + 1; i < lowerChunk->getSize(); i++)
         {
             BoundingRadiusProjectionProxy *projection = lowerChunk->get(i);
-            if (projection->getCollider() != collider && !projection->getIsMaxima() && !containsMinimaSeenAfterUpper(projection->getCollider()))
+            if (projection->getOwner() != endpoint && !projection->getIsMaxima() &&
+                !containsMinimaSeenAfterUpper(projection->getOwner()))
             {
-                minimaSeenAfterUpper[minimaSeenAfterUpperCount++] = projection->getCollider();
+                minimaSeenAfterUpper[minimaSeenAfterUpperCount++] = projection->getOwner();
             }
         }
     }
 
     if (isPrimary)
     {
-        for (Collider *checkpoint : *lowerChunk->getCheckpoints())
+        for (void *checkpoint : *lowerChunk->getCheckpoints())
         {
-            if (checkpoint != collider && (lowerChunk != upperChunk || !containsMinimaSeenAfterUpper(checkpoint)))
+            if (checkpoint != endpoint && (lowerChunk != upperChunk || !containsMinimaSeenAfterUpper(checkpoint)))
             {
-                emit(collider, checkpoint);
+                emit(makeEndpoint(endpoint), makeEndpoint(checkpoint));
             }
         }
     }
@@ -549,7 +554,7 @@ void SegmentedIntervalList::processProjectionCollisions(
     {
         BoundingRadiusProjectionProxy *projection = lowerChunk->get(i);
 
-        if (projection->getCollider() == collider)
+        if (projection->getOwner() == endpoint)
         {
             hasReachedUpper = true;
             continue;
@@ -559,12 +564,12 @@ void SegmentedIntervalList::processProjectionCollisions(
         {
             if (projection->getIsMaxima())
             {
-                emit(collider, projection->getCollider());
+                emit(makeEndpoint(endpoint), makeEndpoint(projection->getOwner()));
             }
         }
-        else if (projection->getIsMaxima() && !containsMinimaSeenAfterUpper(projection->getCollider()))
+        else if (projection->getIsMaxima() && !containsMinimaSeenAfterUpper(projection->getOwner()))
         {
-            emit(collider, projection->getCollider());
+            emit(makeEndpoint(endpoint), makeEndpoint(projection->getOwner()));
         }
     }
 
@@ -573,9 +578,9 @@ void SegmentedIntervalList::processProjectionCollisions(
         for (size_t i = 0; i < currentChunk->getSize(); i++)
         {
             BoundingRadiusProjectionProxy *projection = currentChunk->get(i);
-            if (projection->getCollider() != collider && !projection->getIsMaxima())
+            if (projection->getOwner() != endpoint && !projection->getIsMaxima())
             {
-                emit(collider, projection->getCollider());
+                emit(makeEndpoint(endpoint), makeEndpoint(projection->getOwner()));
             }
         }
     }
@@ -585,9 +590,9 @@ void SegmentedIntervalList::processProjectionCollisions(
         for (size_t i = 0; i < upperIndexInsideChunk; i++)
         {
             BoundingRadiusProjectionProxy *projection = upperChunk->get(i);
-            if (projection->getCollider() != collider && !projection->getIsMaxima())
+            if (projection->getOwner() != endpoint && !projection->getIsMaxima())
             {
-                emit(collider, projection->getCollider());
+                emit(makeEndpoint(endpoint), makeEndpoint(projection->getOwner()));
             }
         }
     }
@@ -606,4 +611,11 @@ bool SegmentedIntervalList::getIsEmpty() const
 size_t SegmentedIntervalList::getChunkCount() const
 {
     return chunks.size();
+}
+
+size_t SegmentedIntervalList::getOwnedCapacityBytes() const
+{
+    size_t bytes = chunks.capacity() * sizeof(LocalSortArray *);
+    for (const auto *chunk : chunks) bytes += sizeof(LocalSortArray) + chunk->getOwnedCapacityBytes();
+    return bytes;
 }

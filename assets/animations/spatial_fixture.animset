@@ -1,0 +1,22 @@
+{
+    "frames": [
+        {
+            "duration": 0.08,
+            "sourceRect": {"x": 0, "y": 0, "w": 16, "h": 16},
+            "hasSourceRect": true,
+            "textureWrapperFilePath": "assets/textures/black_square.png"
+        },
+        {
+            "duration": 0.08,
+            "sourceRect": {"x": 0, "y": 0, "w": 32, "h": 32},
+            "hasSourceRect": true,
+            "textureWrapperFilePath": "assets/textures/black_square.png"
+        }
+    ],
+    "framesPerSecond": 12,
+    "loop": true,
+    "width": 0,
+    "height": 0,
+    "name": "Spatial fixture",
+    "filePath": "assets/animations/spatial_fixture.animset"
+}

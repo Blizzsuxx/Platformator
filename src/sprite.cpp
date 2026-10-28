@@ -1,6 +1,7 @@
 #include "platformator/sprite.h"
 #include "runtimeaccess.h"
 #include "platformator/texturewrapper.h"
+#include "sdlwindow.h"
 
 Sprite::Sprite()
     : Component(ComponentType::SPRITE), textureWrapper(nullptr), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f),
@@ -130,12 +131,20 @@ void Sprite::setFlip(SDL_FlipMode flip)
 
 void Sprite::setWidth(float width)
 {
+    if (this->width == width)
+        return;
     this->width = width;
+    if (getGameObject() && getHandle())
+        platformator_detail::RuntimeAccess::window()->markSpriteDirty(this);
 }
 
 void Sprite::setHeight(float height)
 {
+    if (this->height == height)
+        return;
     this->height = height;
+    if (getGameObject() && getHandle())
+        platformator_detail::RuntimeAccess::window()->markSpriteDirty(this);
 }
 
 void Sprite::setSourceRect(const SDL_FRect &sourceRect)

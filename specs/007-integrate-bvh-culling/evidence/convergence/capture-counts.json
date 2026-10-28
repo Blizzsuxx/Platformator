@@ -1,0 +1,25 @@
+{
+  "calibration": {
+    "validation": 80,
+    "timing": 400
+  },
+  "engine": {
+    "validation": 176,
+    "timing": 880,
+    "resources": 176
+  },
+  "replay": {
+    "validation": 248,
+    "timing": 1240,
+    "resources": 248
+  },
+  "controls": {
+    "validation": 40,
+    "timing": 200,
+    "resources": 40
+  },
+  "startup": {
+    "validation": 176,
+    "timing": 880
+  }
+}

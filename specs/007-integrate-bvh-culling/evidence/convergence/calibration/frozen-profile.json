@@ -1,0 +1,28 @@
+{
+  "maintenance": "native-partial",
+  "padding": 0.0,
+  "query_execution": "serial",
+  "source_sha256": "f1c6298f8b6e7baaa3d4374236a9650e5345a2567f210dbfa3efcb3197b0aba1",
+  "frozen_at_utc": "2026-10-28T15:33:39.783544+00:00",
+  "comparisons": {
+    "bvh_maintenance": {
+      "first": "full-rebuild",
+      "second": "native-partial",
+      "median_second_over_first": 0.7056139681120739,
+      "matched_pairs": 32
+    },
+    "bvh_padding": {
+      "first": "0.0",
+      "second": "2.0",
+      "median_second_over_first": 0.9953694351601179,
+      "matched_pairs": 32
+    },
+    "bvh_query_execution": {
+      "first": "parallel",
+      "second": "serial",
+      "median_second_over_first": 0.9776434318873688,
+      "matched_pairs": 32
+    }
+  },
+  "decision": "Retain native-partial/zero/serial as primary, based only on separate calibration. No universal optimum or tuned serial/parallel crossover is claimed."
+}

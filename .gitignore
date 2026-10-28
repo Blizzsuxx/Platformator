@@ -57,6 +57,7 @@ __pycache__/
 Thumbs.db
 *.tmp
 *.swp
-*.tar.gz
-*.gz
-*.tar.xz
+# Local benchmark artifact storage and generated evidence archives
+/artifacts/
+/specs/*/evidence/*.gz
+/specs/*/evidence/*.tar.xz

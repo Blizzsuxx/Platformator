@@ -6,6 +6,12 @@
 #include "platformator/gameobject.h"
 
 class Sprite;
+class SDLWindow;
+
+namespace platformator_detail
+{
+struct SpriteRenderView;
+}
 
 class Camera : public Component
 {
@@ -30,8 +36,15 @@ public:
 	void setWidth(float width);
 
 private:
+    friend class SDLWindow;
+
 	float width;
 	float height;
+
+    platformator_detail::SpriteRenderView prepareRenderView(int outputWidth, int outputHeight,
+                                                             bool cullingEligible) const;
+    void renderWithView(Sprite *sprite, SDL_Renderer *renderer,
+                        const platformator_detail::SpriteRenderView &view) const;
 
 	float getScaleX(int outputWidth) const;
 	float getScaleY(int outputHeight) const;

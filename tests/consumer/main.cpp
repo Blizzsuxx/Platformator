@@ -9,6 +9,7 @@ int main(int argc, char **argv)
     {
         RuntimeOptions options;
         options.windowSettings.headless = true;
+        options.windowSettings.enableRenderCulling = true;
         if (argc > 1)
             options.assetRoot = argv[1];
         platformator::Runtime runtime(options);

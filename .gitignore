@@ -60,3 +60,6 @@ Thumbs.db
 *.tar.gz
 *.gz
 *.tar.xz
+
+# Persistent linear-render evidence bundles are local artifacts, not source changes.
+/benchmark/artifacts/linear-render-culling/

@@ -1,9 +1,12 @@
 #include "platformator/camera.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "constants.h"
 #include "platformator/sprite.h"
+#include "spriterendergeometry.h"
+#include "workprobe.h"
 
 Camera::Camera() : Component(ComponentType::CAMERA), width(SCREEN_WIDTH), height(SCREEN_HEIGHT)
 {
@@ -29,17 +32,47 @@ Camera::~Camera()
 
 void Camera::render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight)
 {
+    const auto view = prepareRenderView(outputWidth, outputHeight, false);
+    renderWithView(sprite, renderer, view);
+}
+
+platformator_detail::SpriteRenderView Camera::prepareRenderView(int outputWidth, int outputHeight,
+                                                                 bool cullingEligible) const
+{
+    const auto &cameraPosition = getGameObject()->worldPosition;
+    const float scaleX = getScaleX(outputWidth);
+    const float scaleY = getScaleY(outputHeight);
+    platformator_detail::SpriteRenderView view{cameraPosition.x(), cameraPosition.y(), scaleX, scaleY,
+                                               outputWidth, outputHeight, false};
+    const bool validMapping = outputWidth > 0 && outputHeight > 0 && std::isfinite(view.cameraX) &&
+                              std::isfinite(view.cameraY) && std::isfinite(scaleX) && scaleX > 0.0f &&
+                              std::isfinite(scaleY) && scaleY > 0.0f;
+    view.cullingEligible = cullingEligible && validMapping;
+    PLATFORMATOR_RENDER_VIEW_PREPARED();
+    return view;
+}
+
+void Camera::renderWithView(Sprite *sprite, SDL_Renderer *renderer,
+                            const platformator_detail::SpriteRenderView &view) const
+{
     float renderW = sprite->getWidth();
     float renderH = sprite->getHeight();
 
     const auto &spritePosition = sprite->getGameObject()->worldPosition;
-    const auto &cameraPosition = getGameObject()->worldPosition;
-    const float scaleX = getScaleX(outputWidth), scaleY = getScaleY(outputHeight);
-    SDL_FRect renderQuad = {(spritePosition.x() - renderW * 0.5f - cameraPosition.x()) * scaleX,
-                            (spritePosition.y() - renderH * 0.5f - cameraPosition.y()) * scaleY, renderW * scaleX,
-                            renderH * scaleY};
-    SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad,
-                             sprite->getGameObject()->getRotationInDegrees(), nullptr, sprite->getFlip());
+    SDL_FRect renderQuad = {(spritePosition.x() - renderW * 0.5f - view.cameraX) * view.scaleX,
+                            (spritePosition.y() - renderH * 0.5f - view.cameraY) * view.scaleY,
+                            renderW * view.scaleX, renderH * view.scaleY};
+    const float angleDegrees = sprite->getGameObject()->getRotationInDegrees();
+    if (view.cullingEligible && sprite->getTexture() != nullptr)
+    {
+        PLATFORMATOR_RENDER_VISIBILITY_CHECK();
+        if (platformator_detail::classifySpriteForRender(renderQuad, angleDegrees, view) ==
+            platformator_detail::SpriteRenderClassification::Reject)
+            return;
+    }
+    PLATFORMATOR_RENDER_SUBMISSION(sprite);
+    SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad, angleDegrees, nullptr,
+                             sprite->getFlip());
 }
 
 Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const

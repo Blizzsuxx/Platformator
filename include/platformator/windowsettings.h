@@ -8,4 +8,5 @@ struct WindowSettings
     bool maximizeOnStartup = false;
     bool keepAspectRatio = false;
     bool headless = false;
+    bool enableRenderCulling = true;
 };

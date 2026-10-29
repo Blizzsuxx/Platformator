@@ -156,6 +156,12 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
             continue;
         }
 
+        if (argument == "--no-render-culling")
+        {
+            runtimeOptions.windowSettings.enableRenderCulling = false;
+            continue;
+        }
+
         if (argument == "--window-width")
         {
             runtimeOptions.windowSettings.width =

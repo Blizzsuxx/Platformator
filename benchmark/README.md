@@ -40,3 +40,38 @@ The original [pre-cleanup capture](baselines/pre-cleanup-e01526b/RESULTS.md) is 
 The Godot host in [benchmark_case.gd](godot/benchmark_case.gd) samples `Performance.TIME_PROCESS` and `Performance.TIME_PHYSICS_PROCESS` inside its physics-driven capture path, plus engine object/node/collision-pair monitors. These are Godot engine monitor values, not clocks bracketing the C++ complete-step/cleanup boundary; Godot object/node counts also differ from GameObject counts. No equivalent complete-step boundary or synchronized sampling has been established. Present these measurements separately; do not infer a cross-engine speed ratio from similarly named scopes.
 
 To reproduce the full Linux reference on the recorded six-core host, use `capture_cleanup.py --mode validate --runner bin/cleanup-benchmark/platformator_benchmark_runner --output <new-directory>`, then the same command with `--mode time` after all builds/tests finish. It pins one worker to CPU 0 and six workers to CPUs 0,2,4,6,8,10, compares all 18 serial/parallel workload sizes, shuffles 180 timing processes with seed 1, retains compressed raw runs/validation snapshots, and writes summary, provenance, a source snapshot and checksums. It refuses existing captures. Choose a new output directory for future task/reference comparisons.
+
+## Linear render culling evidence
+
+The focused `platformator_linear_render_probe` reuses schema-v3 summaries, raw samples and manifests for deterministic sprite profiles. Build it in Release with debug tools and work probes disabled for timing. Build a separate work-probe configuration for image/order and resource captures; validation data is marked `per-step` and is never timing evidence. Keep the pinned pre-feature source, candidate, fixture, output size, asset root, renderer and trajectory parameters matched.
+
+First populate separate validation and resource roots with each required `(profile, population, workers, headless, mode)` case. Render validation runs use `--validate-rendering --evidence-output`; resource runs use the mutually exclusive `--validate-resources --evidence-output`. The probe writes per-step traces and oracle visibility, image hashes and a representative image where rendering is enabled, or allocation/work/RSS observations for resource checks. C++ allocation interception does not attribute C allocations or SDL/driver allocations.
+
+After those roots pass comparison, run the bounded matrix with a fresh output directory:
+
+```sh
+RUN_ROOT=benchmark/artifacts/linear-render-culling/<new-run-id>
+mkdir -p "$RUN_ROOT"
+git check-ignore -v "$RUN_ROOT"  # verify the durable artifact root is ignored before capture
+
+python3 benchmark/capture_linear_render.py \
+  --baseline-probe /path/to/pinned/platformator_linear_render_probe \
+  --candidate-probe bin/cleanup-benchmark/platformator_linear_render_probe \
+  --baseline-validation-probe /path/to/pinned/work-probe/platformator_linear_render_probe \
+  --candidate-validation-probe /path/to/candidate/work-probe/platformator_linear_render_probe \
+  --baseline-runner /path/to/pinned/platformator_benchmark_runner \
+  --candidate-runner bin/cleanup-benchmark/platformator_benchmark_runner \
+  --validation-root /path/to/final-validation \
+  --resource-root /path/to/final-resources \
+  --asset-root /path/to/shared/assets \
+  --workers 1 --multiworker-count 6 \
+  --repetitions 5 --warmup-frames 120 --measure-frames 600 \
+  --dt 0.008333333333333333 \
+  --output "$RUN_ROOT/timing/final"
+```
+
+Keep the source snapshots, builds, validation/resource roots, timing outputs, commands, logs, and checksums below this persistent ignored root. Do not use a temporary directory for any input or artifact required to verify or reproduce the comparison.
+
+The driver shuffles comparison modes for each fresh process, retains commands/logs/manifests/raw samples and validates each timing run against its matching proof checksum and source fingerprint. Reports keep complete rendering separate from `complete_step`, include independent-run spread and per-run tails, and record observed submission fractions and resource observations. A mostly-offscreen win is accepted only when the complete-render improvement exceeds run variation and visible, rotated, headless and engine-control regressions have been investigated. Software-renderer results describe CPU-side behavior on that backend; they do not establish hardware-renderer or GPU elapsed-time performance.
+
+The focused sprite profiles include selected `--multiworker-count` cases. The existing rendered `broad_phase` and `moving_add_and_remove` engine controls run at one worker; the headless `persistent_contacts` and `broad_phase_stress` controls run at one worker and at `--multiworker-count`.

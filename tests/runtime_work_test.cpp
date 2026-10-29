@@ -57,12 +57,56 @@ void operator delete[](void *memory, size_t) noexcept
     std::free(memory);
 }
 #endif
+
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+namespace
+{
+Eigen::Vector2f runHeadlessCullingIsolation(bool callRenderedPath)
+{
+    headlessEnvironment();
+    RuntimeOptions options = physicsOnly();
+    options.windowSettings.enableRenderCulling = true;
+    platformator::Runtime runtime(options);
+    GameObject *object = runtime.createGameObject();
+    for (int step = 1; step <= 8; ++step)
+    {
+        platformator_test::work = {};
+        const auto update = [&, step](double) {
+            object->setPosition({static_cast<float>(step * 3), -step * 2.0f});
+        };
+        if (callRenderedPath)
+            require(runtime.simulateAndRenderFrameWithCustomCallback(dt, update),
+                    "Headless simulate-and-render must still complete its simulation step");
+        else
+            runtime.simulateFrameWithCustomCallback(dt, update);
+
+        const auto work = platformator_test::work;
+        require(work.renderViewPreparations == 0 && work.renderEligibilityChecks == 0 &&
+                    work.renderVisibilityChecks == 0 && work.renderSubmittedSprites == 0 &&
+                    work.renderReadbackCallbacks == 0,
+                "Headless simulation must do no view, eligibility, visibility, submission, or readback work");
+    }
+    return object->getPosition();
+}
+
+void headlessCullingIsolation()
+{
+    const Eigen::Vector2f simulationOnly = runHeadlessCullingIsolation(false);
+    const Eigen::Vector2f simulateAndRender = runHeadlessCullingIsolation(true);
+    require(simulationOnly.x() == simulateAndRender.x() && simulationOnly.y() == simulateAndRender.y(),
+            "Enabling render culling cannot change headless simulation results");
+    std::cout << "headless culling work=0/0/0/0/0 simulation_position=" << simulateAndRender.transpose() << '\n';
+}
+} // namespace
+#endif
+
 int main(int argc, char **argv)
 {
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     headlessEnvironment();
     try
     {
+        headlessCullingIsolation();
         const size_t workers = argc == 2 ? std::stoul(argv[1]) : 1;
         tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
         platformator::Runtime runtime(physicsOnly());

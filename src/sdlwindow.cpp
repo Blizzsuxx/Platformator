@@ -12,6 +12,48 @@
 #include "runtimeaccess.h"
 #include "platformator/sprite.h"
 #include "benchmark.h"
+#include "spriterendergeometry.h"
+#include "workprobe.h"
+
+namespace
+{
+bool hasDefaultRenderMapping(SDL_Renderer *renderer, int expectedWidth, int expectedHeight)
+{
+    if (renderer == nullptr || expectedWidth <= 0 || expectedHeight <= 0)
+        return false;
+
+    if (SDL_GetRenderTarget(renderer) != nullptr || SDL_RenderViewportSet(renderer))
+        return false;
+
+    SDL_Rect viewport{};
+    if (!SDL_GetRenderViewport(renderer, &viewport) || viewport.x != 0 || viewport.y != 0 ||
+        viewport.w != expectedWidth || viewport.h != expectedHeight)
+        return false;
+
+    float scaleX = 0.0f;
+    float scaleY = 0.0f;
+    if (!SDL_GetRenderScale(renderer, &scaleX, &scaleY) || scaleX != 1.0f || scaleY != 1.0f)
+        return false;
+
+    int logicalWidth = 0;
+    int logicalHeight = 0;
+    SDL_RendererLogicalPresentation logicalMode = SDL_LOGICAL_PRESENTATION_DISABLED;
+    if (!SDL_GetRenderLogicalPresentation(renderer, &logicalWidth, &logicalHeight, &logicalMode) ||
+        logicalMode != SDL_LOGICAL_PRESENTATION_DISABLED || logicalWidth != 0 || logicalHeight != 0)
+        return false;
+
+    int outputWidth = 0;
+    int outputHeight = 0;
+    int currentWidth = 0;
+    int currentHeight = 0;
+    if (!SDL_GetRenderOutputSize(renderer, &outputWidth, &outputHeight) ||
+        !SDL_GetCurrentRenderOutputSize(renderer, &currentWidth, &currentHeight))
+        return false;
+
+    return outputWidth == expectedWidth && outputHeight == expectedHeight && currentWidth == expectedWidth &&
+           currentHeight == expectedHeight;
+}
+} // namespace
 
 SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
     : window(nullptr), renderer(nullptr), mixer(nullptr), mainCamera(nullptr), sdlEvent(),
@@ -238,6 +280,7 @@ void SDLWindow::render()
     SDL_RenderClear(renderer);
     if (!mainCamera)
     {
+        PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
         SDL_RenderPresent(renderer);
         return;
     }
@@ -270,6 +313,15 @@ void SDLWindow::render()
     }
 #endif
 
+    bool cullingEligible = false;
+    if (windowSettings.enableRenderCulling)
+    {
+        PLATFORMATOR_RENDER_ELIGIBILITY_CHECK();
+        cullingEligible = hasDefaultRenderMapping(renderer, renderWidth, renderHeight);
+    }
+    const auto renderView = mainCamera->prepareRenderView(renderWidth, renderHeight, cullingEligible);
+
+    // EFFICIENCY: This O(N) pass still inspects every active sprite each rendered frame. A cached visible set could avoid repeated offscreen checks, but it would need generation-safe invalidation for transforms, camera/output changes, activation, and component lifecycle. Keep the authoritative ordered scan here; if the full population matrix shows scan cost dominates, evaluate a generation-safe ordered visibility cache with explicit mutation hooks as follow-up work.
     for (Sprite *spriteComponent : spriteComponents)
     {
         if (!spriteComponent->getGameObject()->getActive())
@@ -277,12 +329,13 @@ void SDLWindow::render()
             continue;
         }
 
-        mainCamera->render(spriteComponent, renderer, renderWidth, renderHeight);
+        mainCamera->renderWithView(spriteComponent, renderer, renderView);
     }
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
 #endif
+    PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
     SDL_RenderPresent(renderer);
 }
 

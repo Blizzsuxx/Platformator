@@ -210,6 +210,17 @@ struct BenchmarkRunnerOptions
     int contactPairCount = 100, scriptedEndpoints = 2;
 };
 
+nlohmann::json renderCullingMetadata(const BenchmarkRunnerOptions &options)
+{
+    const bool requested = options.runtimeOptions.windowSettings.enableRenderCulling;
+    const bool rendering = options.renderFrames && !options.runtimeOptions.windowSettings.headless;
+    return {{"requested_mode", requested ? "linear" : "disabled"},
+            {"requested_enabled", requested},
+            {"effective_policy", !rendering ? "headless-no-rendering"
+                                             : requested ? "linear-filtering" : "submit-all"},
+            {"effective_enabled", rendering && requested}};
+}
+
 BenchmarkScenario parseScenario(const std::string &value)
 {
     if (value == "broad_phase" || value == "broad-phase" || value == "broadphase")
@@ -1191,6 +1202,11 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
             options.validateInvariants = true;
             continue;
         }
+        if (argument == "--no-render-culling")
+        {
+            options.runtimeOptions.windowSettings.enableRenderCulling = false;
+            continue;
+        }
         if (argument == "--repetitions")
         {
             options.repetitions = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
@@ -1649,6 +1665,7 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                         {"repetitions", options.repetitions},
                         {"repetition_index", options.runIndex},
                         {"rendering", options.renderFrames},
+                        {"linear_render_culling", renderCullingMetadata(options)},
                         {"validation_mode", options.validateInvariants ? "per-step" : "boundary-only"},
                         {"timing_eligible", !options.validateInvariants},
                         {"asset_root", runtime.getAssetRoot().string()},
@@ -1683,7 +1700,8 @@ void printUsage(FILE *output)
         "[--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] "
         "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--steady-count N] [--add-count N] "
         "[--remove-count N] [--churn-count N] [--csv-output "
-        "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render]\n");
+        "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render] "
+        "[--no-render-culling]\n");
 }
 } // namespace
 

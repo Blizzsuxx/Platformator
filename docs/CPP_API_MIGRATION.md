@@ -57,3 +57,11 @@ Runtime texture, audio, and animation loads now require every nonempty requested
 ## Collision constructor and animation getter
 
 The `Collision` constructor taking a normal, contacts and two colliders no longer accepts the unused `float penetration` argument. Update calls from `Collision(normal, penetration, contacts, a, b)` to `Collision(normal, contacts, a, b)` and rebuild/relink consumers. Penetration correction continues to use contact separation. `Animator::getCurrentClip()` is the preferred current-clip getter; `getCurrentAnimationClip()` remains a forwarding compatibility alias.
+
+## Ordered window sprite culling
+
+`WindowSettings::enableRenderCulling` defaults to `true` and enables conservative visibility checks in the normal `SDLWindow` sprite traversal. Set it to `false`, or pass `--no-render-culling`, to submit every active sprite in the existing order. The setting is runtime configuration and is not stored in scenes. Its appended field changes the settings layout, so rebuild the library and all consumer translation units together.
+
+Culling is used only when SDL reports the default full-output mapping: no render target or custom viewport, unit render scale, and no logical presentation. A custom mapping or failed state query falls back to submit-all for that frame; restoring the default mapping allows filtering on the next frame without a notification. Direct calls to the public four-argument `Camera::render` keep their submit-all behavior.
+
+The check uses current transformed sprite values and preserves the original sequence. It is O(N) work with O(1) extra runtime storage, no cache and no warmed culling allocations. Headless simulation performs no rendering visibility work.

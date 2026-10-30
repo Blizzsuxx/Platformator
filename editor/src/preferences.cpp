@@ -181,6 +181,35 @@ void load_run_preferences(const Json &source, RunPreferences &run,
     }
 }
 
+void load_editor_window_preferences(const Json &source, EditorWindowPreferences &window,
+                                   WorkspacePreferencesLoadResult &result)
+{
+    const auto found = source.find("editorWindow");
+    if (found == source.end())
+        return;
+    if (!found->is_object())
+    {
+        set_recovered(result, "invalid editor window preferences were reset");
+        return;
+    }
+    auto read_dimension = [&](const char *key, int &destination) {
+        const auto value = found->find(key);
+        if (value == found->end())
+            return;
+        if (!value->is_number_integer() || value->get<std::int64_t>() < 320 ||
+            value->get<std::int64_t>() > 16384)
+        {
+            set_recovered(result, std::string("invalid editor window dimension '") + key + "' was reset");
+            return;
+        }
+        destination = value->get<int>();
+    };
+    read_dimension("width", window.width);
+    read_dimension("height", window.height);
+    read_bool(*found, "fullscreen", window.fullscreen, result);
+    read_bool(*found, "maximized", window.maximized, result);
+}
+
 Json serialize_preferences(const WorkspacePreferences &preferences, std::string_view projectKey)
 {
     Json panels = Json::object();
@@ -207,6 +236,10 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
                    {"navigationZoom", preferences.navigationZoom},
                    {"navigationX", preferences.navigationX},
                    {"navigationY", preferences.navigationY},
+                   {"editorWindow", {{"width", preferences.editorWindow.width},
+                                     {"height", preferences.editorWindow.height},
+                                     {"fullscreen", preferences.editorWindow.fullscreen},
+                                     {"maximized", preferences.editorWindow.maximized}}},
                    {"run", std::move(run)}};
     if (preferences.recentScene)
         result["recentScene"] = preferences.recentScene->string();
@@ -249,8 +282,8 @@ bool read_layout(const std::filesystem::path &path, std::string &layout, std::st
 std::map<std::string, bool> default_panel_visibility()
 {
     return {{"panel.hierarchy", true}, {"panel.scene", true}, {"panel.inspector", true},
-            {"panel.behaviors", true}, {"panel.project", true}, {"panel.console", true},
-            {"panel.run", false}, {"panel.validation", false}, {"panel.settings", false}};
+            {"panel.project", true}, {"panel.console", true},
+            {"panel.run", false}, {"panel.validation", false}};
 }
 
 bool is_panel_visible(const WorkspacePreferences &preferences, std::string_view stableId)
@@ -259,7 +292,7 @@ bool is_panel_visible(const WorkspacePreferences &preferences, std::string_view 
     if (found != preferences.panelVisibility.end())
         return found->second;
     return stableId == "panel.hierarchy" || stableId == "panel.scene" ||
-           stableId == "panel.inspector" || stableId == "panel.behaviors" ||
+           stableId == "panel.inspector" ||
            stableId == "panel.project" || stableId == "panel.console";
 }
 
@@ -351,8 +384,12 @@ std::string migrate_scene_window_identity(std::string_view layout)
 {
     constexpr std::string_view legacySection = "[Window][Scene]";
     constexpr std::string_view stableSection = "[Window][panel.scene]";
+    constexpr std::string_view retiredBehaviorSection = "[Window][panel.behaviors]";
+    constexpr std::string_view retiredSettingsSection = "[Window][panel.settings]";
     const bool hasLegacy = layout.find(legacySection) != std::string_view::npos;
-    if (!hasLegacy)
+    const bool hasRetiredBehavior = layout.find(retiredBehaviorSection) != std::string_view::npos;
+    const bool hasRetiredSettings = layout.find(retiredSettingsSection) != std::string_view::npos;
+    if (!hasLegacy && !hasRetiredBehavior && !hasRetiredSettings)
         return std::string(layout);
     const bool hasStable = layout.find(stableSection) != std::string_view::npos;
 
@@ -367,7 +404,9 @@ std::string migrate_scene_window_identity(std::string_view layout)
                                                                         : end - offset);
         if (!line.empty() && line.back() == '\r')
             line.remove_suffix(1);
-        if (line == legacySection)
+        if (line == retiredBehaviorSection || line == retiredSettingsSection)
+            skippingLegacy = true;
+        else if (line == legacySection)
         {
             skippingLegacy = hasStable;
             if (!hasStable)
@@ -456,6 +495,7 @@ WorkspacePreferencesLoadResult load_workspace_preferences(const std::filesystem:
                 read_number(source, "navigationZoom", result.preferences.navigationZoom, result, 0.01f, 100.0f);
                 read_number(source, "navigationX", result.preferences.navigationX, result, -10000000.0f, 10000000.0f);
                 read_number(source, "navigationY", result.preferences.navigationY, result, -10000000.0f, 10000000.0f);
+                load_editor_window_preferences(source, result.preferences.editorWindow, result);
                 load_run_preferences(source, result.preferences.run, result);
             }
         }
@@ -504,7 +544,7 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
 
     const bool marioExampleRoot = root.filename() == "mario" &&
         std::filesystem::is_regular_file(root / "main.cpp") &&
-        std::filesystem::is_regular_file(root / "mario_camera_rig.cpp") &&
+        std::filesystem::is_regular_file(root / "assets" / "behaviors" / "mario_camera_rig.cpp") &&
         std::filesystem::is_regular_file(root / "CMakeLists.txt");
     if (marioExampleRoot &&
         (preferences.run.target.empty() || preferences.run.target == "mario_example"))
@@ -527,7 +567,9 @@ WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferenc
     if (!std::isfinite(preferences.userScale) || preferences.userScale < 0.5f || preferences.userScale > 3.0f ||
         !std::isfinite(preferences.navigationZoom) || preferences.navigationZoom < 0.01f ||
         preferences.navigationZoom > 100.0f || !std::isfinite(preferences.navigationX) ||
-        !std::isfinite(preferences.navigationY) || preferences.run.width < 1 || preferences.run.width > 16384 ||
+        !std::isfinite(preferences.navigationY) || preferences.editorWindow.width < 320 ||
+        preferences.editorWindow.width > 16384 || preferences.editorWindow.height < 320 ||
+        preferences.editorWindow.height > 16384 || preferences.run.width < 1 || preferences.run.width > 16384 ||
         preferences.run.height < 1 || preferences.run.height > 16384)
         return {false, false, "preferences contain out-of-range values"};
     if (preferences.run.catalogProtocol != "common-runner-v1" &&
@@ -563,6 +605,65 @@ WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferenc
             result.message = "preferences were replaced, but directory durability could not be confirmed";
     }
     return result;
+}
+
+LastWorkspaceLoadResult load_last_workspace(const std::filesystem::path &path)
+{
+    std::error_code filesystemError;
+    const auto size = std::filesystem::file_size(path, filesystemError);
+    if (filesystemError == std::errc::no_such_file_or_directory)
+        return {};
+    if (filesystemError)
+        return {{}, "Last workspace preference could not be inspected: " + filesystemError.message()};
+    if (size > 16U * 1024U)
+        return {{}, "Last workspace preference exceeds the 16 KiB limit and was ignored."};
+    try
+    {
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream)
+            throw std::runtime_error("preference file cannot be opened");
+        const Json value = Json::parse(stream);
+        const auto version = value.is_object() ? value.find("version") : Json::const_iterator{};
+        const auto root = value.is_object() ? value.find("projectRoot") : Json::const_iterator{};
+        if (!value.is_object() || version == value.end() || !version->is_number_integer() ||
+            version->get<int>() != 1 || root == value.end() || !root->is_string() ||
+            root->get<std::string>().empty())
+            return {{}, "Last workspace preference was invalid and was ignored."};
+        return {std::filesystem::path(root->get<std::string>()), {}};
+    }
+    catch (const std::exception &error)
+    {
+        return {{}, std::string("Last workspace preference could not be read: ") + error.what()};
+    }
+}
+
+bool save_last_workspace(const std::filesystem::path &path,
+                         const std::filesystem::path &projectRoot, std::string &error)
+{
+    try
+    {
+        std::error_code filesystemError;
+        std::filesystem::create_directories(path.parent_path(), filesystemError);
+        if (filesystemError)
+        {
+            error = "cannot create last workspace preference directory: " + filesystemError.message();
+            return false;
+        }
+        const Json value{{"version", 1}, {"projectRoot", canonical_project_key(projectRoot)}};
+        const auto result = write_file_atomically(path, value.dump(2) + "\n", true);
+        if (!result.succeeded())
+        {
+            error = "cannot save last workspace: " + result.message;
+            return false;
+        }
+        error.clear();
+        return true;
+    }
+    catch (const std::exception &exception)
+    {
+        error = std::string("cannot save last workspace: ") + exception.what();
+        return false;
+    }
 }
 
 void record_adopted_scene(WorkspacePreferences &preferences, const std::filesystem::path &scenePath)

@@ -47,6 +47,7 @@ struct ProjectScanOptions
     std::size_t maxDirectories = 2000;
     std::size_t maxEntries = 50000;
     bool sourceInputsOnly = false;
+    bool trackFileMetadata = false;
 };
 
 struct ProjectScanResult
@@ -57,6 +58,7 @@ struct ProjectScanResult
     std::vector<std::filesystem::path> files;
     std::vector<std::filesystem::path> directories;
     std::string sourceInputIdentity;
+    std::string fileIdentity;
     bool cancelled = false;
     bool truncated = false;
     std::string error;

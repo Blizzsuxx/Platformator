@@ -420,14 +420,19 @@ void run_document_authoring_cases()
     HierarchyPanel hierarchy;
     const auto &initialRows = hierarchy.visible_rows(structuralDocument);
     const std::size_t initialRowCount = initialRows.size();
-    const std::vector<int> expectedRowOrder{0, 1, 2, 15, 10, 16, 11, 12, 13, 14};
+    const std::vector<int> expectedRowOrder{0, 0, 1, 2, 15, 15, 10, 16, 16, 11, 12, 13, 14};
     require(initialRows.size() == expectedRowOrder.size() &&
                 std::equal(initialRows.begin(), initialRows.end(), expectedRowOrder.begin(),
                            [](const HierarchyRow &row, int id) { return row.id == id; }) &&
                 initialRows[0].kind == HierarchyRowKind::Object &&
-                initialRows[1].kind == HierarchyRowKind::Component &&
-                initialRows[4].kind == HierarchyRowKind::Object,
-            "hierarchy rows must follow saved object and component array order");
+                initialRows[1].kind == HierarchyRowKind::ComponentsNode &&
+                initialRows[2].kind == HierarchyRowKind::Component &&
+                initialRows[2].parentRowIndex == 1 &&
+                initialRows[4].kind == HierarchyRowKind::Object &&
+                initialRows[5].kind == HierarchyRowKind::ComponentsNode &&
+                initialRows[6].kind == HierarchyRowKind::Component &&
+                initialRows[6].parentRowIndex == 5,
+            "hierarchy rows must group components under their owner while preserving saved order");
     const auto rootRename = structuralCommands.set_property(
         structuralDocument, PropertyAddress{structuralDocument.documentGeneration, 0, std::nullopt,
                                              std::nullopt, {std::string("name")}},

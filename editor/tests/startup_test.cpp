@@ -91,12 +91,10 @@ class ImGuiSession
         scenePanel.set_visible(showPanels);
         scenePanel.draw(document, preview, selection, commands, window, renderer_);
         drawPanel("Inspector###panel.inspector");
-        drawPanel("Behaviors###panel.behaviors");
         drawPanel("Project and Assets###panel.project");
         drawPanel("Console###panel.console");
         drawPanel("Build and Run###panel.run");
         drawPanel("Validation###panel.validation");
-        drawPanel("Editor Settings###panel.settings");
         ImGui::Render();
         if (!SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255) || !SDL_RenderClear(renderer_))
             throw std::runtime_error(std::string("SDL renderer setup failed: ") + SDL_GetError());
@@ -117,7 +115,6 @@ class ImGuiSession
         ImGui::NewFrame();
         EditorToolbarState state;
         state.operationActive = true;
-        state.canUndo = true;
         state.sceneLabel = "long-example-scene-name.scene";
         state.scenePath = "/tmp/example project/long-example-scene-name.scene";
         state.status = std::string(400, 'd');
@@ -229,7 +226,6 @@ int main()
         require(dockId("Hierarchy###panel.hierarchy") == 0x00002000 &&
                     dockId("Scene###panel.scene") == 0x00003000 &&
                     dockId("Inspector###panel.inspector") == 0x00003001 &&
-                    dockId("Behaviors###panel.behaviors") == 0x00003001 &&
                     dockId("Project and Assets###panel.project") == 0x00004000 &&
                     dockId("Console###panel.console") == 0x00004001,
                 "first actual frames must attach each required window to its intended seeded dock node");
@@ -248,17 +244,15 @@ int main()
             return found != nullptr && found->Active;
         };
         require(!isActive("Hierarchy###panel.hierarchy") && !isActive("Scene###panel.scene") &&
-                    !isActive("Inspector###panel.inspector") && !isActive("Behaviors###panel.behaviors") &&
+                    !isActive("Inspector###panel.inspector") &&
                     !isActive("Project and Assets###panel.project") && !isActive("Console###panel.console") &&
-                    !isActive("Build and Run###panel.run") && !isActive("Validation###panel.validation") &&
-                    !isActive("Editor Settings###panel.settings"),
+                    !isActive("Build and Run###panel.run") && !isActive("Validation###panel.validation"),
                 "a real hidden-panel frame must not submit the windows to ImGui");
         imgui.draw_one_frame(document, preview, selection, commands, scenePanel, window, true);
         require(isActive("Hierarchy###panel.hierarchy") && isActive("Scene###panel.scene") &&
-                    isActive("Inspector###panel.inspector") && isActive("Behaviors###panel.behaviors") &&
+                    isActive("Inspector###panel.inspector") &&
                     isActive("Project and Assets###panel.project") && isActive("Console###panel.console") &&
-                    isActive("Build and Run###panel.run") && isActive("Validation###panel.validation") &&
-                    isActive("Editor Settings###panel.settings"),
+                    isActive("Build and Run###panel.run") && isActive("Validation###panel.validation"),
                 "View-style reopening must submit the panel windows again on the next frame");
         auto legacyLayout = seed;
         const auto stableSceneHeader = legacyLayout.find("[Window][panel.scene]");
@@ -318,8 +312,8 @@ int main()
                 }) != toolbar.items.end();
             };
             require(hasItem("Open Scene") && hasItem("Save") && hasItem("Build") &&
-                        hasItem("Build and Run") && hasItem("Stop") && hasItem("More"),
-                    "toolbar must keep primary scene/build actions and a reachable overflow at supported sizes");
+                        hasItem("Build and Run") && hasItem("Stop") && !hasItem("More") && !hasItem("New"),
+                    "toolbar must keep only primary scene/build actions without duplicate overflow commands");
             for (const auto &item : toolbar.items)
                 require(item.width >= 0.0f && item.height >= 0.0f && item.x >= viewport->Pos.x - 1.0f &&
                             item.x + item.width <= viewport->Pos.x + viewport->Size.x + 1.0f,

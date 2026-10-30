@@ -63,3 +63,4 @@ Thumbs.db
 
 # Persistent linear-render evidence bundles are local artifacts, not source changes.
 /benchmark/artifacts/linear-render-culling/
+/examples/mario/bin/*

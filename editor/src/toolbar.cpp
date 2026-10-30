@@ -14,7 +14,7 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
     const float availableWidth = viewport == nullptr ? 1280.0f : viewport->WorkSize.x;
     result.compact = availableWidth < 900.0f;
     const float rowHeight = ImGui::GetFrameHeight();
-    const float rowCount = result.compact ? 3.0f : 1.0f;
+    const float rowCount = result.compact ? 2.0f : 1.0f;
     result.height = rowCount * rowHeight + (rowCount - 1.0f) * ImGui::GetStyle().ItemSpacing.y +
                     ImGui::GetStyle().WindowPadding.y * 2.0f;
 
@@ -42,15 +42,6 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
             callback();
     };
 
-    if (!result.compact)
-    {
-        ImGui::BeginDisabled(state.projectLocked);
-        if (icon_label_button(EditorIcon::NewDocument, "New", "Create a scene (Ctrl+N)"))
-            invoke(actions.newScene);
-        remember("New");
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-    }
     ImGui::BeginDisabled(state.projectLocked);
     if (icon_label_button(EditorIcon::Open, "Open Scene", "Open a scene (Ctrl+O)"))
         invoke(actions.openScene);
@@ -81,53 +72,6 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
         invoke(actions.stop);
     remember("Stop");
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    const bool moreOpen = ImGui::BeginMenu("More");
-    remember("More");
-    if (moreOpen)
-    {
-        if (ImGui::MenuItem("New Scene", "Ctrl+N", false, !state.projectLocked))
-            invoke(actions.newScene);
-        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, state.canUndo && !state.projectLocked))
-            invoke(actions.undo);
-        if (ImGui::MenuItem("Redo", "Ctrl+Y", false, state.canRedo && !state.projectLocked))
-            invoke(actions.redo);
-        if (ImGui::MenuItem("Validate", "F6", false, !state.projectLocked))
-            invoke(actions.validate);
-        if (ImGui::MenuItem("Open Project Folder...", nullptr, false, !state.projectLocked))
-            invoke(actions.openProject);
-        ImGui::EndMenu();
-    }
-
-    if (result.compact)
-        ImGui::NewLine();
-    else
-        ImGui::SameLine();
-    const std::string sceneLabel = state.openScenePending ? "Opening scene..." :
-        (state.sceneLabel.empty() ? "No authored scene" : state.sceneLabel);
-    ImGui::TextDisabled("%s", sceneLabel.c_str());
-    remember("Scene");
-    if (!state.scenePath.empty() && ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", state.scenePath.c_str());
-    ImGui::SameLine();
-    const float statusWidth = ImGui::GetContentRegionAvail().x;
-    const float statusY = ImGui::GetCursorScreenPos().y;
-    ImGui::BeginChild("##toolbar-status", ImVec2(statusWidth, rowHeight), false,
-                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    const char *statusText = state.status.empty() ? "Ready" : state.status.c_str();
-    ImGui::TextDisabled("%s", statusText);
-    if (ImGui::IsItemHovered())
-    {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(statusText);
-        ImGui::EndTooltip();
-    }
-    const ImVec2 statusMinimum = ImGui::GetWindowPos();
-    const ImVec2 statusMaximum{statusMinimum.x + ImGui::GetWindowSize().x,
-                               statusMinimum.y + ImGui::GetWindowSize().y};
-    result.items.push_back({"Status", statusMinimum.x, statusY,
-                            statusMaximum.x - statusMinimum.x, statusMaximum.y - statusY});
-    ImGui::EndChild();
     ImGui::End();
     pop_editor_toolbar_style();
     return result;

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "editcommands.h"
+#include "behaviorfields.h"
 #include "selection.h"
 
 namespace platformator_editor
@@ -13,7 +14,8 @@ namespace platformator_editor
 class InspectorPanel
 {
   public:
-    void draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands);
+    void draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
+              const BehaviorCatalog &catalog, const AssetBrowseCallback &browse = {});
     const std::string &feedback() const noexcept;
 
   private:
@@ -41,5 +43,6 @@ class InspectorPanel
              std::optional<int> componentId, std::vector<FieldPathSegment> path, Json value);
 
     std::string feedback_;
+    BehaviorFieldsPanel behaviorFields_;
 };
 } // namespace platformator_editor

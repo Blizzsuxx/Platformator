@@ -16,11 +16,9 @@ enum class EditorAction
     Redo,
     ZoomIn,
     ZoomOut,
-    Validate,
     Build,
     BuildAndRun,
     Stop,
-    Settings,
     FrameSelected,
     FrameAll
 };
@@ -45,8 +43,7 @@ struct EditorInputCapture
 enum class EditorKey
 {
     F,
-    F5,
-    F6
+    F5
 };
 
 std::span<const EditorActionDescriptor> editor_action_descriptors() noexcept;

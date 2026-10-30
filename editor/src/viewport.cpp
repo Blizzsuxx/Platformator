@@ -66,6 +66,19 @@ ViewportPoint position_of(const Json &object)
     return {number(*position, "x"), number(*position, "y")};
 }
 
+ViewportPoint scale_of(const Json &object)
+{
+    const auto scale = object.find("scale");
+    if (scale == object.end() || !scale->is_object())
+        return {1.0f, 1.0f};
+    return {number(*scale, "x", 1.0f), number(*scale, "y", 1.0f)};
+}
+
+float rotation_of(const Json &object)
+{
+    return number(object, "rotation");
+}
+
 ViewportPoint parent_translation(const DocumentSession &document, int objectId)
 {
     ViewportPoint result{};
@@ -128,6 +141,126 @@ float distance_squared(ViewportPoint a, ViewportPoint b)
     const float dx = a.x - b.x;
     const float dy = a.y - b.y;
     return dx * dx + dy * dy;
+}
+
+float distance_to_segment_squared(ViewportPoint point, ViewportPoint start, ViewportPoint end)
+{
+    const float dx = end.x - start.x;
+    const float dy = end.y - start.y;
+    const float lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 0.0001f)
+        return distance_squared(point, start);
+    const float t = std::clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) /
+                                   lengthSquared,
+                               0.0f, 1.0f);
+    return distance_squared(point, {start.x + t * dx, start.y + t * dy});
+}
+
+ViewportPoint normalized(ViewportPoint point)
+{
+    const float length = std::sqrt(point.x * point.x + point.y * point.y);
+    if (!std::isfinite(length) || length <= 0.0001f)
+        return {};
+    return {point.x / length, point.y / length};
+}
+
+struct TransformHandleHit
+{
+    SceneGestureKind kind = SceneGestureKind::Position;
+    ViewportPoint axisWorld{};
+    ViewportPoint axisScreen{};
+    int scaleAxis = -1;
+};
+
+std::optional<TransformHandleHit> hit_transform_handle(const ViewportTransform &transform,
+                                                       ViewportPoint pivotWorld,
+                                                       float rotationDegrees,
+                                                       ViewportPoint mouse)
+{
+    constexpr float moveLength = 52.0f;
+    constexpr float scaleLength = 78.0f;
+    constexpr float rotateRadius = 102.0f;
+    const ViewportPoint center = transform.world_to_screen(pivotWorld);
+    const ViewportPoint rotatedX = rotate({1.0f, 0.0f}, rotationDegrees);
+    const ViewportPoint rotatedY = rotate({0.0f, 1.0f}, rotationDegrees);
+    const std::array<ViewportPoint, 2> moveAxes{{{1.0f, 0.0f}, {0.0f, 1.0f}}};
+    const std::array<ViewportPoint, 2> scaleAxes{{rotatedX, rotatedY}};
+
+    for (int axisIndex = 0; axisIndex < 2; ++axisIndex)
+    {
+        const ViewportPoint axis = scaleAxes[static_cast<std::size_t>(axisIndex)];
+        const ViewportPoint screenAxis = normalized(axis);
+        const ViewportPoint end{center.x + screenAxis.x * scaleLength,
+                                center.y + screenAxis.y * scaleLength};
+        if (distance_squared(mouse, end) <= 13.0f * 13.0f)
+            return TransformHandleHit{SceneGestureKind::Scale, axis, screenAxis, axisIndex};
+    }
+
+    const float distance = std::sqrt(distance_squared(mouse, center));
+    if (std::abs(distance - rotateRadius) <= 10.0f)
+        return TransformHandleHit{SceneGestureKind::Rotation, {}, {}, -1};
+
+    for (const auto axis : moveAxes)
+    {
+        const ViewportPoint screenAxis = normalized(axis);
+        const ViewportPoint start{center.x + screenAxis.x * 13.0f,
+                                  center.y + screenAxis.y * 13.0f};
+        const ViewportPoint end{center.x + screenAxis.x * moveLength,
+                                center.y + screenAxis.y * moveLength};
+        if (distance_to_segment_squared(mouse, start, end) <= 9.0f * 9.0f)
+            return TransformHandleHit{SceneGestureKind::Position, axis, screenAxis, -1};
+    }
+    return std::nullopt;
+}
+
+void draw_transform_gizmo(ImDrawList *drawList, const ViewportTransform &transform, ViewportPoint pivotWorld,
+                          float rotationDegrees)
+{
+    if (drawList == nullptr)
+        return;
+    constexpr float moveLength = 52.0f;
+    constexpr float scaleLength = 78.0f;
+    constexpr float rotateRadius = 102.0f;
+    const ViewportPoint center = transform.world_to_screen(pivotWorld);
+    const ViewportPoint rotatedX = rotate({1.0f, 0.0f}, rotationDegrees);
+    const ViewportPoint rotatedY = rotate({0.0f, 1.0f}, rotationDegrees);
+    const std::array<ViewportPoint, 2> moveAxes{{{1.0f, 0.0f}, {0.0f, 1.0f}}};
+    const std::array<ViewportPoint, 2> scaleAxes{{rotatedX, rotatedY}};
+    const std::array<ImU32, 2> axisColors{IM_COL32(235, 85, 75, 255), IM_COL32(95, 205, 125, 255)};
+
+    drawList->AddCircle({center.x, center.y}, rotateRadius, IM_COL32(245, 190, 75, 235), 72, 2.5f);
+    const float angle = rotationDegrees * std::numbers::pi_v<float> / 180.0f;
+    drawList->AddCircleFilled({center.x + std::cos(angle) * rotateRadius,
+                               center.y + std::sin(angle) * rotateRadius},
+                              6.0f, IM_COL32(255, 220, 115, 255));
+
+    for (std::size_t index = 0; index < scaleAxes.size(); ++index)
+    {
+        const ViewportPoint axis = normalized(scaleAxes[index]);
+        const ViewportPoint start{center.x + axis.x * (moveLength + 6.0f),
+                                  center.y + axis.y * (moveLength + 6.0f)};
+        const ViewportPoint end{center.x + axis.x * scaleLength,
+                                center.y + axis.y * scaleLength};
+        drawList->AddLine({start.x, start.y}, {end.x, end.y}, IM_COL32(95, 165, 245, 255), 3.0f);
+        drawList->AddRectFilled({end.x - 6.0f, end.y - 6.0f}, {end.x + 6.0f, end.y + 6.0f},
+                                IM_COL32(125, 190, 255, 255), 1.5f);
+    }
+
+    for (std::size_t index = 0; index < moveAxes.size(); ++index)
+    {
+        const ViewportPoint axis = normalized(moveAxes[index]);
+        const ViewportPoint end{center.x + axis.x * moveLength,
+                                center.y + axis.y * moveLength};
+        const ViewportPoint perpendicular{-axis.y, axis.x};
+        drawList->AddLine({center.x, center.y}, {end.x, end.y}, axisColors[index], 3.0f);
+        const ImVec2 tip{end.x + axis.x * 7.0f, end.y + axis.y * 7.0f};
+        drawList->AddTriangleFilled(tip,
+            {end.x - axis.x * 6.0f + perpendicular.x * 5.0f,
+             end.y - axis.y * 6.0f + perpendicular.y * 5.0f},
+            {end.x - axis.x * 6.0f - perpendicular.x * 5.0f,
+             end.y - axis.y * 6.0f - perpendicular.y * 5.0f}, axisColors[index]);
+    }
+    drawList->AddCircleFilled({center.x, center.y}, 4.5f, IM_COL32(240, 240, 245, 255));
 }
 
 std::array<ViewportPoint, 4> box_corners(ViewportPoint center, float width, float height, float rotation)
@@ -251,24 +384,9 @@ bool ViewportTransform::configure(ViewportRect imageRect, float framebufferScale
 
 void ViewportTransform::update_projection() noexcept
 {
-    const float aspect = baseWorldWidth_ / baseWorldHeight_;
-    const float imageAspect = imageRect_.width / imageRect_.height;
-    if (imageAspect > aspect)
-    {
-        contentRect_.height = imageRect_.height;
-        contentRect_.width = imageRect_.height * aspect;
-        contentRect_.x = imageRect_.x + (imageRect_.width - contentRect_.width) * 0.5f;
-        contentRect_.y = imageRect_.y;
-    }
-    else
-    {
-        contentRect_.width = imageRect_.width;
-        contentRect_.height = imageRect_.width / aspect;
-        contentRect_.x = imageRect_.x;
-        contentRect_.y = imageRect_.y + (imageRect_.height - contentRect_.height) * 0.5f;
-    }
-    worldWidth_ = baseWorldWidth_ / zoom_;
+    contentRect_ = imageRect_;
     worldHeight_ = baseWorldHeight_ / zoom_;
+    worldWidth_ = worldHeight_ * contentRect_.width / contentRect_.height;
     cameraLeft_ = centerX_ - worldWidth_ * 0.5f;
     cameraTop_ = centerY_ - worldHeight_ * 0.5f;
     targetWidth_ = std::max(1, static_cast<int>(std::lround(contentRect_.width * framebufferScaleX_)));
@@ -338,6 +456,15 @@ void ViewportTransform::pan(float logicalDeltaX, float logicalDeltaY) noexcept
     update_projection();
 }
 
+bool ViewportTransform::zoom(float factor)
+{
+    if (!valid_ || !std::isfinite(factor) || factor <= 0.0f)
+        return false;
+    zoom_ = std::clamp(zoom_ * factor, 0.05f, 64.0f);
+    update_projection();
+    return true;
+}
+
 bool ViewportTransform::zoom_at(ViewportPoint screenPoint, float factor)
 {
     const auto anchor = screen_to_world(screenPoint);
@@ -362,8 +489,10 @@ bool ViewportTransform::frame_bounds(ViewportRect worldBounds, float padding)
         return false;
     const float targetWorldWidth = worldBounds.width * padding;
     const float targetWorldHeight = worldBounds.height * padding;
-    zoom_ = std::clamp(std::min(baseWorldWidth_ / targetWorldWidth,
-                                baseWorldHeight_ / targetWorldHeight), 0.05f, 64.0f);
+    const float aspect = imageRect_.width / imageRect_.height;
+    const float fitWidth = baseWorldHeight_ * aspect / targetWorldWidth;
+    const float fitHeight = baseWorldHeight_ / targetWorldHeight;
+    zoom_ = std::clamp(std::min(fitWidth, fitHeight), 0.05f, 64.0f);
     centerX_ = worldBounds.x + worldBounds.width * 0.5f;
     centerY_ = worldBounds.y + worldBounds.height * 0.5f;
     update_projection();
@@ -510,16 +639,20 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
         cancel_gesture(commands, document);
         return;
     }
-    if (!ImGui::Begin("Scene###panel.scene", &open_))
+    if (!ImGui::Begin("Scene###panel.scene", &open_,
+                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar))
     {
         cancel_gesture(commands, document);
         ImGui::End();
         return;
     }
     const CameraDefaults camera = document_camera(document);
+    const ImVec2 available = ImGui::GetContentRegionAvail();
     if (!hasView_)
     {
         viewCenter_ = {camera.x + camera.width * 0.5f, camera.y + camera.height * 0.5f};
+        if (available.x > 0.0f && available.y > 0.0f && camera.width > 0.0f && camera.height > 0.0f)
+            viewZoom_ = std::min(1.0f, (available.x / available.y) / (camera.width / camera.height));
         hasView_ = true;
     }
     if (pendingZoomFactor_ != 1.0f)
@@ -533,15 +666,14 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
     frameAllRequested_ = false;
     frameSelectedRequested_ = false;
     ImGui::SameLine();
-    if (ImGui::Button("Refresh Assets"))
-        preview.refresh_assets(document);
-    ImGui::SameLine();
     ImGui::Text("Zoom %.0f%%", viewZoom_ * 100.0f);
+    ImGui::SetItemTooltip("Drag red/green arrows to move, blue squares to scale, or the gold ring to rotate. Drag the object itself to move freely.");
     if (!document.sourcePath)
         ImGui::TextDisabled("No authored scene is loaded. Use Open Scene or New Scene to begin.");
-    const ImVec2 available = ImGui::GetContentRegionAvail();
+    const ImVec2 viewportAvailable = ImGui::GetContentRegionAvail();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const ViewportRect imageRect{origin.x, origin.y, std::max(0.0f, available.x), std::max(0.0f, available.y)};
+    const ViewportRect imageRect{origin.x, origin.y, std::max(0.0f, viewportAvailable.x),
+                                 std::max(0.0f, viewportAvailable.y)};
     int outputWidth = 0;
     int outputHeight = 0;
     int windowWidth = 0;
@@ -591,7 +723,13 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
     }
     else
         ImGui::Dummy(ImVec2(std::max(content.width, 1.0f), std::max(content.height, 1.0f)));
-    const bool imageHovered = transformReady && ImGui::IsItemHovered();
+    bool imageHovered = false;
+    if (transformReady && content.width > 0.0f && content.height > 0.0f)
+    {
+        ImGui::SetCursorScreenPos({content.x, content.y});
+        ImGui::InvisibleButton("##scene-viewport-input", {content.width, content.height});
+        imageHovered = ImGui::IsItemHovered();
+    }
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect({content.x, content.y}, {content.x + content.width, content.y + content.height}, true);
 
@@ -659,13 +797,25 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
             }
         }
     }
+    if (transformReady && selection.current().objectId)
+    {
+        if (const Json *selectedObject = resolve_object(document, *selection.current().objectId))
+        {
+            const float rotationDegrees = rotation_of(*selectedObject) * 180.0f /
+                                          std::numbers::pi_v<float>;
+            draw_transform_gizmo(drawList, transform_,
+                                 object_world_position(document, *selection.current().objectId),
+                                 rotationDegrees);
+        }
+    }
     drawList->PopClipRect();
 
     ImGuiIO &io = ImGui::GetIO();
     const ViewportPoint mouse{io.MousePos.x, io.MousePos.y};
     const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    const bool pressedOnScene = imageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     const bool capture = modalOrTextCapture || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) ||
-                         io.WantTextInput || ImGui::IsAnyItemActive();
+                         (io.WantTextInput && !pressedOnScene);
     const bool escape = ImGui::IsKeyPressed(ImGuiKey_Escape);
     const bool appHasFocus = window != nullptr && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
     const EditorInputCapture sceneCapture{appHasFocus, capture, false, has_active_input(), focused};
@@ -684,10 +834,10 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
     }
     if (!transformReady || !appHasFocus)
         cancel_gesture(commands, document);
-    if ((gesture_ && (!focused || capture || !appHasFocus || !selection.current().objectId ||
+    if ((gesture_ && (capture || !appHasFocus || !selection.current().objectId ||
                       gestureAddress_.documentGeneration != document.documentGeneration ||
                       *selection.current().objectId != gestureAddress_.objectId || escape)) ||
-        (pendingDrag_ && (!focused || capture || !appHasFocus || escape ||
+        (pendingDrag_ && (capture || !appHasFocus || escape ||
                           !selection.current().objectId ||
                           *selection.current().objectId != pendingDragObjectId_)))
         cancel_gesture(commands, document);
@@ -705,18 +855,46 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
         else if (distance_squared(mouse, pendingPressScreen_) >= 9.0f)
         {
             const Selection currentSelection = selection.current();
-            gesture_ = pendingColliderDrag_
-                           ? begin_collider_offset_gesture(commands, document, pendingDragObjectId_,
-                                                          {currentSelection, currentSelection})
-                           : begin_object_position_gesture(commands, document, pendingDragObjectId_,
-                                                           {currentSelection, currentSelection});
+            const SelectionState selectionState{currentSelection, currentSelection};
+            switch (pendingGestureKind_)
+            {
+            case SceneGestureKind::Position:
+                gesture_ = begin_object_position_gesture(commands, document, pendingDragObjectId_,
+                                                        selectionState);
+                break;
+            case SceneGestureKind::ColliderOffset:
+                gesture_ = begin_collider_offset_gesture(commands, document, pendingDragObjectId_,
+                                                        selectionState);
+                break;
+            case SceneGestureKind::Scale:
+                gesture_ = commands.begin_gesture(document,
+                    PropertyAddress{document.documentGeneration, pendingDragObjectId_, std::nullopt,
+                                    std::nullopt, {std::string("scale")}}, selectionState);
+                break;
+            case SceneGestureKind::Rotation:
+                gesture_ = commands.begin_gesture(document,
+                    PropertyAddress{document.documentGeneration, pendingDragObjectId_, std::nullopt,
+                                    std::nullopt, {std::string("rotation")}}, selectionState);
+                break;
+            }
             if (gesture_)
             {
                 gestureAddress_.documentGeneration = document.documentGeneration;
                 gestureAddress_.objectId = pendingDragObjectId_;
-                gestureIsCollider_ = pendingColliderDrag_;
+                gestureKind_ = pendingGestureKind_;
                 gesturePointerWorld_ = pendingPointerWorld_;
                 gestureStartWorld_ = pendingTargetWorld_;
+                gestureAxisWorld_ = pendingAxisWorld_;
+                gestureAxisScreen_ = pendingAxisScreen_;
+                gestureScaleAxis_ = pendingScaleAxis_;
+                gesturePivotScreen_ = pendingPivotScreen_;
+                if (const Json *object = resolve_object(document, pendingDragObjectId_))
+                {
+                    gestureStartScale_ = scale_of(*object);
+                    gestureStartRotation_ = rotation_of(*object);
+                }
+                gestureStartAngle_ = std::atan2(pendingPressScreen_.y - gesturePivotScreen_.y,
+                                                pendingPressScreen_.x - gesturePivotScreen_.x);
             }
             pendingDrag_ = false;
         }
@@ -727,29 +905,67 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
         {
             const ViewportPoint currentWorld = world_at_screen(mouse);
-            const float deltaX = currentWorld.x - gesturePointerWorld_.x;
-            const float deltaY = currentWorld.y - gesturePointerWorld_.y;
-            ViewportPoint next{};
-            if (gestureIsCollider_)
+            ViewportPoint delta{currentWorld.x - gesturePointerWorld_.x,
+                                currentWorld.y - gesturePointerWorld_.y};
+            Json value;
+            switch (gestureKind_)
+            {
+            case SceneGestureKind::Position:
+            {
+                const float axisLengthSquared = gestureAxisWorld_.x * gestureAxisWorld_.x +
+                                               gestureAxisWorld_.y * gestureAxisWorld_.y;
+                if (axisLengthSquared > 0.0001f)
+                {
+                    const float amount = (delta.x * gestureAxisWorld_.x +
+                                          delta.y * gestureAxisWorld_.y) / axisLengthSquared;
+                    delta = {gestureAxisWorld_.x * amount, gestureAxisWorld_.y * amount};
+                }
+                const auto local = object_local_position_for_world(
+                    document, gestureAddress_.objectId,
+                    {gestureStartWorld_.x + delta.x, gestureStartWorld_.y + delta.y});
+                if (local)
+                    value = Json{{"x", local->x}, {"y", local->y}};
+                break;
+            }
+            case SceneGestureKind::ColliderOffset:
             {
                 const auto localOffset = collider_offset_for_world(
                     document, gestureAddress_.objectId,
-                    {gestureStartWorld_.x + deltaX, gestureStartWorld_.y + deltaY});
+                    {gestureStartWorld_.x + delta.x, gestureStartWorld_.y + delta.y});
                 if (localOffset)
-                    next = *localOffset;
+                    value = Json{{"x", localOffset->x}, {"y", localOffset->y}};
+                break;
             }
+            case SceneGestureKind::Scale:
+            {
+                const float pixelDelta = (mouse.x - pendingPressScreen_.x) * gestureAxisScreen_.x +
+                                         (mouse.y - pendingPressScreen_.y) * gestureAxisScreen_.y;
+                const float factor = 1.0f + pixelDelta / 62.0f;
+                const float scaleX = gestureScaleAxis_ == 0
+                    ? std::max(0.01f, gestureStartScale_.x * factor) : gestureStartScale_.x;
+                const float scaleY = gestureScaleAxis_ == 1
+                    ? std::max(0.01f, gestureStartScale_.y * factor) : gestureStartScale_.y;
+                value = Json{{"x", scaleX}, {"y", scaleY}};
+                break;
+            }
+            case SceneGestureKind::Rotation:
+            {
+                const float currentAngle = std::atan2(mouse.y - gesturePivotScreen_.y,
+                                                      mouse.x - gesturePivotScreen_.x);
+                const float angleDelta = std::remainder(currentAngle - gestureStartAngle_,
+                                                        2.0f * std::numbers::pi_v<float>);
+                value = gestureStartRotation_ + angleDelta;
+                break;
+            }
+            }
+            if (value.is_null())
+                cancel_gesture(commands, document);
             else
             {
-                const auto local = object_local_position_for_world(
-                    document, gestureAddress_.objectId,
-                    {gestureStartWorld_.x + deltaX, gestureStartWorld_.y + deltaY});
-                if (local)
-                    next = *local;
+                const CommandResult update = gesture_->update(commands, document, std::move(value));
+                if (!update)
+                    cancel_gesture(commands, document);
             }
-            Json value{{"x", next.x}, {"y", next.y}};
-            const CommandResult update = gesture_->update(commands, document, std::move(value));
-            if (!update)
-                cancel_gesture(commands, document);
         }
         else
         {
@@ -760,12 +976,9 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
 
     if (imageHovered && !capture && !gesture_)
     {
-        if (io.MouseWheel != 0.0f && transform_.zoom_at(mouse, std::pow(1.15f, io.MouseWheel)))
-        {
+        const float wheelStep = std::clamp(io.MouseWheel, -1.0f, 1.0f);
+        if (wheelStep != 0.0f && transform_.zoom(std::pow(1.1f, wheelStep)))
             viewZoom_ = transform_.zoom();
-            viewCenter_ = {transform_.camera_left() + transform_.world_width() * 0.5f,
-                           transform_.camera_top() + transform_.world_height() * 0.5f};
-        }
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
         {
             panning_ = true;
@@ -788,41 +1001,82 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
             Selection selected = selection.current();
             selected.focusedPanel = FocusedPanel::Scene;
             const auto worldPoint = transform_.screen_to_world(mouse);
-            const auto candidates = viewport_pick_candidates(transform_, preview.ordered_document_ids(),
-                                                              preview, mouse);
-            if (candidates.empty())
+            bool startedOnGizmo = false;
+            if (editingEnabled && selected.objectId)
             {
-                selected.objectId.reset();
-                selected.componentId.reset();
-                selected.behaviorOrdinal.reset();
-                pickCycle_.reset();
-            }
-            else
-            {
-                selected.objectId = pickCycle_.choose(candidates, mouse);
-                selected.componentId.reset();
-                selected.behaviorOrdinal.reset();
-            }
-            selection.set(document, selected);
-            pendingDrag_ = false;
-            if (editingEnabled && worldPoint && selected.objectId)
-            {
-                const PreviewObjectInfo *info = preview.object_info(*selected.objectId);
-                if (info != nullptr)
+                if (const Json *object = resolve_object(document, *selected.objectId))
                 {
-                    const ViewportPoint offset = rotate({info->colliderOffsetX, info->colliderOffsetY},
-                                                        info->rotationDegrees);
-                    const ViewportPoint colliderWorld{info->worldX + offset.x, info->worldY + offset.y};
-                    const auto colliderScreen = transform_.world_to_screen(colliderWorld);
-                    pendingColliderDrag_ = info->colliderShape != PreviewColliderShape::None &&
-                                            distance_squared(mouse, colliderScreen) <= 64.0f;
-                    pendingDragObjectId_ = *selected.objectId;
-                    pendingPressScreen_ = mouse;
-                    pendingPointerWorld_ = *worldPoint;
-                    pendingTargetWorld_ = pendingColliderDrag_
-                                              ? colliderWorld
-                                              : ViewportPoint{info->worldX, info->worldY};
-                    pendingDrag_ = true;
+                    const ViewportPoint pivot = object_world_position(document, *selected.objectId);
+                    const float rotationDegrees = rotation_of(*object) * 180.0f /
+                                                  std::numbers::pi_v<float>;
+                    const auto handle = hit_transform_handle(transform_, pivot,
+                                                             rotationDegrees, mouse);
+                    if (handle)
+                    {
+                        selection.set(document, selected);
+                        pendingGestureKind_ = handle->kind;
+                        pendingDragObjectId_ = *selected.objectId;
+                        pendingPressScreen_ = mouse;
+                        pendingPointerWorld_ = worldPoint.value_or(pivot);
+                        pendingTargetWorld_ = pivot;
+                        pendingAxisWorld_ = handle->axisWorld;
+                        pendingAxisScreen_ = handle->axisScreen;
+                        pendingScaleAxis_ = handle->scaleAxis;
+                        pendingPivotScreen_ = transform_.world_to_screen(pivot);
+                        pendingDrag_ = true;
+                        startedOnGizmo = true;
+                    }
+                }
+            }
+
+            if (!startedOnGizmo)
+            {
+                const auto candidates = viewport_pick_candidates(transform_, preview.ordered_document_ids(),
+                                                                  preview, mouse);
+                if (candidates.empty())
+                {
+                    selected.objectId.reset();
+                    selected.componentId.reset();
+                    selected.behaviorOrdinal.reset();
+                    pickCycle_.reset();
+                }
+                else
+                {
+                    selected.objectId = pickCycle_.choose(candidates, mouse);
+                    selected.componentId.reset();
+                    selected.behaviorOrdinal.reset();
+                }
+                selection.set(document, selected);
+                pendingDrag_ = false;
+                if (editingEnabled && worldPoint && selected.objectId)
+                {
+                    const Json *object = resolve_object(document, *selected.objectId);
+                    if (object != nullptr)
+                    {
+                        const ViewportPoint objectWorld = object_world_position(document, *selected.objectId);
+                        const PreviewObjectInfo *info = preview.object_info(*selected.objectId);
+                        ViewportPoint colliderWorld = objectWorld;
+                        bool colliderHandle = false;
+                        if (info != nullptr && info->colliderShape != PreviewColliderShape::None)
+                        {
+                            const ViewportPoint offset = rotate(
+                                {info->colliderOffsetX, info->colliderOffsetY}, info->rotationDegrees);
+                            colliderWorld = {info->worldX + offset.x, info->worldY + offset.y};
+                            const auto colliderScreen = transform_.world_to_screen(colliderWorld);
+                            colliderHandle = distance_squared(mouse, colliderScreen) <= 64.0f;
+                        }
+                        pendingGestureKind_ = colliderHandle
+                            ? SceneGestureKind::ColliderOffset : SceneGestureKind::Position;
+                        pendingDragObjectId_ = *selected.objectId;
+                        pendingPressScreen_ = mouse;
+                        pendingPointerWorld_ = *worldPoint;
+                        pendingTargetWorld_ = colliderHandle ? colliderWorld : objectWorld;
+                        pendingAxisWorld_ = {};
+                        pendingAxisScreen_ = {};
+                        pendingScaleAxis_ = -1;
+                        pendingPivotScreen_ = transform_.world_to_screen(objectWorld);
+                        pendingDrag_ = true;
+                    }
                 }
             }
         }

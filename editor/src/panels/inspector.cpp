@@ -1,8 +1,11 @@
 #include "inspector.h"
 
+#include "../componenttypes.h"
+
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -10,6 +13,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace platformator_editor
 {
@@ -104,6 +108,28 @@ int json_integer(const Json *value, int fallback)
     }
 }
 
+std::optional<int> script_component_id(const DocumentSession &document, int objectId)
+{
+    const auto objectLocation = document.indexes.objectsById.find(objectId);
+    if (objectLocation == document.indexes.objectsById.end())
+        return std::nullopt;
+    const Json *object = resolve_object(document.root, objectLocation->second);
+    if (object == nullptr)
+        return std::nullopt;
+    const auto components = object->find("components");
+    if (components == object->end() || !components->is_array())
+        return std::nullopt;
+    for (const auto &component : *components)
+    {
+        if (!component.is_object() || json_integer(component.contains("type") ? &component["type"] : nullptr, -1) != 5)
+            continue;
+        const int id = json_integer(component.contains("id") ? &component["id"] : nullptr, -1);
+        if (id >= 0)
+            return id;
+    }
+    return std::nullopt;
+}
+
 float json_float(const Json *value, float fallback)
 {
     if (value == nullptr || !value->is_number())
@@ -116,39 +142,6 @@ float json_float(const Json *value, float fallback)
     {
         return fallback;
     }
-}
-
-const char *component_label(int type)
-{
-    switch (type)
-    {
-    case 0:
-        return "Animator";
-    case 1:
-        return "Audio";
-    case 2:
-        return "Camera";
-    case 3:
-        return "Collider";
-    case 4:
-        return "Rigidbody";
-    case 5:
-        return "Script";
-    case 6:
-        return "Sprite";
-    default:
-        return "Unknown Component";
-    }
-}
-
-bool has_component_type(const Json &object, int type)
-{
-    const auto components = object.find("components");
-    if (components == object.end() || !components->is_array())
-        return false;
-    return std::any_of(components->begin(), components->end(), [type](const Json &component) {
-        return component.is_object() && json_integer(component.contains("type") ? &component["type"] : nullptr, -1) == type;
-    });
 }
 
 std::string stable_field_id(const std::vector<FieldPathSegment> &path)
@@ -180,35 +173,6 @@ void end_field()
     ImGui::PopID();
 }
 
-Json default_component(int type)
-{
-    switch (type)
-    {
-    case 0:
-        return Json{{"type", 0}, {"currentFrameIndex", 0}, {"playbackSpeed", 1.0},
-                    {"playing", false}, {"animationClipFilePath", ""}};
-    case 1:
-        return Json{{"type", 1}, {"filePath", ""}, {"gain", 1.0}, {"loopCount", 0}, {"autoPlay", false}};
-    case 2:
-        return Json{{"type", 2}, {"width", 640.0}, {"height", 480.0}};
-    case 3:
-        return Json{{"type", 3}, {"colliderType", 1}, {"width", 16.0}, {"height", 16.0},
-                    {"offset", {{"x", 0.0}, {"y", 0.0}}}, {"trigger", false},
-                    {"collisionGroup", 1}, {"collisionMask", 1}};
-    case 4:
-        return Json{{"type", 4}, {"velocity", {{"x", 0.0}, {"y", 0.0}}},
-                    {"force", {{"x", 0.0}, {"y", 0.0}}}, {"mass", 1.0},
-                    {"angularVelocity", 0.0}, {"torque", 0.0}, {"friction", 0.5},
-                    {"restitution", 0.0}, {"bodyType", 0}, {"gravity", true}};
-    case 5:
-        return Json{{"type", 5}, {"behaviors", Json::array()}};
-    case 6:
-        return Json{{"type", 6}, {"textureFilePath", ""}, {"flip", 0},
-                    {"width", 16.0}, {"height", 16.0}, {"sourceRectEnabled", false}};
-    default:
-        return Json::object();
-    }
-}
 } // namespace
 
 const std::string &InspectorPanel::feedback() const noexcept
@@ -252,8 +216,7 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     const Json *stored = address_value(document, objectId, componentId, path);
     float value = json_float(stored, defaultValue);
     begin_field(label, path);
-    const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.3f",
-                                           ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.2f");
     end_field();
     if (!changed)
         return false;
@@ -273,7 +236,7 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     const Json *stored = address_value(document, objectId, componentId, path);
     int value = json_integer(stored, defaultValue);
     begin_field(label, path);
-    const bool changed = ImGui::InputInt("##value", &value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool changed = ImGui::InputInt("##value", &value, 1, 100);
     end_field();
     if (!changed)
         return false;
@@ -299,9 +262,11 @@ bool InspectorPanel::draw_string(DocumentSession &document, EditCommandService &
     std::array<char, 4096> buffer{};
     std::memcpy(buffer.data(), value.data(), value.size());
     begin_field(label, path);
-    const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
+                                          ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
     end_field();
-    if (!changed)
+    if (!commit)
         return false;
     return set(document, commands, objectId, componentId, std::move(path), std::string(buffer.data()));
 }
@@ -337,7 +302,8 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
     return changed;
 }
 
-void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands)
+void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
+                          const BehaviorCatalog &catalog, const AssetBrowseCallback &browse)
 {
     selection.repair(document);
     if (!selection.current().objectId)
@@ -356,8 +322,100 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     if (object == nullptr)
         return;
 
+    const auto attach_behavior = [&](const std::string &behaviorType) {
+        if (behaviorType.empty())
+            return;
+        const Selection before = selection.current();
+        auto scriptId = script_component_id(document, objectId);
+        std::size_t ordinal = 0;
+        StructuralCommandResult result;
+        if (scriptId)
+        {
+            const auto objectLocation = document.indexes.objectsById.find(objectId);
+            const auto scriptLocation = document.indexes.componentsById.find(*scriptId);
+            if (objectLocation == document.indexes.objectsById.end() ||
+                scriptLocation == document.indexes.componentsById.end())
+            {
+                feedback_ = "The selected object changed before the behavior could be attached.";
+                return;
+            }
+            const Json *currentObject = resolve_object(document.root, objectLocation->second);
+            if (currentObject != nullptr)
+            {
+                const auto components = currentObject->find("components");
+                if (components != currentObject->end() && components->is_array() &&
+                    scriptLocation->second.componentIndex < components->size())
+                {
+                    const auto &script = (*components)[scriptLocation->second.componentIndex];
+                    const auto behaviors = script.find("behaviors");
+                    if (behaviors != script.end() && behaviors->is_array())
+                        ordinal = behaviors->size();
+                }
+            }
+            result = commands.add_behavior(document, objectId, *scriptId,
+                                           Json{{"type", behaviorType}});
+        }
+        else
+        {
+            Json script = default_component_record(5);
+            script["behaviors"].push_back(Json{{"type", behaviorType}});
+            result = commands.add_component(document, objectId, std::move(script));
+            if (result.status == CommandStatus::Changed && result.command)
+                scriptId = result.command->payload.value("id", 0);
+        }
+        if (result.status == CommandStatus::Changed && scriptId)
+        {
+            selection.set(document, Selection{objectId, *scriptId, ordinal,
+                                              FocusedPanel::Inspector});
+            commands.set_last_selection_state({before, selection.current()});
+            feedback_.clear();
+        }
+        else
+        {
+            feedback_ = result.message.empty() ? "Could not attach this behavior to the object."
+                                               : result.message;
+        }
+    };
+
+    const ImVec2 windowPosition = ImGui::GetWindowPos();
+    const ImVec2 contentMinimum = ImGui::GetCursorScreenPos();
+    const ImVec2 windowSize = ImGui::GetWindowSize();
+    const ImVec2 padding = ImGui::GetStyle().WindowPadding;
+    const ImRect dropBounds(contentMinimum,
+                            ImVec2(windowPosition.x + windowSize.x - padding.x,
+                                   windowPosition.y + windowSize.y - padding.y));
+    if (ImGui::BeginDragDropTargetCustom(dropBounds, ImGui::GetID("##behavior-drop-target")))
+    {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_BEHAVIOR_TYPE"))
+        {
+            if (payload->IsDelivery() && payload->Data != nullptr && payload->DataSize > 1 &&
+                payload->DataSize <= 256)
+            {
+                const auto *bytes = static_cast<const char *>(payload->Data);
+                const std::size_t textSize = payload->DataSize - (bytes[payload->DataSize - 1] == '\0' ? 1U : 0U);
+                std::string behaviorType(bytes, bytes + textSize);
+                const bool validType = !behaviorType.empty() &&
+                    (std::isalpha(static_cast<unsigned char>(behaviorType.front())) || behaviorType.front() == '_') &&
+                    std::all_of(behaviorType.begin() + 1, behaviorType.end(), [](unsigned char character) {
+                        return std::isalnum(character) || character == '_';
+                    });
+                if (validType)
+                    attach_behavior(behaviorType);
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+
     ImGui::Text("Object %d", objectId);
-    if (ImGui::CollapsingHeader("GameObject", ImGuiTreeNodeFlags_DefaultOpen))
+    const bool gameObjectExpanded = ImGui::CollapsingHeader(
+        "GameObject", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+    ImGui::SetItemTooltip("Drop a behavior header anywhere in the Inspector to add it to this GameObject.");
+    const auto refreshedObjectLocation = document.indexes.objectsById.find(objectId);
+    object = refreshedObjectLocation == document.indexes.objectsById.end()
+        ? nullptr : resolve_object(document.root, refreshedObjectLocation->second);
+    if (object == nullptr)
+        return;
+    if (gameObjectExpanded)
     {
         draw_string(document, commands, objectId, std::nullopt, {std::string("name")}, "Name");
         draw_string(document, commands, objectId, std::nullopt, {std::string("tag")}, "Tag");
@@ -377,22 +435,44 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                     {std::string("rotation")}, "Rotation");
     }
 
-    const Json *component = nullptr;
-    std::optional<int> componentId = selection.current().componentId;
-    if (componentId)
+    const auto objectComponents = object->find("components");
+    std::vector<int> visibleComponentIds;
+    if (selection.current().componentId)
     {
-        const auto componentLocation = document.indexes.componentsById.find(*componentId);
+        const auto componentLocation = document.indexes.componentsById.find(*selection.current().componentId);
         if (componentLocation != document.indexes.componentsById.end() &&
             componentLocation->second.ownerObjectId == objectId)
+            visibleComponentIds.push_back(*selection.current().componentId);
+    }
+    else if (objectComponents != object->end() && objectComponents->is_array())
+    {
+        visibleComponentIds.reserve(objectComponents->size());
+        for (const auto &candidate : *objectComponents)
         {
-            const auto components = object->find("components");
-            if (components != object->end() && components->is_array() &&
-                componentLocation->second.componentIndex < components->size())
-                component = &(*components)[componentLocation->second.componentIndex];
+            const int candidateId = json_integer(candidate.is_object() && candidate.contains("id")
+                                                     ? &candidate.at("id") : nullptr, -1);
+            if (candidateId >= 0)
+                visibleComponentIds.push_back(candidateId);
         }
     }
-    if (component != nullptr)
+
+    for (const int visibleComponentId : visibleComponentIds)
     {
+        const auto componentLocation = document.indexes.componentsById.find(visibleComponentId);
+        if (componentLocation == document.indexes.componentsById.end() ||
+            componentLocation->second.ownerObjectId != objectId)
+            continue;
+        const auto currentObjectLocation = document.indexes.objectsById.find(objectId);
+        const Json *currentObject = currentObjectLocation == document.indexes.objectsById.end()
+            ? nullptr : resolve_object(document.root, currentObjectLocation->second);
+        if (currentObject == nullptr)
+            continue;
+        const auto components = currentObject->find("components");
+        if (components == currentObject->end() || !components->is_array() ||
+            componentLocation->second.componentIndex >= components->size())
+            continue;
+        const Json *component = &(*components)[componentLocation->second.componentIndex];
+        const std::optional<int> componentId = visibleComponentId;
         ImGui::Separator();
         const int type = json_integer(component->contains("type") ? &component->at("type") : nullptr, -1);
         ImGui::PushID(*componentId);
@@ -487,8 +567,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         else if (type == 6)
         {
             ImGui::SeparatorText("Sprite");
-            draw_string(document, commands, objectId, componentId,
-                        {std::string("textureFilePath")}, "Texture");
+            draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
+                                       {std::string("textureFilePath")}, "Texture", true,
+                                       "Texture", browse, std::string{});
             draw_enum(document, commands, objectId, componentId, {std::string("flip")}, "Flip", 0,
                       {{0, "None"}, {1, "Horizontal"}, {2, "Vertical"}, {3, "Horizontal + Vertical"}});
             draw_number(document, commands, objectId, componentId, {std::string("width")}, "Width", 16.0f,
@@ -521,34 +602,32 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
             draw_number(document, commands, objectId, componentId,
                         {std::string("playbackSpeed")}, "Playback Speed", 1.0f);
             draw_boolean(document, commands, objectId, componentId, {std::string("playing")}, "Playing");
-            draw_string(document, commands, objectId, componentId,
-                        {std::string("animationClipFilePath")}, "Animation Clip");
+            draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
+                                       {std::string("animationClipFilePath")}, "AnimationClip", true,
+                                       "Animation Clip", browse, std::string{});
         }
         else if (type == 1)
         {
             ImGui::SeparatorText("Audio");
-            draw_string(document, commands, objectId, componentId, {std::string("filePath")}, "Audio File");
+            draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
+                                       {std::string("filePath")}, "Audio", true,
+                                       "Audio File", browse, std::string{});
             draw_number(document, commands, objectId, componentId, {std::string("gain")}, "Gain", 1.0f);
             draw_integer(document, commands, objectId, componentId, {std::string("loopCount")}, "Loop Count", 0);
             draw_boolean(document, commands, objectId, componentId, {std::string("autoPlay")}, "Auto Play");
         }
         else if (type == 5)
         {
-            ImGui::SeparatorText("Behaviors");
-            const auto behaviors = component->find("behaviors");
-            if (behaviors != component->end() && behaviors->is_array())
+            ImGui::SeparatorText("Behavior Fields");
+            if (selection.current().componentId == componentId)
+                behaviorFields_.draw(document, selection, commands, catalog, browse);
+            else
             {
-                for (std::size_t index = 0; index < behaviors->size(); ++index)
-                {
-                    const auto &behavior = (*behaviors)[index];
-                    ImGui::BulletText("%zu: %s", index,
-                                      behavior.is_object() ? behavior.value("type", "Unknown").c_str() : "Malformed");
-                }
+                SelectionModel scriptSelection;
+                scriptSelection.set(document, Selection{objectId, componentId, std::nullopt,
+                                                        FocusedPanel::Inspector});
+                behaviorFields_.draw(document, scriptSelection, commands, catalog, browse);
             }
-            if (ImGui::Button("Open Behavior Fields"))
-                selection.set(document, Selection{objectId, componentId,
-                                                  selection.current().behaviorOrdinal,
-                                                  FocusedPanel::Behaviors});
         }
         else
         {
@@ -560,19 +639,21 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::PopID();
     }
 
-    if (ImGui::BeginCombo("Add Component", "Choose a component..."))
+    if (ImGui::Button("Add Component"))
+        ImGui::OpenPopup("Add Component Menu");
+    if (ImGui::BeginPopup("Add Component Menu"))
     {
-        const std::array<std::pair<int, const char *>, 7> choices{{
-            {0, "Animator"}, {1, "Audio"}, {2, "Camera"}, {3, "Collider"},
-            {4, "Rigidbody"}, {5, "Script"}, {6, "Sprite"}}};
-        for (const auto &[type, label] : choices)
+        for (const auto &[type, label] : kComponentChoices)
         {
-            if (has_component_type(*object, type))
+            const auto currentObjectLocation = document.indexes.objectsById.find(objectId);
+            const Json *currentObject = currentObjectLocation == document.indexes.objectsById.end()
+                ? nullptr : resolve_object(document.root, currentObjectLocation->second);
+            if (currentObject == nullptr || has_component_type(*currentObject, type))
                 continue;
-            if (ImGui::Selectable(label))
+            if (ImGui::MenuItem(label))
             {
                 const Selection before = selection.current();
-                auto result = commands.add_component(document, objectId, default_component(type));
+                auto result = commands.add_component(document, objectId, default_component_record(type));
                 if (result.status == CommandStatus::Changed && result.command)
                 {
                     const int newComponentId = result.command->payload.value("id", 0);
@@ -582,9 +663,10 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                 }
                 else
                     feedback_ = result.message;
+                break;
             }
         }
-        ImGui::EndCombo();
+        ImGui::EndPopup();
     }
     if (!feedback_.empty())
         ImGui::TextWrapped("%s", feedback_.c_str());

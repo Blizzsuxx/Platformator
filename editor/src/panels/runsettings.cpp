@@ -62,14 +62,20 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
     ImGui::Checkbox("Fullscreen", &preferences.fullscreen);
     ImGui::Checkbox("Maximized", &preferences.maximized);
     ImGui::Checkbox("Preserve aspect ratio", &preferences.preserveAspect);
-    ImGui::Checkbox("Start paused", &preferences.startPaused);
+    bool startPaused = preferences.production ? false : preferences.startPaused;
+    ImGui::BeginDisabled(preferences.production);
+    if (ImGui::Checkbox("Start paused", &startPaused))
+        preferences.startPaused = startPaused;
+    ImGui::EndDisabled();
     const auto is_enabled = [&](const char *name) {
-        return preferences.overlays.empty() ||
-               std::find(preferences.overlays.begin(), preferences.overlays.end(), name) != preferences.overlays.end();
+        return !preferences.production &&
+               (preferences.overlays.empty() ||
+                std::find(preferences.overlays.begin(), preferences.overlays.end(), name) != preferences.overlays.end());
     };
     auto overlay = [&](const char *label, const char *name) {
         bool enabled = is_enabled(name);
         ImGui::PushID(name);
+        ImGui::BeginDisabled(preferences.production);
         if (ImGui::Checkbox(label, &enabled))
         {
             if (preferences.overlays.empty())
@@ -84,6 +90,7 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
             if (preferences.overlays.empty())
                 preferences.overlays = {"none"};
         }
+        ImGui::EndDisabled();
         ImGui::PopID();
     };
     overlay("Show colliders", "colliders");

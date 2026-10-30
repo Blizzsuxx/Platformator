@@ -22,16 +22,17 @@ endif()
 
 add_executable(mario_example
     "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mario_camera_rig.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mario_coin.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mario_game.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mario_goal_flag.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mario_patrol_enemy.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mario_player.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_camera_rig.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_coin.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_game.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_goal_flag.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_patrol_enemy.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_player.cpp"
 )
 
 target_include_directories(mario_example PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors"
 )
 
 target_link_libraries(mario_example PRIVATE Platformator::platformator)

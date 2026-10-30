@@ -73,6 +73,7 @@ ProjectScanResult perform_scan(const std::filesystem::path &root, ProjectScanOpt
     std::error_code error;
     const auto directoryOptions = std::filesystem::directory_options::skip_permission_denied;
     std::set<std::string> identityEntries;
+    std::set<std::string> filesystemIdentityEntries;
     std::size_t entriesVisited = 0;
     const auto add_entry = [&](const std::filesystem::directory_entry &entry, bool recursive) {
         std::error_code typeError;
@@ -82,6 +83,14 @@ ProjectScanResult perform_scan(const std::filesystem::path &root, ProjectScanOpt
         {
             if (typeError)
                 return;
+            if (options.trackFileMetadata)
+            {
+                std::error_code metadataError;
+                const auto modified = entry.last_write_time(metadataError);
+                if (!metadataError)
+                    filesystemIdentityEntries.insert("d:" + entry.path().lexically_relative(root).generic_string() +
+                                                     ":" + std::to_string(modified.time_since_epoch().count()));
+            }
             const auto name = entry.path().filename().string();
             if (options.sourceInputsOnly &&
                 (name == ".git" || name == "bin" || name == "build" || name == "dist" ||
@@ -117,6 +126,19 @@ ProjectScanResult perform_scan(const std::filesystem::path &root, ProjectScanOpt
             return;
         }
         result.files.push_back(entry.path());
+        if (options.trackFileMetadata)
+        {
+            std::error_code metadataError;
+            const auto size = entry.file_size(metadataError);
+            if (!metadataError)
+            {
+                const auto modified = entry.last_write_time(metadataError);
+                if (!metadataError)
+                    filesystemIdentityEntries.insert("f:" + entry.path().lexically_relative(root).generic_string() +
+                                                     ":" + std::to_string(size) + ":" +
+                                                     std::to_string(modified.time_since_epoch().count()));
+            }
+        }
         if (options.sourceInputsOnly)
         {
             std::error_code metadataError;
@@ -207,10 +229,9 @@ ProjectScanResult perform_scan(const std::filesystem::path &root, ProjectScanOpt
         result.cancelled = true;
     std::sort(result.files.begin(), result.files.end());
     std::sort(result.directories.begin(), result.directories.end());
-    if (options.sourceInputsOnly)
-    {
+    const auto make_identity = [](const std::set<std::string> &entries) {
         std::uint64_t hash = 14695981039346656037ull;
-        for (const auto &entry : identityEntries)
+        for (const auto &entry : entries)
         {
             for (const unsigned char byte : entry)
             {
@@ -222,8 +243,14 @@ ProjectScanResult perform_scan(const std::filesystem::path &root, ProjectScanOpt
         }
         std::ostringstream identity;
         identity << std::hex << std::setfill('0') << std::setw(16) << hash;
-        result.sourceInputIdentity = identity.str();
+        return identity.str();
+    };
+    if (options.sourceInputsOnly)
+    {
+        result.sourceInputIdentity = make_identity(identityEntries);
     }
+    if (options.trackFileMetadata)
+        result.fileIdentity = make_identity(filesystemIdentityEntries);
     return result;
 }
 } // namespace

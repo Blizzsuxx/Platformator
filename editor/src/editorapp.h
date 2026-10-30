@@ -11,6 +11,8 @@ struct LaunchOptions
     std::filesystem::path projectRoot;
     std::filesystem::path assetRoot;
     std::optional<std::filesystem::path> scenePath;
+    bool projectRootProvided = false;
+    bool assetRootProvided = false;
     float uiScale = 1.0f;
     bool uiScaleProvided = false;
     bool noRestore = false;

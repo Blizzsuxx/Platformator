@@ -13,6 +13,7 @@ namespace platformator_editor
 enum class HierarchyRowKind
 {
     Object,
+    ComponentsNode,
     Component
 };
 
@@ -24,6 +25,7 @@ struct HierarchyRow
     std::size_t depth = 0;
     std::string label;
     bool hasChildren = false;
+    int parentRowIndex = -1;
 };
 
 class HierarchyPanel
@@ -41,6 +43,7 @@ class HierarchyPanel
     std::uint64_t cachedStructureRevision_ = 0;
     bool cacheValid_ = false;
     std::unordered_set<int> expandedObjects_;
+    std::unordered_set<int> collapsedComponentGroups_;
     bool initializedExpansion_ = false;
     std::vector<HierarchyRow> rows_;
 };

@@ -9,8 +9,6 @@ namespace platformator_editor
 struct EditorToolbarState
 {
     bool projectLocked = false;
-    bool canUndo = false;
-    bool canRedo = false;
     bool operationActive = false;
     bool openScenePending = false;
     std::string sceneLabel;
@@ -20,16 +18,11 @@ struct EditorToolbarState
 
 struct EditorToolbarActions
 {
-    std::function<void()> newScene;
     std::function<void()> openScene;
     std::function<void()> save;
     std::function<void()> build;
     std::function<void()> buildAndRun;
     std::function<void()> stop;
-    std::function<void()> undo;
-    std::function<void()> redo;
-    std::function<void()> validate;
-    std::function<void()> openProject;
 };
 
 struct EditorToolbarItemBounds

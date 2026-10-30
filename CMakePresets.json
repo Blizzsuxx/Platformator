@@ -67,7 +67,14 @@
             "binaryDir": "${sourceDir}/bin/production",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "OFF",
+                "PLATFORMATOR_SANITIZER": "none",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
+                "PLATFORMATOR_ENABLE_BENCHMARKS": "OFF",
+                "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
+                "PLATFORMATOR_BUILD_TESTS": "OFF",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "PLATFORMATOR_BUILD_EDITOR": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/production"
             }
         },

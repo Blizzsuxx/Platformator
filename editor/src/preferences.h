@@ -28,6 +28,16 @@ struct RunPreferences
     bool operator==(const RunPreferences &) const = default;
 };
 
+struct EditorWindowPreferences
+{
+    int width = 1280;
+    int height = 800;
+    bool fullscreen = false;
+    bool maximized = false;
+
+    bool operator==(const EditorWindowPreferences &) const = default;
+};
+
 struct WorkspacePreferences
 {
     int version = 1;
@@ -38,6 +48,7 @@ struct WorkspacePreferences
     float navigationZoom = 1.0f;
     float navigationX = 0.0f;
     float navigationY = 0.0f;
+    EditorWindowPreferences editorWindow;
     RunPreferences run;
 };
 
@@ -75,6 +86,12 @@ struct WorkspacePreferencesSaveResult
     }
 };
 
+struct LastWorkspaceLoadResult
+{
+    std::optional<std::filesystem::path> projectRoot;
+    std::string message;
+};
+
 struct StartupSceneResolution
 {
     std::optional<std::filesystem::path> scenePath;
@@ -94,6 +111,9 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
 WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferencePaths &paths,
                                                           const WorkspacePreferences &preferences,
                                                           const std::string &layout);
+LastWorkspaceLoadResult load_last_workspace(const std::filesystem::path &path);
+bool save_last_workspace(const std::filesystem::path &path,
+                         const std::filesystem::path &projectRoot, std::string &error);
 void record_adopted_scene(WorkspacePreferences &preferences, const std::filesystem::path &scenePath);
 StartupSceneResolution resolve_startup_scene(const std::optional<std::filesystem::path> &explicitScene,
                                               const std::optional<std::filesystem::path> &recentScene,

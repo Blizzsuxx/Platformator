@@ -124,6 +124,72 @@ void draw_icon(ImDrawList *draw, EditorIcon icon, ImVec2 origin, float size, ImU
     case EditorIcon::Stop:
         draw->AddRectFilled({x + s * 0.23f, y + s * 0.23f}, {x + s * 0.77f, y + s * 0.77f}, color, 2.0f);
         break;
+    case EditorIcon::GameObject:
+        draw->AddRect({x + s * 0.18f, y + s * 0.25f}, {x + s * 0.82f, y + s * 0.78f}, color, 1.5f, 0, t);
+        draw->AddLine({x + s * 0.18f, y + s * 0.25f}, {x + s * 0.50f, y + s * 0.10f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.10f}, {x + s * 0.82f, y + s * 0.25f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.10f}, {x + s * 0.50f, y + s * 0.62f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.62f}, {x + s * 0.18f, y + s * 0.78f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.62f}, {x + s * 0.82f, y + s * 0.78f}, color, t);
+        break;
+    case EditorIcon::Animator:
+        draw->AddCircle({x + s * 0.50f, y + s * 0.53f}, s * 0.34f, color, 0, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.53f}, {x + s * 0.50f, y + s * 0.30f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.53f}, {x + s * 0.68f, y + s * 0.62f}, color, t);
+        draw->AddLine({x + s * 0.36f, y + s * 0.08f}, {x + s * 0.64f, y + s * 0.08f}, color, t);
+        break;
+    case EditorIcon::Audio:
+        draw->AddRectFilled({x + s * 0.16f, y + s * 0.39f}, {x + s * 0.36f, y + s * 0.62f}, color, 1.0f);
+        draw->AddTriangleFilled({x + s * 0.34f, y + s * 0.39f}, {x + s * 0.62f, y + s * 0.18f},
+                                {x + s * 0.62f, y + s * 0.82f}, color);
+        draw->PathArcTo({x + s * 0.57f, y + s * 0.50f}, s * 0.26f, -0.85f, 0.85f, 12);
+        draw->PathStroke(color, 0, t);
+        draw->PathClear();
+        break;
+    case EditorIcon::Camera:
+        draw->AddRect({x + s * 0.12f, y + s * 0.28f}, {x + s * 0.88f, y + s * 0.78f}, color, 2.0f, 0, t);
+        draw->AddRect({x + s * 0.25f, y + s * 0.17f}, {x + s * 0.48f, y + s * 0.29f}, color, 1.0f, 0, t);
+        draw->AddCircle({x + s * 0.60f, y + s * 0.53f}, s * 0.17f, color, 0, t);
+        break;
+    case EditorIcon::Collider:
+        draw->AddRect({x + s * 0.19f, y + s * 0.19f}, {x + s * 0.81f, y + s * 0.81f}, color, 0.0f, 0, t);
+        draw->AddLine({x + s * 0.19f, y + s * 0.50f}, {x + s * 0.81f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.19f}, {x + s * 0.50f, y + s * 0.81f}, color, t);
+        break;
+    case EditorIcon::Rigidbody:
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.51f}, s * 0.21f, color, 12);
+        draw->AddLine({x + s * 0.50f, y + s * 0.12f}, {x + s * 0.50f, y + s * 0.28f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.74f}, {x + s * 0.50f, y + s * 0.90f}, color, t);
+        draw->AddLine({x + s * 0.11f, y + s * 0.51f}, {x + s * 0.28f, y + s * 0.51f}, color, t);
+        draw->AddLine({x + s * 0.72f, y + s * 0.51f}, {x + s * 0.89f, y + s * 0.51f}, color, t);
+        break;
+    case EditorIcon::Script:
+        draw->AddRect({x + s * 0.20f, y + s * 0.12f}, {x + s * 0.80f, y + s * 0.88f}, color, 1.5f, 0, t);
+        draw->AddLine({x + s * 0.35f, y + s * 0.39f}, {x + s * 0.27f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.27f, y + s * 0.50f}, {x + s * 0.35f, y + s * 0.61f}, color, t);
+        draw->AddLine({x + s * 0.65f, y + s * 0.39f}, {x + s * 0.73f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.73f, y + s * 0.50f}, {x + s * 0.65f, y + s * 0.61f}, color, t);
+        draw->AddLine({x + s * 0.56f, y + s * 0.35f}, {x + s * 0.44f, y + s * 0.65f}, color, t);
+        break;
+    case EditorIcon::Sprite:
+        draw->AddRect({x + s * 0.12f, y + s * 0.14f}, {x + s * 0.88f, y + s * 0.86f}, color, 1.5f, 0, t);
+        draw->AddCircleFilled({x + s * 0.68f, y + s * 0.34f}, s * 0.07f, color, 8);
+        draw->PathLineTo({x + s * 0.19f, y + s * 0.74f});
+        draw->PathLineTo({x + s * 0.43f, y + s * 0.47f});
+        draw->PathLineTo({x + s * 0.56f, y + s * 0.61f});
+        draw->PathLineTo({x + s * 0.67f, y + s * 0.51f});
+        draw->PathLineTo({x + s * 0.81f, y + s * 0.73f});
+        draw->PathStroke(color, 0, t);
+        draw->PathClear();
+        break;
+    case EditorIcon::UnknownComponent:
+        draw->AddRect({x + s * 0.16f, y + s * 0.16f}, {x + s * 0.84f, y + s * 0.84f}, color, 2.0f, 0, t);
+        draw->AddText({x + s * 0.34f, y + s * 0.18f}, color, "?");
+        break;
+    case EditorIcon::Folder:
+        draw->AddRectFilled({x + s * 0.10f, y + s * 0.25f}, {x + s * 0.90f, y + s * 0.82f}, color, 2.0f);
+        draw->AddRectFilled({x + s * 0.16f, y + s * 0.12f}, {x + s * 0.52f, y + s * 0.32f}, color, 2.0f);
+        break;
     }
 }
 } // namespace
@@ -182,5 +248,11 @@ bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip)
     }
     (void)id;
     return pressed;
+}
+
+void draw_editor_icon(EditorIcon icon, ImDrawList *draw, ImVec2 origin, float size, ImU32 color)
+{
+    if (draw != nullptr && size > 0.0f)
+        draw_icon(draw, icon, origin, size, color);
 }
 } // namespace platformator_editor

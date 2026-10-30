@@ -51,8 +51,9 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
                                 std::size_t behaviorOrdinal, const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedTarget, bool nullable, const char *label);
 void draw_asset_reference_field(DocumentSession &document, EditCommandService &commands,
-                                int objectId, int componentId, std::size_t behaviorOrdinal,
+                                int objectId, std::optional<int> componentId,
+                                std::optional<std::size_t> behaviorOrdinal,
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedAssetType, bool nullable, const char *label,
-                                const AssetBrowseCallback &browse = {});
+                                const AssetBrowseCallback &browse = {}, Json clearValue = nullptr);
 } // namespace platformator_editor

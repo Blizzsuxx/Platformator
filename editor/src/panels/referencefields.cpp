@@ -1,9 +1,7 @@
 #include "referencefields.h"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
-#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -91,7 +89,30 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
         const Json *object = resolve_object(documentRoot, location->second);
         if (object == nullptr)
             return {};
-        return object->value("name", std::string("GameObject")) + " (#" + std::to_string(id) + ")";
+        std::vector<std::string> names;
+        int currentId = id;
+        while (true)
+        {
+            const auto current = indexes.objectsById.find(currentId);
+            if (current == indexes.objectsById.end())
+                break;
+            const Json *record = resolve_object(documentRoot, current->second);
+            if (record == nullptr)
+                break;
+            names.push_back(record->value("name", std::string("GameObject")));
+            const auto parent = indexes.parentById.find(currentId);
+            if (parent == indexes.parentById.end() || !parent->second)
+                break;
+            currentId = *parent->second;
+        }
+        std::string label;
+        for (auto name = names.rbegin(); name != names.rend(); ++name)
+        {
+            if (!label.empty())
+                label += " / ";
+            label += *name;
+        }
+        return label;
     }
     const auto location = indexes.componentsById.find(id);
     if (location == indexes.componentsById.end())
@@ -106,8 +127,21 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
     if (components == owner->end() || !components->is_array() ||
         location->second.componentIndex >= components->size())
         return {};
-    const std::string ownerName = owner->value("name", std::string("GameObject"));
-    return ownerName + " / " + std::string(target) + " (#" + std::to_string(id) + ")";
+    const std::string ownerName = target_label(documentRoot, indexes,
+                                               location->second.ownerObjectId, "GameObject");
+    std::string label = ownerName.empty() ? std::string(target) : ownerName + " / " + std::string(target);
+    const Json &component = (*components)[location->second.componentIndex];
+    const char *assetField = target == "Audio" ? "filePath"
+                             : target == "Animator" ? "animationClipFilePath"
+                             : target == "Sprite" ? "textureFilePath"
+                                                   : nullptr;
+    if (assetField != nullptr)
+    {
+        const auto asset = component.find(assetField);
+        if (asset != component.end() && asset->is_string() && !asset->get_ref<const std::string &>().empty())
+            label += " — " + std::filesystem::path(asset->get<std::string>()).filename().string();
+    }
+    return label;
 }
 
 std::string lower_extension(const std::filesystem::path &path)
@@ -135,26 +169,33 @@ bool extension_matches(std::string_view type, std::string_view extension)
     return false;
 }
 
-const Json *property_owner(const DocumentSession &document, int objectId, int componentId,
-                           std::size_t behaviorOrdinal)
+const Json *property_owner(const DocumentSession &document, int objectId,
+                           std::optional<int> componentId,
+                           std::optional<std::size_t> behaviorOrdinal)
 {
     const auto objectLocation = document.indexes.objectsById.find(objectId);
-    const auto componentLocation = document.indexes.componentsById.find(componentId);
-    if (objectLocation == document.indexes.objectsById.end() || componentLocation == document.indexes.componentsById.end() ||
-        componentLocation->second.ownerObjectId != objectId)
+    if (objectLocation == document.indexes.objectsById.end())
         return nullptr;
     const Json *object = resolve_object(document.root, objectLocation->second);
     if (object == nullptr)
+        return nullptr;
+    if (!componentId)
+        return behaviorOrdinal ? nullptr : object;
+    const auto componentLocation = document.indexes.componentsById.find(*componentId);
+    if (componentLocation == document.indexes.componentsById.end() ||
+        componentLocation->second.ownerObjectId != objectId)
         return nullptr;
     const auto components = object->find("components");
     if (components == object->end() || !components->is_array() ||
         componentLocation->second.componentIndex >= components->size())
         return nullptr;
     const Json &component = (*components)[componentLocation->second.componentIndex];
+    if (!behaviorOrdinal)
+        return &component;
     const auto behaviors = component.find("behaviors");
-    if (behaviors == component.end() || !behaviors->is_array() || behaviorOrdinal >= behaviors->size())
+    if (behaviors == component.end() || !behaviors->is_array() || *behaviorOrdinal >= behaviors->size())
         return nullptr;
-    return &(*behaviors)[behaviorOrdinal];
+    return &(*behaviors)[*behaviorOrdinal];
 }
 
 const Json *read_path(const Json *root, const std::vector<FieldPathSegment> &path)
@@ -182,6 +223,28 @@ const Json *read_path(const Json *root, const std::vector<FieldPathSegment> &pat
     return value;
 }
 
+void push_field_id(int objectId, std::optional<int> componentId,
+                   std::optional<std::size_t> behaviorOrdinal,
+                   const std::vector<FieldPathSegment> &path)
+{
+    ImGui::PushID(objectId);
+    ImGui::PushID(componentId.value_or(-1));
+    ImGui::PushID(behaviorOrdinal ? static_cast<int>(*behaviorOrdinal) : -1);
+    for (const auto &segment : path)
+    {
+        if (const auto *key = std::get_if<std::string>(&segment))
+            ImGui::PushID(key->c_str());
+        else
+            ImGui::PushID(static_cast<int>(std::get<std::size_t>(segment)));
+    }
+}
+
+void pop_field_id(const std::vector<FieldPathSegment> &path)
+{
+    for (std::size_t index = 0; index < path.size() + 3; ++index)
+        ImGui::PopID();
+}
+
 std::vector<std::pair<int, std::string>> scene_candidates(const DocumentSession &document,
                                                           std::string_view target)
 {
@@ -195,8 +258,8 @@ std::vector<std::pair<int, std::string>> scene_candidates(const DocumentSession 
                 continue;
             const Json *object = resolve_object(document.root, location->second);
             if (object != nullptr)
-                result.emplace_back(objectId, object->value("name", std::string("GameObject")) +
-                                                 " (#" + std::to_string(objectId) + ")");
+                result.emplace_back(objectId, target_label(document.root, document.indexes,
+                                                           objectId, "GameObject"));
             continue;
         }
         const auto location = document.indexes.objectsById.find(objectId);
@@ -218,8 +281,8 @@ std::vector<std::pair<int, std::string>> scene_candidates(const DocumentSession 
             const auto componentId = json_id(*id);
             if (!componentId)
                 continue;
-            result.emplace_back(*componentId, object->value("name", std::string("GameObject")) + " / " +
-                                                  std::string(target) + " (#" + std::to_string(*componentId) + ")");
+            result.emplace_back(*componentId, target_label(document.root, document.indexes,
+                                                           *componentId, target));
         }
     }
     return result;
@@ -238,30 +301,28 @@ SceneReferenceInfo inspect_scene_reference(const DocumentSession &document, cons
     {
         const auto location = document.indexes.objectsById.find(*id);
         if (location == document.indexes.objectsById.end())
-            return {ReferenceState::Dangling, id, "Unresolved object ID " + std::to_string(*id)};
+            return {ReferenceState::Dangling, id, "Missing GameObject reference"};
         const Json *object = resolve_object(document.root, location->second);
         return {ReferenceState::Resolved, id,
-                object == nullptr ? "GameObject (#" + std::to_string(*id) + ")"
-                                  : object->value("name", std::string("GameObject")) + " (#" + std::to_string(*id) + ")"};
+                object == nullptr ? "GameObject" : target_label(document.root, document.indexes, *id, "GameObject")};
     }
     const auto location = document.indexes.componentsById.find(*id);
     if (location == document.indexes.componentsById.end())
-        return {ReferenceState::Dangling, id, "Unresolved component ID " + std::to_string(*id)};
+        return {ReferenceState::Dangling, id, "Missing component reference"};
     const auto ownerLocation = document.indexes.objectsById.find(location->second.ownerObjectId);
     const Json *owner = ownerLocation == document.indexes.objectsById.end()
                             ? nullptr
                             : resolve_object(document.root, ownerLocation->second);
     if (owner == nullptr)
-        return {ReferenceState::Dangling, id, "Unresolved component ID " + std::to_string(*id)};
+        return {ReferenceState::Dangling, id, "Missing component reference"};
     const auto components = owner->find("components");
     if (components == owner->end() || !components->is_array() ||
         location->second.componentIndex >= components->size())
-        return {ReferenceState::Dangling, id, "Unresolved component ID " + std::to_string(*id)};
+        return {ReferenceState::Dangling, id, "Missing component reference"};
     if (!component_matches((*components)[location->second.componentIndex], expectedTarget))
-        return {ReferenceState::WrongKind, id, "Wrong component kind for ID " + std::to_string(*id)};
+        return {ReferenceState::WrongKind, id, "Reference target has the wrong component type"};
     return {ReferenceState::Resolved, id,
-            owner->value("name", std::string("GameObject")) + " / " + std::string(expectedTarget) +
-                " (#" + std::to_string(*id) + ")"};
+            target_label(document.root, document.indexes, *id, expectedTarget)};
 }
 
 bool validate_scene_reference_assignment(const DocumentSession &document, const Json &value,
@@ -285,7 +346,7 @@ bool validate_scene_reference_assignment(const DocumentSession &document, const 
         error = "The selected target has the wrong component kind.";
         return false;
     case ReferenceState::Invalid:
-        error = "References must be a file ID or null.";
+        error = "Select a valid scene object or component.";
         return false;
     }
     error = "The reference is invalid.";
@@ -301,7 +362,7 @@ AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, cons
         return {ReferenceState::Invalid, {}, "Asset references must be a path string or null."};
     std::string raw = value.get<std::string>();
     if (raw.empty())
-        return {ReferenceState::Invalid, {}, "Asset paths cannot be empty."};
+        return {ReferenceState::Unset, {}, {}};
     std::replace(raw.begin(), raw.end(), '\\', '/');
     const std::filesystem::path path(raw);
     if (path.is_absolute() || path.begin() == path.end() || *path.begin() != "assets")
@@ -354,14 +415,26 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedTarget, bool nullable, const char *label)
 {
+    push_field_id(objectId, componentId, behaviorOrdinal, path);
     const Json *current = read_path(property_owner(document, objectId, componentId, behaviorOrdinal), path);
     const Json defaultNull = nullptr;
     const auto info = inspect_scene_reference(document, current == nullptr ? defaultNull : *current, expectedTarget);
     if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
         info.state == ReferenceState::Invalid)
         ImGui::TextWrapped("%s: %s", label, info.label.c_str());
-    const auto identity = info.state == ReferenceState::Unset ? "None" : info.label;
-    if (ImGui::BeginCombo(label, identity.c_str()))
+    const std::string targetType = expectedTarget == "GameObject"
+        ? "GameObject" : std::string(expectedTarget) + " component";
+    const std::string identity = info.state == ReferenceState::Unset
+        ? "Select " + targetType + "..."
+        : info.state == ReferenceState::Resolved
+            ? (info.label.empty() ? targetType + " (selected)" : targetType + ": " + info.label)
+            : "Missing " + targetType;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", label);
+    const float available = ImGui::GetContentRegionAvail().x;
+    ImGui::SameLine(ImGui::GetCursorPosX() + std::min(124.0f, available * 0.42f));
+    ImGui::SetNextItemWidth(std::max(50.0f, ImGui::GetContentRegionAvail().x));
+    if (ImGui::BeginCombo("##reference-selector", identity.c_str()))
     {
         auto assign = [&](Json value) {
             std::string error;
@@ -377,7 +450,10 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
         };
         if (nullable && ImGui::Selectable("None", info.state == ReferenceState::Unset))
             assign(nullptr);
-        for (const auto &[id, candidateLabel] : scene_candidates(document, expectedTarget))
+        const auto candidates = scene_candidates(document, expectedTarget);
+        if (candidates.empty())
+            ImGui::TextDisabled("No matching reference targets.");
+        for (const auto &[id, candidateLabel] : candidates)
         {
             const bool selected = info.fileId && *info.fileId == id && info.state == ReferenceState::Resolved;
             if (ImGui::Selectable(candidateLabel.c_str(), selected))
@@ -385,41 +461,35 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
         }
         ImGui::EndCombo();
     }
+    pop_field_id(path);
 }
 
 void draw_asset_reference_field(DocumentSession &document, EditCommandService &commands,
-                                int objectId, int componentId, std::size_t behaviorOrdinal,
+                                int objectId, std::optional<int> componentId,
+                                std::optional<std::size_t> behaviorOrdinal,
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedAssetType, bool nullable, const char *label,
-                                const AssetBrowseCallback &browse)
+                                const AssetBrowseCallback &browse, Json clearValue)
 {
+    push_field_id(objectId, componentId, behaviorOrdinal, path);
     const Json *current = read_path(property_owner(document, objectId, componentId, behaviorOrdinal), path);
-    std::string value = current != nullptr && current->is_string() ? current->get<std::string>() : std::string{};
-    if (value.size() >= 2048)
-    {
-        ImGui::TextDisabled("%s path is too long for inline editing.", label);
-        return;
-    }
-    std::array<char, 2048> buffer{};
-    std::memcpy(buffer.data(), value.data(), value.size());
-    if (ImGui::InputText(label, buffer.data(), buffer.size(), ImGuiInputTextFlags_EnterReturnsTrue))
-    {
-        std::string error;
-        const std::string entered(buffer.data());
-        if (validate_asset_reference_assignment(document, entered, expectedAssetType, nullable, error))
-        {
-            auto normalized = entered;
-            std::replace(normalized.begin(), normalized.end(), '\\', '/');
-            commands.set_property(document,
-                                  PropertyAddress{document.documentGeneration, objectId, componentId,
-                                                  behaviorOrdinal, path},
-                                  std::move(normalized));
-        }
-        else
-            ImGui::TextWrapped("%s", error.c_str());
-    }
-    ImGui::SameLine();
-    if (browse && ImGui::SmallButton((std::string("Browse...") + "##" + label).c_str()))
+    const Json currentValue = current == nullptr ? Json(nullptr) : *current;
+    const auto info = inspect_asset_reference(document, currentValue, expectedAssetType);
+    const std::string assetType = expectedAssetType == "AnimationClip" ? "Animation clip asset"
+        : expectedAssetType.empty() || expectedAssetType == "Asset" ? "Asset"
+        : std::string(expectedAssetType) + " asset";
+    const std::string display = info.state == ReferenceState::Resolved
+        ? assetType + ": " + std::filesystem::path(info.path).filename().string()
+        : info.state == ReferenceState::Unset ? "Select " + assetType + "..."
+                                              : "Missing " + assetType;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", label);
+    const float available = ImGui::GetContentRegionAvail().x;
+    ImGui::SameLine(ImGui::GetCursorPosX() + std::min(124.0f, available * 0.42f));
+    const float clearWidth = nullable ? 46.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+    const bool choose = ImGui::Button((display + "##asset-selector").c_str(),
+                                      {std::max(50.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
+    if (choose && browse)
         browse(PropertyAddress{document.documentGeneration, objectId, componentId, behaviorOrdinal, path},
                std::string(expectedAssetType), nullable);
     if (ImGui::BeginDragDropTarget())
@@ -446,16 +516,18 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
         }
         ImGui::EndDragDropTarget();
     }
-    const Json currentValue = current == nullptr ? Json(nullptr) : *current;
-    const auto info = inspect_asset_reference(document, currentValue, expectedAssetType);
     if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
         info.state == ReferenceState::Invalid)
         ImGui::TextWrapped("Unresolved asset: %s", info.message.c_str());
-    ImGui::SameLine();
-    if (nullable && ImGui::SmallButton("Clear"))
-        commands.set_property(document,
-                              PropertyAddress{document.documentGeneration, objectId, componentId,
-                                              behaviorOrdinal, path},
-                              nullptr);
+    if (nullable)
+    {
+        ImGui::SameLine();
+        if (ImGui::SmallButton((std::string("Clear##") + label).c_str()))
+            commands.set_property(document,
+                                  PropertyAddress{document.documentGeneration, objectId, componentId,
+                                                  behaviorOrdinal, path},
+                                  clearValue);
+    }
+    pop_field_id(path);
 }
 } // namespace platformator_editor

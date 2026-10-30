@@ -276,8 +276,7 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
         ImGui::PushID(name.c_str());
         const auto valuePath = child_path(path, name);
         begin_field(label + " " + name, valuePath);
-        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.3f",
-                                                    ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.2f");
         end_field();
         if (valueChanged && std::isfinite(value))
         {
@@ -318,7 +317,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         std::uint64_t value = current->get<std::uint64_t>();
         begin_field(label, path);
         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, nullptr, nullptr,
-                                                "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
+                                                "%llu");
         end_field();
         if (changed)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
@@ -329,7 +328,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         std::int64_t value = current->get<std::int64_t>();
         begin_field(label, path);
         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, nullptr, nullptr,
-                                                "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
+                                                "%lld");
         end_field();
         if (changed)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
@@ -339,8 +338,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     {
         double value = current->get<double>();
         begin_field(label, path);
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.6f",
-                                                ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.2f");
         end_field();
         if (changed && std::isfinite(value))
             set_value(document, commands, objectId, componentId, ordinal, path, value);
@@ -359,8 +357,9 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         begin_field(label, path);
         const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
                                               ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
         end_field();
-        if (changed)
+        if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, std::string(buffer.data()));
         return true;
     }
@@ -430,7 +429,10 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
     if (kind == "boolean")
     {
         bool value = current != nullptr && current->is_boolean() ? current->get<bool>() : false;
-        if (ImGui::Checkbox(label.c_str(), &value))
+        begin_field(label, path);
+        const bool changed = ImGui::Checkbox("##value", &value);
+        end_field();
+        if (changed)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         if (current == nullptr)
             ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
@@ -439,16 +441,15 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
     if (kind == "signed_integer" || kind == "unsigned_integer")
     {
         const bool isUnsigned = kind == "unsigned_integer";
-        ImGui::TextUnformatted(label.c_str());
-        ImGui::SameLine();
+        begin_field(label, path);
         if (isUnsigned)
         {
             std::uint64_t value = json_unsigned(current);
             auto minimum = unsigned_bound(descriptor, "minimum").value_or(0);
             auto maximum = unsigned_bound(descriptor, "maximum");
             std::uint64_t limit = maximum.value_or(std::numeric_limits<std::uint64_t>::max());
-            if (ImGui::InputScalar(("##" + label).c_str(), ImGuiDataType_U64, &value, &minimum, &limit,
-                                   "%llu", ImGuiInputTextFlags_EnterReturnsTrue))
+            if (ImGui::InputScalar("##value", ImGuiDataType_U64, &value, &minimum, &limit,
+                                   "%llu"))
                 set_value(document, commands, objectId, componentId, ordinal, path, value);
         }
         else
@@ -456,10 +457,11 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             std::int64_t value = json_signed(current);
             auto minimum = signed_bound(descriptor, "minimum").value_or(std::numeric_limits<std::int64_t>::min());
             auto maximum = signed_bound(descriptor, "maximum").value_or(std::numeric_limits<std::int64_t>::max());
-            if (ImGui::InputScalar(("##" + label).c_str(), ImGuiDataType_S64, &value, &minimum, &maximum,
-                                   "%lld", ImGuiInputTextFlags_EnterReturnsTrue))
+            if (ImGui::InputScalar("##value", ImGuiDataType_S64, &value, &minimum, &maximum,
+                                   "%lld"))
                 set_value(document, commands, objectId, componentId, ordinal, path, value);
         }
+        end_field();
         if (current == nullptr)
             ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
         return true;
@@ -467,8 +469,10 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
     if (kind == "number")
     {
         double value = current != nullptr && current->is_number() ? current->get<double>() : 0.0;
-        if (ImGui::InputDouble(label.c_str(), &value, 0.0, 0.0, "%.6f",
-                               ImGuiInputTextFlags_EnterReturnsTrue) && std::isfinite(value))
+        begin_field(label, path);
+        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.2f");
+        end_field();
+        if (changed && std::isfinite(value))
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         if (current == nullptr)
             ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
@@ -484,7 +488,12 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         }
         std::array<char, 2048> buffer{};
         std::memcpy(buffer.data(), old.data(), old.size());
-        if (ImGui::InputText(label.c_str(), buffer.data(), buffer.size(), ImGuiInputTextFlags_EnterReturnsTrue))
+        begin_field(label, path);
+        const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
+                                              ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
+        end_field();
+        if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, std::string(buffer.data()));
         if (current == nullptr)
             ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
@@ -525,7 +534,8 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                            {"x", "y", "w", "h"}, label);
     if (kind == "asset_reference")
     {
-        draw_asset_reference_field(document, commands, objectId, componentId, ordinal, path,
+        draw_asset_reference_field(document, commands, objectId, std::optional<int>(componentId),
+                                   std::optional<std::size_t>(ordinal), path,
                                    descriptor.value("target", std::string("Asset")),
                                    descriptor.value("nullable", true), label.c_str(), browse);
         return true;
@@ -541,9 +551,10 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
     {
         const bool hasValue = current != nullptr && !current->is_null();
         bool enabled = hasValue;
-        ImGui::Text("%s", label.c_str());
-        ImGui::SameLine();
-        if (ImGui::Checkbox(("Set value##" + label).c_str(), &enabled))
+        begin_field(label, path);
+        const bool changed = ImGui::Checkbox("##enabled", &enabled);
+        end_field();
+        if (changed)
         {
             if (!enabled)
                 set_value(document, commands, objectId, componentId, ordinal, path, nullptr);
@@ -655,6 +666,10 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     const auto behaviorList = component.find("behaviors");
     if (behaviorList == component.end() || !behaviorList->is_array())
         return;
+    if (!behaviorList->empty() &&
+        (!selection.current().behaviorOrdinal ||
+         *selection.current().behaviorOrdinal >= behaviorList->size()))
+        selection.set(document, Selection{objectId, componentId, 0, FocusedPanel::Inspector});
     ImGui::TextUnformatted("Behaviors");
     for (std::size_t index = 0; index < behaviorList->size(); ++index)
     {
@@ -678,14 +693,8 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     const std::string behaviorName = behavior->value("type", std::string("Unknown"));
     const auto snapshot = catalog.snapshot();
     const Json *descriptor = snapshot ? find_behavior_descriptor(snapshot->document, behaviorName) : nullptr;
-    if (catalog.state() == CatalogState::Stale)
-        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.25f, 1.0f), "Catalog is stale; fields are for editing only.");
-    else if (descriptor == nullptr)
-        ImGui::TextDisabled("Scene-only or uncatalogued behavior; its saved JSON is preserved.");
-    else if (!descriptor->value("field_schema_available", false))
+    if (descriptor != nullptr && !descriptor->value("field_schema_available", false))
         ImGui::TextDisabled("Registered behavior; field schema is unavailable.");
-    else
-        ImGui::TextDisabled("Missing fields remain drafts until explicitly edited; runtime defaults are preserved.");
 
     std::set<std::string> knownFields;
     if (descriptor != nullptr && descriptor->value("field_schema_available", false))
@@ -711,6 +720,7 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
             extras.push_back(it.key());
     if (!extras.empty() || descriptor == nullptr || !descriptor->value("field_schema_available", false))
     {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
         if (ImGui::TreeNode("Observed extra fields (preserved)"))
         {
             for (const auto &key : extras)

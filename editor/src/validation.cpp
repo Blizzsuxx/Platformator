@@ -177,14 +177,20 @@ void validate_asset_reference(const DocumentSession &document, const Json &compo
                               int componentId, ValidationResult &result)
 {
     const auto *value = member(component, field);
-    if (value == nullptr || !value->is_string() || value->get_ref<const std::string &>().empty())
+    if (value == nullptr || !value->is_string())
     {
         add_issue(result, ValidationSeverity::Error, objectId, componentId, std::move(fieldPath),
-                  "A required asset path is missing.", true);
+                  "An asset path string is required; use an empty string when no asset is assigned.", true);
         return;
     }
+    const auto &reference = value->get_ref<const std::string &>();
+    // The runtime serializers deliberately skip asset loading for empty
+    // Sprite, Animator and Audio references. Empty is a valid optional value;
+    // a missing/non-string field or a non-empty unresolved path is not.
+    if (reference.empty())
+        return;
     std::string resolutionError;
-    const auto asset = resolve_asset_path(document, value->get_ref<const std::string &>(), resolutionError);
+    const auto asset = resolve_asset_path(document, reference, resolutionError);
     if (asset.empty())
     {
         add_issue(result, ValidationSeverity::Error, objectId, componentId, std::move(fieldPath),

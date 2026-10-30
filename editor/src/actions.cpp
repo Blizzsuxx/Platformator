@@ -15,11 +15,9 @@ constexpr std::array kActions{
     EditorActionDescriptor{EditorAction::Redo, "Redo", "Ctrl+Y", false},
     EditorActionDescriptor{EditorAction::ZoomIn, "Zoom In", "Ctrl++", false},
     EditorActionDescriptor{EditorAction::ZoomOut, "Zoom Out", "Ctrl+-", false},
-    EditorActionDescriptor{EditorAction::Validate, "Validate", "F6", false},
     EditorActionDescriptor{EditorAction::Build, "Build", "Ctrl+B", false},
     EditorActionDescriptor{EditorAction::BuildAndRun, "Build and Run", "F5", false},
     EditorActionDescriptor{EditorAction::Stop, "Stop", "Shift+F5", false},
-    EditorActionDescriptor{EditorAction::Settings, "Editor Settings", "Ctrl+,", false},
     EditorActionDescriptor{EditorAction::FrameAll, "Frame All", "F", true},
     EditorActionDescriptor{EditorAction::FrameSelected, "Frame Selected", "Shift+F", true},
 };
@@ -55,10 +53,6 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
         if (control)
             return std::nullopt;
         return shift ? EditorAction::Stop : EditorAction::BuildAndRun;
-    case EditorKey::F6:
-        if (shift || control)
-            return std::nullopt;
-        return EditorAction::Validate;
     }
     return std::nullopt;
 }

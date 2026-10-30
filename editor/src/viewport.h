@@ -44,6 +44,7 @@ class ViewportTransform
     std::optional<ViewportPoint> screen_to_world(ViewportPoint point) const noexcept;
     ViewportPoint world_to_screen(ViewportPoint point) const noexcept;
     void pan(float logicalDeltaX, float logicalDeltaY) noexcept;
+    bool zoom(float factor);
     bool zoom_at(ViewportPoint screenPoint, float factor);
     bool frame_bounds(ViewportRect worldBounds, float padding = 1.1f);
 
@@ -96,6 +97,14 @@ std::optional<PropertyGesture> begin_collider_offset_gesture(EditCommandService 
                                                             const DocumentSession &document, int objectId,
                                                             SelectionState selection = {});
 
+enum class SceneGestureKind
+{
+    Position,
+    ColliderOffset,
+    Scale,
+    Rotation
+};
+
 class SceneViewportPanel
 {
   public:
@@ -120,11 +129,22 @@ class SceneViewportPanel
     ViewportPickCycle pickCycle_;
     std::optional<PropertyGesture> gesture_;
     PropertyAddress gestureAddress_{};
+    SceneGestureKind pendingGestureKind_ = SceneGestureKind::Position;
+    SceneGestureKind gestureKind_ = SceneGestureKind::Position;
     ViewportPoint gesturePointerWorld_{};
     ViewportPoint gestureStartWorld_{};
-    bool gestureIsCollider_ = false;
+    ViewportPoint pendingAxisWorld_{};
+    ViewportPoint pendingAxisScreen_{};
+    ViewportPoint gestureAxisWorld_{};
+    ViewportPoint gestureAxisScreen_{};
+    ViewportPoint pendingPivotScreen_{};
+    ViewportPoint gesturePivotScreen_{};
+    ViewportPoint gestureStartScale_{1.0f, 1.0f};
+    float gestureStartRotation_ = 0.0f;
+    float gestureStartAngle_ = 0.0f;
+    int pendingScaleAxis_ = -1;
+    int gestureScaleAxis_ = -1;
     bool pendingDrag_ = false;
-    bool pendingColliderDrag_ = false;
     int pendingDragObjectId_ = 0;
     ViewportPoint pendingPressScreen_{};
     ViewportPoint pendingPointerWorld_{};

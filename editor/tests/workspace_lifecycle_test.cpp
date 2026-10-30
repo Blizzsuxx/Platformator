@@ -224,7 +224,7 @@ void run_preference_cases()
             "missing preferences must produce usable project-scoped defaults");
 
     const auto defaults = default_panel_visibility();
-    require(defaults.size() == 9 && is_panel_visible(loaded.preferences, "panel.hierarchy") &&
+    require(defaults.size() == 7 && is_panel_visible(loaded.preferences, "panel.hierarchy") &&
                 is_panel_visible(loaded.preferences, "panel.scene") &&
                 !is_panel_visible(loaded.preferences, "panel.settings"),
             "stable panel IDs must provide the documented visible workspace and optional tool panels");
@@ -236,8 +236,10 @@ void run_preference_cases()
     require(layoutSeedStream.good() || layoutSeedStream.eof(), "default docking seed must be readable");
     require(!layout_needs_recovery(layoutSeed, 1280, 800) &&
                 layoutSeed.find("[Window][panel.hierarchy]") != std::string::npos &&
-                layoutSeed.find("[Window][panel.behaviors]") != std::string::npos,
-            "checked-in docking seed must contain stable Hierarchy and Behaviors panel identities");
+                layoutSeed.find("[Window][panel.inspector]") != std::string::npos &&
+                layoutSeed.find("[Window][panel.behaviors]") == std::string::npos &&
+                layoutSeed.find("[Window][panel.settings]") == std::string::npos,
+            "checked-in docking seed must omit retired Behaviors and Editor Settings panels");
     std::string legacySceneLayout = layoutSeed;
     const auto sceneHeader = legacySceneLayout.find("[Window][panel.scene]");
     require(sceneHeader != std::string::npos, "docking seed must contain the stable Scene identity");
@@ -249,6 +251,15 @@ void run_preference_cases()
             "legacy Scene docking preferences must migrate to the stable runtime identity with placement intact");
     require(migrate_scene_window_identity(migratedSceneLayout) == migratedSceneLayout,
             "Scene identity migration must be idempotent");
+    const std::string staleBehaviorLayout = layoutSeed +
+        "[Window][panel.behaviors]\nPos=20,20\nSize=300,200\n"
+        "[Window][panel.settings]\nPos=30,30\nSize=300,200\n";
+    const auto migratedPanelLayout = migrate_scene_window_identity(staleBehaviorLayout);
+    require(migratedPanelLayout.find("[Window][panel.behaviors]") == std::string::npos &&
+                migratedPanelLayout.find("[Window][panel.settings]") == std::string::npos &&
+                migratedPanelLayout.find("[Window][panel.project]") != std::string::npos &&
+                migrate_scene_window_identity(migratedPanelLayout) == migratedPanelLayout,
+            "saved docking layouts must discard the retired Behaviors panel while retaining other panels");
     require(layout_needs_recovery("[Docking][Data]\nDockSpace ID=0x1 Pos=0,0 Size=1280,800\n"
                                   "[Window][Scene]\nPos=20,20\nSize=600,400\n", 1280, 800) == false &&
                 layout_needs_recovery("[Docking][Data]\nnot a valid docking node\n", 1280, 800) &&
@@ -319,7 +330,7 @@ void run_editor_action_and_style_cases()
     require(!defaultWindowSettings.highPixelDensity,
             "the new high-density window option must preserve the runtime default");
     const auto actions = editor_action_descriptors();
-    require(actions.size() == 15, "all workspace commands must have discoverable action descriptors");
+    require(actions.size() == 13, "all workspace commands must have discoverable action descriptors");
     for (const auto &action : actions)
         require(!action.label.empty() && !action.shortcut.empty(),
                 "each available workspace action must expose its label and shortcut");
@@ -331,7 +342,6 @@ void run_editor_action_and_style_cases()
     };
     require(binding(EditorAction::FrameAll) == "F" &&
                 binding(EditorAction::FrameSelected) == "Shift+F" &&
-                binding(EditorAction::Validate) == "F6" &&
                 binding(EditorAction::Build) == "Ctrl+B",
             "discoverable action bindings must match legacy framing and current workspace commands");
 
@@ -427,6 +437,53 @@ void run_known_validation_cases()
             return issue.fieldPath == field && issue.blocksRun;
         });
     };
+
+    auto optionalAssetDocument = make_default_document(projectRoot, assetRoot, 35);
+    optionalAssetDocument.root[0]["components"].push_back(
+        component(2, 0, Json{{"currentFrameIndex", 0}, {"playbackSpeed", 1.0},
+                             {"playing", false}, {"animationClipFilePath", ""}}));
+    optionalAssetDocument.root[0]["components"].push_back(
+        component(3, 1, Json{{"filePath", ""}, {"gain", 1.0},
+                             {"loopCount", 0}, {"autoPlay", false}}));
+    optionalAssetDocument.root[0]["components"].push_back(
+        component(4, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 32.0},
+                             {"height", 32.0}, {"sourceRectEnabled", false}}));
+    ++optionalAssetDocument.structureRevision;
+    const auto optionalAssets = validate_document(optionalAssetDocument);
+    require(!optionalAssets.blocksRun && !has_field(optionalAssets, "animationClipFilePath") &&
+                !has_field(optionalAssets, "filePath") && !has_field(optionalAssets, "textureFilePath"),
+            "empty Sprite, Animator and Audio asset references are valid optional runtime values");
+
+    optionalAssetDocument.root[0]["components"][1]["animationClipFilePath"] = "assets/missing.animset";
+    optionalAssetDocument.root[0]["components"][2]["filePath"] = "assets/missing.wav";
+    optionalAssetDocument.root[0]["components"][3]["textureFilePath"] = "assets/missing.png";
+    const auto unresolvedAssets = validate_document(optionalAssetDocument);
+    require(has_field(unresolvedAssets, "animationClipFilePath") && has_field(unresolvedAssets, "filePath") &&
+                has_field(unresolvedAssets, "textureFilePath"),
+            "non-empty unresolved asset references must continue to block Run");
+
+    auto missingAssetFieldDocument = make_default_document(projectRoot, assetRoot, 36);
+    missingAssetFieldDocument.root[0]["components"].push_back(
+        component(2, 0, Json{{"currentFrameIndex", 0}, {"playbackSpeed", 1.0},
+                             {"playing", false}, {"animationClipFilePath", ""}}));
+    ++missingAssetFieldDocument.structureRevision;
+    missingAssetFieldDocument.root[0]["components"][1].erase("animationClipFilePath");
+    require(has_field(validate_document(missingAssetFieldDocument), "animationClipFilePath"),
+            "omitting the serialized asset field must remain an error even when an empty reference is valid");
+
+    const auto repositoryRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    const auto marioRoot = repositoryRoot / "examples" / "mario";
+    const auto marioScenePath = marioRoot / "level1.scene";
+    std::ifstream marioSceneStream(marioScenePath, std::ios::binary);
+    require(static_cast<bool>(marioSceneStream), "the Mario validation regression fixture must be available");
+    Json marioScene;
+    marioSceneStream >> marioScene;
+    auto marioDocument = parse_document(std::move(marioScene), 37, marioScenePath,
+                                        marioRoot, marioRoot / "assets");
+    require(static_cast<bool>(marioDocument), "the Mario validation regression scene must parse");
+    require(!validate_document(*marioDocument.document).blocksRun,
+            "the checked-in Mario example must validate with its intentionally empty optional audio/animation paths");
+
     require(bodyIssues.blocksRun && has_field(bodyIssues, "mass") && has_field(bodyIssues, "friction") &&
                 has_field(bodyIssues, "restitution"),
             "rigid body validation must enforce dynamic mass, nonnegative friction and restitution bounds");

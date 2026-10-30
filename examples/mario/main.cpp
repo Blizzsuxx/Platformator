@@ -1,5 +1,5 @@
 #include "platformator/runner.h"
-#include "mario_game.h"
+#include "assets/behaviors/mario_game.h"
 
 int main(int argc, char *args[])
 {

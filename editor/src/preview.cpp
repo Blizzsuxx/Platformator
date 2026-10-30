@@ -340,21 +340,8 @@ void EditorPreview::reconcile(const DocumentSession &document, bool structureCha
 
 void EditorPreview::refresh_assets(const DocumentSession &document)
 {
-    for (int id : orderedDocumentIds_)
-    {
-        auto found = proxies_.find(id);
-        if (found == proxies_.end())
-            continue;
-        found->second.failedAssetIdentity.clear();
-        found->second.failedAssetMessage.clear();
-        found->second.hasCachedDocumentState = false;
-        const auto objectLocation = document.indexes.objectsById.find(id);
-        if (objectLocation == document.indexes.objectsById.end())
-            continue;
-        const Json *object = resolve_object(document.root, objectLocation->second);
-        if (object != nullptr)
-            update_proxy(document, id, *object);
-    }
+    release();
+    reconcile(document, true);
 }
 
 void EditorPreview::rebuild(const DocumentSession &document)

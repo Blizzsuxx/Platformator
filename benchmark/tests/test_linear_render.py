@@ -41,6 +41,82 @@ class LinearRenderCaptureTests(unittest.TestCase):
                     {"frame": 1, "image_fnv64": "0123456789abcdef", "submissions": [[0, 0], [1, 0]],
                      "oracle_visible": [[1, 0]]}], "_path": "unused"}
 
+    def test_capture_defaults_are_small_and_exploratory(self):
+        args = capture.parser().parse_args(["--output", "unused", "--multiworker-count", "2"])
+        self.assertEqual((args.comparison, args.repetitions, args.warmup_frames, args.measure_frames),
+                         ("incremental", 3, 5, 30))
+        self.assertEqual((args.max_output_mib, args.max_seconds), (50, 600))
+        with mock.patch.object(capture, "run_incremental_capture") as run:
+            self.assertEqual(capture.main(["--output", "unused", "--multiworker-count", "2"]), 0)
+            self.assertEqual(run.call_args.args[0].phase, "pilot")
+
+    def test_full_campaign_requires_explicit_opt_in(self):
+        with mock.patch.object(capture, "run_incremental_capture") as run:
+            self.assertEqual(capture.main(["--output", "unused", "--multiworker-count", "2",
+                                           "--phase", "validate"]), 2)
+            run.assert_not_called()
+
+    def test_capture_budgets_cannot_be_disabled(self):
+        for value in (0, -1, float("inf"), float("nan")):
+            for field in ("max_mib", "max_seconds"):
+                with self.subTest(value=value, field=field), self.assertRaises(ValueError):
+                    capture.CaptureBudget([], **{field: value})
+
+    def test_size_budget_counts_nested_phase_roots_once_and_preserves_partial_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            phase = root / "phase"
+            phase.mkdir()
+            data = phase / "frames.jsonl"
+            data.write_bytes(b"x" * 1024)
+            budget = capture.CaptureBudget([root, phase], max_mib=1536 / 1024**2)
+            budget.check()
+            data.write_bytes(b"x" * 2048)
+            with self.assertRaises(capture.BudgetExceeded):
+                budget.check()
+            self.assertTrue(data.exists())
+
+    def test_identity_inspection_is_bounded_and_keeps_stderr_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "probe"
+            binary.write_text("#!/bin/sh\necho diagnostic >&2\nprintf '%s\\n' '{\"work_probes\": true}'\n")
+            binary.chmod(0o755)
+            with capture.capture_budget(capture.CaptureBudget([root])):
+                identity = capture._read_probe_identity(binary, root / "identity.log", os.environ.copy())
+            self.assertEqual(identity, {"work_probes": True})
+            self.assertIn("diagnostic", (root / "identity.log").read_text())
+
+    def test_time_budget_stops_owned_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            budget = capture.CaptureBudget([Path(directory)], max_seconds=0.1)
+            with mock.patch.object(capture, "_stop_owned_process", wraps=capture._stop_owned_process) as stop:
+                with self.assertRaises(capture.BudgetExceeded), capture.capture_budget(budget):
+                    capture._run([sys.executable, "-c", "import time; time.sleep(30)"],
+                                 Path(directory) / "run.log", os.environ.copy())
+                self.assertEqual(stop.call_count, 1)
+                self.assertIsNotNone(stop.call_args.args[0].poll())
+
+    def test_size_budget_also_checks_fast_finished_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            budget = capture.CaptureBudget([root], max_mib=1024 / 1024**2)
+            with self.assertRaises(capture.BudgetExceeded), capture.capture_budget(budget):
+                capture._run([sys.executable, "-c", "print('x' * 4096)"], root / "run.log", os.environ.copy())
+
+    def test_final_budget_failure_removes_success_markers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "output"
+            def oversized_report(args, strategy):
+                args.output.mkdir()
+                (args.output / "report.json").write_text("x" * 2048)
+                (args.output / "partial.csv").write_text("keep")
+            with mock.patch.object(capture, "run_incremental_capture", side_effect=oversized_report):
+                self.assertEqual(capture.main(["--output", str(root), "--multiworker-count", "2",
+                                               "--max-output-mib", str(1024 / 1024**2)]), 2)
+            self.assertFalse((root / "report.json").exists())
+            self.assertTrue((root / "partial.csv").exists())
+
     def test_engine_control_matrix_adds_physical_core_headless_controls(self):
         jobs = capture.engine_control_matrix(6)
         workers_by_scenario = {}
@@ -398,8 +474,11 @@ class LinearRenderCaptureTests(unittest.TestCase):
             proofs = {"pre-feature": {**identities["baseline"]},
                       "disabled": {**identities["candidate"]}, "linear": {**identities["candidate"]}}
             called = []
+            real_run = capture._run
 
-            def fake_run(command, log_path, env):
+            def fake_run(command, log_path, env, **kwargs):
+                if "--print-build-identity" in command:
+                    return real_run(command, log_path, env, **kwargs)
                 called.append(command[0])
                 prefix = Path(command[command.index("--evidence-output") + 1])
                 Path(str(prefix) + ".mismatch.ppm").write_bytes(b"ppm")

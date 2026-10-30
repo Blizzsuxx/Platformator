@@ -104,6 +104,7 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
         "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/linear_render_probe.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_linear_render.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_budget.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/sweep_scaling.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests/test_linear_render.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/render_culling_fixture.h"

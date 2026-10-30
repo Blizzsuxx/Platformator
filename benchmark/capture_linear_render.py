@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from contextlib import nullcontext
 import hashlib
 import itertools
 import json
@@ -17,6 +18,8 @@ import statistics
 import subprocess
 import sys
 import time
+
+from capture_budget import BudgetExceeded, CaptureBudget, capture_budget, check_budget, wait_for_process
 
 from sweep_scaling import COUNTERS as INCREMENTAL_BENCHMARK_COUNTERS
 from sweep_scaling import SCOPES as INCREMENTAL_BENCHMARK_SCOPES
@@ -823,16 +826,10 @@ def _directory_sha256(root: Path) -> str:
 
 def _read_probe_identity(binary: Path, log_path: Path, env: dict) -> dict:
     command = [str(binary), "--print-build-identity"]
-    completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, env=env, check=False)
-    with log_path.open("x", encoding="utf-8") as log:
-        log.write("COMMAND: " + json.dumps(command) + "\n")
-        log.write("STDOUT:\n" + completed.stdout)
-        log.write("STDERR:\n" + completed.stderr)
-    if completed.returncode != 0:
-        raise CaptureError(f"Could not inspect probe build identity; see {log_path}")
+    stdout_path = log_path.with_suffix(".identity.json")
+    _run(command, log_path, env, stdout_path=stdout_path)
     try:
-        identity = json.loads(completed.stdout)
+        identity = json.loads(stdout_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         raise CaptureError(f"Probe did not return valid build identity JSON; see {log_path}") from error
     if not isinstance(identity, dict):
@@ -1005,19 +1002,7 @@ def validate_incremental_resource_group(resources: dict, case: dict, render_proo
 
 
 def _validation_probe_identity(binary: Path, expected_proof: dict, log_path: Path, env: dict) -> dict:
-    command = [str(binary), "--print-build-identity"]
-    completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, env=env, check=False)
-    with log_path.open("x", encoding="utf-8") as log:
-        log.write("COMMAND: " + json.dumps(command) + "\n")
-        log.write("STDOUT:\n" + completed.stdout)
-        log.write("STDERR:\n" + completed.stderr)
-    if completed.returncode != 0:
-        raise CaptureError(f"Could not inspect validation probe build identity; see {log_path}")
-    try:
-        identity = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise CaptureError(f"Validation probe did not return a build identity; see {log_path}") from error
+    identity = _read_probe_identity(binary, log_path, env)
     if not isinstance(identity, dict) or identity.get("work_probes") is not True:
         raise CaptureError(f"Validation recovery executable is not work-probe capable: {binary}")
     for field in ("source_sha256", "fixture_sha256", "harness_sha256"):
@@ -1133,17 +1118,21 @@ def preserve_image_mismatch(mismatch: ImageMismatch, recovery) -> None:
     raise mismatch
 
 
-def _run(command: list[str], log_path: Path, env: dict) -> None:
+def _run(command: list[str], log_path: Path, env: dict, *, stdout_path: Path | None = None) -> None:
+    check_budget()
     with log_path.open("x", encoding="utf-8") as log:
         log.write("COMMAND: " + json.dumps(command) + "\n")
         log.flush()
-        process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env,
-                                  start_new_session=(os.name == "posix"))
-        try:
-            return_code = process.wait()
-        except BaseException:
-            _stop_owned_process(process)
-            raise
+        # Identity JSON stays separate from stderr diagnostics; both files count toward the budget.
+        with stdout_path.open("x", encoding="utf-8") if stdout_path else nullcontext(log) as output:
+            process = subprocess.Popen(command, stdout=output,
+                                       stderr=log if stdout_path else subprocess.STDOUT, env=env,
+                                       start_new_session=(os.name == "posix"))
+            try:
+                return_code = wait_for_process(process)
+            except BaseException:
+                _stop_owned_process(process)
+                raise
     if return_code != 0:
         raise CaptureError(f"Capture process failed ({return_code}); see {log_path}")
 
@@ -1356,18 +1345,25 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--workers", type=int, default=1)
     command.add_argument("--multiworker-count", type=int, required=True)
     command.add_argument("--seed", type=int, default=0)
-    command.add_argument("--warmup-frames", type=int, default=120)
-    command.add_argument("--measure-frames", type=int, default=600)
-    command.add_argument("--repetitions", type=int, default=5)
+    command.add_argument("--warmup-frames", type=int, default=5)
+    command.add_argument("--measure-frames", type=int, default=30)
+    command.add_argument("--repetitions", type=int, default=3)
     command.add_argument("--dt", type=float, default=0.008333333333333333)
     command.add_argument("--asset-root", type=Path)
-    command.add_argument("--comparison", choices=("legacy", "incremental"), default="legacy")
-    command.add_argument("--phase", choices=INCREMENTAL_PHASES)
+    command.add_argument("--comparison", choices=("legacy", "incremental"), default="incremental")
+    command.add_argument("--phase", choices=INCREMENTAL_PHASES,
+                         help="Defaults to compact pilot for incremental comparisons")
     command.add_argument("--strategy", choices=(*INCREMENTAL_STRATEGIES, "all"))
     command.add_argument("--focused-cases", default=",".join(FOCUSED_CASE_NAMES[:5]),
                          help="Comma-separated exploratory pilot cases")
     command.add_argument("--exploratory", action="store_true",
-                         help="Label a short focused pilot as exploratory, not acceptance evidence")
+                         help="Compatibility flag; pilots are always labeled exploratory, not acceptance evidence")
+    command.add_argument("--allow-full-campaign", action="store_true",
+                         help="Explicitly enable historical non-pilot campaigns and potentially large traces")
+    command.add_argument("--max-output-mib", type=float, default=50,
+                         help="Combined new output budget in MiB (default: 50); always positive")
+    command.add_argument("--max-seconds", type=float, default=600,
+                         help="Whole capture time budget in seconds (default: 600); always positive")
     command.add_argument("--case-limit", type=int,
                          help="Run only the first N incremental cases; partial roots cannot be used for acceptance timing")
     return command
@@ -1490,8 +1486,6 @@ def _validate_focused_timing_manifest(csv_path: Path, case: dict, args, strategy
 
 
 def _run_incremental_pilot(args, selection: str) -> dict:
-    if not args.exploratory:
-        raise CaptureError("The pilot phase requires --exploratory")
     if args.case_limit is not None:
         raise CaptureError("The pilot phase uses --focused-cases, not --case-limit")
     if args.repetitions <= 0 or args.warmup_frames <= 0:
@@ -2380,18 +2374,39 @@ def main(argv=None) -> int:
     args = parser().parse_args(argv)
     try:
         comparison = args.comparison
+        if comparison == "incremental" and args.phase is None:
+            args.phase = "pilot"
+        if (comparison != "incremental" or args.phase != "pilot") and not args.allow_full_campaign:
+            raise CaptureError("Non-pilot campaigns require --allow-full-campaign; use the compact pilot by default")
         strategy = args.strategy
         if comparison == "incremental" and strategy is None:
             strategy = "all"
         validate_incremental_options(comparison, args.phase, strategy)
         if args.case_limit is not None and args.case_limit <= 0:
             raise CaptureError("--case-limit must be positive")
-        if comparison == "incremental":
-            run_incremental_capture(args, strategy)
-        else:
-            run_capture(args)
+        roots = [args.output]
+        if comparison == "incremental" and args.phase in ("validate", "resources"):
+            phase_root = args.validation_root if args.phase == "validate" else args.resource_root
+            if phase_root is not None:
+                roots.append(phase_root)
+        for root in roots:
+            if root.exists():
+                raise CaptureError(f"Refusing to reuse an existing output path: {root}")
+        budget = CaptureBudget(roots, args.max_output_mib, args.max_seconds)
+        try:
+            with capture_budget(budget):
+                if comparison == "incremental":
+                    run_incremental_capture(args, strategy)
+                else:
+                    run_capture(args)
+        except BudgetExceeded:
+            # Completion markers cannot survive a failed final size/time check.
+            for root in roots:
+                for name in ("report.json", "phase.json", "case-index.json"):
+                    (root / name).unlink(missing_ok=True)
+            raise
         return 0
-    except (CaptureError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+    except (BudgetExceeded, CaptureError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"capture_linear_render: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

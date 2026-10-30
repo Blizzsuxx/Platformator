@@ -1,5 +1,8 @@
 # C++ benchmark measurements
 
+Rendering comparisons default to a compact exploratory pilot with a **50 MiB output / 600 second capture budget**. See the [rendering quickstart](../specs/009-incremental-render-culling/quickstart.md). Retain reports, identities, commands and raw timings; keep builds outside artifacts. Full frame traces and exhaustive campaigns require an explicit user request. Other benchmark tools below do **not** inherit these guards: use equivalent external monitoring when running them. See [AGENTS.md](../AGENTS.md) for the repository-wide retention policy.
+
+
 Configure `cmake --preset cleanup-benchmark`, then build `cmake --build --preset cleanup-benchmark --parallel 4`. Captures require Release without sanitizer, work probes or debug tools. Benchmark scopes themselves are timing instrumentation. Python tooling uses only the standard library except optional matplotlib plotting.
 
 ```sh

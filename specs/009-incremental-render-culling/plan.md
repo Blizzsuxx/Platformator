@@ -1,5 +1,8 @@
 # Implementation Plan: Incremental Render Culling
 
+> **2026-10-30 storage policy:** The user deleted the large generated benchmark bundles. Historical exhaustive capture/archive instructions below are suspended and must not be executed automatically, including unchecked acceptance tasks. Follow [the repository benchmark policy](../../AGENTS.md) and [the compact quickstart](quickstart.md). Keep compact reports and timing samples; no source/build/binary archives or full-frame traces by default. Historical results remain observations, not currently re-verifiable raw evidence. This does not mark outstanding performance acceptance gates complete.
+
+
 **Branch**: `branch-without-bvh` | **Date**: 2026-10-29 | **Spec**: [spec.md](spec.md)
 
 **Input**: `specs/009-incremental-render-culling/spec.md`

@@ -1,5 +1,8 @@
 # Quickstart: Linear Rendering Culling Validation
 
+> **Historical workflow:** Do not restart this exhaustive campaign or recreate its deleted artifacts. Use the [compact rendering quickstart](../009-incremental-render-culling/quickstart.md) and [benchmark policy](../../AGENTS.md). Legacy campaigns now require explicit opt-in and larger sample counts must be specified deliberately.
+
+
 The T044 evidence is retained under `benchmark/artifacts/linear-render-culling/20261029-t044-run-01/`, which is ignored by Git. It contains the pinned baseline and candidate sources/builds, checked rendering/resource proofs, all timing samples, logs, provenance, and a checksum-backed relocatable index. See [capture-index.md](evidence/capture-index.md) and the [validation contract](contracts/validation-evidence.md).
 
 ## Verify the retained evidence

@@ -1,5 +1,8 @@
 # Focused incremental-render pilot
 
+> **Artifact availability, 2026-10-30:** The user deleted the generated benchmark bundles to reclaim disk space. The findings below are historical; linked raw captures, checksums, binaries and verifier/replay scripts are no longer available locally. Do not automatically regenerate the former campaign. See [the compact workflow](../quickstart.md).
+
+
 ## Scope and identity
 
 This is an exploratory screen, not a feature acceptance result. It compares current-linear, cached-linear, and indexed modes on six selected workloads using three shuffled independent processes per strategy/case, five warmup steps, and 30 measured steps. Timing keeps the existing independent `render` and `complete_step` scopes and also records paired host step-plus-render samples. Each process retains every raw step/render/paired row.

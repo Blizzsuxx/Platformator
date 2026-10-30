@@ -1,5 +1,8 @@
 # Validation and Evidence Contract
 
+> **2026-10-30 amendment:** Historical full-campaign and archival requirements below are suspended unless the user explicitly requests a larger experiment. Follow [the benchmark policy](../../../AGENTS.md) and [compact quickstart](../quickstart.md). The capture driver now defaults to the incremental pilot (3 repetitions, 5 warmup and 30 measured frames), requires explicit opt-in for non-pilot campaigns, and guards generated output/time. Do not recreate deleted archives or count a pilot as full acceptance.
+
+
 ## Strategies and compatibility
 
 Extend the existing focused probe with internal `--render-strategy current-linear|cached-linear|indexed`, selected before scene creation. Unknown values fail. Default follows the accepted enabled production path. Existing `--no-render-culling` always selects effective submit-all; headless always has no render state. Record requested strategy and effective mode separately.
@@ -10,7 +13,7 @@ Extend the existing focused probe with internal `--render-strategy current-linea
 
 Keep all three concrete paths in the current source for fair comparisons; no public runtime strategy framework. Freeze/hash the pre-engine-edit feature-008 runtime, archive the common harness changes separately, and run selected parity/performance controls against it. A small capability adapter may let that baseline accept only `current-linear` and existing submit-all; reject unsupported strategy requests. Do not patch its engine with cache/index features. Historical T044 timings are contextual only, never fresh candidate evidence.
 
-`capture_linear_render.py` supports `--comparison incremental` with `--phase validate|resources|time|pilot`. Preserve its existing comparison/default behavior and schema-v3 recorder readers. For the incremental comparison:
+`capture_linear_render.py` supports `--comparison incremental` with `--phase validate|resources|time|pilot`. Preserve schema-v3 recorder readers; compact pilot defaults supersede the original legacy defaults. For the incremental comparison:
 
 - `validate` invokes matching work-probe binaries and fills checked corresponding-frame output/order/oracle proofs below `--validation-root`.
 - `resources` invokes separate resource captures and fills `--resource-root`, including cold/growth/reclaim and stable-capacity observations.

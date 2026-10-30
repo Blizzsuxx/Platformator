@@ -877,8 +877,10 @@ void GameManager::flushIfIdle()
     }
 }
 
-void GameManager::queueTransform(GameObject *object)
+void GameManager::queueTransform(GameObject *object, bool refreshImmediate)
 {
+    if (refreshImmediate)
+        object->refreshImmediatePositions();
     transformOrderNeeded |= object->parent != nullptr;
     if (object->transformQueueIndex != SIZE_MAX)
     {
@@ -923,6 +925,9 @@ void GameManager::synchronizeSubtree(GameObject *object)
     }
     object->transformStamp = transformStamp;
 
+    object->immediateWorldPosition = object->parent
+                                         ? (object->position + object->parent->immediateWorldPosition).eval()
+                                         : object->position;
     const auto previous = object->worldPosition;
     object->worldPosition =
         object->parent ? (object->parent->worldPosition + object->position).eval() : object->position;

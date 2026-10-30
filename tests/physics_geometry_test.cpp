@@ -82,9 +82,13 @@ void parameters()
 {
     platformator::Runtime runtime(physicsOnly());
     auto *object = runtime.createGameObject()->addComponent<BoxCollider>(20, 20)->addComponent<Rigidbody>();
+    auto *circle = runtime.createGameObject()->addComponent<CircleCollider>(5)->getComponent<CircleCollider>();
     const std::function<void()> invalid[] = {
         [&] { object->getComponent<BoxCollider>()->setWidth(0); },
         [&] { object->getComponent<BoxCollider>()->setHeight(-1); },
+        [&] { object->getComponent<BoxCollider>()->setWidth(std::numeric_limits<float>::infinity()); },
+        [&] { object->getComponent<Collider>()->setOffset({std::numeric_limits<float>::quiet_NaN(), 0}); },
+        [&] { circle->setRadius(0); },
         [&] { object->setScale({1, 0}); },
         [&] { object->setScale({-1, 1}); },
         [&] { object->setPosition({std::numeric_limits<float>::infinity(), 0}); },
@@ -110,6 +114,52 @@ void parameters()
     require(object->getComponent<Rigidbody>()->getInverseMass() == 0,
             "Static bodies have intentional zero inverse mass");
 }
+void unchangedProperties()
+{
+    platformator::Runtime runtime(physicsOnly());
+    auto *object = runtime.createGameObject()->addComponent<BoxCollider>(20, 30)->addComponent<Rigidbody>();
+    auto *box = object->getComponent<BoxCollider>();
+    auto *body = object->getComponent<Rigidbody>();
+    body->setGravity(false);
+    runtime.simulateFrame(dt);
+    body->setIsSleeping(true);
+    runtime.simulateFrame(dt);
+    require(!box->getIsQueuedForSync(), "Fixture must start with no queued geometry update");
+    box->setWidth(20);
+    box->setHeight(30);
+    box->setOffset({0, 0});
+    body->setMass(body->getMass())->setFriction(body->getFriction())->setRestitution(body->getRestitution())
+        ->setGravity(body->getGravity());
+    require(body->getIsSleeping(), "Unchanged properties must not wake a body");
+    require(!box->getIsQueuedForSync(), "Unchanged collider properties must not queue geometry");
+    const float originalInertia = body->getMomentOfInertia();
+    box->setWidth(40);
+    require(box->getIsQueuedForSync() && body->getMomentOfInertia() > originalInertia,
+            "A changed box dimension queues geometry and refreshes body inertia");
+    runtime.simulateFrame(dt);
+    require(!box->getIsQueuedForSync(), "Changed box geometry settles at the next synchronization");
+    box->setOffset({2, -3});
+    require(box->getIsQueuedForSync(), "A changed finite offset queues collider geometry");
+    runtime.simulateFrame(dt);
+    body->setVelocity({10, 0});
+    require(!body->getIsSleeping(), "Motion assignment still wakes a sleeping body");
+    body->setBodyType(KINEMATIC)->setVelocity({3, 0})->setForce({2, 0});
+    body->setBodyType(KINEMATIC);
+    require(body->getVelocity() == Eigen::Vector2f(3, 0) && body->getForce().isZero(0),
+            "Repeating a body type preserves its initialization semantics");
+    auto *circleObject = runtime.createGameObject()->setPosition({1000, 0})->addComponent<CircleCollider>(5);
+    auto *circle = circleObject->getComponent<CircleCollider>();
+    runtime.simulateFrame(dt);
+    require(!circle->getIsQueuedForSync(), "Circle fixture must start with no queued geometry update");
+    circle->setRadius(5);
+    circle->setOffset({0, 0});
+    require(!circle->getIsQueuedForSync(), "Unchanged radius must not queue geometry");
+    circle->setRadius(7);
+    require(circle->getIsQueuedForSync(), "A changed circle radius queues geometry");
+    runtime.simulateFrame(dt);
+    circle->setOffset({1, 2});
+    require(circle->getIsQueuedForSync(), "A changed finite circle offset queues geometry");
+}
 } // namespace
 int main()
 {
@@ -128,6 +178,7 @@ int main()
         circleCircle({0, 0}, true);
         roundedBoxGap();
         parameters();
+        unchangedProperties();
         std::cout << "[PASS] geometry and numeric boundaries\n";
         return 0;
     }

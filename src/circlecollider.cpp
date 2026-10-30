@@ -27,6 +27,8 @@ float CircleCollider::getRadius() const
 void CircleCollider::setRadius(const float radius)
 {
     platformator_detail::positive(radius, "circle.radius");
+    if (this->radius == radius)
+        return;
     this->radius = radius;
 
     GameObject *gameObject = getGameObject();

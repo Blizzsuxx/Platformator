@@ -106,6 +106,8 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_linear_render.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_budget.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/sweep_scaling.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/transform_setter_probe.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_transform_setter.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests/test_linear_render.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/render_culling_fixture.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_work_probe.h")
@@ -217,6 +219,13 @@ if(PLATFORMATOR_BUILD_RUNNER)
 endif()
 
 if(PLATFORMATOR_ENABLE_BENCHMARKS)
+    add_executable(platformator_transform_setter_probe benchmark/transform_setter_probe.cpp)
+    target_link_libraries(platformator_transform_setter_probe PRIVATE Platformator::platformator)
+    target_include_directories(platformator_transform_setter_probe PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
     add_executable(platformator_linear_render_probe benchmark/linear_render_probe.cpp)
     target_link_libraries(platformator_linear_render_probe PRIVATE Platformator::platformator)
     target_include_directories(platformator_linear_render_probe PRIVATE

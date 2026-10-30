@@ -75,6 +75,8 @@ float BoxCollider::getHeightWithoutScale() const
 void BoxCollider::setWidth(const float width)
 {
     platformator_detail::positive(width, "box.width");
+    if (this->width == width)
+        return;
     this->width = width;
 
     GameObject *gameObject = getGameObject();
@@ -95,6 +97,8 @@ void BoxCollider::setWidth(const float width)
 void BoxCollider::setHeight(const float height)
 {
     platformator_detail::positive(height, "box.height");
+    if (this->height == height)
+        return;
     this->height = height;
 
     GameObject *gameObject = getGameObject();

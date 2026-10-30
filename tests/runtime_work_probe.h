@@ -21,6 +21,10 @@ struct SpriteIdentity
 // Main-thread reductions only. Instrumented test builds opt in explicitly.
 struct WorkCounters
 {
+    size_t positionReadVisits = 0;
+    size_t immediatePositionRefreshVisits = 0;
+    size_t colliderSyncRequests = 0;
+    size_t bodyParticipationEnqueues = 0;
     size_t hierarchyRebuilds = 0;
     size_t transformVisits = 0;
     size_t reconciliations = 0;

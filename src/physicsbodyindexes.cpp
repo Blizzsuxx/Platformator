@@ -1,6 +1,7 @@
 #include "physicsmanager.h"
 
 #include "physicsmembership.h"
+#include "workprobe.h"
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {
@@ -11,6 +12,7 @@ void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 
     body->participationQueueIndex = pendingBodyChanges.size();
     pendingBodyChanges.push_back(body);
+    PLATFORMATOR_WORK_ADD(bodyParticipationEnqueues, 1);
 }
 
 void PhysicsManager::cancelBodyParticipationChange(Rigidbody *body)

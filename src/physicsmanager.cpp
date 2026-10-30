@@ -64,7 +64,8 @@ void PhysicsManager::applyMovement(double timeDelta)
             }
             if (changed.translated)
             {
-                manager.queueTransform(changed.object);
+                // The manager synchronizes this batch before any callbacks or reads.
+                manager.queueTransform(changed.object, false);
             }
             else
             {

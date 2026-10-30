@@ -10,6 +10,7 @@
 #include "runtimeaccess.h"
 #include "platformator/runtime.h"
 #include "inputvalidation.h"
+#include "workprobe.h"
 
 GameObject::GameObject()
     : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), position(Eigen::Vector2f::Zero()),
@@ -42,11 +43,8 @@ bool GameObject::getActive() const
 
 Eigen::Vector2f GameObject::getPosition() const
 {
-    if (parent != nullptr)
-    {
-        return position + parent->getPosition();
-    }
-    return position;
+    PLATFORMATOR_WORK_ADD(positionReadVisits, 1);
+    return immediateWorldPosition;
 }
 
 float GameObject::getX() const
@@ -166,7 +164,21 @@ void GameObject::queueTransform()
     if (getIsRegisteredInGameManager())
         platformator_detail::RuntimeAccess::gameManager().queueTransform(this);
     else
+    {
+        refreshImmediatePositions();
         worldPosition = getPosition();
+    }
+}
+
+void GameObject::refreshImmediatePositions()
+{
+    // EFFICIENCY: Every public ancestor edit visits O(subtree) objects. Eager writes keep
+    // immediate reads stable for collision readers; if edit-heavy workloads regress, replace
+    // this walk with main-thread batched subtree publication and an explicit reader boundary.
+    PLATFORMATOR_WORK_ADD(immediatePositionRefreshVisits, 1);
+    immediateWorldPosition = parent ? (position + parent->immediateWorldPosition).eval() : position;
+    for (auto *child : children)
+        child->refreshImmediatePositions();
 }
 
 void GameObject::updateCollider()

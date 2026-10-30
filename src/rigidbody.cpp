@@ -163,6 +163,8 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
         return this;
     }
 
+    if (this->velocity == velocity)
+        return this;
     this->velocity = velocity;
     if (bodyType == KINEMATIC)
     {
@@ -208,6 +210,8 @@ Rigidbody *Rigidbody::setMass(const float mass)
     {
         throw std::invalid_argument("Dynamic body mass must be positive");
     }
+    if (this->mass == mass)
+        return this;
     this->mass = mass > 0.0f ? mass : 0.0f;
     wakeUp();
     this->inverseMass = this->mass > 0.0f ? 1.0f / this->mass : 0.0f;
@@ -227,6 +231,8 @@ Rigidbody *Rigidbody::setAngularVelocity(const float angularVelocity)
         return this;
     }
 
+    if (this->angularVelocity == angularVelocity)
+        return this;
     this->angularVelocity = angularVelocity;
     if (bodyType == KINEMATIC)
     {
@@ -250,6 +256,8 @@ Rigidbody *Rigidbody::setTorque(const float torque)
 Rigidbody *Rigidbody::setFriction(const float friction)
 {
     platformator_detail::nonnegative(friction, "body.friction");
+    if (this->friction == friction)
+        return this;
     this->friction = friction;
     wakeUp();
     return this;
@@ -262,6 +270,8 @@ Rigidbody *Rigidbody::setRestitution(const float restitution)
     {
         throw std::invalid_argument("body.restitution must be <= 1");
     }
+    if (this->restitution == restitution)
+        return this;
     this->restitution = restitution;
     wakeUp();
     return this;
@@ -296,6 +306,8 @@ Rigidbody *Rigidbody::setBodyType(const BodyType bodyType)
 
 Rigidbody *Rigidbody::setGravity(const bool gravity)
 {
+    if (this->gravity == gravity)
+        return this;
     this->gravity = gravity;
     wakeUp();
     queueParticipationChange();

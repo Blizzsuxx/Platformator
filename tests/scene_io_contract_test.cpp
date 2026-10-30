@@ -1,4 +1,5 @@
 #include "test_support.h"
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -93,6 +94,23 @@ int main()
         writeScene(original, "committed");
         runtime.loadScene(original.string());
         auto *committed = runtime.getGameObject("committed");
+        auto *editedParent = runtime.createGameObject()->setName("unsynchronized-parent")->setPosition({10, 20});
+        auto *editedChild = runtime.createGameObject()->setName("unsynchronized-child")->setPosition({30, 40});
+        editedParent->addChild(editedChild);
+        editedParent->setPosition({20, 30});
+        editedChild->setPosition({45, 65});
+        require(editedChild->getPosition() == Eigen::Vector2f(45, 65),
+                "Nested edits are current before serialization without a simulation step");
+        const auto hierarchyPath = directory / "unsynchronized-hierarchy.scene";
+        runtime.saveScene(hierarchyPath.string());
+        const Json hierarchyDocument = Json::parse(read(hierarchyPath));
+        const auto parentRecord = std::find_if(hierarchyDocument.begin(), hierarchyDocument.end(), [](const Json &entry) {
+            return entry.value("name", "") == "unsynchronized-parent";
+        });
+        require(parentRecord != hierarchyDocument.end() && (*parentRecord)["children"].size() == 1 &&
+                    (*parentRecord)["children"][0]["position"]["x"] == 45 &&
+                    (*parentRecord)["children"][0]["position"]["y"] == 65,
+                "Scene serialization records the current descendant world position before frame synchronization");
         Json document = Json::parse(read(original));
         const auto base = document[0];
         const auto rejects = [&](const Json &bad) {

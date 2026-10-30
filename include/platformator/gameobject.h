@@ -128,6 +128,8 @@ class GameObject : public BaseObject
     GameObject *parent;
     size_t parentIndex = SIZE_MAX;
     Eigen::Vector2f position;
+    // Immediate public position; worldPosition remains the last synchronized snapshot.
+    Eigen::Vector2f immediateWorldPosition = Eigen::Vector2f::Zero();
     Eigen::Vector2f worldPosition = Eigen::Vector2f::Zero();
     size_t transformQueueIndex = SIZE_MAX;
     size_t hierarchyOrder = 0;
@@ -145,6 +147,7 @@ class GameObject : public BaseObject
     void detachFromParent();
     void updateCollider();
     void queueTransform();
+    void refreshImmediatePositions();
     void addComponentInternal(Component *component);
     void attachComponent(Component *component);
     void flushMutations();

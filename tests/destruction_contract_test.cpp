@@ -134,6 +134,29 @@ void slotsAndFailure()
     require(second->getComponent<ScriptComponent>() && cleaned == 1,
             "Cleanup restores idle without repeating teardown");
 }
+
+void destroysHierarchyAfterCurrentReads()
+{
+    int callbacks = 0;
+    platformator::Runtime runtime;
+    auto *parent = runtime.createGameObject()->setPosition({10, 20});
+    auto *child = runtime.createGameObject()->setPosition({30, 40});
+    parent->addChild(child);
+    parent->setPosition({40, 50});
+    require(child->getPosition() == Eigen::Vector2f(60, 70),
+            "A descendant remains immediately readable after its ancestor moves");
+    child->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(new Teardown(
+        [&](GameObject *owner) {
+            require(owner->getPosition() == Eigen::Vector2f(60, 70),
+                    "Destroy callbacks can read the current descendant transform before reclamation");
+            ++callbacks;
+        }));
+    ObjectReference<GameObject> parentReference(parent);
+    ObjectReference<GameObject> childReference(child);
+    runtime.simulateFrameWithCustomCallback(dt, [&](double) { parent->destroy(); });
+    require(callbacks == 1 && !parentReference && !childReference,
+            "Subtree destruction retires the full hierarchy after callbacks without stale references");
+}
 } // namespace
 int main()
 {
@@ -144,6 +167,7 @@ int main()
             for (bool shutdown : {false, true})
                 hierarchy(order, shutdown);
         slotsAndFailure();
+        destroysHierarchyAfterCurrentReads();
         std::cout << "[PASS] destruction contracts\n";
         return 0;
     }

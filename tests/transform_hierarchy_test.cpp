@@ -1,6 +1,7 @@
 #include "test_support.h"
 #include <cmath>
 #include <iostream>
+#include <oneapi/tbb/global_control.h>
 #include <platformator/boxcollider.h>
 #include <platformator/rigidbody.h>
 #include <platformator/scriptcomponent.h>
@@ -45,8 +46,9 @@ void parentMotion(bool childFirst)
     require(child->getComponent<BoxCollider>()->getGridCellRange().minX > 0,
             "Reparented geometry must publish automatically");
 }
-void integratedHierarchy()
+void integratedHierarchy(size_t workers)
 {
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
     platformator::Runtime runtime(physicsOnly());
     auto *parent = runtime.createGameObject()->setPosition({10, 0})->addComponent<Rigidbody>(KINEMATIC, false);
     auto *child = runtime.createGameObject()
@@ -58,10 +60,34 @@ void integratedHierarchy()
     child->getComponent<Rigidbody>()->setVelocity({24, 0});
     auto *leaf = runtime.createGameObject()->setPosition({35, 0})->addComponent<BoxCollider>(2, 2);
     child->addChild(leaf);
-    for (int i = 0; i < 120; ++i)
+    runtime.simulateFrame(dt);
+    require(std::abs(child->getX() - 30.3f) < 0.002f && std::abs(leaf->getX() - 35.3f) < 0.002f,
+            "One synchronized batch publishes parent and child motion together");
+    for (int i = 0; i < 119; ++i)
         runtime.simulateFrame(dt);
     require(std::abs(child->getX() - 66) < 0.002f && std::abs(leaf->getX() - 71) < 0.002f,
             "Parent/child workers integrate their own local motion without overwriting ancestor translation");
+}
+void immediateHierarchy()
+{
+    platformator::Runtime runtime(physicsOnly());
+    auto *root = runtime.createGameObject()->setPosition({10, 4});
+    auto *middle = runtime.createGameObject()->setPosition({20, 7});
+    auto *leaf = runtime.createGameObject()->setPosition({25, 9});
+    root->addChild(middle);
+    middle->addChild(leaf);
+    root->setPosition({30, 4});
+    require(leaf->getPosition() == Eigen::Vector2f(45, 9), "Nested reads reflect unsynchronized ancestor edits");
+    for (int read = 0; read < 64; ++read)
+        require(leaf->getPosition() == Eigen::Vector2f(45, 9), "Repeated reads preserve the current nested position");
+    middle->setPosition({40, 8});
+    require(leaf->getPosition() == Eigen::Vector2f(45, 10), "Nested reads reflect unsynchronized local edits");
+    require(root->removeChild(middle), "Detach succeeds");
+    root->setPosition({50, 4});
+    require(leaf->getPosition() == Eigen::Vector2f(45, 10), "Detached descendants retain their positions");
+    root->addChild(middle);
+    root->setPosition({55, 4});
+    require(leaf->getPosition() == Eigen::Vector2f(50, 10), "Reparented descendants follow their new ancestor");
 }
 } // namespace
 int main()
@@ -71,7 +97,9 @@ int main()
     {
         parentMotion(false);
         parentMotion(true);
-        integratedHierarchy();
+        integratedHierarchy(1);
+        integratedHierarchy(6);
+        immediateHierarchy();
         std::cout << "[PASS] hierarchy transforms\n";
         return 0;
     }

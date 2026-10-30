@@ -163,7 +163,7 @@ class GameManager
     bool hierarchyDirty = true;
     bool transformOrderNeeded = false;
     uint64_t transformStamp = 0;
-    void queueTransform(GameObject *object);
+    void queueTransform(GameObject *object, bool refreshImmediate = true);
     void cancelTransform(GameObject *object);
     void synchronizeTransforms();
     void rebuildHierarchyOrder(GameObject *object);

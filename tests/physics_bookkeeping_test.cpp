@@ -222,6 +222,48 @@ void bodyParticipation(size_t workers)
     runtime.simulateFrame(dt);
 }
 
+void sameValuesAndWakeThresholds(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    auto *object = runtime.createGameObject()->addComponent<Rigidbody>(DYNAMIC, false);
+    auto *body = object->getComponent<Rigidbody>();
+    runtime.simulateFrame(dt);
+
+    body->setIsSleeping(true);
+    body->setMass(body->getMass())->setFriction(body->getFriction())->setRestitution(body->getRestitution())
+        ->setGravity(body->getGravity());
+    require(body->getIsSleeping(), "Unchanged mass/material/gravity assignments keep a sleeping body asleep");
+    body->setVelocity({0, 0})->setAngularVelocity(0)->setForce({0, 0})->setTorque(0);
+    require(body->getIsSleeping(), "Zero motion and force assignments do not cross wake thresholds");
+
+    body->setVelocity({0.0001f, 0})->setForce({0.0001f, 0});
+    body->setAngularVelocity(0.00001f)->setTorque(0.00001f);
+    require(body->getIsSleeping(), "Sub-threshold motion, force and torque assignments preserve sleep");
+    body->setVelocity({1, 0});
+    require(!body->getIsSleeping(), "Above-threshold velocity wakes a sleeping body");
+    body->setIsSleeping(true)->setForce({1, 0});
+    require(!body->getIsSleeping(), "Above-threshold force wakes a sleeping body");
+    body->setIsSleeping(true)->setAngularVelocity(1);
+    require(!body->getIsSleeping(), "Above-threshold angular velocity wakes a sleeping body");
+    body->setIsSleeping(true)->setTorque(1);
+    require(!body->getIsSleeping(), "Above-threshold torque wakes a sleeping body");
+
+    auto *kinematic = runtime.createGameObject()->addComponent<Rigidbody>(KINEMATIC, false);
+    auto *kinematicBody = kinematic->getComponent<Rigidbody>();
+    kinematicBody->setVelocity({12, 0});
+    runtime.simulateFrame(dt);
+    const float before = kinematic->getX();
+    kinematicBody->setVelocity({12, 0});
+    runtime.simulateFrame(dt);
+    require(std::abs(kinematic->getX() - before - 0.1f) < 1e-5f,
+            "An unchanged kinematic velocity keeps the body in movement participation");
+    kinematicBody->setVelocity({24, 0});
+    runtime.simulateFrame(dt);
+    require(std::abs(kinematic->getX() - before - 0.3f) < 1e-5f,
+            "Changed kinematic velocity updates movement participation");
+}
+
 void sleepTransitionsAndGroups(size_t workers)
 {
     tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
@@ -286,6 +328,7 @@ int main()
             contactMembershipRemoval(workers);
             bodyMembershipRemoval(workers);
             bodyParticipation(workers);
+            sameValuesAndWakeThresholds(workers);
             sleepTransitionsAndGroups(workers);
         }
         std::cout << "[PASS] physics bookkeeping contracts\n";

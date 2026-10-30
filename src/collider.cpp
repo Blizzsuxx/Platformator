@@ -8,6 +8,7 @@
 #include "segmentedintervallist.h"
 #include "platformator/scriptcomponent.h"
 #include "collision.h"
+#include "workprobe.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType)
     : Component(gameObject, type), collisionGroup(1), collisionMask(1), colliderType(colliderType), stateVersion(0),
@@ -56,6 +57,8 @@ void Collider::setOffset(const Eigen::Vector2f &offset)
 {
     if (!offset.allFinite())
         throw std::invalid_argument("collider.offset must be finite");
+    if (this->offset == offset)
+        return;
     this->offset = offset;
 
     if (getGameObject() != nullptr)
@@ -91,6 +94,7 @@ bool Collider::getIsQueuedForAdd() const
 
 void Collider::scheduleSync()
 {
+    PLATFORMATOR_WORK_ADD(colliderSyncRequests, 1);
     dirty |= Geometry;
     if (getIsRegisteredInPhysicsManager())
         platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueColliderSync(this);

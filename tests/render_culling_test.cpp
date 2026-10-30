@@ -23,6 +23,8 @@
 #include <platformator/runtimeoptions.h>
 
 #include "test_support.h"
+#include "runtimeaccess.h"
+#include "sdlwindow.h"
 
 namespace
 {
@@ -65,7 +67,8 @@ struct CapturedImage
         ++capture->callbacks;
         capture->width = outputWidth;
         capture->height = outputHeight;
-        SDL_Surface *raw = SDL_RenderReadPixels(renderer, nullptr);
+        const SDL_Rect readbackRect{0, 0, outputWidth, outputHeight};
+        SDL_Surface *raw = SDL_RenderReadPixels(renderer, &readbackRect);
         if (raw == nullptr)
         {
             capture->failure = std::string("SDL_RenderReadPixels failed: ") + SDL_GetError();
@@ -84,9 +87,9 @@ struct CapturedImage
             }
         }
 
-        if (converted->w != outputWidth || converted->h != outputHeight)
+        if (converted->w > outputWidth || converted->h > outputHeight)
         {
-            capture->failure = "Readback dimensions do not match the requested output";
+            capture->failure = "Readback dimensions exceed the reserved output storage";
             SDL_DestroySurface(converted);
             return;
         }
@@ -103,11 +106,13 @@ struct CapturedImage
             SDL_DestroySurface(converted);
             return;
         }
+        capture->width = converted->w;
+        capture->height = converted->h;
         const auto *pixels = static_cast<const uint8_t *>(converted->pixels);
-        for (int row = 0; row < outputHeight; ++row)
+        for (int row = 0; row < converted->h; ++row)
         {
             std::memcpy(capture->rgba.data() + static_cast<size_t>(row) * outputWidth * 4,
-                        pixels + static_cast<size_t>(row) * converted->pitch, static_cast<size_t>(outputWidth) * 4);
+                        pixels + static_cast<size_t>(row) * converted->pitch, static_cast<size_t>(converted->w) * 4);
         }
         if (SDL_MUSTLOCK(converted))
             SDL_UnlockSurface(converted);
@@ -168,7 +173,8 @@ std::pair<int, int> currentOutputSize(RenderCullingFixture &fixture)
 }
 
 FrameResult captureFrame(RenderCullingFixture &fixture, size_t submissionCapacity,
-                         const std::function<void(double)> &stepHook = {}, CapturedImage *reusableImage = nullptr)
+                         const std::function<void(double)> &stepHook = {}, CapturedImage *reusableImage = nullptr,
+                         bool resetWork = true, bool simulate = true)
 {
     const auto [outputWidth, outputHeight] = currentOutputSize(fixture);
     FrameResult result;
@@ -188,11 +194,14 @@ FrameResult captureFrame(RenderCullingFixture &fixture, size_t submissionCapacit
 
     {
         platformator_test::ScopedRenderObservation scope(observation);
-        platformator_test::work = {};
-        const bool rendered = stepHook
-                                  ? fixture.runtime().simulateAndRenderFrameWithCustomCallback(test_support::dt,
-                                                                                                stepHook)
-                                  : fixture.runtime().simulateAndRenderFrame(test_support::dt);
+        if (resetWork)
+            platformator_test::work = {};
+        const bool rendered = simulate
+                                  ? (stepHook
+                                         ? fixture.runtime().simulateAndRenderFrameWithCustomCallback(test_support::dt,
+                                                                                                       stepHook)
+                                         : fixture.runtime().simulateAndRenderFrame(test_support::dt))
+                                  : (platformator_detail::RuntimeAccess::window()->render(), true);
         test_support::require(rendered, "Render culling fixture quit before a frame was rendered");
         result.work = platformator_test::work;
     }
@@ -374,6 +383,13 @@ FrameResult captureFixtureFrame(RenderCullingFixture &fixture)
     return frame;
 }
 
+FrameResult captureRenderOnlyFrame(RenderCullingFixture &fixture)
+{
+    FrameResult frame = captureFrame(fixture, fixture.records().size(), {}, nullptr, true, false);
+    frame.expectedVisible = frame.submissions;
+    return frame;
+}
+
 FrameDigest captureFrameDigest(RenderCullingFixture &fixture, size_t submissionCapacity,
                                const std::function<void(double)> &stepHook, CapturedImage &reusableImage)
 {
@@ -421,6 +437,463 @@ void compareFrameDigests(const std::string &name, const FrameDigest &reference, 
     }
     test_support::require(enabled.submissions == expected,
                           name + ": enabled order differs from the independent-oracle reference subsequence");
+}
+
+class ScopedRenderCullingMode
+{
+  public:
+    explicit ScopedRenderCullingMode(const char *mode)
+    {
+        if (const char *previous = std::getenv("PLATFORMATOR_RENDER_CULLING_MODE"))
+        {
+            hadPrevious_ = true;
+            previous_ = previous;
+        }
+        if (setenv("PLATFORMATOR_RENDER_CULLING_MODE", mode, 1) != 0)
+            throw std::runtime_error("Could not select the internal render-culling comparison mode");
+    }
+
+    ScopedRenderCullingMode(const ScopedRenderCullingMode &) = delete;
+    ScopedRenderCullingMode &operator=(const ScopedRenderCullingMode &) = delete;
+
+    ~ScopedRenderCullingMode()
+    {
+        if (hadPrevious_)
+            setenv("PLATFORMATOR_RENDER_CULLING_MODE", previous_.c_str(), 1);
+        else
+            unsetenv("PLATFORMATOR_RENDER_CULLING_MODE");
+    }
+
+  private:
+    std::string previous_;
+    bool hadPrevious_ = false;
+};
+
+enum class StaticLayout
+{
+    Visible,
+    Sparse,
+    Offscreen
+};
+
+struct StaticModeCapture
+{
+    platformator_test::WorkCounters setupWork;
+    std::vector<FrameResult> frames;
+};
+
+StaticModeCapture captureStaticMode(const char *mode, bool enableCulling, size_t count, StaticLayout layout)
+{
+    ScopedRenderCullingMode strategy(mode);
+    test_support::headlessEnvironment();
+    platformator_test::work = {};
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, enableCulling);
+    fixture.reserveSprites(count);
+    for (size_t index = 0; index < count; ++index)
+    {
+        const bool visible = layout == StaticLayout::Visible || (layout == StaticLayout::Sparse && index % 10 == 0);
+        const float x = visible ? static_cast<float>(10 + (index % 16) * 19)
+                                : static_cast<float>(430 + index * 6);
+        const float y = visible ? static_cast<float>(10 + (index / 16) * 14) : 400.0f;
+        fixture.addSprite(index, 0, x, y, 10.0f, 10.0f);
+    }
+
+    StaticModeCapture result;
+    result.setupWork = platformator_test::work;
+    result.frames.reserve(3);
+    for (size_t frameIndex = 0; frameIndex < 3; ++frameIndex)
+    {
+        FrameResult frame = captureFrame(fixture, count);
+        frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+        result.frames.push_back(std::move(frame));
+    }
+    return result;
+}
+
+void checkStaticCacheReuse()
+{
+    struct Case
+    {
+        size_t count;
+        StaticLayout layout;
+        const char *name;
+    };
+    const std::array<Case, 6> cases = {{{0, StaticLayout::Visible, "empty"},
+                                        {1, StaticLayout::Visible, "visible-1"},
+                                        {32, StaticLayout::Visible, "visible-32"},
+                                        {256, StaticLayout::Visible, "visible-256"},
+                                        {128, StaticLayout::Sparse, "sparse-128"},
+                                        {128, StaticLayout::Offscreen, "offscreen-128"}}};
+
+    for (const auto &testCase : cases)
+    {
+        const StaticModeCapture linear = captureStaticMode("current-linear", true, testCase.count, testCase.layout);
+        const StaticModeCapture submitAll = captureStaticMode("current-linear", false, testCase.count, testCase.layout);
+        const StaticModeCapture cached = captureStaticMode("cached-linear", true, testCase.count, testCase.layout);
+        const StaticModeCapture indexed = captureStaticMode("indexed", true, testCase.count, testCase.layout);
+
+        test_support::require(linear.setupWork.renderCullingStateCreations == 0 &&
+                                  submitAll.setupWork.renderCullingStateCreations == 0,
+                              std::string(testCase.name) + ": inactive comparison modes must not create cache state");
+        test_support::require(cached.setupWork.renderCullingStateCreations == 1 &&
+                                  cached.setupWork.renderCullingRecordsAdded == testCase.count,
+                              std::string(testCase.name) + ": cached-linear must own one record per registered sprite");
+        test_support::require(indexed.setupWork.renderCullingStateCreations == 1 &&
+                                  indexed.setupWork.renderCullingRecordsAdded == testCase.count,
+                              std::string(testCase.name) + ": indexed mode must own one record per registered sprite");
+        test_support::require(linear.frames.front().image.rgba == submitAll.frames.front().image.rgba,
+                              std::string(testCase.name) + ": submit-all and current-linear images differ");
+        test_support::require(submitAll.frames.front().submissions.size() == testCase.count,
+                              std::string(testCase.name) + ": submit-all must preserve every registered submission");
+        for (size_t rank = 0; rank < testCase.count; ++rank)
+            test_support::require(submitAll.frames.front().submissions[rank].slot == rank,
+                                  std::string(testCase.name) + ": submit-all order differs from registration order");
+        std::vector<SpriteIdentity> expectedLinear;
+        for (const auto identity : submitAll.frames.front().submissions)
+            if (std::find(linear.frames.front().expectedVisible.begin(), linear.frames.front().expectedVisible.end(),
+                          identity) != linear.frames.front().expectedVisible.end())
+                expectedLinear.push_back(identity);
+        test_support::require(linear.frames.front().submissions == expectedLinear,
+                              std::string(testCase.name) + ": current-linear differs from the ordered oracle subset");
+        for (size_t frameIndex = 0; frameIndex < cached.frames.size(); ++frameIndex)
+        {
+            compareFixtureFrames(std::string(testCase.name) + " cached frame " + std::to_string(frameIndex),
+                                 linear.frames.front(), cached.frames[frameIndex]);
+            if (frameIndex == 0)
+                continue;
+            const auto &work = cached.frames[frameIndex].work;
+            test_support::require(work.renderCullingBoundsRefreshes == 0 &&
+                                      work.renderCullingQueries == 0 &&
+                                      work.renderCullingFullPopulationVisits == 0 &&
+                                      work.renderCullingOrderWork == 0 &&
+                                      work.renderCullingCacheHits == 1,
+                                  std::string(testCase.name) +
+                                      ": an unchanged prepared frame must reuse the ordered result without selection work");
+        }
+        for (size_t frameIndex = 0; frameIndex < indexed.frames.size(); ++frameIndex)
+        {
+            compareFixtureFrames(std::string(testCase.name) + " indexed frame " + std::to_string(frameIndex),
+                                 linear.frames.front(), indexed.frames[frameIndex]);
+            const auto &work = indexed.frames[frameIndex].work;
+            if (frameIndex == 0)
+                test_support::require(work.renderCullingQueries == 1 && work.renderCullingProjectionRebuilds == 1,
+                                      std::string(testCase.name) + ": initial indexed preparation must query once");
+            else
+                test_support::require(work.renderCullingBoundsRefreshes == 0 &&
+                                          work.renderCullingQueries == 0 &&
+                                          work.renderCullingCellVisits == 0 &&
+                                          work.renderCullingCandidateVisits == 0 &&
+                                          work.renderCullingFullPopulationVisits == 0 &&
+                                          work.renderCullingOrderWork == 0 &&
+                                          work.renderCullingCacheHits == 1,
+                                      std::string(testCase.name) +
+                                          ": an unchanged indexed frame must reuse selection without querying");
+        }
+    }
+}
+
+void checkCachePublicationCoalescing()
+{
+    ScopedRenderCullingMode strategy("cached-linear");
+    test_support::headlessEnvironment();
+    platformator_test::work = {};
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    constexpr size_t population = 16;
+    fixture.reserveSprites(population);
+    for (size_t index = 0; index < population; ++index)
+        fixture.addSprite(index, 0, static_cast<float>(30 + index * 15), 80.0f, 12.0f, 16.0f);
+    GameObject *parent = fixture.runtime().createGameObject();
+    parent->addChild(fixture.record(0).object);
+    parent->addChild(fixture.record(1).object);
+
+    const FrameResult prepared = captureFixtureFrame(fixture);
+    const auto originalWidth = fixture.record(0).sprite->getWidthWithoutScale();
+    const auto originalHeight = fixture.record(0).sprite->getHeightWithoutScale();
+    const auto originalScale = fixture.record(0).object->getScale();
+    const auto originalRotation = fixture.record(0).object->getRotation();
+
+    platformator_test::work = {};
+    fixture.record(0).sprite->setWidth(originalWidth);
+    fixture.record(0).sprite->setHeight(originalHeight);
+    fixture.record(0).object->setScale(originalScale);
+    fixture.record(0).object->setRotation(originalRotation);
+    fixture.runtime().simulateFrame(test_support::dt);
+    FrameResult sameValues = captureFrame(fixture, population, {}, nullptr, false);
+    sameValues.expectedVisible = expectedVisibleForFixture(fixture, sameValues.image.width, sameValues.image.height);
+    compareFixtureFrames("cache same-value setters", prepared, sameValues);
+    test_support::require(sameValues.work.renderCullingDirtyEnqueues == 0 &&
+                              sameValues.work.renderCullingBoundsRefreshes == 0,
+                          "Same-value geometry setters must not enqueue or refresh a cached record");
+
+    platformator_test::work = {};
+    for (int step = 0; step < 5; ++step)
+    {
+        fixture.record(0).sprite->setWidth(originalWidth + 2.0f + step);
+        fixture.record(0).sprite->setWidth(originalWidth);
+        fixture.record(0).sprite->setHeight(originalHeight + 1.0f);
+        fixture.record(0).sprite->setHeight(originalHeight);
+        fixture.record(0).object->setScale({1.1f, 0.9f});
+        fixture.record(0).object->setScale(originalScale);
+        fixture.record(0).object->setRotation(originalRotation + 0.15f);
+        fixture.record(0).object->setRotation(originalRotation);
+        fixture.runtime().simulateFrame(test_support::dt);
+    }
+    FrameResult changedBack = captureFrame(fixture, population, {}, nullptr, false);
+    changedBack.expectedVisible = expectedVisibleForFixture(fixture, changedBack.image.width, changedBack.image.height);
+    compareFixtureFrames("cache changed-back values", prepared, changedBack);
+    test_support::require(changedBack.work.renderCullingDirtyEnqueues == 1 &&
+                              changedBack.work.renderCullingBoundsRefreshes == 1,
+                          "Many changed-back edits and simulation steps must coalesce to one final refresh");
+
+    platformator_test::work = {};
+    for (int step = 0; step < 5; ++step)
+    {
+        parent->setPosition({static_cast<float>(step * 3), static_cast<float>(step * 2)});
+        fixture.runtime().simulateFrame(test_support::dt);
+    }
+    FrameResult movedSubtree = captureFrame(fixture, population, {}, nullptr, false);
+    movedSubtree.expectedVisible = expectedVisibleForFixture(fixture, movedSubtree.image.width, movedSubtree.image.height);
+    test_support::require(movedSubtree.work.renderCullingDirtyEnqueues == 2 &&
+                              movedSubtree.work.renderCullingBoundsRefreshes == 2,
+                          "A changed parent subtree must refresh its two affected sprites once, excluding unrelated sprites");
+    test_support::require(movedSubtree.submissions == movedSubtree.expectedVisible,
+                          "The parent-subtree frame must draw current visible content in authoritative order");
+}
+
+std::vector<FrameResult> capturePublishedWorldPositionSequence(const char *mode)
+{
+    ScopedRenderCullingMode strategy(mode);
+    test_support::headlessEnvironment();
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    fixture.reserveSprites(1);
+    fixture.addSprite(0, 0, 82.0f, 86.0f, 48.0f, 32.0f);
+    GameObject *parent = fixture.runtime().createGameObject();
+    parent->addChild(fixture.record(0).object);
+
+    std::vector<FrameResult> frames;
+    frames.reserve(3);
+    frames.push_back(captureFixtureFrame(fixture));
+
+    // The renderer sees the last synchronized worldPosition until the normal
+    // transform boundary publishes the queued parent movement. Geometry edits
+    // force cached paths to refresh during this render-only interval.
+    parent->setPosition({900.0f, 0.0f});
+    fixture.record(0).sprite->setWidth(62.0f);
+    fixture.record(0).object->setRotation(0.47f);
+    frames.push_back(captureRenderOnlyFrame(fixture));
+
+    fixture.runtime().simulateFrame(test_support::dt);
+    frames.push_back(captureRenderOnlyFrame(fixture));
+    return frames;
+}
+
+void checkPublishedWorldPositionBounds()
+{
+    const auto current = capturePublishedWorldPositionSequence("current-linear");
+    const auto cached = capturePublishedWorldPositionSequence("cached-linear");
+    const auto indexed = capturePublishedWorldPositionSequence("indexed");
+    test_support::require(current.size() == 3 && cached.size() == current.size() && indexed.size() == current.size(),
+                          "Published-position regression must capture initial, render-only, and synchronized frames");
+    test_support::require(current[1].submissions == std::vector<SpriteIdentity>{{0, 0}} &&
+                              current[2].submissions.empty(),
+                          "The parent move must remain at the prior published position until transform synchronization");
+    for (size_t frame = 0; frame < current.size(); ++frame)
+    {
+        compareFixtureFrames("published world position cached frame " + std::to_string(frame), current[frame],
+                             cached[frame]);
+        compareFixtureFrames("published world position indexed frame " + std::to_string(frame), current[frame],
+                             indexed[frame]);
+    }
+}
+
+std::vector<FrameResult> captureDistantTexturelessSequence(const char *mode)
+{
+    ScopedRenderCullingMode strategy(mode);
+    test_support::headlessEnvironment();
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    fixture.reserveSprites(1);
+    fixture.addSprite(0, 0, 1000.0f, 80.0f, 24.0f, 24.0f, FixtureTexture::Null);
+
+    std::vector<FrameResult> frames;
+    frames.reserve(6);
+    frames.push_back(captureFixtureFrame(fixture));
+    const auto captureMutation = [&](const std::function<void()> &mutation) {
+        platformator_test::work = {};
+        FrameResult frame = captureFrame(fixture, fixture.records().size(),
+                                          [&](double) { mutation(); }, nullptr, false);
+        frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+        frames.push_back(std::move(frame));
+    };
+    captureMutation([&] { fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::BlackSquare)); });
+    captureMutation([&] { fixture.record(0).sprite->setTextureWrapper(nullptr); });
+    captureMutation([&] { fixture.camera()->getGameObject()->setPosition({1000.0f, 0.0f}); });
+    captureMutation([&] { fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::RedCircle)); });
+    captureMutation([&] { fixture.camera()->getGameObject()->setPosition({0.0f, 0.0f}); });
+    return frames;
+}
+
+void checkDistantTexturelessIndexedFallback()
+{
+    const auto current = captureDistantTexturelessSequence("current-linear");
+    const auto indexed = captureDistantTexturelessSequence("indexed");
+    test_support::require(current.size() == 6 && indexed.size() == current.size(),
+                          "Textureless fallback sequence must cover initial, dirty, and camera-pan frames");
+    const std::array<bool, 6> expectedSubmission = {true, false, true, true, true, false};
+    for (size_t frame = 0; frame < current.size(); ++frame)
+    {
+        test_support::require(current[frame].submissions.size() == (expectedSubmission[frame] ? 1u : 0u),
+                              "Current-linear textureless fallback schedule did not match its contract");
+        compareFixtureFrames("distant textureless indexed frame " + std::to_string(frame), current[frame],
+                             indexed[frame]);
+    }
+}
+
+std::vector<FrameResult> captureSimultaneousCrossing(const char *mode)
+{
+    ScopedRenderCullingMode strategy(mode);
+    test_support::headlessEnvironment();
+    constexpr size_t population = 512;
+    constexpr size_t half = population / 2;
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    fixture.reserveSprites(population);
+    for (size_t slot = 0; slot < population; ++slot)
+    {
+        const bool initiallyVisible = slot < half;
+        const float x = initiallyVisible ? static_cast<float>(40 + (slot % 16) * 14)
+                                         : static_cast<float>(700 + (slot % 16) * 14);
+        const float y = static_cast<float>(30 + (slot / 16 % 12) * 15);
+        fixture.addSprite(slot, 0, x, y, 12.0f, 12.0f);
+    }
+    std::vector<FrameResult> frames;
+    frames.reserve(2);
+    frames.push_back(captureFixtureFrame(fixture));
+
+    platformator_test::work = {};
+    for (size_t slot = 0; slot < population; ++slot)
+    {
+        const bool initiallyVisible = slot < half;
+        const float x = initiallyVisible ? static_cast<float>(900 + (slot % 16) * 14)
+                                         : static_cast<float>(40 + (slot % 16) * 14);
+        fixture.record(slot).object->setPosition({x, static_cast<float>(30 + (slot / 16 % 12) * 15)});
+    }
+    fixture.runtime().simulateFrame(test_support::dt);
+    FrameResult changed = captureFrame(fixture, population, {}, nullptr, false, false);
+    changed.expectedVisible = expectedVisibleForFixture(fixture, changed.image.width, changed.image.height);
+    frames.push_back(std::move(changed));
+    return frames;
+}
+
+void checkSimultaneousCrossingOrderWork()
+{
+    const auto current = captureSimultaneousCrossing("current-linear");
+    const auto cached = captureSimultaneousCrossing("cached-linear");
+    const auto indexed = captureSimultaneousCrossing("indexed");
+    constexpr size_t population = 512;
+    constexpr size_t half = population / 2;
+    for (const auto *frames : {&cached, &indexed})
+    {
+        test_support::require(frames->size() == 2 && current.size() == 2,
+                              "Simultaneous crossing must capture preparation and the batched membership change");
+        compareFixtureFrames("simultaneous crossing current frame", current[1], (*frames)[1]);
+        const auto &work = (*frames)[1].work;
+        test_support::require(work.renderCullingDirtyEnqueues == population &&
+                                  work.renderCullingBoundsRefreshes == population,
+                              "Every crossing sprite must publish and refresh exactly once");
+        test_support::require(work.renderCullingOrderWork <= population * 2 &&
+                                  work.renderCullingOrderWork > 0,
+                              "Simultaneous visibility changes must use bounded batch order work");
+        test_support::require((*frames)[1].submissions.size() == half,
+                              "The simultaneous crossing must replace the visible half without duplicates");
+        test_support::require(work.renderCullingOwnedRecordCapacity == population,
+                              "The warmed crossing path must not grow record capacity");
+    }
+}
+
+std::vector<FrameResult> captureIndexedPanSequence(const char *mode)
+{
+    ScopedRenderCullingMode strategy(mode);
+    test_support::headlessEnvironment();
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    constexpr size_t spreadCount = 400;
+    fixture.reserveSprites(spreadCount + 3);
+    size_t slot = 0;
+    for (int row = 0; row < 20; ++row)
+    {
+        for (int column = 0; column < 20; ++column)
+        {
+            const float x = -9500.0f + static_cast<float>(column) * 1000.0f;
+            const float y = -9500.0f + static_cast<float>(row) * 1000.0f;
+            fixture.addSprite(slot++, 0, x, y, 24.0f, 24.0f);
+        }
+    }
+    // Keep overlapping translucent sprites in one queried cell. The index's
+    // linked-list traversal is deliberately independent of submission rank.
+    fixture.addSprite(slot++, 0, 0.0f, 0.0f, 120.0f, 90.0f, FixtureTexture::RedCircle);
+    fixture.addSprite(slot++, 0, 0.0f, 0.0f, 90.0f, 110.0f, FixtureTexture::BlackSquare, SDL_FLIP_HORIZONTAL);
+    fixture.addSprite(slot++, 0, 0.0f, 0.0f, 70.0f, 70.0f, FixtureTexture::RedCircle, SDL_FLIP_VERTICAL);
+
+    const std::array<Eigen::Vector2f, 5> cameraPositions = {
+        Eigen::Vector2f{-9500.0f, -9500.0f}, Eigen::Vector2f{-4500.0f, -4500.0f},
+        Eigen::Vector2f{0.0f, 0.0f}, Eigen::Vector2f{4500.0f, 4500.0f},
+        Eigen::Vector2f{9500.0f, 9500.0f}};
+    std::vector<FrameResult> frames;
+    frames.reserve(cameraPositions.size());
+    for (size_t frameIndex = 0; frameIndex < cameraPositions.size(); ++frameIndex)
+    {
+        fixture.camera()->getGameObject()->setPosition(cameraPositions[frameIndex]);
+        if (frameIndex == cameraPositions.size() - 1)
+        {
+            fixture.camera()->setWidth(640.0f);
+            fixture.camera()->setHeight(480.0f);
+        }
+        FrameResult frame = captureFrame(fixture, fixture.records().size());
+        frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+        frames.push_back(std::move(frame));
+    }
+    return frames;
+}
+
+void checkIndexedPanSelection()
+{
+    const auto reference = captureIndexedPanSequence("current-linear");
+    const auto indexed = captureIndexedPanSequence("indexed");
+    test_support::require(reference.size() == indexed.size(), "Pan comparison frame counts differ");
+    for (size_t frame = 0; frame < reference.size(); ++frame)
+        compareFixtureFrames("indexed pan frame " + std::to_string(frame), reference[frame], indexed[frame]);
+
+    constexpr size_t population = 403;
+    for (size_t frame = 1; frame + 1 < indexed.size(); ++frame)
+    {
+        const auto &work = indexed[frame].work;
+        test_support::require(work.renderCullingQueries > 0,
+                              "A camera pan must execute an actual spatial query");
+        test_support::require(work.renderCullingBoundsRefreshes == 0 && work.renderCullingIndexRelinks == 0 &&
+                                  work.renderCullingFullPopulationVisits == 0,
+                              "Camera-only pans must reuse bounds and avoid a population-wide selection pass");
+        test_support::require(work.renderCullingCandidateVisits < population / 4 &&
+                                  work.renderCullingOrderWork < population,
+                              "Spread-scene pan must visit and order a spatially selective candidate set");
+    }
+
+    const auto &projectionWork = indexed.back().work;
+    test_support::require(projectionWork.renderCullingProjectionRebuilds == 1 &&
+                              projectionWork.renderCullingBoundsRefreshes == population,
+                          "A genuine camera projection change must refresh/regrid the dependent records");
+    const auto &panWork = indexed[2].work;
+    std::cout << "[WORK] indexed-pan queries=" << panWork.renderCullingQueries
+              << " cells=" << panWork.renderCullingCellVisits
+              << " candidates=" << panWork.renderCullingCandidateVisits
+              << " order=" << panWork.renderCullingOrderWork
+              << " refresh=" << panWork.renderCullingBoundsRefreshes
+              << " relinks=" << panWork.renderCullingIndexRelinks
+              << " full=" << panWork.renderCullingFullPopulationVisits
+              << " cacheHit=" << panWork.renderCullingCacheHits
+              << " ownedCells=" << panWork.renderCullingOwnedCellCount
+              << " nodeSupply=" << panWork.renderCullingOwnedCellCapacity << '\n';
+    std::cout << "[WORK] indexed-projection refresh=" << projectionWork.renderCullingBoundsRefreshes
+              << " relinks=" << projectionWork.renderCullingIndexRelinks
+              << " queries=" << projectionWork.renderCullingQueries
+              << " order=" << projectionWork.renderCullingOrderWork << '\n';
 }
 
 void checkRenderedDynamicSequence()
@@ -561,6 +1034,115 @@ void checkRenderedDynamicSequence()
               << " oracle_entries=" << entries << " oracle_exits=" << exits
               << " resized_output=" << reference[1].width << 'x' << reference[1].height
               << " no_camera=verified repeated_frames=verified\n";
+}
+
+void checkSceneResetFailurePreservationAndEmptyChurn()
+{
+    ScopedRenderCullingMode strategy("indexed");
+    test_support::headlessEnvironment();
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    constexpr size_t population = 96;
+    fixture.reserveSprites(population);
+    for (size_t slot = 0; slot < population; ++slot)
+        fixture.addSprite(slot, 0, static_cast<float>(slot * 42), static_cast<float>((slot % 9) * 35), 20.0f,
+                          18.0f, slot % 2 == 0 ? FixtureTexture::BlackSquare : FixtureTexture::RedCircle);
+    const FrameResult prepared = captureFixtureFrame(fixture);
+    test_support::require(prepared.work.renderCullingOwnedRecords == population &&
+                              prepared.work.renderCullingOwnedBytes > 0,
+                          "Prepared scene must expose its live indexed cache storage");
+
+    const auto badScenePath = std::filesystem::temp_directory_path() /
+                              "platformator-render-culling-invalid-scene.json";
+    const auto goodScenePath = std::filesystem::temp_directory_path() /
+                               "platformator-render-culling-reset-scene.json";
+    {
+        std::ofstream invalid(badScenePath, std::ios::trunc);
+        invalid << "{ this is not a scene }";
+    }
+    test_support::writeScene(goodScenePath, "Render Culling Reset", 9300);
+    try
+    {
+        bool rejected = false;
+        try
+        {
+            fixture.runtime().loadScene(badScenePath.string());
+        }
+        catch (const std::exception &)
+        {
+            rejected = true;
+        }
+        test_support::require(rejected, "Malformed scene preparation must fail before replacing live cache state");
+        const FrameResult afterFailure = captureFixtureFrame(fixture);
+        compareFixtureFrames("failed scene preparation preserves rendered scene", prepared, afterFailure);
+        test_support::require(afterFailure.work.renderCullingOwnedBytes == prepared.work.renderCullingOwnedBytes,
+                              "Failed scene preparation must preserve the live cache allocation state");
+
+        for (size_t slot = population; slot-- > 0;)
+            fixture.removeSprite(slot);
+        const FrameResult emptyChurn = captureFixtureFrame(fixture);
+        test_support::require(emptyChurn.work.renderCullingOwnedRecords == 0 &&
+                                  emptyChurn.work.renderCullingOwnedBytes == prepared.work.renderCullingOwnedBytes,
+                              "Ordinary transient empty churn must retain capacity for reuse");
+
+        fixture.clearSceneAndCreateCamera(320.0f, 240.0f);
+        const FrameResult afterClear = captureFixtureFrame(fixture);
+        test_support::require(afterClear.work.renderCullingOwnedRecords == 0 &&
+                                  afterClear.work.renderCullingOwnedBytes == 0 &&
+                                  afterClear.work.renderCullingOwnedCellCount == 0 &&
+                                  afterClear.work.renderCullingOwnedCellCapacity == 0,
+                              "Successful scene clear must release old record and grid high-water capacity");
+
+        fixture.loadSceneAndCreateCamera(goodScenePath.string(), 320.0f, 240.0f);
+        fixture.addSprite(0, 1, 85.0f, 75.0f, 28.0f, 24.0f, FixtureTexture::RedCircle);
+        const FrameResult replacement = captureFixtureFrame(fixture);
+        test_support::require(replacement.work.renderCullingOwnedRecords == 1 &&
+                                  replacement.work.renderCullingOwnedBytes > 0 &&
+                                  replacement.submissions == std::vector<SpriteIdentity>{{0, 1}},
+                              "Successful scene replacement must build fresh cache membership with new identity");
+
+        fixture.clearSceneAndCreateCamera(320.0f, 240.0f);
+        const FrameResult secondReset = captureFixtureFrame(fixture);
+        test_support::require(secondReset.work.renderCullingOwnedBytes == 0 &&
+                                  secondReset.work.renderCullingOwnedCellCount == 0,
+                              "Repeated scene reset must not retain keys or handles from a prior scene");
+    }
+    catch (...)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(badScenePath, ignored);
+        std::filesystem::remove(goodScenePath, ignored);
+        throw;
+    }
+    std::error_code ignored;
+    std::filesystem::remove(badScenePath, ignored);
+    std::filesystem::remove(goodScenePath, ignored);
+    std::cout << "scene-reset failure_preserved=verified empty_churn=retained clear_load_reset=released\n";
+}
+
+void checkRuntimeCacheReset()
+{
+    ScopedRenderCullingMode strategy("indexed");
+    test_support::headlessEnvironment();
+    uint64_t firstSerial = 0;
+    uint64_t secondSerial = 0;
+    for (size_t instance = 0; instance < 2; ++instance)
+    {
+        RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+        fixture.addSprite(0, static_cast<uint32_t>(instance), 70.0f, 80.0f, 36.0f, 32.0f,
+                          FixtureTexture::RedCircle);
+        const FrameResult frame = captureFixtureFrame(fixture);
+        test_support::require(frame.work.renderCullingOwnedRecords == 1 &&
+                                  frame.work.renderCullingOwnedCellCapacity <= 4 * frame.work.renderCullingOwnedRecordCapacity &&
+                                  frame.submissions == std::vector<SpriteIdentity>{{0, static_cast<uint32_t>(instance)}},
+                              "A newly constructed runtime must start with only its own render cache handles");
+        if (instance == 0)
+            firstSerial = fixture.runtime().getRuntimeSerial();
+        else
+            secondSerial = fixture.runtime().getRuntimeSerial();
+    }
+    test_support::require(firstSerial != 0 && secondSerial != 0 && firstSerial != secondSerial,
+                          "Renderer cache lifetime must end with its Runtime and use the next runtime identity");
+    std::cout << "runtime-reset cache_lifetime=per-runtime historical_handles=none\n";
 }
 
 template <typename Actions>
@@ -1068,6 +1650,180 @@ void checkCustomMappingFallbacksAndDirectCamera()
     test_support::require(directSubmissions == std::vector<SpriteIdentity>{{0, 0}},
                           "Direct Camera::render stopped submitting an offscreen sprite");
 }
+
+std::vector<FrameResult> captureConsecutiveMutationSequence(const char *mode, bool enableCulling)
+{
+    ScopedRenderCullingMode strategy(mode);
+    test_support::headlessEnvironment();
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, enableCulling);
+    fixture.reserveSprites(8);
+    fixture.addSprite(0, 0, 65.0f, 65.0f, 42.0f, 34.0f, FixtureTexture::BlackSquare);
+    fixture.addSprite(1, 0, 155.0f, 85.0f, 36.0f, 30.0f, FixtureTexture::RedCircle);
+    fixture.addSprite(2, 0, 270.0f, 170.0f, 30.0f, 28.0f, FixtureTexture::BlackSquare);
+    fixture.addSprite(3, 0, 440.0f, 110.0f, 38.0f, 32.0f, FixtureTexture::RedCircle);
+    GameObject *parentA = fixture.runtime().createGameObject();
+    GameObject *parentB = fixture.runtime().createGameObject();
+    parentA->setPosition({4.0f, 6.0f});
+    parentB->setPosition({-10.0f, 12.0f});
+    parentA->addChild(fixture.record(0).object);
+
+    SDL_Renderer *renderer = fixture.runtime().getRenderer();
+    SDL_Texture *transitionTarget = nullptr;
+    std::vector<FrameResult> frames;
+    frames.reserve(11);
+    const auto capture = [&](size_t step) {
+        const auto callback = [&](double) {
+            switch (step)
+            {
+            case 1:
+                parentA->setPosition({23.0f, 17.0f});
+                parentB->addChild(fixture.record(0).object);
+                fixture.record(0).sprite->setWidth(56.0f);
+                fixture.record(0).sprite->setHeight(22.0f);
+                fixture.record(0).sprite->setSourceRect(SDL_FRect{4.0f, 3.0f, 20.0f, 17.0f});
+                fixture.record(0).sprite->setFlip(static_cast<SDL_FlipMode>(SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL));
+                fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::RedCircle));
+                fixture.record(0).object->setScale({1.25f, 0.8f});
+                fixture.record(0).object->setRotation(0.72f);
+                fixture.camera()->setCamera(SDL_FRect{12.0f, 8.0f, 300.0f, 220.0f});
+                break;
+            case 2:
+            {
+                const SDL_Rect viewport{8, 8, 300, 224};
+                test_support::require(SDL_SetRenderViewport(renderer, &viewport), "Could not set transition viewport");
+                fixture.removeSprite(3);
+                fixture.record(1).object->setPosition({90.0f, 145.0f});
+                break;
+            }
+            case 3:
+                restoreDefaultRenderMapping(renderer);
+                fixture.record(1).sprite->setSourceRect(SDL_FRect{2.0f, 2.0f, 18.0f, 15.0f});
+                break;
+            case 4:
+                test_support::require(SDL_SetRenderScale(renderer, 1.25f, 1.0f), "Could not set transition scale");
+                fixture.record(2).sprite->setTextureWrapper(nullptr);
+                break;
+            case 5:
+                restoreDefaultRenderMapping(renderer);
+                fixture.addSprite(4, 1, 205.0f, 80.0f, 44.0f, 36.0f, FixtureTexture::BlackSquare);
+                break;
+            case 6:
+                test_support::require(SDL_SetRenderLogicalPresentation(renderer, 160, 120,
+                                                                        SDL_LOGICAL_PRESENTATION_LETTERBOX),
+                                      "Could not set transition logical presentation");
+                parentB->setPosition({48.0f, 31.0f});
+                fixture.record(1).sprite->setFlip(SDL_FLIP_VERTICAL);
+                break;
+            case 7:
+                restoreDefaultRenderMapping(renderer);
+                fixture.replaceCamera(360.0f, 200.0f, -18.0f, 11.0f);
+                fixture.record(4).object->setPosition({235.0f, 115.0f});
+                break;
+            case 8:
+                transitionTarget = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
+                                                     400, 300);
+                test_support::require(transitionTarget != nullptr, "Could not create transition target");
+                test_support::require(SDL_SetRenderTarget(renderer, transitionTarget), "Could not set transition target");
+                fixture.record(4).sprite->clearSourceRect();
+                fixture.record(4).object->setScale({0.7f, 1.4f});
+                break;
+            case 9:
+                restoreDefaultRenderMapping(renderer);
+                fixture.removeCamera();
+                break;
+            case 10:
+                fixture.replaceCamera(320.0f, 240.0f, 0.0f, 0.0f);
+                parentB->removeChild(fixture.record(0).object);
+                fixture.record(0).object->setPosition({72.0f, 92.0f});
+                break;
+            default:
+                break;
+            }
+        };
+        FrameResult frame = captureFrame(fixture, fixture.records().size(), callback);
+        frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+        frames.push_back(std::move(frame));
+    };
+
+    capture(0);
+    test_support::require(SDL_SetWindowSize(fixture.runtime().getWindowHandle(), 400, 300),
+                          "Could not resize the window after its first rendered frame");
+    SDL_PumpEvents();
+    for (size_t step = 1; step <= 10; ++step)
+        capture(step);
+    if (transitionTarget != nullptr)
+        SDL_DestroyTexture(transitionTarget);
+    return frames;
+}
+
+void checkConsecutiveMutationStrategies()
+{
+    const auto current = captureConsecutiveMutationSequence("current-linear", true);
+    const auto submitAll = captureConsecutiveMutationSequence("current-linear", false);
+    const auto cached = captureConsecutiveMutationSequence("cached-linear", true);
+    const auto indexed = captureConsecutiveMutationSequence("indexed", true);
+    test_support::require(current.size() == 11 && submitAll.size() == current.size() &&
+                              cached.size() == current.size() && indexed.size() == current.size(),
+                          "Consecutive mutation strategies produced different frame counts");
+    test_support::require(current[1].image.width == 400 && current[1].image.height == 300,
+                          "A real output resize after rendering must update the next frame readback");
+    for (size_t step = 0; step < current.size(); ++step)
+    {
+        const bool mappingFallback = step == 2 || step == 4 || step == 6 || step == 8;
+        if (mappingFallback)
+        {
+            for (const auto *mode : {&cached[step], &indexed[step]})
+            {
+                requireGoodReadback(*mode, "consecutive mapping fallback");
+                test_support::require(mode->image.width == current[step].image.width &&
+                                          mode->image.height == current[step].image.height &&
+                                          mode->image.rgba == current[step].image.rgba &&
+                                          mode->submissions == current[step].submissions,
+                                      "A custom mapping fallback must submit all current eligible sprites in order");
+            }
+        }
+        else
+        {
+            compareFixtureFrames("consecutive cached-linear transition " + std::to_string(step), current[step],
+                                 cached[step]);
+            compareFixtureFrames("consecutive indexed transition " + std::to_string(step), current[step],
+                                 indexed[step]);
+        }
+        requireGoodReadback(submitAll[step], "consecutive submit-all transition " + std::to_string(step));
+        test_support::require(submitAll[step].image.rgba == current[step].image.rgba,
+                              "Submit-all image changed during a consecutive transition");
+        if (mappingFallback)
+            continue;
+        std::vector<SpriteIdentity> selected;
+        for (const auto identity : submitAll[step].submissions)
+            if (std::find(submitAll[step].expectedVisible.begin(), submitAll[step].expectedVisible.end(), identity) !=
+                submitAll[step].expectedVisible.end())
+                selected.push_back(identity);
+        test_support::require(selected == current[step].submissions,
+                              "Current-linear selection differs from the submit-all independent-oracle subsequence");
+    }
+    for (const auto *frames : {&cached, &indexed})
+    {
+        for (const size_t step : {size_t(2), size_t(4), size_t(6), size_t(8)})
+            test_support::require((*frames)[step].work.renderCullingMappingFallbacks == 1 &&
+                                      (*frames)[step].work.renderCullingBoundsRefreshes == 0 &&
+                                      (*frames)[step].work.renderCullingQueries == 0,
+                                  "Unsupported mappings must submit all without consuming dirty bounds or rebuilding selection");
+        test_support::require((*frames)[3].work.renderCullingBoundsRefreshes == 1 &&
+                                  (*frames)[3].work.renderCullingQueries <= 1 &&
+                                  (*frames)[3].work.renderCullingProjectionRebuilds == 0,
+                              "Returning to default mapping must drain only the affected record without a full rebuild");
+        test_support::require((*frames)[5].work.renderCullingBoundsRefreshes == 2 &&
+                                  (*frames)[5].work.renderCullingDirtyEnqueues == 1 &&
+                                  (*frames)[5].work.renderCullingQueries <= 1 &&
+                                  (*frames)[5].work.renderCullingProjectionRebuilds == 0,
+                              "Texture eligibility changes during fallback must remain pending until same-view resumption");
+    }
+    test_support::require(current[9].submissions.empty() && indexed[9].submissions.empty(),
+                          "No-camera transition must suspend selection and submit no sprites");
+    std::cout << "consecutive-mutations frames=" << current.size()
+              << " cached-linear=indexed=current-linear submit-all=verified resize=400x300 fallback-return=verified\n";
+}
 #endif
 
 void checkPublicOption()
@@ -1091,6 +1847,12 @@ void checkPublicOption()
 
 void run()
 {
+    checkStaticCacheReuse();
+    checkCachePublicationCoalescing();
+    checkPublishedWorldPositionBounds();
+    checkDistantTexturelessIndexedFallback();
+    checkSimultaneousCrossingOrderWork();
+    checkIndexedPanSelection();
     checkScenario("all-visible",
                   {{70, 60, 40, 40}, {150, 90, 50, 30, 0.0f, Eigen::Vector2f::Ones(), FixtureTexture::RedCircle}},
                   2);
@@ -1117,8 +1879,11 @@ void run()
     checkTextureLifetimeRegressions();
     checkTrajectoryContracts();
     checkRenderedDynamicSequence();
+    checkSceneResetFailurePreservationAndEmptyChurn();
+    checkRuntimeCacheReset();
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     checkCustomMappingFallbacksAndDirectCamera();
+    checkConsecutiveMutationStrategies();
 #endif
 }
 } // namespace

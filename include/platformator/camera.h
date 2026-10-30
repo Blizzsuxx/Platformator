@@ -44,7 +44,10 @@ private:
     platformator_detail::SpriteRenderView prepareRenderView(int outputWidth, int outputHeight,
                                                              bool cullingEligible) const;
     void renderWithView(Sprite *sprite, SDL_Renderer *renderer,
-                        const platformator_detail::SpriteRenderView &view) const;
+                        const platformator_detail::SpriteRenderView &view, bool applyCulling = true) const;
+    const Eigen::Vector2f &getPublishedSpritePosition(Sprite *sprite) const;
+    void prepareSpriteGeometry(Sprite *sprite, const platformator_detail::SpriteRenderView &view,
+                               SDL_FRect &destination, float &angleDegrees) const;
 
 	float getScaleX(int outputWidth) const;
 	float getScaleY(int outputHeight) const;

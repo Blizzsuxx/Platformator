@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -137,6 +138,12 @@ struct Options
 {
     FixtureTrajectoryProfile profile = FixtureTrajectoryProfile::Sparse;
     std::string profileName = "sparse";
+    std::string renderStrategy = "indexed";
+    std::string layoutName = "profile-defined";
+    std::string sizeDistribution = "standard";
+    bool renderStrategyExplicit = false;
+    size_t changedPercent = 0;
+    bool changedPercentExplicit = false;
     size_t population = 1000;
     size_t workers = 1;
     uint64_t seed = 0;
@@ -200,10 +207,50 @@ Options parseOptions(int argc, char **argv)
             else if (options.profileName == "camera-pan") options.profile = FixtureTrajectoryProfile::CameraPan;
             else if (options.profileName == "churn") options.profile = FixtureTrajectoryProfile::Churn;
             else if (options.profileName == "rotated") options.profile = FixtureTrajectoryProfile::Rotated;
+            else if (options.profileName == "visible-motion") options.profile = FixtureTrajectoryProfile::VisibleMotion;
+            else if (options.profileName == "changed") options.profile = FixtureTrajectoryProfile::ChangedSubset;
+            else if (options.profileName == "spread") options.profile = FixtureTrajectoryProfile::Spread;
+            else if (options.profileName == "giant") options.profile = FixtureTrajectoryProfile::Giant;
+            else if (options.profileName == "large-offset") options.profile = FixtureTrajectoryProfile::LargeOffset;
+            else if (options.profileName == "output-resize") options.profile = FixtureTrajectoryProfile::OutputResize;
+            else if (options.profileName == "scene-default") options.profile = FixtureTrajectoryProfile::SceneDefault;
+            else if (options.profileName == "scene-stacking") options.profile = FixtureTrajectoryProfile::SceneStacking;
             else throw std::invalid_argument("Unknown render culling profile: " + options.profileName);
         }
-        else if (argument == "--sprite-count") options.population = parseSize(requireValue(argc, argv, index, argument), argument, false);
+        else if (argument == "--render-strategy")
+        {
+            options.renderStrategy = requireValue(argc, argv, index, argument);
+            if (options.renderStrategy != "current-linear" && options.renderStrategy != "cached-linear" &&
+                options.renderStrategy != "indexed")
+                throw std::invalid_argument("Unknown render strategy: " + options.renderStrategy);
+            options.renderStrategyExplicit = true;
+        }
+        else if (argument == "--sprite-count") options.population = parseSize(requireValue(argc, argv, index, argument), argument, true);
         else if (argument == "--workers") options.workers = parseSize(requireValue(argc, argv, index, argument), argument, false);
+        else if (argument == "--changed-percent")
+        {
+            options.changedPercent = parseSize(requireValue(argc, argv, index, argument), argument, true);
+            if (options.changedPercent > 100)
+                throw std::invalid_argument("--changed-percent must be in [0, 100]");
+            options.changedPercentExplicit = true;
+        }
+        else if (argument == "--layout")
+        {
+            options.layoutName = requireValue(argc, argv, index, argument);
+            if (options.layoutName != "profile-defined" && options.layoutName != "constant-density-spread" &&
+                options.layoutName != "fixed-area" && options.layoutName != "fixed-area-skew" &&
+                options.layoutName != "uniform-sparse" && options.layoutName != "large-common-offset" &&
+                options.layoutName != "continuous-crossing" && options.layoutName != "stable-slot-churn" &&
+                options.layoutName != "scene-natural")
+                throw std::invalid_argument("Unknown render-culling layout: " + options.layoutName);
+        }
+        else if (argument == "--size-distribution")
+        {
+            options.sizeDistribution = requireValue(argc, argv, index, argument);
+            if (options.sizeDistribution != "standard" && options.sizeDistribution != "seeded-rotated" &&
+                options.sizeDistribution != "giant-side-list")
+                throw std::invalid_argument("Unknown render-culling size distribution: " + options.sizeDistribution);
+        }
         else if (argument == "--seed") options.seed = parseSize(requireValue(argc, argv, index, argument), argument, true);
         else if (argument == "--warmup-frames") options.warmupFrames = parseSize(requireValue(argc, argv, index, argument), argument, true);
         else if (argument == "--measure-frames") options.measureFrames = parseSize(requireValue(argc, argv, index, argument), argument, false);
@@ -232,6 +279,8 @@ Options parseOptions(int argc, char **argv)
         throw std::invalid_argument("--capture-frame-index must be less than --measure-frames");
     if (options.validateRendering && options.validateResources)
         throw std::invalid_argument("--validate-rendering and --validate-resources are mutually exclusive");
+    if (options.disableCulling && options.renderStrategyExplicit)
+        throw std::invalid_argument("--no-render-culling cannot be combined with --render-strategy");
     if ((options.validateRendering || options.validateResources) && options.evidenceOutput.empty())
         throw std::invalid_argument("Validation captures require --evidence-output");
     return options;
@@ -244,25 +293,32 @@ template <typename Settings> constexpr bool supportsCullingSetting()
 
 std::string modeName(const Options &options)
 {
+    if (options.renderStrategyExplicit)
+    {
+        if constexpr (!supportsCullingSetting<WindowSettings>())
+        {
+            if (options.renderStrategy != "current-linear")
+                throw std::invalid_argument("The frozen reference supports only current-linear and submit-all");
+        }
+        return options.renderStrategy;
+    }
     if constexpr (!supportsCullingSetting<WindowSettings>())
         return "pre-feature";
     return options.disableCulling ? "disabled" : "linear";
 }
 
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-std::string fnv64(const std::vector<uint8_t> &bytes)
+void setRequestedStrategy(const Options &options)
 {
-    uint64_t hash = 14695981039346656037ull;
-    for (uint8_t byte : bytes)
-    {
-        hash ^= byte;
-        hash *= 1099511628211ull;
-    }
-    std::ostringstream output;
-    output << std::hex << std::setfill('0') << std::setw(16) << hash;
-    return output.str();
-}
+    if (!options.renderStrategyExplicit)
+        return;
+#if defined(_WIN32)
+    if (_putenv_s("PLATFORMATOR_RENDER_CULLING_MODE", options.renderStrategy.c_str()) != 0)
+        throw std::runtime_error("Could not set the requested render strategy");
+#else
+    if (setenv("PLATFORMATOR_RENDER_CULLING_MODE", options.renderStrategy.c_str(), 1) != 0)
+        throw std::runtime_error("Could not set the requested render strategy");
 #endif
+}
 
 std::string sha256(std::string_view input)
 {
@@ -347,6 +403,10 @@ struct Readback
     std::string hash;
     std::string error;
     size_t callbacks = 0;
+    int width = OUTPUT_WIDTH;
+    int height = OUTPUT_HEIGHT;
+    int storageWidth = OUTPUT_WIDTH;
+    int storageHeight = OUTPUT_HEIGHT;
     static void capture(SDL_Renderer *renderer, int width, int height, void *context)
     {
         auto *self = static_cast<Readback *>(context);
@@ -368,9 +428,18 @@ struct Readback
                 return;
             }
         }
-        if (rgba->w != width || rgba->h != height || self->pixels.size() != static_cast<size_t>(width) * height * 4)
+        const int capturedWidth = rgba->w;
+        const int capturedHeight = rgba->h;
+        // A resize can update SDL's renderer output before the next event pump
+        // refreshes SDLWindow's cached size. Capture the actual surface now;
+        // the cached selection falls back conservatively during that frame.
+        if (capturedWidth > self->storageWidth || capturedHeight > self->storageHeight ||
+            self->pixels.size() != static_cast<size_t>(self->storageWidth) * self->storageHeight * 4)
         {
-            self->error = "Unexpected renderer readback dimensions or unreserved destination";
+            self->error = "Unexpected renderer readback dimensions or unreserved destination: requested=" +
+                          std::to_string(width) + "x" + std::to_string(height) + " raw=" +
+                          std::to_string(rgba->w) + "x" + std::to_string(rgba->h) + " storage=" +
+                          std::to_string(self->storageWidth) + "x" + std::to_string(self->storageHeight);
             SDL_DestroySurface(rgba);
             return;
         }
@@ -380,13 +449,24 @@ struct Readback
             SDL_DestroySurface(rgba);
             return;
         }
-        for (int row = 0; row < height; ++row)
-            std::memcpy(self->pixels.data() + static_cast<size_t>(row) * width * 4,
+        for (int row = 0; row < capturedHeight; ++row)
+            std::memcpy(self->pixels.data() + static_cast<size_t>(row) * self->storageWidth * 4,
                         static_cast<const uint8_t *>(rgba->pixels) + static_cast<size_t>(row) * rgba->pitch,
-                        static_cast<size_t>(width) * 4);
+                        static_cast<size_t>(capturedWidth) * 4);
         if (SDL_MUSTLOCK(rgba)) SDL_UnlockSurface(rgba);
         SDL_DestroySurface(rgba);
-        self->hash = fnv64(self->pixels);
+        self->width = capturedWidth;
+        self->height = capturedHeight;
+        uint64_t hash = 14695981039346656037ull;
+        for (int row = 0; row < self->height; ++row)
+            for (int column = 0; column < self->width * 4; ++column)
+            {
+                hash ^= self->pixels[static_cast<size_t>(row) * self->storageWidth * 4 + column];
+                hash *= 1099511628211ull;
+            }
+        std::ostringstream hashText;
+        hashText << std::hex << std::setfill('0') << std::setw(16) << hash;
+        self->hash = hashText.str();
     }
 };
 
@@ -406,9 +486,11 @@ void writePpm(const std::filesystem::path &path, const Readback &image)
 {
     std::ofstream output(path, std::ios::binary);
     output.exceptions(std::ios::badbit | std::ios::failbit);
-    output << "P6\n" << OUTPUT_WIDTH << ' ' << OUTPUT_HEIGHT << "\n255\n";
-    for (size_t pixel = 0; pixel < static_cast<size_t>(OUTPUT_WIDTH) * OUTPUT_HEIGHT; ++pixel)
+    output << "P6\n" << image.width << ' ' << image.height << "\n255\n";
+    for (int row = 0; row < image.height; ++row)
+        for (int column = 0; column < image.width; ++column)
     {
+        const size_t pixel = static_cast<size_t>(row) * image.storageWidth + column;
         const char rgb[3] = {static_cast<char>(image.pixels[pixel * 4]),
                              static_cast<char>(image.pixels[pixel * 4 + 1]),
                              static_cast<char>(image.pixels[pixel * 4 + 2])};
@@ -420,14 +502,31 @@ void writePpm(const std::filesystem::path &path, const Readback &image)
 void buildFixture(RenderCullingFixture &fixture, const Options &options)
 {
     fixture.reserveSprites(options.population);
+    if (options.profile == FixtureTrajectoryProfile::SceneDefault ||
+        options.profile == FixtureTrajectoryProfile::SceneStacking)
+    {
+        const char *scenePath = options.profile == FixtureTrajectoryProfile::SceneDefault
+                                    ? "assets/scenes/default.scene" : "assets/scenes/stacking.scene";
+        fixture.loadSceneAndCreateCamera(scenePath, 640.0f, 480.0f);
+        if (fixture.records().size() != options.population)
+            throw std::runtime_error("Loaded scene Sprite population differs from the declared case identity");
+        return;
+    }
     const DeterministicFixtureTrajectory trajectory(options.profile, options.population,
-                                                     static_cast<uint32_t>(options.seed));
+                                                     static_cast<uint32_t>(options.seed),
+                                                     options.changedPercentExplicit ? options.changedPercent : 0,
+                                                     options.layoutName == "constant-density-spread" ||
+                                                         options.profile == FixtureTrajectoryProfile::Spread);
     const bool rotated = options.profile == FixtureTrajectoryProfile::Rotated;
     const bool wideCamera = rotated;
     if (wideCamera)
         fixture.camera()->setCamera({0.0f, 0.0f, 640.0f, 160.0f});
-    const float spriteWidth = rotated ? 64.0f : 16.0f;
-    const float spriteHeight = rotated ? 12.0f : 16.0f;
+    if (options.profile == FixtureTrajectoryProfile::LargeOffset)
+    {
+        const auto [cameraX, cameraY] = trajectory.cameraPosition(0);
+        fixture.camera()->setCamera({cameraX, cameraY, 320.0f, 240.0f});
+    }
+    const auto [spriteWidth, spriteHeight] = trajectory.spriteDimensions();
     for (size_t slot = 0; slot < options.population; ++slot)
     {
         const FixturePose pose = trajectory.pose(slot, 0);
@@ -440,15 +539,54 @@ void buildFixture(RenderCullingFixture &fixture, const Options &options)
 #if PLATFORMATOR_ENABLE_WORK_PROBES
 std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
                                                        const DeterministicFixtureTrajectory &trajectory,
-                                                       size_t step, float cameraWidth, float cameraHeight)
+                                                       const RenderCullingFixture &fixture,
+                                                       size_t step, float cameraWidth, float cameraHeight,
+                                                       int outputWidth, int outputHeight)
 {
     std::vector<SpriteIdentity> visible;
     visible.reserve(options.population);
-    const double scaleX = static_cast<double>(OUTPUT_WIDTH) / cameraWidth;
-    const double scaleY = static_cast<double>(OUTPUT_HEIGHT) / cameraHeight;
+    const double scaleX = static_cast<double>(outputWidth) / cameraWidth;
+    const double scaleY = static_cast<double>(outputHeight) / cameraHeight;
+    if (options.profile == FixtureTrajectoryProfile::SceneDefault ||
+        options.profile == FixtureTrajectoryProfile::SceneStacking)
+    {
+        const SDL_FRect camera = fixture.camera()->getCamera();
+        for (const auto &record : fixture.records())
+        {
+            const GameObject *object = record.object;
+            const Sprite *sprite = record.sprite;
+            if (object->getParent() != nullptr)
+                throw std::runtime_error("Shipped scene oracle currently requires root Sprite objects");
+            if (!object->getActive() || sprite->getTexture() == nullptr)
+                continue;
+            const auto position = object->getPosition();
+            const auto objectScale = object->getScale();
+            const double centerX = (static_cast<double>(position.x()) - camera.x) * scaleX;
+            const double centerY = (static_cast<double>(position.y()) - camera.y) * scaleY;
+            const double halfWidth = static_cast<double>(sprite->getWidthWithoutScale()) * objectScale.x() * scaleX * 0.5;
+            const double halfHeight = static_cast<double>(sprite->getHeightWithoutScale()) * objectScale.y() * scaleY * 0.5;
+            const double radians = static_cast<double>(object->getRotation());
+            const double sine = std::sin(radians);
+            const double cosine = std::cos(radians);
+            double minX = std::numeric_limits<double>::infinity();
+            double minY = std::numeric_limits<double>::infinity();
+            double maxX = -std::numeric_limits<double>::infinity();
+            double maxY = -std::numeric_limits<double>::infinity();
+            for (const double localX : {-halfWidth, halfWidth})
+                for (const double localY : {-halfHeight, halfHeight})
+                {
+                    const double x = centerX + cosine * localX - sine * localY;
+                    const double y = centerY + sine * localX + cosine * localY;
+                    minX = std::min(minX, x); maxX = std::max(maxX, x);
+                    minY = std::min(minY, y); maxY = std::max(maxY, y);
+                }
+            if (maxX >= -1.0 && maxY >= -1.0 && minX <= outputWidth + 1.0 && minY <= outputHeight + 1.0)
+                visible.push_back({record.identity.slot, record.identity.generation});
+        }
+        return visible;
+    }
     const auto [cameraX, cameraY] = trajectory.cameraPosition(step);
-    const double spriteWidth = options.profile == FixtureTrajectoryProfile::Rotated ? 64.0 : 16.0;
-    const double spriteHeight = options.profile == FixtureTrajectoryProfile::Rotated ? 12.0 : 16.0;
+    const auto [spriteWidth, spriteHeight] = trajectory.spriteDimensions();
     for (size_t slot = 0; slot < options.population; ++slot)
     {
         const FixturePose pose = trajectory.pose(slot, step);
@@ -472,7 +610,7 @@ std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
             }
         // The independent double-precision oracle allows an extra pixel on
         // every edge, so candidate conservatism may produce false positives.
-        if (maxX >= -1.0 && maxY >= -1.0 && minX <= OUTPUT_WIDTH + 1.0 && minY <= OUTPUT_HEIGHT + 1.0)
+        if (maxX >= -1.0 && maxY >= -1.0 && minX <= outputWidth + 1.0 && minY <= outputHeight + 1.0)
             visible.push_back({slot, pose.generation});
     }
     return visible;
@@ -482,11 +620,15 @@ std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
 void updateFixture(RenderCullingFixture &fixture, const Options &options,
                    const DeterministicFixtureTrajectory &trajectory, size_t step)
 {
-    if (options.profile == FixtureTrajectoryProfile::CameraPan)
+    if (!fixtureProfileUsesStepCallback(options.profile))
+        return;
+    if (options.profile == FixtureTrajectoryProfile::CameraPan || options.profile == FixtureTrajectoryProfile::LargeOffset)
     {
         const auto [x, y] = trajectory.cameraPosition(step);
         fixture.camera()->setCamera({x, y, fixture.camera()->getWidth(), fixture.camera()->getHeight()});
     }
+    if (options.profile == FixtureTrajectoryProfile::OutputResize && step == 240)
+        fixture.resizeOutput(400, 300);
     if (options.profile == FixtureTrajectoryProfile::Churn)
     {
         trajectory.forEachReplacedSlot(step, [&](size_t slot, uint32_t generation) {
@@ -496,10 +638,22 @@ void updateFixture(RenderCullingFixture &fixture, const Options &options,
                                   SDL_FLIP_NONE, pose.rotationRadians);
         });
     }
-    else if (options.profile == FixtureTrajectoryProfile::Crossing)
+    else if (options.profile == FixtureTrajectoryProfile::Crossing ||
+             options.profile == FixtureTrajectoryProfile::VisibleMotion ||
+             options.profile == FixtureTrajectoryProfile::ChangedSubset ||
+             options.profile == FixtureTrajectoryProfile::Giant ||
+             options.profile == FixtureTrajectoryProfile::LargeOffset ||
+             options.profile == FixtureTrajectoryProfile::Clustered ||
+             options.profile == FixtureTrajectoryProfile::Rotated)
     {
         for (size_t slot = 0; slot < options.population; ++slot)
         {
+            if ((options.profile == FixtureTrajectoryProfile::ChangedSubset ||
+                 options.profile == FixtureTrajectoryProfile::Giant ||
+                 options.profile == FixtureTrajectoryProfile::LargeOffset ||
+                 options.profile == FixtureTrajectoryProfile::Clustered ||
+                 options.profile == FixtureTrajectoryProfile::Rotated) && !trajectory.isChanged(slot))
+                continue;
             const FixturePose pose = trajectory.pose(slot, step);
             fixture.record(slot).object->setPosition({pose.x, pose.y});
             fixture.record(slot).object->setRotation(pose.rotationRadians);
@@ -545,7 +699,9 @@ void ensureFresh(const Options &options)
     const std::filesystem::path csv(options.csvOutput);
     auto samples = csv; samples.replace_extension(".samples.csv");
     auto manifest = csv; manifest.replace_extension(".manifest.json");
-    if (std::filesystem::exists(csv) || std::filesystem::exists(samples) || std::filesystem::exists(manifest))
+    auto paired = csv; paired.replace_extension(".paired.csv");
+    if (std::filesystem::exists(csv) || std::filesystem::exists(samples) || std::filesystem::exists(manifest) ||
+        std::filesystem::exists(paired))
         throw std::runtime_error("Refusing to overwrite an existing benchmark output path");
     if (!options.evidenceOutput.empty())
     {
@@ -567,20 +723,61 @@ void run(const Options &options)
             throw std::invalid_argument("--no-render-culling is unavailable in the pre-feature reference runtime");
 
     const auto mode = modeName(options);
+    setRequestedStrategy(options);
     tbb::global_control workerLimit(tbb::global_control::max_allowed_parallelism, options.workers);
-    const float cameraWidth = options.profile == FixtureTrajectoryProfile::Rotated ? 640.0f : 320.0f;
-    const float cameraHeight = options.profile == FixtureTrajectoryProfile::Rotated ? 160.0f : 240.0f;
-    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, cameraWidth, cameraHeight,
-                                 !options.disableCulling, options.headless, options.assetRoot);
-    buildFixture(fixture, options);
+    float cameraWidth = options.profile == FixtureTrajectoryProfile::Rotated ||
+                                options.profile == FixtureTrajectoryProfile::SceneDefault ||
+                                options.profile == FixtureTrajectoryProfile::SceneStacking
+                            ? 640.0f : 320.0f;
+    float cameraHeight = options.profile == FixtureTrajectoryProfile::Rotated ? 160.0f :
+                         options.profile == FixtureTrajectoryProfile::SceneDefault ||
+                                 options.profile == FixtureTrajectoryProfile::SceneStacking ? 480.0f : 240.0f;
+    uint64_t fixtureConstructionNanoseconds = 0;
+    uint64_t fixtureConstructionAllocationCalls = 0;
+    uint64_t fixtureConstructionAllocatedBytes = 0;
+    std::unique_ptr<RenderCullingFixture> fixtureStorage;
+    const auto constructFixture = [&] {
+        auto result = std::make_unique<RenderCullingFixture>(OUTPUT_WIDTH, OUTPUT_HEIGHT, cameraWidth, cameraHeight,
+                                                              !options.disableCulling, options.headless, options.assetRoot);
+        buildFixture(*result, options);
+        return result;
+    };
+    const auto constructionStart = std::chrono::steady_clock::now();
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    if (options.validateResources)
+    {
+        linear_render_allocation_probe::Snapshot snapshot;
+        {
+            linear_render_allocation_probe::ScopedObservation observation(snapshot);
+            fixtureStorage = constructFixture();
+        }
+        fixtureConstructionAllocationCalls = snapshot.calls;
+        fixtureConstructionAllocatedBytes = snapshot.bytes;
+    }
+    else
+#endif
+        fixtureStorage = constructFixture();
+    const auto constructionEnd = std::chrono::steady_clock::now();
+    fixtureConstructionNanoseconds = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(constructionEnd - constructionStart).count());
+    RenderCullingFixture &fixture = *fixtureStorage;
+    if (options.profile == FixtureTrajectoryProfile::SceneDefault ||
+        options.profile == FixtureTrajectoryProfile::SceneStacking)
+    {
+        cameraWidth = fixture.camera()->getWidth();
+        cameraHeight = fixture.camera()->getHeight();
+    }
+    const platformator_test::WorkCounters initializationWork = platformator_test::work;
     const DeterministicFixtureTrajectory trajectory(options.profile, options.population,
-                                                     static_cast<uint32_t>(options.seed));
+                                                     static_cast<uint32_t>(options.seed),
+                                                     options.changedPercentExplicit ? options.changedPercent : 0,
+                                                     options.layoutName == "constant-density-spread" ||
+                                                         options.profile == FixtureTrajectoryProfile::Spread);
     size_t stepIndex = 0;
     const auto step = [&] {
         auto callback = [&](double) { updateFixture(fixture, options, trajectory, stepIndex); };
         bool running = true;
-        if (options.profile == FixtureTrajectoryProfile::Crossing || options.profile == FixtureTrajectoryProfile::CameraPan ||
-            options.profile == FixtureTrajectoryProfile::Churn)
+        if (fixtureProfileUsesStepCallback(options.profile))
         {
             if (options.headless)
                 fixture.runtime().simulateFrameWithCustomCallback(options.dt, callback);
@@ -596,20 +793,74 @@ void run(const Options &options)
         ++stepIndex;
     };
 
+    uint64_t coldFirstStepRenderNanoseconds = 0;
+    uint64_t coldFirstStepAllocationCalls = 0;
+    uint64_t coldFirstStepAllocatedBytes = 0;
+    platformator_test::WorkCounters coldFirstStepWork{};
     for (size_t frame = 0; frame < options.warmupFrames; ++frame)
-        step();
+    {
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        if (options.validateResources && frame == 0)
+        {
+            platformator_test::work = {};
+            linear_render_allocation_probe::Snapshot snapshot;
+            const auto before = std::chrono::steady_clock::now();
+            {
+                linear_render_allocation_probe::ScopedObservation observation(snapshot);
+                step();
+            }
+            const auto after = std::chrono::steady_clock::now();
+            coldFirstStepRenderNanoseconds = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count());
+            coldFirstStepAllocationCalls = snapshot.calls;
+            coldFirstStepAllocatedBytes = snapshot.bytes;
+            coldFirstStepWork = platformator_test::work;
+        }
+        else
+#endif
+            step();
+    }
 
     SDL_Renderer *renderer = fixture.runtime().getRenderer();
     const auto resolvedParameters = nlohmann::json{
         {"profile", options.profileName}, {"sprite_count", options.population}, {"seed", options.seed},
         {"trajectory_period_steps", (options.profile == FixtureTrajectoryProfile::Crossing ||
-                                      options.profile == FixtureTrajectoryProfile::CameraPan) ? 240 : 0},
+                                      options.profile == FixtureTrajectoryProfile::CameraPan ||
+                                      options.profile == FixtureTrajectoryProfile::VisibleMotion ||
+                                      options.profile == FixtureTrajectoryProfile::ChangedSubset ||
+                                      options.profile == FixtureTrajectoryProfile::Giant ||
+                                      options.profile == FixtureTrajectoryProfile::LargeOffset ||
+                                      options.profile == FixtureTrajectoryProfile::Rotated ||
+                                      options.profile == FixtureTrajectoryProfile::Clustered) ? 240 : 0},
         {"camera_width", cameraWidth}, {"camera_height", cameraHeight},
-        {"sprite_width", options.profile == FixtureTrajectoryProfile::Rotated ? 64 : 16},
-        {"sprite_height", options.profile == FixtureTrajectoryProfile::Rotated ? 12 : 16},
-        {"layout", options.profile == FixtureTrajectoryProfile::Clustered ? "clustered-groups" :
-                   options.profile == FixtureTrajectoryProfile::Sparse ? "uniform-sparse" : "profile-defined"},
-        {"rotation_distribution", options.profile == FixtureTrajectoryProfile::Rotated ? "seeded-uniform-pi" : "zero"},
+        {"layout", options.layoutName != "profile-defined" ? options.layoutName :
+                   options.profile == FixtureTrajectoryProfile::Clustered ? "clustered-groups" :
+                   options.profile == FixtureTrajectoryProfile::Sparse ? "uniform-sparse" :
+                   options.profile == FixtureTrajectoryProfile::Spread ? "constant-density-spread" :
+                   options.profile == FixtureTrajectoryProfile::SceneDefault ||
+                           options.profile == FixtureTrajectoryProfile::SceneStacking ? "scene-natural" : "profile-defined"},
+        {"size_distribution", options.sizeDistribution},
+        {"changed_percent", options.profile == FixtureTrajectoryProfile::VisibleMotion ||
+                             options.profile == FixtureTrajectoryProfile::Crossing ? 100 :
+                             options.profile == FixtureTrajectoryProfile::Churn
+                                 ? (options.population == 0 ? 0 : trajectory.replacementsPerStep() * 100 / options.population)
+                                 : options.changedPercentExplicit ? options.changedPercent : 0},
+        {"output_resize_step", options.profile == FixtureTrajectoryProfile::OutputResize ? 240 : 0},
+        {"rotation_distribution", options.profile == FixtureTrajectoryProfile::SceneDefault ||
+                                 options.profile == FixtureTrajectoryProfile::SceneStacking ? "scene-resolved" :
+                                 options.profile == FixtureTrajectoryProfile::Rotated ||
+                                 options.profile == FixtureTrajectoryProfile::Giant ? "seeded-uniform-pi" : "zero"},
+        {"sprite_width", options.profile == FixtureTrajectoryProfile::SceneDefault ||
+                         options.profile == FixtureTrajectoryProfile::SceneStacking
+                             ? nlohmann::json(nullptr) : nlohmann::json(trajectory.spriteDimensions().first)},
+        {"sprite_height", options.profile == FixtureTrajectoryProfile::SceneDefault ||
+                          options.profile == FixtureTrajectoryProfile::SceneStacking
+                              ? nlohmann::json(nullptr) : nlohmann::json(trajectory.spriteDimensions().second)},
+        {"camera_schedule", options.profile == FixtureTrajectoryProfile::CameraPan ? "continuous-pan-240" :
+                             options.profile == FixtureTrajectoryProfile::LargeOffset ? "large-offset-pan-240" : "fixed"},
+        {"output_schedule", options.profile == FixtureTrajectoryProfile::OutputResize ? "320x240-then-400x300-at-240" : "320x240"},
+        {"scene_asset", options.profile == FixtureTrajectoryProfile::SceneDefault ? "assets/scenes/default.scene" :
+                         options.profile == FixtureTrajectoryProfile::SceneStacking ? "assets/scenes/stacking.scene" : ""},
         {"churn_replacements_per_step", options.profile == FixtureTrajectoryProfile::Churn
                                              ? trajectory.replacementsPerStep() : 0},
         {"churn_minimum_replacements", options.profile == FixtureTrajectoryProfile::Churn ? 1 : 0}};
@@ -620,9 +871,11 @@ void run(const Options &options)
         {"rendering", !options.headless}, {"validation_mode", options.validateRendering || options.validateResources ? "per-step" : "boundary-only"},
         {"timing_eligible", !options.validateRendering && !options.validateResources},
         {"resolved_parameters", resolvedParameters},
+        {"requested_render_strategy", options.renderStrategyExplicit ? options.renderStrategy : mode},
         {"linear_render_culling", {{"mode", mode}, {"requested_mode", options.disableCulling ? "disabled" : mode},
                                     {"effective_policy", options.headless ? "headless-no-rendering" : mode},
-                                    {"enabled", !options.headless && !options.disableCulling && mode == "linear"}}},
+                                    {"enabled", !options.headless && !options.disableCulling &&
+                                                 mode != "disabled" && mode != "pre-feature"}}},
         {"fixture_sha256", PLATFORMATOR_LINEAR_FIXTURE_SHA256},
         {"harness_sha256", PLATFORMATOR_LINEAR_HARNESS_SHA256},
         {"renderer_mapping", mappingMetadata(renderer, OUTPUT_WIDTH, OUTPUT_HEIGHT)},
@@ -661,6 +914,9 @@ void run(const Options &options)
 
     auto &recorder = platformator_detail::BenchmarkRecorder::getInstance();
     recorder.configure(options.measureFrames, metadata);
+    std::vector<uint64_t> pairedStepRenderNanoseconds;
+    if (!options.validateRendering && !options.validateResources)
+        pairedStepRenderNanoseconds.reserve(options.measureFrames);
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     platformator_test::RenderObservation observation;
@@ -670,7 +926,9 @@ void run(const Options &options)
     {
         if (!options.headless)
         {
-            readback.pixels.resize(static_cast<size_t>(OUTPUT_WIDTH) * OUTPUT_HEIGHT * 4);
+            readback.storageWidth = options.profile == FixtureTrajectoryProfile::OutputResize ? 400 : OUTPUT_WIDTH;
+            readback.storageHeight = options.profile == FixtureTrajectoryProfile::OutputResize ? 300 : OUTPUT_HEIGHT;
+            readback.pixels.resize(static_cast<size_t>(readback.storageWidth) * readback.storageHeight * 4);
             observation.identityContext = &fixture;
             observation.resolveIdentity = &RenderCullingFixture::resolveIdentityCallback;
             submissionStorage.reserve(options.population);
@@ -698,6 +956,59 @@ void run(const Options &options)
     uint64_t resourceAllocatedBytes = 0;
     uint64_t resourceViews = 0, resourceEligibilityChecks = 0, resourceVisibilityChecks = 0,
              resourceSubmissions = 0;
+    size_t actualChangedSpriteTotal = 0;
+    size_t maximumActualChangedSpritesPerStep = 0;
+    size_t initialCullingStateCreations = 0;
+    size_t initialCullingRecords = 0;
+    nlohmann::json cullingResetObservation = nullptr;
+    nlohmann::json capacityGrowthObservation = nullptr;
+    nlohmann::json resourceCullingWorkJson = nlohmann::json::object();
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    platformator_test::WorkCounters resourceCullingWork{};
+    const auto accumulateCullingWork = [&](const platformator_test::WorkCounters &source) {
+#define ADD_CULLING_WORK_FIELD(field) resourceCullingWork.field += source.field
+        ADD_CULLING_WORK_FIELD(renderCullingRecordsAdded);
+        ADD_CULLING_WORK_FIELD(renderCullingRecordsRemoved);
+        ADD_CULLING_WORK_FIELD(renderCullingRecordsRelocated);
+        ADD_CULLING_WORK_FIELD(renderCullingDirtyEnqueues);
+        ADD_CULLING_WORK_FIELD(renderCullingDirtyCancellations);
+        ADD_CULLING_WORK_FIELD(renderCullingBoundsRefreshes);
+        ADD_CULLING_WORK_FIELD(renderCullingIndexInsertions);
+        ADD_CULLING_WORK_FIELD(renderCullingIndexRemovals);
+        ADD_CULLING_WORK_FIELD(renderCullingIndexRelinks);
+        ADD_CULLING_WORK_FIELD(renderCullingQueries);
+        ADD_CULLING_WORK_FIELD(renderCullingCellVisits);
+        ADD_CULLING_WORK_FIELD(renderCullingCandidateVisits);
+        ADD_CULLING_WORK_FIELD(renderCullingFullPopulationVisits);
+        ADD_CULLING_WORK_FIELD(renderCullingOrderWork);
+        ADD_CULLING_WORK_FIELD(renderCullingCacheHits);
+        ADD_CULLING_WORK_FIELD(renderCullingProjectionRebuilds);
+        ADD_CULLING_WORK_FIELD(renderCullingNumericFallbacks);
+        ADD_CULLING_WORK_FIELD(renderCullingMappingFallbacks);
+        ADD_CULLING_WORK_FIELD(renderCullingSideListVisits);
+        resourceCullingWork.renderCullingOwnedRecordCapacity = std::max(
+            resourceCullingWork.renderCullingOwnedRecordCapacity, source.renderCullingOwnedRecordCapacity);
+        resourceCullingWork.renderCullingOwnedCellCapacity = std::max(
+            resourceCullingWork.renderCullingOwnedCellCapacity, source.renderCullingOwnedCellCapacity);
+        resourceCullingWork.renderCullingOwnedBytes = std::max(
+            resourceCullingWork.renderCullingOwnedBytes, source.renderCullingOwnedBytes);
+#undef ADD_CULLING_WORK_FIELD
+    };
+    accumulateCullingWork(initializationWork);
+    initialCullingStateCreations = initializationWork.renderCullingStateCreations;
+    initialCullingRecords = initializationWork.renderCullingRecordsAdded;
+#endif
+    struct FixturePoseSample
+    {
+        size_t slot = 0;
+        uint32_t generation = 0;
+        float x = 0.0f;
+        float y = 0.0f;
+        float rotation = 0.0f;
+    };
+    std::vector<FixturePoseSample> previousMeasuredPoses;
+    if (options.validateResources)
+        previousMeasuredPoses.reserve(options.population);
     for (size_t frame = 0; frame < options.measureFrames; ++frame)
     {
         if (options.validateRendering)
@@ -736,9 +1047,11 @@ void run(const Options &options)
                     currentVisible.push_back({identity.slot, identity.generation});
                     visible.emplace(identity.slot, identity.generation);
                 }
-                const auto oracle = independentVisibleOracle(options, trajectory, trajectoryStep,
+                const auto oracle = independentVisibleOracle(options, trajectory, fixture, trajectoryStep,
                                                               options.profile == FixtureTrajectoryProfile::Rotated ? 640.0f : 320.0f,
-                                                              options.profile == FixtureTrajectoryProfile::Rotated ? 160.0f : 240.0f);
+                                                              options.profile == FixtureTrajectoryProfile::Rotated ? 160.0f : 240.0f,
+                                                              trajectory.outputDimensions(trajectoryStep).first,
+                                                              trajectory.outputDimensions(trajectoryStep).second);
                 nlohmann::json oracleMembership = nlohmann::json::array();
                 std::set<std::pair<size_t, uint32_t>> oracleVisible;
                 for (const auto identity : oracle)
@@ -751,7 +1064,7 @@ void run(const Options &options)
                 for (const auto &identity : previousOracleVisible)
                     if (!oracleVisible.contains(identity)) ++crossingExits;
                 previousOracleVisible = std::move(oracleVisible);
-                if (mode == "linear")
+                if (mode == "linear" || mode == "current-linear" || mode == "cached-linear" || mode == "indexed")
                     for (const auto &identity : previousOracleVisible)
                         if (!visible.contains(identity))
                             throw std::runtime_error("Linear mode omitted a sprite retained by the independent oracle");
@@ -759,6 +1072,7 @@ void run(const Options &options)
                     observation.submissionOverflows != 0)
                     throw std::runtime_error("Validation trace contains a duplicate, unresolved sprite, or overflow");
                 *framesFile << nlohmann::json{{"frame", frame}, {"image_fnv64", readback.hash},
+                                             {"output_width", readback.width}, {"output_height", readback.height},
                                              {"submissions", std::move(currentVisible)},
                                              {"oracle_visible", std::move(oracleMembership)},
                                              {"unresolved", observation.unresolvedSprites},
@@ -773,26 +1087,63 @@ void run(const Options &options)
         else if (options.validateResources)
         {
 #if PLATFORMATOR_ENABLE_WORK_PROBES
+            previousMeasuredPoses.clear();
+            for (const auto &record : fixture.records())
+            {
+                const auto position = record.object->getPosition();
+                previousMeasuredPoses.push_back({record.identity.slot, record.identity.generation,
+                                                 position.x(), position.y(), record.object->getRotation()});
+            }
             platformator_test::work = {};
             linear_render_allocation_probe::Snapshot allocationSnapshot;
             {
                 linear_render_allocation_probe::ScopedObservation allocationObservation(allocationSnapshot);
                 step();
             }
+            size_t changedSprites = 0;
+            for (size_t index = 0; index < fixture.records().size(); ++index)
+            {
+                const auto &record = fixture.records()[index];
+                const auto &previous = previousMeasuredPoses[index];
+                const auto position = record.object->getPosition();
+                if (record.identity.slot != previous.slot || record.identity.generation != previous.generation ||
+                    position.x() != previous.x || position.y() != previous.y ||
+                    record.object->getRotation() != previous.rotation)
+                    ++changedSprites;
+            }
+            actualChangedSpriteTotal += changedSprites;
+            maximumActualChangedSpritesPerStep = std::max(maximumActualChangedSpritesPerStep, changedSprites);
             resourceAllocationCalls += allocationSnapshot.calls;
             resourceAllocatedBytes += allocationSnapshot.bytes;
             resourceViews += platformator_test::work.renderViewPreparations;
             resourceEligibilityChecks += platformator_test::work.renderEligibilityChecks;
             resourceVisibilityChecks += platformator_test::work.renderVisibilityChecks;
             resourceSubmissions += platformator_test::work.renderSubmittedSprites;
+            accumulateCullingWork(platformator_test::work);
 #else
             step();
 #endif
         }
         else
+        {
+            const auto before = std::chrono::steady_clock::now();
             step();
+            const auto after = std::chrono::steady_clock::now();
+            pairedStepRenderNanoseconds.push_back(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count()));
+        }
     }
     if (framesFile) framesFile->close();
+    if (!pairedStepRenderNanoseconds.empty())
+    {
+        auto pairedPath = std::filesystem::path(options.csvOutput);
+        pairedPath.replace_extension(".paired.csv");
+        std::ofstream paired(pairedPath, std::ios::binary);
+        paired.exceptions(std::ios::badbit | std::ios::failbit);
+        paired << "step,paired_step_render_ns\n";
+        for (size_t index = 0; index < pairedStepRenderNanoseconds.size(); ++index)
+            paired << index << ',' << pairedStepRenderNanoseconds[index] << '\n';
+    }
     if (options.validateRendering)
     {
         const std::string framesPath = options.evidenceOutput + ".frames.jsonl";
@@ -821,8 +1172,97 @@ void run(const Options &options)
         evidence << proof.dump(2) << '\n';
     }
     long long resourceRssAfter = -1;
+    long long resourceRssAfterReset = -1;
+    uint64_t resetNanoseconds = 0;
+    uint64_t resetAllocationCalls = 0;
+    uint64_t resetAllocatedBytes = 0;
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     if (options.validateResources) resourceRssAfter = residentMemoryKiB();
+    if (options.validateResources)
+    {
+        const size_t startingPopulation = fixture.records().size();
+        const size_t startingRecordCapacity = platformator_test::work.renderCullingOwnedRecordCapacity;
+        if (!options.headless && (mode == "cached-linear" || mode == "indexed") &&
+            startingRecordCapacity >= startingPopulation && startingRecordCapacity < std::numeric_limits<size_t>::max())
+        {
+            const size_t requestedPopulation = startingRecordCapacity + 1;
+            fixture.reserveSprites(requestedPopulation);
+            platformator_test::work = {};
+            linear_render_allocation_probe::Snapshot growthAllocation;
+            const auto growthStart = std::chrono::steady_clock::now();
+            {
+                linear_render_allocation_probe::ScopedObservation observation(growthAllocation);
+                for (size_t slot = startingPopulation; slot < requestedPopulation; ++slot)
+                    fixture.addSprite(slot, 0, 10000.0f + static_cast<float>(slot), 10000.0f, 16.0f, 16.0f,
+                                      FixtureTexture::BlackSquare);
+            }
+            const auto growthEnd = std::chrono::steady_clock::now();
+            capacityGrowthObservation = {
+                {"attempted", true}, {"records_before", startingPopulation},
+                {"record_capacity_before", startingRecordCapacity},
+                {"records_added", requestedPopulation - startingPopulation},
+                {"elapsed_ns", static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                      growthEnd - growthStart).count())},
+                {"allocation_calls", growthAllocation.calls}, {"allocated_bytes", growthAllocation.bytes},
+                {"record_capacity_after", platformator_test::work.renderCullingOwnedRecordCapacity},
+                {"cell_node_capacity_after", platformator_test::work.renderCullingOwnedCellCapacity},
+                {"owned_bytes_after", platformator_test::work.renderCullingOwnedBytes},
+                {"observer", "C++ operator new/new[] during Sprite registration; aligned new, C, SDL and driver allocations are not attributed"}};
+        }
+        else
+        {
+            capacityGrowthObservation = {{"attempted", false},
+                                         {"reason", "inactive mode, headless mode, or no reserved capacity boundary"},
+                                         {"record_capacity_before", startingRecordCapacity}};
+        }
+
+        platformator_test::work = {};
+        linear_render_allocation_probe::Snapshot resetAllocation;
+        const auto resetStart = std::chrono::steady_clock::now();
+        {
+            linear_render_allocation_probe::ScopedObservation observation(resetAllocation);
+            fixture.clearSceneAndCreateCamera(cameraWidth, cameraHeight);
+        }
+        const auto resetEnd = std::chrono::steady_clock::now();
+        resetNanoseconds = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(resetEnd - resetStart).count());
+        resetAllocationCalls = resetAllocation.calls;
+        resetAllocatedBytes = resetAllocation.bytes;
+        const auto &resetWork = platformator_test::work;
+        resourceRssAfterReset = residentMemoryKiB();
+        cullingResetObservation = {
+            {"records_removed", resetWork.renderCullingRecordsRemoved},
+            {"records_registered_after_clear", fixture.records().size()},
+            {"owned_bytes_after_clear", resetWork.renderCullingOwnedBytes},
+            {"record_capacity_after_clear", resetWork.renderCullingOwnedRecordCapacity},
+            {"cell_capacity_after_clear", resetWork.renderCullingOwnedCellCapacity},
+            {"elapsed_ns", resetNanoseconds}, {"allocation_calls", resetAllocationCalls},
+            {"allocated_bytes", resetAllocatedBytes},
+            {"observer", "C++ operator new/new[] during scene clear and camera recreation; deallocation, aligned new, C, SDL and driver allocations are not attributed"}};
+    }
+    resourceCullingWorkJson = {
+        {"records_added", resourceCullingWork.renderCullingRecordsAdded},
+        {"records_removed", resourceCullingWork.renderCullingRecordsRemoved},
+        {"records_relocated", resourceCullingWork.renderCullingRecordsRelocated},
+        {"dirty_enqueues", resourceCullingWork.renderCullingDirtyEnqueues},
+        {"dirty_cancellations", resourceCullingWork.renderCullingDirtyCancellations},
+        {"bounds_refreshes", resourceCullingWork.renderCullingBoundsRefreshes},
+        {"index_insertions", resourceCullingWork.renderCullingIndexInsertions},
+        {"index_removals", resourceCullingWork.renderCullingIndexRemovals},
+        {"index_relinks", resourceCullingWork.renderCullingIndexRelinks},
+        {"queries", resourceCullingWork.renderCullingQueries},
+        {"cell_visits", resourceCullingWork.renderCullingCellVisits},
+        {"candidate_visits", resourceCullingWork.renderCullingCandidateVisits},
+        {"full_population_visits", resourceCullingWork.renderCullingFullPopulationVisits},
+        {"order_work", resourceCullingWork.renderCullingOrderWork},
+        {"cache_hits", resourceCullingWork.renderCullingCacheHits},
+        {"projection_rebuilds", resourceCullingWork.renderCullingProjectionRebuilds},
+        {"numeric_fallbacks", resourceCullingWork.renderCullingNumericFallbacks},
+        {"mapping_fallbacks", resourceCullingWork.renderCullingMappingFallbacks},
+        {"side_list_visits", resourceCullingWork.renderCullingSideListVisits},
+        {"peak_record_capacity", resourceCullingWork.renderCullingOwnedRecordCapacity},
+        {"peak_cell_node_capacity", resourceCullingWork.renderCullingOwnedCellCapacity},
+        {"peak_owned_bytes", resourceCullingWork.renderCullingOwnedBytes}};
 #endif
     if (options.validateResources)
     {
@@ -842,9 +1282,37 @@ void run(const Options &options)
             {"allocation_calls_per_frame", static_cast<double>(resourceAllocationCalls) / options.measureFrames},
             {"allocated_bytes_per_frame", static_cast<double>(resourceAllocatedBytes) / options.measureFrames},
             {"process_rss_before_kib", resourceRssBefore}, {"process_rss_after_kib", resourceRssAfter},
+            {"process_rss_after_reset_kib", resourceRssAfterReset},
+            {"actual_changed_sprite_total", actualChangedSpriteTotal},
+            {"actual_changed_sprites_per_step_max", maximumActualChangedSpritesPerStep},
+            {"actual_changed_fraction", options.population == 0 ? 0.0 :
+                static_cast<double>(actualChangedSpriteTotal) /
+                (static_cast<double>(options.population) * options.measureFrames)},
+            {"cold_observation", {{"first_warmup_step_elapsed_ns", coldFirstStepRenderNanoseconds},
+                                   {"first_warmup_step_scope", "one complete simulation step plus rendering when active"},
+                                   {"fixture_construction_and_registration_ns", fixtureConstructionNanoseconds},
+                                   {"fixture_construction_allocation_calls", fixtureConstructionAllocationCalls},
+                                   {"fixture_construction_allocated_bytes", fixtureConstructionAllocatedBytes},
+                                   {"fixture_construction_allocation_observer", "C++ operator new/new[] from Runtime construction through Sprite registration; aligned new, C, SDL and driver allocations are not attributed"},
+                                   {"initial_registered_records", initialCullingRecords},
+                                   {"initial_state_creations", initialCullingStateCreations},
+                                   {"initial_record_capacity", initializationWork.renderCullingOwnedRecordCapacity},
+                                   {"initial_cell_node_capacity", initializationWork.renderCullingOwnedCellCapacity},
+                                   {"initial_owned_bytes", initializationWork.renderCullingOwnedBytes},
+                                   {"first_warmup_step_allocation_calls", coldFirstStepAllocationCalls},
+                                   {"first_warmup_step_allocated_bytes", coldFirstStepAllocatedBytes},
+                                   {"dirty_enqueues", coldFirstStepWork.renderCullingDirtyEnqueues},
+                                   {"bounds_refreshes", coldFirstStepWork.renderCullingBoundsRefreshes},
+                                   {"index_insertions", coldFirstStepWork.renderCullingIndexInsertions},
+                                   {"queries", coldFirstStepWork.renderCullingQueries},
+                                   {"owned_bytes", coldFirstStepWork.renderCullingOwnedBytes}}},
+            {"capacity_growth_observation", capacityGrowthObservation},
+            {"reset_observation", cullingResetObservation},
             {"render_view_preparations", resourceViews}, {"render_eligibility_checks", resourceEligibilityChecks},
             {"render_visibility_checks", resourceVisibilityChecks}, {"render_submissions", resourceSubmissions},
-            {"culling_storage_growth", "no persistent culling collection or cache exists; process RSS is process-wide and not culling-attributed"}};
+            {"culling_initial", {{"state_creations", initialCullingStateCreations},
+                                  {"records_registered", initialCullingRecords}}},
+            {"culling_work", resourceCullingWorkJson}};
         const std::string resourcePath = options.evidenceOutput + ".resources.json";
         std::ofstream evidence(resourcePath, std::ios::binary);
         evidence.exceptions(std::ios::badbit | std::ios::failbit);

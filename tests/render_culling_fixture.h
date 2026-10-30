@@ -13,6 +13,9 @@
 #include <utility>
 #include <vector>
 
+#include <SDL3/SDL_render.h>
+#include <SDL3/SDL_video.h>
+
 #include <platformator/camera.h>
 #include <platformator/runtime.h>
 #include <platformator/sprite.h>
@@ -48,8 +51,36 @@ enum class FixtureTrajectoryProfile
     Churn,
     Sparse,
     Clustered,
-    Rotated
+    Rotated,
+    VisibleMotion,
+    ChangedSubset,
+    Spread,
+    Giant,
+    LargeOffset,
+    OutputResize,
+    SceneDefault,
+    SceneStacking
 };
+
+inline bool fixtureProfileUsesStepCallback(FixtureTrajectoryProfile profile)
+{
+    switch (profile)
+    {
+    case FixtureTrajectoryProfile::Crossing:
+    case FixtureTrajectoryProfile::CameraPan:
+    case FixtureTrajectoryProfile::Churn:
+    case FixtureTrajectoryProfile::Rotated:
+    case FixtureTrajectoryProfile::VisibleMotion:
+    case FixtureTrajectoryProfile::ChangedSubset:
+    case FixtureTrajectoryProfile::Giant:
+    case FixtureTrajectoryProfile::LargeOffset:
+    case FixtureTrajectoryProfile::OutputResize:
+    case FixtureTrajectoryProfile::Clustered:
+        return true;
+    default:
+        return false;
+    }
+}
 
 struct FixturePose
 {
@@ -62,9 +93,13 @@ struct FixturePose
 class DeterministicFixtureTrajectory
 {
   public:
-    DeterministicFixtureTrajectory(FixtureTrajectoryProfile profile, size_t population, uint32_t seed)
-        : profile_(profile), population_(population), seed_(seed)
+    DeterministicFixtureTrajectory(FixtureTrajectoryProfile profile, size_t population, uint32_t seed,
+                                   size_t changedPercent = 100, bool spreadLayout = false)
+        : profile_(profile), population_(population), seed_(seed), changedPercent_(changedPercent),
+          spreadLayout_(spreadLayout)
     {
+        if (changedPercent_ > 100)
+            throw std::invalid_argument("Fixture changed fraction must be in [0, 100]");
     }
 
     FixturePose pose(size_t slot, size_t step) const
@@ -77,6 +112,8 @@ class DeterministicFixtureTrajectory
         switch (profile_)
         {
         case FixtureTrajectoryProfile::Visible:
+        case FixtureTrajectoryProfile::SceneDefault:
+        case FixtureTrajectoryProfile::SceneStacking:
             result.x = static_cast<float>(20.0 + 280.0 * unit(slot, 0xD1B54A35u));
             result.y = static_cast<float>(20.0 + 200.0 * unit(slot, 0x94D049BBu));
             break;
@@ -93,8 +130,17 @@ class DeterministicFixtureTrajectory
             break;
         }
         case FixtureTrajectoryProfile::CameraPan:
-            result.x = static_cast<float>(unit(slot, 0x7E95761Eu) * 2400.0);
-            result.y = static_cast<float>(unit(slot, 0x4CF5AD43u) * 1600.0);
+            if (spreadLayout_)
+            {
+                const size_t columns = static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(std::max<size_t>(1, population_)))));
+                result.x = static_cast<float>(24.0 + static_cast<double>(slot % columns) * 40.0);
+                result.y = static_cast<float>(24.0 + static_cast<double>(slot / columns) * 40.0);
+            }
+            else
+            {
+                result.x = static_cast<float>(unit(slot, 0x7E95761Eu) * 2400.0);
+                result.y = static_cast<float>(unit(slot, 0x4CF5AD43u) * 1600.0);
+            }
             break;
         case FixtureTrajectoryProfile::Churn:
             result.x = static_cast<float>((result.generation & 1u) == 0 ? 40.0 + unit(slot, 0xD1B54A35u) * 230.0
@@ -118,12 +164,64 @@ class DeterministicFixtureTrajectory
                 result.x = static_cast<float>(410.0 + unit(slot, 0x7C3A2D13u) * 1600.0);
                 result.y = static_cast<float>(unit(slot, 0xC6EF3720u) * 1100.0);
             }
+            if (isChanged(slot))
+            {
+                result.x += static_cast<float>(std::sin(stepPhase + phaseOffset) * 3.0);
+                result.y += static_cast<float>(std::cos(stepPhase + phaseOffset) * 3.0);
+            }
             break;
         case FixtureTrajectoryProfile::Rotated:
             result.x = slot % 10 == 0 ? static_cast<float>(35.0 + unit(slot, 0xB5297A4Du) * 250.0)
                                       : static_cast<float>(390.0 + unit(slot, 0x68E31DA4u) * 1200.0);
             result.y = static_cast<float>(20.0 + unit(slot, 0x1B56C4E9u) * 200.0);
             result.rotationRadians = static_cast<float>((unit(slot, 0xAEF17502u) * 2.0 - 1.0) * 3.141592653589793);
+            if (isChanged(slot))
+                result.rotationRadians += static_cast<float>(std::sin(stepPhase + phaseOffset) * 0.08);
+            break;
+        case FixtureTrajectoryProfile::VisibleMotion:
+        case FixtureTrajectoryProfile::ChangedSubset:
+        case FixtureTrajectoryProfile::OutputResize:
+        {
+            const bool moving = profile_ == FixtureTrajectoryProfile::VisibleMotion || isChanged(slot);
+            const double motion = moving ? std::sin(stepPhase + phaseOffset) * 18.0 : 0.0;
+            if (profile_ == FixtureTrajectoryProfile::ChangedSubset && spreadLayout_)
+            {
+                const size_t columns = static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(std::max<size_t>(1, population_)))));
+                result.x = static_cast<float>(24.0 + static_cast<double>(slot % columns) * 40.0 + motion * 0.15);
+                result.y = static_cast<float>(24.0 + static_cast<double>(slot / columns) * 40.0 +
+                                              (moving ? std::cos(stepPhase + phaseOffset) * 2.0 : 0.0));
+            }
+            else
+            {
+                result.x = static_cast<float>(35.0 + 250.0 * unit(slot, 0xD1B54A35u) + motion);
+                result.y = static_cast<float>(20.0 + 190.0 * unit(slot, 0x94D049BBu) +
+                                              (moving ? std::cos(stepPhase + phaseOffset) * 12.0 : 0.0));
+            }
+            break;
+        }
+        case FixtureTrajectoryProfile::Spread:
+        {
+            const size_t columns = static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(std::max<size_t>(1, population_)))));
+            result.x = static_cast<float>(24.0 + static_cast<double>(slot % columns) * 40.0);
+            result.y = static_cast<float>(24.0 + static_cast<double>(slot / columns) * 40.0);
+            break;
+        }
+        case FixtureTrajectoryProfile::Giant:
+            result.x = static_cast<float>(slot % 2 == 0 ? -1200.0 : 1200.0);
+            result.y = static_cast<float>(slot % 3 == 0 ? -800.0 : 800.0);
+            result.rotationRadians = static_cast<float>((unit(slot, 0xAEF17502u) * 2.0 - 1.0) * 3.141592653589793);
+            if (isChanged(slot))
+            {
+                result.x += static_cast<float>(std::sin(stepPhase + phaseOffset) * 20.0);
+                result.y += static_cast<float>(std::cos(stepPhase + phaseOffset) * 12.0);
+                result.rotationRadians += static_cast<float>(std::sin(stepPhase + phaseOffset) * 0.08);
+            }
+            break;
+        case FixtureTrajectoryProfile::LargeOffset:
+            result.x = static_cast<float>(10000000.0 + unit(slot, 0xD1B54A35u) * 2000.0 +
+                                          (isChanged(slot) ? static_cast<double>(step) * 4.0 : 0.0));
+            result.y = static_cast<float>(10000000.0 + unit(slot, 0x94D049BBu) * 1200.0 +
+                                          (isChanged(slot) ? static_cast<double>(step) * 2.0 : 0.0));
             break;
         }
         return result;
@@ -131,6 +229,12 @@ class DeterministicFixtureTrajectory
 
     std::pair<float, float> cameraPosition(size_t step) const
     {
+        if (profile_ == FixtureTrajectoryProfile::LargeOffset)
+        {
+            const double phase = 6.283185307179586476925286766559 * static_cast<double>(step % 240) / 240.0;
+            return {static_cast<float>(10000000.0 + 700.0 * std::sin(phase)),
+                    static_cast<float>(10000000.0 + 420.0 * std::cos(phase))};
+        }
         if (profile_ != FixtureTrajectoryProfile::CameraPan)
             return {0.0f, 0.0f};
         const double phase = 6.283185307179586476925286766559 * static_cast<double>(step % 240) / 240.0;
@@ -141,6 +245,26 @@ class DeterministicFixtureTrajectory
     size_t replacementsPerStep() const
     {
         return std::max<size_t>(1, population_ / 100);
+    }
+
+    size_t changedSpriteCount() const
+    {
+        if (profile_ == FixtureTrajectoryProfile::VisibleMotion)
+            return population_;
+        if (profile_ != FixtureTrajectoryProfile::ChangedSubset && profile_ != FixtureTrajectoryProfile::Giant &&
+            profile_ != FixtureTrajectoryProfile::Clustered &&
+            profile_ != FixtureTrajectoryProfile::Rotated && profile_ != FixtureTrajectoryProfile::LargeOffset)
+            return 0;
+        return population_ * changedPercent_ / 100;
+    }
+
+    bool isChanged(size_t slot) const
+    {
+        return profile_ == FixtureTrajectoryProfile::VisibleMotion ||
+               ((profile_ == FixtureTrajectoryProfile::ChangedSubset || profile_ == FixtureTrajectoryProfile::Giant ||
+                 profile_ == FixtureTrajectoryProfile::Clustered ||
+                 profile_ == FixtureTrajectoryProfile::Rotated || profile_ == FixtureTrajectoryProfile::LargeOffset) &&
+                slot < changedSpriteCount());
     }
 
     uint32_t generationForSlot(size_t slot, size_t step) const
@@ -171,10 +295,28 @@ class DeterministicFixtureTrajectory
         return population_;
     }
 
+    std::pair<float, float> spriteDimensions() const
+    {
+        if (profile_ == FixtureTrajectoryProfile::Rotated)
+            return {64.0f, 12.0f};
+        if (profile_ == FixtureTrajectoryProfile::Giant)
+            return {2048.0f, 1024.0f};
+        return {16.0f, 16.0f};
+    }
+
+    std::pair<int, int> outputDimensions(size_t step) const
+    {
+        if (profile_ == FixtureTrajectoryProfile::OutputResize && step >= 240)
+            return {400, 300};
+        return {320, 240};
+    }
+
   private:
     FixtureTrajectoryProfile profile_;
     size_t population_;
     uint32_t seed_;
+    size_t changedPercent_;
+    bool spreadLayout_;
 
     double unit(size_t slot, uint32_t salt) const
     {
@@ -256,8 +398,18 @@ class RenderCullingFixture
         records_.clear();
         runtime_.clearScene();
         runtime_.loadScene(scenePath);
-        camera_ = nullptr;
-        createCamera(width, height, 0.0f, 0.0f);
+        camera_ = runtime_.getMainCamera();
+        if (camera_ == nullptr)
+            createCamera(width, height, 0.0f, 0.0f);
+        for (GameObject *object : runtime_.getAllGameObjects())
+        {
+            Sprite *sprite = object->getComponent<Sprite>();
+            if (sprite == nullptr)
+                continue;
+            const size_t slot = records_.size();
+            records_.push_back({{slot, 0}, object, sprite});
+            identities_.emplace(sprite, platformator_test::SpriteIdentity{slot, 0});
+        }
     }
 
     SpriteRecord &addSprite(size_t slot, uint32_t generation, float x, float y, float width, float height,
@@ -311,6 +463,15 @@ class RenderCullingFixture
     {
         records_.reserve(count);
         identities_.reserve(count);
+    }
+
+    void resizeOutput(int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+            throw std::invalid_argument("Render culling fixture output dimensions must be positive");
+        SDL_Window *window = SDL_GetRenderWindow(runtime_.getRenderer());
+        if (window == nullptr || !SDL_SetWindowSize(window, width, height))
+            throw std::runtime_error(std::string("Could not resize fixture output: ") + SDL_GetError());
     }
 
     void forgetSprite(Sprite *sprite)

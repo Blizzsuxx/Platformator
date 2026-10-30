@@ -53,17 +53,13 @@ platformator_detail::SpriteRenderView Camera::prepareRenderView(int outputWidth,
 }
 
 void Camera::renderWithView(Sprite *sprite, SDL_Renderer *renderer,
-                            const platformator_detail::SpriteRenderView &view) const
+                            const platformator_detail::SpriteRenderView &view, bool applyCulling) const
 {
-    float renderW = sprite->getWidth();
-    float renderH = sprite->getHeight();
+    SDL_FRect renderQuad{};
+    float angleDegrees = 0.0f;
+    prepareSpriteGeometry(sprite, view, renderQuad, angleDegrees);
 
-    const auto &spritePosition = sprite->getGameObject()->worldPosition;
-    SDL_FRect renderQuad = {(spritePosition.x() - renderW * 0.5f - view.cameraX) * view.scaleX,
-                            (spritePosition.y() - renderH * 0.5f - view.cameraY) * view.scaleY,
-                            renderW * view.scaleX, renderH * view.scaleY};
-    const float angleDegrees = sprite->getGameObject()->getRotationInDegrees();
-    if (view.cullingEligible && sprite->getTexture() != nullptr)
+    if (applyCulling && view.cullingEligible && sprite->getTexture() != nullptr)
     {
         PLATFORMATOR_RENDER_VISIBILITY_CHECK();
         if (platformator_detail::classifySpriteForRender(renderQuad, angleDegrees, view) ==
@@ -73,6 +69,24 @@ void Camera::renderWithView(Sprite *sprite, SDL_Renderer *renderer,
     PLATFORMATOR_RENDER_SUBMISSION(sprite);
     SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad, angleDegrees, nullptr,
                              sprite->getFlip());
+}
+
+void Camera::prepareSpriteGeometry(Sprite *sprite, const platformator_detail::SpriteRenderView &view,
+                                  SDL_FRect &renderQuad, float &angleDegrees) const
+{
+    float renderW = sprite->getWidth();
+    float renderH = sprite->getHeight();
+
+    const auto &spritePosition = getPublishedSpritePosition(sprite);
+    renderQuad = {(spritePosition.x() - renderW * 0.5f - view.cameraX) * view.scaleX,
+                  (spritePosition.y() - renderH * 0.5f - view.cameraY) * view.scaleY,
+                  renderW * view.scaleX, renderH * view.scaleY};
+    angleDegrees = sprite->getGameObject()->getRotationInDegrees();
+}
+
+const Eigen::Vector2f &Camera::getPublishedSpritePosition(Sprite *sprite) const
+{
+    return sprite->getGameObject()->worldPosition;
 }
 
 Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const

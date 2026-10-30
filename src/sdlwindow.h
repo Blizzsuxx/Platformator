@@ -11,6 +11,7 @@
 #include "platformator/camera.h"
 #include "platformator/debugsettings.h"
 #include "debugdraw.h"
+#include "renderculling.h"
 #include "platformator/windowsettings.h"
 
 class Audio;
@@ -38,6 +39,8 @@ class SDLWindow
 
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);
+    void notifySpriteGeometryChanged(Sprite *spriteComponent) noexcept;
+    void releaseRenderCullingStorage() noexcept;
 
     void addSdlListener(const std::function<void(SDL_Event, double)> &listener);
     bool shouldSimulateFrame() const;
@@ -72,6 +75,9 @@ class SDLWindow
     bool quit;
     bool paused;
     bool advanceFrameRequested;
+    platformator_detail::RenderCullingMode requestedRenderCullingMode;
+    platformator_detail::RenderCullingMode effectiveRenderCullingMode;
+    std::unique_ptr<platformator_detail::RenderCullingState> renderCullingState;
 
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event, double)>> listeners;
@@ -81,5 +87,6 @@ class SDLWindow
     bool init();
     void close();
     void updateRenderSize();
+    bool prepareCachedLinear(Camera *camera, const platformator_detail::SpriteRenderView &view);
     void releaseTransientAudioPlayback(size_t index);
 };

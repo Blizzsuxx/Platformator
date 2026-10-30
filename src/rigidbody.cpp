@@ -327,11 +327,16 @@ Rigidbody *Rigidbody::move(double timeDelta)
         return this;
     }
     const auto changes = integrateLocal(timeDelta);
+    if (changes & 2)
+    {
+        if (getGameObject()->getIsRegisteredInGameManager())
+            platformator_detail::RuntimeAccess::gameManager().publishRenderGeometryChange(getGameObject());
+    }
     if (changes & 1)
     {
         getGameObject()->queueTransform();
     }
-    else if (changes & 2)
+    if (changes & 2)
     {
         getGameObject()->updateCollider();
     }

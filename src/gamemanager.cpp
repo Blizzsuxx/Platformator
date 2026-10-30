@@ -16,6 +16,7 @@
 #include "platformator/animator.h"
 #include "platformator/audio.h"
 #include "platformator/scriptcomponent.h"
+#include "platformator/sprite.h"
 #include "platformator/texturewrapper.h"
 #include "referenceresolver.h"
 #include "scenebuilder.h"
@@ -927,6 +928,7 @@ void GameManager::synchronizeSubtree(GameObject *object)
         object->parent ? (object->parent->worldPosition + object->position).eval() : object->position;
     if (previous != object->worldPosition)
     {
+        publishRenderGeometryChange(object);
         if (auto *body = object->getComponent<Rigidbody>())
         {
             body->wakeUp();
@@ -940,6 +942,14 @@ void GameManager::synchronizeSubtree(GameObject *object)
     {
         synchronizeSubtree(child);
     }
+}
+
+void GameManager::publishRenderGeometryChange(GameObject *object)
+{
+    if (object == nullptr || !object->getIsRegisteredInGameManager())
+        return;
+    if (auto *sprite = object->getComponent<Sprite>())
+        window->notifySpriteGeometryChanged(sprite);
 }
 
 void GameManager::synchronizeTransforms()
@@ -1184,6 +1194,9 @@ void GameManager::commitMutations()
     reconcilePending(error);
     drainRetirements(error);
 
+    if (clearing || prepared)
+        window->releaseRenderCullingStorage();
+
     if (clearing)
     {
         nextFileId = 0;
@@ -1246,6 +1259,7 @@ void GameManager::shutdown()
     {
         std::fprintf(stderr, "Runtime shutdown callback failed\n");
     }
+    window->releaseRenderCullingStorage();
     window->clearTransientAudio();
     freeAllAnimationClips();
     freeAllTextures();

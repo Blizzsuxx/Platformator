@@ -36,6 +36,32 @@ struct WorkCounters
     size_t renderVisibilityChecks = 0;
     size_t renderSubmittedSprites = 0;
     size_t renderReadbackCallbacks = 0;
+    size_t renderCullingStateCreations = 0;
+    size_t renderCullingRecordsAdded = 0;
+    size_t renderCullingRecordsRemoved = 0;
+    size_t renderCullingRecordsRelocated = 0;
+    size_t renderCullingDirtyEnqueues = 0;
+    size_t renderCullingDirtyCancellations = 0;
+    size_t renderCullingBoundsRefreshes = 0;
+    size_t renderCullingIndexInsertions = 0;
+    size_t renderCullingIndexRemovals = 0;
+    size_t renderCullingIndexRelinks = 0;
+    size_t renderCullingQueries = 0;
+    size_t renderCullingQueryStampResets = 0;
+    size_t renderCullingCellVisits = 0;
+    size_t renderCullingCandidateVisits = 0;
+    size_t renderCullingFullPopulationVisits = 0;
+    size_t renderCullingOrderWork = 0;
+    size_t renderCullingCacheHits = 0;
+    size_t renderCullingProjectionRebuilds = 0;
+    size_t renderCullingNumericFallbacks = 0;
+    size_t renderCullingMappingFallbacks = 0;
+    size_t renderCullingSideListVisits = 0;
+    size_t renderCullingOwnedRecords = 0;
+    size_t renderCullingOwnedRecordCapacity = 0;
+    size_t renderCullingOwnedCellCount = 0;
+    size_t renderCullingOwnedCellCapacity = 0;
+    size_t renderCullingOwnedBytes = 0;
 };
 inline WorkCounters work;
 
@@ -120,17 +146,23 @@ inline void observeBeforePresent(SDL_Renderer *renderer, int width, int height)
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
 #define PLATFORMATOR_WORK_ADD(field, count) (::platformator_test::work.field += (count))
+#define PLATFORMATOR_WORK_SET(field, value) (::platformator_test::work.field = (value))
 #define PLATFORMATOR_RENDER_VIEW_PREPARED() (++::platformator_test::work.renderViewPreparations)
 #define PLATFORMATOR_RENDER_ELIGIBILITY_CHECK() (++::platformator_test::work.renderEligibilityChecks)
 #define PLATFORMATOR_RENDER_VISIBILITY_CHECK() (++::platformator_test::work.renderVisibilityChecks)
 #define PLATFORMATOR_RENDER_SUBMISSION(sprite) (::platformator_test::observeSpriteSubmission(sprite))
 #define PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, width, height) \
     (::platformator_test::observeBeforePresent(renderer, width, height))
+#define PLATFORMATOR_RENDER_CULLING_ADD(field, count) (::platformator_test::work.field += (count))
+#define PLATFORMATOR_RENDER_CULLING_SET(field, value) (::platformator_test::work.field = (value))
 #else
 #define PLATFORMATOR_WORK_ADD(field, count) ((void)0)
+#define PLATFORMATOR_WORK_SET(field, value) ((void)0)
 #define PLATFORMATOR_RENDER_VIEW_PREPARED() ((void)0)
 #define PLATFORMATOR_RENDER_ELIGIBILITY_CHECK() ((void)0)
 #define PLATFORMATOR_RENDER_VISIBILITY_CHECK() ((void)0)
 #define PLATFORMATOR_RENDER_SUBMISSION(sprite) ((void)0)
 #define PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, width, height) ((void)0)
+#define PLATFORMATOR_RENDER_CULLING_ADD(field, count) ((void)0)
+#define PLATFORMATOR_RENDER_CULLING_SET(field, value) ((void)0)
 #endif

@@ -115,6 +115,8 @@ GameObject *GameObject::setRotation(const float rotation)
     this->rotation = wrapped;
     this->sinRotation = std::sin(this->rotation);
     this->cosRotation = std::cos(this->rotation);
+    if (getIsRegisteredInGameManager())
+        platformator_detail::RuntimeAccess::gameManager().publishRenderGeometryChange(this);
     if (auto *body = getComponent<Rigidbody>())
         body->wakeUp();
 
@@ -184,6 +186,8 @@ GameObject *GameObject::setScale(const Eigen::Vector2f &scale)
     if (this->scale == scale)
         return this;
     this->scale = scale;
+    if (getIsRegisteredInGameManager())
+        platformator_detail::RuntimeAccess::gameManager().publishRenderGeometryChange(this);
 
     Rigidbody *rigidbodyComponent = getComponent<Rigidbody>();
     if (rigidbodyComponent != nullptr)

@@ -121,6 +121,7 @@ class PhysicsManager
     {
         GameObject *object;
         bool translated;
+        bool rotated;
     };
 
     tbb::enumerable_thread_specific<std::vector<MovedObject>> movedObjects;

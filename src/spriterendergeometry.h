@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "platformator/objecthandle.h"
+
 namespace platformator_detail
 {
 // One frame's camera/output mapping. This type contains values only; it never
@@ -29,6 +31,24 @@ struct SpriteRenderBounds
     double maxY = 0.0;
 };
 
+struct SpriteRenderProjectionKey
+{
+    float scaleX = 0.0f;
+    float scaleY = 0.0f;
+    int outputWidth = 0;
+    int outputHeight = 0;
+    bool valid = false;
+};
+
+struct SpriteRenderViewKey
+{
+    platformator::ObjectHandle cameraHandle{};
+    float cameraX = 0.0f;
+    float cameraY = 0.0f;
+    SpriteRenderProjectionKey projection{};
+    bool valid = false;
+};
+
 enum class SpriteRenderClassification
 {
     Unclassifiable,
@@ -41,6 +61,28 @@ namespace sprite_render_geometry_detail
 inline bool finitePositive(float value)
 {
     return std::isfinite(value) && value > 0.0f;
+}
+
+inline constexpr double certifiedCoordinateLimit = 16384.0;
+
+inline bool finiteNormalPositive(float value)
+{
+    return std::isfinite(value) && value >= std::numeric_limits<float>::min();
+}
+
+inline bool certifiedAxis(float scale)
+{
+    if (!finiteNormalPositive(scale))
+        return false;
+    const double maximumPreScaleMagnitude = 4.0 * certifiedCoordinateLimit / static_cast<double>(scale);
+    return std::isfinite(maximumPreScaleMagnitude) &&
+           maximumPreScaleMagnitude <= static_cast<double>(std::numeric_limits<float>::max());
+}
+
+inline bool projectedWithinCertificate(float value, float scale)
+{
+    return std::isfinite(value) &&
+           std::abs(static_cast<double>(value) * static_cast<double>(scale)) <= certifiedCoordinateLimit;
 }
 
 inline double absoluteMaximum(double current, float value)
@@ -131,6 +173,128 @@ inline bool makePaddedBounds(const SDL_FRect &destination, float angleDegrees, S
            std::isfinite(bounds.maxY);
 }
 } // namespace sprite_render_geometry_detail
+
+inline SpriteRenderProjectionKey makeSpriteRenderProjectionKey(const SpriteRenderView &view) noexcept
+{
+    if (!view.cullingEligible || view.outputWidth <= 0 || view.outputHeight <= 0 ||
+        static_cast<double>(view.outputWidth) > sprite_render_geometry_detail::certifiedCoordinateLimit ||
+        static_cast<double>(view.outputHeight) > sprite_render_geometry_detail::certifiedCoordinateLimit ||
+        !sprite_render_geometry_detail::certifiedAxis(view.scaleX) ||
+        !sprite_render_geometry_detail::certifiedAxis(view.scaleY))
+        return {};
+    return {view.scaleX, view.scaleY, view.outputWidth, view.outputHeight, true};
+}
+
+inline SpriteRenderViewKey makeSpriteRenderViewKey(platformator::ObjectHandle cameraHandle,
+                                                    const SpriteRenderView &view) noexcept
+{
+    const auto projection = makeSpriteRenderProjectionKey(view);
+    if (!cameraHandle || !projection.valid || !std::isfinite(view.cameraX) || !std::isfinite(view.cameraY))
+        return {};
+    return {cameraHandle, view.cameraX, view.cameraY, projection, true};
+}
+
+inline bool sameSpriteRenderProjection(const SpriteRenderProjectionKey &a,
+                                       const SpriteRenderProjectionKey &b) noexcept
+{
+    return a.valid && b.valid && a.scaleX == b.scaleX && a.scaleY == b.scaleY &&
+           a.outputWidth == b.outputWidth && a.outputHeight == b.outputHeight;
+}
+
+inline bool sameSpriteRenderView(const SpriteRenderViewKey &a, const SpriteRenderViewKey &b) noexcept
+{
+    return a.valid && b.valid && a.cameraHandle == b.cameraHandle && a.cameraX == b.cameraX &&
+           a.cameraY == b.cameraY && sameSpriteRenderProjection(a.projection, b.projection);
+}
+
+// The two-pixel envelope covers the current classifier's one-pixel raster
+// padding plus a conservative float-operation error bound for the certified P
+// domain. The derivation is retained in evidence/numeric-bounds.md.
+inline bool makeCertifiedSpriteRenderProxy(float worldX, float worldY, float width, float height,
+                                            float angleDegrees, float scaleX, float scaleY,
+                                            SpriteRenderBounds &bounds) noexcept
+{
+    using namespace sprite_render_geometry_detail;
+    if (!certifiedAxis(scaleX) || !certifiedAxis(scaleY) || !std::isfinite(worldX) || !std::isfinite(worldY) ||
+        !finitePositive(width) || !finitePositive(height) || !std::isfinite(angleDegrees) ||
+        !projectedWithinCertificate(worldX, scaleX) || !projectedWithinCertificate(worldY, scaleY) ||
+        !projectedWithinCertificate(width, scaleX) || !projectedWithinCertificate(height, scaleY))
+        return false;
+
+    const float screenWidth = width * scaleX;
+    const float screenHeight = height * scaleY;
+    if (!finiteNormalPositive(screenWidth) || !finiteNormalPositive(screenHeight))
+        return false;
+
+    float sine = 0.0f;
+    float cosine = 1.0f;
+    if (angleDegrees != 0.0f)
+    {
+        const float radians = static_cast<float>((SDL_PI_D * static_cast<double>(angleDegrees)) / 180.0);
+        if (!std::isfinite(radians))
+            return false;
+        sine = SDL_sinf(radians);
+        cosine = SDL_cosf(radians);
+        if (!std::isfinite(sine) || !std::isfinite(cosine) || std::abs(sine) > 1.0f || std::abs(cosine) > 1.0f)
+            return false;
+    }
+
+    const double projectedHalfX =
+        (std::abs(static_cast<double>(cosine)) * static_cast<double>(width) * scaleX +
+         std::abs(static_cast<double>(sine)) * static_cast<double>(height) * scaleY) *
+        0.5;
+    const double projectedHalfY =
+        (std::abs(static_cast<double>(sine)) * static_cast<double>(width) * scaleX +
+         std::abs(static_cast<double>(cosine)) * static_cast<double>(height) * scaleY) *
+        0.5;
+    const double envelopeX = 2.0 / static_cast<double>(scaleX);
+    const double envelopeY = 2.0 / static_cast<double>(scaleY);
+    const double halfX = projectedHalfX / static_cast<double>(scaleX) + envelopeX;
+    const double halfY = projectedHalfY / static_cast<double>(scaleY) + envelopeY;
+    if (!std::isfinite(halfX) || !std::isfinite(halfY) || !std::isfinite(envelopeX) || !std::isfinite(envelopeY))
+        return false;
+
+    SpriteRenderBounds certified{
+        std::nextafter(static_cast<double>(worldX) - halfX, -std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(worldY) - halfY, -std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(worldX) + halfX, std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(worldY) + halfY, std::numeric_limits<double>::infinity())};
+    if (!std::isfinite(certified.minX) || !std::isfinite(certified.minY) || !std::isfinite(certified.maxX) ||
+        !std::isfinite(certified.maxY))
+        return false;
+    bounds = certified;
+    return true;
+}
+
+inline bool makeCertifiedRenderViewQuery(const SpriteRenderView &view, SpriteRenderBounds &bounds) noexcept
+{
+    using namespace sprite_render_geometry_detail;
+    if (!makeSpriteRenderProjectionKey(view).valid || !std::isfinite(view.cameraX) || !std::isfinite(view.cameraY) ||
+        !projectedWithinCertificate(view.cameraX, view.scaleX) ||
+        !projectedWithinCertificate(view.cameraY, view.scaleY))
+        return false;
+
+    const double outputWorldWidth = static_cast<double>(view.outputWidth) / static_cast<double>(view.scaleX);
+    const double outputWorldHeight = static_cast<double>(view.outputHeight) / static_cast<double>(view.scaleY);
+    const double envelopeX = 2.0 / static_cast<double>(view.scaleX);
+    const double envelopeY = 2.0 / static_cast<double>(view.scaleY);
+    if (!std::isfinite(outputWorldWidth) || !std::isfinite(outputWorldHeight) || !std::isfinite(envelopeX) ||
+        !std::isfinite(envelopeY) || outputWorldWidth <= 0.0 || outputWorldHeight <= 0.0)
+        return false;
+
+    SpriteRenderBounds certified{
+        std::nextafter(static_cast<double>(view.cameraX) - envelopeX, -std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(view.cameraY) - envelopeY, -std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(view.cameraX) + outputWorldWidth + envelopeX,
+                       std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(view.cameraY) + outputWorldHeight + envelopeY,
+                       std::numeric_limits<double>::infinity())};
+    if (!std::isfinite(certified.minX) || !std::isfinite(certified.minY) || !std::isfinite(certified.maxX) ||
+        !std::isfinite(certified.maxY))
+        return false;
+    bounds = certified;
+    return true;
+}
 
 // Bounds and classification consume the already prepared destination
 // rectangle. Invalid or uncertain inputs return Unclassifiable and must be

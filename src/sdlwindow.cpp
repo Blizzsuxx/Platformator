@@ -1,8 +1,13 @@
 #include "sdlwindow.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 
 #include <SDL3/SDL_properties.h>
 
@@ -17,6 +22,20 @@
 
 namespace
 {
+platformator_detail::RenderCullingMode requestedRenderCullingModeFromEnvironment()
+{
+    // This process-local control is deliberately internal. It is read while
+    // SDLWindow is constructed, before Runtime publishes scene components.
+    const char *value = std::getenv("PLATFORMATOR_RENDER_CULLING_MODE");
+    if (value == nullptr || *value == '\0' || std::string_view(value) == "indexed")
+        return platformator_detail::RenderCullingMode::Indexed;
+    if (std::string_view(value) == "current-linear")
+        return platformator_detail::RenderCullingMode::CurrentLinear;
+    if (std::string_view(value) == "cached-linear")
+        return platformator_detail::RenderCullingMode::CachedLinear;
+    throw std::invalid_argument("Unknown PLATFORMATOR_RENDER_CULLING_MODE: " + std::string(value));
+}
+
 bool hasDefaultRenderMapping(SDL_Renderer *renderer, int expectedWidth, int expectedHeight)
 {
     if (renderer == nullptr || expectedWidth <= 0 || expectedHeight <= 0)
@@ -53,14 +72,24 @@ bool hasDefaultRenderMapping(SDL_Renderer *renderer, int expectedWidth, int expe
     return outputWidth == expectedWidth && outputHeight == expectedHeight && currentWidth == expectedWidth &&
            currentHeight == expectedHeight;
 }
+
+bool overlaps(const platformator_detail::SpriteRenderBounds &a,
+              const platformator_detail::SpriteRenderBounds &b)
+{
+    return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
+}
 } // namespace
 
 SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
     : window(nullptr), renderer(nullptr), mixer(nullptr), mainCamera(nullptr), sdlEvent(),
       debugDraw(DebugDraw::getInstance()), rendererName(nullptr), windowSettings(windowSettings),
       renderWidth(windowSettings.width), renderHeight(windowSettings.height), quit(false),
-      paused(debugSettings.startPaused), advanceFrameRequested(false), spriteComponents(), listeners(),
-      transientAudioPlaybacks()
+      paused(debugSettings.startPaused), advanceFrameRequested(false),
+      requestedRenderCullingMode(requestedRenderCullingModeFromEnvironment()),
+      effectiveRenderCullingMode(windowSettings.enableRenderCulling
+                                     ? requestedRenderCullingMode
+                                     : platformator_detail::RenderCullingMode::SubmitAll),
+      renderCullingState(), spriteComponents(), listeners(), transientAudioPlaybacks()
 {
     try
     {
@@ -74,6 +103,15 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
         {
             const std::string error = SDL_GetError();
             throw std::runtime_error("Cannot initialize Platformator backends: " + error);
+        }
+
+        if (renderer != nullptr && effectiveRenderCullingMode != platformator_detail::RenderCullingMode::SubmitAll &&
+            effectiveRenderCullingMode != platformator_detail::RenderCullingMode::CurrentLinear)
+        {
+            renderCullingState = std::make_unique<platformator_detail::RenderCullingState>(
+                effectiveRenderCullingMode);
+            renderCullingState->publishCapacityObservation();
+            PLATFORMATOR_RENDER_CULLING_ADD(renderCullingStateCreations, 1);
         }
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
@@ -275,6 +313,8 @@ void SDLWindow::render()
         return;
     }
     PLATFORMATOR_BENCH_SCOPE(Render);
+    if (renderCullingState)
+        renderCullingState->publishCapacityObservation();
 
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(renderer);
@@ -321,15 +361,19 @@ void SDLWindow::render()
     }
     const auto renderView = mainCamera->prepareRenderView(renderWidth, renderHeight, cullingEligible);
 
-    // EFFICIENCY: This O(N) pass still inspects every active sprite each rendered frame. A cached visible set could avoid repeated offscreen checks, but it would need generation-safe invalidation for transforms, camera/output changes, activation, and component lifecycle. Keep the authoritative ordered scan here; if the full population matrix shows scan cost dominates, evaluate a generation-safe ordered visibility cache with explicit mutation hooks as follow-up work.
-    for (Sprite *spriteComponent : spriteComponents)
+    if (renderCullingState && prepareCachedLinear(mainCamera, renderView))
     {
-        if (!spriteComponent->getGameObject()->getActive())
+        for (const auto rank : renderCullingState->visibleRanks())
+            mainCamera->renderWithView(spriteComponents[rank], renderer, renderView, false);
+    }
+    else
+    {
+        for (Sprite *spriteComponent : spriteComponents)
         {
-            continue;
+            if (!spriteComponent->getGameObject()->getActive())
+                continue;
+            mainCamera->renderWithView(spriteComponent, renderer, renderView);
         }
-
-        mainCamera->renderWithView(spriteComponent, renderer, renderView);
     }
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
@@ -376,6 +420,135 @@ bool SDLWindow::isHeadless() const
     return windowSettings.headless;
 }
 
+bool SDLWindow::prepareCachedLinear(Camera *camera, const platformator_detail::SpriteRenderView &view)
+{
+    using namespace platformator_detail;
+    if (!renderCullingState || camera == nullptr)
+        return false;
+    if (!view.cullingEligible)
+    {
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingMappingFallbacks, 1);
+        return false;
+    }
+
+    const SpriteRenderProjectionKey projection = makeSpriteRenderProjectionKey(view);
+    const SpriteRenderViewKey currentView = makeSpriteRenderViewKey(camera->getHandle(), view);
+    SpriteRenderBounds query;
+    if (!projection.valid || !currentView.valid || !makeCertifiedRenderViewQuery(view, query))
+    {
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingNumericFallbacks, 1);
+        return false;
+    }
+
+    auto &state = *renderCullingState;
+    const bool projectionChanged = !sameSpriteRenderProjection(state.projectionKey(), projection);
+    const bool viewChanged = !sameSpriteRenderView(state.viewKey(), currentView);
+    const bool rebuildSelection = projectionChanged || viewChanged || !state.selectionValid();
+    if (projectionChanged)
+    {
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingProjectionRebuilds, 1);
+        if (state.mode() == RenderCullingMode::Indexed)
+            state.setSpatialCellSize(static_cast<double>(view.outputWidth) / view.scaleX,
+                                     static_cast<double>(view.outputHeight) / view.scaleY);
+    }
+
+    GameManager &manager = RuntimeAccess::gameManager();
+    const auto refreshRecord = [&](RenderCullingState::RecordIndex index) {
+        auto &record = state.recordAt(index);
+        auto *sprite = static_cast<Sprite *>(manager.resolveHandle(record.spriteHandle, ObjectKind::Sprite));
+        if (sprite == nullptr)
+        {
+            record.boundsValid = false;
+            record.hasTexture = false;
+            if (state.mode() == RenderCullingMode::Indexed)
+                state.updateSpatialBounds(index, record.bounds, false);
+            PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
+            return;
+        }
+
+        const Eigen::Vector2f &position = camera->getPublishedSpritePosition(sprite);
+        record.hasTexture = sprite->getTexture() != nullptr;
+        record.boundsValid = makeCertifiedSpriteRenderProxy(position.x(), position.y(), sprite->getWidth(),
+                                                            sprite->getHeight(),
+                                                            sprite->getGameObject()->getRotationInDegrees(),
+                                                            view.scaleX, view.scaleY, record.bounds);
+        if (state.mode() == RenderCullingMode::Indexed)
+            state.updateSpatialBounds(index, record.bounds, record.boundsValid && record.hasTexture);
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
+    };
+
+    if (projectionChanged)
+    {
+        for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
+            refreshRecord(rank);
+    }
+    else
+    {
+        const auto queuedCount = state.dirtyCount();
+        for (RenderCullingState::RecordIndex queued = 0; queued < queuedCount; ++queued)
+            refreshRecord(state.dirtyAt(queued));
+    }
+
+    const auto visibleAtCurrentView = [&](RenderCullingState::RecordIndex rank) {
+        const auto &record = state.recordAt(rank);
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingCandidateVisits, 1);
+        if (!record.hasTexture || !record.boundsValid)
+            return true;
+        if (!overlaps(record.bounds, query))
+            return false;
+
+        auto *sprite = static_cast<Sprite *>(manager.resolveHandle(record.spriteHandle, ObjectKind::Sprite));
+        if (sprite == nullptr)
+            return true;
+        SDL_FRect destination{};
+        float angleDegrees = 0.0f;
+        camera->prepareSpriteGeometry(sprite, view, destination, angleDegrees);
+        PLATFORMATOR_RENDER_VISIBILITY_CHECK();
+        return classifySpriteForRender(destination, angleDegrees, view) != SpriteRenderClassification::Reject;
+    };
+
+    if (rebuildSelection)
+    {
+        state.beginVisibleSelection();
+        if (state.mode() == RenderCullingMode::Indexed)
+        {
+            const auto &candidates = state.querySpatial(query);
+            for (const auto rank : candidates)
+                if (visibleAtCurrentView(rank))
+                    state.appendVisibleRank(rank);
+            state.sortVisibleRanks();
+        }
+        else
+        {
+            for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
+            {
+                PLATFORMATOR_RENDER_CULLING_ADD(renderCullingFullPopulationVisits, 1);
+                if (visibleAtCurrentView(rank))
+                    state.appendVisibleRank(rank);
+            }
+        }
+    }
+    else if (state.dirtyCount() == 0)
+    {
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingCacheHits, 1);
+    }
+    else
+    {
+        const auto queuedCount = state.dirtyCount();
+        state.beginVisibleRankChanges();
+        for (RenderCullingState::RecordIndex queued = 0; queued < queuedCount; ++queued)
+        {
+            const auto rank = state.dirtyAt(queued);
+            state.queueVisibleRankChange(rank, visibleAtCurrentView(rank));
+        }
+        state.applyVisibleRankChanges();
+    }
+
+    state.setPreparedKeys(projection, currentView);
+    state.clearDirtyQueue();
+    return true;
+}
+
 bool SDLWindow::isRunning() const
 {
     return !quit;
@@ -414,9 +587,22 @@ void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
         return;
     }
 
-    spriteComponent->setWindowIndex(spriteComponents.size());
-    spriteComponent->setIsRegisteredInWindow(true);
+    const size_t newIndex = spriteComponents.size();
+    const size_t required = newIndex + 1;
+    if (required > spriteComponents.capacity())
+    {
+        const size_t doubled = spriteComponents.capacity() > std::numeric_limits<size_t>::max() / 2
+                                   ? std::numeric_limits<size_t>::max()
+                                   : spriteComponents.capacity() * 2;
+        spriteComponents.reserve(std::max(required, std::max<size_t>(4, doubled)));
+    }
+    if (renderCullingState)
+        renderCullingState->reserveRecords(required);
+    if (renderCullingState)
+        renderCullingState->appendRecord(spriteComponent->getHandle());
     spriteComponents.push_back(spriteComponent);
+    spriteComponent->setWindowIndex(newIndex);
+    spriteComponent->setIsRegisteredInWindow(true);
 }
 
 void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
@@ -429,6 +615,9 @@ void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
     size_t removeIndex = spriteComponent->getWindowIndex();
     size_t lastIndex = spriteComponents.size() - 1;
 
+    if (renderCullingState)
+        renderCullingState->removeRecord(removeIndex);
+
     if (removeIndex != lastIndex)
     {
         Sprite *movedSprite = spriteComponents[lastIndex];
@@ -439,6 +628,20 @@ void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
     spriteComponents.pop_back();
     spriteComponent->setWindowIndex(SIZE_MAX);
     spriteComponent->setIsRegisteredInWindow(false);
+}
+
+void SDLWindow::notifySpriteGeometryChanged(Sprite *spriteComponent) noexcept
+{
+    if (!renderCullingState || spriteComponent == nullptr || !spriteComponent->getIsRegisteredInWindow())
+        return;
+
+    renderCullingState->markDirty(spriteComponent->getWindowIndex(), spriteComponent->getHandle());
+}
+
+void SDLWindow::releaseRenderCullingStorage() noexcept
+{
+    if (renderCullingState)
+        renderCullingState->releaseStorage();
 }
 
 void SDLWindow::setMainCamera(Camera *mainCamera)

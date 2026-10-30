@@ -1,6 +1,8 @@
 #include <platformator/runtime.h>
 #include <platformator/boxcollider.h>
+#include <platformator/camera.h>
 #include <platformator/objectreference.h>
+#include <platformator/sprite.h>
 #include <iostream>
 
 int main(int argc, char **argv)
@@ -17,6 +19,9 @@ int main(int argc, char **argv)
             return 3;
         auto *object = runtime.createGameObject()->addComponent<BoxCollider>(10, 10);
         ObjectReference<GameObject> reference(object);
+        runtime.createMainCameraIfNoMainCameraExists();
+        runtime.createGameObject()->addComponent<Sprite>(static_cast<TextureWrapper *>(nullptr), SDL_FLIP_NONE,
+                                                         24.0f, 16.0f);
         runtime.simulateFrame(1.0 / 120.0);
         runtime.clearScene();
         if (reference)

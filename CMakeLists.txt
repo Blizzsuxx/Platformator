@@ -104,8 +104,13 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
         "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/linear_render_probe.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_linear_render.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/sweep_scaling.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests/test_linear_render.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/render_culling_fixture.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_work_probe.h")
+    file(GLOB_RECURSE platformator_loaded_asset_inputs CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/*")
+    list(APPEND platformator_fingerprint_inputs ${platformator_loaded_asset_inputs})
     set(platformator_unique_fingerprint_inputs "")
     foreach(source_file IN LISTS platformator_fingerprint_inputs)
         list(FIND platformator_unique_fingerprint_inputs "${source_file}" duplicate_index)
@@ -263,6 +268,13 @@ if(PLATFORMATOR_BUILD_TESTS)
     platformator_add_test(platformator_render_culling_geometry_test tests/render_culling_geometry_test.cpp INTERNAL LABELS rendering geometry)
     platformator_add_test(platformator_render_culling_test tests/render_culling_test.cpp INTERNAL LABELS rendering)
     set_tests_properties(platformator_render_culling_test PROPERTIES SKIP_RETURN_CODE 77)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/renderculling.cpp")
+        platformator_add_test(platformator_render_culling_worker_test tests/render_culling_worker_test.cpp INTERNAL LABELS rendering physics workers)
+        set_tests_properties(platformator_render_culling_worker_test PROPERTIES SKIP_RETURN_CODE 77)
+        platformator_add_test(platformator_render_culling_trajectory_test tests/render_culling_trajectory_test.cpp INTERNAL LABELS rendering determinism)
+        platformator_add_test(platformator_render_culling_contract_test tests/render_culling_contract_test.cpp INTERNAL LABELS rendering package)
+        platformator_add_test(platformator_render_culling_index_test tests/render_culling_index_test.cpp INTERNAL LABELS rendering index)
+    endif()
     platformator_add_test(platformator_asset_root_contract_test tests/asset_root_contract_test.cpp LABELS package asset)
     platformator_add_test(platformator_runner_failure_test tests/runner_failure_test.cpp LABELS package runner)
     add_test(NAME platformator_runner_startup_failure COMMAND platformator_runner_failure_test startup)

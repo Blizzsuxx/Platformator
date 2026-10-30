@@ -50,7 +50,7 @@ void PhysicsManager::applyMovement(double timeDelta)
                                                    : movingKinematicBodies[i - awakeDynamicBodies.size()];
         if (const auto changes = body->integrateLocal(timeDelta))
         {
-            movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0});
+            movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0});
         }
     });
     auto &manager = platformator_detail::RuntimeAccess::gameManager();
@@ -58,6 +58,10 @@ void PhysicsManager::applyMovement(double timeDelta)
     {
         for (auto changed : objects)
         {
+            if (changed.rotated)
+            {
+                manager.publishRenderGeometryChange(changed.object);
+            }
             if (changed.translated)
             {
                 manager.queueTransform(changed.object);

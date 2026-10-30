@@ -45,7 +45,28 @@ To reproduce the full Linux reference on the recorded six-core host, use `captur
 
 The focused `platformator_linear_render_probe` reuses schema-v3 summaries, raw samples and manifests for deterministic sprite profiles. Build it in Release with debug tools and work probes disabled for timing. Build a separate work-probe configuration for image/order and resource captures; validation data is marked `per-step` and is never timing evidence. Keep the pinned pre-feature source, candidate, fixture, output size, asset root, renderer and trajectory parameters matched.
 
-First populate separate validation and resource roots with each required `(profile, population, workers, headless, mode)` case. Render validation runs use `--validate-rendering --evidence-output`; resource runs use the mutually exclusive `--validate-resources --evidence-output`. The probe writes per-step traces and oracle visibility, image hashes and a representative image where rendering is enabled, or allocation/work/RSS observations for resource checks. C++ allocation interception does not attribute C allocations or SDL/driver allocations.
+### Focused exploratory pilot
+
+Start with a fresh ignored output directory and selected cases. A pilot needs a candidate work-probe validation executable and a separate uninstrumented timing executable; it does not need complete phase roots, frozen-reference runs, or per-frame identity dumps.
+
+```sh
+RUN_ROOT=benchmark/artifacts/linear-render-culling/<new-run-id>
+test ! -e "$RUN_ROOT/captures/pilot"
+SDL_RENDER_DRIVER=software python3 benchmark/capture_linear_render.py \
+  --comparison incremental --phase pilot --strategy all --exploratory \
+  --focused-cases mostly-offscreen,camera-motion,small-moving-subset,fully-moving-crossing,all-visible,crossing-multiworker \
+  --candidate-validation-probe "$RUN_ROOT/candidate/build-validation/platformator_linear_render_probe" \
+  --candidate-probe "$RUN_ROOT/candidate/build-timing/platformator_linear_render_probe" \
+  --asset-root "$PWD/assets" --workers 1 --multiworker-count 6 --seed 0 \
+  --repetitions 3 --warmup-frames 5 --measure-frames 30 \
+  --dt 0.008333333333333333 --output "$RUN_ROOT/captures/pilot"
+```
+
+The driver writes a report only after every selected resource/timing run validates. It retains raw step/render/paired samples and cold/growth/reset observations. Three short repetitions screen large effects but do not support an acceptance claim. The current pilot summary is `specs/009-incremental-render-culling/evidence/RESULTS.md`.
+
+### Full acceptance campaign
+
+The full acceptance path first populates separate validation and resource roots with each required `(profile, population, workers, headless, mode)` case. Render validation runs use `--validate-rendering --evidence-output`; resource runs use the mutually exclusive `--validate-resources --evidence-output`. The probe writes per-step traces and oracle visibility, image hashes and a representative image where rendering is enabled, or allocation/work/RSS observations for resource checks. C++ allocation interception does not attribute C allocations or SDL/driver allocations. The inventory below remains the feature acceptance scope; the pilot does not complete it.
 
 After those roots pass comparison, run the bounded matrix with a fresh output directory:
 

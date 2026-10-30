@@ -168,6 +168,7 @@ class GameManager
     void synchronizeTransforms();
     void rebuildHierarchyOrder(GameObject *object);
     void synchronizeSubtree(GameObject *object);
+    void publishRenderGeometryChange(GameObject *object);
     void queueReconciliation(Component *component);
     void retireComponent(Component *component);
     void runDestructionCallbacks(ScriptComponent *script, std::exception_ptr &error);

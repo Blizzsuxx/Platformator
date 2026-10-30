@@ -9,7 +9,10 @@
 
 #include <json.hpp>
 
+#include "runtime_work_probe.h"
+#include "platformator/camera.h"
 #include "platformator/runtime.h"
+#include "platformator/sprite.h"
 
 namespace
 {
@@ -125,6 +128,52 @@ int main()
             require(rejected, "A new runtime cannot reuse a previous runtime's asset alias");
         }
         std::filesystem::remove_all(assetRoot);
+
+        RuntimeOptions renderOptions;
+        renderOptions.windowSettings.width = 320;
+        renderOptions.windowSettings.height = 240;
+        uint64_t renderRuntimeSerial = 0;
+        {
+            platformator_test::work = {};
+            platformator::Runtime runtime(renderOptions);
+            renderRuntimeSerial = runtime.getRuntimeSerial();
+            auto *cameraObject = runtime.createGameObject();
+            cameraObject->addComponent<Camera>(320.0f, 240.0f);
+            auto *spriteObject = runtime.createGameObject()->setPosition({70.0f, 80.0f});
+            auto *texture = runtime.loadTexture("assets/textures/black_square.png");
+            spriteObject->addComponent<Sprite>(texture, SDL_FLIP_NONE, 32.0f, 28.0f);
+            require(runtime.simulateAndRenderFrame(1.0 / 120.0),
+                    "Render-culling runtime recreation fixture did not render");
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+            require(platformator_test::work.renderCullingOwnedRecords == 1 &&
+                        platformator_test::work.renderCullingOwnedBytes > 0,
+                    "First runtime did not prepare its renderer-owned culling cache");
+#endif
+            runtime.clearScene();
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+            require(platformator_test::work.renderCullingOwnedRecords == 0 &&
+                        platformator_test::work.renderCullingOwnedBytes == 0,
+                    "Clearing a runtime scene must release renderer cache capacity");
+#endif
+        }
+        {
+            platformator_test::work = {};
+            platformator::Runtime runtime(renderOptions);
+            require(runtime.getRuntimeSerial() != renderRuntimeSerial,
+                    "A recreated runtime must have a new identity for renderer cache handles");
+            auto *cameraObject = runtime.createGameObject();
+            cameraObject->addComponent<Camera>(320.0f, 240.0f);
+            auto *spriteObject = runtime.createGameObject()->setPosition({70.0f, 80.0f});
+            auto *texture = runtime.loadTexture("assets/textures/black_square.png");
+            spriteObject->addComponent<Sprite>(texture, SDL_FLIP_NONE, 32.0f, 28.0f);
+            require(runtime.simulateAndRenderFrame(1.0 / 120.0),
+                    "Recreated render-culling runtime did not render");
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+            require(platformator_test::work.renderCullingOwnedRecords == 1 &&
+                        platformator_test::work.renderCullingOwnedBytes > 0,
+                    "Recreated runtime inherited an empty or retired render cache");
+#endif
+        }
 
         cleanup();
         std::cout << "[PASS] runtime_recreation_test\n";

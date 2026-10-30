@@ -2,8 +2,10 @@ import csv
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
+import tracemalloc
 import types
 import unittest
 from unittest import mock
@@ -50,8 +52,81 @@ class LinearRenderCaptureTests(unittest.TestCase):
             "broad_phase": {1},
             "moving_add_and_remove": {1},
         })
+        incremental_workers = {}
+        for job in capture.engine_control_matrix(6, include_rendered_multiworker=True):
+            incremental_workers.setdefault(job["scenario"], set()).add(job["workers"])
+        self.assertEqual(incremental_workers, {name: {1, 6} for name in workers_by_scenario})
         with self.assertRaises(capture.CaptureError):
             capture.engine_control_matrix(0)
+
+    def test_focused_case_selection_is_explicit_and_validated(self):
+        selected = capture.focused_incremental_cases("mostly-offscreen,all-visible", 6)
+        self.assertEqual([case["pilot_name"] for case in selected], ["mostly-offscreen", "all-visible"])
+        self.assertEqual(selected[0]["layout"], "uniform-sparse")
+        self.assertEqual(selected[1]["profile"], "visible")
+        for selection in ("", "mostly-offscreen,mostly-offscreen", "unknown"):
+            with self.subTest(selection=selection), self.assertRaises(capture.CaptureError):
+                capture.focused_incremental_cases(selection, 6)
+        with self.assertRaises(capture.CaptureError):
+            capture.focused_incremental_cases("crossing-multiworker", 1)
+
+    def test_pilot_root_does_not_require_full_phase_roots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "fresh-pilot"
+            capture.validate_incremental_phase_roots("pilot", None, None, output)
+            output.mkdir()
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_phase_roots("pilot", None, None, output)
+
+    def test_focused_timing_manifest_matches_resource_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            csv_path = root / "run.csv"
+            resource_path = root / "resource.json"
+            resource_path.write_text("{}")
+            resource = {"_sha256": capture.sha256(resource_path), "_path": str(resource_path),
+                        "source_sha256": self.identity, "fixture_sha256": self.identity,
+                        "harness_sha256": "b" * 64,
+                        "trajectory_parameters": capture.expected_trajectory(self.case, self.args),
+                        "renderer_mapping": self.mapping}
+            build = {"configuration": "Release", "sanitizer": "none", "work_probes": False,
+                     "debug_tools": False, "source_sha256": self.identity}
+            manifest = {"build": build, "scenario": "linear_render_culling", "workers": 1,
+                        "seed": 0, "dt": self.args.dt, "warmup_steps": 2, "measured_steps": 2,
+                        "requested_measured_steps": 2, "repetitions": 3, "repetition_index": 0,
+                        "timing_eligible": True, "validation_mode": "boundary-only",
+                        "stopped_on_quit": False, "complete_capture": True, "total_steps": 2,
+                        "resolved_parameters": resource["trajectory_parameters"],
+                        "linear_render_culling": {"mode": "indexed", "requested_mode": "indexed",
+                                                   "effective_policy": "indexed", "enabled": True},
+                        "requested_render_strategy": "indexed", "rendering": True,
+                        "render_samples": 2, "total_render_samples": 2,
+                        "fixture_sha256": self.identity, "harness_sha256": "b" * 64,
+                        "renderer_mapping": self.mapping,
+                        "resource_observation": {"sha256": resource["_sha256"]}}
+            csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+            args_values = vars(self.args).copy()
+            args_values.update({"repetitions": 3, "_pilot_run_index": 0})
+            args = types.SimpleNamespace(**args_values)
+            metrics = {"scope.render.avg": 1.0, "scope.complete_step.avg": 2.0}
+            result = capture._validate_focused_timing_manifest(
+                csv_path, self.case, args, "indexed", resource,
+                {"source_sha256": self.identity, "fixture_sha256": self.identity,
+                 "harness_sha256": "b" * 64}, metrics)
+            self.assertTrue(result["timing_eligible"])
+            manifest["repetition_index"] = 1
+            csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaises(capture.CaptureError):
+                capture._validate_focused_timing_manifest(
+                    csv_path, self.case, args, "indexed", resource,
+                    {"source_sha256": self.identity, "fixture_sha256": self.identity,
+                     "harness_sha256": "b" * 64}, metrics)
+
+    def test_cancellation_stops_owned_process_group(self):
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                   start_new_session=(os.name == "posix"))
+        capture._stop_owned_process(process)
+        self.assertIsNotNone(process.poll())
 
     def test_rejects_less_than_five_independent_processes(self):
         for count in (0, 1, 4):
@@ -130,7 +205,10 @@ class LinearRenderCaptureTests(unittest.TestCase):
                  "oracle_visible": [[0, 0]], "unresolved": 0, "overflow": 0}
                 for index in range(2)]
             store(valid_frames)
-            capture.validate_render_proof(root, self.case, self.args, "linear")
+            checked = capture.validate_render_proof(root, self.case, self.args, "linear")
+            self.assertNotIn("_frames", checked)
+            self.assertEqual(checked["_frame_count"], self.args.measure_frames)
+            self.assertEqual(checked["_submission_total"], self.args.measure_frames)
             for malformed in ([[[-1, 0]], [[0, True]], [[0]], ["0:0"]],):
                 for identities in malformed:
                     frames = json.loads(json.dumps(valid_frames))
@@ -143,6 +221,41 @@ class LinearRenderCaptureTests(unittest.TestCase):
             with self.assertRaises(capture.CaptureError):
                 capture.validate_render_proof(root, self.case, self.args, "linear")
 
+    def test_render_proof_streams_frames_without_retaining_identity_arrays(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = dict(self.case)
+            args = types.SimpleNamespace(**vars(self.args))
+            args.measure_frames = 4000
+            prefix = root / f"{capture.case_key(case)}-linear"
+            frames_path = Path(str(prefix) + ".frames.jsonl")
+            frame = {"frame": 0, "image_fnv64": "0123456789abcdef", "submissions": [[0, 0], [1, 0]],
+                     "oracle_visible": [[0, 0]], "unresolved": 0, "overflow": 0}
+            with frames_path.open("w", encoding="utf-8") as stream:
+                for index in range(args.measure_frames):
+                    frame["frame"] = index
+                    stream.write(json.dumps(frame) + "\n")
+            image_path = Path(str(prefix) + ".representative.ppm")
+            image_path.write_bytes(b"image")
+            proof = self.proof()
+            proof.pop("_frames")
+            proof.pop("_path")
+            proof["measure_frames"] = args.measure_frames
+            proof["trajectory_parameters"] = capture.expected_trajectory(case, args)
+            proof["frames_sha256"] = capture.sha256(frames_path)
+            proof["representative_sha256"] = capture.sha256(image_path)
+            Path(str(prefix) + ".evidence.json").write_text(json.dumps(proof), encoding="utf-8")
+
+            tracemalloc.start()
+            checked = capture.validate_render_proof(root, case, args, "linear")
+            _, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            self.assertNotIn("_frames", checked)
+            self.assertEqual(checked["_frame_count"], args.measure_frames)
+            self.assertEqual(checked["_submission_total"], args.measure_frames * 2)
+            self.assertEqual(checked["_oracle_visible_total"], args.measure_frames)
+            self.assertLess(peak, 2_000_000, "Frame validation should retain only one frame of identities at a time")
+
     def test_resource_proof_rejects_missing_stale_and_incomplete_observations(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -153,8 +266,19 @@ class LinearRenderCaptureTests(unittest.TestCase):
             proof.update({"allocation_calls": 0, "allocated_bytes": 0,
                           "allocation_calls_per_frame": 0, "allocated_bytes_per_frame": 0,
                           "process_rss_before_kib": 1000, "process_rss_after_kib": 1000,
+                          "process_rss_after_reset_kib": 1000,
                           "render_view_preparations": 2, "render_eligibility_checks": 2,
                           "render_visibility_checks": 20, "render_submissions": 4,
+                          "actual_changed_sprite_total": 4, "actual_changed_sprites_per_step_max": 2,
+                          "actual_changed_fraction": 0.2,
+                          "cold_observation": {"first_warmup_step_elapsed_ns": 1234,
+                                               "fixture_construction_and_registration_ns": 4321,
+                                               "fixture_construction_allocation_calls": 20,
+                                               "fixture_construction_allocated_bytes": 4096},
+                          "capacity_growth_observation": {"attempted": False, "reason": "inactive mode"},
+                          "reset_observation": {"records_registered_after_clear": 0, "owned_bytes_after_clear": 0,
+                                                "record_capacity_after_clear": 0, "cell_capacity_after_clear": 0,
+                                                "elapsed_ns": 4321, "allocation_calls": 3, "allocated_bytes": 128},
                           "headless": False,
                           "allocation_probe": "C++ new/new[] counts; SDL allocations not attributed"})
             path.write_text(json.dumps(proof))
@@ -162,6 +286,9 @@ class LinearRenderCaptureTests(unittest.TestCase):
             for change in ({"mode": "disabled"}, {"trajectory_parameters": {"profile": "visible"}},
                            {"allocation_calls": -1}, {"render_submissions": None},
                            {"render_visibility_checks": 2.5}, {"render_submissions": 21},
+                           {"actual_changed_sprite_total": -1}, {"actual_changed_fraction": 0.1},
+                           {"cold_observation": {}}, {"capacity_growth_observation": {}},
+                           {"reset_observation": {"owned_bytes_after_clear": 1}},
                            {"source_sha256": "not-a-fingerprint"}):
                 invalid = dict(proof); invalid.update(change)
                 path.write_text(json.dumps(invalid))
@@ -469,6 +596,289 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 capture.run_capture(args)
             with self.assertRaises(OSError):
                 capture._run(["true"], root / "missing" / "run.log", os.environ.copy())
+
+    def test_incremental_options_reject_unknown_comparison_phase_and_strategy(self):
+        for values in (("unknown", "validate", "indexed"),
+                       ("incremental", "unknown", "indexed"),
+                       ("incremental", "validate", "automatic")):
+            with self.subTest(values=values), self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_options(*values)
+        self.assertEqual(capture.validate_incremental_options("incremental", "validate", "indexed"),
+                         ("incremental", "validate", "indexed"))
+
+    def test_incremental_case_identity_rejects_stale_case_and_substituted_inputs(self):
+        case = {"strategy": "indexed", "profile": "sparse", "population": 1000,
+                "changed_fraction": 0.1, "layout": "spread", "camera_schedule": "fixed",
+                "output_schedule": "320x240", "seed": 0, "dt": 1 / 120,
+                "warmup_steps": 2, "measured_steps": 3, "workers": 1}
+        identity = {name: self.identity for name in
+                    ("renderer", "fixture", "harness", "source", "assets", "build", "binary", "proof")}
+        proof = {"proof_kind": "platformator.incremental-render-culling", "proof_version": 1,
+                 "comparison": "incremental", "case": dict(case), "identity": dict(identity)}
+        capture.validate_incremental_case_identity(proof, case, identity)
+        for field, value in (("population", 1001), ("changed_fraction", 0.01),
+                             ("layout", "fixed-area"), ("output_schedule", "resize-at-240")):
+            changed = json.loads(json.dumps(proof))
+            changed["case"][field] = value
+            with self.subTest(field=field), self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_case_identity(changed, case, identity)
+        for field in identity:
+            changed = json.loads(json.dumps(proof))
+            changed["identity"][field] = "f" * 64
+            with self.subTest(identity=field), self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_case_identity(changed, case, identity)
+        for missing in ("population", "changed_fraction", "layout", "output_schedule"):
+            changed = json.loads(json.dumps(proof))
+            del changed["case"][missing]
+            with self.subTest(missing=missing), self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_case_identity(changed, case, identity)
+        for population, fraction in ((-1, 0.1), (1, -0.1), (1, 1.1)):
+            changed_case = dict(case, population=population, changed_fraction=fraction)
+            changed = {**proof, "case": changed_case}
+            with self.subTest(population=population, fraction=fraction), self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_case_identity(changed, changed_case, identity)
+
+    def test_incremental_timing_rejects_instrumentation_negative_and_truncated_samples(self):
+        case_key = "indexed-sparse-n1000-ch10"
+        expected_count = 5
+        build = {"configuration": "Release", "sanitizer": "none",
+                 "work_probes": False, "debug_tools": False,
+                 "source_sha256": self.identity, "binary_sha256": "b" * 64}
+        raw = [{"case_key": case_key, "run_index": index, "render_ms": 1.0,
+                "complete_step_ms": 2.0, "paired_step_render_ms": 3.0} for index in range(expected_count)]
+        paired = [row["paired_step_render_ms"] for row in raw]
+        capture.validate_incremental_timing_samples(raw, paired, expected_count, build)
+        for invalid_build in ({**build, "work_probes": True},
+                              {**build, "sanitizer": "thread"},
+                              {**build, "configuration": "Debug"}):
+            with self.subTest(build=invalid_build), self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_timing_samples(raw, paired, expected_count, invalid_build)
+        with self.assertRaises(capture.CaptureError):
+            capture.validate_incremental_timing_samples(raw[:-1], paired[:-1], expected_count, build)
+        negative = json.loads(json.dumps(raw)); negative[2]["complete_step_ms"] = -1
+        with self.assertRaises(capture.CaptureError):
+            capture.validate_incremental_timing_samples(negative, paired, expected_count, build)
+        with self.assertRaises(capture.CaptureError):
+            capture.validate_incremental_timing_samples(raw, paired[:-1], expected_count, build)
+
+    def test_incremental_render_group_accepts_empty_selection_and_rejects_order_inversion(self):
+        case = {"profile": "offscreen", "sprite_count": 2, "workers": 1, "headless": False,
+                "output_schedule": "320x240"}
+        full_frame = {"image_fnv64": "0123456789abcdef", "submissions": [[0, 0], [1, 0]],
+                      "oracle_visible": []}
+        empty_frame = {"image_fnv64": "0123456789abcdef", "submissions": [],
+                       "oracle_visible": []}
+        proofs = {mode: {"_frames": [dict(empty_frame)]} for mode in capture.INCREMENTAL_STRATEGIES}
+        proofs["disabled"] = {"_frames": [dict(full_frame)]}
+        capture.validate_incremental_render_group(proofs, case, self.args)
+
+        case["profile"] = "visible"
+        proofs = {mode: {"_frames": [{"image_fnv64": "0123456789abcdef",
+                                      "submissions": [[0, 0], [1, 0]],
+                                      "oracle_visible": [[0, 0]]}]}
+                  for mode in capture.INCREMENTAL_STRATEGIES}
+        proofs["disabled"] = {"_frames": [dict(full_frame)]}
+        proofs["cached-linear"]["_frames"][0]["submissions"] = [[1, 0], [0, 0]]
+        with self.assertRaises(capture.CaptureError):
+            capture.validate_incremental_render_group(proofs, case, self.args)
+
+    def test_incremental_raw_reader_requires_complete_schema_and_paired_host_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw = root / "run.samples.csv"
+            paired = root / "run.paired.csv"
+            scopes = capture.INCREMENTAL_BENCHMARK_SCOPES
+            counters = capture.INCREMENTAL_BENCHMARK_COUNTERS
+            headers = ["schema_version", "sample_kind", "index", *[name + "_ns" for name in scopes], *counters]
+            with raw.open("w", newline="") as stream:
+                writer = csv.writer(stream); writer.writerow(headers)
+                for kind, index in (("step", 0), ("step", 1), ("render", 0), ("render", 1)):
+                    values = [3, kind, index]
+                    values += [2_000_000 if name == "complete_step" and kind == "step" else
+                               1_000_000 if name == "render" and kind == "render" else 0 for name in scopes]
+                    values += [0] * len(counters)
+                    writer.writerow(values)
+            paired.write_text("step,paired_step_render_ns\n0,3000000\n1,3000000\n")
+            rows, paired_values = capture.read_incremental_timing_samples(raw, paired, 2, 2, False)
+            self.assertEqual([row["sample_index"] for row in rows], [0, 1])
+            self.assertEqual([row["render_ms"] for row in rows], [1.0, 1.0])
+            self.assertEqual(paired_values, [3.0, 3.0])
+            paired.write_text("step,paired_step_render_ns\n0,-1\n1,3000000\n")
+            with self.assertRaises(capture.CaptureError):
+                capture.read_incremental_timing_samples(raw, paired, 2, 2, False)
+
+    def test_incremental_matrix_contains_loaded_scenes_and_giant_motion_contract(self):
+        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[2] / "assets")
+        scenes = {(case["profile"], case["workers"], case["sprite_count"]) for case in cases
+                  if case["profile"].startswith("scene-")}
+        self.assertEqual(scenes, {("scene-default", 1, 6), ("scene-default", 6, 6),
+                                  ("scene-stacking", 1, 0), ("scene-stacking", 6, 0)})
+        giant = next(case for case in cases if case["profile"] == "giant")
+        self.assertEqual(giant["changed_percent"], 10)
+        self.assertEqual(giant["size_distribution"], "giant-side-list")
+        self.assertEqual(len(capture.frozen_control_case_ids(cases)), 4)
+
+    def test_incremental_matrix_covers_required_population_fraction_and_inactive_controls(self):
+        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[2] / "assets")
+        def selected(profile, workers=1, headless=False):
+            return {(case["sprite_count"], case["changed_percent"], case["layout"])
+                    for case in cases if case["profile"] == profile and case["workers"] == workers and
+                    case["headless"] is headless}
+
+        self.assertEqual({row[0] for row in selected("visible")}, {0, 1, 1000, 10000})
+        self.assertEqual({row[0] for row in selected("visible-motion")}, {1, 1000, 10000})
+        self.assertEqual({row[0] for row in selected("offscreen")}, {1000, 10000, 50000})
+        self.assertEqual({row[0] for row in selected("spread")}, {1000, 10000, 50000})
+        self.assertEqual({(row[0], row[1]) for row in selected("changed")},
+                         {(count, percent) for count in (1000, 10000, 50000)
+                          for percent in (1, 10, 100)})
+        self.assertEqual({row[0] for row in selected("camera-pan")}, {1000, 10000, 50000})
+        self.assertEqual({row[0] for row in selected("crossing")}, {1000, 10000, 50000})
+        self.assertTrue(any(case["profile"] == "crossing" and case["headless"] and case["workers"] == 1
+                            for case in cases))
+        self.assertTrue(any(case["profile"] == "changed" and case["sprite_count"] == 10000 and
+                            case["changed_percent"] == 1 and case["workers"] == 6 for case in cases))
+        self.assertTrue(any(case["profile"] == "camera-pan" and case["sprite_count"] == 50000 and
+                            case["workers"] == 6 for case in cases))
+        self.assertTrue(any(case["profile"] == "crossing" and case["sprite_count"] == 50000 and
+                            case["workers"] == 6 for case in cases))
+        expected_worker_layouts = {"visible": "fixed-area-visible", "changed": "constant-density-spread",
+                                   "camera-pan": "constant-density-spread", "crossing": "continuous-crossing",
+                                   "churn": "stable-slot-churn"}
+        for profile, layout in expected_worker_layouts.items():
+            case = next(case for case in cases if case["profile"] == profile and case["workers"] == 6 and
+                        (profile != "visible" or case["sprite_count"] == 1000))
+            self.assertEqual(case["layout"], layout)
+            self.assertEqual(capture.expected_trajectory(case, self.args)["layout"], layout)
+
+    def test_expected_trajectory_identity_covers_every_supported_profile(self):
+        self.assertEqual(set(capture.INCREMENTAL_PROFILES), set(capture.TRAJECTORY_PERIOD_STEPS))
+        for profile in capture.INCREMENTAL_PROFILES:
+            case = {"profile": profile, "sprite_count": 1000, "workers": 1,
+                    "changed_fraction": 0.1, "changed_percent": 10, "layout": "profile-defined"}
+            identity = capture.expected_trajectory(case, self.args)
+            self.assertEqual(identity["profile"], profile)
+            self.assertEqual(identity["trajectory_period_steps"], capture.TRAJECTORY_PERIOD_STEPS[profile])
+        self.assertEqual(capture.expected_trajectory(
+            {"profile": "giant", "sprite_count": 1000, "changed_fraction": 0.1, "changed_percent": 10},
+            self.args)["trajectory_period_steps"], 240)
+
+    def test_incremental_phase_requires_fresh_roots_and_matching_prerequisites(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            validation = root / "validation"; validation.mkdir()
+            resources = root / "resources"; resources.mkdir()
+            output = root / "time"
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_phase_roots("time", validation, resources, output)
+            for phase_root in (validation, resources):
+                (phase_root / "phase.json").write_text(json.dumps(
+                    {"comparison": "incremental", "phase": "validate" if phase_root == validation else "resources",
+                     "complete": True, "case_count": 1, "case_keys": ["case-a"],
+                     "strategies": list(capture.INCREMENTAL_STRATEGIES),
+                     "frozen_control_keys": ["case-a"]}))
+            capture.validate_incremental_phase_roots("time", validation, resources, output)
+            resource_marker = json.loads((resources / "phase.json").read_text())
+            resource_marker["phase"] = "validate"
+            (resources / "phase.json").write_text(json.dumps(resource_marker))
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_phase_roots("time", validation, resources, output)
+            resource_marker["phase"] = "resources"
+            (resources / "phase.json").write_text(json.dumps(resource_marker))
+            output.mkdir()
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_incremental_phase_roots("time", validation, resources, output)
+
+    def test_incremental_phase_inventory_rejects_stale_cases_and_missing_frozen_controls(self):
+        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[2] / "assets")
+        control_ids = capture.frozen_control_case_ids(cases)
+        entries = []
+        for case in cases:
+            case_id = capture.incremental_case_key(case)
+            entry = {"case_id": case_id, "case": case}
+            if case_id in control_ids:
+                entry["frozen_proofs"] = {"current-linear": "proof-a", "disabled": "proof-b"}
+            entries.append(entry)
+        marker = {"phase": "validate", "seed": self.args.seed, "dt": self.args.dt,
+                  "warmup_steps": self.args.warmup_frames, "measured_steps": self.args.measure_frames,
+                  "complete": True, "strategies": list(capture.INCREMENTAL_STRATEGIES),
+                  "frozen_control_keys": control_ids,
+                  "case_keys": [entry["case_id"] for entry in entries]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "phase.json").write_text(json.dumps(marker))
+            (root / "case-index.json").write_text(json.dumps(entries))
+            inventory = capture._incremental_phase_inventory(
+                root, marker, "validate", cases, list(capture.INCREMENTAL_STRATEGIES), self.args)
+            self.assertEqual(len(inventory), len(cases))
+            stale_marker = {**marker, "case_keys": marker["case_keys"][:-1]}
+            with self.assertRaises(capture.CaptureError):
+                capture._incremental_phase_inventory(
+                    root, stale_marker, "validate", cases, list(capture.INCREMENTAL_STRATEGIES), self.args)
+            missing_controls = {**marker, "frozen_control_keys": control_ids[:-1]}
+            with self.assertRaises(capture.CaptureError):
+                capture._incremental_phase_inventory(
+                    root, missing_controls, "validate", cases, list(capture.INCREMENTAL_STRATEGIES), self.args)
+            wrong_phase = {**marker, "phase": "resources"}
+            with self.assertRaises(capture.CaptureError):
+                capture._incremental_phase_inventory(
+                    root, wrong_phase, "validate", cases, list(capture.INCREMENTAL_STRATEGIES), self.args)
+
+    def test_incremental_mismatch_recovery_preserves_original_diagnostic(self):
+        mismatch = capture.ImageMismatch(17)
+
+        def fail_recovery():
+            raise OSError("validation binary is unavailable")
+
+        with self.assertRaises(capture.CaptureError) as caught:
+            capture.preserve_image_mismatch(mismatch, fail_recovery)
+        self.assertIn("Image mismatch at frame 17", str(caught.exception))
+        self.assertIn("validation binary is unavailable", str(caught.exception))
+
+    def test_incremental_mismatch_recovery_uses_matching_candidate_and_frozen_probes(self):
+        case = next(case for case in capture.incremental_matrix(
+            2, 1, Path(__file__).resolve().parents[2] / "assets")
+                    if case["profile"] == "crossing" and case["sprite_count"] == 10000 and
+                    case["workers"] == 1 and not case["headless"])
+        candidate = {"fixture_sha256": "a" * 64, "harness_sha256": "b" * 64,
+                     "source_sha256": "c" * 64}
+        baseline = {"fixture_sha256": "a" * 64, "harness_sha256": "b" * 64,
+                    "source_sha256": "d" * 64}
+        candidate_proofs = {mode: dict(candidate) for mode in (*capture.INCREMENTAL_STRATEGIES, "disabled")}
+        frozen_proofs = {mode: dict(baseline) for mode in ("current-linear", "disabled")}
+        args = types.SimpleNamespace(seed=0, dt=1 / 120, warmup_frames=2, measure_frames=3,
+                                     repetitions=5, asset_root=None,
+                                     candidate_validation_probe=Path("candidate-probe"),
+                                     baseline_validation_probe=Path("baseline-probe"))
+        identity_calls = []
+        def fake_identity(binary, proof, log_path, env):
+            identity_calls.append((str(binary), proof["source_sha256"]))
+            return {"source_sha256": proof["source_sha256"], "fixture_sha256": proof["fixture_sha256"],
+                    "harness_sha256": proof["harness_sha256"], "work_probes": True}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"; output.mkdir()
+            logs = output / "logs"; logs.mkdir()
+            called = []
+            def fake_run(command, log_path, env):
+                called.append(command)
+                prefix = Path(command[command.index("--evidence-output") + 1])
+                Path(str(prefix) + ".mismatch.ppm").write_bytes(b"ppm")
+
+            with mock.patch.object(capture, "_validation_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_run):
+                images = capture.capture_incremental_mismatch_images(
+                    args, case, 2, output, logs, os.environ.copy(), candidate_proofs, frozen_proofs)
+            self.assertEqual(len(images), 6)
+            self.assertEqual(len(called), 6)
+            self.assertTrue(all("--capture-frame-index" in command and command[-1] == "2" for command in called))
+            self.assertIn(("candidate-probe", "c" * 64), identity_calls)
+            self.assertIn(("baseline-probe", "d" * 64), identity_calls)
+            mismatch_record = json.loads((output / "mismatches" / capture.incremental_case_key(case) /
+                                          "mismatch.json").read_text())
+            self.assertEqual(mismatch_record["frame"], 2)
+            self.assertEqual(len(mismatch_record["images"]), 6)
 
 
 if __name__ == "__main__":

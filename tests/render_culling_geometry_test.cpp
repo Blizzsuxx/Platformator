@@ -68,6 +68,136 @@ bool strictlyOutside(const OracleBounds &bounds, int width, int height)
 }
 
 void checkValid(const SDL_FRect &destination, float angleDegrees, const SpriteRenderView &view,
+                const std::string &label);
+
+bool overlaps(const SpriteRenderBounds &a, const SpriteRenderBounds &b)
+{
+    return a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY && a.minX <= b.maxX;
+}
+
+SDL_FRect actualDestination(float worldX, float worldY, float width, float height, const SpriteRenderView &view)
+{
+    // Preserve Camera::renderWithView's exact float expression order as the
+    // implementation-under-test input; expected bounds below are independent.
+    return SDL_FRect{(worldX - width * 0.5f - view.cameraX) * view.scaleX,
+                     (worldY - height * 0.5f - view.cameraY) * view.scaleY, width * view.scaleX,
+                     height * view.scaleY};
+}
+
+void checkCertifiedProxy(float worldX, float worldY, float width, float height, float angleDegrees,
+                         const SpriteRenderView &view, const std::string &label)
+{
+    SpriteRenderBounds proxy;
+    require(platformator_detail::makeCertifiedSpriteRenderProxy(worldX, worldY, width, height, angleDegrees,
+                                                                 view.scaleX, view.scaleY, proxy),
+            label + ": ordinary finite sprite should be admitted by the numeric certificate");
+
+    SpriteRenderBounds query;
+    require(platformator_detail::makeCertifiedRenderViewQuery(view, query),
+            label + ": ordinary finite camera should have a certified query");
+    const auto destination = actualDestination(worldX, worldY, width, height, view);
+    SpriteRenderBounds currentPadded;
+    const auto classification = platformator_detail::classifySpriteForRender(destination, angleDegrees, view,
+                                                                               &currentPadded);
+    require(classification != SpriteRenderClassification::Unclassifiable,
+            label + ": admitted proxy input unexpectedly used the current classifier fallback");
+    checkValid(destination, angleDegrees, view, label + " current-float oracle");
+
+    const SpriteRenderBounds currentWorldPadded{
+        std::nextafter(static_cast<double>(view.cameraX) + currentPadded.minX / view.scaleX,
+                       -std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(view.cameraY) + currentPadded.minY / view.scaleY,
+                       -std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(view.cameraX) + currentPadded.maxX / view.scaleX,
+                       std::numeric_limits<double>::infinity()),
+        std::nextafter(static_cast<double>(view.cameraY) + currentPadded.maxY / view.scaleY,
+                       std::numeric_limits<double>::infinity())};
+    require(proxy.minX <= currentWorldPadded.minX && proxy.minY <= currentWorldPadded.minY &&
+                proxy.maxX >= currentWorldPadded.maxX && proxy.maxY >= currentWorldPadded.maxY,
+            label + ": projection-dependent world proxy failed to enclose the independently mapped current float bounds and their classifier padding");
+
+    if (classification == SpriteRenderClassification::Retain)
+        require(overlaps(proxy, query),
+                label + ": a retained current-view sprite was absent from its conservative world query");
+}
+
+void checkNumericCertificate()
+{
+    constexpr float certificateLimit = 16384.0f;
+    const SpriteRenderView unequalProjection{15999.75f, -9000.25f, 0.5f, 1.75f, 320, 240, true};
+    checkCertifiedProxy(16003.25f, -8993.5f, 145.0f, 5.25f, 89.999f, unequalProjection,
+                        "large common offset, elongated near-quadrant sprite");
+    checkCertifiedProxy(-105.125f, 48.875f, 500.0f, 4.0f, -0.0001f,
+                        SpriteRenderView{-320.25f, 44.5f, 0.75f, 1.25f, 320, 240, true},
+                        "fractional projection and edge-adjacent elongated sprite");
+    checkCertifiedProxy(16380.0f, 16380.0f, 6.0f, 6.0f, 45.0f,
+                        SpriteRenderView{16384.0f, 16384.0f, 1.0f, 1.0f, 320, 240, true},
+                        "camera certificate boundary");
+
+    const auto projectionA = platformator_detail::makeSpriteRenderProjectionKey(unequalProjection);
+    const auto translatedView = SpriteRenderView{-500.0f, 700.0f, 0.5f, 1.75f, 320, 240, true};
+    const auto projectionB = platformator_detail::makeSpriteRenderProjectionKey(translatedView);
+    require(platformator_detail::sameSpriteRenderProjection(projectionA, projectionB),
+            "Projection keys must exclude camera translation");
+    const auto viewA = platformator_detail::makeSpriteRenderViewKey({1, 2, 3}, unequalProjection);
+    const auto viewB = platformator_detail::makeSpriteRenderViewKey({1, 2, 3}, translatedView);
+    require(!platformator_detail::sameSpriteRenderView(viewA, viewB),
+            "View keys must include camera translation");
+    const auto otherCamera = platformator_detail::makeSpriteRenderViewKey({2, 2, 3}, unequalProjection);
+    require(!platformator_detail::sameSpriteRenderView(viewA, otherCamera),
+            "View keys must include camera identity");
+    const auto invalidView = platformator_detail::makeSpriteRenderViewKey(
+        {1, 2, 3}, SpriteRenderView{std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f, 1.0f, 320, 240, true});
+    require(!invalidView.valid && !platformator_detail::sameSpriteRenderView(viewA, invalidView),
+            "Invalid view values must never become reusable cache keys");
+
+    SpriteRenderBounds result;
+    require(!platformator_detail::makeCertifiedSpriteRenderProxy(
+                std::nextafter(certificateLimit, std::numeric_limits<float>::infinity()), 0.0f, 4.0f, 4.0f,
+                0.0f, 1.0f, 1.0f, result),
+            "A sprite beyond P must not enter the certified proxy index");
+    require(!platformator_detail::makeCertifiedSpriteRenderProxy(0.0f, 0.0f,
+                                                                 std::numeric_limits<float>::denorm_min(), 4.0f,
+                                                                 0.0f, 1.0f, 1.0f, result),
+            "Subnormal sprite width must conservatively fail proxy certification");
+    require(!platformator_detail::makeCertifiedSpriteRenderProxy(0.0f, 0.0f, FLT_MAX, 4.0f, 0.0f,
+                                                                 std::numeric_limits<float>::max(), 1.0f, result),
+            "Pre-scale overflow must conservatively fail proxy certification");
+    require(!platformator_detail::makeCertifiedSpriteRenderProxy(FLT_MAX, FLT_MAX, 8.0f, 8.0f, 0.0f,
+                                                                 1.0f, 1.0f, result),
+            "Extreme finite common offsets must conservatively fail proxy certification");
+
+    SpriteRenderView unsafeCamera{std::nextafter(certificateLimit,
+                                                  std::numeric_limits<float>::infinity()),
+                                  0.0f, 1.0f, 1.0f, 320, 240, true};
+    require(!platformator_detail::makeCertifiedRenderViewQuery(unsafeCamera, result),
+            "A camera outside the certified domain must use the current-linear fallback");
+    unsafeCamera = SpriteRenderView{0.0f, 0.0f, std::numeric_limits<float>::denorm_min(), 1.0f, 320, 240, true};
+    require(!platformator_detail::makeCertifiedRenderViewQuery(unsafeCamera, result),
+            "Subnormal projection scale must use the current-linear fallback");
+    unsafeCamera = SpriteRenderView{FLT_MAX, -FLT_MAX, 1.0f, 1.0f, 320, 240, true};
+    require(!platformator_detail::makeCertifiedRenderViewQuery(unsafeCamera, result),
+            "Extreme finite camera coordinates must use the current-linear fallback");
+
+    std::mt19937 random(0xC3111F1Eu);
+    std::uniform_real_distribution<float> offset(-3000.0f, 3000.0f);
+    std::uniform_real_distribution<float> local(-600.0f, 700.0f);
+    std::uniform_real_distribution<float> dimension(0.125f, 500.0f);
+    std::uniform_real_distribution<float> angle(-1440.0f, 1440.0f);
+    std::uniform_real_distribution<float> scale(0.25f, 3.0f);
+    for (int index = 0; index < 2000; ++index)
+    {
+        const float cameraX = offset(random);
+        const float cameraY = offset(random);
+        const SpriteRenderView view{cameraX, cameraY, scale(random), scale(random), 640, 160, true};
+        const float worldX = cameraX + local(random);
+        const float worldY = cameraY + local(random);
+        checkCertifiedProxy(worldX, worldY, dimension(random), dimension(random), angle(random), view,
+                            "certified random case " + std::to_string(index));
+    }
+}
+
+void checkValid(const SDL_FRect &destination, float angleDegrees, const SpriteRenderView &view,
                 const std::string &label)
 {
     SpriteRenderBounds padded;
@@ -111,6 +241,7 @@ void checkFallback(const SDL_FRect &destination, float angleDegrees, const Sprit
 
 void run()
 {
+    checkNumericCertificate();
     SpriteRenderView view{13.0f, -9.0f, 0.5f, 1.75f, 320, 240, true};
     const std::array<std::pair<SDL_FRect, float>, 16> cases = {{
         {{12.0f, 15.0f, 44.0f, 30.0f}, 0.0f},
@@ -164,7 +295,8 @@ void run()
                   "ineligible mapping");
     checkFallback({FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX}, 45.0f, view, "extreme finite magnitude");
 
-    std::cout << "geometry samples=" << (cases.size() + 2 + 5000) << " randomized seed=0xC0111DE\n";
+    std::cout << "geometry samples=" << (cases.size() + 2 + 5000 + 2003)
+              << " randomized seeds=0xC0111DE,0xC3111F1E\n";
 }
 } // namespace
 

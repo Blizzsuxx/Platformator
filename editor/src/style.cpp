@@ -41,6 +41,7 @@ ImGuiStyle make_base_style()
     style.Colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.13f, 0.15f, 1.00f);
     style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.15f, 0.17f, 0.20f, 1.00f);
     style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.13f, 0.145f, 0.17f, 1.00f);
+    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.105f, 0.12f, 0.145f, 1.00f);
     style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.09f, 0.10f, 0.12f, 0.75f);
     style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.29f, 0.32f, 0.37f, 1.00f);
     style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.36f, 0.41f, 0.47f, 1.00f);
@@ -134,6 +135,22 @@ void apply_editor_style(float scale)
     ImGui::GetStyle() = make_base_style();
     ImGui::GetStyle().ScaleAllSizes(scale);
     ImGui::GetIO().FontGlobalScale = scale;
+}
+
+void push_editor_toolbar_style()
+{
+    const ImGuiStyle &style = ImGui::GetStyle();
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.13f, 0.145f, 0.17f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(style.WindowPadding.x, style.WindowPadding.y * 0.55f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                        ImVec2(style.ItemSpacing.x * 0.85f, style.ItemSpacing.y * 0.7f));
+}
+
+void pop_editor_toolbar_style()
+{
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
 }
 
 bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip)

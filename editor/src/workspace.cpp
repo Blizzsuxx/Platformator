@@ -2,6 +2,7 @@
 
 #include "editcommands.h"
 #include "documentio.h"
+#include "project.h"
 #include "validation.h"
 
 #include <limits>
@@ -154,6 +155,35 @@ WorkspaceActionResult DocumentWorkspace::save_as(const std::filesystem::path &pa
         return failed(saved.message);
     mark_saved();
     return completed(saved.message);
+}
+
+WorkspaceActionResult DocumentWorkspace::set_project_roots(const std::filesystem::path &projectRoot,
+                                                           const std::filesystem::path &assetRoot,
+                                                           std::uint64_t projectGeneration)
+{
+    try
+    {
+        const auto project = canonical_directory(projectRoot, "project root");
+        const auto assets = canonical_directory(assetRoot, "asset root");
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(project / "CMakeLists.txt", error) || error)
+            return failed("project root must contain CMakeLists.txt: " + project.string());
+        if (project == projectRoot_ && assets == assetRoot_)
+            return completed();
+        if (projectGeneration <= document_.projectGeneration)
+            return failed("project generation must advance when roots change");
+
+        projectRoot_ = project;
+        assetRoot_ = assets;
+        document_.projectRoot = std::move(project);
+        document_.assetRoot = std::move(assets);
+        document_.projectGeneration = projectGeneration;
+        return completed();
+    }
+    catch (const std::exception &error)
+    {
+        return failed(error.what());
+    }
 }
 
 void DocumentWorkspace::mark_saved() noexcept

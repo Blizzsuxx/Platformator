@@ -139,6 +139,58 @@ void run_workspace_lifecycle_cases()
             "failed Save As must preserve document identity, dirty state and untitled destination");
     require(read_json(blockedPath / "marker") == "keep",
             "failed Save As must leave the existing destination contents untouched");
+
+    const auto unicodeScenePath = projectRoot / "scene Ω with spaces.scene";
+    write_scene(unicodeScenePath, workspace_scene("Unicode path"));
+    action = workspace.open_document(unicodeScenePath, UnsavedDecision::Discard);
+    require(action && workspace.document().sourcePath == std::filesystem::canonical(unicodeScenePath) &&
+                workspace.document().root[0]["name"] == "Unicode path",
+            "Open Scene must validate and adopt a manually entered path containing spaces and Unicode");
+}
+
+void run_workspace_root_replacement_cases()
+{
+    TemporaryDirectory temporary;
+    const auto firstProject = temporary.path() / "first-project";
+    const auto firstAssets = firstProject / "assets";
+    const auto secondProject = temporary.path() / "second-project";
+    const auto secondAssets = secondProject / "assets";
+    std::filesystem::create_directories(firstAssets);
+    std::filesystem::create_directories(secondAssets);
+    std::ofstream(firstProject / "CMakeLists.txt") << "project(first)";
+    std::ofstream(secondProject / "CMakeLists.txt") << "project(second)";
+
+    DocumentWorkspace workspace(firstProject, firstAssets);
+    EditCommandService history;
+    workspace.bind_history(history);
+    const PropertyAddress nameAddress{workspace.document().documentGeneration, 0, std::nullopt,
+                                      std::nullopt, {std::string("name")}};
+    require(static_cast<bool>(history.set_property(workspace.document_for_edit(), nameAddress,
+                                                   "Edited before root switch")),
+            "root-switch fixture must contain a real dirty history command");
+    const auto beforeDocumentGeneration = workspace.document().documentGeneration;
+    const auto beforeHistory = history.history_status();
+    const auto beforeRoot = workspace.document().root;
+
+    auto changed = workspace.set_project_roots(secondProject, secondAssets, 2);
+    require(changed && workspace.document().projectRoot == std::filesystem::canonical(secondProject) &&
+                workspace.document().assetRoot == std::filesystem::canonical(secondAssets) &&
+                workspace.document().projectGeneration == 2,
+            "root replacement must update document resource context and its project generation");
+    require(workspace.document().documentGeneration == beforeDocumentGeneration &&
+                workspace.document().root == beforeRoot && workspace.dirty() &&
+                history.history_status().currentToken == beforeHistory.currentToken &&
+                history.history_status().undoCommands == beforeHistory.undoCommands,
+            "root replacement must preserve authoring data, dirty state, document identity and undo history");
+
+    const auto invalidBefore = workspace.document();
+    changed = workspace.set_project_roots(temporary.path() / "missing-project", secondAssets, 3);
+    require(changed.status == WorkspaceActionStatus::Failed &&
+                workspace.document().projectRoot == invalidBefore.projectRoot &&
+                workspace.document().assetRoot == invalidBefore.assetRoot &&
+                workspace.document().projectGeneration == invalidBefore.projectGeneration &&
+                history.history_status().currentToken == beforeHistory.currentToken,
+            "unavailable roots must be rejected without changing the usable document or history");
 }
 
 void run_preference_cases()
@@ -186,6 +238,17 @@ void run_preference_cases()
                 layoutSeed.find("[Window][panel.hierarchy]") != std::string::npos &&
                 layoutSeed.find("[Window][panel.behaviors]") != std::string::npos,
             "checked-in docking seed must contain stable Hierarchy and Behaviors panel identities");
+    std::string legacySceneLayout = layoutSeed;
+    const auto sceneHeader = legacySceneLayout.find("[Window][panel.scene]");
+    require(sceneHeader != std::string::npos, "docking seed must contain the stable Scene identity");
+    legacySceneLayout.replace(sceneHeader, std::string("[Window][panel.scene]").size(), "[Window][Scene]");
+    const auto migratedSceneLayout = migrate_scene_window_identity(legacySceneLayout);
+    require(migratedSceneLayout.find("[Window][panel.scene]") != std::string::npos &&
+                migratedSceneLayout.find("[Window][Scene]") == std::string::npos &&
+                migratedSceneLayout.find("DockId=0x00003000") != std::string::npos,
+            "legacy Scene docking preferences must migrate to the stable runtime identity with placement intact");
+    require(migrate_scene_window_identity(migratedSceneLayout) == migratedSceneLayout,
+            "Scene identity migration must be idempotent");
     require(layout_needs_recovery("[Docking][Data]\nDockSpace ID=0x1 Pos=0,0 Size=1280,800\n"
                                   "[Window][Scene]\nPos=20,20\nSize=600,400\n", 1280, 800) == false &&
                 layout_needs_recovery("[Docking][Data]\nnot a valid docking node\n", 1280, 800) &&
@@ -276,6 +339,20 @@ void run_editor_action_and_style_cases()
     require(editor_action_allowed(EditorAction::Save, clearCapture) &&
                 editor_action_allowed(EditorAction::FrameSelected, clearCapture),
             "global actions and focused Scene actions must be available when input is uncaptured");
+    require(dispatch_editor_key(EditorKey::F5, true, false, clearCapture) == EditorAction::Stop &&
+                dispatch_editor_key(EditorKey::F, true, false, clearCapture) == EditorAction::FrameSelected &&
+                dispatch_editor_key(EditorKey::F, false, false, clearCapture) == EditorAction::FrameAll,
+            "production key routing must map active-run Stop and Scene framing commands");
+    for (const auto blockedCapture : {EditorInputCapture{false, false, false, false, true},
+                                       EditorInputCapture{true, true, false, false, true},
+                                       EditorInputCapture{true, false, true, false, true},
+                                       EditorInputCapture{true, false, false, true, true}})
+        require(!dispatch_editor_key(EditorKey::F5, true, false, blockedCapture) &&
+                    !dispatch_editor_key(EditorKey::F, false, false, blockedCapture),
+                "focus loss, text/modal ownership and active gestures must suppress global key dispatch");
+    require(!dispatch_editor_key(EditorKey::F, false, false,
+                                 EditorInputCapture{true, false, false, false, false}),
+            "Scene framing key dispatch must require Scene focus");
     for (const auto capture : {EditorInputCapture{true, true, false, false, true},
                                EditorInputCapture{true, false, true, false, true},
                                EditorInputCapture{true, false, false, true, true},

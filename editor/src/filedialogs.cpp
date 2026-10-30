@@ -1,7 +1,10 @@
 #include "filedialogs.h"
 
+#include <imgui.h>
+
 #include <array>
 #include <atomic>
+#include <algorithm>
 #include <limits>
 #include <mutex>
 #include <stdexcept>
@@ -119,10 +122,18 @@ void SDLCALL dialog_completed(void *userdata, const char *const *filelist, int) 
 AsyncRequestIdentity show_dialog(AsyncRequestQueue &queue, AsyncRequestKind kind,
                                  SDL_Window *window, std::uint64_t documentGeneration,
                                  const std::filesystem::path &defaultLocation,
-                                 std::vector<FileDialogFilter> filters)
+                                 std::string_view expectedAssetType = {})
 {
     auto token = queue.begin(kind, documentGeneration);
     const auto identity = token.identity();
+    auto filters = make_file_dialog_filters(kind, expectedAssetType);
+    if (std::any_of(filters.begin(), filters.end(), [](const FileDialogFilter &filter) {
+            return !valid_file_dialog_filter_pattern(filter.pattern);
+        }))
+    {
+        token.complete_error("The editor generated an invalid native file-dialog filter.");
+        return identity;
+    }
     auto context = std::make_unique<DialogCallbackContext>(std::move(token), std::move(filters), defaultLocation);
     auto *callbackContext = context.release();
     const char *location = callbackContext->defaultLocation.empty() ? nullptr
@@ -147,6 +158,99 @@ AsyncRequestIdentity show_dialog(AsyncRequestQueue &queue, AsyncRequestKind kind
     return identity;
 }
 } // namespace
+
+std::vector<FileDialogFilter> make_file_dialog_filters(AsyncRequestKind kind,
+                                                       std::string_view expectedAssetType)
+{
+    switch (kind)
+    {
+    case AsyncRequestKind::OpenScene:
+    case AsyncRequestKind::SaveScene:
+        return {{"Platformator scenes", "scene"}};
+    case AsyncRequestKind::OpenAsset:
+        if (expectedAssetType == "Texture")
+            return {{"Textures", "png;jpg;jpeg;bmp;gif;webp;tga;qoi;tif;tiff"}};
+        if (expectedAssetType == "Audio")
+            return {{"Audio", "wav;ogg;mp3;flac;opus"}};
+        if (expectedAssetType == "AnimationClip")
+            return {{"Animation sets", "animset"}};
+        return {{"Assets", "*"}};
+    case AsyncRequestKind::SelectFolder:
+        return {};
+    }
+    return {};
+}
+
+bool valid_file_dialog_filter_pattern(std::string_view pattern) noexcept
+{
+    if (pattern == "*")
+        return true;
+    if (pattern.empty())
+        return false;
+
+    bool previousWasSeparator = true;
+    for (const unsigned char character : pattern)
+    {
+        if (character == ';')
+        {
+            if (previousWasSeparator)
+                return false;
+            previousWasSeparator = true;
+            continue;
+        }
+
+        const bool alphanumeric = (character >= 'a' && character <= 'z') ||
+                                  (character >= 'A' && character <= 'Z') ||
+                                  (character >= '0' && character <= '9');
+        if (!alphanumeric && character != '-' && character != '_' && character != '.')
+            return false;
+        previousWasSeparator = false;
+    }
+    return !previousWasSeparator;
+}
+
+FileDialogPathAction draw_file_dialog_path_entry(bool &open, std::string_view providerError,
+                                                char *path, std::size_t pathCapacity)
+{
+    if (path == nullptr || pathCapacity == 0)
+        return FileDialogPathAction::None;
+
+    constexpr const char *popupName = "File dialog path entry";
+    if (open)
+        ImGui::OpenPopup(popupName);
+
+    FileDialogPathAction action = FileDialogPathAction::None;
+    if (ImGui::BeginPopupModal(popupName, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        const auto cancel = [&] {
+            ImGui::CloseCurrentPopup();
+            open = false;
+            path[0] = '\0';
+            return FileDialogPathAction::Cancel;
+        };
+        ImGui::TextWrapped("The native file dialog failed: %.*s",
+                           static_cast<int>(providerError.size()), providerError.data());
+        ImGui::TextUnformatted("Enter a file or folder path to continue.");
+        ImGui::InputText("Path", path, pathCapacity);
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            action = cancel();
+        else if (path[0] != '\0' && ImGui::Button("Use path"))
+        {
+            ImGui::CloseCurrentPopup();
+            open = false;
+            action = FileDialogPathAction::Submit;
+        }
+        else
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel path entry"))
+                action = cancel();
+        }
+        ImGui::EndPopup();
+    }
+    return action;
+}
 
 AsyncRequestToken::AsyncRequestToken(std::shared_ptr<AsyncRequestTicket> ticket)
     : ticket_(std::move(ticket))
@@ -250,31 +354,22 @@ AsyncRequestIdentity FileDialogService::open_scene(SDL_Window *window, std::uint
                                                    const std::filesystem::path &defaultLocation)
 {
     return show_dialog(requests_, AsyncRequestKind::OpenScene, window, documentGeneration,
-                       defaultLocation, {{"Platformator scenes", "*.scene"}});
+                       defaultLocation);
 }
 
 AsyncRequestIdentity FileDialogService::open_asset(SDL_Window *window, std::uint64_t documentGeneration,
                                                     const std::filesystem::path &assetRoot,
                                                     std::string_view expectedAssetType)
 {
-    std::vector<FileDialogFilter> filters;
-    if (expectedAssetType == "Texture")
-        filters.push_back({"Textures", "*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp;*.tga;*.qoi;*.tif;*.tiff"});
-    else if (expectedAssetType == "Audio")
-        filters.push_back({"Audio", "*.wav;*.ogg;*.mp3;*.flac;*.opus"});
-    else if (expectedAssetType == "AnimationClip")
-        filters.push_back({"Animation sets", "*.animset"});
-    else
-        filters.push_back({"Assets", "*"});
     return show_dialog(requests_, AsyncRequestKind::OpenAsset, window, documentGeneration,
-                       assetRoot, std::move(filters));
+                       assetRoot, expectedAssetType);
 }
 
 AsyncRequestIdentity FileDialogService::save_scene(SDL_Window *window, std::uint64_t documentGeneration,
                                                    const std::filesystem::path &defaultLocation)
 {
     return show_dialog(requests_, AsyncRequestKind::SaveScene, window, documentGeneration,
-                       defaultLocation, {{"Platformator scenes", "*.scene"}});
+                       defaultLocation);
 }
 
 AsyncRequestIdentity FileDialogService::select_folder(SDL_Window *window, std::uint64_t documentGeneration,
@@ -282,6 +377,13 @@ AsyncRequestIdentity FileDialogService::select_folder(SDL_Window *window, std::u
 {
     return show_dialog(requests_, AsyncRequestKind::SelectFolder, window, documentGeneration,
                        defaultLocation, {});
+}
+
+AsyncRequestIdentity FileDialogService::select_project_folder(SDL_Window *window,
+                                                               std::uint64_t contextGeneration,
+                                                               const std::filesystem::path &defaultLocation)
+{
+    return select_folder(window, contextGeneration, defaultLocation);
 }
 
 AsyncRequestIdentity FileDialogService::submit_manual_path(AsyncRequestKind kind,

@@ -18,6 +18,11 @@ SDL_Texture *TextureWrapper::getTexture() const
     return texture;
 }
 
+size_t TextureWrapper::getReferenceCount() const
+{
+    return referenceCount;
+}
+
 void TextureWrapper::addReference()
 {
     referenceCount++;

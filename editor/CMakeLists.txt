@@ -43,6 +43,7 @@ add_library(platformator_editor_core STATIC
     src/behaviorcatalog.cpp
     src/preview.cpp
     src/style.cpp
+    src/toolbar.cpp
     src/viewport.cpp
     src/panels/console.cpp
     src/panels/behaviors.cpp

@@ -17,6 +17,7 @@ public:
     ~TextureWrapper();
 
     SDL_Texture *getTexture() const;
+    size_t getReferenceCount() const;
     void addReference();
     bool removeReferenceAndFreeIfNoReferences();
 

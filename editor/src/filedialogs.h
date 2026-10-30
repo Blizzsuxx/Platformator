@@ -5,8 +5,10 @@
 #include <SDL3/SDL.h>
 
 #include <cstdint>
+#include <cstddef>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace platformator_editor
@@ -16,6 +18,23 @@ struct FileDialogFilter
     std::string description;
     std::string pattern;
 };
+
+// SDL filter patterns are extension lists ("scene" or "png;jpg"), not globs.
+std::vector<FileDialogFilter> make_file_dialog_filters(AsyncRequestKind kind,
+                                                       std::string_view expectedAssetType = {});
+bool valid_file_dialog_filter_pattern(std::string_view pattern) noexcept;
+
+enum class FileDialogPathAction
+{
+    None,
+    Submit,
+    Cancel
+};
+
+// Draw the provider-failure path-entry popup. Closing it always closes the
+// ImGui popup as well as clearing the caller's open flag.
+FileDialogPathAction draw_file_dialog_path_entry(bool &open, std::string_view providerError,
+                                                char *path, std::size_t pathCapacity);
 
 // The application owns this service. Native callbacks retain only a token and
 // copied SDL argument storage; they never retain document, panel, or Runtime
@@ -37,6 +56,8 @@ class FileDialogService
                                     const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity select_folder(SDL_Window *window, std::uint64_t documentGeneration,
                                        const std::filesystem::path &defaultLocation = {});
+    AsyncRequestIdentity select_project_folder(SDL_Window *window, std::uint64_t contextGeneration,
+                                                const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity submit_manual_path(AsyncRequestKind kind, std::uint64_t documentGeneration,
                                             const std::filesystem::path &selectedPath);
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -51,6 +52,22 @@ struct PreviewObjectInfo
     std::string assetError;
 };
 
+struct PreviewReconcileStats
+{
+    std::size_t visitedObjects = 0;
+    std::size_t updatedProxies = 0;
+};
+
+struct PreviewResourceCounts
+{
+    std::size_t proxies = 0;
+    std::size_t texturedProxies = 0;
+    std::size_t uniqueTextureWrappers = 0;
+    std::size_t textureWrapperReferences = 0;
+    bool renderTargetAllocated = false;
+};
+
+
 class EditorPreview
 {
   public:
@@ -68,6 +85,10 @@ class EditorPreview
     const std::vector<int> &ordered_document_ids() const noexcept;
     const PreviewObjectInfo *object_info(int documentId) const noexcept;
     const std::string &last_error() const noexcept;
+    PreviewResourceCounts resource_counts() const;
+#ifndef NDEBUG
+    PreviewReconcileStats last_reconcile_stats() const noexcept;
+#endif
     void release() noexcept;
 
   private:
@@ -86,6 +107,8 @@ class EditorPreview
     };
     void rebuild(const DocumentSession &document);
     void update_proxy(const DocumentSession &document, int documentId, const Json &object);
+    void update_proxy(const DocumentSession &document, int documentId, const Json &object,
+                      float worldX, float worldY);
     void destroy_proxy(Proxy &proxy) noexcept;
     bool ensure_target(int width, int height);
 
@@ -100,6 +123,9 @@ class EditorPreview
     std::unordered_map<int, Proxy> proxies_;
     std::vector<int> orderedDocumentIds_;
     std::string lastError_;
+#ifndef NDEBUG
+    PreviewReconcileStats lastReconcileStats_;
+#endif
 };
 } // namespace platformator_editor
 

@@ -33,11 +33,23 @@ WORKLOAD = {
     "deep_parent": {"name": "deep_parent_128", "depth": 128},
     "texture_reference": "assets/textures/pilot.png",
     "resource_cycles": RESOURCE_CYCLES,
+    "resource_warmup_cycles": 1,
+    "runtime_backend": {"video_driver": "dummy", "renderer_name": "software"},
     "timing_repetitions": REPETITIONS,
     "warmup_frames": WARMUP_FRAMES,
     "measured_frames": MEASURED_FRAMES,
     "long_output_bytes": 1_200_000,
     "project_scan_files": 32,
+    "selected_game_lifecycle": {
+        "target": "main",
+        "profile": "debug",
+        "warmup_configure_argv": ["cmake", "--preset", "debug"],
+        "warmup_build_argv": ["cmake", "--build", "--preset", "debug", "--target", "main"],
+        "measured_configure_build_argv": ["cmake", "-E", "true"],
+        "scene": "assets/scenes/default.scene",
+        "run_argv": ["--headless", "--smoke-steps", "1000000"],
+        "measured_stop_after": "verified Running stage; reuse warmup-built executable",
+    },
 }
 SOURCE_PATHS = (
     "CMakeLists.txt", "CMakePresets.json", "editor/CMakeLists.txt", "editor/src",
@@ -269,9 +281,12 @@ def validate_frozen_identity(identity: dict[str, Any], baseline_path: Path) -> N
 
 
 def validate_fixed_session_path(root: Path, session_path: Path) -> None:
-    fixed_path = (root / "specs/011-add-imgui-editor/evidence/editor-pilot.session.json").resolve()
-    if session_path.resolve() != fixed_path:
-        raise CaptureError(f"This feature has one frozen session path: {fixed_path}")
+    evidence_root = (root / "specs/011-add-imgui-editor/evidence").resolve()
+    resolved = session_path.resolve()
+    if resolved.parent != evidence_root or not (
+            resolved.name == "editor-pilot.session.json" or
+            (resolved.name.startswith("editor-pilot-") and resolved.name.endswith(".session.json"))):
+        raise CaptureError("Session journals must use a fresh editor-pilot[-label].session.json path under feature evidence")
 
 
 def fail_timing_session(session_path: Path, session: dict[str, Any], error: CaptureError) -> None:
@@ -393,10 +408,13 @@ def _validate_probe_identity(value: dict[str, Any], expected_configuration: str)
 def _validate_resource_output(value: dict[str, Any]) -> None:
     if value.get("schema_version") != 1 or value.get("mode") != "resources" or value.get("cycles") != RESOURCE_CYCLES:
         raise CaptureError("Resource probe output does not match the frozen cycle workload")
+    if value.get("warmup_cycles") != WORKLOAD["resource_warmup_cycles"]:
+        raise CaptureError("Resource probe did not report the declared warmup cycle")
     observations = value.get("observations")
     if not isinstance(observations, list) or len(observations) != RESOURCE_CYCLES:
         raise CaptureError("Resource probe output is missing cycle observations")
     expected = {"tiny": 10, "objects_1000": 1000, "objects_10000": 10000, "deep_parent_128": 128}
+    expected_textured = {"tiny": 10, "objects_1000": 1000, "objects_10000": 10000, "deep_parent_128": 1}
     for index, row in enumerate(observations):
         if not isinstance(row, dict) or row.get("cycle") != index:
             raise CaptureError("Resource probe cycles are truncated or reordered")
@@ -407,6 +425,22 @@ def _validate_resource_output(value: dict[str, Any]) -> None:
             if item.get("objects") != expected[item["workload"]] or not isinstance(item.get("texture_references"), int) or \
                     not isinstance(item.get("history_retained_bytes"), int):
                 raise CaptureError("Resource probe workload observation is malformed")
+            runtime = item.get("runtime")
+            if not isinstance(runtime, dict) or runtime.get("objects") != expected[item["workload"]] or \
+                    runtime.get("preview_proxies") != expected_textured[item["workload"]] or \
+                    runtime.get("textured_proxies") != expected_textured[item["workload"]] or \
+                    runtime.get("unique_texture_wrappers") != 1 or \
+                    runtime.get("texture_wrapper_references") != expected_textured[item["workload"]] or \
+                    runtime.get("video_driver") != WORKLOAD["runtime_backend"]["video_driver"] or \
+                    runtime.get("renderer_name") != WORKLOAD["runtime_backend"]["renderer_name"] or \
+                    runtime.get("render_target_allocated") is not True or \
+                    runtime.get("document_dirty_after_undo") is not False or \
+                    runtime.get("released_proxies") != 0 or \
+                    runtime.get("released_texture_wrappers") != 0 or \
+                    runtime.get("render_target_after_release") is not False or \
+                    runtime.get("runtime_objects_with_preview") != expected_textured[item["workload"]] or \
+                    runtime.get("runtime_objects_after_preview_release") != 0:
+                raise CaptureError("Runtime lifecycle probe did not observe the expected live and released resources")
         task = row.get("task")
         process = row.get("process")
         allocation = row.get("allocation")
@@ -418,6 +452,27 @@ def _validate_resource_output(value: dict[str, Any]) -> None:
         if not isinstance(allocation, dict) or any(not isinstance(allocation.get(key), int) or allocation[key] < 0
                                                    for key in ("calls", "bytes")):
             raise CaptureError("Resource probe allocation observation is malformed")
+        game = row.get("game_pipeline")
+        if not isinstance(game, dict) or game.get("target") != "main" or \
+                not game.get("executable_identity") or not game.get("source_identity") or \
+                game.get("build_mode") != "reuse_existing_binary" or \
+                game.get("catalog_verified") is not True or \
+                game.get("pipeline_cancelled") is not True or \
+                not isinstance(game.get("pipeline_to_run_ns"), int) or \
+                not isinstance(game.get("stop_reap_ns"), int):
+            raise CaptureError("Resource probe did not complete the selected-game Run/Stop lifecycle")
+
+
+def _validate_resource_progress(path: Path, value: dict[str, Any]) -> None:
+    try:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    except (OSError, json.JSONDecodeError) as error:
+        raise CaptureError(f"Resource progress checkpoint is unreadable: {path}") from error
+    expected_header = {"schema_version": 1, "mode": "resources-progress",
+                       "warmup_cycles": WORKLOAD["resource_warmup_cycles"],
+                       "cycles": RESOURCE_CYCLES}
+    if not rows or rows[0] != expected_header or rows[1:] != value.get("observations"):
+        raise CaptureError("Resource progress checkpoint differs from the completed compact observations")
 
 
 def _validate_timing_output(value: dict[str, Any]) -> None:
@@ -470,6 +525,9 @@ def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(description=__doc__)
     command.add_argument("--mode", choices=("resources", "timing"), required=True)
     command.add_argument("--session", type=Path, required=True)
+    command.add_argument("--baseline", type=Path,
+                         default=Path("specs/011-add-imgui-editor/evidence/BASELINE.md"),
+                         help="Identity freeze for a new resource session (must already exist)")
     command.add_argument("--probe", type=Path, default=Path("bin/editor-release/platformator_editor_probe"))
     command.add_argument("--build-label", default="editor-release")
     command.add_argument("--expected-configuration", default="Release")
@@ -505,7 +563,11 @@ def execute(args: argparse.Namespace, root: Path) -> None:
         probe_identity = compute_identity(root, args.probe, args.build_label)
         probe_identity["project_root"] = str(root.resolve())
         probe_identity["expected_configuration"] = args.expected_configuration
-        validate_frozen_identity(probe_identity, root / "specs/011-add-imgui-editor/evidence/BASELINE.md")
+        baseline_path = args.baseline.resolve()
+        if baseline_path.parent != (root / "specs/011-add-imgui-editor/evidence").resolve() or \
+                not baseline_path.name.startswith("BASELINE") or baseline_path.suffix != ".md":
+            raise CaptureError("--baseline must name a pre-frozen BASELINE*.md under feature evidence")
+        validate_frozen_identity(probe_identity, baseline_path)
         session_path.parent.mkdir(parents=True, exist_ok=True)
         capture_root.mkdir(parents=True)
         session = _new_session(session_path, capture_root, probe_identity,
@@ -548,8 +610,9 @@ def execute(args: argparse.Namespace, root: Path) -> None:
 
         if args.mode == "resources":
             with tempfile.TemporaryDirectory(prefix="platformator-editor-probe-") as scratch:
+                progress_path = capture_root / "resources.progress.jsonl"
                 command = [session["identity"]["probe_path"], "resources", "--cycles", str(RESOURCE_CYCLES),
-                           "--scratch", scratch]
+                           "--scratch", scratch, "--progress", str(progress_path)]
                 raw_path = capture_root / "resources.raw.json"
                 error_path = capture_root / "resources.stderr.log"
                 _run_command(command, raw_path, error_path, budget, session)
@@ -557,6 +620,8 @@ def execute(args: argparse.Namespace, root: Path) -> None:
             _validate_resource_output(resource_output)
             if resource_output.get("identity") != probe_build_identity:
                 raise CaptureError("Resource observations carry a different build identity")
+            _validate_resource_progress(progress_path, resource_output)
+            progress_path.unlink()
         else:
             command = [session["identity"]["probe_path"], "timing", "--repetitions", str(REPETITIONS),
                        "--warmup", str(WARMUP_FRAMES), "--frames", str(MEASURED_FRAMES)]

@@ -1,12 +1,17 @@
 #include "document.h"
+#include "behaviorcatalog.h"
 #include "editcommands.h"
 #include "process.h"
 #include "project.h"
+#include "preview.h"
 #include "selection.h"
+#include "workspace.h"
 
 #include <algorithm>
 #include <atomic>
+#include <array>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -18,12 +23,17 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <unistd.h>
 
+#include <SDL3/SDL.h>
+
 #include <json.hpp>
 #include <platformator/gameobject.h>
+#include <platformator/runtime.h>
+#include <platformator/runtimeoptions.h>
 
 #ifndef PLATFORMATOR_EDITOR_PROBE_CONFIGURATION
 #define PLATFORMATOR_EDITOR_PROBE_CONFIGURATION "unknown"
@@ -40,6 +50,18 @@ using Clock = std::chrono::steady_clock;
 std::atomic<bool> countAllocations{false};
 std::atomic<std::uint64_t> allocationCalls{0};
 std::atomic<std::uint64_t> allocatedBytes{0};
+volatile std::sig_atomic_t captureInterrupted = 0;
+
+void request_capture_stop(int) noexcept
+{
+    captureInterrupted = 1;
+}
+
+void check_capture_stop()
+{
+    if (captureInterrupted != 0)
+        throw std::runtime_error("resource lifecycle probe was interrupted; completed progress rows are retained");
+}
 
 void note_allocation(std::size_t size)
 {
@@ -180,6 +202,102 @@ Json workload_observation(std::string name, std::size_t population, bool deep)
                 {"edited_object_id", targetId}, {"history_retained_bytes", retainedHistory}};
 }
 
+Json runtime_workload_observation(const std::string &name, std::size_t population, bool deep,
+                                  const std::filesystem::path &scratch)
+{
+    const auto projectRoot = scratch / ("runtime-" + name);
+    const auto assetRoot = projectRoot / "assets";
+    const auto textureDirectory = assetRoot / "textures";
+    std::filesystem::create_directories(textureDirectory);
+    const auto repositoryTexture = std::filesystem::current_path() / "assets" / "textures" /
+                                  "black_square.png";
+    std::filesystem::copy_file(repositoryTexture, textureDirectory / "pilot.png",
+                               std::filesystem::copy_options::overwrite_existing);
+
+    const Json scene = deep ? make_deep_scene(population) : make_flat_scene(population);
+    const auto scenePath = projectRoot / "lifecycle.scene";
+    {
+        std::ofstream output(scenePath, std::ios::binary);
+        output << scene.dump();
+        if (!output)
+            throw std::runtime_error("could not write Runtime lifecycle scene");
+    }
+    platformator_editor::DocumentWorkspace workspace(projectRoot, assetRoot);
+    const auto adopted = workspace.open_document(scenePath, platformator_editor::UnsavedDecision::Discard);
+    if (!adopted)
+        throw std::runtime_error("Runtime lifecycle scene adoption failed: " + adopted.message);
+
+    platformator_editor::SelectionModel selection;
+    platformator_editor::EditCommandService commands;
+    workspace.bind_history(commands);
+    commands.set_selection_provider([&selection] { return selection.current(); });
+    const int targetId = static_cast<int>(deep ? population - 1 : (population > 1 ? population / 2 : 0));
+    const std::size_t expectedTexturedProxies = deep ? 1 : population;
+    const std::size_t expectedProxyCount = expectedTexturedProxies;
+    selection.set(workspace.document(), platformator_editor::Selection{targetId});
+    platformator_editor::PropertyAddress address;
+    address.documentGeneration = workspace.document().documentGeneration;
+    address.objectId = targetId;
+    address.fieldPath = {std::string("position"), std::string("x")};
+
+    RuntimeOptions runtimeOptions;
+    runtimeOptions.assetRoot = assetRoot.string();
+    runtimeOptions.windowSettings.width = 320;
+    runtimeOptions.windowSettings.height = 240;
+    runtimeOptions.windowSettings.headless = false;
+    Json runtimeObservation;
+    {
+        platformator::Runtime runtime(runtimeOptions);
+        platformator_editor::EditorPreview preview(runtime);
+        preview.reconcile(workspace.document(), true);
+        auto edited = commands.set_property(workspace.document_for_edit(), address, 1.0);
+        if (!edited)
+            throw std::runtime_error("Runtime lifecycle property edit failed: " + edited.message);
+        preview.reconcile(workspace.document(), false, edited.affectedObjectIds);
+        const auto historyBytes = commands.history_status().retainedBytes;
+        auto undone = commands.undo(workspace.document_for_edit(), selection);
+        if (undone.status != platformator_editor::CommandStatus::Changed)
+            throw std::runtime_error("Runtime lifecycle edit could not be undone");
+        preview.reconcile(workspace.document(), false, undone.affectedObjectIds);
+        if (!preview.render(0.0f, 0.0f, 640.0f, 480.0f, 320, 240))
+            throw std::runtime_error("Runtime lifecycle preview render failed: " + preview.last_error());
+
+        const auto live = preview.resource_counts();
+        if (live.proxies != expectedProxyCount || live.texturedProxies != expectedTexturedProxies ||
+            live.uniqueTextureWrappers != 1 ||
+            live.textureWrapperReferences != expectedTexturedProxies ||
+            !live.renderTargetAllocated)
+            throw std::runtime_error("Runtime lifecycle did not retain the expected preview proxy/texture/target resources");
+        const auto runtimeObjects = runtime.getAllGameObjects().size();
+        if (runtimeObjects != expectedProxyCount)
+            throw std::runtime_error("Runtime lifecycle GameObject count differs from the live preview proxies");
+        const char *videoDriver = SDL_GetCurrentVideoDriver();
+        const char *rendererName = SDL_GetRendererName(runtime.getRenderer());
+        if (videoDriver == nullptr || rendererName == nullptr)
+            throw std::runtime_error("SDL did not expose the Runtime lifecycle backend identity");
+        preview.release();
+        const auto released = preview.resource_counts();
+        runtimeObservation = Json{
+            {"adopted_document_generation", workspace.document().documentGeneration},
+            {"objects", workspace.document().indexes.objectsById.size()},
+            {"runtime_objects_with_preview", runtimeObjects},
+            {"video_driver", videoDriver},
+            {"renderer_name", rendererName},
+            {"preview_proxies", live.proxies},
+            {"textured_proxies", live.texturedProxies},
+            {"unique_texture_wrappers", live.uniqueTextureWrappers},
+            {"texture_wrapper_references", live.textureWrapperReferences},
+            {"render_target_allocated", live.renderTargetAllocated},
+            {"history_retained_bytes", historyBytes},
+            {"document_dirty_after_undo", workspace.dirty()},
+            {"released_proxies", released.proxies},
+            {"released_texture_wrappers", released.uniqueTextureWrappers},
+            {"render_target_after_release", released.renderTargetAllocated},
+            {"runtime_objects_after_preview_release", runtime.getAllGameObjects().size()}};
+    }
+    return runtimeObservation;
+}
+
 Json task_observation(const std::filesystem::path &root)
 {
     const auto projectRoot = root / "project";
@@ -204,7 +322,10 @@ Json task_observation(const std::filesystem::path &root)
     const auto token = service.request_scan(context.snapshot(), projectRoot, options);
     if (!token)
         throw std::runtime_error("probe project scan was rejected");
+    if (captureInterrupted != 0)
+        token.cancel();
     service.wait_for_idle();
+    check_capture_stop();
     const auto results = service.take_ready(context.snapshot().generation);
     if (results.size() != 1 || !results.front().error.empty() || results.front().cancelled)
         throw std::runtime_error("probe project scan did not complete cleanly");
@@ -237,6 +358,16 @@ Json process_observation()
         throw std::runtime_error("probe child process could not start");
     while (!completed)
     {
+        if (captureInterrupted != 0)
+        {
+            process.stop();
+            while (!completed)
+            {
+                process.poll();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            check_capture_stop();
+        }
         process.poll();
         if (!completed)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -247,29 +378,218 @@ Json process_observation()
                 {"console_retained_bytes", console.text().size()}, {"console_truncated", console.truncated()}};
 }
 
-Json resource_mode(int cycles, const std::filesystem::path &scratch)
+std::string selected_game_source_identity(const std::filesystem::path &repositoryRoot)
 {
+    const auto root = std::filesystem::canonical(repositoryRoot);
+    platformator_editor::ProjectContext context;
+    context.set_roots(root, root / "assets");
+    platformator_editor::ProjectScanService scans(2, 2);
+    platformator_editor::ProjectScanOptions options;
+    options.recursive = true;
+    options.maxFiles = 50000;
+    options.includeDirectories = true;
+    options.maxDirectories = 20000;
+    options.maxEntries = 100000;
+    options.sourceInputsOnly = true;
+    const auto scan = scans.request_scan(context.snapshot(), root, options);
+    if (!scan)
+        throw std::runtime_error("selected-game source identity scan was rejected");
+    if (captureInterrupted != 0)
+        scan.cancel();
+    scans.wait_for_idle();
+    check_capture_stop();
+    const auto results = scans.take_ready(context.snapshot().generation);
+    if (results.size() != 1 || !results.front().error.empty() || results.front().cancelled ||
+        results.front().truncated || results.front().sourceInputIdentity.empty())
+        throw std::runtime_error("selected-game source identity scan did not complete cleanly");
+    return results.front().sourceInputIdentity;
+}
+
+Json game_pipeline_observation(const std::filesystem::path &repositoryRoot,
+                              const std::string &sourceIdentity, int cycle,
+                              bool buildSelectedGame)
+{
+    const auto projectRoot = std::filesystem::canonical(repositoryRoot);
+    const auto assetRoot = std::filesystem::canonical(projectRoot / "assets");
+    const auto scenePath = std::filesystem::canonical(assetRoot / "scenes" / "default.scene");
+    const auto executable = projectRoot / "bin" / "debug" / "main";
+    std::ifstream sceneStream(scenePath);
+    if (!sceneStream)
+        throw std::runtime_error("selected-game lifecycle scene is unavailable: " + scenePath.string());
+    Json scene;
+    sceneStream >> scene;
+
+    platformator_editor::PipelineRequest request;
+    request.projectRoot = projectRoot;
+    request.assetRoot = assetRoot;
+    request.savedScenePath = scenePath;
+    request.executablePath = executable;
+    request.configureArgv = buildSelectedGame
+        ? std::vector<std::string>{"cmake", "--preset", "debug"}
+        : std::vector<std::string>{"cmake", "-E", "true"};
+    request.buildArgv = buildSelectedGame
+        ? std::vector<std::string>{"cmake", "--build", "--preset", "debug", "--target", "main"}
+        : std::vector<std::string>{"cmake", "-E", "true"};
+    request.runArguments = {"--headless", "--smoke-steps", "1000000"};
+    request.scene = std::move(scene);
+    request.catalogProtocol = "common-runner-v1";
+    request.identity.canonicalProjectPath = projectRoot.string();
+    request.identity.profile = "debug";
+    request.identity.target = "main";
+    request.identity.executablePath = executable.string();
+    request.identity.sourceInputIdentity = sourceIdentity;
+
+    platformator_editor::GamePipeline pipeline;
+    platformator_editor::BehaviorCatalog catalog;
+    const auto started = Clock::now();
+    if (!pipeline.start(std::move(request), catalog, static_cast<std::uint64_t>(cycle + 1)))
+        throw std::runtime_error("selected-game pipeline did not start: " + pipeline.status().message);
+    const auto deadline = Clock::now() + std::chrono::seconds(120);
+    while (pipeline.busy() && pipeline.status().stage != platformator_editor::PipelineStage::Running &&
+           Clock::now() < deadline)
+    {
+        if (captureInterrupted != 0)
+        {
+            pipeline.stop();
+            while (pipeline.busy())
+            {
+                pipeline.poll();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            check_capture_stop();
+        }
+        pipeline.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (pipeline.status().stage != platformator_editor::PipelineStage::Running)
+    {
+        if (pipeline.busy())
+        {
+            pipeline.stop();
+            while (pipeline.busy())
+            {
+                pipeline.poll();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+        throw std::runtime_error("selected-game pipeline failed before Run: " + pipeline.status().message +
+                                 "\n" + pipeline.console().text());
+    }
+    const auto runReachedAt = Clock::now();
+    const auto catalogCurrent = catalog.can_automatic_run();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    pipeline.poll();
+    if (captureInterrupted != 0)
+    {
+        pipeline.stop();
+        while (pipeline.busy())
+        {
+            pipeline.poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        check_capture_stop();
+    }
+    if (!pipeline.busy())
+        throw std::runtime_error("selected-game process exited before the Stop observation");
+    pipeline.stop();
+    while (pipeline.busy())
+    {
+        pipeline.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (pipeline.status().outcome != platformator_editor::PipelineOutcome::Cancelled)
+        throw std::runtime_error("selected-game Stop did not cancel the owned pipeline");
+    const auto stoppedAt = Clock::now();
+    std::error_code error;
+    const auto executableBytes = std::filesystem::file_size(executable, error);
+    if (error)
+        throw std::runtime_error("selected-game executable identity is unavailable after build");
+    const auto executableModified = std::filesystem::last_write_time(executable, error);
+    return Json{{"cycle", cycle}, {"target", "main"}, {"profile", "debug"},
+                {"project_root", projectRoot.string()}, {"asset_root", assetRoot.string()},
+                {"scene_path", scenePath.string()}, {"executable_path", executable.string()},
+                {"source_identity", sourceIdentity},
+                {"executable_identity", std::to_string(executableBytes) + ":" +
+                     (error ? std::string("unknown") :
+                      std::to_string(executableModified.time_since_epoch().count()))},
+                {"catalog_verified", catalogCurrent},
+                {"build_mode", buildSelectedGame ? "warmup_build" : "reuse_existing_binary"},
+                {"pipeline_to_run_ns",
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(runReachedAt - started).count()},
+                {"stop_reap_ns",
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(stoppedAt - runReachedAt).count()},
+                {"pipeline_cancelled", pipeline.status().outcome == platformator_editor::PipelineOutcome::Cancelled}};
+}
+
+Json resource_mode(int cycles, const std::filesystem::path &scratch,
+                   const std::filesystem::path &progressPath)
+{
+    if (SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1) != 0)
+        throw std::runtime_error("could not select SDL's dummy video driver for resource observations");
+    if (SDL_setenv_unsafe("SDL_AUDIODRIVER", "dummy", 1) != 0)
+        throw std::runtime_error("could not select SDL's dummy audio driver for resource observations");
+    if (SDL_setenv_unsafe("SDL_RENDER_DRIVER", "software", 1) != 0)
+        throw std::runtime_error("could not select SDL's software renderer for resource observations");
+    const auto repositoryRoot = std::filesystem::current_path();
+    const auto sourceIdentity = selected_game_source_identity(repositoryRoot);
+    check_capture_stop();
+    std::ofstream progress(progressPath, std::ios::binary | std::ios::trunc);
+    if (!progress)
+        throw std::runtime_error("could not open the bounded resource progress file");
+    progress << Json{{"schema_version", 1}, {"mode", "resources-progress"},
+                     {"warmup_cycles", 1}, {"cycles", cycles}}.dump() << '\n';
+    progress.flush();
+    if (!progress)
+        throw std::runtime_error("could not write the resource progress header");
     Json rows = Json::array();
+    for (const auto &[name, population, deep] : {
+             std::tuple<std::string_view, std::size_t, bool>{"tiny", 10, false},
+             {"objects_1000", 1000, false}, {"objects_10000", 10000, false},
+             {"deep_parent_128", 128, true}})
+    {
+        check_capture_stop();
+        runtime_workload_observation(std::string(name), population, deep, scratch / "warmup");
+    }
+    check_capture_stop();
+    game_pipeline_observation(repositoryRoot, sourceIdentity, -1, true);
+    check_capture_stop();
+    task_observation(scratch / "warmup");
+    check_capture_stop();
+    process_observation();
     for (int cycle = 0; cycle < cycles; ++cycle)
     {
         allocationCalls.store(0, std::memory_order_relaxed);
         allocatedBytes.store(0, std::memory_order_relaxed);
         countAllocations.store(true, std::memory_order_release);
         Json workloads = Json::array();
-        workloads.push_back(workload_observation("tiny", 10, false));
-        workloads.push_back(workload_observation("objects_1000", 1000, false));
-        workloads.push_back(workload_observation("objects_10000", 10000, false));
-        workloads.push_back(workload_observation("deep_parent_128", 128, true));
+        const auto add_workload = [&](std::string name, std::size_t population, bool deep) {
+            check_capture_stop();
+            auto observation = workload_observation(name, population, deep);
+            observation["runtime"] = runtime_workload_observation(name, population, deep,
+                scratch / ("cycle-" + std::to_string(cycle)));
+            workloads.push_back(std::move(observation));
+        };
+        add_workload("tiny", 10, false);
+        add_workload("objects_1000", 1000, false);
+        add_workload("objects_10000", 10000, false);
+        add_workload("deep_parent_128", 128, true);
         const auto tasks = task_observation(scratch / ("cycle-" + std::to_string(cycle)));
         const auto process = process_observation();
+        const auto game = game_pipeline_observation(repositoryRoot, sourceIdentity, cycle, false);
         countAllocations.store(false, std::memory_order_release);
-        rows.push_back(Json{{"cycle", cycle}, {"workloads", std::move(workloads)}, {"task", tasks},
-                            {"process", process},
-                            {"allocation", {{"calls", allocationCalls.load(std::memory_order_relaxed)},
-                                             {"bytes", allocatedBytes.load(std::memory_order_relaxed)}}},
-                            {"resident_kib", resident_kib()}});
+        Json row{{"cycle", cycle}, {"workloads", std::move(workloads)}, {"task", tasks},
+                 {"process", process}, {"game_pipeline", game},
+                 {"allocation", {{"calls", allocationCalls.load(std::memory_order_relaxed)},
+                                  {"bytes", allocatedBytes.load(std::memory_order_relaxed)}}},
+                 {"resident_kib", resident_kib()}};
+        rows.push_back(row);
+        progress << row.dump() << '\n';
+        progress.flush();
+        if (!progress)
+            throw std::runtime_error("could not persist a completed resource lifecycle cycle");
     }
-    return Json{{"schema_version", 1}, {"mode", "resources"}, {"cycles", cycles}, {"observations", rows}};
+    return Json{{"schema_version", 1}, {"mode", "resources"}, {"warmup_cycles", 1},
+                {"cycles", cycles}, {"observations", rows}};
 }
 
 struct TimingWorkload
@@ -372,6 +692,8 @@ void operator delete[](void *memory, std::size_t, std::align_val_t) noexcept { s
 
 int main(int argc, char **argv)
 {
+    std::signal(SIGINT, request_capture_stop);
+    std::signal(SIGTERM, request_capture_stop);
     try
     {
         if (argc == 2 && std::string_view(argv[1]) == "--print-build-identity")
@@ -383,13 +705,14 @@ int main(int argc, char **argv)
             return 0;
         }
         if (argc < 3 || (std::string_view(argv[1]) != "resources" && std::string_view(argv[1]) != "timing"))
-            throw std::invalid_argument("usage: platformator_editor_probe resources --cycles N --scratch PATH | timing --repetitions N --warmup N --frames N");
+            throw std::invalid_argument("usage: platformator_editor_probe resources --cycles N --scratch PATH --progress PATH | timing --repetitions N --warmup N --frames N");
         const std::string mode = argv[1];
         int cycles = 20;
         int repetitions = 3;
         int warmupFrames = 5;
         int measuredFrames = 30;
         std::filesystem::path scratch = std::filesystem::temp_directory_path() / "platformator-editor-probe";
+        std::filesystem::path progress;
         for (int index = 2; index < argc; ++index)
         {
             const std::string_view option = argv[index];
@@ -401,9 +724,12 @@ int main(int argc, char **argv)
             else if (option == "--warmup") warmupFrames = positive_integer(value, "--warmup");
             else if (option == "--frames") measuredFrames = positive_integer(value, "--frames");
             else if (option == "--scratch") scratch = std::filesystem::path(value);
+            else if (option == "--progress") progress = std::filesystem::path(value);
             else throw std::invalid_argument("unknown option: " + std::string(option));
         }
-        Json result = mode == "resources" ? resource_mode(cycles, scratch)
+        if (mode == "resources" && progress.empty())
+            throw std::invalid_argument("resources mode requires a guarded --progress output path");
+        Json result = mode == "resources" ? resource_mode(cycles, scratch, progress)
                                           : timing_mode(repetitions, warmupFrames, measuredFrames);
         result["identity"] = Json{{"probe", "platformator-editor-probe"}, {"schema_version", 1},
                                   {"configuration", PLATFORMATOR_EDITOR_PROBE_CONFIGURATION},

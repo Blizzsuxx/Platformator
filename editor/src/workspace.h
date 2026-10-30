@@ -52,6 +52,9 @@ class DocumentWorkspace
                                         UnsavedDecision decision);
     WorkspaceActionResult save(bool allowOverwrite = false);
     WorkspaceActionResult save_as(const std::filesystem::path &path, bool allowOverwrite = false);
+    WorkspaceActionResult set_project_roots(const std::filesystem::path &projectRoot,
+                                            const std::filesystem::path &assetRoot,
+                                            std::uint64_t projectGeneration);
 
   private:
     WorkspaceActionResult resolve_unsaved(UnsavedDecision decision);

@@ -19,6 +19,15 @@ struct ProjectSnapshot
     std::uint64_t generation = 0;
 };
 
+struct ProjectRootCandidate
+{
+    std::filesystem::path projectRoot;
+    std::filesystem::path assetRoot;
+};
+
+// Project-folder selection accepts only the repository's existing conventions.
+ProjectRootCandidate validate_project_folder(const std::filesystem::path &projectRoot);
+
 class ProjectContext
 {
   public:
@@ -85,6 +94,8 @@ class ProjectScanService
                                   ProjectScanOptions options = {});
     std::vector<ProjectScanResult> take_ready(std::uint64_t currentProjectGeneration);
     void cancel_all() noexcept;
+    // Cancel and join current work, clear old results, and leave the service reusable.
+    void cancel_pending_and_wait();
     // Use at shutdown or in tests, never to wait during an interactive frame.
     void wait_for_idle();
 

@@ -45,6 +45,7 @@ std::map<std::string, bool> default_panel_visibility();
 bool is_panel_visible(const WorkspacePreferences &preferences, std::string_view stableId);
 void reset_workspace_layout(WorkspacePreferences &preferences);
 bool layout_needs_recovery(std::string_view layout, int displayWidth, int displayHeight);
+std::string migrate_scene_window_identity(std::string_view layout);
 
 struct ProjectPreferencePaths
 {

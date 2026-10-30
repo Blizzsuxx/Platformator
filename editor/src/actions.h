@@ -2,6 +2,7 @@
 
 #include <span>
 #include <string_view>
+#include <optional>
 
 namespace platformator_editor
 {
@@ -41,6 +42,15 @@ struct EditorInputCapture
     bool sceneFocused = false;
 };
 
+enum class EditorKey
+{
+    F,
+    F5,
+    F6
+};
+
 std::span<const EditorActionDescriptor> editor_action_descriptors() noexcept;
 bool editor_action_allowed(EditorAction action, const EditorInputCapture &capture) noexcept;
+std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool control,
+                                               const EditorInputCapture &capture) noexcept;
 } // namespace platformator_editor

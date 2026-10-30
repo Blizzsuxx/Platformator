@@ -347,6 +347,47 @@ bool layout_needs_recovery(std::string_view layout, int displayWidth, int displa
     return !hasDockspaceGeometry || !checkWindow();
 }
 
+std::string migrate_scene_window_identity(std::string_view layout)
+{
+    constexpr std::string_view legacySection = "[Window][Scene]";
+    constexpr std::string_view stableSection = "[Window][panel.scene]";
+    const bool hasLegacy = layout.find(legacySection) != std::string_view::npos;
+    if (!hasLegacy)
+        return std::string(layout);
+    const bool hasStable = layout.find(stableSection) != std::string_view::npos;
+
+    std::string migrated;
+    migrated.reserve(layout.size());
+    bool skippingLegacy = false;
+    std::size_t offset = 0;
+    while (offset < layout.size())
+    {
+        const auto end = layout.find('\n', offset);
+        auto line = layout.substr(offset, end == std::string_view::npos ? layout.size() - offset
+                                                                        : end - offset);
+        if (!line.empty() && line.back() == '\r')
+            line.remove_suffix(1);
+        if (line == legacySection)
+        {
+            skippingLegacy = hasStable;
+            if (!hasStable)
+                migrated.append(stableSection);
+        }
+        else if (line.starts_with("["))
+        {
+            skippingLegacy = false;
+            migrated.append(line);
+        }
+        else if (!skippingLegacy)
+            migrated.append(line);
+
+        if (end != std::string_view::npos)
+            migrated.push_back('\n');
+        offset = end == std::string_view::npos ? layout.size() : end + 1;
+    }
+    return migrated;
+}
+
 ProjectPreferencePaths make_project_preference_paths(const std::filesystem::path &preferencesRoot,
                                                       const std::filesystem::path &projectRoot)
 {

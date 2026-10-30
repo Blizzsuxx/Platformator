@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <unordered_set>
@@ -150,20 +151,6 @@ Eigen::Vector2f accumulated_translation(const DocumentSession &document, int obj
     return result;
 }
 
-bool is_descendant_or_self(const DocumentSession &document, int objectId, int ancestorId)
-{
-    int current = objectId;
-    while (true)
-    {
-        if (current == ancestorId)
-            return true;
-        const auto parent = document.indexes.parentById.find(current);
-        if (parent == document.indexes.parentById.end() || !parent->second)
-            return false;
-        current = *parent->second;
-    }
-}
-
 class RendererState
 {
   public:
@@ -246,6 +233,9 @@ EditorPreview::~EditorPreview()
 void EditorPreview::reconcile(const DocumentSession &document, bool structureChanged,
                              const std::vector<int> &changedObjectIds)
 {
+#ifndef NDEBUG
+    lastReconcileStats_ = {};
+#endif
     if (runtime_ == nullptr)
         return;
     const bool rootChanged = assetRoot_ != document.assetRoot;
@@ -263,23 +253,87 @@ void EditorPreview::reconcile(const DocumentSession &document, bool structureCha
     if (changedObjectIds.empty())
         return;
 
-    for (const auto &[documentId, location] : document.indexes.objectsById)
+    std::vector<int> changedRoots;
+    changedRoots.reserve(changedObjectIds.size());
+    std::unordered_set<int> changedIds;
+    changedIds.reserve(changedObjectIds.size());
+    for (const int objectId : changedObjectIds)
     {
-        (void)location;
-        if (std::any_of(changedObjectIds.begin(), changedObjectIds.end(), [&](int changedId) {
-                return is_descendant_or_self(document, documentId, changedId);
-            }))
+        if (document.indexes.objectsById.contains(objectId) && changedIds.insert(objectId).second)
+            changedRoots.push_back(objectId);
+    }
+
+    for (const int rootId : changedRoots)
+    {
+        bool coveredByChangedAncestor = false;
+        const auto indexedParent = document.indexes.parentById.find(rootId);
+        std::optional<int> parentId = indexedParent == document.indexes.parentById.end()
+                                          ? std::nullopt : indexedParent->second;
+        while (parentId)
         {
-            if (const auto proxy = proxies_.find(documentId); proxy != proxies_.end())
+            if (changedIds.contains(*parentId))
             {
-                const auto objectLocation = document.indexes.objectsById.find(documentId);
-                if (objectLocation != document.indexes.objectsById.end())
-                {
-                    const Json *object = resolve_object(document.root, objectLocation->second);
-                    if (object != nullptr)
-                        update_proxy(document, documentId, *object);
-                }
+                coveredByChangedAncestor = true;
+                break;
             }
+            const auto nextParent = document.indexes.parentById.find(*parentId);
+            parentId = nextParent == document.indexes.parentById.end()
+                           ? std::nullopt : nextParent->second;
+        }
+        if (coveredByChangedAncestor)
+            continue;
+
+        const auto rootLocation = document.indexes.objectsById.find(rootId);
+        if (rootLocation == document.indexes.objectsById.end())
+            continue;
+        const Json *rootObject = resolve_object(document.root, rootLocation->second);
+        if (rootObject == nullptr)
+            continue;
+
+        float inheritedX = 0.0f;
+        float inheritedY = 0.0f;
+        const auto rootParent = document.indexes.parentById.find(rootId);
+        if (rootParent != document.indexes.parentById.end() && rootParent->second)
+        {
+            const Eigen::Vector2f parentWorld = accumulated_translation(document, *rootParent->second);
+            inheritedX = parentWorld.x();
+            inheritedY = parentWorld.y();
+        }
+        struct PendingObject
+        {
+            const Json *record;
+            float parentX;
+            float parentY;
+        };
+        std::vector<PendingObject> pending;
+        pending.push_back({rootObject, inheritedX, inheritedY});
+        while (!pending.empty())
+        {
+            const PendingObject current = pending.back();
+            pending.pop_back();
+            if (current.record == nullptr || !current.record->is_object())
+                continue;
+
+            const Json &object = *current.record;
+            const int objectId = object.value("id", -1);
+            const float worldX = current.parentX + nested_number(object, "position", "x", 0.0f);
+            const float worldY = current.parentY + nested_number(object, "position", "y", 0.0f);
+#ifndef NDEBUG
+            ++lastReconcileStats_.visitedObjects;
+#endif
+            if (proxies_.contains(objectId))
+            {
+                update_proxy(document, objectId, object, worldX, worldY);
+#ifndef NDEBUG
+                ++lastReconcileStats_.updatedProxies;
+#endif
+            }
+
+            const auto children = object.find("children");
+            if (children == object.end() || !children->is_array())
+                continue;
+            for (std::size_t index = children->size(); index > 0; --index)
+                pending.push_back({&(*children)[index - 1], worldX, worldY});
         }
     }
 }
@@ -331,6 +385,13 @@ void EditorPreview::rebuild(const DocumentSession &document)
 
 void EditorPreview::update_proxy(const DocumentSession &document, int documentId, const Json &objectData)
 {
+    const Eigen::Vector2f world = accumulated_translation(document, documentId);
+    update_proxy(document, documentId, objectData, world.x(), world.y());
+}
+
+void EditorPreview::update_proxy(const DocumentSession &document, int documentId, const Json &objectData,
+                                 float worldX, float worldY)
+{
     const Json *spriteData = component_of_type(objectData, 6);
     if (spriteData == nullptr)
     {
@@ -348,22 +409,19 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     const Json animatorData = component_of_type(objectData, 0) == nullptr
                                   ? Json::object()
                                   : *component_of_type(objectData, 0);
-    if (proxy.hasCachedDocumentState && proxy.cachedObject == objectData &&
-        proxy.cachedSprite == *spriteData && proxy.cachedAnimator == animatorData)
-        return;
+    const bool documentStateUnchanged = proxy.hasCachedDocumentState && proxy.cachedObject == objectData &&
+                                        proxy.cachedSprite == *spriteData &&
+                                        proxy.cachedAnimator == animatorData;
 
     proxy.info.documentId = documentId;
-    const Eigen::Vector2f world = accumulated_translation(document, documentId);
-    proxy.info.worldX = world.x();
-    proxy.info.worldY = world.y();
+    proxy.info.worldX = worldX;
+    proxy.info.worldY = worldY;
     proxy.info.localScaleX = nested_number(objectData, "scale", "x", 1.0f);
     proxy.info.localScaleY = nested_number(objectData, "scale", "y", 1.0f);
     proxy.info.rotationDegrees = finite_number(objectData, "rotation", 0.0f) * 180.0f /
                                  std::numbers::pi_v<float>;
     proxy.info.active = boolean_value(objectData, "active", true);
     proxy.info.hasSprite = true;
-    proxy.info.assetError.clear();
-    proxy.info.textureAvailable = false;
 
     if (proxy.object == nullptr)
         proxy.object = runtime_->createGameObject();
@@ -383,7 +441,13 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     proxy.object->setActive(proxy.info.active);
     proxy.object->setScale(Eigen::Vector2f(proxy.info.localScaleX, proxy.info.localScaleY));
     proxy.object->setRotation(finite_number(objectData, "rotation", 0.0f));
-    platformator_editor_detail::EditorPreviewAccess::publish_proxy_position(*proxy.object, world.x(), world.y());
+    platformator_editor_detail::EditorPreviewAccess::publish_proxy_position(*proxy.object, worldX, worldY);
+
+    if (documentStateUnchanged)
+        return;
+
+    proxy.info.assetError.clear();
+    proxy.info.textureAvailable = false;
 
     const std::string spritePath = string_value(*spriteData, "textureFilePath");
     const std::string animationPath = string_value(animatorData, "animationClipFilePath");
@@ -588,9 +652,11 @@ bool EditorPreview::render(float cameraX, float cameraY, float worldWidth, float
     Camera *camera = runtime_ != nullptr ? runtime_->getMainCamera() : nullptr;
     if (camera == nullptr)
         camera = &fallbackCamera;
-    // EFFICIENCY: one ordered O(renderable proxies) submit loop keeps preview
-    // cost proportional to visible authored candidates and avoids running the
-    // engine's simulation, scene serializers, or the main-camera culling cache.
+    // EFFICIENCY: submitting O(renderable proxies) every Scene frame preserves
+    // document draw order and avoids coupling this nondefault target to the
+    // main-camera culling cache. Keep the linear pass until matched mostly-offscreen
+    // measurements show meaningful CPU cost; then evaluate a view-aware candidate
+    // index with correctness checks for overlap, parenting, resize, and asset changes.
     for (const int documentId : orderedDocumentIds_)
     {
         const auto proxy = proxies_.find(documentId);
@@ -625,6 +691,34 @@ const PreviewObjectInfo *EditorPreview::object_info(int documentId) const noexce
 }
 
 const std::string &EditorPreview::last_error() const noexcept { return lastError_; }
+
+PreviewResourceCounts EditorPreview::resource_counts() const
+{
+    PreviewResourceCounts counts;
+    counts.proxies = proxies_.size();
+    counts.renderTargetAllocated = target_ != nullptr;
+    std::unordered_set<TextureWrapper *> textures;
+    for (const auto &[id, proxy] : proxies_)
+    {
+        (void)id;
+        if (proxy.sprite == nullptr || !proxy.info.textureAvailable)
+            continue;
+        ++counts.texturedProxies;
+        if (auto *texture = proxy.sprite->getTextureWrapper())
+            textures.insert(texture);
+    }
+    counts.uniqueTextureWrappers = textures.size();
+    for (const auto *texture : textures)
+        counts.textureWrapperReferences += texture->getReferenceCount();
+    return counts;
+}
+
+#ifndef NDEBUG
+PreviewReconcileStats EditorPreview::last_reconcile_stats() const noexcept
+{
+    return lastReconcileStats_;
+}
+#endif
 
 void EditorPreview::release() noexcept
 {

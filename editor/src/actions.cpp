@@ -39,4 +39,27 @@ bool editor_action_allowed(EditorAction action, const EditorInputCapture &captur
             return !descriptor.sceneOnly || capture.sceneFocused;
     return false;
 }
+
+std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool control,
+                                               const EditorInputCapture &capture) noexcept
+{
+    if (!capture.appFocused || capture.textInput || capture.modalOpen || capture.gestureActive)
+        return std::nullopt;
+    switch (key)
+    {
+    case EditorKey::F:
+        if (!capture.sceneFocused || control)
+            return std::nullopt;
+        return shift ? EditorAction::FrameSelected : EditorAction::FrameAll;
+    case EditorKey::F5:
+        if (control)
+            return std::nullopt;
+        return shift ? EditorAction::Stop : EditorAction::BuildAndRun;
+    case EditorKey::F6:
+        if (shift || control)
+            return std::nullopt;
+        return EditorAction::Validate;
+    }
+    return std::nullopt;
+}
 } // namespace platformator_editor

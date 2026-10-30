@@ -279,4 +279,50 @@ After successful T088, continued the same journal with `python3 benchmark/captur
 
 The 10,000-object workload has a clear long tail: its p95 is about 2.6 times its median and its maximum about 3.0 times its median. The other shapes also have occasional outliers, though their absolute costs are lower. These are measurements of the editor document/selection/command model only, not a rendered frame, full UI event, mouse drag, idle loop or end-to-end user interaction. The timing process does not separately record cold initialization; its samples follow the stated warmups. No legacy GUI baseline is available because PySide is unavailable, and no matched render binaries/backend were frozen, so neither a legacy speedup nor renderer comparison is claimed. This model path is measured synchronously; no worker-count comparison was run and no parallel speedup is claimed.
 
-The completed shared session accounts for 46.08 seconds and 51,352 bytes against the original 600-second/50-MiB budget. Both phases completed without failure or retry. Timing samples report the measured operation boundary; cold application startup, idle cost and per-interaction memory are not measured by this probe. Resource memory/allocation observations are reported under T088 and are not substituted for those missing measurements. No source, dependency, build-configuration or harness changes were made after capture, so this analysis does not invalidate the accepted correctness or pilot identities. Missing legacy/render/idle/desktop evidence remains explicitly limited as described above.
+The completed shared session accounts for 46.08 seconds and 51,352 bytes against the original 600-second/50-MiB budget. Both phases completed without failure or retry. Timing samples report the measured operation boundary; cold application startup, idle cost and per-interaction memory are not measured by this probe. Resource memory/allocation observations are reported under T088 and are not substituted for those missing measurements. At the time of T090 analysis, no source, dependency, build-configuration or harness changes had occurred after capture. T092 and the subsequent convergence work change the candidate source identity; this pilot is now a historical observation and does not certify the converged candidate. Any new capture requires explicit authorization. Missing legacy/render/idle/desktop evidence remains explicitly limited as described above.
+
+## T092: affected-subtree preview reconciliation
+
+Replaced local-change reconciliation's full document-object scan and repeated descendant ancestry checks with traversal rooted at unique changed IDs. Overlapping changed roots are removed by checking their ancestor chain, disjoint roots remain separate, and an explicit stack walks only the affected JSON subtrees. The ancestor transform is resolved once per retained root and carried down the walk. Descendant proxy transforms are published even when the descendant's own cached JSON is unchanged, while unchanged asset state remains cached. Structural/document replacement still uses the full rebuild path. The draw loop remains O(renderable proxies) per Scene frame; its `EFFICIENCY:` comment now states that cost and defers a view-aware index until matched mostly-offscreen measurements justify it.
+
+Debug-only counters and untimed assertions cover a changed leaf, changed ancestor, duplicate/overlapping roots, and disjoint roots. `cmake --build --preset editor-debug --parallel 2 --target platformator_editor_preview_test` succeeded, and `ctest --test-dir bin/editor-debug --output-on-failure -R '^platformator_editor_preview_test$'` passed. The fixture confirms a leaf visits/updates one proxy, the 19-object ancestor subtree updates its 16 sprites, duplicate roots visit once, and two disjoint roots visit only their combined 29 objects/24 sprites despite more than 60 total document objects. No performance capture was run for this correction.
+
+## T093–T101: convergence implementation status
+
+T093 adds project-folder validation using the existing `CMakeLists.txt` and `assets/` convention, active project/asset roots throughout the editor session, a project-context settings action, Save/Discard/Cancel handling, scan cancellation/join, dialog-service invalidation, and safe-frame Runtime/preview/ImGui recreation with restoration on replacement failure. Workspace tests cover root metadata replacement while preserving an edited document and undo history, plus rejection of an unavailable root. Project-scan tests cover cancel/join, clearing old publications, and reuse. The root-switch UI transition, stale native-provider callback, and unsaved Save/Discard/Cancel sequence have not been driven end to end; T093 remains open.
+
+T094 now uses the stable `panel.scene` identity and migrates legacy `[Window][Scene]` preferences without modifying scene data. The startup suite loads the actual seed, renders actual ImGui windows, checks intended dock IDs, reloads the seed as Reset Layout at 150% scale, and verifies the migrated Scene window docks after real frames. T094 is complete.
+
+T095 skips hidden panel submission, balances `Begin`/`End` only for submitted windows, and cancels hidden Scene gestures. Actual-frame checks cover Hierarchy, Scene, Inspector, Behaviors, Project, Console, Run, Validation, and Settings as hidden and reopened windows. T095 is complete.
+
+T096 wires File/Open Scene, Ctrl+O, and the primary toolbar action through the same request; exposes current roots and loaded scene; reports opening status and cancellation; and opens a manual path prompt directly when the native provider fails. A reproduced SDL error showed that filters were passed as globs (`*.scene`) even though SDL expects extension lists; scene/save and asset filters now use valid extension-list patterns, with regression coverage. The manual path popup now closes via both Cancel and Escape using one `CloseCurrentPopup` path; a headless ImGui frame test sends Escape and confirms the popup stack is cleared. The workspace retains its old document on invalid adoption, and service/workspace tests accept a path with spaces and Unicode. Native-provider selection/cancel/failure and the whole menu/toolbar/shortcut/unsaved flow have not been exercised together; T096 remains open.
+
+T097 separates menus from the responsive toolbar and keeps Open Scene, Save, Build, Build and Run, and Stop visible. The actual toolbar component is rendered and bounds-checked at 1280x800, 720x500, and 480x320 at 150% scale; synthetic SDL mouse events activate Open Scene at all three settings. T097 is complete.
+
+T098 routes F/Shift+F framing in the Scene frame and maps Shift+F5 to Stop independently of the normal idle-operation shortcut guard. Dispatcher checks cover Stop, framing, text/modal ownership, focus loss and gestures. The live application operation-state route and physical key delivery have not been driven through a full editor session, so T098 remains open.
+
+T099 has broader actual-frame coverage for seeded docking, visibility, toolbar bounds/activation, and Scene preview composition, in addition to workspace, action, dialog-service and root-model tests. The full production application frame, native dialogs, root replacement decisions, busy-operation cancellation and desktop edit/undo/save/run sequence remain unverified. The host's desktop display and legacy PySide editor are unavailable; T099 remains open.
+
+T100's probe implementation now adopts each workload through `DocumentWorkspace`, builds live preview proxies and an SDL render target through `Runtime`/`EditorPreview`, records unique texture wrappers and their live reference counts, representative edit/undo history, and post-release counts, and drives the selected `main` game through the owned `GamePipeline` to verified Run and Stop. It declares one warmup cycle and checkpoints each of the 20 measured resource cycles to a guarded progress file; the capture driver validates live and released resource counts and preserves partial checkpoints on failure. The historical baseline and journal remain untouched. A separate candidate identity freeze is recorded in `evidence/BASELINE-converged.md` and validates against the current Release probe; no resource capture was started, so T100 remains open pending explicit authorization.
+
+Prepared, identity-matched command for a future authorized resource capture (not executed):
+
+```sh
+python3 benchmark/capture_editor.py --mode resources --cycles 20 \
+  --probe bin/editor-release/platformator_editor_probe \
+  --build-label editor-release --expected-configuration Release \
+  --baseline specs/011-add-imgui-editor/evidence/BASELINE-converged.md \
+  --session specs/011-add-imgui-editor/evidence/editor-pilot-converged.session.json \
+  --max-output-mib 50 --max-seconds 600
+```
+
+T101 remains open. The timing mode still measures document-model edits and does not record cold application startup, warmed idle/full GUI frames, or production selection/edit/drag events. No timing capture was started. Do not infer GUI responsiveness or leak acceptance from the historical model-only observations.
+
+Focused validation for this implementation:
+
+```sh
+cmake --build --preset editor-debug --parallel 2 --target platformator_editor platformator_editor_workspace_test platformator_editor_startup_test
+ctest --test-dir bin/editor-debug --output-on-failure -R '^platformator_editor_(workspace|startup)_test$'
+```
+
+The build succeeded and both focused CTest suites passed (2/2); after adding the wider visibility and toolbar activation assertions, `platformator_editor_startup_test` passed again. No benchmark capture or diagnostic image was produced.

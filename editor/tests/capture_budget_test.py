@@ -35,6 +35,62 @@ class CaptureBudgetContractTest(unittest.TestCase):
         session["session_path"] = str(session_path)
         return session_path, capture_root, session
 
+    def resource_output(self):
+        populations = {
+            "tiny": (10, 10),
+            "objects_1000": (1000, 1000),
+            "objects_10000": (10000, 10000),
+            "deep_parent_128": (128, 1),
+        }
+        observations = []
+        for cycle in range(capture_editor.RESOURCE_CYCLES):
+            workloads = []
+            for name, (objects, textured) in populations.items():
+                workloads.append({
+                    "workload": name,
+                    "objects": objects,
+                    "texture_references": textured,
+                    "history_retained_bytes": 100,
+                    "runtime": {
+                        "objects": objects,
+                        "preview_proxies": textured,
+                        "textured_proxies": textured,
+                        "unique_texture_wrappers": 1,
+                        "texture_wrapper_references": textured,
+                        "video_driver": "dummy",
+                        "renderer_name": "software",
+                        "render_target_allocated": True,
+                        "document_dirty_after_undo": False,
+                        "released_proxies": 0,
+                        "released_texture_wrappers": 0,
+                        "render_target_after_release": False,
+                        "runtime_objects_with_preview": textured,
+                        "runtime_objects_after_preview_release": 0,
+                    },
+                })
+            observations.append({
+                "cycle": cycle,
+                "workloads": workloads,
+                "task": {"files": 32, "completed_tasks": 1},
+                "process": {"output_bytes": 1_200_000, "console_truncated": True,
+                            "console_retained_bytes": 1_048_576},
+                "allocation": {"calls": 1, "bytes": 2},
+                "game_pipeline": {"target": "main", "executable_identity": "123:456",
+                                  "source_identity": "source-identity",
+                                  "build_mode": "reuse_existing_binary",
+                                  "catalog_verified": True, "pipeline_cancelled": True,
+                                  "pipeline_to_run_ns": 1, "stop_reap_ns": 1},
+            })
+        return {"schema_version": 1, "mode": "resources", "warmup_cycles": 1,
+                "cycles": capture_editor.RESOURCE_CYCLES, "observations": observations}
+
+    def test_resource_output_requires_live_runtime_references_and_run_stop(self):
+        output = self.resource_output()
+        capture_editor._validate_resource_output(output)
+        output["observations"][0]["workloads"][0]["runtime"]["released_texture_wrappers"] = 1
+        with self.assertRaises(capture_editor.CaptureError):
+            capture_editor._validate_resource_output(output)
+
     def test_phase_continuation_reuses_same_identity_deadline_and_byte_limit(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -142,8 +198,16 @@ class CaptureBudgetContractTest(unittest.TestCase):
 
     def test_fixed_session_path_rejects_replacement_journals(self):
         with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
             with self.assertRaises(capture_editor.CaptureError):
-                capture_editor.validate_fixed_session_path(Path(temporary), Path(temporary) / "replacement.json")
+                capture_editor.validate_fixed_session_path(root, root / "replacement.json")
+            evidence = root / "specs/011-add-imgui-editor/evidence"
+            evidence.mkdir(parents=True)
+            capture_editor.validate_fixed_session_path(
+                root, evidence / "editor-pilot-converged.session.json")
+            with self.assertRaises(capture_editor.CaptureError):
+                capture_editor.validate_fixed_session_path(
+                    root, evidence / "editor-pilot-converged.json")
 
     def test_nonzero_subprocess_is_retained_and_reported_as_failure(self):
         with tempfile.TemporaryDirectory() as temporary:

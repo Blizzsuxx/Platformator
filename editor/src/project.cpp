@@ -228,6 +228,16 @@ ProjectScanResult perform_scan(const std::filesystem::path &root, ProjectScanOpt
 }
 } // namespace
 
+ProjectRootCandidate validate_project_folder(const std::filesystem::path &projectRoot)
+{
+    auto canonicalProject = canonical_directory(projectRoot, "project root");
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(canonicalProject / "CMakeLists.txt", error) || error)
+        throw std::invalid_argument("project root must contain CMakeLists.txt: " + canonicalProject.string());
+    const auto canonicalAssets = canonical_directory(canonicalProject / "assets", "asset root");
+    return {std::move(canonicalProject), canonicalAssets};
+}
+
 void ProjectContext::set_roots(const std::filesystem::path &projectRoot,
                                const std::filesystem::path &assetRoot)
 {
@@ -372,6 +382,21 @@ void ProjectScanService::cancel_all() noexcept
         if (const auto ticket = weakTicket.lock())
             ticket->cancelled.store(true, std::memory_order_release);
     }
+}
+
+void ProjectScanService::cancel_pending_and_wait()
+{
+    for (const auto &weakTicket : tickets_)
+    {
+        if (const auto ticket = weakTicket.lock())
+            ticket->cancelled.store(true, std::memory_order_release);
+    }
+    tasks_.wait();
+    {
+        std::lock_guard lock(state_->mutex);
+        state_->ready.clear();
+    }
+    tickets_.clear();
 }
 
 void ProjectScanService::wait_for_idle()

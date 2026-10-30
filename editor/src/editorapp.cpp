@@ -11,7 +11,9 @@
 #include "process.h"
 #include "project.h"
 #include "preview.h"
+#include "panelwindow.h"
 #include "style.h"
+#include "toolbar.h"
 #include "validation.h"
 #include "viewport.h"
 #include "workspace.h"
@@ -25,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -348,15 +351,17 @@ int run_editor(int argc, char *argv[])
 
         // Runtime owns SDL and the renderer. The ImGui session is declared after
         // Runtime so its backends/context shut down while those SDL objects live.
-        platformator::Runtime runtime(runtimeOptions);
-        SDL_Window *window = runtime.getWindowHandle();
-        SDL_Renderer *renderer = runtime.getRenderer();
+        auto runtime = std::make_unique<platformator::Runtime>(runtimeOptions);
+        SDL_Window *window = runtime->getWindowHandle();
+        SDL_Renderer *renderer = runtime->getRenderer();
         if (window == nullptr || renderer == nullptr)
             throw std::runtime_error("Runtime did not provide the editor window and renderer");
 
         DocumentWorkspace workspace(options.projectRoot, options.assetRoot);
         ProjectContext projectContext;
         projectContext.set_roots(options.projectRoot, options.assetRoot);
+        std::filesystem::path activeProjectRoot = options.projectRoot;
+        std::filesystem::path activeAssetRoot = options.assetRoot;
         ProjectScanService sourceScans(2);
         ProjectScanToken sourceScan;
         std::uint64_t sourceScanRequest = 0;
@@ -364,7 +369,7 @@ int run_editor(int argc, char *argv[])
         auto request_source_scan = [&] {
             sourceScan.cancel();
             sourceScan = {};
-            sourceScan = sourceScans.request_scan(projectContext.snapshot(), options.projectRoot,
+            sourceScan = sourceScans.request_scan(projectContext.snapshot(), activeProjectRoot,
                 ProjectScanOptions{.recursive = true, .maxFiles = 50000, .maxEntries = 100000,
                                    .sourceInputsOnly = true});
             if (!sourceScan)
@@ -381,15 +386,17 @@ int run_editor(int argc, char *argv[])
         std::string savedLayout;
         std::optional<ProjectPreferencePaths> preferencePaths;
         std::string startupMessage;
+        std::filesystem::path preferenceRootPath;
         if (char *preferenceRoot = SDL_GetPrefPath("Platformator", "Editor"))
         {
             try
             {
-                preferencePaths = make_project_preference_paths(preferenceRoot, options.projectRoot);
+                preferenceRootPath = preferenceRoot;
+                preferencePaths = make_project_preference_paths(preferenceRootPath, options.projectRoot);
                 auto loaded = load_workspace_preferences(preferencePaths->settingsPath,
                                                          preferencePaths->layoutPath, options.projectRoot);
                 preferences = std::move(loaded.preferences);
-                savedLayout = std::move(loaded.layout);
+                savedLayout = migrate_scene_window_identity(loaded.layout);
                 if (!loaded.settingsPresent)
                     apply_known_bundled_run_defaults(preferences, options.projectRoot);
                 if (loaded.recovered)
@@ -430,13 +437,13 @@ int run_editor(int argc, char *argv[])
                 startupMessage = "Scene could not be opened: " + opened.message;
         }
 
-        FileDialogService dialogs(1);
+        auto dialogs = std::make_unique<FileDialogService>(projectContext.snapshot().generation);
         SelectionModel selection;
         EditCommandService editCommands;
         workspace.bind_history(editCommands);
         editCommands.set_selection_provider([&selection] { return selection.current(); });
-        EditorPreview scenePreview(runtime);
-        scenePreview.reconcile(workspace.document(), true);
+        auto scenePreview = std::make_unique<EditorPreview>(*runtime);
+        scenePreview->reconcile(workspace.document(), true);
         SceneViewportPanel scenePanel;
         std::vector<int> previewChangedObjectIds;
         bool previewStructureChanged = false;
@@ -458,7 +465,7 @@ int run_editor(int argc, char *argv[])
         BehaviorCatalog behaviorCatalog;
         BehaviorCatalogQuery catalogQuery;
         CatalogIdentity catalogIdentity;
-        catalogIdentity.canonicalProjectPath = options.projectRoot.string();
+        catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
         catalogIdentity.profile = preferences.run.buildPreset;
         catalogIdentity.target = preferences.run.target;
         catalogIdentity.executablePath = preferences.run.executable;
@@ -467,10 +474,8 @@ int run_editor(int argc, char *argv[])
                                       : CatalogProtocol::Unavailable,
                                   catalogIdentity);
         std::uint64_t catalogQueryGeneration = 1;
-        ImGuiSdlSession imgui(window, renderer);
-        ImGuiIO &io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        io.IniFilename = nullptr;
+        std::unique_ptr<ImGuiSdlSession> imgui;
+        ImGuiIO *io = nullptr;
         const std::string defaultLayout = read_default_layout();
         int logicalWidth = 0;
         int logicalHeight = 0;
@@ -481,16 +486,56 @@ int run_editor(int argc, char *argv[])
                 startupMessage = "Workspace layout was offscreen or invalid; the default layout was restored.";
             savedLayout = defaultLayout;
         }
-        if (!savedLayout.empty())
-            ImGui::LoadIniSettingsFromMemory(savedLayout.data(), savedLayout.size());
         float activeScale = options.uiScaleProvided ? options.uiScale : preferences.userScale;
         if (activeScale < 0.5f || activeScale > 3.0f || !std::isfinite(activeScale))
             activeScale = 1.0f;
         float lastAppliedScale = -1.0f;
 
+        auto initialize_imgui_context = [&] {
+            io = &ImGui::GetIO();
+            io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+            io->IniFilename = nullptr;
+            if (!savedLayout.empty())
+                ImGui::LoadIniSettingsFromMemory(savedLayout.data(), savedLayout.size());
+        };
+        imgui = std::make_unique<ImGuiSdlSession>(window, renderer);
+        initialize_imgui_context();
+        auto rebuild_runtime_context = [&](const std::filesystem::path &assetRoot) {
+            scenePreview.reset();
+            imgui.reset();
+            runtime.reset();
+            window = nullptr;
+            renderer = nullptr;
+            try
+            {
+                RuntimeOptions replacementOptions = runtimeOptions;
+                replacementOptions.assetRoot = assetRoot.string();
+                runtime = std::make_unique<platformator::Runtime>(replacementOptions);
+                window = runtime->getWindowHandle();
+                renderer = runtime->getRenderer();
+                if (window == nullptr || renderer == nullptr)
+                    throw std::runtime_error("Runtime did not provide the editor window and renderer");
+                scenePreview = std::make_unique<EditorPreview>(*runtime);
+                scenePreview->reconcile(workspace.document(), true);
+                imgui = std::make_unique<ImGuiSdlSession>(window, renderer);
+                initialize_imgui_context();
+            }
+            catch (...)
+            {
+                scenePreview.reset();
+                imgui.reset();
+                runtime.reset();
+                window = nullptr;
+                renderer = nullptr;
+                io = nullptr;
+                throw;
+            }
+        };
+
         bool running = true;
         bool closeRequested = false;
         bool showManualPath = false;
+        bool openSceneDialogPending = false;
         AsyncRequestKind manualPathKind = AsyncRequestKind::OpenScene;
         std::array<char, 4096> manualPath{};
         std::string dialogError;
@@ -503,11 +548,14 @@ int run_editor(int argc, char *argv[])
             None,
             NewDocument,
             OpenDocument,
+            ChangeProjectRoots,
             BuildAndRun,
             Exit
         };
         PendingAction pendingAction = PendingAction::None;
         std::optional<std::filesystem::path> pendingOpenPath;
+        std::optional<ProjectRootCandidate> pendingProjectRoots;
+        bool applyProjectRootsAfterFrame = false;
         std::filesystem::path pendingSaveAsPath;
         bool showUnsavedPrompt = false;
         bool showOverwritePrompt = false;
@@ -538,7 +586,7 @@ int run_editor(int argc, char *argv[])
                 statusMessage = "Waiting for the bounded source identity scan to finish.";
                 return false;
             }
-            const auto buildCommands = make_build_commands(options.projectRoot, preferences.run);
+            const auto buildCommands = make_build_commands(activeProjectRoot, preferences.run);
             if (!buildCommands.error.empty())
             {
                 statusMessage = buildCommands.error;
@@ -570,9 +618,9 @@ int run_editor(int argc, char *argv[])
             const auto executable = std::filesystem::path(preferences.run.executable);
             const auto executablePath = executable.is_absolute()
                                            ? executable.lexically_normal()
-                                           : (options.projectRoot / executable).lexically_normal();
+                                           : (activeProjectRoot / executable).lexically_normal();
             PipelineIdentity identity;
-            identity.canonicalProjectPath = options.projectRoot.string();
+            identity.canonicalProjectPath = activeProjectRoot.string();
             identity.profile = preferences.run.buildPreset.empty()
                                    ? (preferences.run.production ? "production" : "debug")
                                    : preferences.run.buildPreset;
@@ -581,8 +629,8 @@ int run_editor(int argc, char *argv[])
             identity.sourceInputIdentity = sourceInputIdentity;
 
             PipelineRequest request;
-            request.projectRoot = options.projectRoot;
-            request.assetRoot = options.assetRoot;
+            request.projectRoot = activeProjectRoot;
+            request.assetRoot = activeAssetRoot;
             request.executablePath = executablePath;
             request.configureArgv = buildCommands.configure;
             request.buildArgv = buildCommands.build;
@@ -669,14 +717,19 @@ int run_editor(int argc, char *argv[])
                 statusMessage = "Scene opened with validation errors; Run is blocked until they are fixed.";
         };
         auto request_save_as = [&] {
-            dialogs.save_scene(window, workspace.document().documentGeneration,
-                               workspace.document().sourcePath.value_or(options.projectRoot));
+            dialogs->save_scene(window, workspace.document().documentGeneration,
+                                workspace.document().sourcePath.value_or(activeProjectRoot));
+        };
+        auto request_open_scene = [&] {
+            openSceneDialogPending = true;
+            statusMessage = "Choose a scene file to open...";
+            dialogs->open_scene(window, workspace.document().documentGeneration, activeProjectRoot);
         };
         AssetBrowseCallback browse_asset = [&](PropertyAddress address, std::string expectedAssetType,
                                                 bool nullable) {
             pendingAssetAssignment = PendingAssetAssignment{std::move(address), expectedAssetType, nullable};
-            dialogs.open_asset(window, workspace.document().documentGeneration, options.assetRoot,
-                               expectedAssetType);
+            dialogs->open_asset(window, workspace.document().documentGeneration, activeAssetRoot,
+                                expectedAssetType);
         };
         auto execute_pending = [&](UnsavedDecision decision) {
             if (decision == UnsavedDecision::Save)
@@ -688,6 +741,21 @@ int run_editor(int argc, char *argv[])
                 result = workspace.new_document(decision);
             else if (pendingAction == PendingAction::OpenDocument)
                 result = workspace.open_document(pendingOpenPath, decision);
+            else if (pendingAction == PendingAction::ChangeProjectRoots)
+            {
+                if (decision == UnsavedDecision::Cancel)
+                    result = {WorkspaceActionStatus::Cancelled, {}};
+                else if (decision == UnsavedDecision::Save && !workspace.document().sourcePath)
+                {
+                    request_save_as();
+                    showUnsavedPrompt = false;
+                    return;
+                }
+                else if (decision == UnsavedDecision::Save)
+                    result = workspace.save();
+                else
+                    result = {WorkspaceActionStatus::Completed, {}};
+            }
             else if (pendingAction == PendingAction::BuildAndRun)
             {
                 if (decision == UnsavedDecision::Cancel)
@@ -719,10 +787,13 @@ int run_editor(int argc, char *argv[])
             if (result.status == WorkspaceActionStatus::Completed)
             {
                 const bool runAfterSave = pendingAction == PendingAction::BuildAndRun;
+                const bool replaceProjectRoots = pendingAction == PendingAction::ChangeProjectRoots;
                 if (pendingAction == PendingAction::Exit)
                     running = false;
                 else if (pendingAction == PendingAction::OpenDocument)
                     finish_successful_adoption();
+                else if (replaceProjectRoots)
+                    applyProjectRootsAfterFrame = true;
                 else
                     validation = workspace.validate();
                 pendingAction = PendingAction::None;
@@ -742,6 +813,7 @@ int run_editor(int argc, char *argv[])
             {
                 pendingAction = PendingAction::None;
                 pendingOpenPath.reset();
+                pendingProjectRoots.reset();
                 showUnsavedPrompt = false;
             }
             else
@@ -762,12 +834,24 @@ int run_editor(int argc, char *argv[])
         };
         auto begin_replacement = [&](PendingAction action, std::optional<std::filesystem::path> path = {}) {
             commit_scene_gesture();
+            if (action != PendingAction::ChangeProjectRoots)
+                pendingProjectRoots.reset();
             pendingAction = action;
             pendingOpenPath = std::move(path);
             if (workspace.dirty())
                 showUnsavedPrompt = true;
             else
                 execute_pending(UnsavedDecision::Discard);
+        };
+        auto request_project_folder = [&] {
+            if (gamePipeline.busy() || catalogQuery.running() || pendingPipelineBuildOnly ||
+                pendingAction != PendingAction::None)
+            {
+                statusMessage = "Stop the active project operation before changing project roots.";
+                return;
+            }
+            dialogs->select_project_folder(window, workspace.document().documentGeneration,
+                                           activeProjectRoot);
         };
         auto save_as_to = [&](const std::filesystem::path &path, bool overwrite) {
             commit_scene_gesture();
@@ -867,6 +951,181 @@ int run_editor(int argc, char *argv[])
                 statusMessage = "Stopping the owned game process.";
             }
         };
+        auto apply_project_root_change = [&] {
+            if (!pendingProjectRoots)
+            {
+                applyProjectRootsAfterFrame = false;
+                statusMessage = "Project folder selection was lost; the current project remains active.";
+                return;
+            }
+            if (gamePipeline.busy() || catalogQuery.running() || pendingPipelineBuildOnly)
+            {
+                applyProjectRootsAfterFrame = false;
+                pendingProjectRoots.reset();
+                statusMessage = "Project roots stayed unchanged because a project operation became active.";
+                return;
+            }
+
+            const ProjectRootCandidate candidate = *pendingProjectRoots;
+            const auto oldSnapshot = projectContext.snapshot();
+            if (candidate.projectRoot == oldSnapshot.projectRoot && candidate.assetRoot == oldSnapshot.assetRoot)
+            {
+                pendingProjectRoots.reset();
+                applyProjectRootsAfterFrame = false;
+                statusMessage = "The selected project folder is already active.";
+                return;
+            }
+
+            WorkspacePreferences oldPreferences = preferences;
+            const auto oldPreferencePaths = preferencePaths;
+            const std::string oldLayout = savedLayout;
+            const float oldActiveScale = activeScale;
+            std::size_t currentLayoutSize = 0;
+            if (const char *currentLayout = ImGui::SaveIniSettingsToMemory(&currentLayoutSize))
+                savedLayout.assign(currentLayout, currentLayoutSize);
+            persist_preferences();
+
+            WorkspacePreferences nextPreferences;
+            nextPreferences.projectKey = candidate.projectRoot.string();
+            std::string nextLayout;
+            std::optional<ProjectPreferencePaths> nextPreferencePaths;
+            std::string preferenceMessage;
+            try
+            {
+                if (!preferenceRootPath.empty())
+                {
+                    nextPreferencePaths = make_project_preference_paths(preferenceRootPath,
+                                                                         candidate.projectRoot);
+                    auto loaded = load_workspace_preferences(nextPreferencePaths->settingsPath,
+                                                              nextPreferencePaths->layoutPath,
+                                                              candidate.projectRoot);
+                    nextPreferences = std::move(loaded.preferences);
+                    nextLayout = migrate_scene_window_identity(loaded.layout);
+                    if (!loaded.settingsPresent)
+                        apply_known_bundled_run_defaults(nextPreferences, candidate.projectRoot);
+                    if (loaded.recovered)
+                        preferenceMessage = loaded.message;
+                }
+                auto panelVisibility = default_panel_visibility();
+                for (const auto &[stableId, visible] : nextPreferences.panelVisibility)
+                    panelVisibility[stableId] = visible;
+                nextPreferences.panelVisibility = std::move(panelVisibility);
+            }
+            catch (const std::exception &error)
+            {
+                nextPreferences = WorkspacePreferences{};
+                nextPreferences.projectKey = candidate.projectRoot.string();
+                nextPreferences.panelVisibility = default_panel_visibility();
+                nextLayout.clear();
+                nextPreferencePaths.reset();
+                preferenceMessage = std::string("New project preferences were reset: ") + error.what();
+            }
+
+            sourceScan.cancel();
+            sourceScan = {};
+            sourceScans.cancel_pending_and_wait();
+            assetScans.cancel_pending_and_wait();
+            projectPanel.refresh();
+            dialogs->shutdown();
+            pendingAssetAssignment.reset();
+            cancel_scene_gesture();
+            behaviorCatalog.invalidate("project context changed");
+            sourceInputIdentity.clear();
+            sourceScanRequest = 0;
+
+            try
+            {
+                projectContext.set_roots(candidate.projectRoot, candidate.assetRoot);
+                const auto changed = workspace.set_project_roots(candidate.projectRoot,
+                                                                  candidate.assetRoot,
+                                                                  projectContext.snapshot().generation);
+                if (!changed)
+                    throw std::runtime_error(changed.message);
+                activeProjectRoot = projectContext.snapshot().projectRoot;
+                activeAssetRoot = projectContext.snapshot().assetRoot;
+                preferences = std::move(nextPreferences);
+                preferencePaths = std::move(nextPreferencePaths);
+                savedLayout = std::move(nextLayout);
+                int displayWidth = 0;
+                int displayHeight = 0;
+                SDL_GetWindowSize(window, &displayWidth, &displayHeight);
+                if (layout_needs_recovery(savedLayout, displayWidth, displayHeight))
+                    savedLayout = defaultLayout;
+                activeScale = options.uiScaleProvided ? options.uiScale : preferences.userScale;
+                if (activeScale < 0.5f || activeScale > 3.0f || !std::isfinite(activeScale))
+                    activeScale = 1.0f;
+                lastAppliedScale = -1.0f;
+
+                dialogs = std::make_unique<FileDialogService>(projectContext.snapshot().generation);
+                rebuild_runtime_context(activeAssetRoot);
+                catalogIdentity = CatalogIdentity{};
+                catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
+                catalogIdentity.profile = preferences.run.buildPreset;
+                catalogIdentity.target = preferences.run.target;
+                catalogIdentity.executablePath = preferences.run.executable;
+                behaviorCatalog.configure(preferences.run.catalogProtocol == "common-runner-v1"
+                                              ? CatalogProtocol::CommonRunnerV1
+                                              : CatalogProtocol::Unavailable,
+                                          catalogIdentity);
+                catalogQueryGeneration++;
+                nextSourceScan = std::chrono::steady_clock::now() + sourceScanInterval;
+                request_source_scan();
+                if (workspace.document().sourcePath)
+                    record_adopted_scene(preferences, *workspace.document().sourcePath);
+                pendingProjectRoots.reset();
+                applyProjectRootsAfterFrame = false;
+                statusMessage = preferenceMessage.empty()
+                                    ? "Project and asset roots changed; document and undo history were preserved."
+                                    : preferenceMessage;
+                persist_preferences();
+            }
+            catch (const std::exception &error)
+            {
+                const std::string replacementError = error.what();
+                try
+                {
+                    if (projectContext.snapshot().projectRoot != oldSnapshot.projectRoot ||
+                        projectContext.snapshot().assetRoot != oldSnapshot.assetRoot)
+                    {
+                        projectContext.set_roots(oldSnapshot.projectRoot, oldSnapshot.assetRoot);
+                        const auto restored = workspace.set_project_roots(oldSnapshot.projectRoot,
+                                                                          oldSnapshot.assetRoot,
+                                                                          projectContext.snapshot().generation);
+                        if (!restored)
+                            throw std::runtime_error(restored.message);
+                    }
+                    activeProjectRoot = oldSnapshot.projectRoot;
+                    activeAssetRoot = oldSnapshot.assetRoot;
+                    preferences = std::move(oldPreferences);
+                    preferencePaths = oldPreferencePaths;
+                    savedLayout = oldLayout;
+                    activeScale = oldActiveScale;
+                    lastAppliedScale = -1.0f;
+                    dialogs = std::make_unique<FileDialogService>(projectContext.snapshot().generation);
+                    rebuild_runtime_context(activeAssetRoot);
+                    catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
+                    catalogIdentity.profile = preferences.run.buildPreset;
+                    catalogIdentity.target = preferences.run.target;
+                    catalogIdentity.executablePath = preferences.run.executable;
+                    behaviorCatalog.configure(preferences.run.catalogProtocol == "common-runner-v1"
+                                                  ? CatalogProtocol::CommonRunnerV1
+                                                  : CatalogProtocol::Unavailable,
+                                              catalogIdentity);
+                    nextSourceScan = std::chrono::steady_clock::now() + sourceScanInterval;
+                    request_source_scan();
+                    statusMessage = "Project change failed; the previous project was restored: " +
+                                    replacementError;
+                }
+                catch (const std::exception &restoreError)
+                {
+                    throw std::runtime_error("project replacement failed (" + replacementError +
+                                             ") and the previous Runtime could not be restored (" +
+                                             restoreError.what() + ")");
+                }
+                pendingProjectRoots.reset();
+                applyProjectRootsAfterFrame = false;
+            }
+        };
 
         while (running)
         {
@@ -944,8 +1203,8 @@ int run_editor(int argc, char *argv[])
                 const auto executable = std::filesystem::path(preferences.run.executable);
                 const auto selectedExecutable = executable.empty()
                     ? std::filesystem::path{}
-                    : (executable.is_absolute() ? executable : options.projectRoot / executable);
-                catalogIdentity.canonicalProjectPath = options.projectRoot.string();
+                    : (executable.is_absolute() ? executable : activeProjectRoot / executable);
+                catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
                 catalogIdentity.profile = preferences.run.buildPreset.empty()
                     ? (preferences.run.production ? "production" : "debug")
                     : preferences.run.buildPreset;
@@ -988,8 +1247,17 @@ int run_editor(int argc, char *argv[])
             if (!running)
                 break;
 
-            for (const auto &result : dialogs.take_ready(workspace.document().documentGeneration))
+            for (const auto &result : dialogs->take_ready(workspace.document().documentGeneration))
             {
+                if (result.identity.kind == AsyncRequestKind::OpenScene)
+                {
+                    openSceneDialogPending = false;
+                    if (result.outcome == AsyncRequestOutcome::Cancelled)
+                        statusMessage = "Open Scene was cancelled; the current scene is unchanged.";
+                }
+                if (result.identity.kind == AsyncRequestKind::SelectFolder &&
+                    result.outcome == AsyncRequestOutcome::Cancelled)
+                    statusMessage = "Project folder selection was cancelled; current roots are unchanged.";
                 if (result.identity.kind == AsyncRequestKind::OpenAsset &&
                     result.outcome == AsyncRequestOutcome::Cancelled)
                     pendingAssetAssignment.reset();
@@ -1013,6 +1281,19 @@ int run_editor(int argc, char *argv[])
                     continue;
                 if (result.identity.kind == AsyncRequestKind::OpenScene)
                     begin_replacement(PendingAction::OpenDocument, result.selectedPath);
+                else if (result.identity.kind == AsyncRequestKind::SelectFolder)
+                {
+                    try
+                    {
+                        pendingProjectRoots = validate_project_folder(result.selectedPath);
+                        begin_replacement(PendingAction::ChangeProjectRoots);
+                    }
+                    catch (const std::exception &error)
+                    {
+                        pendingProjectRoots.reset();
+                        statusMessage = std::string("Project folder was not adopted: ") + error.what();
+                    }
+                }
                 else if (result.identity.kind == AsyncRequestKind::SaveScene)
                     save_as_to(result.selectedPath, false);
                 else if (result.identity.kind == AsyncRequestKind::OpenAsset && pendingAssetAssignment)
@@ -1020,7 +1301,7 @@ int run_editor(int argc, char *argv[])
                     auto assignment = std::move(*pendingAssetAssignment);
                     pendingAssetAssignment.reset();
                     std::error_code rootError;
-                    const auto assetRoot = std::filesystem::canonical(options.assetRoot, rootError);
+                    const auto assetRoot = std::filesystem::canonical(activeAssetRoot, rootError);
                     std::error_code assetError;
                     const auto selected = std::filesystem::canonical(result.selectedPath, assetError);
                     const auto relative = selected.lexically_relative(assetRoot);
@@ -1052,7 +1333,7 @@ int run_editor(int argc, char *argv[])
                 previewStructureChanged = true;
                 previewDocumentGeneration = currentDocument.documentGeneration;
             }
-            scenePreview.reconcile(currentDocument, previewStructureChanged, previewChangedObjectIds);
+            scenePreview->reconcile(currentDocument, previewStructureChanged, previewChangedObjectIds);
             previewStructureChanged = false;
             previewChangedObjectIds.clear();
 
@@ -1071,49 +1352,59 @@ int run_editor(int argc, char *argv[])
                 lastAppliedScale = totalUiScale;
             }
 
-            imgui.begin_frame();
+            imgui->begin_frame();
             const bool hasModal = showUnsavedPrompt || showOverwritePrompt || showExternalConflictPrompt ||
+                                  showManualPath ||
                                   ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
             const bool appFocused = (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+            const bool widgetOwnsInput = io->WantTextInput || ImGui::IsAnyItemActive();
             const EditorInputCapture shortcutCapture{
-                appFocused, io.WantTextInput || io.WantCaptureKeyboard || ImGui::IsAnyItemActive(),
+                appFocused, widgetOwnsInput,
                 hasModal, scenePanel.has_active_input(), false};
             const bool shortcutAllowed = editor_action_allowed(EditorAction::NewScene, shortcutCapture);
-            if (shortcutAllowed && !gamePipeline.busy() && !pendingPipelineBuildOnly &&
-                pendingAction != PendingAction::BuildAndRun)
+            const auto f5Action = ImGui::IsKeyPressed(ImGuiKey_F5)
+                ? dispatch_editor_key(EditorKey::F5, io->KeyShift, io->KeyCtrl, shortcutCapture)
+                : std::nullopt;
+            const bool ownedOperationActive = gamePipeline.busy() || catalogQuery.running() ||
+                                              pendingPipelineBuildOnly.has_value();
+            if (f5Action == EditorAction::Stop && ownedOperationActive)
+                stop_owned_operation();
+            if (shortcutAllowed && !gamePipeline.busy() && !catalogQuery.running() &&
+                !pendingPipelineBuildOnly && pendingAction != PendingAction::BuildAndRun &&
+                pendingAction != PendingAction::ChangeProjectRoots)
             {
-                if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N))
+                if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N))
                     begin_replacement(PendingAction::NewDocument);
-                else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O))
-                    dialogs.open_scene(window, workspace.document().documentGeneration, options.projectRoot);
-                else if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_S))
+                else if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O))
+                    request_open_scene();
+                else if (io->KeyCtrl && io->KeyShift && ImGui::IsKeyPressed(ImGuiKey_S))
                     request_save_as();
-                else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S))
+                else if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S))
                     save_current();
-                else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z))
+                else if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z))
                 {
-                    if (io.KeyShift)
+                    if (io->KeyShift)
                         redo_edit();
                     else
                         undo_edit();
                 }
-                else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y))
+                else if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y))
                     redo_edit();
-                else if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
+                else if (io->KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
                                         ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)))
                     scenePanel.adjust_zoom(1.1f);
-                else if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
+                else if (io->KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
                                         ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)))
                     scenePanel.adjust_zoom(1.0f / 1.1f);
-                else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Comma))
+                else if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Comma))
                     preferences.panelVisibility["panel.settings"] = true;
-                else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_B))
+                else if (io->KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_B))
                     queue_pipeline(true);
-                else if (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F5))
-                    stop_owned_operation();
-                else if (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F5))
+                else if (f5Action == EditorAction::BuildAndRun)
                     request_build_and_run();
-                else if (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F6))
+                else if (ImGui::IsKeyPressed(ImGuiKey_F6) &&
+                         dispatch_editor_key(EditorKey::F6, io->KeyShift, io->KeyCtrl,
+                                             shortcutCapture) == EditorAction::Validate)
                 {
                     validation = workspace.validate();
                     showValidation = true;
@@ -1121,8 +1412,10 @@ int run_editor(int argc, char *argv[])
                 }
             }
 
-            bool projectLocked = gamePipeline.busy() || pendingPipelineBuildOnly.has_value() ||
-                                 pendingAction == PendingAction::BuildAndRun;
+            bool projectLocked = gamePipeline.busy() || catalogQuery.running() ||
+                                 pendingPipelineBuildOnly.has_value() ||
+                                 pendingAction == PendingAction::BuildAndRun ||
+                                 pendingAction == PendingAction::ChangeProjectRoots;
             const auto panelStateBefore = preferences.panelVisibility;
             if (ImGui::BeginMainMenuBar())
             {
@@ -1131,7 +1424,9 @@ int run_editor(int argc, char *argv[])
                     if (ImGui::MenuItem("New Scene", "Ctrl+N", false, !projectLocked))
                         begin_replacement(PendingAction::NewDocument);
                     if (ImGui::MenuItem("Open Scene...", "Ctrl+O", false, !projectLocked))
-                        dialogs.open_scene(window, workspace.document().documentGeneration, options.projectRoot);
+                        request_open_scene();
+                    if (ImGui::MenuItem("Open Project Folder...", nullptr, false, !projectLocked))
+                        request_project_folder();
                     ImGui::Separator();
                     if (ImGui::MenuItem("Save", "Ctrl+S", false, !projectLocked))
                         save_current();
@@ -1197,83 +1492,76 @@ int run_editor(int argc, char *argv[])
                     ImGui::EndMenu();
                 }
 
-                ImGui::Separator();
-                ImGui::BeginDisabled(projectLocked);
-                if (icon_label_button(EditorIcon::NewDocument, "New", "Create a scene (Ctrl+N)"))
-                    begin_replacement(PendingAction::NewDocument);
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Open, "Open", "Open a scene (Ctrl+O)"))
-                    dialogs.open_scene(window, workspace.document().documentGeneration, options.projectRoot);
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Save, "Save", "Save the current scene (Ctrl+S)"))
-                    save_current();
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Undo, "Undo", "Undo the latest edit (Ctrl+Z)")) undo_edit();
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Redo, "Redo", "Redo the latest edit (Ctrl+Y)")) redo_edit();
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Validate, "Validate", "Check known scene fields (F6)"))
-                {
-                    validation = workspace.validate();
-                    showValidation = true;
-                    preferences.panelVisibility["panel.validation"] = true;
-                }
-                ImGui::EndDisabled();
-                ImGui::SameLine();
-                ImGui::BeginDisabled(projectLocked);
-                if (icon_label_button(EditorIcon::Build, "Build", "Build the configured target (Ctrl+B)"))
-                    queue_pipeline(true);
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Run, "Build and Run", "Build, verify and launch (F5)"))
-                    request_build_and_run();
-                ImGui::EndDisabled();
-                ImGui::SameLine();
-                if (icon_label_button(EditorIcon::Stop, "Stop", "Stop the owned build, query or game (Shift+F5)"))
-                    stop_owned_operation();
-                ImGui::SameLine();
-                ImGui::Text("%s%s", workspace.document().sourcePath
-                    ? workspace.document().sourcePath->filename().string().c_str() : "Untitled",
-                    workspace.dirty() ? " *" : "");
-                ImGui::SameLine();
-                const char *statusText = statusMessage.empty() ? "Ready" : statusMessage.c_str();
-                ImGui::TextDisabled("%s", statusText);
-                if (ImGui::IsItemHovered())
-                {
-                    ImGui::BeginTooltip();
-                    ImGui::TextUnformatted(statusText);
-                    ImGui::EndTooltip();
-                }
                 ImGui::EndMainMenuBar();
             }
 
-            ImGui::DockSpaceOverViewport(kEditorDockspaceId, ImGui::GetMainViewport());
+            const auto toolbarHistory = editCommands.history_status();
+            EditorToolbarState toolbarState;
+            toolbarState.projectLocked = projectLocked;
+            toolbarState.canUndo = toolbarHistory.canUndo;
+            toolbarState.canRedo = toolbarHistory.canRedo;
+            toolbarState.operationActive = gamePipeline.busy() || catalogQuery.running() ||
+                                           pendingPipelineBuildOnly.has_value();
+            toolbarState.openScenePending = openSceneDialogPending;
+            toolbarState.sceneLabel = workspace.document().sourcePath
+                ? workspace.document().sourcePath->filename().string() : "No authored scene";
+            if (workspace.dirty())
+                toolbarState.sceneLabel += " *";
+            toolbarState.scenePath = workspace.document().sourcePath
+                ? workspace.document().sourcePath->string() : std::string{};
+            toolbarState.status = statusMessage.empty() ? "Ready" : statusMessage;
+            EditorToolbarActions toolbarActions;
+            toolbarActions.newScene = [&] { begin_replacement(PendingAction::NewDocument); };
+            toolbarActions.openScene = request_open_scene;
+            toolbarActions.save = save_current;
+            toolbarActions.build = [&] { queue_pipeline(true); };
+            toolbarActions.buildAndRun = request_build_and_run;
+            toolbarActions.stop = stop_owned_operation;
+            toolbarActions.undo = undo_edit;
+            toolbarActions.redo = redo_edit;
+            toolbarActions.validate = [&] {
+                validation = workspace.validate();
+                showValidation = true;
+                preferences.panelVisibility["panel.validation"] = true;
+            };
+            toolbarActions.openProject = request_project_folder;
+            const auto toolbarFrame = draw_editor_toolbar(toolbarState, toolbarActions);
+            submit_editor_dockspace(kEditorDockspaceId, toolbarFrame.height);
             const auto show_panel = [&](const char *stableId) {
                 return preferences.panelVisibility[stableId];
             };
             bool showHierarchy = show_panel("panel.hierarchy");
-            if (ImGui::Begin("Hierarchy###panel.hierarchy", &showHierarchy))
+            const auto hierarchyFrame = begin_panel_window(showHierarchy,
+                "Hierarchy###panel.hierarchy", &showHierarchy);
+            if (hierarchyFrame.contentsVisible)
             {
                 ImGui::BeginDisabled(projectLocked);
                 hierarchyPanel.draw(workspace.document_for_edit(), selection, editCommands);
                 ImGui::EndDisabled();
             }
-            ImGui::End();
+            end_panel_window(hierarchyFrame);
             preferences.panelVisibility["panel.hierarchy"] = showHierarchy;
 
             bool showProject = show_panel("panel.project");
-            if (ImGui::Begin("Project and Assets###panel.project", &showProject))
+            const auto projectFrame = begin_panel_window(showProject,
+                "Project and Assets###panel.project", &showProject);
+            if (projectFrame.contentsVisible)
                 projectPanel.draw(workspace.document_for_edit(), editCommands);
-            ImGui::End();
+            end_panel_window(projectFrame);
             preferences.panelVisibility["panel.project"] = showProject;
 
             bool showConsole = show_panel("panel.console");
-            if (ImGui::Begin("Console###panel.console", &showConsole))
+            const auto consoleFrame = begin_panel_window(showConsole,
+                "Console###panel.console", &showConsole);
+            if (consoleFrame.contentsVisible)
                 consolePanel.draw(gamePipeline.status(), gamePipeline.console());
-            ImGui::End();
+            end_panel_window(consoleFrame);
             preferences.panelVisibility["panel.console"] = showConsole;
 
             bool showInspector = show_panel("panel.inspector");
-            if (ImGui::Begin("Inspector###panel.inspector", &showInspector))
+            const auto inspectorFrame = begin_panel_window(showInspector,
+                "Inspector###panel.inspector", &showInspector);
+            if (inspectorFrame.contentsVisible)
             {
                 ImGui::BeginDisabled(projectLocked);
                 inspectorPanel.draw(workspace.document_for_edit(), selection, editCommands);
@@ -1281,11 +1569,13 @@ int run_editor(int argc, char *argv[])
                 if (!inspectorPanel.feedback().empty())
                     ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", inspectorPanel.feedback().c_str());
             }
-            ImGui::End();
+            end_panel_window(inspectorFrame);
             preferences.panelVisibility["panel.inspector"] = showInspector;
 
             bool showBehaviors = show_panel("panel.behaviors");
-            if (ImGui::Begin("Behaviors###panel.behaviors", &showBehaviors))
+            const auto behaviorsFrame = begin_panel_window(showBehaviors,
+                "Behaviors###panel.behaviors", &showBehaviors);
+            if (behaviorsFrame.contentsVisible)
             {
                 ImGui::BeginDisabled(projectLocked);
                 behaviorsPanel.draw(workspace.document_for_edit(), selection, editCommands, behaviorCatalog,
@@ -1299,7 +1589,7 @@ int run_editor(int argc, char *argv[])
                     const auto executable = preferences.run.executable.empty()
                         ? std::filesystem::path{} : std::filesystem::path(preferences.run.executable);
                     const auto selectedExecutable = executable.is_absolute()
-                        ? executable : options.projectRoot / executable;
+                        ? executable : activeProjectRoot / executable;
                     std::error_code identityError;
                     const auto canonicalExecutable = std::filesystem::canonical(selectedExecutable, identityError);
                     if (!behaviorCatalog.can_query())
@@ -1317,11 +1607,11 @@ int run_editor(int argc, char *argv[])
                         catalogIdentity.profile = preferences.run.buildPreset.empty()
                             ? (preferences.run.production ? "production" : "debug") : preferences.run.buildPreset;
                         catalogIdentity.target = preferences.run.target;
-                        catalogIdentity.canonicalProjectPath = options.projectRoot.string();
+                        catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
                         behaviorCatalog.configure(CatalogProtocol::CommonRunnerV1, catalogIdentity);
                         ProcessRequest request;
                         request.argv = {canonicalExecutable.string(), "--editor-catalog"};
-                        request.workingDirectory = options.projectRoot;
+                        request.workingDirectory = activeProjectRoot;
                         request.outputMode = ProcessOutputMode::Separate;
                         if (catalogQuery.start(behaviorCatalog, std::move(request), catalogQueryGeneration++))
                             statusMessage = "Refreshing behavior catalog...";
@@ -1331,11 +1621,13 @@ int run_editor(int argc, char *argv[])
                 }
                 ImGui::EndDisabled();
             }
-            ImGui::End();
+            end_panel_window(behaviorsFrame);
             preferences.panelVisibility["panel.behaviors"] = showBehaviors;
 
             bool showRun = show_panel("panel.run");
-            if (ImGui::Begin("Build and Run###panel.run", &showRun))
+            const auto runFrame = begin_panel_window(showRun,
+                "Build and Run###panel.run", &showRun);
+            if (runFrame.contentsVisible)
             {
                 const auto previousRunPreferences = preferences.run;
                 const auto action = runSettingsPanel.draw(preferences.run, gamePipeline.status(),
@@ -1362,11 +1654,13 @@ int run_editor(int argc, char *argv[])
                 else if (action == RunPanelAction::Stop)
                     stop_owned_operation();
             }
-            ImGui::End();
+            end_panel_window(runFrame);
             preferences.panelVisibility["panel.run"] = showRun;
 
             bool showValidationPanel = show_panel("panel.validation");
-            if (ImGui::Begin("Validation###panel.validation", &showValidationPanel))
+            const auto validationFrame = begin_panel_window(showValidationPanel,
+                "Validation###panel.validation", &showValidationPanel);
+            if (validationFrame.contentsVisible)
             {
                 ImGui::Text("Objects: %zu | Components: %zu", workspace.document().indexes.objectsById.size(),
                             workspace.document().indexes.componentsById.size());
@@ -1385,12 +1679,24 @@ int run_editor(int argc, char *argv[])
                                        issue.fieldPath.c_str(), issue.message.c_str());
                 if (!statusMessage.empty()) ImGui::TextWrapped("%s", statusMessage.c_str());
             }
-            ImGui::End();
+            end_panel_window(validationFrame);
             preferences.panelVisibility["panel.validation"] = showValidationPanel;
 
             bool showSettings = show_panel("panel.settings");
-            if (ImGui::Begin("Editor Settings###panel.settings", &showSettings))
+            const auto settingsFrame = begin_panel_window(showSettings,
+                "Editor Settings###panel.settings", &showSettings);
+            if (settingsFrame.contentsVisible)
             {
+                ImGui::TextUnformatted("Project context");
+                ImGui::TextWrapped("Project root: %s", activeProjectRoot.string().c_str());
+                ImGui::TextWrapped("Asset root: %s", activeAssetRoot.string().c_str());
+                if (workspace.document().sourcePath)
+                    ImGui::TextWrapped("Loaded scene: %s", workspace.document().sourcePath->string().c_str());
+                else
+                    ImGui::TextUnformatted("Loaded scene: none (starter document)");
+                if (ImGui::Button("Change Project Folder..."))
+                    request_project_folder();
+                ImGui::Separator();
                 ImGui::TextUnformatted("UI scale");
                 ImGui::SameLine();
                 float requestedScale = activeScale;
@@ -1403,37 +1709,48 @@ int run_editor(int argc, char *argv[])
                     persist_preferences();
                 }
                 ImGui::TextDisabled("Ctrl+, opens these settings. Layout controls never change scene history.");
-                if (showManualPath)
-                {
-                    ImGui::Separator();
-                    ImGui::TextWrapped("Native file dialog failed: %s", dialogError.c_str());
-                    ImGui::InputText("Path", manualPath.data(), manualPath.size());
-                    ImGui::SameLine();
-                    if (manualPath.front() != '\0' && ImGui::Button("Use path"))
-                    {
-                        dialogs.submit_manual_path(manualPathKind, workspace.document().documentGeneration,
-                                                   std::filesystem::path(manualPath.data()));
-                        dialogError.clear();
-                        manualPath.fill('\0');
-                        showManualPath = false;
-                    }
-                }
             }
-            ImGui::End();
+            end_panel_window(settingsFrame);
             preferences.panelVisibility["panel.settings"] = showSettings;
 
             bool showScene = show_panel("panel.scene");
             scenePanel.set_visible(showScene);
-            scenePanel.draw(workspace.document_for_edit(), scenePreview, selection, editCommands,
-                            window, renderer, io.WantTextInput || io.WantCaptureKeyboard || hasModal,
-                            !projectLocked);
+            if (showScene)
+                scenePanel.draw(workspace.document_for_edit(), *scenePreview, selection, editCommands,
+                                window, renderer, io->WantTextInput || io->WantCaptureKeyboard || hasModal,
+                                !projectLocked);
+            else
+                scenePanel.cancel_gesture(editCommands, workspace.document_for_edit());
             showScene = scenePanel.is_visible();
             preferences.panelVisibility["panel.scene"] = showScene;
-            if (!scenePreview.last_error().empty())
-                statusMessage = scenePreview.last_error();
+            if (!scenePreview->last_error().empty())
+                statusMessage = scenePreview->last_error();
 
             if (preferences.panelVisibility != panelStateBefore)
                 persist_preferences();
+
+            const auto pathDialogAction = draw_file_dialog_path_entry(
+                showManualPath, dialogError, manualPath.data(), manualPath.size());
+            if (pathDialogAction == FileDialogPathAction::Submit)
+            {
+                dialogs->submit_manual_path(manualPathKind, workspace.document().documentGeneration,
+                                            std::filesystem::path(manualPath.data()));
+                openSceneDialogPending = manualPathKind == AsyncRequestKind::OpenScene;
+                statusMessage = manualPathKind == AsyncRequestKind::OpenScene
+                                    ? "Checking the selected scene path..."
+                                    : "Checking the selected path...";
+                dialogError.clear();
+                manualPath.fill('\0');
+            }
+            else if (pathDialogAction == FileDialogPathAction::Cancel)
+            {
+                dialogError.clear();
+                manualPath.fill('\0');
+                if (pendingAction != PendingAction::None)
+                    showUnsavedPrompt = true;
+                else
+                    statusMessage = "Path entry was cancelled; the current scene and project are unchanged.";
+            }
 
             if (showUnsavedPrompt)
                 ImGui::OpenPopup("Unsaved scene changes");
@@ -1517,7 +1834,9 @@ int run_editor(int argc, char *argv[])
             const std::string windowTitle = std::string("Platformator Editor") +
                                             (workspace.dirty() ? " *" : "");
             SDL_SetWindowTitle(window, windowTitle.c_str());
-            imgui.present(renderer);
+            imgui->present(renderer);
+            if (applyProjectRootsAfterFrame)
+                apply_project_root_change();
             SDL_Delay(1);
         }
 

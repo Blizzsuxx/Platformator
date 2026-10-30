@@ -20,5 +20,7 @@ enum class EditorIcon
 };
 
 void apply_editor_style(float scale);
+void push_editor_toolbar_style();
+void pop_editor_toolbar_style();
 bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip = nullptr);
 } // namespace platformator_editor

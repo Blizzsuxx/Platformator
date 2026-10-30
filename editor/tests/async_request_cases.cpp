@@ -13,6 +13,23 @@ using namespace platformator_editor_test;
 
 void run_async_request_cases()
 {
+    const auto sceneFilters = make_file_dialog_filters(AsyncRequestKind::OpenScene);
+    const auto saveFilters = make_file_dialog_filters(AsyncRequestKind::SaveScene);
+    const auto textureFilters = make_file_dialog_filters(AsyncRequestKind::OpenAsset, "Texture");
+    const auto audioFilters = make_file_dialog_filters(AsyncRequestKind::OpenAsset, "Audio");
+    const auto animationFilters = make_file_dialog_filters(AsyncRequestKind::OpenAsset, "AnimationClip");
+    require(sceneFilters.size() == 1 && sceneFilters.front().pattern == "scene" &&
+                saveFilters.size() == 1 && saveFilters.front().pattern == "scene",
+            "SDL scene filters must use extension patterns instead of unsupported glob syntax");
+    for (const auto &filters : {textureFilters, audioFilters, animationFilters})
+        require(filters.size() == 1 && valid_file_dialog_filter_pattern(filters.front().pattern),
+                "all asset dialog filters must use SDL's supported semicolon-separated extension syntax");
+    require(valid_file_dialog_filter_pattern("*") &&
+                !valid_file_dialog_filter_pattern("*.scene") &&
+                !valid_file_dialog_filter_pattern("scene;;json") &&
+                !valid_file_dialog_filter_pattern("scene/path"),
+            "SDL filter validation must accept extension lists and reject globs, empty entries and paths");
+
     {
         AsyncRequestQueue queue(31);
         auto open = queue.begin(AsyncRequestKind::OpenScene, 7);
@@ -115,11 +132,15 @@ void run_async_request_cases()
     {
         FileDialogService dialogs(81);
         const auto identity = dialogs.submit_manual_path(AsyncRequestKind::OpenScene, 5,
-                                                          "manual/scene with spaces.scene");
+                                                          "manual/scene with spaces Ω.scene");
         const auto results = dialogs.take_ready(5);
         require(results.size() == 1 && results.front().identity.requestId == identity.requestId &&
                     results.front().outcome == AsyncRequestOutcome::Selected &&
-                    results.front().selectedPath == "manual/scene with spaces.scene",
-                "provider failures can be recovered through a manually entered path");
+                    results.front().selectedPath == "manual/scene with spaces Ω.scene",
+                "provider failures can be recovered through a manually entered Unicode path with spaces");
+        dialogs.shutdown();
+        const auto late = dialogs.submit_manual_path(AsyncRequestKind::SelectFolder, 5, "ignored-project");
+        require(late.requestId == 0 && dialogs.take_ready(5).empty(),
+                "a stale folder callback must not publish after the project dialog session is invalidated");
     }
 }

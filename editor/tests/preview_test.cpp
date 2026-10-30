@@ -124,6 +124,73 @@ SDL_Surface *read_target(SDL_Renderer *renderer, SDL_Texture *target)
     return surface;
 }
 
+#ifndef NDEBUG
+void check_preview_reconcile_work_bounds(platformator::Runtime &runtime,
+                                         const std::filesystem::path &projectRoot,
+                                         const std::filesystem::path &assetRoot)
+{
+    const auto spriteLeaves = [&](int firstObjectId, int count, int firstComponentId) {
+        Json children = Json::array();
+        for (int offset = 0; offset < count; ++offset)
+            children.push_back(object_record(firstObjectId + offset, "Leaf", 1.0f, 2.0f,
+                Json::array({sprite_component(firstComponentId + offset,
+                                               "assets/textures/black_square.png")})));
+        return children;
+    };
+
+    Json branchA = object_record(1001, "Branch A", 0.0f, 0.0f,
+                                 Json::array(), spriteLeaves(1002, 8, 13002));
+    Json branchB = object_record(1100, "Branch B", 0.0f, 0.0f,
+                                 Json::array(), spriteLeaves(1101, 8, 13101));
+    Json rootA = object_record(1000, "Root A", 0.0f, 0.0f,
+                               Json::array(), Json::array({branchA, branchB}));
+    Json branchC = object_record(2001, "Branch C", 0.0f, 0.0f,
+                                 Json::array(), spriteLeaves(2002, 8, 14002));
+    Json rootB = object_record(2000, "Root B", 0.0f, 0.0f,
+                               Json::array(), Json::array({branchC}));
+    Json roots = Json::array({rootA, rootB});
+    for (int id = 3000; id < 3032; ++id)
+        roots.push_back(object_record(id, "Unrelated", 0.0f, 0.0f,
+            Json::array({sprite_component(15000 + id, "assets/textures/black_square.png")})));
+
+    auto parsed = parse_document(std::move(roots), 80, std::nullopt, projectRoot, assetRoot);
+    require(static_cast<bool>(parsed), "reconcile-work fixture must parse: " + parsed.error);
+    DocumentSession document = std::move(*parsed.document);
+    EditorPreview preview(runtime);
+    preview.reconcile(document, true);
+    const std::size_t totalObjects = document.indexes.objectsById.size();
+    require(totalObjects > 60, "fixture must have enough unrelated objects to expose a full scan");
+
+    document.root[0]["children"][0]["children"][0]["position"]["x"] = 5.0;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {1002});
+    auto stats = preview.last_reconcile_stats();
+    require(stats.visitedObjects == 1 && stats.updatedProxies == 1,
+            "a leaf change visits and updates only its own sprite proxy");
+
+    document.root[0]["position"]["x"] = 7.0;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {1000});
+    stats = preview.last_reconcile_stats();
+    require(stats.visitedObjects == 19 && stats.updatedProxies == 16,
+            "an ancestor change visits only its 19-object subtree and updates its 16 sprite proxies");
+    require(preview.object_info(1002) != nullptr && preview.object_info(1002)->worldX == 12.0f,
+            "subtree traversal preserves accumulated parent translation");
+
+    preview.reconcile(document, false, {1000, 1001, 1000});
+    stats = preview.last_reconcile_stats();
+    require(stats.visitedObjects == 19 && stats.updatedProxies == 16,
+            "duplicate and overlapping changed roots are coalesced into one subtree traversal");
+
+    preview.reconcile(document, false, {1000, 2000});
+    stats = preview.last_reconcile_stats();
+    require(stats.visitedObjects == 29 && stats.updatedProxies == 24,
+            "disjoint changed roots visit exactly their combined subtrees without unrelated objects");
+    require(stats.visitedObjects < totalObjects,
+            "local preview reconciliation must not visit unrelated document objects");
+}
+#endif
+
 std::array<std::uint8_t, 4> pixel(SDL_Surface *surface, int x, int y)
 {
     const auto *row = static_cast<const std::uint8_t *>(surface->pixels) + y * surface->pitch;
@@ -223,6 +290,18 @@ void check_preview_render_and_lifetimes()
     require(SDL_SetRenderColorScale(renderer, 0.75f), std::string("set renderer color scale: ") + SDL_GetError());
     require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 160, 120),
             "preview must render to its reusable target");
+    const auto liveResources = preview.resource_counts();
+    require(liveResources.proxies == preview.ordered_document_ids().size() &&
+                liveResources.texturedProxies > 0 && liveResources.uniqueTextureWrappers >= 2 &&
+                liveResources.textureWrapperReferences >= liveResources.texturedProxies &&
+                liveResources.renderTargetAllocated,
+            "preview resource counts must report live proxies, shared texture wrappers/references and target: " +
+                std::to_string(liveResources.proxies) + "/" +
+                std::to_string(preview.ordered_document_ids().size()) + " ordered sprite proxies, " +
+                std::to_string(liveResources.texturedProxies) + " textured, " +
+                std::to_string(liveResources.uniqueTextureWrappers) + " wrappers, " +
+                std::to_string(liveResources.textureWrapperReferences) + " references, target=" +
+                std::to_string(liveResources.renderTargetAllocated));
     require(SDL_GetRenderTarget(renderer) == sentinelTarget,
             "preview must restore the caller's active render target");
     float scaleX = 0.0f, scaleY = 0.0f, red = 0.0f, green = 0.0f, blue = 0.0f, alpha = 0.0f, colorScale = 0.0f;
@@ -305,8 +384,16 @@ void check_preview_render_and_lifetimes()
     require(runtime.getMainCamera() == mainCameraBefore,
             "preview must not create or mutate the gameplay camera");
     preview.release();
+    const auto releasedResources = preview.resource_counts();
+    require(releasedResources.proxies == 0 && releasedResources.texturedProxies == 0 &&
+                releasedResources.uniqueTextureWrappers == 0 &&
+                releasedResources.textureWrapperReferences == 0 && !releasedResources.renderTargetAllocated,
+            "preview resource counts must return to zero after release");
     require(runtime.getAllGameObjects().size() == runtimeObjectsBefore,
             "preview release must destroy all flattened proxies before Runtime teardown");
+#ifndef NDEBUG
+    check_preview_reconcile_work_bounds(runtime, assets.root.parent_path(), assets.root / "assets");
+#endif
     SDL_DestroyTexture(sentinelTarget);
 }
 } // namespace

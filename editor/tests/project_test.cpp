@@ -22,6 +22,21 @@ void run_project_cases()
     std::ofstream(projectRoot / "CMakePresets.json") << "{}";
     std::ofstream(projectRoot / "main.cpp") << "int main() {}";
 
+    const auto validCandidate = validate_project_folder(projectRoot);
+    require(validCandidate.projectRoot == std::filesystem::canonical(projectRoot) &&
+                validCandidate.assetRoot == std::filesystem::canonical(assetRoot),
+            "a selected project folder must resolve its canonical CMake and assets roots");
+    bool rejectedFolder = false;
+    try
+    {
+        validate_project_folder(assetRoot);
+    }
+    catch (const std::invalid_argument &)
+    {
+        rejectedFolder = true;
+    }
+    require(rejectedFolder, "a folder without the project CMake/assets conventions must be rejected");
+
     ProjectContext context;
     context.set_roots(projectRoot, assetRoot);
     const auto first = context.snapshot();
@@ -102,6 +117,21 @@ void run_project_cases()
         results = scans.take_ready(first.generation);
         require(results.size() == 1 && results.front().cancelled,
                 "cancelled scans must publish a cancellation result without retaining owner state");
+
+        const auto oldRequest = scans.request_scan(first, assetRoot,
+            ProjectScanOptions{.recursive = true, .maxFiles = 100});
+        require(static_cast<bool>(oldRequest), "a scan must start before context cancellation");
+        scans.cancel_pending_and_wait();
+        require(scans.take_ready(first.generation).empty(),
+                "project replacement must drain old scan publications before adopting new roots");
+        const auto reusableRequest = scans.request_scan(first, assetRoot,
+            ProjectScanOptions{.recursive = false, .maxFiles = 100});
+        require(static_cast<bool>(reusableRequest),
+                "a cancelled scan service must remain reusable for the replacement project");
+        scans.wait_for_idle();
+        results = scans.take_ready(first.generation);
+        require(results.size() == 1 && results.front().requestId == reusableRequest.request_id(),
+                "the reusable scan service must publish only replacement-context work");
     }
 
     context.set_roots(projectRoot, assetRoot);

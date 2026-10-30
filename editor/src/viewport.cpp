@@ -505,19 +505,17 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
                               EditCommandService &commands, SDL_Window *window, SDL_Renderer *renderer,
                               bool modalOrTextCapture, bool editingEnabled)
 {
-    if (!ImGui::Begin("Scene", &open_))
-    {
-        cancel_gesture(commands, document);
-        ImGui::End();
-        return;
-    }
     if (!open_)
     {
         cancel_gesture(commands, document);
+        return;
+    }
+    if (!ImGui::Begin("Scene###panel.scene", &open_))
+    {
+        cancel_gesture(commands, document);
         ImGui::End();
         return;
     }
-
     const CameraDefaults camera = document_camera(document);
     if (!hasView_)
     {
@@ -539,6 +537,8 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
         preview.refresh_assets(document);
     ImGui::SameLine();
     ImGui::Text("Zoom %.0f%%", viewZoom_ * 100.0f);
+    if (!document.sourcePath)
+        ImGui::TextDisabled("No authored scene is loaded. Use Open Scene or New Scene to begin.");
     const ImVec2 available = ImGui::GetContentRegionAvail();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ViewportRect imageRect{origin.x, origin.y, std::max(0.0f, available.x), std::max(0.0f, available.y)};
@@ -665,17 +665,17 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
     const ViewportPoint mouse{io.MousePos.x, io.MousePos.y};
     const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     const bool capture = modalOrTextCapture || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) ||
-                         io.WantTextInput || io.WantCaptureKeyboard || ImGui::IsAnyItemActive();
+                         io.WantTextInput || ImGui::IsAnyItemActive();
     const bool escape = ImGui::IsKeyPressed(ImGuiKey_Escape);
     const bool appHasFocus = window != nullptr && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
     const EditorInputCapture sceneCapture{appHasFocus, capture, false, has_active_input(), focused};
-    if (editor_action_allowed(EditorAction::FrameSelected, sceneCapture) &&
-        ImGui::IsKeyPressed(ImGuiKey_F))
+    if (ImGui::IsKeyPressed(ImGuiKey_F))
     {
-        if (io.KeyShift)
-            frameSelected = true;
-        else
-            frameAll = true;
+        const auto frameAction = dispatch_editor_key(EditorKey::F, io.KeyShift, io.KeyCtrl, sceneCapture);
+        if (frameAction == EditorAction::FrameSelected)
+            frameSelectedRequested_ = true;
+        else if (frameAction == EditorAction::FrameAll)
+            frameAllRequested_ = true;
     }
     if (!editingEnabled)
     {

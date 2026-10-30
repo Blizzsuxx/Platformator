@@ -1,6 +1,6 @@
 # Platformator
 
-A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The Python editor is optional.
+A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The native scene editor is optional and currently supported on Linux.
 
 ## Build and test
 
@@ -45,6 +45,8 @@ One Runtime may be active at a time. It owns objects/components/assets; returned
 Read [C++ API migration](docs/CPP_API_MIGRATION.md) for lifecycle, error, resolver, lifetime and asset-root contracts. [Validation guide](specs/001-cpp-engine-cleanup/quickstart.md) contains sanitizer, work-counter and package commands; [recorded evidence](specs/001-cpp-engine-cleanup/validation.md) distinguishes verified behavior and host limitations. Linux/GCC is exercised; other SDL platforms remain unverified.
 
 The latest [SDL update validation](docs/SDL_UPDATE_VALIDATION.md) records current dependency compatibility, benchmark comparisons and outstanding sanitizer findings.
+
+The optional [native editor](editor/README.md) uses SDL3 and Dear ImGui, edits shared `.scene` files, and remains outside runtime-only builds. See its [quickstart](specs/011-add-imgui-editor/quickstart.md) for build, desktop-review and acceptance commands.
 
 ## Benchmarks
 

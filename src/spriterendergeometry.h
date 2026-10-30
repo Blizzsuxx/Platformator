@@ -23,6 +23,25 @@ struct SpriteRenderView
     bool cullingEligible = false;
 };
 
+// Shared view projection for the engine camera and the editor preview. Width
+// and height already include the sprite GameObject's local scale, matching
+// Sprite::getWidth/getHeight; only parent translation is reflected in worldX/Y.
+inline SDL_FRect makeSpriteRenderDestination(float worldX, float worldY, float width, float height,
+                                             const SpriteRenderView &view) noexcept
+{
+    return {(worldX - width * 0.5f - view.cameraX) * view.scaleX,
+            (worldY - height * 0.5f - view.cameraY) * view.scaleY,
+            width * view.scaleX, height * view.scaleY};
+}
+
+inline bool submitSpriteRender(SDL_Renderer *renderer, SDL_Texture *texture,
+                               const SDL_FRect *source, const SDL_FRect &destination,
+                               float angleDegrees, SDL_FlipMode flip)
+{
+    return SDL_RenderTextureRotated(renderer, texture, source, &destination,
+                                   angleDegrees, nullptr, flip);
+}
+
 struct SpriteRenderBounds
 {
     double minX = 0.0;

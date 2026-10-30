@@ -8,13 +8,16 @@
 #include <SDL3/SDL.h>
 #include <json.hpp>
 #include "platformator/referenceresolver.h"
+#include "platformator/scriptmetadata.h"
 
 class Behavior;
 
 namespace platformator
 {
 void registerScriptFactory(std::string_view typeName, Behavior *(*factory)());
+void registerScriptDescriptorProvider(std::string_view typeName, ScriptDescriptorProvider provider);
 Behavior *createRegisteredBehavior(std::string_view typeName);
+nlohmann::json exportRegisteredBehaviorCatalog();
 } // namespace platformator
 
 namespace platformator_json_detail
@@ -60,6 +63,45 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     PLATFORMATOR_FOR_EACH_COUNT(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 #define PLATFORMATOR_FOR_EACH(macro, ...)                                                                              \
     PLATFORMATOR_CONCAT(PLATFORMATOR_FOR_EACH_, PLATFORMATOR_FOR_EACH_SELECT(__VA_ARGS__))(macro, __VA_ARGS__)
+
+#define PLATFORMATOR_METADATA_FIELDS_1(macro, Type, field1) macro(Type, field1)
+#define PLATFORMATOR_METADATA_FIELDS_2(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_1(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_3(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_2(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_4(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_3(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_5(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_4(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_6(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_5(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_7(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_6(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_8(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_7(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_9(macro, Type, field1, ...)                                                        \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_8(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_10(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_9(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_11(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_10(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_12(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_11(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_13(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_12(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_14(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_13(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_15(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_14(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_16(macro, Type, field1, ...)                                                       \
+    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_15(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELDS_COUNT(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, count, ...) \
+    count
+#define PLATFORMATOR_METADATA_FIELDS_SELECT(...)                                                                        \
+    PLATFORMATOR_METADATA_FIELDS_COUNT(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define PLATFORMATOR_METADATA_FIELDS(macro, Type, ...)                                                                  \
+    PLATFORMATOR_CONCAT(PLATFORMATOR_METADATA_FIELDS_, PLATFORMATOR_METADATA_FIELDS_SELECT(__VA_ARGS__))(macro, Type, __VA_ARGS__)
+#define PLATFORMATOR_METADATA_FIELD(Type, field) platformator::describe_script_field(#field, &Type::field)
 #define PLATFORMATOR_ARGUMENT_COUNT_IMPL(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16,    \
                                          count, ...)                                                                   \
     count
@@ -75,6 +117,7 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     static bool registerScriptType()                                                                                   \
     {                                                                                                                  \
         platformator::registerScriptFactory(#Type, []() -> Behavior * { return new Type(); });                         \
+        platformator::registerScriptDescriptorProvider(#Type, &Type::platformatorDescribeScriptMetadata);              \
         return true;                                                                                                   \
     }                                                                                                                  \
     inline static const bool platformatorRegisteredBehavior = registerScriptType();                                    \
@@ -94,6 +137,10 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_0(Type)                                                                       \
     PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                      \
+    static platformator::ScriptDescriptor platformatorDescribeScriptMetadata()                                         \
+    {                                                                                                                  \
+        return platformator::ScriptDescriptor{#Type, true, {}};                                                        \
+    }                                                                                                                  \
     friend void to_json(nlohmann::json &j, const Type &)                                                               \
     {                                                                                                                  \
         j = nlohmann::json::object();                                                                                  \
@@ -107,6 +154,11 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, ...)                                                        \
     PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                      \
+    static platformator::ScriptDescriptor platformatorDescribeScriptMetadata()                                         \
+    {                                                                                                                  \
+        return platformator::ScriptDescriptor{                                                                        \
+            #Type, true, {PLATFORMATOR_METADATA_FIELDS(PLATFORMATOR_METADATA_FIELD, Type, __VA_ARGS__)}};             \
+    }                                                                                                                  \
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Type, __VA_ARGS__)                                                     \
     void resolveReferences(platformator::ReferenceResolver &resolver) override                                         \
     {                                                                                                                  \

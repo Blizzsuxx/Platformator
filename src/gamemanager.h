@@ -37,6 +37,11 @@ namespace platformator_detail
 class RuntimeAccess;
 }
 
+namespace platformator_editor_detail
+{
+class EditorPreviewAccess;
+}
+
 class GameManager
 {
     friend class SceneBuildContext;
@@ -50,6 +55,7 @@ class GameManager
     friend class ColliderPair;
     friend class ScriptComponent;
     friend class PhysicsManager;
+    friend class platformator_editor_detail::EditorPreviewAccess;
 
   public:
     enum class Phase

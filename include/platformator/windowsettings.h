@@ -9,4 +9,5 @@ struct WindowSettings
     bool keepAspectRatio = false;
     bool headless = false;
     bool enableRenderCulling = true;
+    bool highPixelDensity = false;
 };

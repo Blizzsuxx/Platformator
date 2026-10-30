@@ -29,6 +29,13 @@ class CaptureBudget:
         for root in self.roots:
             if not root.exists():
                 continue
+            if root.is_file() and not root.is_symlink():
+                size += root.stat().st_size
+                if size > self.max_bytes:
+                    raise BudgetExceeded(
+                        f"Capture exceeded {self.max_bytes / 1024 / 1024:g} MiB; "
+                        "stopped without a success report. Partial files retained for inspection")
+                continue
             for path in root.rglob("*"):
                 if path.is_file() and not path.is_symlink():
                     size += path.stat().st_size

@@ -1,0 +1,140 @@
+{
+  "accounting": {
+    "elapsed_seconds": 46.08134020700163,
+    "output_bytes": 51352
+  },
+  "budget": {
+    "deadline_epoch": 1793385277.301129,
+    "deadline_monotonic": 17375.846710126,
+    "max_output_bytes": 52428800,
+    "max_output_mib": 50.0,
+    "max_seconds": 600.0,
+    "started_epoch": 1793384677.301129,
+    "started_monotonic": 16775.846710126
+  },
+  "capture_root": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture",
+  "commands": [
+    {
+      "argv": [
+        "/home/user/Projects/Platformator/bin/editor-release/platformator_editor_probe",
+        "--print-build-identity"
+      ],
+      "completed_epoch": 1793384677.311488,
+      "exit_code": 0,
+      "started_epoch": 1793384677.3076513,
+      "stderr": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/resources.probe-identity.stderr.log",
+      "stdout": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/resources.probe-identity.json"
+    },
+    {
+      "argv": [
+        "/home/user/Projects/Platformator/bin/editor-release/platformator_editor_probe",
+        "resources",
+        "--cycles",
+        "20",
+        "--scratch",
+        "/tmp/platformator-editor-probe-825hqva7"
+      ],
+      "completed_epoch": 1793384679.0692132,
+      "exit_code": 0,
+      "started_epoch": 1793384677.3166084,
+      "stderr": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/resources.stderr.log",
+      "stdout": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/resources.raw.json"
+    },
+    {
+      "argv": [
+        "/home/user/Projects/Platformator/bin/editor-release/platformator_editor_probe",
+        "--print-build-identity"
+      ],
+      "completed_epoch": 1793384722.9594727,
+      "exit_code": 0,
+      "started_epoch": 1793384722.9555876,
+      "stderr": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/timing.probe-identity.stderr.log",
+      "stdout": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/timing.probe-identity.json"
+    },
+    {
+      "argv": [
+        "/home/user/Projects/Platformator/bin/editor-release/platformator_editor_probe",
+        "timing",
+        "--repetitions",
+        "3",
+        "--warmup",
+        "5",
+        "--frames",
+        "30"
+      ],
+      "completed_epoch": 1793384723.3762107,
+      "exit_code": 0,
+      "started_epoch": 1793384722.961409,
+      "stderr": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/timing.stderr.log",
+      "stdout": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/timing.raw.json"
+    }
+  ],
+  "identity": {
+    "build_label": "editor-release",
+    "expected_configuration": "Release",
+    "harness_sha256": "32458500e03a6369f906cc79b7bd3698110bf62605632864dbfeeaec9c72fa96",
+    "host": {
+      "cpu_affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "cpu_model": "AMD Ryzen 5 7535HS with Radeon Graphics",
+      "logical_cpus": 12,
+      "machine": "x86_64",
+      "release": "6.18.55-1-MANJARO",
+      "system": "Linux"
+    },
+    "probe_binary_sha256": "302022e95fd6b4dd03fe6353f756970cd60766165ce726b64b51bcdbbfb635c3",
+    "probe_path": "/home/user/Projects/Platformator/bin/editor-release/platformator_editor_probe",
+    "project_root": "/home/user/Projects/Platformator",
+    "source_sha256": "dae89bc59e905558562426a9a2e2a236462ab0a0a3de227e5673c7a3447fd30e",
+    "workload": {
+      "deep_parent": {
+        "depth": 128,
+        "name": "deep_parent_128"
+      },
+      "interaction": "selection plus one position.x property edit followed by undo",
+      "long_output_bytes": 1200000,
+      "measured_frames": 30,
+      "populations": {
+        "objects_1000": 1000,
+        "objects_10000": 10000,
+        "tiny": 10
+      },
+      "project_scan_files": 32,
+      "resource_cycles": 20,
+      "texture_reference": "assets/textures/pilot.png",
+      "timing_repetitions": 3,
+      "warmup_frames": 5
+    },
+    "workload_sha256": "93804135b792dac5d9622a6864de177a0e28104a151cda56f84b1303732952ee"
+  },
+  "kind": "platformator.editor-pilot-session",
+  "phases": {
+    "resources": {
+      "completed_epoch": 1793384679.084517,
+      "raw_output": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/resources.raw.json",
+      "started_epoch": 1793384677.3056908,
+      "status": "complete"
+    },
+    "timing": {
+      "completed_epoch": 1793384723.382317,
+      "raw_output": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.capture/timing.raw.json",
+      "started_epoch": 1793384722.9507682,
+      "status": "complete"
+    }
+  },
+  "schema_version": 1,
+  "session_path": "/home/user/Projects/Platformator/specs/011-add-imgui-editor/evidence/editor-pilot.session.json",
+  "status": "complete"
+}

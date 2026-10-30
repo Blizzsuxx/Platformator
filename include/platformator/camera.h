@@ -13,6 +13,11 @@ namespace platformator_detail
 struct SpriteRenderView;
 }
 
+namespace platformator_editor_detail
+{
+class EditorPreviewAccess;
+}
+
 class Camera : public Component
 {
 public:
@@ -37,6 +42,7 @@ public:
 
 private:
     friend class SDLWindow;
+    friend class platformator_editor_detail::EditorPreviewAccess;
 
 	float width;
 	float height;

@@ -133,6 +133,51 @@
                 "PLATFORMATOR_INSTALL": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-benchmark"
             }
+        },
+        {
+            "name": "editor-debug",
+            "displayName": "Editor Debug",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/editor-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "PLATFORMATOR_BUILD_EDITOR": "ON",
+                "PLATFORMATOR_BUILD_TESTS": "ON",
+                "PLATFORMATOR_BUILD_RUNNER": "OFF",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "PLATFORMATOR_INSTALL": "OFF",
+                "PLATFORMATOR_SANITIZER": "none",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-debug"
+            }
+        },
+        {
+            "name": "editor-release",
+            "displayName": "Editor Release",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/bin/editor-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "PLATFORMATOR_BUILD_EDITOR": "ON",
+                "PLATFORMATOR_BUILD_TESTS": "OFF",
+                "PLATFORMATOR_BUILD_RUNNER": "OFF",
+                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
+                "PLATFORMATOR_INSTALL": "OFF",
+                "PLATFORMATOR_SANITIZER": "none",
+                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-release"
+            }
+        },
+        {
+            "name": "editor-asan",
+            "displayName": "Editor Address and Undefined Sanitizers",
+            "inherits": "editor-debug",
+            "binaryDir": "${sourceDir}/bin/editor-asan",
+            "cacheVariables": {
+                "PLATFORMATOR_SANITIZER": "address-undefined",
+                "PLATFORMATOR_BUILD_TESTS": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-asan"
+            }
         }
     ],
     "buildPresets": [
@@ -190,6 +235,21 @@
         {
             "name": "cleanup-benchmark",
             "configurePreset": "cleanup-benchmark"
+        },
+        {
+            "name": "editor-debug",
+            "displayName": "Editor Debug",
+            "configurePreset": "editor-debug"
+        },
+        {
+            "name": "editor-release",
+            "displayName": "Editor Release",
+            "configurePreset": "editor-release"
+        },
+        {
+            "name": "editor-asan",
+            "displayName": "Editor Address and Undefined Sanitizers",
+            "configurePreset": "editor-asan"
         }
     ]
 }

@@ -203,7 +203,10 @@ bool SDLWindow::init()
         return false;
     }
 
-    window = SDL_CreateWindow("Platformator", windowSettings.width, windowSettings.height, SDL_WINDOW_RESIZABLE);
+    SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE;
+    if (windowSettings.highPixelDensity)
+        windowFlags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    window = SDL_CreateWindow("Platformator", windowSettings.width, windowSettings.height, windowFlags);
     if (window == nullptr)
     {
         printf("Window could not be created! SDL_Error: %s", SDL_GetError());

@@ -65,3 +65,9 @@ The `Collision` constructor taking a normal, contacts and two colliders no longe
 Culling is used only when SDL reports the default full-output mapping: no render target or custom viewport, unit render scale, and no logical presentation. A custom mapping or failed state query falls back to submit-all for that frame; restoring the default mapping allows filtering on the next frame without a notification. Direct calls to the public four-argument `Camera::render` keep their submit-all behavior.
 
 The check uses current transformed sprite values and preserves the original sequence. It is O(N) work with O(1) extra runtime storage, no cache and no warmed culling allocations. Headless simulation performs no rendering visibility work.
+
+## Optional editor high-density window setting
+
+`WindowSettings::highPixelDensity` was appended with a default of `false`. Existing runtime windows therefore keep their ordinary SDL pixel-density behavior. The optional Linux editor opts in so its style and default font can follow the logical-to-pixel ratio; the editor still maps Scene viewport input in logical coordinates and render targets in physical pixels. Because this public settings struct grew, rebuild the engine library and all consumer translation units together when adopting the new header. This additive field does not change scene serialization or runtime defaults.
+
+The optional native editor is enabled with `-DPLATFORMATOR_BUILD_EDITOR=ON` (the `editor-debug` preset does this). It uses Dear ImGui rather than adding editor dependencies to `Platformator::platformator`; editor-off builds and installed runtime consumers remain independent. See [editor setup and limits](../editor/README.md).

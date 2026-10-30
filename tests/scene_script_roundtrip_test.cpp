@@ -88,7 +88,8 @@ class AnnotatedSceneBehavior : public Behavior
 {
   public:
     AnnotatedSceneBehavior()
-        : displayName(), speed(0.0f), allowDash(false), precision(0.0), offset(Eigen::Vector2f::Zero()), targetObject(),
+        : displayName("Constructor Default"), speed(2.5f), allowDash(true), precision(9.25),
+          offset(Eigen::Vector2f(4.0f, 5.0f)), targetObject(),
           emitter(), icon(), idleClip(), sound()
     {
     }
@@ -287,7 +288,8 @@ void testSceneVersion2RoundTrip()
                                                    {"emitter", 300},
                                                    {"icon", textureAssetPath},
                                                    {"idleClip", animationClipAssetPath},
-                                                   {"sound", audioAssetPath}}})}});
+                                                   {"sound", audioAssetPath}},
+                                                  {{"type", "AnnotatedSceneBehavior"}}})}});
 
         const nlohmann::json sceneJson =
             nlohmann::json::array({targetDummyJson, mainCameraJson, spriteOnlyJson, scriptedObjectJson});
@@ -370,6 +372,16 @@ void testSceneVersion2RoundTrip()
         require(behavior->sound.getFilePath().has_value() && *behavior->sound.getFilePath() == audioAssetPath &&
                     behavior->sound.get() != nullptr,
                 "Scene v2 round-trip test failed to resolve the audio asset field.");
+
+        const auto &loadedBehaviors = scriptComponent->getBehaviors();
+        auto *omittedBehavior = loadedBehaviors.size() > 1
+                                    ? dynamic_cast<AnnotatedSceneBehavior *>(loadedBehaviors[1])
+                                    : nullptr;
+        require(omittedBehavior != nullptr && omittedBehavior->displayName == "Constructor Default" &&
+                    std::abs(omittedBehavior->speed - 2.5f) <= 1e-5f && omittedBehavior->allowDash &&
+                    std::abs(omittedBehavior->precision - 9.25) <= 1e-12 &&
+                    (omittedBehavior->offset - Eigen::Vector2f(4.0f, 5.0f)).norm() <= 1e-5f,
+                "macro deserialization must retain actual constructor defaults for omitted fields");
 
         gameManager.saveScene(scene);
 

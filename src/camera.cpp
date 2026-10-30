@@ -67,8 +67,8 @@ void Camera::renderWithView(Sprite *sprite, SDL_Renderer *renderer,
             return;
     }
     PLATFORMATOR_RENDER_SUBMISSION(sprite);
-    SDL_RenderTextureRotated(renderer, sprite->getTexture(), sprite->getSourceRect(), &renderQuad, angleDegrees, nullptr,
-                             sprite->getFlip());
+    platformator_detail::submitSpriteRender(renderer, sprite->getTexture(), sprite->getSourceRect(),
+                                             renderQuad, angleDegrees, sprite->getFlip());
 }
 
 void Camera::prepareSpriteGeometry(Sprite *sprite, const platformator_detail::SpriteRenderView &view,
@@ -78,9 +78,8 @@ void Camera::prepareSpriteGeometry(Sprite *sprite, const platformator_detail::Sp
     float renderH = sprite->getHeight();
 
     const auto &spritePosition = getPublishedSpritePosition(sprite);
-    renderQuad = {(spritePosition.x() - renderW * 0.5f - view.cameraX) * view.scaleX,
-                  (spritePosition.y() - renderH * 0.5f - view.cameraY) * view.scaleY,
-                  renderW * view.scaleX, renderH * view.scaleY};
+    renderQuad = platformator_detail::makeSpriteRenderDestination(
+        spritePosition.x(), spritePosition.y(), renderW, renderH, view);
     angleDegrees = sprite->getGameObject()->getRotationInDegrees();
 }
 

@@ -1,0 +1,52 @@
+# Contract: Desktop Editor, Documents, and Execution
+
+These are planned interfaces. Existing runtime behavior is preserved except for additive catalog support and opt-in high-density window creation described below.
+
+## Build and launch
+
+- `PLATFORMATOR_BUILD_EDITOR` defaults OFF, including embedded/SDK use. When ON, private ImGui/editor targets and `platformator_editor` are available. Editor tests additionally require `PLATFORMATOR_BUILD_TESTS=ON`. Normal configure/build never downloads GUI sources.
+- `editor-debug`, `editor-release`, `editor-asan` presets build under their corresponding `bin/` directories. No editor/ImGui include, library, init routine, or package requirement appears in exported `Platformator::platformator` dependencies. Script metadata types use only existing engine/standard dependencies.
+- Linux CLI: `platformator_editor --project-root PATH [--scene FILE] [--asset-root PATH] [--ui-scale NUMBER] [--no-restore] [--help]`. Resolve relative paths against the invocation cwd. Project root defaults to cwd and must identify a project; asset root defaults to its `assets/` directory and must exist. Explicit scene overrides restored scene; `--no-restore` opens a new starter document when no scene is given.
+- Invalid options/roots report stderr and a nonzero exit; failed interactive Open leaves the existing document alive. `--help` succeeds without a window/runtime. A missing restored scene is reported in the GUI and opens a recoverable empty/starter session.
+- `--ui-scale` is a positive finite style-scale override for validation/user preference, not a simulated OS framebuffer ratio. The actual window/pixel ratio always comes from SDL.
+- `WindowSettings::highPixelDensity` is additive, defaults false, and enables SDL's high-density creation flag only when requested. Native consumers must rebuild against changed public headers; no ImGui types enter this header.
+
+## File operations and data protection
+
+Open and file-dialog operations are transactional: choose a candidate, handle cancellation without mutation, resolve unsaved work, parse/validate into temporary data, then adopt only a valid document. Save/Discard/Cancel applies before New/Open/Exit and save-before-run. No dialog cancellation clears dirty state or starts a queued run.
+
+Save writes the authoritative top-level scene array, not preview objects. Preserve original IDs, ordering, unknown data and known path policy. Write/flush/close a same-directory temporary file before atomic replacement; failure before replacement leaves the old destination and document/history untouched. Successful replacement updates source path and saved token. Directory durability errors after replacement are reported as a durability limitation without pretending the replacement never occurred. External simultaneous scene-file editing is not merged; detect a changed on-disk source identity before overwrite and require an explicit overwrite/Save As choice.
+
+Do not instantiate game behaviors to validate or preview. Structural errors prevent adoption; recoverable imported field/resource issues remain visible and repairable. Validate lists problems by owner/field. Known invalid fields and unregistered current-target behaviors block Run with actionable context. Unknown custom behavior validation belongs to that game, and launch errors remain visible.
+
+## Panels and interaction
+
+- Default layout: Hierarchy left, Scene center, Inspector right, Project/Assets and Console bottom; Behaviors is an available tab/panel. Top menus expose File/Edit/View/Run plus settings, toolbar has New/Open/Save, Undo/Redo, navigation, Validate, Build, Build & Run, Stop, with status.
+- Use neutral charcoal backgrounds, subtle panel borders, a restrained blue selection/focus accent, compact aligned label/value rows, distinct toolbar and tabs, collapsible component headers, and clear Add Component. Icons are simple original vector marks with text/tooltips; no Unity branding is copied.
+- The Inspector exposes the complete field inventory in [../parity.md](../parity.md). Unsupported/custom JSON is preserved; supported JSON containers receive recursive editors, while values whose type cannot be safely edited are read-only with an explanation. Catalog refresh never deletes fields.
+- Hierarchy/Scene/Inspector share ID selection. Component selection focuses that section; deleting it falls back to its owner. Overlapping targets cycle in deterministic front-to-back draw order, with component handles prioritized and a way to reach every candidate.
+- Keyboard: platform New/Open/Save/Save As/Undo/Redo and zoom actions; Ctrl+B Build, F5 Build & Run, Shift+F5 Stop, F6 Validate, Ctrl+, Settings, F Frame Scene, Shift+F Frame Selection. Display shortcuts in menus/tooltips. These framing keys deliberately retain the old editor instead of matching Unity exactly.
+- Every SDL event goes to ImGui's backend. Text editing, active numeric widgets, modals and captured drags suppress unrelated scene/global commands. Use explicit editor-wide handling for intended Save while a field is active after committing its value; ordinary typed characters never trigger frame/delete/run commands. Losing focus/closing Scene cancels its gesture safely.
+- A drag begins on activation, updates the affected property live, commits on completed release, and cancels/restores on Escape or invalidation. Each completed gesture is one history command. Inspector and viewport use the same command/validation path. No-op focus, selection, layout and navigation stay out of scene history.
+
+## Project settings and execution
+
+Persist separate configure/build presets, target and executable, declared `catalogProtocol`, selected scene/root, debug/production choice, dimensions, fullscreen/maximized/aspect flags, applicable overlay categories and start-paused option. Resolve presets/targets from the configured project and existing conventions; support explicit executable selection rather than assuming all games are the stock runner. Shared-runner targets satisfy automatic Run compatibility through rebuilding. Other entry points remain editable/buildable; without declared compatible catalog support, disable automatic Run and do not probe the executable or change its source. See [behavior-catalog.md](behavior-catalog.md) for the precise boundary. Do not use a Qt settings database or require migrating old machine preferences.
+
+For a declared compatible target, the build pipeline is: configure argv, build target argv, query successfully built executable with `--editor-catalog`, check required behavior availability and saved-scene identity, then launch with `--scene ABSOLUTE_FILE --asset-root ABSOLUTE_ROOT` plus chosen runtime options. Build-only ends after build and is available for undeclared/custom entries too. Never copy the legacy positional scene launch when the current runtime expects explicit flags. Do not run a target after configure/build/catalog failure. Show commands with readable quoting, but execute argv directly without a shell.
+
+Freeze scene path/root/settings for each operation; changing authoring selection has no effect on that operation. Disable document replacement/project changes while a pipeline/game owns the context, while allowing unrelated UI/navigation and cancellation. Either disable scene mutation during execution or visibly isolate it from the frozen running scene; initial implementation disables mutation until Stop/exit, preserving history. Closing the editor offers Stop/Cancel for active work, then applies unsaved-work handling.
+
+One owned process group and operation generation cover configure/build/catalog/game stages. Poll output and completion without blocking GUI. Stop cancels the queue, signals only that owned group, escalates after 2 seconds if needed, and reaps owned children. Closing pipes, abnormal exit, spawn failure, and stale callback completion release busy state; final diagnostics remain in the bounded Console. Test that a shell-free fixture spawning a grandchild is also stopped.
+
+Game output appears in the separate game window. No embedded Game tab, runtime property editing, hot reload, or new pause/step UI is implied. The editor never runs its preview Runtime to play the authored scene.
+
+## Preferences and asynchronous completion
+
+Use SDL preference storage with a schema version and canonical-project key. Keep `settings.json` and `layout.ini` separate from scenes. Persist only successfully adopted scene paths; never overwrite an explicit startup choice with restoration. Reset Layout affects panels alone. Missing/corrupt settings fall back to usable defaults and in-window recovery.
+
+Native SDL dialogs are asynchronous: distinguish cancellation, provider error, and selected paths; offer an in-editor path entry if the platform provider fails. Copy callback data and queue it; validate generation before document mutation. Filesystem scans publish immutable snapshots through a small bounded queue and never access live GUI/document objects. Shutdown invalidates request generations and waits for owned scan tasks while callback contexts remain safe for late completion.
+
+## Acceptance families
+
+`platformator_editor_document_test`, `platformator_editor_history_test`, `platformator_editor_catalog_test`, `platformator_editor_process_test`, `platformator_editor_preview_test`, `platformator_editor_startup_test`, and `platformator_editor_workspace_test` are registered native CTest targets. Additionally, `platformator_editor_capture_budget_test` runs `editor/tests/capture_budget_test.py` with the discovered Python 3 interpreter, using only its standard library; register it with CTest and run it before any resource/timing session. Correctness suites test behaviors above; desktop review verifies actual docking, input focus, dialogs, style and scaling. See [../quickstart.md](../quickstart.md) for execution and evidence limits.

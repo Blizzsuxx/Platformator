@@ -30,6 +30,8 @@ enum class EditorIcon
 };
 
 void apply_editor_style(float scale);
+float resolve_editor_ui_scale(float userScale, int logicalWidth, int logicalHeight,
+                              int pixelWidth, int pixelHeight) noexcept;
 void push_editor_toolbar_style();
 void pop_editor_toolbar_style();
 bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip = nullptr);

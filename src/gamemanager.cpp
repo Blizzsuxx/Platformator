@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "benchmark.h"
 #include "constants.h"
@@ -203,6 +204,8 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     {
         throw std::invalid_argument("Simulation timestep must be finite and positive");
     }
+    if (simulationStepNumber == std::numeric_limits<std::uint64_t>::max())
+        throw std::overflow_error("Simulation step number is exhausted");
 
     auto stage = [&](Phase next, auto &&work)
     {
@@ -268,9 +271,11 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     {
         std::rethrow_exception(error);
     }
+    ++simulationStepNumber;
 }
 
-void GameManager::loop()
+void GameManager::loop(const std::function<bool(SDLWindow &)> &ownerThreadService,
+                       const std::function<void(std::uint64_t)> &afterSimulationStep)
 {
     assertCanMutate();
     if (!isIdle())
@@ -281,6 +286,8 @@ void GameManager::loop()
     auto previous = std::chrono::steady_clock::now();
     while (window->isRunning())
     {
+        if (ownerThreadService && !ownerThreadService(*window))
+            break;
         const auto now = std::chrono::steady_clock::now();
         const double elapsed = std::chrono::duration<double>(now - previous).count();
         previous = now;
@@ -297,6 +304,8 @@ void GameManager::loop()
             window->clearDebugObjects();
 #endif
             runSimulationStep(FIXED_TIME_STEP);
+            if (afterSimulationStep)
+                afterSimulationStep(simulationStepNumber);
         }
         window->clearAdvanceFrameRequest();
         if (!window->isRunning())
@@ -404,22 +413,156 @@ TextureWrapper *GameManager::loadTexture(const std::string &filePath, bool requi
                                              resolved.canonicalPath, std::move(wrapper));
 }
 
+TextureWrapper *GameManager::findTexture(const std::string &filePath)
+{
+    if (filePath.empty())
+        return nullptr;
+    if (const auto *canonical = textureAliases.find(filePath))
+    {
+        const auto found = textureCache.find(*canonical);
+        return found == textureCache.end() ? nullptr : found->second.get();
+    }
+    try
+    {
+        const auto canonical = PathManager::getInstance().canonicalizeAssetPath(filePath);
+        const auto found = textureCache.find(canonical);
+        if (found == textureCache.end())
+            return nullptr;
+        textureAliases.add(filePath, canonical);
+        return found->second.get();
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+std::uint64_t GameManager::texture_cache_bytes() const noexcept
+{
+    std::uint64_t total = 0;
+    std::unordered_set<const TextureWrapper *> seen;
+    const auto account = [&](const TextureWrapper *wrapper) {
+        if (wrapper == nullptr || !seen.insert(wrapper).second || wrapper->getTexture() == nullptr)
+            return true;
+        float width = 0.0f;
+        float height = 0.0f;
+        if (!SDL_GetTextureSize(wrapper->getTexture(), &width, &height) || width <= 0.0f || height <= 0.0f)
+            return true;
+        const auto pixels = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
+        if (pixels > (std::numeric_limits<std::uint64_t>::max() - total) / 4ULL)
+            return false;
+        total += pixels * 4ULL;
+        return true;
+    };
+    for (const auto &entry : textureCache)
+        if (!account(entry.second.get()))
+            return std::numeric_limits<std::uint64_t>::max();
+    for (const auto &entry : retiredTextureCache)
+        if (!account(entry.get()))
+            return std::numeric_limits<std::uint64_t>::max();
+    return total;
+}
+
+TextureWrapper *GameManager::reloadTexture(const std::string &filePath)
+{
+    assertCanMutate();
+    if (!isIdle())
+        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+    if (filePath.empty())
+        throw std::invalid_argument("Texture path is empty");
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    if (!window->getRenderer())
+        throw std::runtime_error("Textures require a video renderer: " + filePath);
+    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
+        IMG_LoadTexture(window->getRenderer(), resolved.absolutePath.c_str()), SDL_DestroyTexture);
+    if (!texture)
+        throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
+    auto replacement = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
+    texture.release();
+    replacement->runtimeSerial = registry.serial();
+
+    const auto found = textureCache.find(resolved.canonicalPath);
+    if (found == textureCache.end())
+    {
+        auto *published = platformator_detail::publishAsset(textureCache, textureAliases, filePath,
+                                                            resolved.canonicalPath, std::move(replacement));
+        textureAliases.rebind(filePath, resolved.canonicalPath);
+        return published;
+    }
+    if (found->second->getReferenceCount() != 0)
+        retiredTextureCache.reserve(retiredTextureCache.size() + 1);
+    textureAliases.rebind(filePath, resolved.canonicalPath);
+    if (found->second->getReferenceCount() != 0)
+    {
+        retiredTextureCache.push_back(std::move(found->second));
+    }
+    else
+        found->second.reset();
+    found->second = std::move(replacement);
+    return found->second.get();
+}
+
+TextureWrapper *GameManager::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
+{
+    assertCanMutate();
+    if (!isIdle())
+        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+    if (filePath.empty() || preparedSurface == nullptr)
+        throw std::invalid_argument("Prepared texture reload requires a path and decoded surface");
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    SDL_Renderer *renderer = window->getRenderer();
+    if (!renderer)
+        throw std::runtime_error("Textures require a video renderer: " + filePath);
+    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
+        SDL_CreateTextureFromSurface(renderer, preparedSurface), SDL_DestroyTexture);
+    if (!texture)
+        throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
+    auto replacement = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
+    texture.release();
+    replacement->runtimeSerial = registry.serial();
+
+    const auto found = textureCache.find(resolved.canonicalPath);
+    if (found == textureCache.end())
+    {
+        auto *published = platformator_detail::publishAsset(textureCache, textureAliases, filePath,
+                                                            resolved.canonicalPath, std::move(replacement));
+        textureAliases.rebind(filePath, resolved.canonicalPath);
+        return published;
+    }
+    if (found->second->getReferenceCount() != 0)
+        retiredTextureCache.reserve(retiredTextureCache.size() + 1);
+    textureAliases.rebind(filePath, resolved.canonicalPath);
+    if (found->second->getReferenceCount() != 0)
+    {
+        retiredTextureCache.push_back(std::move(found->second));
+    }
+    else
+        found->second.reset();
+    found->second = std::move(replacement);
+    return found->second.get();
+}
+
 void GameManager::freeTexture(TextureWrapper *textureWrapper)
 {
     PLATFORMATOR_LOG("Freeing texture: %s\n", textureWrapper->getFilePath().c_str());
 
     auto it = textureCache.find(textureWrapper->getFilePath());
-    if (it != textureCache.end())
+    if (it != textureCache.end() && it->second.get() == textureWrapper)
     {
         textureAliases.remove(it->first);
         textureCache.erase(it);
+        return;
     }
+    std::erase_if(retiredTextureCache, [&](const auto &resource) {
+        return resource.get() == textureWrapper;
+    });
 }
 
 void GameManager::freeAllTextures()
 {
     textureAliases.clear();
     textureCache.clear();
+    retiredTextureCache.clear();
 }
 
 GameObject *GameManager::createGameObject()
@@ -737,21 +880,60 @@ AudioWrapper *GameManager::loadAudio(const std::string &filePath, bool required)
                                              resolved.canonicalPath, std::move(wrapper));
 }
 
+AudioWrapper *GameManager::reloadAudio(const std::string &filePath)
+{
+    assertCanMutate();
+    if (!isIdle())
+        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+    if (filePath.empty())
+        throw std::invalid_argument("Audio path is empty");
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    if (!window->getMixer())
+        throw std::runtime_error("Audio assets require an audio backend: " + filePath);
+    std::unique_ptr<MIX_Audio, decltype(&MIX_DestroyAudio)> audio(
+        MIX_LoadAudio(window->getMixer(), resolved.absolutePath.c_str(), true), MIX_DestroyAudio);
+    if (!audio)
+        throw std::runtime_error("Audio '" + filePath + "': " + SDL_GetError());
+    auto replacement = std::make_unique<AudioWrapper>(audio.get(), resolved.canonicalPath);
+    audio.release();
+    replacement->runtimeSerial = registry.serial();
+
+    const auto found = audioCache.find(resolved.canonicalPath);
+    if (found == audioCache.end())
+        return platformator_detail::publishAsset(audioCache, audioAliases, filePath,
+                                                 resolved.canonicalPath, std::move(replacement));
+    audioAliases.add(filePath, resolved.canonicalPath);
+    if (found->second->getReferenceCount() != 0)
+    {
+        retiredAudioCache.reserve(retiredAudioCache.size() + 1);
+        retiredAudioCache.push_back(std::move(found->second));
+    }
+    else
+        found->second.reset();
+    found->second = std::move(replacement);
+    return found->second.get();
+}
+
 void GameManager::freeAudio(AudioWrapper *audioWrapper)
 {
     PLATFORMATOR_LOG("Freeing audio: %s\n", audioWrapper->getFilePath().c_str());
     auto it = audioCache.find(audioWrapper->getFilePath());
-    if (it != audioCache.end())
+    if (it != audioCache.end() && it->second.get() == audioWrapper)
     {
         audioAliases.remove(it->first);
         audioCache.erase(it);
+        return;
     }
+    std::erase_if(retiredAudioCache, [&](const auto &resource) {
+        return resource.get() == audioWrapper;
+    });
 }
 
 void GameManager::freeAllAudio()
 {
     audioAliases.clear();
     audioCache.clear();
+    retiredAudioCache.clear();
 }
 
 AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
@@ -760,22 +942,51 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
     return loadAnimationClip(filePath, resolver, false);
 }
 
+AnimationClip *GameManager::findAnimationClip(const std::string &filePath)
+{
+    if (filePath.empty())
+        return nullptr;
+    if (const auto *canonical = animationAliases.find(filePath))
+    {
+        const auto found = animationClipCache.find(*canonical);
+        return found == animationClipCache.end() ? nullptr : found->second.get();
+    }
+    try
+    {
+        const auto canonical = PathManager::getInstance().canonicalizeAssetPath(filePath);
+        const auto found = animationClipCache.find(canonical);
+        if (found == animationClipCache.end())
+            return nullptr;
+        animationAliases.add(filePath, canonical);
+        return found->second.get();
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
 void GameManager::freeAnimationClip(AnimationClip *animationClip)
 {
     PLATFORMATOR_LOG("Freeing animation clip: %s\n", animationClip->getFilePath().c_str());
 
     auto it = animationClipCache.find(animationClip->getFilePath());
-    if (it != animationClipCache.end())
+    if (it != animationClipCache.end() && it->second.get() == animationClip)
     {
         animationAliases.remove(it->first);
         animationClipCache.erase(it);
+        return;
     }
+    std::erase_if(retiredAnimationCache, [&](const auto &resource) {
+        return resource.get() == animationClip;
+    });
 }
 
 void GameManager::freeAllAnimationClips()
 {
     animationAliases.clear();
     animationClipCache.clear();
+    retiredAnimationCache.clear();
 }
 
 void GameManager::queueScriptStart(ScriptComponent *script)
@@ -1314,6 +1525,122 @@ AnimationClip *GameManager::loadAnimationClip(const std::string &filePath,
     clip->runtimeSerial = registry.serial();
     return platformator_detail::publishAsset(animationClipCache, animationAliases, filePath,
                                              resolved.canonicalPath, std::move(clip));
+}
+
+AnimationClip *GameManager::reloadAnimationClip(const std::string &filePath)
+{
+    assertCanMutate();
+    if (!isIdle())
+        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+    if (filePath.empty())
+        throw std::invalid_argument("Animation path is empty");
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    std::ifstream file(resolved.absolutePath);
+    if (!file)
+        throw std::runtime_error("Cannot open animation: " + filePath);
+    auto replacement = std::make_unique<AnimationClip>();
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    try
+    {
+        deserialize(nlohmann::json::parse(file), *replacement, resolver);
+    }
+    catch (const std::exception &error)
+    {
+        throw std::runtime_error("Animation '" + filePath + "': " + error.what());
+    }
+
+    replacement->setFilePath(resolved.canonicalPath);
+    replacement->runtimeSerial = registry.serial();
+
+    const auto found = animationClipCache.find(resolved.canonicalPath);
+    if (found == animationClipCache.end())
+    {
+        auto *published = platformator_detail::publishAsset(animationClipCache, animationAliases, filePath,
+                                                            resolved.canonicalPath, std::move(replacement));
+        animationAliases.rebind(filePath, resolved.canonicalPath);
+        return published;
+    }
+    if (found->second->referenceCount != 0)
+        retiredAnimationCache.reserve(retiredAnimationCache.size() + 1);
+    animationAliases.rebind(filePath, resolved.canonicalPath);
+    if (found->second->referenceCount != 0)
+    {
+        retiredAnimationCache.push_back(std::move(found->second));
+    }
+    else
+        found->second.reset();
+    found->second = std::move(replacement);
+    return found->second.get();
+}
+
+AnimationClip *GameManager::reloadAnimationClip(const std::string &filePath,
+                                                const nlohmann::json &preparedDocument)
+{
+    assertCanMutate();
+    if (!isIdle())
+        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+    if (filePath.empty())
+        throw std::invalid_argument("Animation path is empty");
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    auto replacement = std::make_unique<AnimationClip>();
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    try
+    {
+        deserialize(preparedDocument, *replacement, resolver);
+    }
+    catch (const std::exception &error)
+    {
+        throw std::runtime_error("Animation '" + filePath + "': " + error.what());
+    }
+
+    // Deserialization can resolve a frame through a cached logical request
+    // alias that still points at the prior symlink target. The editor has
+    // already prepared current frame textures before this owner-thread commit;
+    // bind those current wrappers into the replacement clip and rebind each
+    // serialized request so future Runtime loads observe the adopted target.
+    const auto preparedFrames = preparedDocument.find("frames");
+    if (preparedFrames != preparedDocument.end() && preparedFrames->is_array())
+    {
+        const auto frameCount = std::min(preparedFrames->size(), replacement->frames.size());
+        for (std::size_t index = 0; index < frameCount; ++index)
+        {
+            const auto &frame = (*preparedFrames)[index];
+            if (!frame.is_object())
+                continue;
+            const auto texturePath = frame.find("textureWrapperFilePath");
+            if (texturePath == frame.end() || !texturePath->is_string() || texturePath->get<std::string>().empty())
+                continue;
+            const auto request = texturePath->get<std::string>();
+            const auto resolvedTexture = PathManager::getInstance().resolveAssetPath(request);
+            const auto cachedTexture = textureCache.find(resolvedTexture.canonicalPath);
+            if (cachedTexture == textureCache.end())
+                continue;
+            replacement->frames[index].setTextureWrapper(cachedTexture->second.get());
+            textureAliases.rebind(request, resolvedTexture.canonicalPath);
+        }
+    }
+    replacement->setFilePath(resolved.canonicalPath);
+    replacement->runtimeSerial = registry.serial();
+
+    const auto found = animationClipCache.find(resolved.canonicalPath);
+    if (found == animationClipCache.end())
+    {
+        auto *published = platformator_detail::publishAsset(animationClipCache, animationAliases, filePath,
+                                                            resolved.canonicalPath, std::move(replacement));
+        animationAliases.rebind(filePath, resolved.canonicalPath);
+        return published;
+    }
+    if (found->second->referenceCount != 0)
+        retiredAnimationCache.reserve(retiredAnimationCache.size() + 1);
+    animationAliases.rebind(filePath, resolved.canonicalPath);
+    if (found->second->referenceCount != 0)
+    {
+        retiredAnimationCache.push_back(std::move(found->second));
+    }
+    else
+        found->second.reset();
+    found->second = std::move(replacement);
+    return found->second.get();
 }
 
 void GameManager::requestScene(std::optional<std::string> path)

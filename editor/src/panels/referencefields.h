@@ -11,6 +11,7 @@
 
 namespace platformator_editor
 {
+class ResourceIndex;
 enum class ReferenceState
 {
     Unset,
@@ -40,8 +41,21 @@ SceneReferenceInfo inspect_scene_reference(const DocumentSession &document, cons
                                            std::string_view expectedTarget);
 bool validate_scene_reference_assignment(const DocumentSession &document, const Json &value,
                                          std::string_view expectedTarget, bool nullable, std::string &error);
+bool draw_template_reference_kind_control(int objectId, int componentId,
+                                         std::size_t behaviorOrdinal,
+                                         std::string_view controlId,
+                                         std::optional<std::string> &declaredKind);
+Json make_template_reference_binding_declaration(int ownerId, int componentId,
+                                                 std::size_t behaviorOrdinal,
+                                                 std::string_view fieldName,
+                                                 std::string_view targetKind);
+Json make_template_reference_path_declaration(int ownerId, int componentId,
+                                              std::size_t behaviorOrdinal,
+                                              std::string_view relativePointer,
+                                              std::string_view targetKind);
 AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, const Json &value,
-                                           std::string_view expectedAssetType);
+                                           std::string_view expectedAssetType,
+                                           ResourceIndex *resourceIndex = nullptr);
 bool validate_asset_reference_assignment(const DocumentSession &document, const Json &value,
                                          std::string_view expectedAssetType,
                                          bool nullable, std::string &error);
@@ -55,5 +69,6 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                 std::optional<std::size_t> behaviorOrdinal,
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedAssetType, bool nullable, const char *label,
-                                const AssetBrowseCallback &browse = {}, Json clearValue = nullptr);
+                                const AssetBrowseCallback &browse = {}, Json clearValue = nullptr,
+                                ResourceIndex *resourceIndex = nullptr);
 } // namespace platformator_editor

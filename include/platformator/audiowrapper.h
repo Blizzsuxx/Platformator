@@ -25,6 +25,7 @@ public:
     ~AudioWrapper();
 
     MIX_Audio *getAudio() const;
+    size_t getReferenceCount() const;
     void addReference();
     bool removeReferenceAndFreeIfNoReferences();
 

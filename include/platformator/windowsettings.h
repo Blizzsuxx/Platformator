@@ -8,6 +8,7 @@ struct WindowSettings
     bool maximizeOnStartup = false;
     bool keepAspectRatio = false;
     bool headless = false;
+    bool hidden = false;
     bool enableRenderCulling = true;
     bool highPixelDensity = false;
 };

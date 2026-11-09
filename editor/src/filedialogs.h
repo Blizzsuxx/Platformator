@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,19 +50,39 @@ class FileDialogService
 
     AsyncRequestIdentity open_scene(SDL_Window *window, std::uint64_t documentGeneration,
                                     const std::filesystem::path &defaultLocation = {});
+    AsyncRequestIdentity open_scene(SDL_Window *window, DocumentIdentity identity,
+                                    const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity open_asset(SDL_Window *window, std::uint64_t documentGeneration,
                                     const std::filesystem::path &assetRoot,
                                     std::string_view expectedAssetType);
+    AsyncRequestIdentity open_asset(SDL_Window *window, DocumentIdentity identity,
+                                    const std::filesystem::path &assetRoot,
+                                    std::string_view expectedAssetType);
+    AsyncRequestIdentity open_executable(SDL_Window *window, DocumentIdentity identity,
+                                         const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity save_scene(SDL_Window *window, std::uint64_t documentGeneration,
                                     const std::filesystem::path &defaultLocation = {});
+    AsyncRequestIdentity save_scene(SDL_Window *window, DocumentIdentity identity,
+                                    const std::filesystem::path &defaultLocation = {});
+    AsyncRequestIdentity save_animation(SDL_Window *window, DocumentIdentity identity,
+                                        const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity select_folder(SDL_Window *window, std::uint64_t documentGeneration,
+                                       const std::filesystem::path &defaultLocation = {});
+    AsyncRequestIdentity select_folder(SDL_Window *window, DocumentIdentity identity,
                                        const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity select_project_folder(SDL_Window *window, std::uint64_t contextGeneration,
                                                 const std::filesystem::path &defaultLocation = {});
+    AsyncRequestIdentity select_project_folder(SDL_Window *window, DocumentIdentity identity,
+                                                const std::filesystem::path &defaultLocation = {});
     AsyncRequestIdentity submit_manual_path(AsyncRequestKind kind, std::uint64_t documentGeneration,
+                                            const std::filesystem::path &selectedPath);
+    AsyncRequestIdentity submit_manual_path(AsyncRequestKind kind, DocumentIdentity identity,
                                             const std::filesystem::path &selectedPath);
 
     std::vector<AsyncRequestResult> take_ready(std::uint64_t currentDocumentGeneration);
+    std::vector<AsyncRequestResult> take_ready(const DocumentIdentity &currentIdentity);
+    std::vector<AsyncRequestResult> take_ready(
+        const std::function<bool(const DocumentIdentity &)> &identityIsCurrent);
     void shutdown() noexcept;
 
   private:

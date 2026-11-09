@@ -1,0 +1,13 @@
+Platformator Editor third-party runtime and source notices
+
+Dear ImGui 1.92.9b: MIT; vendored/imgui-1.92.9b/LICENSE.txt
+Eigen 5.0.1: MPL-2.0 and notices for bundled portions; see licenses/COPYING.*
+SDL 3.4.18: zlib; licenses/SDL3-LICENSE.txt
+SDL_image 3.4.8: zlib; licenses/SDL3-image-LICENSE.txt
+SDL_mixer 3.2.4: zlib plus notices for enabled codecs; licenses/SDL3-mixer-LICENSE.txt
+SDL_ttf 3.2.2: zlib; licenses/SDL3-ttf-LICENSE.txt
+oneTBB 2022.3.0: Apache-2.0 with LLVM exception; licenses/oneTBB-LICENSE.txt
+nlohmann/json 3.12.0: MIT, identified by SPDX metadata in the installed single-header source.
+
+Linux system runtime dependencies such as dbus, FreeType, HarfBuzz and the C/C++
+runtime are supplied by the host distribution and are not copied into this prefix.

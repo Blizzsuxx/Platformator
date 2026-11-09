@@ -883,7 +883,7 @@ typedef struct
 
 static void stbi__refill_buffer(stbi__context *s);
 
-#if 0 /* not used in SDL_image */
+#ifdef PLATFORMATOR_BOUNDED_DECODER /* Platformator: the capped in-memory decoder also builds the GIF convenience entry point. */
 // initialize a memory-decode context
 static void stbi__start_mem(stbi__context *s, stbi_uc const *buffer, int len)
 {

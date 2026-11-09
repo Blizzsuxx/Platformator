@@ -1,4 +1,5 @@
 #include "test_support.h"
+#include "defaultlayout.h"
 #include "document.h"
 #include "editcommands.h"
 #include "preview.h"
@@ -9,6 +10,9 @@
 #include "preferences.h"
 #include "toolbar.h"
 #include "filedialogs.h"
+#include "editorapp.h"
+#include "editorresources.h"
+#include "projectsession.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -89,7 +93,8 @@ class ImGuiSession
         drawPanel("Hierarchy###panel.hierarchy");
         ImGui::SetNextWindowSize(ImVec2(480.0f, 360.0f), ImGuiCond_Always);
         scenePanel.set_visible(showPanels);
-        scenePanel.draw(document, preview, selection, commands, window, renderer_);
+        SnapPreferences snap;
+        scenePanel.draw(document, preview, selection, commands, window, renderer_, snap);
         drawPanel("Inspector###panel.inspector");
         drawPanel("Project and Assets###panel.project");
         drawPanel("Console###panel.console");
@@ -115,9 +120,11 @@ class ImGuiSession
         ImGui::NewFrame();
         EditorToolbarState state;
         state.operationActive = true;
+        state.projectLabel = "long-example-project-name";
+        state.projectPath = "/tmp/example project";
         state.sceneLabel = "long-example-scene-name.scene";
         state.scenePath = "/tmp/example project/long-example-scene-name.scene";
-        state.status = std::string(400, 'd');
+        state.status = width <= 720 ? std::string(400, 'd') : "Saved | Building";
         const auto frame = draw_editor_toolbar(state, actions);
         submit_editor_dockspace(0x6E706EF3, frame.height);
         ImGui::Render();
@@ -171,12 +178,181 @@ class ImGuiSession
     bool platformInitialized_ = false;
     bool rendererInitialized_ = false;
 };
+
+void projectless_adoption_cases()
+{
+    TemporaryDirectory temporary;
+    const auto bootstrap = temporary.path() / "bootstrap";
+    const auto bootstrapAssets = bootstrap / "assets";
+    const auto project = temporary.path() / "project";
+    const auto projectAssets = project / "assets";
+    const auto savedProject = temporary.path() / "last-project";
+    const auto lastWorkspacePath = temporary.path() / "preferences" / "last-workspace.json";
+    std::filesystem::create_directories(bootstrapAssets);
+    std::filesystem::create_directories(projectAssets);
+    std::ofstream(project / "CMakeLists.txt") << "project(startup-fixture)\n";
+    std::filesystem::create_directories(savedProject / "assets");
+    std::ofstream(savedProject / "CMakeLists.txt") << "project(removed-startup-fixture)\n";
+    std::string persistenceError;
+    require(save_last_workspace(lastWorkspacePath, savedProject, persistenceError),
+            "a valid workspace choice must be saved before missing-root restoration coverage: " +
+                persistenceError);
+    std::filesystem::remove_all(savedProject);
+    const auto missingRestoration = load_last_workspace(lastWorkspacePath);
+    bool missingRootRejected = false;
+    try
+    {
+        if (missingRestoration.projectRoot)
+            validate_project_folder(*missingRestoration.projectRoot);
+    }
+    catch (const std::invalid_argument &)
+    {
+        missingRootRejected = true;
+    }
+    require(missingRestoration.projectRoot && missingRootRejected,
+            "a removed last project must be rejected while allowing startup to fall back to a usable bootstrap workspace");
+    std::ofstream(lastWorkspacePath, std::ios::binary | std::ios::trunc) << "{";
+    const auto invalidRestoration = load_last_workspace(lastWorkspacePath);
+    require(!invalidRestoration.projectRoot && !invalidRestoration.message.empty(),
+            "a corrupt last-workspace preference must be ignored with an actionable message");
+    require(!editor_project_root_has_manifest(bootstrap) && editor_project_root_has_manifest(project),
+            "projectless startup must distinguish its temporary workspace from a real project");
+
+    ProjectSession session(bootstrap, bootstrapAssets);
+    auto *tab = session.documents().active_tab();
+    require(tab != nullptr, "projectless bootstrap must provide an untitled document for the welcome flow");
+    auto &workspace = tab->workspace();
+    const auto nameAddress = address_for_document(workspace.document(), 0, std::nullopt,
+                                                  std::nullopt, {std::string("name")});
+    const auto edited = tab->history().set_property(workspace.document_for_edit(), nameAddress,
+                                                     "Draft before choosing project");
+    require(static_cast<bool>(edited) && workspace.dirty(),
+            "a projectless untitled scene must retain edits while the project chooser is used");
+    const auto historyBefore = tab->history().history_status();
+
+    const auto rejected = session.set_project_roots(project, project / "missing-assets");
+    require(!rejected && workspace.dirty() &&
+                workspace.document().projectRoot == std::filesystem::canonical(bootstrap) &&
+                tab->history().history_status().currentToken == historyBefore.currentToken,
+            "an invalid project selection must leave the current draft and history usable");
+
+    const auto adopted = session.set_project_roots(project, projectAssets);
+    require(static_cast<bool>(adopted) && workspace.dirty() &&
+                workspace.document().projectRoot == std::filesystem::canonical(project) &&
+                workspace.document().assetRoot == std::filesystem::canonical(projectAssets) &&
+                tab->history().history_status().currentToken == historyBefore.currentToken,
+            "adopting a real project must preserve the projectless document and its undo history");
+}
+
+void executable_relative_resource_cases()
+{
+    TemporaryDirectory temporary;
+    const auto prefix = temporary.path() / "install prefix";
+    const auto executableDirectory = prefix / "bin";
+    const auto resourceDirectory = prefix / "share" / "platformator" / "editor";
+    std::filesystem::create_directories(executableDirectory);
+    std::filesystem::create_directories(resourceDirectory);
+
+    const auto layout = resourceDirectory / "default-layout.ini";
+    constexpr std::string_view optionalContents = "[Window][Optional install layout]\nPos=1,2\n";
+    {
+        std::ofstream output(layout, std::ios::binary);
+        output.write(optionalContents.data(), static_cast<std::streamsize>(optionalContents.size()));
+    }
+    const auto loaded = read_optional_editor_resource(
+        executableDirectory, "../share/platformator/editor/default-layout.ini", 1024);
+    require(loaded && *loaded == optionalContents,
+            "the optional editor layout must resolve relative to the installed executable");
+    require(read_editor_layout_or_fallback(
+                executableDirectory, "../share/platformator/editor/default-layout.ini",
+                "[Window][Embedded fallback]\n", 1024) == optionalContents,
+            "the installed optional layout must override the embedded fallback");
+
+    require(!read_optional_editor_resource(executableDirectory,
+                                           "../share/platformator/editor/missing.ini", 1024),
+            "a missing optional resource must leave the caller free to use its embedded fallback");
+    require(read_editor_layout_or_fallback(
+                executableDirectory, "../share/platformator/editor/missing.ini",
+                "[Window][Embedded fallback]\n", 1024) == "[Window][Embedded fallback]\n",
+            "a missing optional layout must retain the embedded default");
+    require(!read_optional_editor_resource(executableDirectory,
+                                           "../../outside.ini", 1024),
+            "optional resource lookup must reject paths outside the installation prefix");
+    require(!read_optional_editor_resource(executableDirectory,
+                                           "../share/platformator/editor/default-layout.ini",
+                                           optionalContents.size() - 1),
+            "optional resource lookup must reject files above its caller-provided size limit");
+    require(!read_optional_editor_resource(executableDirectory,
+                                           layout, 1024),
+            "optional resource lookup must reject absolute paths");
+}
+
+void pending_run_validation_cases()
+{
+    const DocumentIdentity sceneA{ProjectGeneration{4}, TabId{21}, DocumentGeneration{3}};
+    const DocumentIdentity sceneB{ProjectGeneration{4}, TabId{22}, DocumentGeneration{3}};
+    const DocumentIdentity reopenedA{ProjectGeneration{4}, TabId{23}, DocumentGeneration{1}};
+    const DocumentIdentity replacedProject{ProjectGeneration{5}, TabId{21}, DocumentGeneration{3}};
+    PendingRunValidation pending;
+    const auto switchedTicket = pending.begin(sceneA);
+    require(switchedTicket && pending.matches(*switchedTicket, sceneA) &&
+                !pending.matches(*switchedTicket, sceneB),
+            "a validation wait must remain bound to its originating Scene tab");
+    require(!pending.complete(*switchedTicket, sceneB) && pending.cancel(),
+            "switching tabs must reject and retire an old Run continuation");
+
+    const auto closedTicket = pending.begin(sceneA);
+    require(closedTicket && !pending.matches(*closedTicket, reopenedA),
+            "closing and reopening the same file must not inherit an earlier Run wait");
+    pending.cancel();
+    const auto projectTicket = pending.begin(sceneA);
+    require(projectTicket && !pending.matches(*projectTicket, replacedProject),
+            "project replacement must invalidate a pending Run identity");
+    pending.cancel();
+
+    int launches = 0;
+    std::optional<DocumentIdentity> launchedDocument;
+    const auto stoppedTicket = pending.begin(sceneA);
+    require(stoppedTicket && pending.cancel(), "Stop must retire a waiting Run request");
+    if (stoppedTicket && pending.complete(*stoppedTicket, sceneA))
+    {
+        ++launches;
+        launchedDocument = stoppedTicket->document;
+    }
+    require(launches == 0,
+            "Stop after validation is ready but before continuation must prevent any launch");
+
+    const auto olderTicket = pending.begin(sceneA);
+    const auto newerTicket = pending.begin(sceneA);
+    require(olderTicket && newerTicket && newerTicket->requestId > olderTicket->requestId &&
+                !pending.complete(*olderTicket, sceneA) &&
+                pending.complete(*newerTicket, sceneA),
+            "a newer Run request must supersede an older waiting continuation");
+    ++launches;
+    launchedDocument = newerTicket->document;
+    require(launches == 1 && launchedDocument == sceneA && !pending.active(),
+            "the current Run intent must launch its exact Scene identity once after validation is accepted");
+}
 } // namespace
 
 int main()
 {
     try
     {
+        pending_run_validation_cases();
+        require(resolve_editor_ui_scale(1.0f, 1280, 800, 1280, 800) == 1.0f &&
+                    resolve_editor_ui_scale(1.5f, 1280, 800, 1920, 1200) == 2.25f &&
+                    resolve_editor_ui_scale(1.0f, 1280, 800, 2560, 1600) == 2.0f,
+                "the active UI scale must combine persisted user scale with the current host DPI");
+        require(resolve_editor_ui_scale(1.5f, 1280, 800, 1280, 800) == 1.5f &&
+                    resolve_editor_ui_scale(1.5f, 1280, 800, 2560, 1600) == 3.0f &&
+                    resolve_editor_ui_scale(1.5f, 1280, 800, 0, 0) == 1.5f,
+                "the active UI scale must update when a host moves between monitor pixel densities");
+        require(resolve_editor_ui_scale(4.0f, 1280, 800, 1280, 800) == 1.0f &&
+                    resolve_editor_ui_scale(3.0f, 1280, 800, 10000, 8000) == 6.0f,
+                "invalid user scales must fall back safely and high-DPI totals must stay bounded");
+        projectless_adoption_cases();
+        executable_relative_resource_cases();
         TemporaryDirectory temporary;
         const auto assets = temporary.path() / "assets";
         std::filesystem::create_directories(assets);
@@ -212,9 +388,11 @@ int main()
         const auto seedPath = std::filesystem::path(__FILE__).parent_path().parent_path() /
                               "resources" / "default-layout.ini";
         std::ifstream seedStream(seedPath, std::ios::binary);
-        const std::string seed{std::istreambuf_iterator<char>(seedStream),
-                               std::istreambuf_iterator<char>()};
-        require(!seed.empty(), "actual docking acceptance must load the checked-in seed");
+        const std::string checkedInSeed{std::istreambuf_iterator<char>(seedStream),
+                                        std::istreambuf_iterator<char>()};
+        const std::string seed(kEmbeddedDefaultLayout);
+        require(!seed.empty() && seed == checkedInSeed,
+                "the editor must compile the checked-in default docking layout into its binary");
         ImGui::LoadIniSettingsFromMemory(seed.data(), seed.size());
         apply_editor_style(1.0f);
         imgui.draw_one_frame(document, preview, selection, commands, scenePanel, window);
@@ -302,9 +480,28 @@ int main()
         };
         for (const auto &[width, height, scale] : {std::tuple{1280, 800, 1.0f},
                                                    std::tuple{720, 500, 1.0f},
-                                                   std::tuple{480, 320, 1.5f}})
+                                                   std::tuple{480, 320, 1.5f},
+                                                   std::tuple{1280, 800, 2.0f},
+                                                   std::tuple{320, 280, 2.0f}})
         {
             const auto toolbar = imgui.draw_toolbar_frame(window, width, height, scale, toolbarActions);
+            EditorToolbarState semanticState;
+            semanticState.projectLabel = "long-example-project-name";
+            semanticState.projectPath = "/tmp/example project";
+            semanticState.sceneLabel = "long-example-scene-name.scene";
+            semanticState.scenePath = "/tmp/example project/long-example-scene-name.scene";
+            semanticState.status = width <= 720 ? std::string(400, 'd') : "Saved | Building";
+            const auto toolbarSemantics = editor_toolbar_semantic_nodes(semanticState, toolbar);
+            const auto identityNode = std::find_if(toolbarSemantics.begin(), toolbarSemantics.end(),
+                [](const SemanticNode &node) { return node.id == "main/toolbar/identity"; });
+            const auto statusNode = std::find_if(toolbarSemantics.begin(), toolbarSemantics.end(),
+                [](const SemanticNode &node) { return node.id == "main/toolbar/status"; });
+            require(identityNode != toolbarSemantics.end() && statusNode != toolbarSemantics.end() &&
+                        identityNode->value == "long-example-project-name / long-example-scene-name.scene" &&
+                        identityNode->help.find("/tmp/example project/long-example-scene-name.scene") !=
+                            std::string::npos &&
+                        statusNode->value == semanticState.status && identityNode->bounds && statusNode->bounds,
+                    "toolbar semantics must publish project/scene paths and full text status with current bounds");
             const auto *viewport = ImGui::GetMainViewport();
             const auto hasItem = [&](std::string_view name) {
                 return std::find_if(toolbar.items.begin(), toolbar.items.end(), [&](const auto &item) {
@@ -312,19 +509,32 @@ int main()
                 }) != toolbar.items.end();
             };
             require(hasItem("Open Scene") && hasItem("Save") && hasItem("Build") &&
-                        hasItem("Build and Run") && hasItem("Stop") && !hasItem("More") && !hasItem("New"),
+                        hasItem("Build and Run") && hasItem("Stop") &&
+                        hasItem("Document Status") && hasItem("Project and Scene") &&
+                        !hasItem("More") && !hasItem("New"),
                     "toolbar must keep only primary scene/build actions without duplicate overflow commands");
             for (const auto &item : toolbar.items)
-                require(item.width >= 0.0f && item.height >= 0.0f && item.x >= viewport->Pos.x - 1.0f &&
-                            item.x + item.width <= viewport->Pos.x + viewport->Size.x + 1.0f,
-                        "toolbar controls and status must remain inside the actual viewport bounds");
+            {
+                const bool fitsViewport = item.width >= 0.0f && item.height >= 0.0f &&
+                    item.x >= viewport->Pos.x - 1.0f &&
+                    item.x + item.width <= viewport->Pos.x + viewport->Size.x + 1.0f &&
+                    item.y >= viewport->Pos.y - 1.0f &&
+                    item.y + item.height <= viewport->Pos.y + toolbar.height + 1.0f;
+                if (!fitsViewport)
+                    throw std::runtime_error("toolbar item " + item.name + " at " +
+                        std::to_string(width) + "x" + std::to_string(height) + " scale " +
+                        std::to_string(scale) + " has bounds " + std::to_string(item.x) + "," +
+                        std::to_string(item.y) + " + " + std::to_string(item.width) + "x" +
+                        std::to_string(item.height) + " outside viewport or toolbar height " +
+                        std::to_string(toolbar.height));
+            }
             const auto openSceneItem = std::find_if(toolbar.items.begin(), toolbar.items.end(),
                 [](const auto &item) { return item.name == "Open Scene"; });
             require(openSceneItem != toolbar.items.end(),
                     "Open Scene toolbar action must have an actual clickable item");
             pushOpenSceneClick(*openSceneItem, width, height, scale);
         }
-        require(openSceneActivations == 3,
+        require(openSceneActivations == 5,
                 "clicking Open Scene at each supported toolbar size/scale must invoke its action callback");
         require(preview.target() != nullptr && preview.object_info(10) != nullptr,
                 "Scene panel must compose its preview texture in the editor frame");

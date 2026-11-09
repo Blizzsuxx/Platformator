@@ -194,17 +194,9 @@ double Animator::getCurrentFrameDuration() const
     }
 
     const AnimationFrame &frame = clip->getFrames()[currentFrameIndex];
-    if (frame.duration > 0.0f)
-    {
-        return frame.duration;
-    }
-
-    if (clip->getFramesPerSecond() <= 0.0f)
-    {
-        return 0.0;
-    }
-
-    return 1.0 / clip->getFramesPerSecond();
+    const auto timing = resolve_animation_frame_timing(frame.duration,
+                                                        clip->getFramesPerSecond());
+    return timing.valid() ? timing.seconds : 0.0;
 }
 
 void Animator::advanceFrame()

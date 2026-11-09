@@ -1,6 +1,6 @@
 # Platformator
 
-A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The native scene editor is optional and currently supported on Linux.
+A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The native scene editor is optional; Linux is the only exercised editor platform, and its native desktop, accessibility and performance acceptance remains in progress.
 
 ## Build and test
 
@@ -31,6 +31,8 @@ target_link_libraries(my_game PRIVATE Platformator::platformator)
 
 Or configure `-DPLATFORMATOR_INSTALL=ON`, build, and `cmake --install bin/cleanup-debug --prefix /path/to/sdk`. Consumers use `find_package(Platformator CONFIG REQUIRED)` with that prefix in `CMAKE_PREFIX_PATH`, then the same target. Public headers are under `include/platformator`; consumers do not need private source paths or hand-written dependency link lists. The installed SDK and example support prefix relocation.
 
+On Linux, configure the editor preset with `-DPLATFORMATOR_INSTALL=ON`, build, and install to add `bin/platformator_editor` plus its SDK runtime libraries, editor resources and license notices. The default docking layout is compiled into the editor. See [editor installation instructions](editor/README.md#build-and-launch). A relocated CLI launch is covered; a live installed GUI launch and Windows/macOS packaging remain unverified.
+
 ```cpp
 #include <platformator/runtime.h>
 
@@ -46,7 +48,9 @@ Read [C++ API migration](docs/CPP_API_MIGRATION.md) for lifecycle, error, resolv
 
 The latest [SDL update validation](docs/SDL_UPDATE_VALIDATION.md) records current dependency compatibility, benchmark comparisons and outstanding sanitizer findings.
 
-The optional [native editor](editor/README.md) uses SDL3 and Dear ImGui, edits shared `.scene` files, and remains outside runtime-only builds. See its [quickstart](specs/011-add-imgui-editor/quickstart.md) for build, desktop-review and acceptance commands.
+The optional [native editor](editor/README.md) uses SDL3 and Dear ImGui, edits shared `.scene` files, and remains outside runtime-only builds. See the [GUI cleanup quickstart](specs/012-gui-cleanup/quickstart.md) for implemented checks, desktop-review steps and open acceptance items.
+
+The editor's current Linux workflow includes `W/E/R` Scene tools, Hierarchy rename/delete/duplicate, `F6` validation and `Ctrl+,` preferences. It stops only the foreground process tree it launched; embedded Game view is bounded, read-only and does not forward gameplay input. Detached SDL window/renderer hosts and cross-host panel movement have Linux headless coverage; physical two-host, monitor-scale and screen-reader walkthroughs remain open. Windows/macOS adapter compilation and verification, plus matched GUI performance evidence, remain open; see [editor limitations and controls](editor/README.md).
 
 ## Benchmarks
 
@@ -54,7 +58,8 @@ The optional [native editor](editor/README.md) uses SDL3 and Dear ImGui, edits s
 cmake --preset cleanup-benchmark
 cmake --build --preset cleanup-benchmark --target platformator_benchmark_runner --parallel 4
 python3 benchmark/sweep_scaling.py --runner bin/cleanup-benchmark/platformator_benchmark_runner \
-  --scenario broad_phase --counts 100,500,1000 --workers 1 --repetitions 5 --output /tmp/broad.csv
+  --scenario broad_phase --counts 100 --workers 1 --seed 0 --warmup-frames 5 \
+  --measure-frames 30 --repetitions 3 --raw-output-dir /tmp/broad-runs --output /tmp/broad.csv
 ```
 
-[Benchmark documentation](benchmark/README.md) explains schema v2, complete-step boundaries, independent repetitions, validation instrumentation and historical-result limitations. Preserve the original [pre-cleanup reference](benchmark/baselines/pre-cleanup-e01526b/RESULTS.md).
+[Benchmark documentation](benchmark/README.md) explains schema v3, complete-step boundaries, independent repetitions, validation instrumentation and historical-result limitations. Use focused captures within the current size/time limits; preserve the original [pre-cleanup reference](benchmark/baselines/pre-cleanup-e01526b/RESULTS.md) as a historical observation.

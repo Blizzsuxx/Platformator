@@ -15,6 +15,7 @@ class Camera;
 class GameManager;
 class GameObject;
 class Scene;
+class SDLWindow;
 class AnimationClip;
 class AudioWrapper;
 class TextureWrapper;
@@ -63,6 +64,14 @@ class Runtime
     void saveScene();
     void saveScene(const std::string &sceneFilePath);
     void run();
+    // Runs the normal interactive loop and invokes a bounded, nonblocking
+    // owner-thread service before each frame.
+    void run_with_owner_service(const std::function<bool()> &ownerThreadService);
+    // The session overload provides the owned SDL window for control requests
+    // and reports each completed fixed simulation step on the owner thread.
+    void run_with_owner_service(
+        const std::function<bool(SDLWindow &)> &ownerThreadService,
+        const std::function<void(std::uint64_t)> &afterSimulationStep);
     void simulateFrame(double timeDelta);
     bool simulateAndRenderFrame(double timeDelta);
     bool simulateAndRenderFrameWithCustomCallback(double timeDelta,

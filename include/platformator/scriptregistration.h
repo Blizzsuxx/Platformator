@@ -16,6 +16,9 @@ namespace platformator
 {
 void registerScriptFactory(std::string_view typeName, Behavior *(*factory)());
 void registerScriptDescriptorProvider(std::string_view typeName, ScriptDescriptorProvider provider);
+void registerScriptInspectionProvider(std::string_view typeName, ScriptInspectionProvider provider);
+ScriptInspectionResult inspectRegisteredScriptFields(std::string_view typeName, const Behavior &instance,
+                                                     ScriptInspectionLimits limits = {});
 Behavior *createRegisteredBehavior(std::string_view typeName);
 nlohmann::json exportRegisteredBehaviorCatalog();
 } // namespace platformator
@@ -102,6 +105,8 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 #define PLATFORMATOR_METADATA_FIELDS(macro, Type, ...)                                                                  \
     PLATFORMATOR_CONCAT(PLATFORMATOR_METADATA_FIELDS_, PLATFORMATOR_METADATA_FIELDS_SELECT(__VA_ARGS__))(macro, Type, __VA_ARGS__)
 #define PLATFORMATOR_METADATA_FIELD(Type, field) platformator::describe_script_field(#field, &Type::field)
+#define PLATFORMATOR_INSPECT_SCRIPT_FIELD(field)                                                                       \
+    platformator::metadata_detail::append_script_field(result, #field, instance.field, limits);
 #define PLATFORMATOR_ARGUMENT_COUNT_IMPL(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16,    \
                                          count, ...)                                                                   \
     count
@@ -118,6 +123,7 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     {                                                                                                                  \
         platformator::registerScriptFactory(#Type, []() -> Behavior * { return new Type(); });                         \
         platformator::registerScriptDescriptorProvider(#Type, &Type::platformatorDescribeScriptMetadata);              \
+        platformator::registerScriptInspectionProvider(#Type, &Type::platformatorInspectScriptInstance);               \
         return true;                                                                                                   \
     }                                                                                                                  \
     inline static const bool platformatorRegisteredBehavior = registerScriptType();                                    \
@@ -133,13 +139,29 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     void deserialize(const nlohmann::json &j) override                                                                 \
     {                                                                                                                  \
         from_json(j, *this);                                                                                           \
+    }                                                                                                                  \
+    static platformator::ScriptInspectionResult platformatorInspectScriptInstance(                                      \
+        const Behavior &instance, const platformator::ScriptInspectionLimits &limits)                                    \
+    {                                                                                                                  \
+        const auto *typed = dynamic_cast<const Type *>(&instance);                                                     \
+        if (typed == nullptr)                                                                                          \
+            return {};                                                                                                 \
+        return platformatorInspectScriptFields(*typed, limits);                                                       \
     }
+
 
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_0(Type)                                                                       \
     PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                      \
     static platformator::ScriptDescriptor platformatorDescribeScriptMetadata()                                         \
     {                                                                                                                  \
         return platformator::ScriptDescriptor{#Type, true, {}};                                                        \
+    }                                                                                                                  \
+    static platformator::ScriptInspectionResult platformatorInspectScriptFields(                                       \
+        const Type &, const platformator::ScriptInspectionLimits &)                                                    \
+    {                                                                                                                  \
+        platformator::ScriptInspectionResult result;                                                                  \
+        result.providerAvailable = true;                                                                               \
+        return result;                                                                                                 \
     }                                                                                                                  \
     friend void to_json(nlohmann::json &j, const Type &)                                                               \
     {                                                                                                                  \
@@ -158,6 +180,15 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     {                                                                                                                  \
         return platformator::ScriptDescriptor{                                                                        \
             #Type, true, {PLATFORMATOR_METADATA_FIELDS(PLATFORMATOR_METADATA_FIELD, Type, __VA_ARGS__)}};             \
+    }                                                                                                                  \
+    static platformator::ScriptInspectionResult platformatorInspectScriptFields(                                       \
+        const Type &instance, const platformator::ScriptInspectionLimits &requestedLimits)                              \
+    {                                                                                                                  \
+        platformator::ScriptInspectionResult result;                                                                  \
+        result.providerAvailable = true;                                                                               \
+        const auto limits = platformator::bounded_script_inspection_limits(requestedLimits);                           \
+        PLATFORMATOR_FOR_EACH(PLATFORMATOR_INSPECT_SCRIPT_FIELD, __VA_ARGS__)                                           \
+        return result;                                                                                                 \
     }                                                                                                                  \
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Type, __VA_ARGS__)                                                     \
     void resolveReferences(platformator::ReferenceResolver &resolver) override                                         \

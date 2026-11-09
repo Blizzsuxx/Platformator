@@ -5,11 +5,13 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "document.h"
+#include "platform/sessionchannel.h"
 
 namespace platformator_editor
 {
@@ -31,6 +33,9 @@ struct ProcessRequest
     std::vector<std::string> argv;
     std::filesystem::path workingDirectory;
     ProcessOutputMode outputMode = ProcessOutputMode::Merged;
+    // A session launch borrows this pair only during start(). The native
+    // process closes the parent's inherited child-end copies after spawn.
+    SessionChannelPair *sessionChannels = nullptr;
 };
 
 struct ProcessOutput
@@ -71,10 +76,11 @@ class ProcessService
     int process_id() const noexcept;
 
   private:
-    ProcessState *impl_ = nullptr;
+    std::unique_ptr<ProcessState> impl_;
 };
 
 class BehaviorCatalog;
+class PlaySession;
 
 struct PipelineIdentity
 {
@@ -98,8 +104,12 @@ struct PipelineRequest
     std::vector<std::string> buildArgv;
     std::vector<std::string> runArguments;
     Json scene = Json::array();
+    std::optional<DocumentIdentity> sceneDocumentIdentity;
+    std::uint64_t sceneSavedHistoryToken = 0;
+    std::string sceneSavedFileIdentity;
     PipelineIdentity identity;
     std::string catalogProtocol = "unavailable";
+    bool embeddedGameView = false;
     bool buildOnly = false;
 };
 
@@ -129,6 +139,7 @@ struct PipelineStatus
     std::string message;
     std::string command;
     std::vector<PipelineStage> transitions;
+    std::filesystem::path workingDirectory;
 };
 
 class BoundedConsole
@@ -140,10 +151,12 @@ class BoundedConsole
     void clear() noexcept;
     const std::string &text() const noexcept;
     bool truncated() const noexcept;
+    std::uint64_t revision() const noexcept;
 
   private:
     std::string text_;
     bool truncated_ = false;
+    std::uint64_t revision_ = 0;
 };
 
 class GamePipeline
@@ -159,8 +172,11 @@ class GamePipeline
     void stop();
     void update_identity(PipelineIdentity identity);
     const PipelineStatus &status() const noexcept;
+    BoundedConsole &console() noexcept;
     const BoundedConsole &console() const noexcept;
     bool busy() const noexcept;
+    PlaySession *play_session() noexcept;
+    const PlaySession *play_session() const noexcept;
 
   private:
     struct Impl;

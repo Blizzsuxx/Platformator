@@ -17,6 +17,22 @@ void BehaviorFactoryRegistry::registerDescriptorProvider(
         descriptorProviders[typeName].push_back(provider);
 }
 
+void BehaviorFactoryRegistry::registerInspectionProvider(
+    const std::string &typeName, platformator::ScriptInspectionProvider provider)
+{
+    if (provider != nullptr)
+        inspectionProviders[typeName] = provider;
+}
+
+platformator::ScriptInspectionResult BehaviorFactoryRegistry::inspectFields(
+    const std::string &typeName, const Behavior &instance, platformator::ScriptInspectionLimits limits) const
+{
+    const auto provider = inspectionProviders.find(typeName);
+    if (provider == inspectionProviders.end())
+        return {};
+    return provider->second(instance, platformator::bounded_script_inspection_limits(limits));
+}
+
 Behavior *BehaviorFactoryRegistry::createBehavior(const std::string &typeName) const
 {
     auto it = factories.find(typeName);

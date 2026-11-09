@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include "accessibility.h"
+#include "viewport.h"
+
 namespace platformator_editor
 {
 struct EditorToolbarState
@@ -11,6 +14,10 @@ struct EditorToolbarState
     bool projectLocked = false;
     bool operationActive = false;
     bool openScenePending = false;
+    bool sceneAvailable = true;
+    SceneTool activeSceneTool = SceneTool::Move;
+    std::string projectLabel;
+    std::string projectPath;
     std::string sceneLabel;
     std::string scenePath;
     std::string status;
@@ -23,6 +30,9 @@ struct EditorToolbarActions
     std::function<void()> build;
     std::function<void()> buildAndRun;
     std::function<void()> stop;
+    std::function<void()> moveTool;
+    std::function<void()> rotateTool;
+    std::function<void()> scaleTool;
 };
 
 struct EditorToolbarItemBounds
@@ -43,4 +53,6 @@ struct EditorToolbarFrame
 
 EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
                                        const EditorToolbarActions &actions);
+std::vector<SemanticNode> editor_toolbar_semantic_nodes(const EditorToolbarState &state,
+                                                        const EditorToolbarFrame &frame);
 } // namespace platformator_editor

@@ -32,6 +32,11 @@ MIX_Audio *AudioWrapper::getAudio() const
     return audio;
 }
 
+size_t AudioWrapper::getReferenceCount() const
+{
+    return referenceCount;
+}
+
 void AudioWrapper::addReference()
 {
     referenceCount++;

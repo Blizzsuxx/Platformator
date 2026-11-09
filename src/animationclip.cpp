@@ -1,5 +1,7 @@
 #include "platformator/animationclip.h"
 
+#include <cmath>
+
 #include <utility>
 
 #include "runtimeaccess.h"
@@ -118,6 +120,21 @@ AnimationClip::AnimationClip(std::vector<AnimationFrame> frames, double framesPe
 AnimationClip::~AnimationClip()
 {
     frames.clear();
+}
+
+AnimationFrameTiming resolve_animation_frame_timing(double durationSeconds,
+                                                     double fallbackFramesPerSecond) noexcept
+{
+    if (!std::isfinite(durationSeconds) || durationSeconds < 0.0)
+        return {0.0, AnimationTimingError::InvalidFrameDuration};
+    if (durationSeconds > 0.0)
+        return {durationSeconds, AnimationTimingError::None};
+    if (!std::isfinite(fallbackFramesPerSecond) || fallbackFramesPerSecond <= 0.0)
+        return {0.0, AnimationTimingError::InvalidFallbackRate};
+    const double fallback = 1.0 / fallbackFramesPerSecond;
+    if (!std::isfinite(fallback) || fallback <= 0.0)
+        return {0.0, AnimationTimingError::InvalidFallbackRate};
+    return {fallback, AnimationTimingError::None};
 }
 
 const std::vector<AnimationFrame> &AnimationClip::getFrames() const

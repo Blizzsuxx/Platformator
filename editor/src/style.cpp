@@ -203,6 +203,18 @@ void apply_editor_style(float scale)
     ImGui::GetIO().FontGlobalScale = scale;
 }
 
+float resolve_editor_ui_scale(float userScale, int logicalWidth, int logicalHeight,
+                              int pixelWidth, int pixelHeight) noexcept
+{
+    if (!std::isfinite(userScale) || userScale < 0.5f || userScale > 3.0f)
+        userScale = 1.0f;
+    const float dpiScale = logicalWidth > 0 && logicalHeight > 0 && pixelWidth > 0 && pixelHeight > 0
+        ? std::max(static_cast<float>(pixelWidth) / logicalWidth,
+                   static_cast<float>(pixelHeight) / logicalHeight)
+        : 1.0f;
+    return std::clamp(userScale * dpiScale, 0.5f, 6.0f);
+}
+
 void push_editor_toolbar_style()
 {
     const ImGuiStyle &style = ImGui::GetStyle();

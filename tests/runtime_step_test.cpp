@@ -69,11 +69,18 @@ void addVisibleRenderFixture(platformator::Runtime &runtime)
 void requireVisibleCullingWork(const std::string &label)
 {
 #if PLATFORMATOR_ENABLE_WORK_PROBES
+    // A cached visible-rank list avoids repeating per-sprite visibility checks
+    // on later frames. Both a fresh check and a cache hit must still submit the
+    // active sprite through this frame's prepared view.
     require(platformator_test::work.renderViewPreparations == 1 &&
                 platformator_test::work.renderEligibilityChecks == 1 &&
-                platformator_test::work.renderVisibilityChecks == 1 &&
+                platformator_test::work.renderVisibilityChecks <= 1 &&
                 platformator_test::work.renderSubmittedSprites == 1,
-            label + " must render its active visible sprite through one culling view");
+            label + " must render its active visible sprite through one culling view (views=" +
+                std::to_string(platformator_test::work.renderViewPreparations) +
+                ", eligibility=" + std::to_string(platformator_test::work.renderEligibilityChecks) +
+                ", visibility=" + std::to_string(platformator_test::work.renderVisibilityChecks) +
+                ", submissions=" + std::to_string(platformator_test::work.renderSubmittedSprites) + ")");
 #else
     (void)label;
 #endif

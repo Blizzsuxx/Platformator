@@ -46,6 +46,11 @@ class SDLWindow
     bool shouldSimulateFrame() const;
     bool shouldUseFixedStepDelta() const;
     void clearAdvanceFrameRequest();
+    void enableEditorSessionControls() noexcept;
+    bool setEditorSessionPaused(bool paused) noexcept;
+    bool requestEditorSessionStep() noexcept;
+    bool isEditorSessionPaused() const noexcept;
+    void setEditorSessionFrameCapture(std::function<void(SDL_Renderer *, int, int)> callback);
     void clearDebugObjects();
     Camera *getMainCamera() const;
 
@@ -75,6 +80,8 @@ class SDLWindow
     bool quit;
     bool paused;
     bool advanceFrameRequested;
+    bool editorSessionControlsEnabled = false;
+    std::function<void(SDL_Renderer *, int, int)> editorSessionFrameCapture;
     platformator_detail::RenderCullingMode requestedRenderCullingMode;
     platformator_detail::RenderCullingMode effectiveRenderCullingMode;
     std::unique_ptr<platformator_detail::RenderCullingState> renderCullingState;

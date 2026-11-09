@@ -1,0 +1,9 @@
+#pragma once
+
+#include <string_view>
+
+namespace platformator_editor
+{
+inline constexpr std::string_view kEmbeddedDefaultLayout =
+    R"PADL01(@PLATFORMATOR_DEFAULT_LAYOUT_CONTENT@)PADL01";
+} // namespace platformator_editor

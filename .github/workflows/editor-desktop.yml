@@ -1,0 +1,61 @@
+name: Editor desktop validation
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-editor:
+    name: Ubuntu 24.04 editor install and headless checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            cmake \
+            ninja-build \
+            python3 \
+            libasound2-dev \
+            libdbus-1-dev \
+            libdecor-0-dev \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            libgl1-mesa-dev \
+            libibus-1.0-dev \
+            libpipewire-0.3-dev \
+            libpulse-dev \
+            libsamplerate0-dev \
+            libudev-dev \
+            libwayland-dev \
+            libwayland-bin \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libxtst-dev \
+            libx11-dev \
+            libxkbcommon-dev
+
+      - name: Confirm toolchain floor
+        run: |
+          cmake_version="$(cmake --version | head -n1 | awk '{print $3}')"
+          gcc_version="$(gcc -dumpfullversion -dumpversion)"
+          dpkg --compare-versions "$cmake_version" ge 3.28
+          dpkg --compare-versions "$gcc_version" ge 13
+          cmake --version
+          gcc --version
+
+      - name: Build, run focused tests, install, relocate, and validate SDK consumers
+        run: cmake -P cmake/PlatformatorEditorValidation.cmake

@@ -2,10 +2,13 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "sessionids.h"
 
 namespace platformator_editor
 {
@@ -14,7 +17,9 @@ enum class AsyncRequestKind : std::uint8_t
     OpenScene,
     OpenAsset,
     SaveScene,
-    SelectFolder
+    SaveAnimation,
+    SelectFolder,
+    OpenExecutable
 };
 
 enum class AsyncRequestOutcome : std::uint8_t
@@ -30,6 +35,7 @@ struct AsyncRequestIdentity
     std::uint64_t sessionGeneration = 0;
     std::uint64_t documentGeneration = 0;
     AsyncRequestKind kind = AsyncRequestKind::OpenScene;
+    DocumentIdentity documentIdentity;
 };
 
 struct AsyncRequestResult
@@ -70,7 +76,11 @@ class AsyncRequestQueue
     AsyncRequestQueue &operator=(const AsyncRequestQueue &) = delete;
 
     AsyncRequestToken begin(AsyncRequestKind kind, std::uint64_t documentGeneration);
+    AsyncRequestToken begin(AsyncRequestKind kind, DocumentIdentity identity);
     std::vector<AsyncRequestResult> take_ready(std::uint64_t currentDocumentGeneration);
+    std::vector<AsyncRequestResult> take_ready(const DocumentIdentity &currentIdentity);
+    std::vector<AsyncRequestResult> take_ready(
+        const std::function<bool(const DocumentIdentity &)> &identityIsCurrent);
     void shutdown() noexcept;
 
   private:

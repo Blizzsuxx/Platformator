@@ -63,8 +63,9 @@ void test_mixed_commands_and_selection()
             "object creation must be recorded as a structural command");
     const int childId = created.command->payload.at("id").get<int>();
     const Selection afterCreate{childId, std::nullopt, std::nullopt, FocusedPanel::Hierarchy};
-    commands.set_last_selection_state({beforeCreate, afterCreate});
     selection.set(document, afterCreate);
+    const Selection normalizedAfterCreate = selection.current();
+    commands.set_last_selection_state({beforeCreate, normalizedAfterCreate});
 
     auto componentAdded = commands.add_component(document, childId, Json{{"type", 1001}, {"custom", "kept"}});
     require(componentAdded.status == CommandStatus::Changed && componentAdded.command,
@@ -105,7 +106,7 @@ void test_mixed_commands_and_selection()
     require(static_cast<bool>(commands.redo(document, selection)), "the property edit must redo successfully");
     require(static_cast<bool>(commands.redo(document, selection)), "the viewport gesture must redo successfully");
     require(static_cast<bool>(commands.redo(document, selection)), "object creation must redo successfully");
-    require(selection.current() == afterCreate,
+    require(selection.current() == normalizedAfterCreate,
             "redoing object creation must restore its after-selection");
     for (std::size_t i = 3; i < editCount; ++i)
         require(static_cast<bool>(commands.redo(document, selection)), "each later mixed edit must redo successfully");
@@ -246,6 +247,88 @@ void test_budget_pruning_and_single_oversized_entry()
     require(commands.undo(document, selection) && document.root[0]["tag"] == first,
             "the retained oversized command must remain undoable to the pruned history base");
 }
+
+void test_retention_failures_preserve_edits_and_roll_back_gestures()
+{
+    auto document = fixture();
+    EditCommandService commands;
+    commands.reset_history(document.documentGeneration);
+    commands.mark_saved();
+
+    const Json original = document.root;
+    const auto originalRevision = document.valueRevision;
+    const auto originalHistory = commands.history_status();
+    commands.inject_history_retention_failure_once_for_testing();
+    const auto property = commands.set_property(
+        document, address(7, 1, {std::string("customMissing")}), nullptr);
+    require(property.status == CommandStatus::Rejected && document.root == original &&
+                !property.message.empty() &&
+                document.valueRevision == originalRevision &&
+                commands.history_status().currentToken == originalHistory.currentToken &&
+                commands.history_status().savedToken == originalHistory.savedToken &&
+                commands.history_status().undoCommands == originalHistory.undoCommands &&
+                commands.history_status().redoCommands == originalHistory.redoCommands &&
+                commands.history_status().retainedBytes == originalHistory.retainedBytes &&
+                !commands.last_error().empty(),
+            "failed property retention must preserve missing/null data, revisions and the saved token");
+
+    const Json beforeStructure = document.root;
+    const auto structureRevision = document.structureRevision;
+    const auto beforeStructureHistory = commands.history_status();
+    commands.inject_history_retention_failure_once_for_testing();
+    const auto structural = commands.create_object(document, std::nullopt, "Rejected object");
+    require(structural.status == CommandStatus::Rejected && document.root == beforeStructure &&
+                !structural.message.empty() &&
+                document.structureRevision == structureRevision &&
+                commands.history_status().currentToken == beforeStructureHistory.currentToken &&
+                commands.history_status().savedToken == beforeStructureHistory.savedToken &&
+                commands.history_status().undoCommands == beforeStructureHistory.undoCommands &&
+                commands.history_status().redoCommands == beforeStructureHistory.redoCommands &&
+                commands.history_status().retainedBytes == beforeStructureHistory.retainedBytes &&
+                !commands.last_error().empty(),
+            "failed structural retention must not publish a new object");
+
+    const auto position = address(7, 1, {std::string("position"), std::string("x")});
+    auto gesture = commands.begin_gesture(document, position);
+    require(gesture.has_value(), "property retention-failure gesture must begin");
+    const Json beforeGesture = document.root;
+    const auto gestureRevision = document.valueRevision;
+    require(gesture->update(commands, document, 73.0).status == CommandStatus::Changed,
+            "property retention-failure gesture must accept its preview update");
+    commands.inject_history_retention_failure_once_for_testing();
+    require(!gesture->commit() && document.root == beforeGesture &&
+                document.valueRevision == gestureRevision && !commands.dirty() &&
+                commands.history_status().undoCommands == 0 && !commands.last_error().empty(),
+            "failed gesture retention must roll back the preview and report the failure");
+
+    auto batchGesture = commands.begin_batch_gesture(document, {
+        address(7, 1, {std::string("position"), std::string("x")}),
+        address(7, 1, {std::string("customMissing")})});
+    require(batchGesture.has_value(), "batch retention-failure gesture must begin");
+    const Json beforeBatchGesture = document.root;
+    const auto batchGestureRevision = document.valueRevision;
+    require(batchGesture->update(commands, document, {Json(12.0), Json(nullptr)}).status ==
+                CommandStatus::Changed,
+            "batch retention-failure gesture must accept its preview update");
+    commands.inject_history_retention_failure_once_for_testing();
+    require(!batchGesture->commit() && document.root == beforeBatchGesture &&
+                document.valueRevision == batchGestureRevision && !commands.dirty() &&
+                commands.history_status().undoCommands == 0 && !commands.last_error().empty(),
+            "failed batch-gesture retention must roll back every preview field");
+
+    auto cancelled = commands.begin_gesture(document, position);
+    require(cancelled && cancelled->update(commands, document, 91.0).status == CommandStatus::Changed,
+            "cancellation regression gesture must update");
+    require(cancelled->cancel(commands, document).status == CommandStatus::Changed &&
+                document.root == beforeGesture && commands.history_status().undoCommands == 0,
+            "cancelling a gesture must restore the exact prior document without history");
+
+    SelectionModel undoSelection;
+    require(commands.set_property(document, position, 17.0).status == CommandStatus::Changed &&
+                commands.undo(document, undoSelection).status == CommandStatus::Changed &&
+                document.root == beforeGesture && commands.history_status().undoCommands == 0,
+            "a retained property edit must remain available for one-step Undo");
+}
 } // namespace
 
 int main()
@@ -255,6 +338,7 @@ int main()
         test_mixed_commands_and_selection();
         test_gestures_saved_tokens_and_stale_rejection();
         test_budget_pruning_and_single_oversized_entry();
+        test_retention_failures_preserve_edits_and_roll_back_gestures();
         test_targeted_payload_and_workspace_saved_state();
     }
     catch (const std::exception &error)

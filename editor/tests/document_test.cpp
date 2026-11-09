@@ -1,6 +1,9 @@
 #include "document.h"
 #include "documentio.h"
+#include "assetformats.h"
+#include "editorwork.h"
 #include "editcommands.h"
+#include "componenttypes.h"
 #include "panels/hierarchy.h"
 #include "panels/referencefields.h"
 #include "selection.h"
@@ -8,9 +11,11 @@
 
 #include <limits>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <platformator/runtime.h>
 #include <platformator/runtimeoptions.h>
@@ -39,6 +44,55 @@ void expect_invalid(Json root, std::string_view label)
 {
     const auto result = parse_document(std::move(root), 12);
     require(!result && !result.error.empty(), label);
+}
+
+std::vector<HierarchyRow> expected_hierarchy_rows(const Json &roots)
+{
+    std::vector<HierarchyRow> result;
+    std::function<void(const Json &, std::size_t, int)> append_object;
+    append_object = [&](const Json &object, std::size_t depth, int parentRowIndex) {
+        if (!object.is_object())
+            return;
+        const int objectId = object.value("id", 0);
+        const int objectRowIndex = static_cast<int>(result.size());
+        const auto children = object.find("children");
+        const auto components = object.find("components");
+        const bool hasChildren = children != object.end() && children->is_array() && !children->empty();
+        const bool hasComponents = components != object.end() && components->is_array() && !components->empty();
+        result.push_back(HierarchyRow{HierarchyRowKind::Object, objectId, objectId, depth,
+                                      object.value("name", std::string("GameObject")) +
+                                          " (#" + std::to_string(objectId) + ")",
+                                      hasChildren || hasComponents, parentRowIndex});
+        if (hasComponents)
+        {
+            const int groupRowIndex = static_cast<int>(result.size());
+            result.push_back(HierarchyRow{HierarchyRowKind::ComponentsNode, objectId, objectId,
+                                          depth + 1, "Components", true, objectRowIndex});
+            for (const auto &component : *components)
+            {
+                const int type = component.is_object() ? component.value("type", -1) : -1;
+                const char *label = component_label(type);
+                result.push_back(HierarchyRow{HierarchyRowKind::Component,
+                    component.is_object() ? component.value("id", 0) : 0, objectId, depth + 2,
+                    label == nullptr ? "Component" : label, false, groupRowIndex});
+            }
+        }
+        if (hasChildren)
+            for (const auto &child : *children)
+                append_object(child, depth + 1, objectRowIndex);
+    };
+    if (roots.is_array())
+        for (const auto &root : roots)
+            append_object(root, 0, -1);
+    return result;
+}
+
+bool same_hierarchy_row(const HierarchyRow &actual, const HierarchyRow &expected)
+{
+    return actual.kind == expected.kind && actual.id == expected.id &&
+           actual.ownerObjectId == expected.ownerObjectId && actual.depth == expected.depth &&
+           actual.label == expected.label && actual.hasChildren == expected.hasChildren &&
+           actual.parentRowIndex == expected.parentRowIndex;
 }
 } // namespace
 
@@ -145,10 +199,15 @@ void run_document_io_cases()
     require(static_cast<bool>(parsed), "document fixture must parse before serialization");
     DocumentSession document = std::move(*parsed.document);
     const auto destination = project / "scene with spaces \xC3\xBC.scene";
+    work::reset();
     const auto saved = save_document(document, destination, SaveOptions{.saveAs = true});
     require(saved.status == SaveStatus::Saved && saved.destinationReplaced && document.sourcePath &&
                 document.sourceIdentity.has_value(),
             "successful Save As must atomically replace its target and update source identity");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    require(work::snapshot()[static_cast<std::size_t>(work::Counter::DocumentWrites)] == 1,
+            "a real scene save must increment the document-write work counter");
+#endif
     const auto reopened = load_document_file(destination, 52, project, assets);
     require(reopened && reopened.document->root == document.root &&
                 reopened.document->root[0]["components"][0].contains("camera"),
@@ -420,40 +479,49 @@ void run_document_authoring_cases()
     HierarchyPanel hierarchy;
     const auto &initialRows = hierarchy.visible_rows(structuralDocument);
     const std::size_t initialRowCount = initialRows.size();
-    const std::vector<int> expectedRowOrder{0, 0, 1, 2, 15, 15, 10, 16, 16, 11, 12, 13, 14};
-    require(initialRows.size() == expectedRowOrder.size() &&
-                std::equal(initialRows.begin(), initialRows.end(), expectedRowOrder.begin(),
-                           [](const HierarchyRow &row, int id) { return row.id == id; }) &&
-                initialRows[0].kind == HierarchyRowKind::Object &&
-                initialRows[1].kind == HierarchyRowKind::ComponentsNode &&
-                initialRows[2].kind == HierarchyRowKind::Component &&
-                initialRows[2].parentRowIndex == 1 &&
-                initialRows[4].kind == HierarchyRowKind::Object &&
-                initialRows[5].kind == HierarchyRowKind::ComponentsNode &&
-                initialRows[6].kind == HierarchyRowKind::Component &&
-                initialRows[6].parentRowIndex == 5,
-            "hierarchy rows must group components under their owner while preserving saved order");
+    const auto expectedInitialRows = expected_hierarchy_rows(structuralDocument.root);
+    require(initialRows.size() == expectedInitialRows.size() &&
+                std::equal(initialRows.begin(), initialRows.end(), expectedInitialRows.begin(),
+                           same_hierarchy_row),
+            "expanded hierarchy rows must match independent owner, kind, parent, order and label expectations");
     const auto rootRename = structuralCommands.set_property(
         structuralDocument, PropertyAddress{structuralDocument.documentGeneration, 0, std::nullopt,
                                              std::nullopt, {std::string("name")}},
         "Renamed Root");
     require(rootRename.status == CommandStatus::Changed && hierarchy.visible_rows(structuralDocument)[0].label ==
-                                                              "Renamed Root",
+                                                              "Renamed Root (#0)",
             "hierarchy labels must refresh after value edits while row order stays structural-revision cached");
     const auto extraChild = structuralCommands.create_object(structuralDocument, 0, "Ordered Child");
+    require(extraChild.status == CommandStatus::Changed,
+            "a new object must be created through a reversible structural command");
+    const int extraChildId = extraChild.command->payload.value("id", 0);
+    const auto nestedChild = structuralCommands.create_object(structuralDocument, extraChildId,
+                                                               "Nested Ordered Child");
+    const auto addedHierarchyComponent = structuralCommands.add_component(
+        structuralDocument, extraChildId,
+        Json{{"type", 2}, {"width", 320.0}, {"height", 200.0}});
+    require(nestedChild.status == CommandStatus::Changed &&
+                addedHierarchyComponent.status == CommandStatus::Changed,
+            "nested children and components must be added by structural edits");
     const auto &rowsAfterStructure = hierarchy.visible_rows(structuralDocument);
-    require(extraChild.status == CommandStatus::Changed && rowsAfterStructure.size() > initialRowCount,
+    const auto expectedRowsAfterStructure = expected_hierarchy_rows(structuralDocument.root);
+    require(rowsAfterStructure.size() > initialRowCount &&
+                rowsAfterStructure.size() == expectedRowsAfterStructure.size() &&
+                std::equal(rowsAfterStructure.begin(), rowsAfterStructure.end(),
+                           expectedRowsAfterStructure.begin(), same_hierarchy_row),
             "hierarchy row order must rebuild when the document structure revision changes");
 
     SelectionModel selection;
     selection.set(document, Selection{0, 2, std::nullopt, FocusedPanel::Inspector});
-    document.root[0]["components"].erase(document.root[0]["components"].begin() + 1);
-    ++document.structureRevision;
+    const auto selectionComponentRemoval = commands.remove_component(document, 0, 2);
+    require(selectionComponentRemoval.status == CommandStatus::Changed,
+            "selection repair must observe component removal through the document command path");
     selection.repair(document);
     require(selection.current().objectId == 0 && !selection.current().componentId,
             "a removed selected component must repair selection to its surviving owner");
-    document.root.erase(document.root.begin());
-    ++document.structureRevision;
+    const auto selectionObjectRemoval = commands.delete_object(document, 0);
+    require(selectionObjectRemoval.status == CommandStatus::Changed,
+            "selection repair must observe object removal through the document command path");
     selection.repair(document);
     require(!selection.current().objectId && !selection.current().componentId,
             "a removed selected object must clear selection");
@@ -471,6 +539,7 @@ void run_typed_reference_cases()
     std::ofstream(assets / "Textures" / "Hero.PNG", std::ios::binary) << "texture";
     std::ofstream(assets / "Textures" / "Space Folder" / "雪 Hero.PNG", std::ios::binary) << "texture";
     std::ofstream(assets / "Audio" / "Click.WAV", std::ios::binary) << "audio";
+    std::ofstream(assets / "Audio" / "Theme.AIFF", std::ios::binary) << "audio";
     std::ofstream(assets / "Animations" / "Walk.animset", std::ios::binary) << "animation";
     std::ofstream(temporary.path() / "Outside.png", std::ios::binary) << "outside";
     std::filesystem::create_directory_symlink(temporary.path(), assets / "Escape");
@@ -483,19 +552,27 @@ void run_typed_reference_cases()
                                                                    {"collisionMask", 1}}),
                                                component(3, 5, Json{{"behaviors", Json::array({referenceBehavior})}}),
                                                component(4, 6, Json{{"textureFilePath", "assets/Textures/Hero.PNG"}})}),
-                       Json::array({object(5, "Reference Target")}));
+                       Json::array({object(5, "Reference Target"),
+                                    object(6, "Reference Target")}));
     auto parsed = parse_document(Json::array({root}), 90, std::nullopt, project, assets);
     require(static_cast<bool>(parsed), "typed reference fixture must parse");
     auto document = std::move(*parsed.document);
 
     const auto objectReference = inspect_scene_reference(document, 0, "GameObject");
     const auto cameraReference = inspect_scene_reference(document, 1, "Camera");
+    const auto duplicateTargetA = inspect_scene_reference(document, 5, "GameObject");
+    const auto duplicateTargetB = inspect_scene_reference(document, 6, "GameObject");
     const auto wrongKind = inspect_scene_reference(document, 2, "Camera");
     const auto dangling = inspect_scene_reference(document, 99, "GameObject");
     require(objectReference.state == ReferenceState::Resolved &&
                 cameraReference.state == ReferenceState::Resolved &&
                 wrongKind.state == ReferenceState::WrongKind && dangling.state == ReferenceState::Dangling,
             "typed scene references must distinguish resolved, wrong-kind and dangling IDs");
+    require(duplicateTargetA.state == ReferenceState::Resolved &&
+                duplicateTargetB.state == ReferenceState::Resolved &&
+                duplicateTargetA.label.find("(#5)") != std::string::npos &&
+                duplicateTargetB.label.find("(#6)") != std::string::npos,
+            "duplicate-name scene targets must include immutable IDs in their visible reference labels");
     std::string error;
     require(validate_scene_reference_assignment(document, 1, "Camera", false, error) &&
                 !validate_scene_reference_assignment(document, 2, "Camera", false, error) &&
@@ -512,12 +589,14 @@ void run_typed_reference_cases()
     const auto texture = inspect_asset_reference(document, texturePath, "Texture");
     const auto spacedUnicodeTexture = inspect_asset_reference(document, spacedUnicodePath, "Texture");
     const auto audio = inspect_asset_reference(document, audioPath, "Audio");
+    const auto projectOnlyAudio = inspect_asset_reference(document, "assets/Audio/Theme.AIFF", "Audio");
     const auto animation = inspect_asset_reference(document, animationPath, "AnimationClip");
     require(texture.state == ReferenceState::Resolved && texture.path == texturePath.get<std::string>() &&
                 spacedUnicodeTexture.state == ReferenceState::Resolved &&
                 spacedUnicodeTexture.path == "assets/Textures/Space Folder/雪 Hero.PNG" &&
-                audio.state == ReferenceState::Resolved && animation.state == ReferenceState::Resolved,
-            "asset validation must preserve case, normalize known separators, and support spaces and UTF-8 paths");
+                audio.state == ReferenceState::Resolved && animation.state == ReferenceState::Resolved &&
+                projectOnlyAudio.state == ReferenceState::WrongKind,
+            "asset validation must preserve path spellings and keep displayed audio formats distinct from assignable audio formats");
     require(validate_asset_reference_assignment(document, texturePath, "Texture", false, error) &&
                 !validate_asset_reference_assignment(document, audioPath, "Texture", false, error) &&
                 !validate_asset_reference_assignment(document, "assets/../Outside.png", "Texture", false, error) &&
@@ -600,6 +679,14 @@ void run_runtime_compatibility_cases()
             "runtime scene I/O must agree on known camera semantics while editor serialization retains unfamiliar fields");
 }
 
+void run_asset_format_cases()
+{
+    require(editor_asset_is("selected.pttemplate", EditorAssetKind::Template) &&
+                !asset_reference_extension_matches("Texture", "selected.pttemplate") &&
+                asset_reference_extension_matches("Texture", "sprite.QOI"),
+            "shared asset format metadata must classify templates once and keep typed texture rules distinct");
+}
+
 int main()
 {
     try
@@ -608,6 +695,7 @@ int main()
         run_document_io_cases();
         run_document_authoring_cases();
         run_typed_reference_cases();
+        run_asset_format_cases();
         run_runtime_compatibility_cases();
     }
     catch (const std::exception &error)

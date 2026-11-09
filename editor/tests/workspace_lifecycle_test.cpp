@@ -1,14 +1,22 @@
 #include "workspace.h"
 #include "actions.h"
 #include "editcommands.h"
+#include "editorapp.h"
+#include "editorwork.h"
+#include "panels/hierarchy.h"
 #include "preferences.h"
 #include "style.h"
 #include "test_support.h"
 #include "validation.h"
+#include "gui_fixtures.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
+#include <iostream>
+#include <limits>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -146,6 +154,37 @@ void run_workspace_lifecycle_cases()
     require(action && workspace.document().sourcePath == std::filesystem::canonical(unicodeScenePath) &&
                 workspace.document().root[0]["name"] == "Unicode path",
             "Open Scene must validate and adopt a manually entered path containing spaces and Unicode");
+
+    require(workspace.source_file_status().state == SourceFileState::Current,
+            "an opened scene must begin with a current on-disk identity");
+    workspace.document_for_edit().root[0]["name"] = "Local unsaved work";
+    ++workspace.document_for_edit().valueRevision;
+    write_scene(unicodeScenePath, workspace_scene("External change with a different file size"));
+    require(workspace.source_file_status().state == SourceFileState::Changed,
+            "file identity polling must detect external edits without relying on the asset root watcher");
+    const Json localRoot = workspace.document().root;
+    action = workspace.save();
+    require(action.status == WorkspaceActionStatus::Failed && workspace.dirty() &&
+                workspace.document().root == localRoot &&
+                workspace.source_file_status().state == SourceFileState::Changed,
+            "a save conflict must preserve the local draft and its saved identity");
+
+    {
+        std::ofstream malformed(unicodeScenePath, std::ios::binary | std::ios::trunc);
+        malformed << "{";
+    }
+    action = workspace.reload_source_file();
+    require(action.status == WorkspaceActionStatus::Failed && workspace.dirty() &&
+                workspace.document().root == localRoot &&
+                workspace.source_file_status().state == SourceFileState::Changed,
+            "failed explicit reload must preserve the current dirty draft and history identity");
+
+    write_scene(unicodeScenePath, workspace_scene("Reloaded external copy"));
+    action = workspace.reload_source_file();
+    require(action && !workspace.dirty() &&
+                workspace.document().root[0]["name"] == "Reloaded external copy" &&
+                workspace.source_file_status().state == SourceFileState::Current,
+            "explicit reload must adopt valid external content and refresh the source identity");
 }
 
 void run_workspace_root_replacement_cases()
@@ -196,12 +235,56 @@ void run_workspace_root_replacement_cases()
 void run_preference_cases()
 {
     TemporaryDirectory temporary;
+    DeferredPreferenceSave deferredSave;
+    const auto firstEdit = DeferredPreferenceSave::Clock::now();
+    deferredSave.schedule(firstEdit);
+    require(deferredSave.pending() && deferredSave.deadline() == firstEdit + std::chrono::milliseconds(500) &&
+                !deferredSave.ready(firstEdit + std::chrono::milliseconds(499)),
+            "preference edits must remain pending until the deferred flush deadline");
+    deferredSave.schedule(firstEdit + std::chrono::milliseconds(250));
+    require(deferredSave.deadline() == firstEdit + std::chrono::milliseconds(750),
+            "new edits must move the deferred save deadline forward");
+    require(!deferredSave.ready(firstEdit + std::chrono::milliseconds(749)) &&
+                deferredSave.ready(firstEdit + std::chrono::milliseconds(750)),
+            "repeated edits must coalesce by moving one flush deadline instead of writing per keystroke");
+    std::size_t deferredWrites = 0;
+    if (deferredSave.take_if_ready(firstEdit + std::chrono::milliseconds(749)))
+        ++deferredWrites;
+    if (deferredSave.take_if_ready(firstEdit + std::chrono::milliseconds(750)))
+        ++deferredWrites;
+    if (deferredSave.take_if_ready(firstEdit + std::chrono::seconds(2)))
+        ++deferredWrites;
+    require(deferredWrites == 1,
+            "a burst of preference edits must produce one deferred write and no duplicate flush");
+    require(!deferredSave.pending(), "a completed deadline flush clears deferred state");
+
     const auto projectRoot = temporary.path() / "project";
     const auto assetRoot = projectRoot / "assets";
     std::filesystem::create_directories(assetRoot);
     const auto firstScene = projectRoot / "first.scene";
     const auto missingScene = projectRoot / "gone.scene";
     write_scene(firstScene, workspace_scene("First"));
+
+    auto visibilityDocument = make_default_document(projectRoot, assetRoot, 13);
+    EditCommandService visibilityHistory;
+    visibilityHistory.reset_history(visibilityDocument.documentGeneration);
+    visibilityHistory.mark_saved();
+    const Json visibilitySceneBefore = visibilityDocument.root;
+    const auto visibilityRevisionBefore = visibilityDocument.valueRevision;
+    std::vector<int> editorOnlyIds{4, 8};
+    require(set_editor_object_id_state(editorOnlyIds, 6, true) &&
+                editorOnlyIds == std::vector<int>({4, 6, 8}) &&
+                !set_editor_object_id_state(editorOnlyIds, 6, true),
+            "editor-only visibility preferences must stay sorted, unique, and idempotent");
+    require(prune_editor_object_ids(editorOnlyIds, std::unordered_set<int>{4, 8}) &&
+                editorOnlyIds == std::vector<int>({4, 8}) &&
+                !prune_editor_object_ids(editorOnlyIds, std::unordered_set<int>{4, 8}),
+            "editor-only visibility preferences must prune stale document IDs once");
+    require(visibilityDocument.root == visibilitySceneBefore &&
+                visibilityDocument.valueRevision == visibilityRevisionBefore &&
+                visibilityHistory.history_status().undoCommands == 0 &&
+                visibilityHistory.history_status().currentToken == visibilityHistory.history_status().savedToken,
+            "editor-only hidden/locked changes must not alter scene data, revisions, or history");
 
     auto explicitChoice = resolve_startup_scene(firstScene, missingScene, false);
     require(explicitChoice.scenePath == firstScene && !explicitChoice.usedRestoration &&
@@ -220,13 +303,20 @@ void run_preference_cases()
             "preference identity must use the canonical project path");
     auto loaded = load_workspace_preferences(paths.settingsPath, paths.layoutPath, projectRoot);
     require(!loaded.settingsPresent && loaded.preferences.projectKey == paths.projectKey && !loaded.preferences.recentScene &&
-                loaded.preferences.userScale == 1.0f,
+                loaded.preferences.userScale == 1.0f &&
+                loaded.preferences.duplicationReferencePolicy == "preserve-existing-targets",
             "missing preferences must produce usable project-scoped defaults");
 
     const auto defaults = default_panel_visibility();
-    require(defaults.size() == 7 && is_panel_visible(loaded.preferences, "panel.hierarchy") &&
+    require(defaults.size() == 8 && is_panel_visible(loaded.preferences, "panel.hierarchy") &&
                 is_panel_visible(loaded.preferences, "panel.scene") &&
-                !is_panel_visible(loaded.preferences, "panel.settings"),
+                is_panel_visible(loaded.preferences, "panel.inspector") &&
+                is_panel_visible(loaded.preferences, "panel.project") &&
+                is_panel_visible(loaded.preferences, "panel.console") &&
+                !is_panel_visible(loaded.preferences, "panel.game") &&
+                !is_panel_visible(loaded.preferences, "panel.run") &&
+                !is_panel_visible(loaded.preferences, "panel.validation") &&
+                !defaults.contains("panel.settings"),
             "stable panel IDs must provide the documented visible workspace and optional tool panels");
     const auto layoutSeedPath = std::filesystem::path(__FILE__).parent_path().parent_path() /
                                 "resources" / "default-layout.ini";
@@ -270,14 +360,31 @@ void run_preference_cases()
     WorkspacePreferences resetPreferences = loaded.preferences;
     resetPreferences.panelVisibility["panel.hierarchy"] = false;
     resetPreferences.userScale = 1.5f;
+    resetPreferences.panelHostAssignments["panel.console"] = HostLayoutId{2};
+    resetPreferences.hostGeometry[HostLayoutId{2}] = HostGeometryPreferences{200, 140, 800, 600, false};
+    resetPreferences.hostLayoutSettings[HostLayoutId{2}] = "secondary layout";
     reset_workspace_layout(resetPreferences);
     require(is_panel_visible(resetPreferences, "panel.hierarchy") && resetPreferences.userScale == 1.0f &&
-                resetPreferences.navigationZoom == 1.0f,
-            "Reset Layout must restore panel visibility and display/navigation defaults without scene state");
+                resetPreferences.navigationZoom == 1.0f &&
+                resetPreferences.panelHostAssignments.at("panel.console") == main_host_layout_id &&
+                !resetPreferences.hostGeometry.contains(HostLayoutId{2}) &&
+                resetPreferences.hostLayoutSettings.empty(),
+            "Reset Layout must redock panels and clear detached host geometry/layouts without scene state");
 
     loaded.preferences.panelVisibility["panel.hierarchy"] = false;
     loaded.preferences.userScale = 1.5f;
     loaded.preferences.run.target = "platformator_game";
+    loaded.preferences.panelHostAssignments["panel.scene"] = HostLayoutId{2};
+    loaded.preferences.hostGeometry[HostLayoutId{2}] = HostGeometryPreferences{220, 120, 960, 640, true};
+    loaded.preferences.hostLayoutSettings[HostLayoutId{2}] = "[Docking][Data]\nsecondary-layout\n";
+    loaded.preferences.openTabs.push_back(
+        SavedTabPreferences{firstScene, 12.5f, -7.0f, 1.75f, {1, 4}, true});
+    loaded.preferences.activeTabPath = firstScene;
+    loaded.preferences.hiddenObjectIdsByScene[firstScene.string()] = {4};
+    loaded.preferences.lockedObjectIdsByScene[firstScene.string()] = {8, 9};
+    loaded.preferences.snap = SnapPreferences{0.5f, 45.0f, 0.25f, "local"};
+    loaded.preferences.duplicationReferencePolicy = "remap-internal-targets";
+    loaded.preferences.resourceLimits["decodeWorkingBytes"] = 268435456;
     loaded.layout = "[Window][Workspace]\nPos=12,24\n";
     auto saved = save_workspace_preferences(paths, loaded.preferences, loaded.layout);
     require(saved.succeeded(), "settings and layout must save atomically as separate files");
@@ -285,12 +392,170 @@ void run_preference_cases()
     record_adopted_scene(loaded.preferences, firstScene);
     saved = save_workspace_preferences(paths, loaded.preferences, loaded.layout);
     require(saved.succeeded(), "a successfully adopted scene path must be persistable");
+    const auto blockedParent = temporary.path() / "not-a-directory";
+    std::ofstream(blockedParent) << "occupied";
+    const ProjectPreferencePaths brokenPaths{blockedParent / "settings.json", blockedParent / "layout.ini",
+                                               paths.projectKey};
+    const auto failedSave = save_workspace_preferences(brokenPaths, loaded.preferences, loaded.layout);
+    require(!failedSave.succeeded() && !failedSave.message.empty(),
+            "deferred preference flushes must preserve durability failures for user-visible reporting");
     auto roundTrip = load_workspace_preferences(paths.settingsPath, paths.layoutPath, projectRoot);
     require(roundTrip.settingsPresent && roundTrip.preferences.recentScene == std::filesystem::canonical(firstScene) &&
                 roundTrip.preferences.panelVisibility.at("panel.hierarchy") == false &&
                 roundTrip.preferences.userScale == 1.5f &&
-                roundTrip.preferences.run.target == "platformator_game" && roundTrip.layout == loaded.layout,
-            "project settings, stable panel visibility, layout and adopted scene must round-trip");
+                roundTrip.preferences.run.target == "platformator_game" && roundTrip.layout == loaded.layout &&
+                roundTrip.preferences.panelHostAssignments.at("panel.scene") == HostLayoutId{2} &&
+                roundTrip.preferences.hostGeometry.at(HostLayoutId{2}) ==
+                    HostGeometryPreferences{220, 120, 960, 640, true} &&
+                roundTrip.preferences.hostLayoutSettings.at(HostLayoutId{2}) ==
+                    "[Docking][Data]\nsecondary-layout\n" &&
+                roundTrip.preferences.openTabs.size() == 1 &&
+                roundTrip.preferences.openTabs[0] ==
+                    SavedTabPreferences{firstScene, 12.5f, -7.0f, 1.75f, {1, 4}, true} &&
+                roundTrip.preferences.activeTabPath == firstScene &&
+                roundTrip.preferences.hiddenObjectIdsByScene.at(firstScene.string()) == std::vector<int>{4} &&
+                roundTrip.preferences.lockedObjectIdsByScene.at(firstScene.string()) == std::vector<int>{8, 9} &&
+                roundTrip.preferences.snap == SnapPreferences{0.5f, 45.0f, 0.25f, "local"} &&
+                roundTrip.preferences.duplicationReferencePolicy == "remap-internal-targets" &&
+                roundTrip.preferences.resourceLimits.at("decodeWorkingBytes") == 268435456,
+            "v2 project settings, host layouts, per-tab state and authoring preferences must round-trip");
+
+    const auto read_text = [](const std::filesystem::path &path) {
+        std::ifstream stream(path, std::ios::binary);
+        return std::string{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+    };
+    const auto layoutBeforeSettingsOnly = read_text(paths.layoutPath);
+    const auto settingsBeforeSettingsOnly = read_text(paths.settingsPath);
+    auto settingsOnlyPreferences = loaded.preferences;
+    settingsOnlyPreferences.userScale = 1.75f;
+    work::reset();
+    const auto settingsOnly = save_workspace_preferences(paths, settingsOnlyPreferences,
+                                                          loaded.layout, true, false);
+    require(settingsOnly.succeeded() && read_text(paths.layoutPath) == layoutBeforeSettingsOnly &&
+                read_text(paths.settingsPath) != settingsBeforeSettingsOnly,
+            "a settings-only commit must preserve the layout file and report its own write outcome");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    auto preferenceCounts = work::snapshot();
+    require(preferenceCounts[static_cast<std::size_t>(work::Counter::PreferenceSettingsWriteAttempts)] == 1 &&
+                preferenceCounts[static_cast<std::size_t>(work::Counter::PreferenceLayoutWriteAttempts)] == 0,
+            "the preference work probe must count one settings write and no layout write for a settings-only save");
+#endif
+    const auto settingsAfterSettingsOnly = read_text(paths.settingsPath);
+    const auto layoutOnlyValue = std::string("[Window][Workspace]\nPos=32,48\n");
+    const auto layoutOnly = save_workspace_preferences(paths, loaded.preferences,
+                                                        layoutOnlyValue, false, true);
+    require(layoutOnly.succeeded() && read_text(paths.settingsPath) == settingsAfterSettingsOnly &&
+                read_text(paths.layoutPath) == layoutOnlyValue,
+            "a layout-only commit must preserve settings bytes and report its own write outcome");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    preferenceCounts = work::snapshot();
+    require(preferenceCounts[static_cast<std::size_t>(work::Counter::PreferenceSettingsWriteAttempts)] == 1 &&
+                preferenceCounts[static_cast<std::size_t>(work::Counter::PreferenceLayoutWriteAttempts)] == 1,
+            "settings and docking layout writes must have independently attributable work counters");
+#endif
+
+    WorkspacePreferences livePreferences = settingsOnlyPreferences;
+    std::string liveLayout = layoutOnlyValue;
+    WorkspacePreferencePersistence preferencePersistence(livePreferences, liveLayout);
+    DeferredPreferenceSave interactionSave;
+    std::size_t interactionSettingsWrites = 0;
+    std::size_t interactionLayoutWrites = 0;
+    const auto interactionWriter = [&](bool writeSettings, bool writeLayout) {
+        interactionSettingsWrites += writeSettings ? 1U : 0U;
+        interactionLayoutWrites += writeLayout ? 1U : 0U;
+        return save_workspace_preferences(paths, livePreferences, liveLayout, writeSettings, writeLayout);
+    };
+    require(preferencePersistence.flush(livePreferences, liveLayout, interactionWriter).succeeded() &&
+                interactionSettingsWrites == 0 && interactionLayoutWrites == 0,
+            "an unchanged preference frame must not invoke settings, layout or durability writes");
+
+    auto burstOrigin = firstEdit + std::chrono::seconds(10);
+    const auto run_interaction_burst = [&](auto update, int frames, std::string_view interaction) {
+        const auto settingsBefore = interactionSettingsWrites;
+        const auto layoutBefore = interactionLayoutWrites;
+        auto lastFrame = burstOrigin;
+        for (int frame = 0; frame < frames; ++frame)
+        {
+            update(frame);
+            lastFrame = burstOrigin + std::chrono::milliseconds(frame * 16);
+            interactionSave.schedule(lastFrame);
+            require(!interactionSave.take_if_ready(lastFrame),
+                    std::string(interaction) + " updates must not flush preferences during active input");
+        }
+        const auto flushAt = interactionSave.deadline();
+        require(interactionSave.take_if_ready(flushAt),
+                std::string(interaction) + " must become eligible after the bounded quiet period");
+        const auto stored = preferencePersistence.flush(livePreferences, liveLayout, interactionWriter);
+        require(stored.succeeded() && interactionSettingsWrites == settingsBefore + 1 &&
+                    interactionLayoutWrites == layoutBefore,
+                std::string(interaction) + " must write changed settings once and leave docking layout untouched");
+        burstOrigin = flushAt + std::chrono::seconds(1);
+    };
+
+    run_interaction_burst([&](int frame) {
+        livePreferences.snap.position = 1.0f + static_cast<float>(frame) * 0.01f;
+    }, 30, "snap DragFloat");
+    livePreferences.openTabs.push_back(SavedTabPreferences{firstScene});
+    run_interaction_burst([&](int frame) {
+        livePreferences.openTabs.front().viewZoom = 1.0f + static_cast<float>(frame) * 0.005f;
+    }, 30, "viewport wheel zoom");
+    run_interaction_burst([&](int) {
+        livePreferences.run.target.push_back('x');
+    }, 24, "Run Settings typing");
+    run_interaction_burst([&](int frame) {
+        livePreferences.openTabs.front().viewCenterX = static_cast<float>(frame) * 0.5f;
+    }, 120, "continuous viewport updates");
+
+    WorkspacePreferencePersistence retryPersistence(livePreferences, liveLayout);
+    auto retryPreferences = livePreferences;
+    retryPreferences.snap.rotationDegrees = 30.0f;
+    std::size_t failedWriterCalls = 0;
+    const auto failedFlush = retryPersistence.flush(retryPreferences, liveLayout,
+        [&](bool writeSettings, bool writeLayout) {
+            ++failedWriterCalls;
+            return save_workspace_preferences(brokenPaths, retryPreferences, liveLayout,
+                                              writeSettings, writeLayout);
+        });
+    require(!failedFlush.succeeded() && !failedFlush.settingsSaved && failedFlush.layoutSaved &&
+                failedWriterCalls == 1,
+            "an injected settings failure must be reported while leaving that section dirty for retry");
+    const auto retriedFlush = retryPersistence.flush(retryPreferences, liveLayout,
+        [&](bool writeSettings, bool writeLayout) {
+            ++failedWriterCalls;
+            return save_workspace_preferences(paths, retryPreferences, liveLayout,
+                                              writeSettings, writeLayout);
+        });
+    require(retriedFlush.succeeded() && failedWriterCalls == 2 &&
+                retryPersistence.flush(retryPreferences, liveLayout, {}).succeeded() && failedWriterCalls == 2,
+            "a failed preference flush must be retryable and successful sections must not be rewritten");
+
+    write_json(paths.settingsPath,
+               Json{{"version", 1}, {"projectKey", paths.projectKey},
+                    {"recentScene", firstScene.string()},
+                    {"panelVisibility", {{"panel.scene", false}}},
+                    {"userScale", 1.5}, {"navigationZoom", 2.0},
+                    {"editorWindow", {{"width", 1440}, {"height", 900}, {"maximized", true}}},
+                    {"run", {{"target", "legacy-game"}, {"buildPreset", "release"},
+                             {"production", true}, {"catalogProtocol", "common-runner-v1"}}}});
+    const std::string legacyLayout = "[Window][Scene]\nPos=10,20\nSize=500,400\n";
+    {
+        std::ofstream legacyLayoutStream(paths.layoutPath, std::ios::binary | std::ios::trunc);
+        legacyLayoutStream << legacyLayout;
+    }
+    auto migrated = load_workspace_preferences(paths.settingsPath, paths.layoutPath, projectRoot);
+    require(migrated.migrated && !migrated.recovered && migrated.preferences.version == 2 &&
+                migrated.preferences.recentScene == firstScene &&
+                migrated.preferences.panelVisibility.at("panel.scene") == false &&
+                migrated.preferences.userScale == 1.5f && migrated.preferences.navigationZoom == 2.0f &&
+                migrated.preferences.editorWindow.width == 1440 && migrated.preferences.editorWindow.maximized &&
+                migrated.preferences.run.target == "legacy-game" &&
+                migrated.preferences.run.buildPreset == "release" && migrated.preferences.run.production &&
+                migrated.preferences.duplicationReferencePolicy == "preserve-existing-targets" &&
+                migrated.preferences.panelHostAssignments.at("panel.scene") == main_host_layout_id &&
+                migrated.preferences.hostGeometry.contains(main_host_layout_id) &&
+                migrated.preferences.hostLayoutSettings.at(main_host_layout_id) ==
+                    "[Window][panel.scene]\nPos=10,20\nSize=500,400\n",
+            "v1 migration must preserve existing settings, seed the main host, and retain the duplicate-policy default");
 
     auto otherProject = make_project_preference_paths(temporary.path() / "prefs", temporary.path());
     require(otherProject.settingsPath != paths.settingsPath,
@@ -324,13 +589,83 @@ void run_preference_cases()
             "custom project entries must remain unavailable until explicitly declared compatible");
 }
 
+void test_editor_wait_uses_earliest_deadline_and_bounded_polling()
+{
+    using Clock = EditorWaitClock;
+    const auto now = Clock::time_point{} + std::chrono::seconds(20);
+    const std::array deadlines{now + std::chrono::milliseconds(30),
+                               now + std::chrono::milliseconds(5)};
+    require(editor_wait_duration(now, deadlines, std::chrono::milliseconds(100)) ==
+                std::chrono::milliseconds(5),
+            "the outer wait must stop at its earliest scheduled maintenance deadline");
+    const auto eventDrivenMaximum = std::chrono::milliseconds(std::numeric_limits<int>::max());
+    require(editor_wait_duration(now, deadlines, eventDrivenMaximum) == std::chrono::milliseconds(5),
+            "event-driven idle scheduling must still wake at the earliest maintenance deadline");
+    require(editor_wait_duration(now, {}, eventDrivenMaximum) == eventDrivenMaximum,
+            "a static foreground frame must wait for input or a completion instead of redrawing periodically");
+    require(editor_wait_duration(now, deadlines, std::chrono::milliseconds(100),
+                                 std::chrono::milliseconds(8)) == std::chrono::milliseconds(5),
+            "poll fallback must not delay an earlier event or retry deadline");
+    require(editor_wait_duration(now, {}, std::chrono::milliseconds(100),
+                                 std::chrono::milliseconds(8)) == std::chrono::milliseconds(8),
+            "services without completion wakeups must retain a bounded polling interval");
+    const std::array overdue{now - std::chrono::milliseconds(1)};
+    require(editor_wait_duration(now, overdue, std::chrono::milliseconds(100)) ==
+                std::chrono::milliseconds(0),
+            "an overdue deadline must return immediately without a negative SDL timeout");
+}
+
+void run_editor_wait_schedule_cases()
+{
+    test_editor_wait_uses_earliest_deadline_and_bounded_polling();
+
+    CoalescedWakeGate wakeGate;
+    require(!wakeGate.pending() && wakeGate.try_queue() && wakeGate.pending() &&
+                !wakeGate.try_queue(),
+            "concurrent service completions must coalesce behind one queued SDL wake event");
+    wakeGate.event_consumed();
+    require(!wakeGate.pending() && wakeGate.try_queue(),
+            "consuming the wake event must permit a later completion to wake the owner again");
+    wakeGate.queue_failed();
+    require(!wakeGate.pending() && wakeGate.try_queue(),
+            "a failed SDL queue insertion must leave the wake gate recoverable");
+    wakeGate.event_consumed();
+
+    EditorAppTickDriver hoverProbe(EditorAppProbeOptions{12, 2, true});
+    require(!hoverProbe.should_inject_hover_input(),
+            "input workload events must not contaminate the warmup frames");
+    for (int frame = 0; frame < 2; ++frame)
+        require(hoverProbe.tick([] { return true; }, [] {}),
+                "the GUI probe must continue through its configured warmup");
+    require(hoverProbe.should_inject_hover_input(),
+            "the selected hover workload must begin with its first measured frame");
+    require(hoverProbe.tick([] { return true; }, [] {}) && !hoverProbe.should_inject_hover_input(),
+            "the hover workload must inject one scene-window event every ten measured frames");
+
+    std::ostringstream captured;
+    auto *previous = std::cout.rdbuf(captured.rdbuf());
+    EditorAppTickDriver metricsProbe(EditorAppProbeOptions{1, 0, false});
+    const auto started = EditorWaitClock::now();
+    metricsProbe.note_input_event(started);
+    metricsProbe.note_present(started + std::chrono::milliseconds(3), started - std::chrono::milliseconds(10));
+    metricsProbe.tick([] { return true; }, [] {});
+    std::cout.rdbuf(previous);
+    const auto output = captured.str();
+    require(output.find("GUI_COLD_PREP_US,13000") != std::string::npos &&
+                output.find("GUI_EVENT_PRESENT_US,0,3000") != std::string::npos &&
+                output.find("GUI_ACTIVE_FRAME_US,0,") != std::string::npos &&
+                output.find("GUI_WAIT_INCLUSIVE_US,0,") != std::string::npos &&
+                output.find("GUI_IDLE_CPU_US,0,") != std::string::npos,
+            "the app probe must report cold preparation, input-to-present, active, wait-inclusive, and idle CPU samples");
+}
+
 void run_editor_action_and_style_cases()
 {
     const WindowSettings defaultWindowSettings;
     require(!defaultWindowSettings.highPixelDensity,
             "the new high-density window option must preserve the runtime default");
     const auto actions = editor_action_descriptors();
-    require(actions.size() == 13, "all workspace commands must have discoverable action descriptors");
+    require(actions.size() == 20, "all workspace commands must have discoverable action descriptors");
     for (const auto &action : actions)
         require(!action.label.empty() && !action.shortcut.empty(),
                 "each available workspace action must expose its label and shortcut");
@@ -342,27 +677,49 @@ void run_editor_action_and_style_cases()
     };
     require(binding(EditorAction::FrameAll) == "F" &&
                 binding(EditorAction::FrameSelected) == "Shift+F" &&
-                binding(EditorAction::Build) == "Ctrl+B",
-            "discoverable action bindings must match legacy framing and current workspace commands");
+                binding(EditorAction::SelectMoveTool) == "W" &&
+                binding(EditorAction::SelectRotateTool) == "E" &&
+                binding(EditorAction::SelectScaleTool) == "R" &&
+                binding(EditorAction::Build) == "Ctrl+B" &&
+                binding(EditorAction::Preferences) == "Ctrl+,",
+            "discoverable action bindings must include framing, transform tools and workspace commands");
 
     EditorInputCapture clearCapture{true, false, false, false, true};
     require(editor_action_allowed(EditorAction::Save, clearCapture) &&
+                editor_action_allowed(EditorAction::Preferences, clearCapture) &&
                 editor_action_allowed(EditorAction::FrameSelected, clearCapture),
             "global actions and focused Scene actions must be available when input is uncaptured");
     require(dispatch_editor_key(EditorKey::F5, true, false, clearCapture) == EditorAction::Stop &&
                 dispatch_editor_key(EditorKey::F, true, false, clearCapture) == EditorAction::FrameSelected &&
-                dispatch_editor_key(EditorKey::F, false, false, clearCapture) == EditorAction::FrameAll,
+                dispatch_editor_key(EditorKey::F, false, false, clearCapture) == EditorAction::FrameAll &&
+                dispatch_editor_key(EditorKey::Comma, false, true, clearCapture) == EditorAction::Preferences,
             "production key routing must map active-run Stop and Scene framing commands");
     for (const auto blockedCapture : {EditorInputCapture{false, false, false, false, true},
                                        EditorInputCapture{true, true, false, false, true},
                                        EditorInputCapture{true, false, true, false, true},
                                        EditorInputCapture{true, false, false, true, true}})
         require(!dispatch_editor_key(EditorKey::F5, true, false, blockedCapture) &&
-                    !dispatch_editor_key(EditorKey::F, false, false, blockedCapture),
+                    !dispatch_editor_key(EditorKey::F, false, false, blockedCapture) &&
+                    !dispatch_editor_key(EditorKey::Comma, false, true, blockedCapture),
                 "focus loss, text/modal ownership and active gestures must suppress global key dispatch");
     require(!dispatch_editor_key(EditorKey::F, false, false,
                                  EditorInputCapture{true, false, false, false, false}),
             "Scene framing key dispatch must require Scene focus");
+    require(!dispatch_editor_key(EditorKey::Comma, false, true,
+                                 EditorInputCapture{true, false, false, false, true, false, false}),
+            "global shortcuts must not dispatch from a host that does not own keyboard focus");
+    EditorInputCapture hierarchyCapture{true, false, false, false, false, true};
+    require(editor_action_allowed(EditorAction::RenameSelection, hierarchyCapture) &&
+                editor_action_allowed(EditorAction::DeleteSelection, hierarchyCapture) &&
+                editor_action_allowed(EditorAction::DuplicateSelection, hierarchyCapture) &&
+                dispatch_editor_key(EditorKey::F2, false, false, hierarchyCapture) ==
+                    EditorAction::RenameSelection &&
+                dispatch_editor_key(EditorKey::Delete, false, false, hierarchyCapture) ==
+                    EditorAction::DeleteSelection &&
+                dispatch_editor_key(EditorKey::D, false, true, hierarchyCapture) ==
+                    EditorAction::DuplicateSelection &&
+                !dispatch_editor_key(EditorKey::D, false, true, clearCapture),
+            "rename/delete/duplicate shortcuts must require focused Hierarchy capture");
     for (const auto capture : {EditorInputCapture{true, true, false, false, true},
                                EditorInputCapture{true, false, true, false, true},
                                EditorInputCapture{true, false, false, true, true},
@@ -505,4 +862,168 @@ void run_known_validation_cases()
     const auto structuralIssues = validate_document(structuralDocument);
     require(!structuralIssues.structurallyValid && structuralIssues.blocksRun,
             "validation must distinguish rejected structural input from recoverable field issues");
+}
+
+void run_hierarchy_label_cache_cases()
+{
+    auto document = make_default_document();
+    HierarchyPanel hierarchy;
+    work::reset();
+    const auto &initialRows = hierarchy.visible_rows(document);
+    require(!initialRows.empty() && initialRows.front().label == "Camera (#0)",
+            "hierarchy topology builds with the current object labels");
+
+    EditCommandService commands;
+    commands.subscribe([&](const DocumentChange &change, const std::vector<int> &) {
+        hierarchy.apply_change(document, change);
+    });
+    const auto address = address_for_document(document, 0, std::nullopt, std::nullopt,
+                                               {std::string("name")});
+    require(commands.set_property(document, address, "Renamed Camera").status == CommandStatus::Changed,
+            "a committed label edit advances the document value revision");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    require(work::snapshot()[static_cast<std::size_t>(work::Counter::ChangedRecords)] == 1,
+            "a real property transaction must increment the changed-record work counter");
+#endif
+    const auto &renamedRows = hierarchy.visible_rows(document);
+    require(renamedRows.front().label == "Renamed Camera (#0)",
+            "cached hierarchy labels refresh after a value revision without rebuilding topology");
+    const auto afterRename = work::snapshot();
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    require(afterRename[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)] == 1,
+            "a committed rename must refresh only its affected hierarchy label");
+#endif
+    hierarchy.visible_rows(document);
+    const auto afterIdleFrame = work::snapshot();
+    require(afterIdleFrame[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)] ==
+                afterRename[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)],
+            "unchanged hierarchy frames must not revisit object and component labels");
+    const auto positionAddress = address_for_document(document, 0, std::nullopt, std::nullopt,
+                                                       {std::string("position"), std::string("x")});
+    require(commands.set_property(document, positionAddress, 12.0).status == CommandStatus::Changed,
+            "a pose edit must produce a typed non-label document delta");
+    hierarchy.visible_rows(document);
+    const auto afterPose = work::snapshot();
+    require(afterPose[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)] ==
+                afterRename[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)],
+            "pose edits must advance the hierarchy value revision without refreshing labels");
+    const auto beforeStructure = renamedRows.size();
+    require(commands.create_object(document, 0, "Child").status == CommandStatus::Changed,
+            "a structural hierarchy edit must commit through the command service");
+    require(hierarchy.visible_rows(document).size() == beforeStructure + 1,
+            "a structural revision must rebuild cached hierarchy rows and reveal the new child");
+}
+
+void run_large_hierarchy_cache_cases()
+{
+    DocumentSession flat;
+    flat.documentGeneration = 801;
+    flat.root = gui_fixtures::many_objects(10000);
+    rebuild_document_indexes(flat);
+    HierarchyPanel flatPanel;
+    const auto &flatRows = flatPanel.visible_rows(flat);
+    require(flatRows.size() == 10000,
+            "large expanded hierarchies must preserve all object rows in authored order");
+    const auto &cachedFlatRows = flatPanel.visible_rows(flat);
+    require(cachedFlatRows.size() == 10000 && &cachedFlatRows == &flatRows,
+            "unchanged large hierarchies must reuse their cached topology");
+
+    work::reset();
+    flat.root[5000]["name"] = "Renamed middle object";
+    ++flat.valueRevision;
+    const DocumentChange rename{flat.documentGeneration, flat.structureRevision, flat.valueRevision,
+        false, {ProjectGeneration{flat.projectGeneration}, flat.tabId,
+                DocumentGeneration{flat.documentGeneration}},
+        {5000}, {"name"}, {DocumentChangeCategory::Label}};
+    flatPanel.apply_change(flat, rename);
+    const auto &renamedFlatRows = flatPanel.visible_rows(flat);
+    require(renamedFlatRows[5000].label == "Renamed middle object (#5000)",
+            "an incremental label delta must update the correct object in a 10,000-row hierarchy");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    require(work::snapshot()[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)] == 1,
+            "a 10,000-row rename must visit one affected label row");
+#endif
+
+    DocumentSession deep;
+    deep.documentGeneration = 802;
+    deep.root = gui_fixtures::deep_sprite_chain(128);
+    rebuild_document_indexes(deep);
+    HierarchyPanel deepPanel;
+    const auto &deepRows = deepPanel.visible_rows(deep);
+    require(deepRows.size() == 384,
+            "depth-128 sprite chains must retain each object, component group and component row");
+}
+
+void run_hierarchy_visible_connector_work_cases()
+{
+    DocumentSession document;
+    document.documentGeneration = 803;
+    document.root = gui_fixtures::deep_sprite_chain(128);
+    rebuild_document_indexes(document);
+
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 600.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({600.0f, 420.0f}, ImGuiCond_Always);
+    ImGui::Begin("Hierarchy connectors", nullptr,
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                     ImGuiWindowFlags_NoSavedSettings);
+    HierarchyPanel panel;
+    SelectionModel selection;
+    EditCommandService commands;
+    work::reset();
+    panel.draw(document, selection, commands);
+    ImGui::End();
+    ImGui::Render();
+    const auto counts = work::snapshot();
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    require(counts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] > 0 &&
+                counts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] < 384,
+            "hierarchy drawing must visit only the clipped depth-128 row range");
+    require(counts[static_cast<std::size_t>(work::Counter::HierarchyConnectorCandidates)] < 384,
+            "a clipped depth-128 hierarchy must draw connectors only for visible rows and their ancestors");
+    require(counts[static_cast<std::size_t>(work::Counter::HierarchyConnectorParentVisits)] < 384 * 128,
+            "connector ancestry checks must remain bounded by visible rows times hierarchy depth");
+    require(counts[static_cast<std::size_t>(work::Counter::HierarchyScratchCapacityGrowths)] == 0,
+            "cached hierarchy drawing must not grow its connector scratch buffer per frame");
+#endif
+
+    DocumentSession flat;
+    flat.documentGeneration = 804;
+    flat.root = gui_fixtures::many_objects(10'000);
+    rebuild_document_indexes(flat);
+    HierarchyPanel flatPanel;
+    SelectionModel flatSelection;
+    EditCommandService flatCommands;
+    const auto drawFlat = [&](bool scrollToMiddle) {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({600.0f, 420.0f}, ImGuiCond_Always);
+        ImGui::Begin("Hierarchy 10,000 row scroll", nullptr,
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                         ImGuiWindowFlags_NoSavedSettings);
+        if (scrollToMiddle)
+            ImGui::SetScrollY(ImGui::GetScrollMaxY() * 0.5f);
+        flatPanel.draw(flat, flatSelection, flatCommands);
+        ImGui::End();
+        ImGui::Render();
+    };
+    drawFlat(false);
+    work::reset();
+    drawFlat(true);
+    const auto scrolledCounts = work::snapshot();
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    require(scrolledCounts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] > 0 &&
+                scrolledCounts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] < 100,
+            "scrolling a 10,000-row hierarchy must visit a bounded visible row range");
+    require(scrolledCounts[static_cast<std::size_t>(work::Counter::HierarchyScratchCapacityGrowths)] == 0,
+            "scrolling a cached 10,000-row hierarchy must reuse panel scratch storage");
+#endif
+    ImGui::DestroyContext();
 }

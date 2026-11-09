@@ -4,6 +4,7 @@
 #include "documentio.h"
 #include "project.h"
 #include "validation.h"
+#include "platform/nativefile.h"
 
 #include <limits>
 #include <stdexcept>
@@ -35,11 +36,17 @@ WorkspaceActionResult failed(std::string message)
 } // namespace
 
 DocumentWorkspace::DocumentWorkspace(std::filesystem::path projectRoot,
-                                     std::filesystem::path assetRoot)
+                                     std::filesystem::path assetRoot,
+                                     std::uint64_t projectGeneration, TabId tabId)
     : projectRoot_(canonical_directory(projectRoot, "project root")),
       assetRoot_(canonical_directory(assetRoot, "asset root")),
-      document_(make_default_document(projectRoot_, assetRoot_, nextDocumentGeneration_))
+      document_(make_default_document(projectRoot_, assetRoot_, nextDocumentGeneration_)),
+      projectGeneration_(projectGeneration), tabId_(tabId)
 {
+    if (projectGeneration == 0)
+        throw std::invalid_argument("project generation must be nonzero");
+    document_.projectGeneration = projectGeneration;
+    document_.tabId = tabId_;
 }
 
 const DocumentSession &DocumentWorkspace::document() const noexcept
@@ -98,6 +105,8 @@ WorkspaceActionResult DocumentWorkspace::new_document(UnsavedDecision decision)
 
     const auto nextGeneration = nextDocumentGeneration_ + 1;
     DocumentSession candidate = make_default_document(projectRoot_, assetRoot_, nextGeneration);
+    candidate.projectGeneration = projectGeneration_;
+    candidate.tabId = tabId_;
     document_ = std::move(candidate);
     nextDocumentGeneration_ = nextGeneration;
     if (history_ != nullptr)
@@ -124,6 +133,8 @@ WorkspaceActionResult DocumentWorkspace::open_document(
     const auto validation = validate_document(*candidate.document);
     if (!validation.structurallyValid)
         return failed("invalid scene structure: " + validation.issues.front().message);
+    candidate.document->projectGeneration = projectGeneration_;
+    candidate.document->tabId = tabId_;
     document_ = std::move(*candidate.document);
     nextDocumentGeneration_ = candidateGeneration;
     if (history_ != nullptr)
@@ -157,6 +168,36 @@ WorkspaceActionResult DocumentWorkspace::save_as(const std::filesystem::path &pa
     return completed(saved.message);
 }
 
+bool source_file_allows_run(const SourceFileStatus &status, bool externalChangeAcknowledged,
+                            std::optional<FileIdentity> acknowledgedIdentity) noexcept
+{
+    if (status.state == SourceFileState::NoSource || status.state == SourceFileState::Current)
+        return true;
+    return externalChangeAcknowledged && acknowledgedIdentity == status.diskIdentity;
+}
+
+SourceFileStatus DocumentWorkspace::source_file_status() const
+{
+    if (!document_.sourcePath)
+        return {SourceFileState::NoSource, std::nullopt, {}};
+    std::string identityError;
+    const auto diskIdentity = native_file_identity(*document_.sourcePath, identityError);
+    if (!identityError.empty())
+        return {SourceFileState::Unavailable, std::nullopt, std::move(identityError)};
+    if (!diskIdentity)
+        return {SourceFileState::Missing, std::nullopt, "the saved scene file is missing"};
+    if (document_.sourceIdentity != diskIdentity)
+        return {SourceFileState::Changed, diskIdentity, "the saved scene changed outside the editor"};
+    return {SourceFileState::Current, diskIdentity, {}};
+}
+
+WorkspaceActionResult DocumentWorkspace::reload_source_file()
+{
+    if (!document_.sourcePath)
+        return failed("document has no source path to reload");
+    return open_document(document_.sourcePath, UnsavedDecision::Discard);
+}
+
 WorkspaceActionResult DocumentWorkspace::set_project_roots(const std::filesystem::path &projectRoot,
                                                            const std::filesystem::path &assetRoot,
                                                            std::uint64_t projectGeneration)
@@ -173,17 +214,49 @@ WorkspaceActionResult DocumentWorkspace::set_project_roots(const std::filesystem
         if (projectGeneration <= document_.projectGeneration)
             return failed("project generation must advance when roots change");
 
-        projectRoot_ = project;
-        assetRoot_ = assets;
-        document_.projectRoot = std::move(project);
-        document_.assetRoot = std::move(assets);
-        document_.projectGeneration = projectGeneration;
+        if (history_ != nullptr)
+        {
+            const DocumentIdentity from{ProjectGeneration{document_.projectGeneration}, tabId_,
+                                         DocumentGeneration{document_.documentGeneration}};
+            const DocumentIdentity to{ProjectGeneration{projectGeneration}, tabId_,
+                                       DocumentGeneration{document_.documentGeneration}};
+            if (!history_->can_migrate_project_identity(from, to))
+                return failed("retained document history does not belong to the current project identity");
+        }
+
+        auto documentProject = project;
+        auto documentAssets = assets;
+        commit_project_roots(std::move(project), std::move(assets),
+                             std::move(documentProject), std::move(documentAssets),
+                             projectGeneration);
         return completed();
     }
     catch (const std::exception &error)
     {
         return failed(error.what());
     }
+}
+
+void DocumentWorkspace::commit_project_roots(std::filesystem::path projectRoot,
+                                             std::filesystem::path assetRoot,
+                                             std::filesystem::path documentProjectRoot,
+                                             std::filesystem::path documentAssetRoot,
+                                             std::uint64_t projectGeneration) noexcept
+{
+    if (history_ != nullptr)
+    {
+        const DocumentIdentity from{ProjectGeneration{document_.projectGeneration}, tabId_,
+                                     DocumentGeneration{document_.documentGeneration}};
+        const DocumentIdentity to{ProjectGeneration{projectGeneration}, tabId_,
+                                   DocumentGeneration{document_.documentGeneration}};
+        history_->migrate_project_identity(from, to);
+    }
+    projectRoot_ = std::move(projectRoot);
+    assetRoot_ = std::move(assetRoot);
+    document_.projectRoot = std::move(documentProjectRoot);
+    document_.assetRoot = std::move(documentAssetRoot);
+    document_.projectGeneration = projectGeneration;
+    projectGeneration_ = projectGeneration;
 }
 
 void DocumentWorkspace::mark_saved() noexcept

@@ -1,6 +1,7 @@
 #include "behaviorfields.h"
 
 #include "referencefields.h"
+#include "../discovery.h"
 
 #include <algorithm>
 #include <array>
@@ -15,6 +16,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace platformator_editor
 {
@@ -135,13 +137,50 @@ void end_field()
     ImGui::PopID();
 }
 
+class BehaviorAddressScope
+{
+  public:
+    BehaviorAddressScope(const DocumentSession &document, int objectId, int componentId,
+                         std::size_t behaviorOrdinal)
+        : projectGeneration_(std::to_string(document.projectGeneration)),
+          tabId_(std::to_string(document.tabId.value)),
+          documentGeneration_(std::to_string(document.documentGeneration)),
+          objectId_(std::to_string(objectId)), componentId_(std::to_string(componentId)),
+          behaviorOrdinal_(std::to_string(behaviorOrdinal))
+    {
+        ImGui::PushID(projectGeneration_.c_str());
+        ImGui::PushID(tabId_.c_str());
+        ImGui::PushID(documentGeneration_.c_str());
+        ImGui::PushID(objectId_.c_str());
+        ImGui::PushID(componentId_.c_str());
+        ImGui::PushID(behaviorOrdinal_.c_str());
+    }
+
+    ~BehaviorAddressScope()
+    {
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+    }
+
+  private:
+    std::string projectGeneration_;
+    std::string tabId_;
+    std::string documentGeneration_;
+    std::string objectId_;
+    std::string componentId_;
+    std::string behaviorOrdinal_;
+};
+
 CommandResult set_value(DocumentSession &document, EditCommandService &commands, int objectId,
                         int componentId, std::size_t ordinal,
                         const std::vector<FieldPathSegment> &path, Json value)
 {
     return commands.set_property(document,
-                                 PropertyAddress{document.documentGeneration, objectId, componentId,
-                                                 ordinal, path},
+                                 address_for_document(document, objectId, componentId, ordinal, path),
                                  std::move(value));
 }
 
@@ -249,7 +288,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
 bool draw_typed_value(DocumentSession &document, EditCommandService &commands, int objectId,
                       int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
                       const Json &descriptor, const std::string &label,
-                      const AssetBrowseCallback &browse);
+                      const AssetBrowseCallback &browse, ResourceIndex *resourceIndex);
 
 bool draw_vector(DocumentSession &document, EditCommandService &commands, int objectId,
                  int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
@@ -276,9 +315,12 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
         ImGui::PushID(name.c_str());
         const auto valuePath = child_path(path, name);
         begin_field(label + " " + name, valuePath);
-        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.2f");
+        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.9g",
+                                                     ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (valueChanged || ImGui::IsItemDeactivatedAfterEdit());
         end_field();
-        if (valueChanged && std::isfinite(value))
+        if (commit && std::isfinite(value))
         {
             draft[name] = value;
             if (current == nullptr || !current->is_object())
@@ -317,9 +359,11 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         std::uint64_t value = current->get<std::uint64_t>();
         begin_field(label, path);
         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, nullptr, nullptr,
-                                                "%llu");
+                                                "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
         end_field();
-        if (changed)
+        if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         return true;
     }
@@ -328,9 +372,11 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         std::int64_t value = current->get<std::int64_t>();
         begin_field(label, path);
         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, nullptr, nullptr,
-                                                "%lld");
+                                                "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
         end_field();
-        if (changed)
+        if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         return true;
     }
@@ -338,9 +384,12 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     {
         double value = current->get<double>();
         begin_field(label, path);
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.2f");
+        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.17g",
+                                                ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
         end_field();
-        if (changed && std::isfinite(value))
+        if (commit && std::isfinite(value))
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         return true;
     }
@@ -382,8 +431,8 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove"))
                     commands.erase_property(document,
-                                            PropertyAddress{document.documentGeneration, objectId, componentId,
-                                                            ordinal, nestedPath});
+                                            address_for_document(document, objectId, componentId,
+                                                                 ordinal, nestedPath));
                 ImGui::PopID();
             }
             ImGui::TreePop();
@@ -422,7 +471,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
 bool draw_typed_value(DocumentSession &document, EditCommandService &commands, int objectId,
                       int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
                       const Json &descriptor, const std::string &label,
-                      const AssetBrowseCallback &browse)
+                      const AssetBrowseCallback &browse, ResourceIndex *resourceIndex)
 {
     const Json *current = read_path(behavior_owner(document, objectId, componentId, ordinal), path);
     const std::string kind = descriptor.value("kind", "opaque_json");
@@ -448,8 +497,10 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             auto minimum = unsigned_bound(descriptor, "minimum").value_or(0);
             auto maximum = unsigned_bound(descriptor, "maximum");
             std::uint64_t limit = maximum.value_or(std::numeric_limits<std::uint64_t>::max());
-            if (ImGui::InputScalar("##value", ImGuiDataType_U64, &value, &minimum, &limit,
-                                   "%llu"))
+            const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, &minimum, &limit,
+                "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+            if (!cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()))
                 set_value(document, commands, objectId, componentId, ordinal, path, value);
         }
         else
@@ -457,8 +508,10 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             std::int64_t value = json_signed(current);
             auto minimum = signed_bound(descriptor, "minimum").value_or(std::numeric_limits<std::int64_t>::min());
             auto maximum = signed_bound(descriptor, "maximum").value_or(std::numeric_limits<std::int64_t>::max());
-            if (ImGui::InputScalar("##value", ImGuiDataType_S64, &value, &minimum, &maximum,
-                                   "%lld"))
+            const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, &minimum, &maximum,
+                "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+            if (!cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()))
                 set_value(document, commands, objectId, componentId, ordinal, path, value);
         }
         end_field();
@@ -470,9 +523,12 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
     {
         double value = current != nullptr && current->is_number() ? current->get<double>() : 0.0;
         begin_field(label, path);
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.2f");
+        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.17g",
+                                                ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
         end_field();
-        if (changed && std::isfinite(value))
+        if (commit && std::isfinite(value))
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         if (current == nullptr)
             ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
@@ -537,7 +593,8 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         draw_asset_reference_field(document, commands, objectId, std::optional<int>(componentId),
                                    std::optional<std::size_t>(ordinal), path,
                                    descriptor.value("target", std::string("Asset")),
-                                   descriptor.value("nullable", true), label.c_str(), browse);
+                                   descriptor.value("nullable", true), label.c_str(), browse,
+                                   nullptr, resourceIndex);
         return true;
     }
     if (kind == "object_reference")
@@ -570,7 +627,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             const auto element = descriptor.find("element");
             if (element != descriptor.end())
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
-                                 path, *element, label, browse);
+                                 path, *element, label, browse, resourceIndex);
         }
         else
             ImGui::SameLine(), ImGui::TextDisabled(current != nullptr ? "explicit null" : "missing");
@@ -587,7 +644,8 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             {
                 ImGui::PushID(static_cast<int>(index));
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
-                                 child_path(path, index), *element, "Element " + std::to_string(index), browse);
+                                 child_path(path, index), *element, "Element " + std::to_string(index), browse,
+                                 resourceIndex);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove"))
                 {
@@ -631,11 +689,228 @@ const Json *find_behavior_descriptor(const Json &catalog, std::string_view name)
             return &behavior;
     return nullptr;
 }
+
+std::optional<int> script_component_at_occurrence(const DocumentSession &document, int objectId,
+                                                  std::size_t occurrence)
+{
+    const auto location = document.indexes.objectsById.find(objectId);
+    if (location == document.indexes.objectsById.end())
+        return std::nullopt;
+    const Json *object = resolve_object(document.root, location->second);
+    if (object == nullptr)
+        return std::nullopt;
+    const auto components = object->find("components");
+    if (components == object->end() || !components->is_array())
+        return std::nullopt;
+    std::size_t current = 0;
+    for (const auto &component : *components)
+    {
+        if (!component.is_object() || component.value("type", -1) != 5)
+            continue;
+        if (current++ != occurrence)
+            continue;
+        const int componentId = json_signed(component.contains("id") ? &component["id"] : nullptr, -1);
+        return componentId >= 0 ? std::optional<int>(componentId) : std::nullopt;
+    }
+    return std::nullopt;
+}
+
+bool compatible_behavior_value(const Json *value, std::string_view kind)
+{
+    if (value == nullptr)
+        return false;
+    if (kind == "boolean")
+        return value->is_boolean();
+    if (kind == "number")
+    {
+        if (!value->is_number())
+            return false;
+        try
+        {
+            return std::isfinite(value->get<double>());
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+    if (kind == "signed_integer")
+        return value->is_number_integer() && !value->is_number_unsigned();
+    if (kind == "unsigned_integer")
+    {
+        if (value->is_number_unsigned())
+            return true;
+        return value->is_number_integer() && json_signed(value, -1) >= 0;
+    }
+    if (kind == "enum")
+        return value->is_number_integer();
+    return false;
+}
+
+std::string object_search_context(const DocumentSession &document, int objectId)
+{
+    std::string context = " #" + std::to_string(objectId);
+    int currentId = objectId;
+    while (true)
+    {
+        const auto location = document.indexes.objectsById.find(currentId);
+        if (location == document.indexes.objectsById.end())
+            break;
+        const Json *object = resolve_object(document.root, location->second);
+        if (object == nullptr)
+            break;
+        for (const char *key : {"name", "tag"})
+        {
+            const auto value = object->find(key);
+            if (value != object->end() && value->is_string())
+                context += " " + value->get<std::string>();
+        }
+        const auto parent = document.indexes.parentById.find(currentId);
+        if (parent == document.indexes.parentById.end() || !parent->second)
+            break;
+        currentId = *parent->second;
+    }
+    return context;
+}
+
+struct MultiBehaviorAddress
+{
+    int objectId = 0;
+    int componentId = 0;
+    std::size_t ordinal = 0;
+};
+
+DocumentIdentity author_declaration_identity(const DocumentSession &document)
+{
+    return {ProjectGeneration{document.projectGeneration}, document.tabId,
+            DocumentGeneration{document.documentGeneration}};
+}
+
+std::string author_declaration_key(const DocumentSession &document, int objectId,
+                                   int componentId, std::size_t behaviorOrdinal)
+{
+    return std::to_string(document.projectGeneration) + ":" +
+        std::to_string(document.tabId.value) + ":" +
+        std::to_string(document.documentGeneration) + ":" +
+        std::to_string(objectId) + ":" + std::to_string(componentId) + ":" +
+        std::to_string(behaviorOrdinal);
+}
+
+std::string escape_pointer_segment(std::string_view segment)
+{
+    std::string escaped;
+    for (const char character : segment)
+    {
+        if (character == '~') escaped += "~0";
+        else if (character == '/') escaped += "~1";
+        else escaped.push_back(character);
+    }
+    return escaped;
+}
+
+const Json *resolve_relative_pointer(const Json &root, std::string_view pointer)
+{
+    if (pointer.empty() || pointer.front() != '/')
+        return nullptr;
+    const Json *value = &root;
+    std::size_t start = 1;
+    while (start <= pointer.size())
+    {
+        const auto end = pointer.find('/', start);
+        const auto encoded = pointer.substr(start,
+            end == std::string_view::npos ? pointer.size() - start : end - start);
+        if (encoded.empty())
+            return nullptr;
+        std::string segment;
+        segment.reserve(encoded.size());
+        for (std::size_t index = 0; index < encoded.size(); ++index)
+        {
+            if (encoded[index] != '~')
+            {
+                segment.push_back(encoded[index]);
+                continue;
+            }
+            if (index + 1 >= encoded.size() ||
+                (encoded[index + 1] != '0' && encoded[index + 1] != '1'))
+                return nullptr;
+            segment.push_back(encoded[++index] == '0' ? '~' : '/');
+        }
+        if (value->is_object())
+        {
+            const auto child = value->find(segment);
+            if (child == value->end())
+                return nullptr;
+            value = &*child;
+        }
+        else if (value->is_array())
+        {
+            if (segment.size() > 1 && segment.front() == '0')
+                return nullptr;
+            std::size_t arrayIndex = 0;
+            const auto parsed = std::from_chars(segment.data(),
+                segment.data() + segment.size(), arrayIndex);
+            if (parsed.ec != std::errc{} || parsed.ptr != segment.data() + segment.size() ||
+                arrayIndex >= value->size())
+                return nullptr;
+            value = &(*value)[arrayIndex];
+        }
+        else
+            return nullptr;
+        if (end == std::string_view::npos)
+            return value;
+        start = end + 1;
+    }
+    return nullptr;
+}
+
+bool is_reference_integer(const Json *value)
+{
+    if (value == nullptr || (!value->is_number_integer() && !value->is_number_unsigned()))
+        return false;
+    if (value->is_number_unsigned())
+        return value->get<std::uint64_t>() <= static_cast<std::uint64_t>(std::numeric_limits<int>::max());
+    const auto number = value->get<std::int64_t>();
+    return number >= 0 && number <= std::numeric_limits<int>::max();
+}
 } // namespace
+
+std::vector<Json> BehaviorFieldsPanel::template_author_bindings(
+    const DocumentSession &document) const
+{
+    const auto identity = author_declaration_identity(document);
+    std::vector<Json> bindings;
+    for (const auto &[key, declaration] : authorReferenceDeclarations_)
+    {
+        (void)key;
+        if (declaration.identity != identity)
+            continue;
+        for (const auto &[relativePointer, targetKind] : declaration.fieldKinds)
+            bindings.push_back(make_template_reference_path_declaration(
+                declaration.ownerId, declaration.componentId,
+                declaration.behaviorOrdinal, relativePointer, targetKind));
+    }
+    return bindings;
+}
+
+std::vector<TemplateAuthorSchemaDeclaration> BehaviorFieldsPanel::template_author_schemas(
+    const DocumentSession &document) const
+{
+    const auto identity = author_declaration_identity(document);
+    std::vector<TemplateAuthorSchemaDeclaration> declarations;
+    for (const auto &[key, declaration] : authorReferenceDeclarations_)
+    {
+        (void)key;
+        if (declaration.identity == identity && declaration.schemaCoverageComplete)
+            declarations.push_back({declaration.ownerId, declaration.componentId,
+                                    declaration.behaviorOrdinal, declaration.behaviorType});
+    }
+    return declarations;
+}
 
 void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &selection,
                                EditCommandService &commands, const BehaviorCatalog &catalog,
-                               const AssetBrowseCallback &browse)
+                               const AssetBrowseCallback &browse, ResourceIndex *resourceIndex,
+                               std::string_view searchQuery)
 {
     selection.repair(document);
     if (!selection.current().objectId || !selection.current().componentId)
@@ -687,13 +962,16 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
         return;
     }
     const auto ordinal = *selection.current().behaviorOrdinal;
+    const BehaviorAddressScope addressScope(document, objectId, componentId, ordinal);
     const Json *behavior = behavior_owner(document, objectId, componentId, ordinal);
     if (behavior == nullptr || !behavior->is_object())
         return;
     const std::string behaviorName = behavior->value("type", std::string("Unknown"));
     const auto snapshot = catalog.snapshot();
     const Json *descriptor = snapshot ? find_behavior_descriptor(snapshot->document, behaviorName) : nullptr;
-    if (descriptor != nullptr && !descriptor->value("field_schema_available", false))
+    const bool schemaUnavailable = descriptor == nullptr ||
+        !descriptor->value("field_schema_available", false);
+    if (schemaUnavailable)
         ImGui::TextDisabled("Registered behavior; field schema is unavailable.");
 
     std::set<std::string> knownFields;
@@ -707,18 +985,38 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
                 const std::string fieldName = field.value("name", std::string{});
                 if (fieldName.empty())
                     continue;
+                const std::string searchable = behaviorName + " " + fieldName + " " +
+                    field.value("label", fieldName) + " " +
+                    field.value("kind", std::string("opaque_json")) + " #" +
+                    std::to_string(objectId) + object_search_context(document, objectId);
+                if (!discovery_query_matches(searchQuery, searchable))
+                    continue;
                 knownFields.insert(fieldName);
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
-                                 {std::string(fieldName)}, field, fieldName, browse);
+                                 {std::string(fieldName)}, field, fieldName, browse, resourceIndex);
             }
         }
     }
 
     std::vector<std::string> extras;
     for (auto it = behavior->begin(); it != behavior->end(); ++it)
-        if (it.key() != "type" && !knownFields.contains(it.key()))
+        if (it.key() != "type" && !knownFields.contains(it.key()) &&
+            discovery_query_matches(searchQuery, behaviorName + " " + it.key() +
+                object_search_context(document, objectId)))
             extras.push_back(it.key());
-    if (!extras.empty() || descriptor == nullptr || !descriptor->value("field_schema_available", false))
+    AuthorReferenceDeclaration *authorDeclaration = nullptr;
+    if (schemaUnavailable || !extras.empty())
+    {
+        const auto key = author_declaration_key(document, objectId, componentId, ordinal);
+        auto &state = authorReferenceDeclarations_[key];
+        state.identity = author_declaration_identity(document);
+        state.ownerId = objectId;
+        state.componentId = componentId;
+        state.behaviorOrdinal = ordinal;
+        state.behaviorType = behaviorName;
+        authorDeclaration = &state;
+    }
+    if (!extras.empty() || schemaUnavailable)
     {
         ImGui::SetNextItemOpen(true, ImGuiCond_Once);
         if (ImGui::TreeNode("Observed extra fields (preserved)"))
@@ -726,6 +1024,86 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
             for (const auto &key : extras)
             {
                 ImGui::PushID(key.c_str());
+                Json value;
+                const auto current = behavior->find(key);
+                if (current != behavior->end())
+                    value = *current;
+                const std::string fieldPointer = "/" + escape_pointer_segment(key);
+                if (is_reference_integer(&value))
+                {
+                    ImGui::TextUnformatted(key.c_str());
+                    ImGui::SameLine();
+                    std::optional<std::string> declaredKind;
+                    if (authorDeclaration != nullptr)
+                        if (const auto declared = authorDeclaration->fieldKinds.find(fieldPointer);
+                            declared != authorDeclaration->fieldKinds.end())
+                            declaredKind = declared->second;
+                    if (draw_template_reference_kind_control(objectId, componentId, ordinal,
+                                                             key, declaredKind) &&
+                        authorDeclaration != nullptr)
+                    {
+                        if (declaredKind)
+                            authorDeclaration->fieldKinds[fieldPointer] = *declaredKind;
+                        else
+                            authorDeclaration->fieldKinds.erase(fieldPointer);
+                    }
+                }
+                else if ((value.is_object() || value.is_array()) && authorDeclaration != nullptr)
+                {
+                    auto &draft = authorDeclaration->nestedPathDrafts[key];
+                    ImGui::TextDisabled("Declare nested reference site under %s", key.c_str());
+                    ImGui::SetNextItemWidth(-1.0f);
+                    ImGui::InputTextWithHint("##nested-reference-pointer", "/target or /items/0/id",
+                                             draft.pointer.data(), draft.pointer.size());
+                    std::optional<std::string> targetKind = draft.targetKind;
+                    draw_template_reference_kind_control(objectId, componentId, ordinal,
+                        "nested-reference-kind", targetKind);
+                    draft.targetKind = targetKind;
+                    const std::string nestedPointer(draft.pointer.data());
+                    const Json *nestedValue = resolve_relative_pointer(value, nestedPointer);
+                    const std::string relativePointer = fieldPointer + nestedPointer;
+                    const bool declarationValid = draft.targetKind &&
+                        is_reference_integer(nestedValue) &&
+                        !make_template_reference_path_declaration(objectId, componentId, ordinal,
+                            relativePointer, *draft.targetKind).empty();
+                    if (!declarationValid && !nestedPointer.empty())
+                        ImGui::TextDisabled("Path must resolve to an integer reference in this field.");
+                    if (ImGui::Button("Add nested reference declaration") && declarationValid)
+                    {
+                        authorDeclaration->fieldKinds[relativePointer] = *draft.targetKind;
+                        draft.pointer.fill('\0');
+                        draft.targetKind.reset();
+                    }
+
+                    std::vector<std::string> declaredPaths;
+                    for (const auto &[path, kind] : authorDeclaration->fieldKinds)
+                    {
+                        (void)kind;
+                        if (path.size() > fieldPointer.size() &&
+                            path.compare(0, fieldPointer.size(), fieldPointer) == 0 &&
+                            path[fieldPointer.size()] == '/')
+                            declaredPaths.push_back(path);
+                    }
+                    for (const auto &path : declaredPaths)
+                    {
+                        ImGui::PushID(path.c_str());
+                        ImGui::Text("%s", path.c_str());
+                        ImGui::SameLine();
+                        std::optional<std::string> declaredKind = authorDeclaration->fieldKinds[path];
+                        if (draw_template_reference_kind_control(objectId, componentId, ordinal,
+                                                                 path, declaredKind))
+                        {
+                            if (declaredKind)
+                                authorDeclaration->fieldKinds[path] = *declaredKind;
+                            else
+                                authorDeclaration->fieldKinds.erase(path);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Remove"))
+                            authorDeclaration->fieldKinds.erase(path);
+                        ImGui::PopID();
+                    }
+                }
                 draw_raw_value(document, commands, objectId, componentId, ordinal,
                                {std::string(key)}, key);
                 ImGui::PopID();
@@ -733,5 +1111,272 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
             ImGui::TreePop();
         }
     }
+    if (schemaUnavailable && authorDeclaration != nullptr)
+    {
+        ImGui::TextWrapped("Declare integer references in opaque fields, including nested JSON pointers. Confirm only after reviewing every field that can hold an object or component reference.");
+        bool complete = authorDeclaration->schemaCoverageComplete;
+        if (ImGui::Checkbox("Reference declarations cover this behavior", &complete))
+            authorDeclaration->schemaCoverageComplete = complete;
+    }
+}
+
+void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
+                                                   const Selection &selection,
+                                                   EditCommandService &commands,
+                                                   const BehaviorCatalog &catalog,
+                                                   const std::vector<int> &objectIds,
+                                                   ResourceIndex *resourceIndex,
+                                                   std::string_view searchQuery)
+{
+    if (objectIds.size() < 2)
+        return;
+    const auto catalogSnapshot = catalog.snapshot();
+    if (!catalogSnapshot)
+        return;
+
+    std::string selectionScope("multi-behaviors");
+    for (const int objectId : objectIds)
+    {
+        selectionScope.push_back(':');
+        selectionScope += std::to_string(objectId);
+    }
+    ImGui::PushID(selectionScope.c_str());
+
+    std::size_t primaryScriptCount = 0;
+    const auto primaryLocation = document.indexes.objectsById.find(selection.objectId.value_or(-1));
+    if (primaryLocation != document.indexes.objectsById.end())
+    {
+        const Json *primary = resolve_object(document.root, primaryLocation->second);
+        const auto components = primary != nullptr ? primary->find("components") : Json::const_iterator{};
+        if (primary != nullptr && components != primary->end() && components->is_array())
+            for (const auto &component : *components)
+                if (component.is_object() && component.value("type", -1) == 5)
+                    ++primaryScriptCount;
+    }
+    if (primaryScriptCount == 0)
+    {
+        ImGui::PopID();
+        return;
+    }
+
+    std::vector<std::vector<MultiBehaviorAddress>> scriptComponents(primaryScriptCount);
+    bool hasAnyCommonBehavior = false;
+    for (std::size_t scriptOccurrence = 0; scriptOccurrence < primaryScriptCount; ++scriptOccurrence)
+    {
+        auto &participants = scriptComponents[scriptOccurrence];
+        participants.reserve(objectIds.size());
+        bool complete = true;
+        for (const int objectId : objectIds)
+        {
+            const auto componentId = script_component_at_occurrence(document, objectId, scriptOccurrence);
+            if (!componentId)
+            {
+                complete = false;
+                break;
+            }
+            participants.push_back({objectId, *componentId, 0});
+        }
+        if (!complete)
+            continue;
+
+        std::size_t behaviorCount = std::numeric_limits<std::size_t>::max();
+        for (const auto &participant : participants)
+        {
+            const auto componentLocation = document.indexes.componentsById.find(participant.componentId);
+            const auto objectLocation = document.indexes.objectsById.find(participant.objectId);
+            if (componentLocation == document.indexes.componentsById.end() ||
+                objectLocation == document.indexes.objectsById.end())
+            {
+                behaviorCount = 0;
+                break;
+            }
+            const Json *object = resolve_object(document.root, objectLocation->second);
+            if (object == nullptr)
+            {
+                behaviorCount = 0;
+                break;
+            }
+            const auto components = object->find("components");
+            if (components == object->end() || !components->is_array() ||
+                componentLocation->second.componentIndex >= components->size())
+            {
+                behaviorCount = 0;
+                break;
+            }
+            const auto behaviors = (*components)[componentLocation->second.componentIndex].find("behaviors");
+            const std::size_t count = behaviors != (*components)[componentLocation->second.componentIndex].end() &&
+                                      behaviors->is_array() ? behaviors->size() : 0;
+            behaviorCount = std::min(behaviorCount, count);
+        }
+
+        for (std::size_t behaviorOrdinal = 0; behaviorOrdinal < behaviorCount; ++behaviorOrdinal)
+        {
+            const Json *primaryBehavior = behavior_owner(document, participants.front().objectId,
+                                                         participants.front().componentId,
+                                                         behaviorOrdinal);
+            if (primaryBehavior == nullptr || !primaryBehavior->is_object())
+                continue;
+            const auto behaviorName = primaryBehavior->value("type", std::string{});
+            if (behaviorName.empty())
+                continue;
+            bool sameBehavior = true;
+            for (const auto &participant : participants)
+            {
+                const Json *behavior = behavior_owner(document, participant.objectId,
+                                                      participant.componentId, behaviorOrdinal);
+                if (behavior == nullptr || !behavior->is_object() ||
+                    behavior->value("type", std::string{}) != behaviorName)
+                {
+                    sameBehavior = false;
+                    break;
+                }
+            }
+            if (!sameBehavior)
+                continue;
+            const Json *descriptor = find_behavior_descriptor(catalogSnapshot->document, behaviorName);
+            if (descriptor == nullptr || !descriptor->value("field_schema_available", false))
+                continue;
+            const auto fields = descriptor->find("fields");
+            if (fields == descriptor->end() || !fields->is_array())
+                continue;
+
+            if (!hasAnyCommonBehavior)
+            {
+                ImGui::SeparatorText("Common Script behavior fields");
+                hasAnyCommonBehavior = true;
+            }
+            ImGui::PushID(static_cast<int>(scriptOccurrence));
+            ImGui::PushID(static_cast<int>(behaviorOrdinal));
+            ImGui::Text("Script %zu · %s", scriptOccurrence + 1, behaviorName.c_str());
+
+            for (const auto &field : *fields)
+            {
+                const std::string fieldName = field.value("name", std::string{});
+                const std::string kind = field.value("kind", std::string("opaque_json"));
+                if (fieldName.empty() || (kind != "boolean" && kind != "number" &&
+                                          kind != "signed_integer" && kind != "unsigned_integer" &&
+                                          kind != "enum"))
+                    continue;
+                std::string objectContext;
+                for (const auto &participant : participants)
+                    objectContext += object_search_context(document, participant.objectId);
+                const std::string searchable = behaviorName + " " + fieldName + " " +
+                    field.value("label", fieldName) + " " + kind;
+                if (!discovery_query_matches(searchQuery, searchable + objectContext))
+                    continue;
+                const std::vector<FieldPathSegment> path{fieldName};
+                std::vector<Json> values;
+                values.reserve(participants.size());
+                bool compatible = true;
+                for (const auto &participant : participants)
+                {
+                    const Json *currentBehavior = behavior_owner(document, participant.objectId,
+                                                                 participant.componentId,
+                                                                 behaviorOrdinal);
+                    const Json *value = read_path(currentBehavior, path);
+                    if (!compatible_behavior_value(value, kind))
+                    {
+                        compatible = false;
+                        break;
+                    }
+                    values.push_back(*value);
+                }
+                if (!compatible)
+                    continue;
+
+                const bool mixed = std::any_of(values.begin() + 1, values.end(),
+                                               [&](const Json &value) { return value != values.front(); });
+                const auto commit = [&](Json next) {
+                    std::vector<BatchPropertyEdit> edits;
+                    edits.reserve(participants.size());
+                    for (const auto &participant : participants)
+                        edits.push_back({address_for_document(document, participant.objectId,
+                                                              participant.componentId,
+                                                              behaviorOrdinal, path),
+                                         PropertyValue::of(next)});
+                    commands.apply_batch(document, edits, {selection, selection});
+                };
+
+                begin_field(field.value("label", fieldName), path);
+                ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+                if (kind == "boolean")
+                {
+                    bool value = values.front().get<bool>();
+                    const bool changed = ImGui::Checkbox("##value", &value);
+                    ImGui::PopItemFlag();
+                    end_field();
+                    if (changed)
+                        commit(value);
+                }
+                else if (kind == "number")
+                {
+                    double value = values.front().get<double>();
+                    const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.17g",
+                                                            ImGuiInputTextFlags_EnterReturnsTrue);
+                    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                    const bool shouldCommit = !cancel &&
+                        (changed || ImGui::IsItemDeactivatedAfterEdit());
+                    ImGui::PopItemFlag();
+                    end_field();
+                    if (shouldCommit && std::isfinite(value))
+                        commit(value);
+                }
+                else if (kind == "signed_integer")
+                {
+                    std::int64_t value = json_signed(&values.front());
+                    const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value,
+                        nullptr, nullptr, "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
+                    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                    const bool shouldCommit = !cancel &&
+                        (changed || ImGui::IsItemDeactivatedAfterEdit());
+                    ImGui::PopItemFlag();
+                    end_field();
+                    if (shouldCommit)
+                        commit(value);
+                }
+                else if (kind == "unsigned_integer")
+                {
+                    std::uint64_t value = json_unsigned(&values.front());
+                    const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value,
+                        nullptr, nullptr, "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
+                    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                    const bool shouldCommit = !cancel &&
+                        (changed || ImGui::IsItemDeactivatedAfterEdit());
+                    ImGui::PopItemFlag();
+                    end_field();
+                    if (shouldCommit)
+                        commit(value);
+                }
+                else
+                {
+                    const auto enumValues = field.find("enum_values");
+                    const int current = json_enum(&values.front());
+                    std::string preview = mixed ? "Multiple values" : "Unknown value";
+                    if (!mixed && enumValues != field.end() && enumValues->is_array())
+                        for (const auto &entry : *enumValues)
+                            if (entry.value("value", 0) == current)
+                                preview = entry.value("name", std::string("Unknown value"));
+                    if (ImGui::BeginCombo("##value", preview.c_str()))
+                    {
+                        if (enumValues != field.end() && enumValues->is_array())
+                            for (const auto &entry : *enumValues)
+                            {
+                                const int value = entry.value("value", 0);
+                                const auto name = entry.value("name", std::string("Unknown"));
+                                if (ImGui::Selectable(name.c_str(), !mixed && current == value))
+                                    commit(value);
+                            }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::PopItemFlag();
+                    end_field();
+                }
+            }
+            ImGui::PopID();
+            ImGui::PopID();
+        }
+    }
+    ImGui::PopID();
+    static_cast<void>(resourceIndex);
 }
 } // namespace platformator_editor

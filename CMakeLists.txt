@@ -19,6 +19,7 @@ option(PLATFORMATOR_BUILD_EXAMPLES "Build standalone Platformator example projec
 option(PLATFORMATOR_BUILD_TESTS "Build Platformator test executables." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_INSTALL "Install Platformator library headers, assets, and package files." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_EDITOR "Build the optional Dear ImGui desktop editor." OFF)
+option(PLATFORMATOR_ENABLE_EDITOR_SESSION "Compile the opt-in editor play-session protocol." OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
@@ -81,6 +82,11 @@ file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
 
 if(NOT PLATFORMATOR_ENABLE_BENCHMARKS)
     list(REMOVE_ITEM PLATFORMATOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark.cpp")
+endif()
+if(NOT PLATFORMATOR_ENABLE_EDITOR_SESSION)
+    list(REMOVE_ITEM PLATFORMATOR_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/editorprotocol.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/editorsession.cpp")
 endif()
 
 configure_file(
@@ -161,7 +167,9 @@ add_library(Platformator::platformator ALIAS platformator_engine)
 target_compile_features(platformator_engine PUBLIC cxx_std_20)
 set_target_properties(platformator_engine PROPERTIES EXPORT_NAME platformator)
 set_target_properties(nlohmann_json PROPERTIES EXPORT_NAME json)
-target_compile_definitions(platformator_engine PUBLIC PLATFORMATOR_ENABLE_WORK_PROBES=$<BOOL:${PLATFORMATOR_ENABLE_WORK_PROBES}>)
+target_compile_definitions(platformator_engine PUBLIC
+    PLATFORMATOR_ENABLE_WORK_PROBES=$<BOOL:${PLATFORMATOR_ENABLE_WORK_PROBES}>
+    PLATFORMATOR_ENABLE_EDITOR_SESSION=$<BOOL:${PLATFORMATOR_ENABLE_EDITOR_SESSION}>)
 
 set_target_properties(platformator_engine PROPERTIES
     OUTPUT_NAME platformator
@@ -355,6 +363,10 @@ if(PLATFORMATOR_INSTALL)
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Platformator")
     if(PLATFORMATOR_BUILD_RUNNER)
         install(TARGETS main RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+    if(PLATFORMATOR_BUILD_EDITOR AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        include(cmake/PlatformatorEditorInstall.cmake)
+        platformator_install_editor()
     endif()
     # A shared dependency may depend on another library in this same directory.
     foreach(runtime_target IN LISTS PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <json.hpp>
+#include "sessionids.h"
 
 namespace platformator_editor
 {
@@ -53,6 +54,22 @@ struct FileIdentity
     bool operator==(const FileIdentity &) const = default;
 };
 
+enum class SourceFileState
+{
+    NoSource,
+    Current,
+    Changed,
+    Missing,
+    Unavailable
+};
+
+struct SourceFileStatus
+{
+    SourceFileState state = SourceFileState::NoSource;
+    std::optional<FileIdentity> diskIdentity;
+    std::string message;
+};
+
 struct DocumentSession
 {
     Json root = Json::array();
@@ -62,9 +79,22 @@ struct DocumentSession
     std::filesystem::path assetRoot;
     std::uint64_t documentGeneration = 1;
     std::uint64_t projectGeneration = 1;
+    TabId tabId;
     std::uint64_t structureRevision = 0;
     std::uint64_t valueRevision = 0;
     DocumentIndexes indexes;
+};
+
+enum class DocumentChangeCategory
+{
+    Label,
+    Pose,
+    Active,
+    Sprite,
+    Collider,
+    Camera,
+    BehaviorReference,
+    Structure
 };
 
 struct DocumentChange
@@ -73,6 +103,10 @@ struct DocumentChange
     std::uint64_t structureRevision = 0;
     std::uint64_t valueRevision = 0;
     bool structural = false;
+    DocumentIdentity identity;
+    std::vector<int> affectedObjectIds;
+    std::vector<std::string> changedPaths;
+    std::vector<DocumentChangeCategory> categories;
 };
 
 struct DocumentParseResult

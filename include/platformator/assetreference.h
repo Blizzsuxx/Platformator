@@ -3,6 +3,7 @@
 #include <optional>
 #include <cassert>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -105,6 +106,26 @@ template <typename T> class AssetReference
         }
 
         return filePath;
+    }
+
+    bool hasFilePath() const
+    {
+        assertLifetime();
+        return object != nullptr || filePath.has_value();
+    }
+
+    std::string_view getFilePathView() const
+    {
+        assertLifetime();
+        if (object != nullptr)
+            return object->getFilePath();
+        return filePath ? std::string_view(*filePath) : std::string_view{};
+    }
+
+    uint64_t getRuntimeSerial() const
+    {
+        assertLifetime();
+        return runtimeSerial;
     }
 
     void set(T *value)

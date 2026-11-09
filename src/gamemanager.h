@@ -120,18 +120,27 @@ class GameManager
 
     SDLWindow *getWindow() const;
 
-    void loop();
+    void loop(const std::function<bool(SDLWindow &)> &ownerThreadService = {},
+              const std::function<void(std::uint64_t)> &afterSimulationStep = {});
     void simulateFrame(double timeDelta);
     bool simulateAndRenderFrame(double timeDelta);
     TextureWrapper *loadTexture(const std::string &filePath, bool required = false);
+    TextureWrapper *findTexture(const std::string &filePath);
+    std::uint64_t texture_cache_bytes() const noexcept;
+    TextureWrapper *reloadTexture(const std::string &filePath);
+    TextureWrapper *reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface);
     void freeTexture(TextureWrapper *textureWrapper);
     void freeAllTextures();
     AudioWrapper *loadAudio(const std::string &filePath, bool required = false);
+    AudioWrapper *reloadAudio(const std::string &filePath);
     void freeAudio(AudioWrapper *audioWrapper);
     void freeAllAudio();
     AnimationClip *loadAnimationClip(const std::string &filePath);
+    AnimationClip *findAnimationClip(const std::string &filePath);
     AnimationClip *loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
                                      bool required);
+    AnimationClip *reloadAnimationClip(const std::string &filePath);
+    AnimationClip *reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument);
     void freeAnimationClip(AnimationClip *animationClip);
     void freeAllAnimationClips();
 
@@ -148,6 +157,7 @@ class GameManager
     platformator_detail::ObjectRegistry registry;
     bool shutdownComplete = false;
     bool shuttingDown = false;
+    std::uint64_t simulationStepNumber = 0;
 
     struct SceneRequest
     {
@@ -186,6 +196,9 @@ class GameManager
     std::unordered_map<std::string, std::unique_ptr<TextureWrapper>> textureCache;
     std::unordered_map<std::string, std::unique_ptr<AudioWrapper>> audioCache;
     std::unordered_map<std::string, std::unique_ptr<AnimationClip>> animationClipCache;
+    std::vector<std::unique_ptr<TextureWrapper>> retiredTextureCache;
+    std::vector<std::unique_ptr<AudioWrapper>> retiredAudioCache;
+    std::vector<std::unique_ptr<AnimationClip>> retiredAnimationCache;
     std::unordered_map<int, BaseObject *> idToObjectMap;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<ScriptComponent *> pendingStartScripts;

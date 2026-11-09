@@ -155,6 +155,7 @@
                 "PLATFORMATOR_INSTALL": "OFF",
                 "PLATFORMATOR_SANITIZER": "none",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
+                "PLATFORMATOR_ENABLE_WORK_PROBES": "ON",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-debug"
             }
         },

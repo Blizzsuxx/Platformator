@@ -1,7 +1,10 @@
 #include "process_internal.h"
+#include "platform/nativeprocess_testhooks.h"
+#include "platform/sessionchannel_posix.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -9,8 +12,10 @@
 #include <filesystem>
 #include <fcntl.h>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -20,6 +25,28 @@ extern char **environ;
 
 namespace platformator_editor
 {
+namespace
+{
+struct PosixProcessState
+{
+    pid_t pid = -1;
+    pid_t processGroup = -1;
+    int standardOutputFd = -1;
+    int standardErrorFd = -1;
+    ProcessOutputMode outputMode = ProcessOutputMode::Merged;
+    std::uint64_t generation = 0;
+    ProcessService::OutputCallback output;
+    ProcessService::CompletionCallback completion;
+    bool childReaped = false;
+    int waitStatus = 0;
+    bool stopRequested = false;
+    bool killSent = false;
+    std::chrono::steady_clock::time_point killDeadline{};
+    std::string ioError;
+};
+std::atomic<bool> forceForkFallbackForTesting{false};
+} // namespace
+
 namespace
 {
 constexpr std::size_t kReadChunkBytes = 8192;
@@ -61,6 +88,25 @@ int set_close_on_exec(int fd)
     return 0;
 }
 
+int duplicate_above_session_targets(int &fd)
+{
+    constexpr int firstAvailable = 6;
+    if (fd >= firstAvailable)
+        return 0;
+    const int replacement = ::fcntl(fd, F_DUPFD, firstAvailable);
+    if (replacement < 0)
+        return errno;
+    const int flagError = set_close_on_exec(replacement);
+    if (flagError != 0)
+    {
+        ::close(replacement);
+        return flagError;
+    }
+    ::close(fd);
+    fd = replacement;
+    return 0;
+}
+
 int set_nonblocking(int fd)
 {
     const int flags = ::fcntl(fd, F_GETFL);
@@ -98,6 +144,19 @@ int create_pipe(PipePair &pipe)
     return 0;
 }
 
+int reserve_session_spawn_descriptors(PipePair &pipe)
+{
+    // The fork fallback closes these descriptors after mapping channels to fd 3/4/5.
+    // Keep stdio pipes outside that reserved range so it cannot close the new mappings.
+    for (int *fd : {&pipe.readFd, &pipe.writeFd})
+    {
+        const int error = duplicate_above_session_targets(*fd);
+        if (error != 0)
+            return error;
+    }
+    return 0;
+}
+
 void close_pipe(PipePair &pipe)
 {
     close_fd(pipe.readFd);
@@ -127,7 +186,8 @@ void report_spawn_failure(std::uint64_t generation, ProcessService::CompletionCa
 
 #if defined(PLATFORMATOR_HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR) || \
     defined(PLATFORMATOR_HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR_NP)
-int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePair &errPipe)
+int spawn_process_with_posix_spawn(pid_t &pid, ProcessRequest &request,
+                                   PipePair &outPipe, PipePair &errPipe)
 {
     posix_spawn_file_actions_t actions;
     int error = ::posix_spawn_file_actions_init(&actions);
@@ -149,6 +209,13 @@ int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePa
     for (int fd : {outPipe.readFd, outPipe.writeFd, errPipe.readFd, errPipe.writeFd})
         if (fd >= 0)
             add_action(::posix_spawn_file_actions_addclose(&actions, fd));
+
+    if (error == 0 && request.sessionChannels != nullptr)
+    {
+        std::string sessionError;
+        if (!add_posix_session_spawn_actions(*request.sessionChannels, actions, sessionError))
+            error = EINVAL;
+    }
 
     if (error == 0)
     {
@@ -179,7 +246,8 @@ int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePa
     ::posix_spawn_file_actions_destroy(&actions);
     return error;
 }
-#else
+#endif
+
 std::filesystem::path find_executable(const std::string &program,
                                       const std::filesystem::path &workingDirectory)
 {
@@ -215,7 +283,8 @@ std::filesystem::path find_executable(const std::string &program,
     return {};
 }
 
-int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePair &errPipe)
+int spawn_process_with_fork(pid_t &pid, ProcessRequest &request,
+                            PipePair &outPipe, PipePair &errPipe)
 {
     const auto executable = find_executable(request.argv.front(), request.workingDirectory);
     if (executable.empty())
@@ -240,6 +309,24 @@ int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePa
             _exit(126);
         if (::dup2(errorWriteFd, STDERR_FILENO) < 0)
             _exit(126);
+        if (request.sessionChannels != nullptr)
+        {
+            const auto &endpoints = request.sessionChannels->childEndpoints;
+            if (endpoints.size() != 3)
+                _exit(126);
+            constexpr int childTargets[]{3, 4, 5};
+            for (std::size_t index = 0; index < endpoints.size(); ++index)
+            {
+                if (endpoints[index].nativeHandle >
+                    static_cast<std::uintptr_t>(std::numeric_limits<int>::max()))
+                    _exit(126);
+                const int source = static_cast<int>(endpoints[index].nativeHandle);
+                if (source < 6 || ::dup2(source, childTargets[index]) < 0)
+                    _exit(126);
+            }
+            for (const auto &endpoint : endpoints)
+                ::close(static_cast<int>(endpoint.nativeHandle));
+        }
         for (std::size_t i = 0; i < sizeof(childFds) / sizeof(childFds[0]); ++i)
         {
             const int fd = childFds[i];
@@ -261,9 +348,20 @@ int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePa
     }
     return 0;
 }
-#endif
 
-void emit_output(ProcessState &state, ProcessStream stream, const char *data, std::size_t size)
+int spawn_process(pid_t &pid, ProcessRequest &request, PipePair &outPipe, PipePair &errPipe)
+{
+    if (forceForkFallbackForTesting.load(std::memory_order_acquire))
+        return spawn_process_with_fork(pid, request, outPipe, errPipe);
+#if defined(PLATFORMATOR_HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR) || \
+    defined(PLATFORMATOR_HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR_NP)
+    return spawn_process_with_posix_spawn(pid, request, outPipe, errPipe);
+#else
+    return spawn_process_with_fork(pid, request, outPipe, errPipe);
+#endif
+}
+
+void emit_output(PosixProcessState &state, ProcessStream stream, const char *data, std::size_t size)
 {
     if (!state.output || size == 0)
         return;
@@ -274,7 +372,7 @@ void emit_output(ProcessState &state, ProcessStream stream, const char *data, st
     state.output(std::move(event));
 }
 
-void drain_fd(ProcessState &state, int &fd, ProcessStream stream)
+void drain_fd(PosixProcessState &state, int &fd, ProcessStream stream)
 {
     if (fd < 0)
         return;
@@ -307,7 +405,7 @@ void drain_fd(ProcessState &state, int &fd, ProcessStream stream)
     }
 }
 
-void finish(ProcessState &state)
+void finish(PosixProcessState &state)
 {
     ProcessCompletion result;
     result.generation = state.generation;
@@ -334,7 +432,7 @@ void finish(ProcessState &state)
 }
 } // namespace
 
-bool process_start_posix(ProcessState &state, ProcessRequest request, std::uint64_t generation,
+bool process_start_posix(PosixProcessState &state, ProcessRequest request, std::uint64_t generation,
                          ProcessService::OutputCallback output,
                          ProcessService::CompletionCallback completion)
 {
@@ -357,6 +455,18 @@ bool process_start_posix(ProcessState &state, ProcessRequest request, std::uint6
         report_spawn_failure(generation, completion, filesystemError.value());
         return false;
     }
+
+    if (request.sessionChannels != nullptr && request.sessionChannels->childEndpoints.size() != 3)
+    {
+        if (completion)
+        {
+            ProcessCompletion result;
+            result.generation = generation;
+            result.error = "session process launch requires exactly three inherited endpoints";
+            completion(std::move(result));
+        }
+        return false;
+    }
     request.workingDirectory = std::filesystem::absolute(request.workingDirectory, filesystemError);
     if (filesystemError || !std::filesystem::is_directory(request.workingDirectory, filesystemError) ||
         filesystemError)
@@ -370,6 +480,12 @@ bool process_start_posix(ProcessState &state, ProcessRequest request, std::uint6
     int error = create_pipe(outputPipe);
     if (error == 0 && request.outputMode == ProcessOutputMode::Separate)
         error = create_pipe(errorPipe);
+    if (error == 0 && request.sessionChannels != nullptr)
+    {
+        error = reserve_session_spawn_descriptors(outputPipe);
+        if (error == 0 && request.outputMode == ProcessOutputMode::Separate)
+            error = reserve_session_spawn_descriptors(errorPipe);
+    }
     if (error != 0)
     {
         close_pipe(outputPipe);
@@ -390,6 +506,9 @@ bool process_start_posix(ProcessState &state, ProcessRequest request, std::uint6
         return false;
     }
 
+    if (request.sessionChannels != nullptr)
+        request.sessionChannels->close_child_endpoints();
+
     state.pid = child;
     state.processGroup = child;
     state.standardOutputFd = outputPipe.readFd;
@@ -406,7 +525,7 @@ bool process_start_posix(ProcessState &state, ProcessRequest request, std::uint6
     return true;
 }
 
-void process_poll_posix(ProcessState &state)
+void process_poll_posix(PosixProcessState &state)
 {
     if (state.pid <= 0)
         return;
@@ -445,7 +564,7 @@ void process_poll_posix(ProcessState &state)
         finish(state);
 }
 
-void process_stop_posix(ProcessState &state)
+void process_stop_posix(PosixProcessState &state)
 {
     if (state.pid <= 0 || state.stopRequested)
         return;
@@ -459,7 +578,7 @@ void process_stop_posix(ProcessState &state)
     }
 }
 
-void process_force_cleanup_posix(ProcessState &state)
+void process_force_cleanup_posix(PosixProcessState &state)
 {
     if (state.processGroup > 0)
         ::kill(-state.processGroup, SIGKILL);
@@ -484,5 +603,69 @@ void process_force_cleanup_posix(ProcessState &state)
     state.generation = 0;
     state.childReaped = false;
     state.waitStatus = 0;
+}
+
+namespace
+{
+class PosixNativeProcess final : public NativeProcess
+{
+  public:
+    bool start(ProcessRequest request, std::uint64_t generation,
+               ProcessService::OutputCallback output,
+               ProcessService::CompletionCallback completion) override
+    {
+        return process_start_posix(state_, std::move(request), generation,
+                                   std::move(output), std::move(completion));
+    }
+
+    void poll() override { process_poll_posix(state_); }
+    void stop() override { process_stop_posix(state_); }
+
+    void shutdown() noexcept override
+    {
+        state_.output = {};
+        state_.completion = {};
+        process_stop_posix(state_);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+        while (state_.pid > 0 && std::chrono::steady_clock::now() < deadline)
+        {
+            process_poll_posix(state_);
+            if (state_.pid > 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        if (state_.pid > 0)
+            process_force_cleanup_posix(state_);
+    }
+
+    bool running() const noexcept override { return state_.pid > 0; }
+    int process_id() const noexcept override
+    {
+        return state_.pid > 0 ? static_cast<int>(state_.pid) : -1;
+    }
+
+  private:
+    PosixProcessState state_;
+};
+} // namespace
+
+std::unique_ptr<NativeProcess> make_native_process()
+{
+    return std::make_unique<PosixNativeProcess>();
+}
+
+std::string_view native_process_containment_note() noexcept
+{
+    return "POSIX process groups stop foreground descendants; daemonized processes that call setsid "
+           "escape ownership and require explicit target lifecycle registration.";
+}
+
+void set_native_process_test_hooks(NativeProcessTestHooks hooks)
+{
+    forceForkFallbackForTesting.store(hooks.forcePosixForkFallback, std::memory_order_release);
+}
+
+void clear_native_process_test_hooks()
+{
+    forceForkFallbackForTesting.store(false, std::memory_order_release);
 }
 } // namespace platformator_editor

@@ -47,6 +47,44 @@ struct AssetRequestAliases
         }
     }
 
+    void rebind(const std::string &request, const std::string &canonical)
+    {
+        auto existing = paths.find(request);
+        if (existing == paths.end())
+        {
+            add(request, canonical);
+            return;
+        }
+        if (existing->second == canonical)
+            return;
+
+        const std::string previousCanonical = existing->second;
+        auto [replacement, inserted] = reverse.try_emplace(canonical);
+        bool replacementAdded = false;
+        try
+        {
+            replacement->second.push_back(request);
+            replacementAdded = true;
+            existing->second = canonical;
+        }
+        catch (...)
+        {
+            if (replacementAdded)
+                replacement->second.pop_back();
+            if (inserted && replacement->second.empty())
+                reverse.erase(replacement);
+            throw;
+        }
+
+        auto previous = reverse.find(previousCanonical);
+        if (previous != reverse.end())
+        {
+            std::erase(previous->second, request);
+            if (previous->second.empty())
+                reverse.erase(previous);
+        }
+    }
+
     void remove(const std::string &canonical)
     {
         auto it = reverse.find(canonical);

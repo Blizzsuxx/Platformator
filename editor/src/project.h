@@ -4,8 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <oneapi/tbb/task_group.h>
@@ -25,13 +27,36 @@ struct ProjectRootCandidate
     std::filesystem::path assetRoot;
 };
 
+struct ProjectExecutableTarget
+{
+    std::string targetName;
+    std::filesystem::path executablePath;
+};
+
+struct ProjectRunDiscovery
+{
+    std::vector<std::string> configurePresets;
+    std::vector<std::string> buildPresets;
+    std::vector<ProjectExecutableTarget> executableTargets;
+    std::string status;
+    bool truncated = false;
+};
+
 // Project-folder selection accepts only the repository's existing conventions.
 ProjectRootCandidate validate_project_folder(const std::filesystem::path &projectRoot);
+// Reads only bounded CMake preset and File API reply data. An explicit refresh
+// may register a bounded codemodel query in an existing in-project build dir;
+// it never runs CMake or creates a build directory.
+ProjectRunDiscovery discover_project_run_options(const std::filesystem::path &projectRoot,
+                                                 bool requestFileApiQuery = false);
 
 class ProjectContext
 {
   public:
     ProjectContext() = default;
+    ProjectSnapshot prepare_roots(const std::filesystem::path &projectRoot,
+                                  const std::filesystem::path &assetRoot) const;
+    void commit_roots(ProjectSnapshot snapshot) noexcept;
     void set_roots(const std::filesystem::path &projectRoot, const std::filesystem::path &assetRoot);
     const ProjectSnapshot &snapshot() const noexcept;
 
@@ -47,7 +72,15 @@ struct ProjectScanOptions
     std::size_t maxDirectories = 2000;
     std::size_t maxEntries = 50000;
     bool sourceInputsOnly = false;
+    std::uintmax_t maxSourceBytes = 256U * 1024U * 1024U;
     bool trackFileMetadata = false;
+};
+
+struct ProjectScannedFile
+{
+    std::filesystem::path path;
+    std::uintmax_t size = 0;
+    std::filesystem::file_time_type modified;
 };
 
 struct ProjectScanResult
@@ -55,8 +88,15 @@ struct ProjectScanResult
     std::uint64_t requestId = 0;
     std::uint64_t projectGeneration = 0;
     std::filesystem::path root;
+    // Physical directory read by the worker. root remains the user-visible logical path,
+    // which may be a contained symlink alias.
+    std::filesystem::path canonicalRoot;
     std::vector<std::filesystem::path> files;
+    std::vector<ProjectScannedFile> fileMetadata;
     std::vector<std::filesystem::path> directories;
+    // Complete watcher snapshots include directories (including empty ones) and
+    // logical symlink aliases. The identity is path-local and suitable for diffing.
+    std::vector<std::pair<std::filesystem::path, std::string>> inventoryEntries;
     std::string sourceInputIdentity;
     std::string fileIdentity;
     bool cancelled = false;
@@ -94,6 +134,7 @@ class ProjectScanService
     ProjectScanToken request_scan(const ProjectSnapshot &project,
                                   const std::filesystem::path &scanRoot,
                                   ProjectScanOptions options = {});
+    void set_wake_callback(std::function<void()> callback);
     std::vector<ProjectScanResult> take_ready(std::uint64_t currentProjectGeneration);
     void cancel_all() noexcept;
     // Cancel and join current work, clear old results, and leave the service reusable.
@@ -106,6 +147,7 @@ class ProjectScanService
     std::vector<std::weak_ptr<ProjectScanTicketState>> tickets_;
     oneapi::tbb::task_group tasks_;
     std::uint64_t nextRequestId_ = 1;
+    std::function<void()> wakeCallback_;
     bool shuttingDown_ = false;
 };
 } // namespace platformator_editor

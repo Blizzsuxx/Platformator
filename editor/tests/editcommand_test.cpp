@@ -16,6 +16,7 @@ PropertyAddress behavior_address(std::uint64_t generation, std::vector<FieldPath
 Json make_document()
 {
     Json behavior{{"type", "ExampleBehavior"},
+                  {"references", {{"target", 1}}},
                   {"fields", {{"enabled", false}, {"values", Json::array({1, 2})}}}};
     Json behaviorComponent = component(4, "ScriptComponent", Json{{"behaviors", Json::array({behavior})}});
     Json rootObject = object(1, "Root", Json::array({behaviorComponent}));
@@ -113,6 +114,60 @@ void run_editcommand_cases()
     require(committed && committed->before == PropertyValue::of(false) &&
                 committed->after == PropertyValue::of(true) && !gesture->active(),
             "a completed gesture must produce one compact command with its initial and final values");
+
+    result = commands.set_property(document,
+                                   address_for_document(document, 1, std::nullopt, std::nullopt,
+                                                        {std::string("name")}),
+                                   "Renamed");
+    require(result.status == CommandStatus::Changed &&
+                result.change.identity == DocumentIdentity{ProjectGeneration{document.projectGeneration},
+                                                            document.tabId,
+                                                            DocumentGeneration{document.documentGeneration}} &&
+                result.change.affectedObjectIds == std::vector<int>{1} &&
+                result.change.categories == std::vector<DocumentChangeCategory>{DocumentChangeCategory::Label} &&
+                result.change.changedPaths == std::vector<std::string>{"object[1].name"},
+            "typed label deltas must carry complete identity, one deduplicated owner and a local path");
+    result = commands.set_property(document,
+                                   behavior_address(19, {std::string("references"), std::string("target")}),
+                                   2);
+    require(result.status == CommandStatus::Changed &&
+                result.change.categories == std::vector<DocumentChangeCategory>{
+                                                DocumentChangeCategory::BehaviorReference},
+            "behavior reference deltas must carry their dedicated category");
     require(document.root[0]["unfamiliar"]["nested"] == "preserve",
             "targeted edits must preserve unrelated unfamiliar document fields");
+
+    Json script = component(13, 5, Json{{"behaviors", Json::array({
+                                  Json{{"type", "ReferenceBehavior"},
+                                       {"references", {{"target", 1}}}}})}});
+    auto parsed = parse_document(scene({object(1, "Typed", Json::array({
+        component(10, 6, Json{{"width", 24.0}}),
+        component(11, 3, Json{{"width", 16.0}}),
+        component(12, 2, Json{{"width", 640.0}}),
+        std::move(script)}))}), 31);
+    require(static_cast<bool>(parsed), "typed delta fixture must parse");
+    auto &typedDocument = *parsed.document;
+    EditCommandService typedCommands;
+    auto typedEdit = [&](std::optional<int> componentId, std::optional<std::size_t> behaviorOrdinal,
+                         std::vector<FieldPathSegment> path, Json value) {
+        return typedCommands.set_property(typedDocument,
+            address_for_document(typedDocument, 1, componentId, behaviorOrdinal, std::move(path)),
+            std::move(value));
+    };
+    require(typedEdit(std::nullopt, std::nullopt, {std::string("active")}, false).change.categories ==
+                std::vector<DocumentChangeCategory>{DocumentChangeCategory::Active},
+            "active edits must carry the Active category");
+    require(typedEdit(std::nullopt, std::nullopt,
+                      {std::string("position"), std::string("x")}, 3.0).change.categories ==
+                std::vector<DocumentChangeCategory>{DocumentChangeCategory::Pose},
+            "transform edits must carry the Pose category");
+    require(typedEdit(10, std::nullopt, {std::string("width")}, 25.0).change.categories ==
+                std::vector<DocumentChangeCategory>{DocumentChangeCategory::Sprite},
+            "sprite edits must carry the Sprite category");
+    require(typedEdit(11, std::nullopt, {std::string("width")}, 17.0).change.categories ==
+                std::vector<DocumentChangeCategory>{DocumentChangeCategory::Collider},
+            "collider edits must carry the Collider category");
+    require(typedEdit(12, std::nullopt, {std::string("width")}, 641.0).change.categories ==
+                std::vector<DocumentChangeCategory>{DocumentChangeCategory::Camera},
+            "camera edits must carry the Camera category");
 }

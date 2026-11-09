@@ -1,18 +1,61 @@
 #include "referencefields.h"
 
+#include "../assetformats.h"
+#include "../resourceindex.h"
+#include "../discovery.h"
+
 #include <algorithm>
-#include <cctype>
+#include <array>
+#include <cfloat>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <string>
 #include <utility>
 
+#include <SDL3/SDL.h>
 #include <imgui.h>
 
 namespace platformator_editor
 {
 namespace
 {
+ImGuiID scene_reference_search_storage_key(int word)
+{
+    ImGui::PushID("##scene-reference-search-storage");
+    ImGui::PushID(word);
+    const ImGuiID id = ImGui::GetID("word");
+    ImGui::PopID();
+    ImGui::PopID();
+    return id;
+}
+
+std::array<char, 128> load_scene_reference_search_buffer()
+{
+    static_assert(sizeof(int) == 4);
+    std::array<char, 128> buffer{};
+    ImGuiStorage *storage = ImGui::GetStateStorage();
+    for (int word = 0; word < static_cast<int>(buffer.size() / sizeof(int)); ++word)
+    {
+        const int packed = storage->GetInt(scene_reference_search_storage_key(word));
+        std::memcpy(buffer.data() + static_cast<std::size_t>(word) * sizeof(packed),
+                    &packed, sizeof(packed));
+    }
+    return buffer;
+}
+
+void save_scene_reference_search_buffer(const std::array<char, 128> &buffer)
+{
+    ImGuiStorage *storage = ImGui::GetStateStorage();
+    for (int word = 0; word < static_cast<int>(buffer.size() / sizeof(int)); ++word)
+    {
+        int packed = 0;
+        std::memcpy(&packed, buffer.data() + static_cast<std::size_t>(word) * sizeof(packed),
+                    sizeof(packed));
+        storage->SetInt(scene_reference_search_storage_key(word), packed);
+    }
+}
+
 std::optional<int> json_id(const Json &value)
 {
     if (!value.is_number_integer() && !value.is_number_unsigned())
@@ -112,6 +155,7 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
                 label += " / ";
             label += *name;
         }
+        label += " (#" + std::to_string(id) + ")";
         return label;
     }
     const auto location = indexes.componentsById.find(id);
@@ -131,6 +175,7 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
                                                location->second.ownerObjectId, "GameObject");
     std::string label = ownerName.empty() ? std::string(target) : ownerName + " / " + std::string(target);
     const Json &component = (*components)[location->second.componentIndex];
+    label += " (#" + std::to_string(id) + ")";
     const char *assetField = target == "Audio" ? "filePath"
                              : target == "Animator" ? "animationClipFilePath"
                              : target == "Sprite" ? "textureFilePath"
@@ -142,31 +187,6 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
             label += " — " + std::filesystem::path(asset->get<std::string>()).filename().string();
     }
     return label;
-}
-
-std::string lower_extension(const std::filesystem::path &path)
-{
-    std::string extension = path.extension().string();
-    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) {
-        return static_cast<char>(std::tolower(value));
-    });
-    return extension;
-}
-
-bool extension_matches(std::string_view type, std::string_view extension)
-{
-    if (type == "Asset" || type.empty() || type == "unknown")
-        return true;
-    if (type == "Texture")
-        return extension == ".png" || extension == ".jpg" || extension == ".jpeg" ||
-               extension == ".bmp" || extension == ".gif" || extension == ".webp" ||
-               extension == ".tga" || extension == ".qoi" || extension == ".tif" || extension == ".tiff";
-    if (type == "Audio")
-        return extension == ".wav" || extension == ".ogg" || extension == ".mp3" ||
-               extension == ".flac" || extension == ".opus";
-    if (type == "AnimationClip")
-        return extension == ".animset";
-    return false;
 }
 
 const Json *property_owner(const DocumentSession &document, int objectId,
@@ -287,6 +307,18 @@ std::vector<std::pair<int, std::string>> scene_candidates(const DocumentSession 
     }
     return result;
 }
+
+std::string escape_json_pointer_segment(std::string_view value)
+{
+    std::string escaped;
+    for (const char character : value)
+    {
+        if (character == '~') escaped += "~0";
+        else if (character == '/') escaped += "~1";
+        else escaped.push_back(character);
+    }
+    return escaped;
+}
 } // namespace
 
 SceneReferenceInfo inspect_scene_reference(const DocumentSession &document, const Json &value,
@@ -353,8 +385,87 @@ bool validate_scene_reference_assignment(const DocumentSession &document, const 
     return false;
 }
 
+bool draw_template_reference_kind_control(int objectId, int componentId,
+                                          std::size_t behaviorOrdinal,
+                                          std::string_view controlId,
+                                          std::optional<std::string> &declaredKind)
+{
+    const std::string label(controlId);
+    ImGui::PushID(objectId);
+    ImGui::PushID(componentId);
+    ImGui::PushID(static_cast<int>(behaviorOrdinal));
+    ImGui::PushID(label.c_str());
+    const char *preview = declaredKind
+        ? (declaredKind->compare("Component") == 0 ? "Component" : "GameObject")
+        : "Not declared";
+    bool changed = false;
+    if (ImGui::BeginCombo(("Reference kind##" + label).c_str(), preview))
+    {
+        if (ImGui::Selectable("Not a reference", !declaredKind))
+        {
+            declaredKind.reset();
+            changed = true;
+        }
+        if (ImGui::Selectable("GameObject", declaredKind == "GameObject"))
+        {
+            declaredKind = "GameObject";
+            changed = true;
+        }
+        if (ImGui::Selectable("Component", declaredKind == "Component"))
+        {
+            declaredKind = "Component";
+            changed = true;
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Declare the meaning of this opaque integer for safe template remapping.");
+    ImGui::PopID();
+    ImGui::PopID();
+    ImGui::PopID();
+    ImGui::PopID();
+    return changed;
+}
+
+Json make_template_reference_binding_declaration(int ownerId, int componentId,
+                                                  std::size_t behaviorOrdinal,
+                                                  std::string_view fieldName,
+                                                  std::string_view targetKind)
+{
+    if (fieldName.empty()) return Json::object();
+    const std::string relativePointer = "/" + escape_json_pointer_segment(fieldName);
+    return make_template_reference_path_declaration(ownerId, componentId, behaviorOrdinal,
+                                                    relativePointer, targetKind);
+}
+
+Json make_template_reference_path_declaration(int ownerId, int componentId,
+                                               std::size_t behaviorOrdinal,
+                                               std::string_view relativePointer,
+                                               std::string_view targetKind)
+{
+    if (ownerId < 0 || componentId < 0 || relativePointer.empty() ||
+        relativePointer.front() != '/' ||
+        (targetKind != "GameObject" && targetKind != "Component"))
+        return Json::object();
+    for (std::size_t index = 0; index < relativePointer.size(); ++index)
+    {
+        if (relativePointer[index] != '~') continue;
+        if (index + 1 >= relativePointer.size() ||
+            (relativePointer[index + 1] != '0' && relativePointer[index + 1] != '1'))
+            return Json::object();
+        ++index;
+    }
+    if (relativePointer.back() == '/' || relativePointer.find("//") != std::string_view::npos)
+        return Json::object();
+    return Json{{"owner_id", ownerId}, {"component_id", componentId},
+                {"path", "/behaviors/" + std::to_string(behaviorOrdinal) +
+                         std::string(relativePointer)},
+                {"target_kind", targetKind}};
+}
+
 AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, const Json &value,
-                                           std::string_view expectedAssetType)
+                                           std::string_view expectedAssetType,
+                                           ResourceIndex *resourceIndex)
 {
     if (value.is_null())
         return {ReferenceState::Unset, {}, {}};
@@ -372,6 +483,32 @@ AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, cons
             return {ReferenceState::Invalid, raw, "Asset paths cannot contain traversal segments."};
     if (document.assetRoot.empty())
         return {ReferenceState::Invalid, raw, "The project asset root is unavailable."};
+
+    if (resourceIndex != nullptr)
+    {
+        const ResourceKind kind = expectedAssetType == "Texture" ? ResourceKind::Texture
+            : expectedAssetType == "AnimationClip" ? ResourceKind::Animation
+            : expectedAssetType == "Audio" ? ResourceKind::Audio
+            : expectedAssetType == "Script" ? ResourceKind::Script
+            : expectedAssetType == "Scene" ? ResourceKind::Scene
+            : ResourceKind::Unknown;
+        const auto resolution = resourceIndex->resolve(path, kind);
+        if (resolution.status == ResourceStatus::Resolved)
+        {
+            if (!asset_reference_extension_matches(expectedAssetType, resolution.canonicalPath))
+                return {ReferenceState::WrongKind, raw, "The asset file type does not match this reference."};
+            return {ReferenceState::Resolved, raw, {}};
+        }
+        if (resolution.status == ResourceStatus::Missing ||
+            resolution.status == ResourceStatus::BrokenSymlink)
+            return {ReferenceState::Dangling, raw, "The referenced asset is missing or is not a file."};
+        if (resolution.status == ResourceStatus::OutsideRoot)
+            return {ReferenceState::Invalid, raw, "The asset path resolves outside the project asset root."};
+        if (resolution.status == ResourceStatus::SymlinkCycle)
+            return {ReferenceState::Invalid, raw, "The asset path contains a symbolic link cycle."};
+        return {ReferenceState::Invalid, raw, "The referenced asset cannot be read."};
+    }
+
     std::error_code error;
     const auto canonicalRoot = std::filesystem::weakly_canonical(document.assetRoot, error);
     if (error)
@@ -387,7 +524,7 @@ AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, cons
             return {ReferenceState::Invalid, raw, "The asset path resolves outside the project asset root."};
     if (!std::filesystem::is_regular_file(candidate, error) || error)
         return {ReferenceState::Dangling, raw, "The referenced asset is missing or is not a file."};
-    if (!extension_matches(expectedAssetType, lower_extension(candidate)))
+    if (!asset_reference_extension_matches(expectedAssetType, candidate))
         return {ReferenceState::WrongKind, raw, "The asset file type does not match this reference."};
     return {ReferenceState::Resolved, raw, {}};
 }
@@ -436,6 +573,13 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
     ImGui::SetNextItemWidth(std::max(50.0f, ImGui::GetContentRegionAvail().x));
     if (ImGui::BeginCombo("##reference-selector", identity.c_str()))
     {
+        auto filterBuffer = load_scene_reference_search_buffer();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::InputTextWithHint("##reference-selector-search", "Search name, type, or ID",
+                                 filterBuffer.data(), filterBuffer.size());
+        save_scene_reference_search_buffer(filterBuffer);
+        const std::string_view filter(filterBuffer.data());
+        ImGui::Separator();
         auto assign = [&](Json value) {
             std::string error;
             if (!validate_scene_reference_assignment(document, value, expectedTarget, nullable, error))
@@ -444,17 +588,22 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
                 return;
             }
             commands.set_property(document,
-                                  PropertyAddress{document.documentGeneration, objectId, componentId,
-                                                  behaviorOrdinal, path},
+                                  address_for_document(document, objectId, componentId,
+                                                       behaviorOrdinal, path),
                                   std::move(value));
         };
-        if (nullable && ImGui::Selectable("None", info.state == ReferenceState::Unset))
+        if (nullable && discovery_query_matches(filter, "None") &&
+            ImGui::Selectable("None", info.state == ReferenceState::Unset))
             assign(nullptr);
         const auto candidates = scene_candidates(document, expectedTarget);
         if (candidates.empty())
             ImGui::TextDisabled("No matching reference targets.");
         for (const auto &[id, candidateLabel] : candidates)
         {
+            const std::string searchText = candidateLabel + " " + std::to_string(id) + " " +
+                                           std::string(expectedTarget);
+            if (!discovery_query_matches(filter, searchText))
+                continue;
             const bool selected = info.fileId && *info.fileId == id && info.state == ReferenceState::Resolved;
             if (ImGui::Selectable(candidateLabel.c_str(), selected))
                 assign(id);
@@ -469,12 +618,36 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                 std::optional<std::size_t> behaviorOrdinal,
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedAssetType, bool nullable, const char *label,
-                                const AssetBrowseCallback &browse, Json clearValue)
+                                const AssetBrowseCallback &browse, Json clearValue,
+                                ResourceIndex *resourceIndex)
 {
     push_field_id(objectId, componentId, behaviorOrdinal, path);
     const Json *current = read_path(property_owner(document, objectId, componentId, behaviorOrdinal), path);
     const Json currentValue = current == nullptr ? Json(nullptr) : *current;
-    const auto info = inspect_asset_reference(document, currentValue, expectedAssetType);
+    const auto info = inspect_asset_reference(document, currentValue, expectedAssetType, resourceIndex);
+    if (resourceIndex != nullptr && info.state != ReferenceState::Invalid && !info.path.empty())
+    {
+        const ResourceKind kind = expectedAssetType == "Texture" ? ResourceKind::Texture
+            : expectedAssetType == "AnimationClip" ? ResourceKind::Animation
+            : expectedAssetType == "Audio" ? ResourceKind::Audio
+            : expectedAssetType == "Script" ? ResourceKind::Script
+            : expectedAssetType == "Scene" ? ResourceKind::Scene
+            : ResourceKind::Unknown;
+        std::string role = "inspector-asset:" + std::string(expectedAssetType) + ":";
+        if (behaviorOrdinal)
+            role += "behavior:" + std::to_string(*behaviorOrdinal) + ":";
+        for (const auto &segment : path)
+        {
+            if (const auto *key = std::get_if<std::string>(&segment))
+                role += "s" + std::to_string(key->size()) + ":" + *key + ";";
+            else
+                role += "i" + std::to_string(std::get<std::size_t>(segment)) + ";";
+        }
+        resourceIndex->register_visible_reference(info.path, kind,
+            ResourceConsumer{DocumentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
+                                              DocumentGeneration{document.documentGeneration}},
+                             objectId, componentId, std::move(role)});
+    }
     const std::string assetType = expectedAssetType == "AnimationClip" ? "Animation clip asset"
         : expectedAssetType.empty() || expectedAssetType == "Asset" ? "Asset"
         : std::string(expectedAssetType) + " asset";
@@ -482,6 +655,8 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
         ? assetType + ": " + std::filesystem::path(info.path).filename().string()
         : info.state == ReferenceState::Unset ? "Select " + assetType + "..."
                                               : "Missing " + assetType;
+    const std::string rawPath = currentValue.is_string()
+        ? currentValue.get<std::string>() : std::string{};
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", label);
     const float available = ImGui::GetContentRegionAvail().x;
@@ -489,8 +664,9 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
     const float clearWidth = nullable ? 46.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
     const bool choose = ImGui::Button((display + "##asset-selector").c_str(),
                                       {std::max(50.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
+    ImGui::SetItemTooltip("Full path: %s", rawPath.empty() ? "(unset)" : rawPath.c_str());
     if (choose && browse)
-        browse(PropertyAddress{document.documentGeneration, objectId, componentId, behaviorOrdinal, path},
+        browse(address_for_document(document, objectId, componentId, behaviorOrdinal, path),
                std::string(expectedAssetType), nullable);
     if (ImGui::BeginDragDropTarget())
     {
@@ -507,8 +683,8 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                 {
                     std::replace(dropped.begin(), dropped.end(), '\\', '/');
                     commands.set_property(document,
-                        PropertyAddress{document.documentGeneration, objectId, componentId,
-                                        behaviorOrdinal, path}, std::move(dropped));
+                        address_for_document(document, objectId, componentId,
+                                             behaviorOrdinal, path), std::move(dropped));
                 }
                 else
                     ImGui::SetTooltip("%s", error.c_str());
@@ -519,13 +695,45 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
     if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
         info.state == ReferenceState::Invalid)
         ImGui::TextWrapped("Unresolved asset: %s", info.message.c_str());
+    if (ImGui::TreeNode("Edit asset path"))
+    {
+        ImGui::TextWrapped("Assigned path: %s", rawPath.empty() ? "(unset)" : rawPath.c_str());
+        ImGui::SameLine();
+        ImGui::BeginDisabled(rawPath.empty());
+        if (ImGui::SmallButton("Copy Path"))
+            SDL_SetClipboardText(rawPath.c_str());
+        ImGui::EndDisabled();
+        std::array<char, 2048> buffer{};
+        const auto copied = std::min(rawPath.size(), buffer.size() - 1);
+        std::memcpy(buffer.data(), rawPath.data(), copied);
+        const bool changed = ImGui::InputText("##asset-path", buffer.data(), buffer.size(),
+                                              ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
+        if (commit)
+        {
+            std::string candidate(buffer.data());
+            Json assigned = candidate.empty() && nullable ? clearValue : Json(candidate);
+            std::string error;
+            if (validate_asset_reference_assignment(document, assigned, expectedAssetType, nullable, error))
+            {
+                if (!candidate.empty())
+                    std::replace(candidate.begin(), candidate.end(), '\\', '/');
+                commands.set_property(document,
+                    address_for_document(document, objectId, componentId, behaviorOrdinal, path),
+                    candidate.empty() && nullable ? clearValue : Json(std::move(candidate)));
+            }
+            else
+                ImGui::TextWrapped("Path was not assigned: %s", error.c_str());
+        }
+        ImGui::TreePop();
+    }
     if (nullable)
     {
         ImGui::SameLine();
         if (ImGui::SmallButton((std::string("Clear##") + label).c_str()))
             commands.set_property(document,
-                                  PropertyAddress{document.documentGeneration, objectId, componentId,
-                                                  behaviorOrdinal, path},
+                                  address_for_document(document, objectId, componentId,
+                                                       behaviorOrdinal, path),
                                   clearValue);
     }
     pop_field_id(path);

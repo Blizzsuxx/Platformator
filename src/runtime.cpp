@@ -19,7 +19,19 @@ Runtime::Runtime(const RuntimeOptions &runtimeOptions)
     }
     paths = std::make_unique<PathManager>(runtimeOptions.assetRoot);
     smokeStepLimit = runtimeOptions.smokeSteps;
-    gameManager = std::make_unique<GameManager>(runtimeOptions.windowSettings, runtimeOptions.debugSettings);
+    WindowSettings windowSettings = runtimeOptions.windowSettings;
+    if (runtimeOptions.editorSession)
+    {
+        windowSettings.width = 640;
+        windowSettings.height = 360;
+        windowSettings.fullscreen = false;
+        windowSettings.maximizeOnStartup = false;
+        windowSettings.keepAspectRatio = false;
+        windowSettings.headless = false;
+        windowSettings.hidden = true;
+        windowSettings.highPixelDensity = false;
+    }
+    gameManager = std::make_unique<GameManager>(windowSettings, runtimeOptions.debugSettings);
     activeRuntime() = this;
 }
 
@@ -182,6 +194,26 @@ void Runtime::run()
         return;
     }
     gameManager->loop();
+}
+
+void Runtime::run_with_owner_service(const std::function<bool()> &ownerThreadService)
+{
+    if (!ownerThreadService)
+        throw std::invalid_argument("owner-thread Runtime service callback is required");
+    if (smokeStepLimit != 0)
+        throw std::logic_error("owner-thread Runtime services cannot be combined with smoke-step mode");
+    gameManager->loop([&](SDLWindow &) { return ownerThreadService(); });
+}
+
+void Runtime::run_with_owner_service(
+    const std::function<bool(SDLWindow &)> &ownerThreadService,
+    const std::function<void(std::uint64_t)> &afterSimulationStep)
+{
+    if (!ownerThreadService)
+        throw std::invalid_argument("owner-thread Runtime service callback is required");
+    if (smokeStepLimit != 0)
+        throw std::logic_error("owner-thread Runtime services cannot be combined with smoke-step mode");
+    gameManager->loop(ownerThreadService, afterSimulationStep);
 }
 
 void Runtime::simulateFrame(double timeDelta)

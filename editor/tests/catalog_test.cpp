@@ -2,6 +2,7 @@
 #include "test_support.h"
 #include "../src/behaviorcatalog.h"
 #include "../src/process.h"
+#include <editorprotocol.h>
 
 #include <SDL3/SDL.h>
 #include <platformator/runtime.h>
@@ -69,6 +70,80 @@ const nlohmann::json *find_field(const nlohmann::json &behavior, std::string_vie
             return &field;
     }
     return nullptr;
+}
+
+const platformator::ScriptFieldSnapshot *find_inspected_field(
+    const platformator::ScriptInspectionResult &inspection, std::string_view name)
+{
+    for (const auto &field : inspection.fields)
+        if (field.name == name)
+            return &field;
+    return nullptr;
+}
+
+void run_generated_inspection_cases()
+{
+    TypedCatalogFixture instance;
+    instance.set_inspection_values();
+    CatalogOpaqueValue::serializationCount = 0;
+
+    platformator::ScriptInspectionLimits limits;
+    limits.maxStringBytes = 3;
+    limits.maxArrayItems = 2;
+    const auto inspection = platformator::inspectRegisteredScriptFields(
+        "TypedCatalogFixture", instance, limits);
+    const auto *enabled = find_inspected_field(inspection, "enabled");
+    const auto *count = find_inspected_field(inspection, "count");
+    const auto *samples = find_inspected_field(inspection, "samples");
+    const auto *origin = find_inspected_field(inspection, "origin");
+    const auto *label = find_inspected_field(inspection, "label");
+    const auto *bodyType = find_inspected_field(inspection, "bodyType");
+    const auto *texture = find_inspected_field(inspection, "texture");
+    const auto *target = find_inspected_field(inspection, "target");
+    const auto *opaque = find_inspected_field(inspection, "opaque");
+    require(inspection.providerAvailable && !inspection.outputTruncated && inspection.fields.size() == 14 &&
+                enabled != nullptr && enabled->available && enabled->value == true &&
+                count != nullptr && count->available && count->value == -9 &&
+                samples != nullptr && samples->available && samples->truncated &&
+                samples->value == nlohmann::json::array({3, 5}) &&
+                origin != nullptr && origin->available && origin->value["x"] == 1.5 &&
+                label != nullptr && label->available && label->truncated && label->value == "ab" &&
+                bodyType != nullptr && bodyType->available && bodyType->value["name"] == "STATIC" &&
+                texture != nullptr && texture->available && texture->truncated && texture->value["path"] == "tex" &&
+                texture->value["runtime_serial"] == 0 &&
+                target != nullptr && target->available && target->value["state"] == "unresolved" &&
+                target->value["file_id"] == 42 && target->value["handle"].is_null() &&
+                opaque != nullptr && !opaque->available && !opaque->unavailableReason.empty() &&
+                CatalogOpaqueValue::serializationCount == 0,
+            "generated inspection must read only allowlisted values, bound strings/arrays, summarize references and omit opaque serialization");
+
+    limits.maxFields = 2;
+    const auto fieldLimited = platformator::inspectRegisteredScriptFields(
+        "TypedCatalogFixture", instance, limits);
+    require(fieldLimited.fields.size() == 2 && fieldLimited.outputTruncated &&
+                fieldLimited.omittedFieldCount == 12,
+            "generated inspection must cap fields and report omitted declarations");
+
+    limits.maxFields = 64;
+    limits.maxStringBytes = 256;
+    limits.maxArrayItems = 16;
+    limits.maxOutputBytes = 256;
+    const auto byteLimited = platformator::inspectRegisteredScriptFields(
+        "TypedCatalogFixture", instance, limits);
+    require(byteLimited.outputTruncated && byteLimited.retainedOutputBytes <= 256 &&
+                byteLimited.omittedFieldCount > 0,
+            "generated inspection must cap aggregate field output bytes before retaining more values");
+
+    FactoryOnlyCatalogFixture factoryOnly;
+    const auto unavailable = platformator::inspectRegisteredScriptFields(
+        "FactoryOnlyCatalogFixture", factoryOnly, {});
+    require(!unavailable.providerAvailable && unavailable.fields.empty(),
+            "factory-only custom behaviors must remain explicitly unavailable to live inspection");
+
+    EmptyCatalogFixture empty;
+    const auto emptyInspection = platformator::inspectRegisteredScriptFields("EmptyCatalogFixture", empty, {});
+    require(emptyInspection.providerAvailable && emptyInspection.fields.empty(),
+            "zero-field generated behaviors must publish an available empty provider");
 }
 
 void run_shared_runner_catalog_cases()
@@ -243,6 +318,16 @@ int main()
         require(first == second, "catalog export must produce deterministic JSON across repeated calls");
         require(first.is_object() && first.value("schema_version", 0) == 1 && first["behaviors"].is_array(),
                 "the catalog must use the versioned envelope");
+#if defined(PLATFORMATOR_ENABLE_EDITOR_SESSION) && PLATFORMATOR_ENABLE_EDITOR_SESSION
+        const auto sessionCapabilities = platformator::editor_session::read_session_capabilities(first);
+        require(sessionCapabilities.supported && sessionCapabilities.playControl &&
+                    sessionCapabilities.runtimeInspection && sessionCapabilities.frameStream &&
+                    !sessionCapabilities.liveAssetReload && !sessionCapabilities.inputForwarding,
+                "the opt-in stock-runner catalog must advertise implemented pause/step, bounded inspection and frame support while withholding unfinished reload/input capabilities");
+#else
+        require(!first.contains("editor_capabilities"),
+                "the default-off stock runner must omit editor session capabilities");
+#endif
         require(TypedCatalogFixture::constructor_count() == 0,
                 "metadata export must not construct a behavior instance");
 
@@ -292,6 +377,7 @@ int main()
         const auto *factoryOnly = find_behavior(first, "FactoryOnlyCatalogFixture");
         require(factoryOnly != nullptr && !factoryOnly->value("field_schema_available", true),
                 "factory-only behaviors must remain registered with an unavailable field schema");
+        run_generated_inspection_cases();
         require(platformator::Runtime::tryGetCurrent() == nullptr && SDL_WasInit(0) == 0,
                 "metadata export must leave Runtime and SDL uninitialized");
         run_shared_runner_catalog_cases();

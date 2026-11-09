@@ -58,6 +58,26 @@ struct AnimationClip : public Asset
     size_t referenceCount;
 };
 
+enum class AnimationTimingError
+{
+    None,
+    InvalidFrameDuration,
+    InvalidFallbackRate
+};
+
+struct AnimationFrameTiming
+{
+    double seconds = 0.0;
+    AnimationTimingError error = AnimationTimingError::None;
+
+    bool valid() const noexcept { return error == AnimationTimingError::None; }
+};
+
+// Positive duration overrides FPS; zero means the existing FPS fallback.
+// Negative/nonfinite durations and unusable fallback rates fail.
+AnimationFrameTiming resolve_animation_frame_timing(double durationSeconds,
+                                                     double fallbackFramesPerSecond) noexcept;
+
 void to_json(nlohmann::json &j, const AnimationFrame &frame);
 void from_json(const nlohmann::json &j, AnimationFrame &frame);
 

@@ -1,7 +1,10 @@
 #include "preferences.h"
 
 #include "documentio.h"
+#include "editorwork.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <charconv>
 #include <cstdint>
@@ -9,16 +12,44 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 
 #include <json.hpp>
 
 namespace platformator_editor
 {
+void DeferredPreferenceSave::schedule(Clock::time_point now, Clock::duration delay) noexcept
+{
+    due_ = now + std::max(delay, Clock::duration::zero());
+    pending_ = true;
+}
+
+bool DeferredPreferenceSave::ready(Clock::time_point now) const noexcept
+{
+    return pending_ && now >= due_;
+}
+
+bool DeferredPreferenceSave::take_if_ready(Clock::time_point now) noexcept
+{
+    if (!ready(now))
+        return false;
+    pending_ = false;
+    return true;
+}
+
+bool DeferredPreferenceSave::pending() const noexcept { return pending_; }
+DeferredPreferenceSave::Clock::time_point DeferredPreferenceSave::deadline() const noexcept
+{
+    return pending_ ? due_ : Clock::time_point::max();
+}
+void DeferredPreferenceSave::clear() noexcept { pending_ = false; }
+
 namespace
 {
 using Json = nlohmann::json;
-constexpr int kPreferencesVersion = 1;
+constexpr int kPreferencesVersion = 2;
+constexpr int kLegacyPreferencesVersion = 1;
 constexpr std::size_t kMaximumLayoutBytes = 1024 * 1024;
 
 bool parse_pair(std::string_view text, int &first, int &second)
@@ -135,6 +166,7 @@ void load_run_preferences(const Json &source, RunPreferences &run,
     read_string(*found, "target", run.target, result);
     read_string(*found, "executable", run.executable, result);
     read_string(*found, "catalogProtocol", run.catalogProtocol, result);
+    read_bool(*found, "embeddedGameView", run.embeddedGameView, result);
     if (run.catalogProtocol != "common-runner-v1" && run.catalogProtocol != "unavailable")
     {
         run.catalogProtocol = "unavailable";
@@ -210,17 +242,326 @@ void load_editor_window_preferences(const Json &source, EditorWindowPreferences 
     read_bool(*found, "maximized", window.maximized, result);
 }
 
+std::optional<int> bounded_integer(const Json &value, std::int64_t minimum, std::int64_t maximum)
+{
+    try
+    {
+        if (value.is_number_unsigned())
+        {
+            const auto integer = value.get<std::uint64_t>();
+            if (integer > static_cast<std::uint64_t>(maximum))
+                return std::nullopt;
+            const auto signedInteger = static_cast<std::int64_t>(integer);
+            return signedInteger >= minimum ? std::optional<int>(static_cast<int>(signedInteger)) : std::nullopt;
+        }
+        if (!value.is_number_integer())
+            return std::nullopt;
+        const auto integer = value.get<std::int64_t>();
+        if (integer < minimum || integer > maximum)
+            return std::nullopt;
+        return static_cast<int>(integer);
+    }
+    catch (...)
+    {
+        return std::nullopt;
+    }
+}
+
+std::optional<std::vector<int>> read_object_ids(const Json &value)
+{
+    if (!value.is_array())
+        return std::nullopt;
+    std::vector<int> ids;
+    ids.reserve(value.size());
+    for (const auto &entry : value)
+    {
+        const auto id = bounded_integer(entry, 0, std::numeric_limits<int>::max());
+        if (!id)
+            return std::nullopt;
+        ids.push_back(*id);
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
+}
+
+void load_scene_id_map(const Json &source, const char *key,
+                       std::map<std::string, std::vector<int>> &destination,
+                       WorkspacePreferencesLoadResult &result)
+{
+    const auto found = source.find(key);
+    if (found == source.end())
+        return;
+    if (!found->is_object())
+    {
+        set_recovered(result, std::string("invalid scene object IDs in '") + key + "' were reset");
+        return;
+    }
+    for (const auto &[scenePath, values] : found->items())
+    {
+        auto ids = read_object_ids(values);
+        if (scenePath.empty() || !ids)
+        {
+            set_recovered(result, std::string("invalid scene object IDs in '") + key + "' were ignored");
+            continue;
+        }
+        destination.emplace(scenePath, std::move(*ids));
+    }
+}
+
+void load_v2_preferences(const Json &source, WorkspacePreferences &preferences,
+                         WorkspacePreferencesLoadResult &result)
+{
+    const auto panelHosts = source.find("panelHostAssignments");
+    if (panelHosts != source.end())
+    {
+        if (!panelHosts->is_object())
+            set_recovered(result, "invalid panel host assignments were reset");
+        else
+        {
+            for (const auto &[panel, hostValue] : panelHosts->items())
+            {
+                if (panel.empty() || !hostValue.is_number_unsigned() && !hostValue.is_number_integer())
+                {
+                    set_recovered(result, "invalid panel host assignment was ignored");
+                    continue;
+                }
+                try
+                {
+                    const auto raw = hostValue.get<std::uint64_t>();
+                    if (raw == 0)
+                    {
+                        set_recovered(result, "zero host layout IDs are invalid");
+                        continue;
+                    }
+                    preferences.panelHostAssignments[panel] = HostLayoutId{raw};
+                }
+                catch (...)
+                {
+                    set_recovered(result, "invalid panel host assignment was ignored");
+                }
+            }
+        }
+    }
+
+    const auto hosts = source.find("hosts");
+    if (hosts != source.end())
+    {
+        if (!hosts->is_array())
+            set_recovered(result, "invalid host layout preferences were reset");
+        else
+        {
+            for (const auto &host : *hosts)
+            {
+                if (!host.is_object() || !host.contains("id") ||
+                    (!host["id"].is_number_unsigned() && !host["id"].is_number_integer()))
+                {
+                    set_recovered(result, "invalid host layout entry was ignored");
+                    continue;
+                }
+                std::uint64_t rawId = 0;
+                try { rawId = host["id"].get<std::uint64_t>(); } catch (...) { rawId = 0; }
+                if (rawId == 0)
+                {
+                    set_recovered(result, "invalid host layout ID was ignored");
+                    continue;
+                }
+                const HostLayoutId id{rawId};
+                auto &geometry = preferences.hostGeometry[id];
+                const auto geometryValue = host.find("geometry");
+                if (geometryValue != host.end())
+                {
+                    if (!geometryValue->is_object())
+                        set_recovered(result, "invalid host geometry was reset");
+                    else
+                    {
+                        for (const auto &[name, destination] :
+                             std::array<std::pair<const char *, int *>, 4>{{
+                                 {"x", &geometry.x}, {"y", &geometry.y},
+                                 {"width", &geometry.width}, {"height", &geometry.height}}})
+                        {
+                            const auto value = geometryValue->find(name);
+                            if (value == geometryValue->end())
+                                continue;
+                            const auto parsed = bounded_integer(*value,
+                                name == std::string_view("x") || name == std::string_view("y") ? -1000000 : 320,
+                                name == std::string_view("x") || name == std::string_view("y") ? 1000000 : 16384);
+                            if (parsed)
+                                *destination = *parsed;
+                            else
+                                set_recovered(result, "invalid host geometry value was reset");
+                        }
+                        read_bool(*geometryValue, "maximized", geometry.maximized, result);
+                    }
+                }
+                const auto settings = host.find("settings");
+                if (settings != host.end())
+                {
+                    if (settings->is_string() && settings->get<std::string>().size() <= kMaximumLayoutBytes)
+                        preferences.hostLayoutSettings[id] = settings->get<std::string>();
+                    else
+                        set_recovered(result, "invalid host layout settings were ignored");
+                }
+            }
+        }
+    }
+
+    const auto tabs = source.find("openTabs");
+    if (tabs != source.end())
+    {
+        if (!tabs->is_array() || tabs->size() > 128)
+            set_recovered(result, "invalid open tab preferences were reset");
+        else
+        {
+            for (const auto &entry : *tabs)
+            {
+                if (!entry.is_object() || !entry.contains("path") || !entry["path"].is_string() ||
+                    entry["path"].get<std::string>().empty())
+                {
+                    set_recovered(result, "invalid saved tab path was ignored");
+                    continue;
+                }
+                SavedTabPreferences tab;
+                tab.scenePath = entry["path"].get<std::string>();
+                const auto view = entry.find("view");
+                if (view != entry.end() && view->is_object())
+                {
+                    read_number(*view, "centerX", tab.viewCenterX, result, -10000000.0f, 10000000.0f);
+                    read_number(*view, "centerY", tab.viewCenterY, result, -10000000.0f, 10000000.0f);
+                    read_number(*view, "zoom", tab.viewZoom, result, 0.01f, 100.0f);
+                }
+                const auto expanded = entry.find("expandedHierarchyIds");
+                if (expanded != entry.end())
+                {
+                    const auto ids = read_object_ids(*expanded);
+                    if (ids)
+                        tab.expandedHierarchyIds = *ids;
+                    else
+                        set_recovered(result, "invalid hierarchy expansion IDs were ignored");
+                }
+                read_bool(entry, "hasExpansionState", tab.hasExpansionState, result);
+                preferences.openTabs.push_back(std::move(tab));
+            }
+        }
+    }
+    const auto activeTab = source.find("activeTabPath");
+    if (activeTab != source.end())
+    {
+        if (activeTab->is_string() && !activeTab->get<std::string>().empty())
+            preferences.activeTabPath = activeTab->get<std::string>();
+        else
+            set_recovered(result, "invalid active tab path was cleared");
+    }
+    load_scene_id_map(source, "hiddenObjectIdsByScene", preferences.hiddenObjectIdsByScene, result);
+    load_scene_id_map(source, "lockedObjectIdsByScene", preferences.lockedObjectIdsByScene, result);
+
+    const auto snap = source.find("snap");
+    if (snap != source.end())
+    {
+        if (!snap->is_object())
+            set_recovered(result, "invalid snapping preferences were reset");
+        else
+        {
+            read_number(*snap, "position", preferences.snap.position, result, 0.0001f, 1000000.0f);
+            read_number(*snap, "rotationDegrees", preferences.snap.rotationDegrees, result, 0.001f, 360.0f);
+            read_number(*snap, "scale", preferences.snap.scale, result, 0.0001f, 10.0f);
+            read_string(*snap, "coordinateMode", preferences.snap.coordinateMode, result);
+            if (preferences.snap.coordinateMode != "world" && preferences.snap.coordinateMode != "local")
+            {
+                preferences.snap.coordinateMode = "world";
+                set_recovered(result, "invalid snap coordinate mode was reset");
+            }
+        }
+    }
+    read_string(source, "duplicationReferencePolicy", preferences.duplicationReferencePolicy, result);
+    if (preferences.duplicationReferencePolicy != "preserve-existing-targets" &&
+        preferences.duplicationReferencePolicy != "remap-internal-targets")
+    {
+        preferences.duplicationReferencePolicy = "preserve-existing-targets";
+        set_recovered(result, "invalid duplication reference policy was reset");
+    }
+    const auto limits = source.find("resourceLimits");
+    if (limits != source.end())
+    {
+        if (!limits->is_object())
+            set_recovered(result, "invalid resource limits were reset");
+        else
+        {
+            for (const auto &[name, value] : limits->items())
+            {
+                if (name.empty() || (!value.is_number_unsigned() && !value.is_number_integer()))
+                {
+                    set_recovered(result, "invalid resource limit was ignored");
+                    continue;
+                }
+                try
+                {
+                    const auto limit = value.get<std::uint64_t>();
+                    if (limit == 0 || limit > (1ULL << 40))
+                        throw std::out_of_range("resource limit out of range");
+                    preferences.resourceLimits[name] = limit;
+                }
+                catch (...)
+                {
+                    set_recovered(result, "invalid resource limit was ignored");
+                }
+            }
+        }
+    }
+    preferences.hostGeometry.try_emplace(main_host_layout_id);
+}
+
 Json serialize_preferences(const WorkspacePreferences &preferences, std::string_view projectKey)
 {
     Json panels = Json::object();
     for (const auto &[id, visible] : preferences.panelVisibility)
         panels[id] = visible;
 
+    Json panelHosts = Json::object();
+    for (const auto &[id, host] : preferences.panelHostAssignments)
+        panelHosts[id] = host.value;
+    Json hosts = Json::array();
+    std::map<HostLayoutId, bool> emittedHosts;
+    for (const auto &[id, geometry] : preferences.hostGeometry)
+    {
+        Json host{{"id", id.value},
+                  {"geometry", {{"x", geometry.x}, {"y", geometry.y},
+                                {"width", geometry.width}, {"height", geometry.height},
+                                {"maximized", geometry.maximized}}}};
+        if (const auto settings = preferences.hostLayoutSettings.find(id);
+            settings != preferences.hostLayoutSettings.end())
+            host["settings"] = settings->second;
+        hosts.push_back(std::move(host));
+        emittedHosts.emplace(id, true);
+    }
+    for (const auto &[id, settings] : preferences.hostLayoutSettings)
+        if (!emittedHosts.contains(id))
+            hosts.push_back(Json{{"id", id.value}, {"settings", settings}});
+
+    Json tabs = Json::array();
+    for (const auto &tab : preferences.openTabs)
+    {
+        tabs.push_back(Json{{"path", tab.scenePath.string()},
+                            {"view", {{"centerX", tab.viewCenterX}, {"centerY", tab.viewCenterY},
+                                       {"zoom", tab.viewZoom}}},
+                            {"expandedHierarchyIds", tab.expandedHierarchyIds},
+                            {"hasExpansionState", tab.hasExpansionState}});
+    }
+    auto serialize_scene_ids = [](const std::map<std::string, std::vector<int>> &byScene) {
+        Json result = Json::object();
+        for (const auto &[scenePath, ids] : byScene)
+            result[scenePath] = ids;
+        return result;
+    };
+    Json resourceLimits = Json::object();
+    for (const auto &[name, value] : preferences.resourceLimits)
+        resourceLimits[name] = value;
     Json run = {{"configurePreset", preferences.run.configurePreset},
                 {"buildPreset", preferences.run.buildPreset},
                 {"target", preferences.run.target},
                 {"executable", preferences.run.executable},
                 {"catalogProtocol", preferences.run.catalogProtocol},
+                {"embeddedGameView", preferences.run.embeddedGameView},
                 {"production", preferences.run.production},
                 {"width", preferences.run.width},
                 {"height", preferences.run.height},
@@ -232,6 +573,17 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
     Json result = {{"version", kPreferencesVersion},
                    {"projectKey", projectKey},
                    {"panelVisibility", std::move(panels)},
+                   {"panelHostAssignments", std::move(panelHosts)},
+                   {"hosts", std::move(hosts)},
+                   {"openTabs", std::move(tabs)},
+                   {"hiddenObjectIdsByScene", serialize_scene_ids(preferences.hiddenObjectIdsByScene)},
+                   {"lockedObjectIdsByScene", serialize_scene_ids(preferences.lockedObjectIdsByScene)},
+                   {"snap", {{"position", preferences.snap.position},
+                              {"rotationDegrees", preferences.snap.rotationDegrees},
+                              {"scale", preferences.snap.scale},
+                              {"coordinateMode", preferences.snap.coordinateMode}}},
+                   {"duplicationReferencePolicy", preferences.duplicationReferencePolicy},
+                   {"resourceLimits", std::move(resourceLimits)},
                    {"userScale", preferences.userScale},
                    {"navigationZoom", preferences.navigationZoom},
                    {"navigationX", preferences.navigationX},
@@ -243,6 +595,8 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
                    {"run", std::move(run)}};
     if (preferences.recentScene)
         result["recentScene"] = preferences.recentScene->string();
+    if (preferences.activeTabPath)
+        result["activeTabPath"] = preferences.activeTabPath->string();
     return result;
 }
 
@@ -282,7 +636,7 @@ bool read_layout(const std::filesystem::path &path, std::string &layout, std::st
 std::map<std::string, bool> default_panel_visibility()
 {
     return {{"panel.hierarchy", true}, {"panel.scene", true}, {"panel.inspector", true},
-            {"panel.project", true}, {"panel.console", true},
+            {"panel.project", true}, {"panel.console", true}, {"panel.game", false},
             {"panel.run", false}, {"panel.validation", false}};
 }
 
@@ -296,9 +650,44 @@ bool is_panel_visible(const WorkspacePreferences &preferences, std::string_view 
            stableId == "panel.project" || stableId == "panel.console";
 }
 
+bool set_editor_object_id_state(std::vector<int> &ids, int objectId, bool enabled)
+{
+    if (objectId < 0)
+        return false;
+    const auto position = std::lower_bound(ids.begin(), ids.end(), objectId);
+    const bool present = position != ids.end() && *position == objectId;
+    if (present == enabled)
+        return false;
+    if (enabled)
+        ids.insert(position, objectId);
+    else
+        ids.erase(position);
+    return true;
+}
+
+bool prune_editor_object_ids(std::vector<int> &ids,
+                             const std::unordered_set<int> &liveObjectIds)
+{
+    const auto previousSize = ids.size();
+    std::erase_if(ids, [&liveObjectIds](int id) { return !liveObjectIds.contains(id); });
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids.size() != previousSize;
+}
+
 void reset_workspace_layout(WorkspacePreferences &preferences)
 {
     preferences.panelVisibility = default_panel_visibility();
+    for (auto &[panelId, hostId] : preferences.panelHostAssignments)
+    {
+        (void)panelId;
+        hostId = main_host_layout_id;
+    }
+    std::erase_if(preferences.hostGeometry, [](const auto &entry) {
+        return entry.first != main_host_layout_id;
+    });
+    preferences.hostLayoutSettings.clear();
+    preferences.hostGeometry.try_emplace(main_host_layout_id);
     preferences.userScale = 1.0f;
     preferences.navigationZoom = 1.0f;
     preferences.navigationX = 0.0f;
@@ -457,13 +846,18 @@ WorkspacePreferencesLoadResult load_workspace_preferences(const std::filesystem:
             const auto version = source.is_object() ? source.find("version") : Json::const_iterator{};
             const auto project = source.is_object() ? source.find("projectKey") : Json::const_iterator{};
             if (!source.is_object() || version == source.end() || !version->is_number_integer() ||
-                version->get<int>() != kPreferencesVersion || project == source.end() || !project->is_string() ||
+                (version->get<int>() != kPreferencesVersion &&
+                 version->get<int>() != kLegacyPreferencesVersion) ||
+                project == source.end() || !project->is_string() ||
                 project->get<std::string>() != result.preferences.projectKey)
             {
                 set_recovered(result, "settings version or project identity did not match; defaults were loaded");
             }
             else
             {
+                const int sourceVersion = version->get<int>();
+                result.preferences.version = kPreferencesVersion;
+                result.migrated = sourceVersion == kLegacyPreferencesVersion;
                 const auto recent = source.find("recentScene");
                 if (recent != source.end())
                 {
@@ -497,6 +891,8 @@ WorkspacePreferencesLoadResult load_workspace_preferences(const std::filesystem:
                 read_number(source, "navigationY", result.preferences.navigationY, result, -10000000.0f, 10000000.0f);
                 load_editor_window_preferences(source, result.preferences.editorWindow, result);
                 load_run_preferences(source, result.preferences.run, result);
+                if (sourceVersion == kPreferencesVersion)
+                    load_v2_preferences(source, result.preferences, result);
             }
         }
         catch (const std::exception &error)
@@ -513,6 +909,15 @@ WorkspacePreferencesLoadResult load_workspace_preferences(const std::filesystem:
         result.layout.clear();
         set_recovered(result, std::move(layoutError));
     }
+    result.layout = migrate_scene_window_identity(result.layout);
+    if (result.layout.empty())
+    {
+        const auto mainSettings = result.preferences.hostLayoutSettings.find(main_host_layout_id);
+        if (mainSettings != result.preferences.hostLayoutSettings.end())
+            result.layout = mainSettings->second;
+    }
+    if (!result.layout.empty())
+        result.preferences.hostLayoutSettings[main_host_layout_id] = result.layout;
     return result;
 }
 
@@ -560,50 +965,149 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
 
 WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferencePaths &paths,
                                                           const WorkspacePreferences &preferences,
-                                                          const std::string &layout)
+                                                          const std::string &layout,
+                                                          bool writeSettings,
+                                                          bool writeLayout)
 {
-    if (preferences.projectKey != paths.projectKey)
-        return {false, false, "preferences belong to a different project"};
-    if (!std::isfinite(preferences.userScale) || preferences.userScale < 0.5f || preferences.userScale > 3.0f ||
-        !std::isfinite(preferences.navigationZoom) || preferences.navigationZoom < 0.01f ||
-        preferences.navigationZoom > 100.0f || !std::isfinite(preferences.navigationX) ||
-        !std::isfinite(preferences.navigationY) || preferences.editorWindow.width < 320 ||
-        preferences.editorWindow.width > 16384 || preferences.editorWindow.height < 320 ||
-        preferences.editorWindow.height > 16384 || preferences.run.width < 1 || preferences.run.width > 16384 ||
-        preferences.run.height < 1 || preferences.run.height > 16384)
-        return {false, false, "preferences contain out-of-range values"};
-    if (preferences.run.catalogProtocol != "common-runner-v1" &&
-        preferences.run.catalogProtocol != "unavailable")
-        return {false, false, "catalog protocol must be common-runner-v1 or unavailable"};
-    if (layout.size() > kMaximumLayoutBytes)
-        return {false, false, "layout preferences exceed the 1 MiB limit"};
+    WorkspacePreferencesSaveResult result{!writeSettings, !writeLayout, {}};
+    const auto validation_failure = [&](const char *message) {
+        result.settingsSaved = !writeSettings;
+        result.layoutSaved = !writeLayout;
+        result.message = message;
+        return result;
+    };
+    if (writeSettings)
+    {
+        if (preferences.projectKey != paths.projectKey)
+            return validation_failure("preferences belong to a different project");
+        if (!std::isfinite(preferences.userScale) || preferences.userScale < 0.5f || preferences.userScale > 3.0f ||
+            !std::isfinite(preferences.navigationZoom) || preferences.navigationZoom < 0.01f ||
+            preferences.navigationZoom > 100.0f || !std::isfinite(preferences.navigationX) ||
+            !std::isfinite(preferences.navigationY) || preferences.editorWindow.width < 320 ||
+            preferences.editorWindow.width > 16384 || preferences.editorWindow.height < 320 ||
+            preferences.editorWindow.height > 16384 || preferences.run.width < 1 || preferences.run.width > 16384 ||
+            preferences.run.height < 1 || preferences.run.height > 16384 ||
+            !std::isfinite(preferences.snap.position) || preferences.snap.position <= 0.0f ||
+            preferences.snap.position > 1000000.0f || !std::isfinite(preferences.snap.rotationDegrees) ||
+            preferences.snap.rotationDegrees <= 0.0f || preferences.snap.rotationDegrees > 360.0f ||
+            !std::isfinite(preferences.snap.scale) || preferences.snap.scale <= 0.0f ||
+            preferences.snap.scale > 10.0f || preferences.openTabs.size() > 128)
+            return validation_failure("preferences contain out-of-range values");
+        if (preferences.run.catalogProtocol != "common-runner-v1" &&
+            preferences.run.catalogProtocol != "unavailable")
+            return validation_failure("catalog protocol must be common-runner-v1 or unavailable");
+        if ((preferences.snap.coordinateMode != "world" && preferences.snap.coordinateMode != "local") ||
+            (preferences.duplicationReferencePolicy != "preserve-existing-targets" &&
+             preferences.duplicationReferencePolicy != "remap-internal-targets"))
+            return validation_failure("preferences contain an unsupported editing policy");
+        for (const auto &[host, geometry] : preferences.hostGeometry)
+            if (!host || geometry.width < 320 || geometry.width > 16384 ||
+                geometry.height < 320 || geometry.height > 16384 ||
+                geometry.x < -1000000 || geometry.x > 1000000 ||
+                geometry.y < -1000000 || geometry.y > 1000000)
+                return validation_failure("host geometry or identity is out of range");
+        for (const auto &[panel, host] : preferences.panelHostAssignments)
+            if (panel.empty() || !host)
+                return validation_failure("panel host assignments require stable panel and host IDs");
+        for (const auto &[host, settings] : preferences.hostLayoutSettings)
+            if (!host || settings.size() > kMaximumLayoutBytes)
+                return validation_failure("host layout settings exceed their size or identity limit");
+        for (const auto &tab : preferences.openTabs)
+        {
+            if (tab.scenePath.empty() || !std::isfinite(tab.viewCenterX) || !std::isfinite(tab.viewCenterY) ||
+                !std::isfinite(tab.viewZoom) || tab.viewZoom < 0.01f || tab.viewZoom > 100.0f ||
+                std::any_of(tab.expandedHierarchyIds.begin(), tab.expandedHierarchyIds.end(),
+                            [](int id) { return id < 0; }))
+                return validation_failure("saved tab view or hierarchy state is invalid");
+        }
+        auto valid_scene_ids = [](const auto &states) {
+            for (const auto &[scenePath, ids] : states)
+                if (scenePath.empty() || std::any_of(ids.begin(), ids.end(), [](int id) { return id < 0; }))
+                    return false;
+            return true;
+        };
+        if (!valid_scene_ids(preferences.hiddenObjectIdsByScene) ||
+            !valid_scene_ids(preferences.lockedObjectIdsByScene))
+            return validation_failure("hidden and locked object IDs must be scene-scoped nonnegative IDs");
+        for (const auto &[name, limit] : preferences.resourceLimits)
+            if (name.empty() || limit == 0 || limit > (1ULL << 40))
+                return validation_failure("resource limit is outside the supported range");
+    }
+    if (writeLayout && layout.size() > kMaximumLayoutBytes)
+        return validation_failure("layout preferences exceed the 1 MiB limit");
+    if (!writeSettings && !writeLayout)
+        return result;
 
     std::error_code error;
-    std::filesystem::create_directories(paths.settingsPath.parent_path(), error);
+    const auto parent = writeSettings ? paths.settingsPath.parent_path()
+                                     : paths.layoutPath.parent_path();
+    std::filesystem::create_directories(parent, error);
     if (error)
-        return {false, false, "cannot create preference directory: " + error.message()};
-
-    WorkspacePreferencesSaveResult result;
-    const auto settings = serialize_preferences(preferences, paths.projectKey).dump(2) + "\n";
-    const auto settingsWrite = write_file_atomically(paths.settingsPath, settings, true);
-    result.settingsSaved = settingsWrite.succeeded();
-    if (!result.settingsSaved)
-        result.message = "settings write failed: " + settingsWrite.message;
-
-    const auto layoutWrite = write_file_atomically(paths.layoutPath, layout, true);
-    result.layoutSaved = layoutWrite.succeeded();
-    if (!result.layoutSaved)
     {
-        if (!result.message.empty())
-            result.message += "; ";
-        result.message += "layout write failed: " + layoutWrite.message;
+        result.settingsSaved = !writeSettings;
+        result.layoutSaved = !writeLayout;
+        result.message = "cannot create preference directory: " + error.message();
+        return result;
     }
-    if (result.succeeded())
+
+    bool durabilityWarning = false;
+    if (writeSettings)
     {
-        if (settingsWrite.status == AtomicWriteStatus::DurabilityWarning ||
-            layoutWrite.status == AtomicWriteStatus::DurabilityWarning)
-            result.message = "preferences were replaced, but directory durability could not be confirmed";
+        WorkspacePreferences serializedPreferences = preferences;
+        serializedPreferences.version = kPreferencesVersion;
+        serializedPreferences.hostGeometry.try_emplace(main_host_layout_id);
+        serializedPreferences.hostLayoutSettings[main_host_layout_id] = layout;
+        const auto settings = serialize_preferences(serializedPreferences, paths.projectKey).dump(2) + "\n";
+        work::record(work::Counter::PreferenceSettingsWriteAttempts);
+        const auto settingsWrite = write_file_atomically(paths.settingsPath, settings, true);
+        result.settingsSaved = settingsWrite.succeeded();
+        durabilityWarning = durabilityWarning ||
+            settingsWrite.status == AtomicWriteStatus::DurabilityWarning;
+        if (!result.settingsSaved)
+            result.message = "settings write failed: " + settingsWrite.message;
     }
+
+    if (writeLayout)
+    {
+        work::record(work::Counter::PreferenceLayoutWriteAttempts);
+        const auto layoutWrite = write_file_atomically(paths.layoutPath, layout, true);
+        result.layoutSaved = layoutWrite.succeeded();
+        durabilityWarning = durabilityWarning ||
+            layoutWrite.status == AtomicWriteStatus::DurabilityWarning;
+        if (!result.layoutSaved)
+        {
+            if (!result.message.empty())
+                result.message += "; ";
+            result.message += "layout write failed: " + layoutWrite.message;
+        }
+    }
+    if (result.succeeded() && durabilityWarning)
+        result.message = "preferences were replaced, but directory durability could not be confirmed";
+    return result;
+}
+
+WorkspacePreferencePersistence::WorkspacePreferencePersistence(
+    WorkspacePreferences persistedPreferences, std::string persistedLayout)
+    : persistedPreferences_(std::move(persistedPreferences)), persistedLayout_(std::move(persistedLayout))
+{
+}
+
+WorkspacePreferencesSaveResult WorkspacePreferencePersistence::flush(
+    const WorkspacePreferences &preferences, const std::string &layout, const Writer &writer)
+{
+    const bool settingsDirty = preferences != persistedPreferences_;
+    const bool layoutDirty = layout != persistedLayout_;
+    if (!settingsDirty && !layoutDirty)
+        return {true, true, {}};
+
+    if (!writer)
+        return {!settingsDirty, !layoutDirty, "preference writer is unavailable"};
+
+    auto result = writer(settingsDirty, layoutDirty);
+    if (settingsDirty && result.settingsSaved)
+        persistedPreferences_ = preferences;
+    if (layoutDirty && result.layoutSaved)
+        persistedLayout_ = layout;
     return result;
 }
 

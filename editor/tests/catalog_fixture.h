@@ -17,10 +17,12 @@
 struct CatalogOpaqueValue
 {
     int value = 0;
+    inline static int serializationCount = 0;
 };
 
 inline void to_json(nlohmann::json &json, const CatalogOpaqueValue &value)
 {
+    ++CatalogOpaqueValue::serializationCount;
     json = value.value;
 }
 
@@ -34,6 +36,7 @@ class TypedCatalogFixture final : public Behavior
   public:
     TypedCatalogFixture();
     static int constructor_count() noexcept;
+    void set_inspection_values();
 
   private:
     bool enabled = false;

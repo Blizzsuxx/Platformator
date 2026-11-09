@@ -20,6 +20,13 @@ constexpr std::array kActions{
     EditorActionDescriptor{EditorAction::Stop, "Stop", "Shift+F5", false},
     EditorActionDescriptor{EditorAction::FrameAll, "Frame All", "F", true},
     EditorActionDescriptor{EditorAction::FrameSelected, "Frame Selected", "Shift+F", true},
+    EditorActionDescriptor{EditorAction::SelectMoveTool, "Move Tool", "W", true},
+    EditorActionDescriptor{EditorAction::SelectRotateTool, "Rotate Tool", "E", true},
+    EditorActionDescriptor{EditorAction::SelectScaleTool, "Scale Tool", "R", true},
+    EditorActionDescriptor{EditorAction::RenameSelection, "Rename", "F2", false, true},
+    EditorActionDescriptor{EditorAction::DeleteSelection, "Delete Selection", "Delete", false, true},
+    EditorActionDescriptor{EditorAction::DuplicateSelection, "Duplicate Selection", "Ctrl+D", false, true},
+    EditorActionDescriptor{EditorAction::Preferences, "Editor Preferences", "Ctrl+,", false},
 };
 } // namespace
 
@@ -30,18 +37,21 @@ std::span<const EditorActionDescriptor> editor_action_descriptors() noexcept
 
 bool editor_action_allowed(EditorAction action, const EditorInputCapture &capture) noexcept
 {
-    if (!capture.appFocused || capture.textInput || capture.modalOpen || capture.gestureActive)
+    if (!capture.appFocused || !capture.focusedHost || capture.textInput ||
+        capture.modalOpen || capture.gestureActive)
         return false;
     for (const auto &descriptor : kActions)
         if (descriptor.action == action)
-            return !descriptor.sceneOnly || capture.sceneFocused;
+            return (!descriptor.sceneOnly || capture.sceneFocused) &&
+                   (!descriptor.hierarchyOnly || capture.hierarchyFocused);
     return false;
 }
 
 std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool control,
                                                const EditorInputCapture &capture) noexcept
 {
-    if (!capture.appFocused || capture.textInput || capture.modalOpen || capture.gestureActive)
+    if (!capture.appFocused || !capture.focusedHost || capture.textInput ||
+        capture.modalOpen || capture.gestureActive)
         return std::nullopt;
     switch (key)
     {
@@ -53,6 +63,34 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
         if (control)
             return std::nullopt;
         return shift ? EditorAction::Stop : EditorAction::BuildAndRun;
+    case EditorKey::W:
+        if (!capture.sceneFocused || shift || control)
+            return std::nullopt;
+        return EditorAction::SelectMoveTool;
+    case EditorKey::E:
+        if (!capture.sceneFocused || shift || control)
+            return std::nullopt;
+        return EditorAction::SelectRotateTool;
+    case EditorKey::R:
+        if (!capture.sceneFocused || shift || control)
+            return std::nullopt;
+        return EditorAction::SelectScaleTool;
+    case EditorKey::F2:
+        if (!capture.hierarchyFocused || shift || control)
+            return std::nullopt;
+        return EditorAction::RenameSelection;
+    case EditorKey::Delete:
+        if (!capture.hierarchyFocused || shift || control)
+            return std::nullopt;
+        return EditorAction::DeleteSelection;
+    case EditorKey::D:
+        if (!capture.hierarchyFocused || !control || shift)
+            return std::nullopt;
+        return EditorAction::DuplicateSelection;
+    case EditorKey::Comma:
+        if (!control || shift)
+            return std::nullopt;
+        return EditorAction::Preferences;
     }
     return std::nullopt;
 }

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <SDL3/SDL_properties.h>
 
@@ -204,6 +205,8 @@ bool SDLWindow::init()
     }
 
     SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE;
+    if (windowSettings.hidden)
+        windowFlags |= SDL_WINDOW_HIDDEN;
     if (windowSettings.highPixelDensity)
         windowFlags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
     window = SDL_CreateWindow("Platformator", windowSettings.width, windowSettings.height, windowFlags);
@@ -324,6 +327,8 @@ void SDLWindow::render()
     if (!mainCamera)
     {
         PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
+        if (editorSessionFrameCapture)
+            editorSessionFrameCapture(renderer, renderWidth, renderHeight);
         SDL_RenderPresent(renderer);
         return;
     }
@@ -383,6 +388,8 @@ void SDLWindow::render()
     debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
 #endif
     PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
+    if (editorSessionFrameCapture)
+        editorSessionFrameCapture(renderer, renderWidth, renderHeight);
     SDL_RenderPresent(renderer);
 }
 
@@ -560,14 +567,16 @@ bool SDLWindow::isRunning() const
 bool SDLWindow::shouldUseFixedStepDelta() const
 {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    return paused;
+    return paused || (editorSessionControlsEnabled && paused);
 #else
-    return false;
+    return editorSessionControlsEnabled && paused;
 #endif
 }
 
 bool SDLWindow::shouldSimulateFrame() const
 {
+    if (editorSessionControlsEnabled)
+        return !paused || advanceFrameRequested;
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     return !paused || advanceFrameRequested;
 #else
@@ -579,7 +588,43 @@ void SDLWindow::clearAdvanceFrameRequest()
 {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     advanceFrameRequested = false;
+#else
+    if (editorSessionControlsEnabled)
+        advanceFrameRequested = false;
 #endif
+}
+
+void SDLWindow::enableEditorSessionControls() noexcept
+{
+    editorSessionControlsEnabled = true;
+}
+
+bool SDLWindow::setEditorSessionPaused(bool value) noexcept
+{
+    if (!editorSessionControlsEnabled)
+        return false;
+    paused = value;
+    advanceFrameRequested = false;
+    return true;
+}
+
+bool SDLWindow::requestEditorSessionStep() noexcept
+{
+    if (!editorSessionControlsEnabled || !paused || advanceFrameRequested)
+        return false;
+    advanceFrameRequested = true;
+    return true;
+}
+
+bool SDLWindow::isEditorSessionPaused() const noexcept
+{
+    return editorSessionControlsEnabled && paused;
+}
+
+void SDLWindow::setEditorSessionFrameCapture(
+    std::function<void(SDL_Renderer *, int, int)> callback)
+{
+    editorSessionFrameCapture = std::move(callback);
 }
 
 void SDLWindow::addSpriteComponent(Sprite *spriteComponent)

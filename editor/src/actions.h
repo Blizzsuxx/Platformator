@@ -20,7 +20,14 @@ enum class EditorAction
     BuildAndRun,
     Stop,
     FrameSelected,
-    FrameAll
+    FrameAll,
+    SelectMoveTool,
+    SelectRotateTool,
+    SelectScaleTool,
+    RenameSelection,
+    DeleteSelection,
+    DuplicateSelection,
+    Preferences
 };
 
 struct EditorActionDescriptor
@@ -29,6 +36,7 @@ struct EditorActionDescriptor
     std::string_view label;
     std::string_view shortcut;
     bool sceneOnly;
+    bool hierarchyOnly = false;
 };
 
 struct EditorInputCapture
@@ -38,12 +46,21 @@ struct EditorInputCapture
     bool modalOpen = false;
     bool gestureActive = false;
     bool sceneFocused = false;
+    bool hierarchyFocused = false;
+    bool focusedHost = true;
 };
 
 enum class EditorKey
 {
     F,
-    F5
+    F5,
+    W,
+    E,
+    R,
+    F2,
+    Delete,
+    D,
+    Comma
 };
 
 std::span<const EditorActionDescriptor> editor_action_descriptors() noexcept;

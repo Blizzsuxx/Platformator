@@ -1,5 +1,6 @@
 #include "process.h"
 #include "behaviorcatalog.h"
+#include "platform/nativeprocess.h"
 #include "test_support.h"
 
 #include <cerrno>
@@ -338,6 +339,10 @@ void test_pipeline_run_snapshot_and_stages()
                 console.find("arg:--asset-root\n") != std::string::npos &&
                 console.find("arg:" + expectedAssets + "\n") != std::string::npos,
             "launch argv must include the saved scene and explicit asset root as separate arguments");
+    const auto ownershipNote = native_process_containment_note();
+    require(!ownershipNote.empty() && console.find("[Process ownership] " + std::string(ownershipNote)) !=
+                                            std::string::npos,
+            "the running game must disclose POSIX daemon escape and lifecycle registration limits");
 }
 
 void test_pipeline_build_only_failures_and_stop_recovery()

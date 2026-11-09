@@ -1,6 +1,11 @@
 #include "inspector.h"
 
+#include "../camerainterpretation.h"
+
 #include "../componenttypes.h"
+#include "../componentoperations.h"
+#include "../documentio.h"
+#include "../discovery.h"
 
 #include <algorithm>
 #include <array>
@@ -8,7 +13,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -158,6 +165,98 @@ std::string stable_field_id(const std::vector<FieldPathSegment> &path)
     return result;
 }
 
+std::string diagnostic_field_id(const std::string &path)
+{
+    std::string result = "/";
+    for (const char value : path)
+        result.push_back(value == '.' ? '/' : value);
+    return result;
+}
+
+std::string semantic_path_token(const std::vector<FieldPathSegment> &path)
+{
+    const std::string stable = stable_field_id(path);
+    constexpr char hex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(stable.size() * 2);
+    for (const unsigned char value : stable)
+    {
+        result.push_back(hex[value >> 4]);
+        result.push_back(hex[value & 0x0f]);
+    }
+    return result;
+}
+
+std::string semantic_value_text(const Json *value, std::string_view fallback = "Not set")
+{
+    if (value == nullptr)
+        return std::string(fallback);
+    try
+    {
+        if (value->is_string())
+        {
+            std::string text = value->get<std::string>();
+            if (text.size() > 512)
+            {
+                text.resize(509);
+                text += "...";
+            }
+            return text;
+        }
+        if (value->is_boolean() || value->is_number())
+            return value->dump();
+        if (value->is_array())
+            return "Array with " + std::to_string(value->size()) + " items";
+        if (value->is_object())
+            return "Object with " + std::to_string(value->size()) + " fields";
+        return "null";
+    }
+    catch (...)
+    {
+        return "Value unavailable";
+    }
+}
+
+std::string semantic_field_path(const std::vector<FieldPathSegment> &path)
+{
+    std::string result;
+    for (const auto &segment : path)
+    {
+        if (!result.empty())
+            result.push_back('.');
+        if (const auto *key = std::get_if<std::string>(&segment))
+            result += *key;
+        else
+            result += std::to_string(std::get<std::size_t>(segment));
+    }
+    return result;
+}
+
+std::string template_file_stem(std::string_view name)
+{
+    std::string stem;
+    stem.reserve(std::min<std::size_t>(name.size(), 96));
+    bool lastWasSeparator = false;
+    for (const unsigned char character : name)
+    {
+        if (stem.size() >= 96)
+            break;
+        if (std::isalnum(character))
+        {
+            stem.push_back(static_cast<char>(character));
+            lastWasSeparator = false;
+        }
+        else if ((character == '-' || character == '_' || character == ' ') && !lastWasSeparator)
+        {
+            stem.push_back(character == ' ' ? '-' : static_cast<char>(character));
+            lastWasSeparator = true;
+        }
+    }
+    while (!stem.empty() && (stem.back() == '-' || stem.back() == '_'))
+        stem.pop_back();
+    return stem.empty() ? "object-template" : stem;
+}
+
 void begin_field(const char *label, const std::vector<FieldPathSegment> &path)
 {
     ImGui::AlignTextToFramePadding();
@@ -173,6 +272,41 @@ void end_field()
     ImGui::PopID();
 }
 
+class InspectorAddressScope
+{
+  public:
+    InspectorAddressScope(const DocumentSession &document, int objectId,
+                          std::uint64_t hostGeneration)
+        : hostGeneration_(std::to_string(hostGeneration)),
+          projectGeneration_(std::to_string(document.projectGeneration)),
+          tabId_(std::to_string(document.tabId.value)),
+          documentGeneration_(std::to_string(document.documentGeneration)),
+          objectId_(std::to_string(objectId))
+    {
+        ImGui::PushID(hostGeneration_.c_str());
+        ImGui::PushID(projectGeneration_.c_str());
+        ImGui::PushID(tabId_.c_str());
+        ImGui::PushID(documentGeneration_.c_str());
+        ImGui::PushID(objectId_.c_str());
+    }
+
+    ~InspectorAddressScope()
+    {
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+    }
+
+  private:
+    std::string hostGeneration_;
+    std::string projectGeneration_;
+    std::string tabId_;
+    std::string documentGeneration_;
+    std::string objectId_;
+};
+
 } // namespace
 
 const std::string &InspectorPanel::feedback() const noexcept
@@ -180,10 +314,765 @@ const std::string &InspectorPanel::feedback() const noexcept
     return feedback_;
 }
 
+void InspectorPanel::save_selected_template(DocumentSession &document, int objectId,
+                                             const BehaviorCatalog &catalog)
+{
+    if (templateName_.empty() || document.assetRoot.empty())
+    {
+        feedback_ = "A template name and project asset root are required.";
+        return;
+    }
+    const auto location = document.indexes.objectsById.find(objectId);
+    const Json *object = location == document.indexes.objectsById.end()
+        ? nullptr : resolve_object(document.root, location->second);
+    if (object == nullptr)
+    {
+        feedback_ = "The selected GameObject changed before the template could be saved.";
+        return;
+    }
+    const auto catalogSnapshot = catalog.snapshot();
+    const Json catalogDocument = catalogSnapshot ? catalogSnapshot->document : Json::object();
+    const auto bindings = behaviorFields_.template_author_bindings(document);
+    const auto authorSchemas = behaviorFields_.template_author_schemas(document);
+    const auto collected = collect_template_bindings(document, *object,
+        template_scene_identity(document), catalogDocument, bindings, authorSchemas);
+    if (!collected)
+    {
+        feedback_ = "Template references could not be validated: " + collected.error;
+        return;
+    }
+    if (!collected.assured)
+    {
+        feedback_ = "Template save is blocked until every behavior schema has complete reference declarations.";
+        return;
+    }
+    try
+    {
+        const auto templateDirectory = document.assetRoot / "templates";
+        std::error_code directoryError;
+        std::filesystem::create_directories(templateDirectory, directoryError);
+        if (directoryError)
+            throw std::runtime_error("could not create assets/templates: " + directoryError.message());
+        const auto destination = templateDirectory / (template_file_stem(templateName_) + ".pttemplate");
+        const std::string contents = make_template_envelope(
+            templateName_, *object, collected.bindings).dump(2) + "\n";
+        const auto written = write_file_atomically(destination, contents, false);
+        if (!written.succeeded())
+            feedback_ = written.status == AtomicWriteStatus::Conflict
+                ? "A template with that file name already exists. Choose a different name."
+                : "Template could not be saved: " + written.message;
+        else
+            feedback_ = "Template saved to assets/templates/" + destination.filename().string() + ".";
+    }
+    catch (const std::exception &error)
+    {
+        feedback_ = std::string("Template could not be saved: ") + error.what();
+    }
+}
+
+std::vector<Json> InspectorPanel::template_author_bindings(const DocumentSession &document) const
+{
+    return behaviorFields_.template_author_bindings(document);
+}
+
+std::vector<TemplateAuthorSchemaDeclaration> InspectorPanel::template_author_schemas(
+    const DocumentSession &document) const
+{
+    return behaviorFields_.template_author_schemas(document);
+}
+
+std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &document,
+                                                          const Selection &selection,
+                                                          std::string_view scope,
+                                                          const BehaviorCatalog *catalog)
+{
+    std::vector<SemanticNode> nodes;
+    if (scope.empty() || !selection.objectId || selection.selectedObjectIds.size() > 1)
+    {
+        semanticTargets_.clear();
+        semanticFocusNode_.reset();
+        return nodes;
+    }
+
+    const int objectId = *selection.objectId;
+    const auto objectLocation = document.indexes.objectsById.find(objectId);
+    const Json *object = objectLocation == document.indexes.objectsById.end()
+        ? nullptr : resolve_object(document.root, objectLocation->second);
+    if (object == nullptr)
+    {
+        semanticTargets_.clear();
+        semanticFocusNode_.reset();
+        return nodes;
+    }
+
+    const std::string scopeString(scope);
+    const std::string selectionNodeId = scopeString + "/selection";
+    const std::string selectionKey = std::to_string(document.projectGeneration) + ":" +
+        std::to_string(document.tabId.value) + ":" +
+        std::to_string(document.documentGeneration) + ":" + std::to_string(objectId) + ":" +
+        (selection.componentId ? std::to_string(*selection.componentId) : std::string("-"));
+    if (templateNameSelectionKey_ != selectionKey)
+    {
+        templateNameSelectionKey_ = selectionKey;
+        templateName_ = object->value("name", std::string("Object Template"));
+    }
+    const auto currentFocus = [&](const SemanticTarget &target) {
+        return target.objectId == objectId && target.componentId == selection.componentId &&
+               target.behaviorOrdinal == selection.behaviorOrdinal;
+    };
+    if (semanticFocusNode_)
+    {
+        const auto previous = semanticTargets_.find(*semanticFocusNode_);
+        if (previous != semanticTargets_.end() && !currentFocus(previous->second))
+            semanticFocusNode_.reset();
+    }
+    semanticTargets_.clear();
+
+    constexpr std::size_t maximumNodes = 256;
+    const auto catalogSnapshot = catalog != nullptr ? catalog->snapshot() : nullptr;
+    const Json *catalogDocument = catalogSnapshot ? &catalogSnapshot->document : nullptr;
+    nodes.reserve(64);
+    const auto append_action = [&](std::string id, std::string name, std::string parentId,
+                                   int ownerObjectId, std::optional<int> componentId,
+                                   SemanticOperation operation, bool enabled = true) {
+        if (nodes.size() >= maximumNodes)
+            return;
+        SemanticNode node;
+        node.id = id;
+        node.parentId = std::move(parentId);
+        node.role = SemanticRole::Button;
+        node.name = std::move(name);
+        node.visible = true;
+        node.enabled = enabled;
+        node.selected = semanticFocusNode_ && *semanticFocusNode_ == id;
+        node.focused = node.selected && selection.focusedPanel == FocusedPanel::Inspector;
+        node.actions = {"activate"};
+        nodes.push_back(std::move(node));
+        semanticTargets_.emplace(std::move(id), SemanticTarget{
+            ownerObjectId, componentId, std::nullopt, {}, operation});
+    };
+    const auto append_field = [&](std::string label, std::vector<FieldPathSegment> path,
+                                  std::optional<int> componentId, std::string parentId,
+                                  std::string_view fallback = "Not set",
+                                  std::string_view expectedAssetType = {}) {
+        if (nodes.size() >= maximumNodes)
+            return;
+        const Json *value = address_value(document, objectId, componentId, path);
+        const std::string id = scopeString + "/field/" + std::to_string(objectId) + "/" +
+            (componentId ? std::to_string(*componentId) : std::string("object")) + "/" +
+            semantic_path_token(path);
+        SemanticNode node;
+        node.id = id;
+        node.parentId = std::move(parentId);
+        node.name = std::move(label);
+        node.value = semantic_value_text(value, fallback);
+        if (!expectedAssetType.empty())
+        {
+            const Json emptyValue;
+            const auto reference = inspect_asset_reference(document,
+                value != nullptr ? *value : emptyValue, expectedAssetType, resourceIndex_);
+            switch (reference.state)
+            {
+            case ReferenceState::Unset:
+                node.value += "; asset not assigned";
+                break;
+            case ReferenceState::Resolved:
+                node.value += "; asset resolved";
+                break;
+            case ReferenceState::Dangling:
+                node.value += "; asset missing";
+                node.error = true;
+                break;
+            case ReferenceState::WrongKind:
+                node.value += "; wrong asset type";
+                node.error = true;
+                break;
+            case ReferenceState::Invalid:
+                node.value += "; invalid asset reference";
+                node.error = true;
+                break;
+            }
+            node.help = reference.message;
+        }
+        node.visible = true;
+        node.selected = semanticFocusNode_ && *semanticFocusNode_ == id;
+        node.focused = node.selected && selection.focusedPanel == FocusedPanel::Inspector;
+        if (value != nullptr && value->is_boolean())
+            node.role = SemanticRole::CheckBox;
+        else if (value != nullptr && (value->is_number() || value->is_string()))
+            node.role = SemanticRole::TextField;
+        else
+            node.role = SemanticRole::Group;
+        node.actions = {"reveal"};
+        nodes.push_back(std::move(node));
+        semanticTargets_.emplace(id, SemanticTarget{objectId, componentId, std::nullopt,
+                                                     semantic_field_path(path)});
+    };
+    const auto append_group = [&](std::string label, std::optional<int> componentId,
+                                  std::string parentId, std::vector<FieldPathSegment> path,
+                                  std::string value = {}) -> std::string {
+        if (nodes.size() >= maximumNodes)
+            return {};
+        SemanticNode node;
+        node.id = scopeString + "/group/" + std::to_string(objectId) + "/" +
+            (componentId ? std::to_string(*componentId) : std::string("object")) + "/" +
+            semantic_path_token(path);
+        node.parentId = std::move(parentId);
+        node.role = SemanticRole::Group;
+        node.name = std::move(label);
+        node.value = std::move(value);
+        node.visible = true;
+        node.selected = semanticFocusNode_ && *semanticFocusNode_ == node.id;
+        node.focused = node.selected && selection.focusedPanel == FocusedPanel::Inspector;
+        node.actions = {"reveal"};
+        const std::string groupId = node.id;
+        nodes.push_back(std::move(node));
+        semanticTargets_.emplace(groupId, SemanticTarget{objectId, componentId, std::nullopt,
+                                                          semantic_field_path(path)});
+        return groupId;
+    };
+    const auto append_point = [&](std::string label, std::string key,
+                                  std::optional<int> componentId, std::string parentId,
+                                  double defaultX, double defaultY) {
+        const std::string groupId = append_group(std::move(label), componentId, std::move(parentId),
+            {key}, "X and Y values");
+        append_field("X", {key, std::string("x")}, componentId, groupId,
+                     Json(defaultX).dump());
+        append_field("Y", {key, std::string("y")}, componentId, groupId,
+                     Json(defaultY).dump());
+    };
+
+    if (selection.componentId)
+    {
+        const auto componentLocation = document.indexes.componentsById.find(*selection.componentId);
+        if (componentLocation == document.indexes.componentsById.end() ||
+            componentLocation->second.ownerObjectId != objectId)
+            return nodes;
+    }
+    else
+    {
+        append_field("Name", {std::string("name")}, std::nullopt, selectionNodeId, "GameObject");
+        append_field("Tag", {std::string("tag")}, std::nullopt, selectionNodeId, "");
+        append_field("Active", {std::string("active")}, std::nullopt, selectionNodeId, "true");
+        append_point("Position", "position", std::nullopt, selectionNodeId, 0.0, 0.0);
+        append_point("Scale", "scale", std::nullopt, selectionNodeId, 1.0, 1.0);
+        append_field("Rotation", {std::string("rotation")}, std::nullopt,
+                     selectionNodeId, "0");
+    }
+
+    append_action(scopeString + "/template/save/" + std::to_string(objectId),
+        "Save selected GameObject as template", selectionNodeId, objectId, std::nullopt,
+        SemanticOperation::SaveTemplate, !templateName_.empty() && !document.assetRoot.empty());
+
+    const auto components = object->find("components");
+    if (components == object->end() || !components->is_array())
+        return nodes;
+
+    for (const auto &component : *components)
+    {
+        if (nodes.size() >= maximumNodes || !component.is_object())
+            break;
+        const auto idField = component.find("id");
+        const auto typeField = component.find("type");
+        if (idField == component.end() || typeField == component.end() ||
+            (!idField->is_number_integer() && !idField->is_number_unsigned()) ||
+            (!typeField->is_number_integer() && !typeField->is_number_unsigned()))
+            continue;
+        const int componentId = json_integer(&*idField, -1);
+        const int type = json_integer(&*typeField, -1);
+        if (componentId < 0)
+            continue;
+        const std::string componentIdText = std::to_string(componentId);
+        const std::string componentNodeId = scopeString + "/component/" +
+            std::to_string(objectId) + "/" + componentIdText;
+        SemanticNode componentNode;
+        componentNode.id = componentNodeId;
+        componentNode.parentId = selectionNodeId;
+        componentNode.role = SemanticRole::Group;
+        componentNode.name = std::string(component_label(type)) + " component";
+        componentNode.value = "Component " + componentIdText;
+        componentNode.visible = true;
+        componentNode.selected = selection.componentId == componentId;
+        componentNode.focused = componentNode.selected && !selection.behaviorOrdinal &&
+            selection.focusedPanel == FocusedPanel::Inspector;
+        componentNode.actions = {"activate"};
+        nodes.push_back(std::move(componentNode));
+        semanticTargets_.emplace(componentNodeId, SemanticTarget{objectId, componentId,
+            std::nullopt, {}, SemanticOperation::SelectComponent});
+
+        const bool clipboardMatches = componentSettingsClipboard_ &&
+            componentSettingsClipboard_->value("componentType", -1) == type;
+        append_action(componentNodeId + "/copy-settings", "Copy component settings",
+            componentNodeId, objectId, componentId, SemanticOperation::CopySettings,
+            catalog != nullptr);
+        append_action(componentNodeId + "/paste-settings", "Paste component settings",
+            componentNodeId, objectId, componentId, SemanticOperation::PasteSettings,
+            clipboardMatches && catalog != nullptr);
+        append_action(componentNodeId + "/reset-settings", "Reset component settings",
+            componentNodeId, objectId, componentId, SemanticOperation::ResetSettings,
+            catalog != nullptr);
+
+        const auto add = [&](std::string_view key, std::string label,
+                             std::string_view fallback = "Not set",
+                             std::string_view expectedAssetType = {}) {
+            append_field(std::move(label), {std::string(key)}, componentId, componentNodeId,
+                         fallback, expectedAssetType);
+        };
+        switch (type)
+        {
+        case 0: // Animator
+            add("currentFrameIndex", "Current frame", "0");
+            add("playbackSpeed", "Playback speed", "1");
+            add("playing", "Playing", "false");
+            add("animationClipFilePath", "Animation Clip", "", "AnimationClip");
+            break;
+        case 1: // Audio
+            add("filePath", "Audio file", "", "Audio");
+            add("gain", "Gain", "1");
+            add("loopCount", "Loop count", "0");
+            add("autoPlay", "Auto Play", "false");
+            break;
+        case 2: // Camera
+            add("width", "Width", "640");
+            add("height", "Height", "480");
+            if (component.contains("camera"))
+                append_point("Legacy camera size", "camera", componentId, componentNodeId,
+                             640.0, 480.0);
+            break;
+        case 3: // Collider
+        {
+            add("colliderType", "Shape", "1");
+            const int shape = json_integer(component.contains("colliderType")
+                ? &component.at("colliderType") : nullptr, 1);
+            if (shape == 0)
+                add("radius", "Radius", "16");
+            else if (shape == 1)
+            {
+                add("width", "Width", "16");
+                add("height", "Height", "16");
+            }
+            if (component.contains("offset"))
+                append_point("Offset", "offset", componentId, componentNodeId, 0.0, 0.0);
+            add("trigger", "Trigger", "false");
+            add("collisionGroup", "Collision group", "1");
+            add("collisionMask", "Collision mask", "1");
+            break;
+        }
+        case 4: // Rigidbody
+            append_point("Velocity", "velocity", componentId, componentNodeId, 0.0, 0.0);
+            append_point("Force", "force", componentId, componentNodeId, 0.0, 0.0);
+            add("mass", "Mass", "1");
+            add("angularVelocity", "Angular velocity", "0");
+            add("torque", "Torque", "0");
+            add("friction", "Friction", "0.5");
+            add("restitution", "Restitution", "0");
+            add("bodyType", "Body type", "0");
+            add("gravity", "Gravity", "true");
+            break;
+        case 5: // Script behavior list
+        {
+            const auto behaviors = component.find("behaviors");
+            if (behaviors == component.end() || !behaviors->is_array())
+                break;
+            const std::optional<std::size_t> visibleBehaviorOrdinal = behaviors->empty()
+                ? std::nullopt
+                : (selection.componentId == componentId && selection.behaviorOrdinal &&
+                   *selection.behaviorOrdinal < behaviors->size()
+                    ? selection.behaviorOrdinal : std::optional<std::size_t>{0});
+            for (std::size_t ordinal = 0; ordinal < behaviors->size() &&
+                 nodes.size() < maximumNodes; ++ordinal)
+            {
+                const auto &behavior = (*behaviors)[ordinal];
+                const std::string nodeId = componentNodeId + "/behavior/" +
+                    std::to_string(ordinal);
+                SemanticNode behaviorNode;
+                behaviorNode.id = nodeId;
+                behaviorNode.parentId = componentNodeId;
+                behaviorNode.role = SemanticRole::ListItem;
+                behaviorNode.name = behavior.is_object()
+                    ? behavior.value("type", std::string("Behavior"))
+                    : std::string("Behavior ") + std::to_string(ordinal + 1);
+                behaviorNode.value = "Behavior " + std::to_string(ordinal + 1);
+                behaviorNode.visible = true;
+                behaviorNode.selected = selection.behaviorOrdinal == ordinal;
+                behaviorNode.focused = behaviorNode.selected && selection.componentId == componentId &&
+                    selection.focusedPanel == FocusedPanel::Behaviors;
+                behaviorNode.actions = {"activate"};
+                nodes.push_back(std::move(behaviorNode));
+                semanticTargets_.emplace(nodeId, SemanticTarget{objectId, componentId,
+                    ordinal, {}, SemanticOperation::SelectBehavior});
+
+                const std::string behaviorName = behavior.is_object()
+                    ? behavior.value("type", std::string{}) : std::string{};
+                const Json *descriptor = nullptr;
+                if (catalogDocument != nullptr && !behaviorName.empty())
+                {
+                    const auto catalogBehaviors = catalogDocument->find("behaviors");
+                    if (catalogBehaviors != catalogDocument->end() && catalogBehaviors->is_array())
+                        for (const auto &candidate : *catalogBehaviors)
+                            if (candidate.is_object() &&
+                                candidate.value("name", std::string{}) == behaviorName)
+                            {
+                                descriptor = &candidate;
+                                break;
+                            }
+                }
+                const auto schemaFields = descriptor != nullptr &&
+                    descriptor->value("field_schema_available", false)
+                    ? descriptor->find("fields") : Json::const_iterator{};
+                if (descriptor == nullptr || !descriptor->value("field_schema_available", false) ||
+                    schemaFields == descriptor->end() || !schemaFields->is_array())
+                    continue;
+
+                for (const auto &field : *schemaFields)
+                {
+                    if (nodes.size() >= maximumNodes || !field.is_object())
+                        break;
+                    const std::string fieldName = field.value("name", std::string{});
+                    if (fieldName.empty())
+                        continue;
+                    const auto valueIt = behavior.find(fieldName);
+                    const Json *value = valueIt == behavior.end() ? nullptr : &*valueIt;
+                    const std::string kind = field.value("kind", std::string("opaque_json"));
+                    const std::string fieldId = nodeId + "/field/" +
+                        semantic_path_token({std::string(fieldName)});
+                    SemanticNode fieldNode;
+                    fieldNode.id = fieldId;
+                    fieldNode.parentId = nodeId;
+                    fieldNode.name = field.value("label", fieldName);
+                    fieldNode.value = semantic_value_text(value);
+                    fieldNode.visible = visibleBehaviorOrdinal == ordinal;
+                    fieldNode.selected = semanticFocusNode_ && *semanticFocusNode_ == fieldId;
+                    fieldNode.focused = fieldNode.selected &&
+                        selection.componentId == componentId &&
+                        selection.behaviorOrdinal == ordinal &&
+                        selection.focusedPanel == FocusedPanel::Behaviors;
+                    if (kind == "boolean")
+                        fieldNode.role = SemanticRole::CheckBox;
+                    else if (kind == "vector2" || kind == "rectangle" || kind == "array" ||
+                             kind == "optional" || kind == "opaque_json")
+                        fieldNode.role = SemanticRole::Group;
+                    else
+                        fieldNode.role = SemanticRole::TextField;
+
+                    if (kind == "asset_reference")
+                    {
+                        const Json emptyValue;
+                        const auto reference = inspect_asset_reference(document,
+                            value != nullptr ? *value : emptyValue,
+                            field.value("target", std::string("Asset")), resourceIndex_);
+                        switch (reference.state)
+                        {
+                        case ReferenceState::Unset:
+                            fieldNode.value += "; asset not assigned";
+                            break;
+                        case ReferenceState::Resolved:
+                            fieldNode.value += "; asset resolved";
+                            break;
+                        case ReferenceState::Dangling:
+                            fieldNode.value += "; asset missing";
+                            fieldNode.error = true;
+                            break;
+                        case ReferenceState::WrongKind:
+                            fieldNode.value += "; wrong asset type";
+                            fieldNode.error = true;
+                            break;
+                        case ReferenceState::Invalid:
+                            fieldNode.value += "; invalid asset reference";
+                            fieldNode.error = true;
+                            break;
+                        }
+                        fieldNode.help = reference.message;
+                    }
+                    else if (kind == "object_reference")
+                    {
+                        const Json emptyValue;
+                        const auto reference = inspect_scene_reference(document,
+                            value != nullptr ? *value : emptyValue,
+                            field.value("target", std::string("GameObject")));
+                        switch (reference.state)
+                        {
+                        case ReferenceState::Unset:
+                            fieldNode.value += "; target not assigned";
+                            break;
+                        case ReferenceState::Resolved:
+                            fieldNode.value += "; " + reference.label;
+                            break;
+                        case ReferenceState::Dangling:
+                            fieldNode.value += "; target missing";
+                            fieldNode.error = true;
+                            break;
+                        case ReferenceState::WrongKind:
+                            fieldNode.value += "; target has wrong type";
+                            fieldNode.error = true;
+                            break;
+                        case ReferenceState::Invalid:
+                            fieldNode.value += "; invalid target";
+                            fieldNode.error = true;
+                            break;
+                        }
+                        fieldNode.help = reference.label;
+                    }
+                    fieldNode.actions = {"reveal"};
+                    nodes.push_back(std::move(fieldNode));
+                    semanticTargets_.emplace(fieldId, SemanticTarget{objectId, componentId,
+                                                                       ordinal, fieldName});
+                }
+            }
+            break;
+        }
+        case 6: // Sprite
+            add("textureFilePath", "Texture", "", "Texture");
+            add("flip", "Flip", "0");
+            add("width", "Width", "16");
+            add("height", "Height", "16");
+            add("sourceRectEnabled", "Use source rectangle", "false");
+            if (component.contains("sourceRect"))
+            {
+                const std::string groupId = append_group("Source rectangle", componentId,
+                    componentNodeId, {std::string("sourceRect")}, "X, Y, width, height");
+                for (const auto &[key, label] : std::array{
+                         std::pair{"x", "Source X"}, std::pair{"y", "Source Y"},
+                         std::pair{"w", "Source width"}, std::pair{"h", "Source height"}})
+                    append_field(label, {std::string("sourceRect"), std::string(key)},
+                                 componentId, groupId, "0");
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    if (semanticFocusNode_ && !semanticTargets_.contains(*semanticFocusNode_))
+        semanticFocusNode_.reset();
+    return nodes;
+}
+
+bool InspectorPanel::dispatch_semantic_action(DocumentSession &document,
+                                              SelectionModel &selection,
+                                              const SemanticAction &action,
+                                              std::string_view scope,
+                                              const BehaviorCatalog *catalog,
+                                              EditCommandService *commands)
+{
+    if (scope.empty() || (action.action != "activate" && action.action != "reveal"))
+        return false;
+    (void)semantic_nodes(document, selection.current(), scope, catalog);
+    const auto target = semanticTargets_.find(action.nodeId);
+    if (target == semanticTargets_.end())
+        return false;
+    const auto &semanticTarget = target->second;
+    const bool reveal = semanticTarget.operation == SemanticOperation::Reveal;
+    if ((reveal && action.action != "reveal") || (!reveal && action.action != "activate"))
+        return false;
+    if (!document.indexes.objectsById.contains(semanticTarget.objectId))
+        return false;
+    if (semanticTarget.componentId)
+    {
+        const auto component = document.indexes.componentsById.find(*semanticTarget.componentId);
+        if (component == document.indexes.componentsById.end() ||
+            component->second.ownerObjectId != semanticTarget.objectId)
+            return false;
+    }
+    const auto panel = semanticTarget.behaviorOrdinal
+        ? FocusedPanel::Behaviors : FocusedPanel::Inspector;
+    Selection before = selection.current();
+    Selection next{semanticTarget.objectId, semanticTarget.componentId,
+                   semanticTarget.behaviorOrdinal, panel,
+                   WindowHostGeneration{hostGeneration_}};
+
+    switch (semanticTarget.operation)
+    {
+    case SemanticOperation::Reveal:
+        selection.set(document, next);
+        if (semanticTarget.behaviorOrdinal)
+            searchQuery_ = semanticTarget.fieldPath;
+        else
+            reveal_field(semanticTarget.objectId, semanticTarget.componentId,
+                         semanticTarget.fieldPath);
+        break;
+    case SemanticOperation::SelectComponent:
+    case SemanticOperation::SelectBehavior:
+        selection.set(document, std::move(next));
+        break;
+    case SemanticOperation::CopySettings:
+    case SemanticOperation::PasteSettings:
+    case SemanticOperation::ResetSettings:
+    {
+        if (commands == nullptr || catalog == nullptr || !semanticTarget.componentId)
+            return false;
+        const Json *component = address_owner(document, semanticTarget.objectId,
+                                               semanticTarget.componentId);
+        if (component == nullptr)
+            return false;
+        const auto current = selection.current();
+        const SelectionState selectionState{current, next};
+        if (semanticTarget.operation == SemanticOperation::CopySettings)
+        {
+            std::string error;
+            auto copied = copy_component_settings(*component, *catalog, error);
+            if (!copied)
+            {
+                feedback_ = std::move(error);
+                return true;
+            }
+            componentSettingsClipboard_ = std::move(*copied);
+            feedback_.clear();
+            selection.set(document, std::move(next));
+        }
+        else
+        {
+            CommandResult result;
+            if (semanticTarget.operation == SemanticOperation::PasteSettings)
+            {
+                if (!componentSettingsClipboard_ ||
+                    componentSettingsClipboard_->value("componentType", -1) !=
+                        component->value("type", -2))
+                    return false;
+                result = paste_component_settings(document, *commands,
+                    semanticTarget.objectId, *semanticTarget.componentId,
+                    *componentSettingsClipboard_, *catalog, selectionState);
+            }
+            else
+                result = reset_component_settings(document, *commands,
+                    semanticTarget.objectId, *semanticTarget.componentId, *catalog, selectionState);
+            if (result.status == CommandStatus::Rejected ||
+                result.status == CommandStatus::StaleAddress)
+            {
+                feedback_ = result.message;
+                return true;
+            }
+            feedback_.clear();
+            selection.set(document, next);
+            if (result.status == CommandStatus::Changed)
+                commands->set_last_selection_state({before, selection.current()});
+        }
+        break;
+    }
+    case SemanticOperation::SaveTemplate:
+        if (catalog == nullptr)
+            return false;
+        save_selected_template(document, semanticTarget.objectId, *catalog);
+        selection.set(document, std::move(next));
+        break;
+    }
+    semanticFocusNode_ = action.nodeId;
+    return true;
+}
+
+void InspectorPanel::reveal_field(int objectId, std::optional<int> componentId,
+                                 std::string fieldPath)
+{
+    revealObjectId_ = objectId;
+    revealComponentId_ = componentId;
+    revealPath_ = diagnostic_field_id(fieldPath);
+}
+
+void InspectorPanel::set_host_generation(std::uint64_t generation) noexcept
+{
+    if (hostGeneration_ == generation)
+        return;
+    hostGeneration_ = generation;
+    integerDrafts_.clear();
+}
+
+void InspectorPanel::draw_search_bar()
+{
+    std::array<char, 256> buffer{};
+    const std::size_t length = std::min(searchQuery_.size(), buffer.size() - 1);
+    std::memcpy(buffer.data(), searchQuery_.data(), length);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::InputTextWithHint("##inspector-search", "Search fields, types, path, or ID",
+                                 buffer.data(), buffer.size()))
+        searchQuery_ = buffer.data();
+}
+
+bool InspectorPanel::field_matches_search(const DocumentSession &document, int objectId,
+                                          std::optional<int> componentId,
+                                          const std::vector<FieldPathSegment> &path,
+                                          std::string_view label) const
+{
+    if (searchQuery_.empty())
+        return true;
+    std::string candidate(label);
+    candidate += stable_field_id(path);
+    candidate += " #" + std::to_string(objectId);
+    const auto objectLocation = document.indexes.objectsById.find(objectId);
+    if (objectLocation != document.indexes.objectsById.end())
+    {
+        const Json *object = resolve_object(document.root, objectLocation->second);
+        if (object != nullptr)
+        {
+            const auto name = object->find("name");
+            const auto tag = object->find("tag");
+            if (name != object->end() && name->is_string())
+                candidate += " " + name->get<std::string>();
+            if (tag != object->end() && tag->is_string())
+                candidate += " " + tag->get<std::string>();
+            int currentId = objectId;
+            while (true)
+            {
+                const auto parent = document.indexes.parentById.find(currentId);
+                if (parent == document.indexes.parentById.end() || !parent->second)
+                    break;
+                currentId = *parent->second;
+                const auto ancestorLocation = document.indexes.objectsById.find(currentId);
+                const Json *ancestor = ancestorLocation == document.indexes.objectsById.end()
+                    ? nullptr : resolve_object(document.root, ancestorLocation->second);
+                if (ancestor != nullptr && ancestor->contains("name") &&
+                    ancestor->at("name").is_string())
+                    candidate += " " + ancestor->at("name").get<std::string>();
+            }
+        }
+    }
+    if (componentId)
+    {
+        const auto componentLocation = document.indexes.componentsById.find(*componentId);
+        if (componentLocation != document.indexes.componentsById.end())
+        {
+            const auto ownerLocation = document.indexes.objectsById.find(
+                componentLocation->second.ownerObjectId);
+            const Json *owner = ownerLocation == document.indexes.objectsById.end()
+                ? nullptr : resolve_object(document.root, ownerLocation->second);
+            if (owner != nullptr)
+            {
+                const auto components = owner->find("components");
+                if (components != owner->end() && components->is_array() &&
+                    componentLocation->second.componentIndex < components->size())
+                {
+                    const auto &component = (*components)[componentLocation->second.componentIndex];
+                    const auto type = component.find("type");
+                    candidate += " " + std::string(component_label(
+                        json_integer(type == component.end() ? nullptr : &*type, -1)));
+                }
+            }
+        }
+    }
+    return discovery_query_matches(searchQuery_, candidate);
+}
+
+bool InspectorPanel::consume_reveal_target(int objectId, std::optional<int> componentId,
+                                           const std::vector<FieldPathSegment> &path)
+{
+    if (!revealObjectId_ || *revealObjectId_ != objectId ||
+        revealComponentId_ != componentId || revealPath_.empty())
+        return false;
+    const std::string currentPath = stable_field_id(path);
+    const bool related = currentPath == revealPath_ ||
+                         currentPath.starts_with(revealPath_ + "/") ||
+                         revealPath_.starts_with(currentPath + "/");
+    if (!related)
+        return false;
+    revealObjectId_.reset();
+    revealComponentId_.reset();
+    revealPath_.clear();
+    return true;
+}
+
 bool InspectorPanel::set(DocumentSession &document, EditCommandService &commands, int objectId,
                          std::optional<int> componentId, std::vector<FieldPathSegment> path, Json value)
 {
-    PropertyAddress address{document.documentGeneration, objectId, componentId, std::nullopt, std::move(path)};
+    PropertyAddress address = address_for_document(document, objectId, componentId,
+                                                   std::nullopt, std::move(path));
     const auto result = commands.set_property(document, address, std::move(value));
     if (result.status == CommandStatus::Rejected || result.status == CommandStatus::StaleAddress)
     {
@@ -198,10 +1087,17 @@ bool InspectorPanel::draw_boolean(DocumentSession &document, EditCommandService 
                                   std::optional<int> componentId, std::vector<FieldPathSegment> path,
                                   const char *label, bool defaultValue)
 {
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
     const Json *stored = address_value(document, objectId, componentId, path);
     bool value = stored != nullptr && stored->is_boolean() ? stored->get<bool>() : defaultValue;
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
     begin_field(label, path);
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
     const bool changed = ImGui::Checkbox("##value", &value);
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
     end_field();
     if (changed)
         return set(document, commands, objectId, componentId, std::move(path), value);
@@ -213,12 +1109,22 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
                                  const char *label, float defaultValue,
                                  std::optional<float> minimum, std::optional<float> maximum)
 {
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
     const Json *stored = address_value(document, objectId, componentId, path);
     float value = json_float(stored, defaultValue);
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
     begin_field(label, path);
-    const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.2f");
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
+    const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.9g",
+                                           ImGuiInputTextFlags_EnterReturnsTrue);
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
+    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+    const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
     end_field();
-    if (!changed)
+    if (!commit)
         return false;
     if (!std::isfinite(value) || (minimum && value < *minimum) || (maximum && value > *maximum))
     {
@@ -233,18 +1139,44 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
                                   const char *label, int defaultValue,
                                   std::optional<int> minimum, std::optional<int> maximum)
 {
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
     const Json *stored = address_value(document, objectId, componentId, path);
-    int value = json_integer(stored, defaultValue);
+    const int storedValue = json_integer(stored, defaultValue);
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
     begin_field(label, path);
-    const bool changed = ImGui::InputInt("##value", &value, 1, 100);
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
+    const auto widgetId = static_cast<std::uint32_t>(ImGui::GetID("##value"));
+    auto [draftIt, inserted] = integerDrafts_.try_emplace(widgetId, IntegerDraft{storedValue, false});
+    if (!inserted && !draftIt->second.wasActive && ImGui::GetActiveID() != widgetId)
+        draftIt->second.value = storedValue;
+    const bool changed = ImGui::InputInt("##value", &draftIt->second.value, 1, 100,
+                                         ImGuiInputTextFlags_EnterReturnsTrue);
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
+    const bool itemActive = ImGui::IsItemActive();
+    const bool enterPressed = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                              ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+    const bool cancel = itemActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
+    const bool commit = !cancel && (ImGui::IsItemDeactivatedAfterEdit() ||
+                                    (changed && (enterPressed || !itemActive)));
+    const int value = draftIt->second.value;
+    draftIt->second.wasActive = itemActive;
+    if (cancel)
+    {
+        integerDrafts_.erase(draftIt);
+    }
     end_field();
-    if (!changed)
+    if (!commit)
         return false;
     if ((minimum && value < *minimum) || (maximum && value > *maximum))
     {
         feedback_ = std::string(label) + " is outside the supported range.";
+        integerDrafts_.erase(widgetId);
         return false;
     }
+    integerDrafts_.erase(widgetId);
     return set(document, commands, objectId, componentId, std::move(path), value);
 }
 
@@ -252,6 +1184,8 @@ bool InspectorPanel::draw_string(DocumentSession &document, EditCommandService &
                                  std::optional<int> componentId, std::vector<FieldPathSegment> path,
                                  const char *label, std::string defaultValue)
 {
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
     const Json *stored = address_value(document, objectId, componentId, path);
     std::string value = stored != nullptr && stored->is_string() ? stored->get<std::string>() : std::move(defaultValue);
     if (value.size() >= 4096)
@@ -261,9 +1195,14 @@ bool InspectorPanel::draw_string(DocumentSession &document, EditCommandService &
     }
     std::array<char, 4096> buffer{};
     std::memcpy(buffer.data(), value.data(), value.size());
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
     begin_field(label, path);
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
     const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
                                           ImGuiInputTextFlags_EnterReturnsTrue);
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
     const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
     end_field();
     if (!commit)
@@ -276,12 +1215,17 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
                                const char *label, int defaultValue,
                                const std::vector<std::pair<int, const char *>> &values)
 {
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
     const int current = json_integer(address_value(document, objectId, componentId, path), defaultValue);
     const char *preview = "Unsupported";
     for (const auto &[value, name] : values)
         if (value == current)
             preview = name;
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
     begin_field(label, path);
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
     bool changed = false;
     if (ImGui::BeginCombo("##value", preview))
     {
@@ -298,20 +1242,50 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
         }
         ImGui::EndCombo();
     }
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
     end_field();
     return changed;
 }
 
 void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
-                          const BehaviorCatalog &catalog, const AssetBrowseCallback &browse)
+                          const BehaviorCatalog &catalog, const AssetBrowseCallback &browse,
+                          ResourceIndex *resourceIndex)
 {
+    resourceIndex_ = resourceIndex;
     selection.repair(document);
+    if (selection.current().selectedObjectIds.size() > 1)
+    {
+        integerDrafts_.clear();
+        lastSelectionKey_.clear();
+        draw_multi_object_fields(document, selection, commands, catalog,
+                                 selection.current().selectedObjectIds);
+        behaviorFields_.draw_multi_object_fields(document, selection.current(), commands, catalog,
+                                                 selection.current().selectedObjectIds,
+                                                 resourceIndex_, searchQuery_);
+        return;
+    }
     if (!selection.current().objectId)
     {
+        integerDrafts_.clear();
+        lastSelectionKey_.clear();
         ImGui::TextDisabled("Select an object to edit its properties.");
         return;
     }
     const int objectId = *selection.current().objectId;
+    if (revealObjectId_ && *revealObjectId_ != objectId)
+    {
+        revealObjectId_.reset();
+        revealComponentId_.reset();
+        revealPath_.clear();
+    }
+    const std::string selectionKey = std::to_string(document.projectGeneration) + ":" +
+        std::to_string(document.tabId.value) + ":" + std::to_string(document.documentGeneration) + ":" +
+        std::to_string(objectId) + ":" +
+        (selection.current().componentId ? std::to_string(*selection.current().componentId) : std::string("-"));
+    if (!lastSelectionKey_.empty() && lastSelectionKey_ != selectionKey)
+        integerDrafts_.clear();
+    lastSelectionKey_ = selectionKey;
     const auto objectLocation = document.indexes.objectsById.find(objectId);
     if (objectLocation == document.indexes.objectsById.end())
     {
@@ -321,6 +1295,12 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     const Json *object = resolve_object(document.root, objectLocation->second);
     if (object == nullptr)
         return;
+    if (templateNameSelectionKey_ != selectionKey)
+    {
+        templateNameSelectionKey_ = selectionKey;
+        templateName_ = object->value("name", std::string("Object Template"));
+    }
+    const InspectorAddressScope addressScope(document, objectId, hostGeneration_);
 
     const auto attach_behavior = [&](const std::string &behaviorType) {
         if (behaviorType.empty())
@@ -406,7 +1386,68 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::EndDragDropTarget();
     }
 
+    draw_search_bar();
+    const auto behaviorCatalog = catalog.snapshot();
+    ImGui::BeginDisabled(!behaviorCatalog);
+    if (ImGui::Button("Add Behavior"))
+        ImGui::OpenPopup("Add Behavior Menu");
+    ImGui::EndDisabled();
+    if (!behaviorCatalog && ImGui::IsItemHovered())
+        ImGui::SetTooltip("Build or refresh the project behavior catalog, or drop a behavior header here.");
+    if (ImGui::BeginPopup("Add Behavior Menu"))
+    {
+        std::array<char, 192> behaviorBuffer{};
+        const std::size_t behaviorLength = std::min(behaviorPickerQuery_.size(),
+                                                    behaviorBuffer.size() - 1);
+        std::memcpy(behaviorBuffer.data(), behaviorPickerQuery_.data(), behaviorLength);
+        if (ImGui::InputTextWithHint("##behavior-picker-search", "Search behavior type",
+                                     behaviorBuffer.data(), behaviorBuffer.size()))
+            behaviorPickerQuery_ = behaviorBuffer.data();
+        bool anyBehavior = false;
+        const auto behaviors = behaviorCatalog->document.find("behaviors");
+        if (behaviors != behaviorCatalog->document.end() && behaviors->is_array())
+        {
+            for (const auto &behavior : *behaviors)
+            {
+                if (!behavior.is_object() || !behavior.contains("name") ||
+                    !behavior["name"].is_string())
+                    continue;
+                const std::string behaviorType = behavior["name"].get<std::string>();
+                const std::string searchText = behaviorType + " behavior";
+                if (!discovery_query_matches(behaviorPickerQuery_, searchText))
+                    continue;
+                anyBehavior = true;
+                if (ImGui::MenuItem(behaviorType.c_str()))
+                {
+                    attach_behavior(behaviorType);
+                    ImGui::CloseCurrentPopup();
+                    break;
+                }
+            }
+        }
+        if (!anyBehavior)
+            ImGui::TextDisabled("No behaviors match this search.");
+        ImGui::EndPopup();
+    }
+    ImGui::Separator();
     ImGui::Text("Object %d", objectId);
+    ImGui::SeparatorText("Object Template");
+    std::array<char, 256> templateNameBuffer{};
+    const std::size_t templateNameLength = std::min(templateName_.size(), templateNameBuffer.size() - 1);
+    std::memcpy(templateNameBuffer.data(), templateName_.data(), templateNameLength);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::InputTextWithHint("##object-template-name", "Template name",
+                                 templateNameBuffer.data(), templateNameBuffer.size()))
+        templateName_ = templateNameBuffer.data();
+    const bool canSaveTemplate = !templateName_.empty() && !document.assetRoot.empty();
+    ImGui::BeginDisabled(!canSaveTemplate);
+    if (ImGui::Button("Save Selected Object as Template"))
+        save_selected_template(document, objectId, catalog);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered() && !canSaveTemplate)
+        ImGui::SetTooltip("A template name and project asset root are required.");
+    if (revealObjectId_ && *revealObjectId_ == objectId && !revealComponentId_)
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     const bool gameObjectExpanded = ImGui::CollapsingHeader(
         "GameObject", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
     ImGui::SetItemTooltip("Drop a behavior header anywhere in the Inspector to add it to this GameObject.");
@@ -478,25 +1519,70 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::PushID(*componentId);
         const std::string componentHeader = std::string(component_label(type)) + "###component." +
                                             std::to_string(*componentId);
+        if (revealObjectId_ && *revealObjectId_ == objectId &&
+            revealComponentId_ == componentId)
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         if (!ImGui::CollapsingHeader(componentHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             component = nullptr;
         if (component != nullptr)
         {
+        if (ImGui::SmallButton("Copy Settings"))
+        {
+            std::string error;
+            auto copied = copy_component_settings(*component, catalog, error);
+            if (copied)
+            {
+                componentSettingsClipboard_ = std::move(*copied);
+                feedback_.clear();
+            }
+            else
+                feedback_ = std::move(error);
+        }
+        ImGui::SameLine();
+        const bool clipboardMatches = componentSettingsClipboard_ &&
+            componentSettingsClipboard_->value("componentType", -1) == type;
+        ImGui::BeginDisabled(!clipboardMatches);
+        if (ImGui::SmallButton("Paste Settings"))
+        {
+            const Selection current = selection.current();
+            const auto pasted = paste_component_settings(document, commands, objectId, visibleComponentId,
+                *componentSettingsClipboard_, catalog, SelectionState{current, current});
+            if (pasted.status == CommandStatus::Rejected || pasted.status == CommandStatus::StaleAddress)
+                feedback_ = pasted.message;
+            else
+                feedback_.clear();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset Settings"))
+        {
+            const Selection current = selection.current();
+            const auto reset = reset_component_settings(document, commands, objectId, visibleComponentId,
+                catalog, SelectionState{current, current});
+            if (reset.status == CommandStatus::Rejected || reset.status == CommandStatus::StaleAddress)
+                feedback_ = reset.message;
+            else
+                feedback_.clear();
+        }
         if (type == 2)
         {
             ImGui::SeparatorText("Camera");
+            const auto dimensions = interpret_camera_dimensions(*component);
+            if (dimensions.widthConflict || dimensions.heightConflict)
+                ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f),
+                                   "Canonical and legacy camera dimensions differ.");
             const auto legacy = component->find("camera");
             const bool hasLegacy = legacy != component->end() && legacy->is_object();
             const bool hasWidth = component->contains("width");
             const bool hasHeight = component->contains("height");
-            if (hasWidth || !hasLegacy)
+            if (hasWidth || !hasLegacy || !dimensions.widthUsesLegacy)
                 draw_number(document, commands, objectId, componentId, {std::string("width")}, "Width", 640.0f,
                             std::numeric_limits<float>::min());
             else
                 draw_number(document, commands, objectId, componentId,
                             {std::string("camera"), std::string("w")}, "Width", 640.0f,
                             std::numeric_limits<float>::min());
-            if (hasHeight || !hasLegacy)
+            if (hasHeight || !hasLegacy || !dimensions.heightUsesLegacy)
                 draw_number(document, commands, objectId, componentId, {std::string("height")}, "Height", 480.0f,
                             std::numeric_limits<float>::min());
             else
@@ -567,9 +1653,11 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         else if (type == 6)
         {
             ImGui::SeparatorText("Sprite");
-            draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
-                                       {std::string("textureFilePath")}, "Texture", true,
-                                       "Texture", browse, std::string{});
+            if (field_matches_search(document, objectId, componentId,
+                                     {std::string("textureFilePath")}, "Texture"))
+                draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
+                                           {std::string("textureFilePath")}, "Texture", true,
+                                           "Texture", browse, std::string{}, resourceIndex_);
             draw_enum(document, commands, objectId, componentId, {std::string("flip")}, "Flip", 0,
                       {{0, "None"}, {1, "Horizontal"}, {2, "Vertical"}, {3, "Horizontal + Vertical"}});
             draw_number(document, commands, objectId, componentId, {std::string("width")}, "Width", 16.0f,
@@ -590,7 +1678,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                 draw_number(document, commands, objectId, componentId,
                             {std::string("sourceRect"), std::string("h")}, "Source Height");
             }
-            else if (ImGui::Button("Initialize Source Rectangle"))
+            else if (field_matches_search(document, objectId, componentId,
+                                          {std::string("sourceRect")}, "Initialize Source Rectangle") &&
+                     ImGui::Button("Initialize Source Rectangle"))
                 set(document, commands, objectId, componentId, {std::string("sourceRect")},
                     Json{{"x", 0.0}, {"y", 0.0}, {"w", 16.0}, {"h", 16.0}});
         }
@@ -602,16 +1692,20 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
             draw_number(document, commands, objectId, componentId,
                         {std::string("playbackSpeed")}, "Playback Speed", 1.0f);
             draw_boolean(document, commands, objectId, componentId, {std::string("playing")}, "Playing");
-            draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
-                                       {std::string("animationClipFilePath")}, "AnimationClip", true,
-                                       "Animation Clip", browse, std::string{});
+            if (field_matches_search(document, objectId, componentId,
+                                     {std::string("animationClipFilePath")}, "Animation Clip"))
+                draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
+                                           {std::string("animationClipFilePath")}, "AnimationClip", true,
+                                           "Animation Clip", browse, std::string{}, resourceIndex_);
         }
         else if (type == 1)
         {
             ImGui::SeparatorText("Audio");
-            draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
-                                       {std::string("filePath")}, "Audio", true,
-                                       "Audio File", browse, std::string{});
+            if (field_matches_search(document, objectId, componentId,
+                                     {std::string("filePath")}, "Audio File"))
+                draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
+                                           {std::string("filePath")}, "Audio", true,
+                                           "Audio File", browse, std::string{}, resourceIndex_);
             draw_number(document, commands, objectId, componentId, {std::string("gain")}, "Gain", 1.0f);
             draw_integer(document, commands, objectId, componentId, {std::string("loopCount")}, "Loop Count", 0);
             draw_boolean(document, commands, objectId, componentId, {std::string("autoPlay")}, "Auto Play");
@@ -620,13 +1714,15 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         {
             ImGui::SeparatorText("Behavior Fields");
             if (selection.current().componentId == componentId)
-                behaviorFields_.draw(document, selection, commands, catalog, browse);
+                behaviorFields_.draw(document, selection, commands, catalog, browse, resourceIndex_,
+                                     searchQuery_);
             else
             {
                 SelectionModel scriptSelection;
                 scriptSelection.set(document, Selection{objectId, componentId, std::nullopt,
                                                         FocusedPanel::Inspector});
-                behaviorFields_.draw(document, scriptSelection, commands, catalog, browse);
+                behaviorFields_.draw(document, scriptSelection, commands, catalog, browse, resourceIndex_,
+                                     searchQuery_);
             }
         }
         else
@@ -643,13 +1739,25 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::OpenPopup("Add Component Menu");
     if (ImGui::BeginPopup("Add Component Menu"))
     {
+        std::array<char, 192> componentBuffer{};
+        const std::size_t componentLength = std::min(componentPickerQuery_.size(),
+                                                      componentBuffer.size() - 1);
+        std::memcpy(componentBuffer.data(), componentPickerQuery_.data(), componentLength);
+        if (ImGui::InputTextWithHint("##component-picker-search", "Search component type",
+                                     componentBuffer.data(), componentBuffer.size()))
+            componentPickerQuery_ = componentBuffer.data();
+        bool anyComponent = false;
         for (const auto &[type, label] : kComponentChoices)
         {
+            const std::string searchText = std::string(label) + " component " + std::to_string(type);
+            if (!discovery_query_matches(componentPickerQuery_, searchText))
+                continue;
             const auto currentObjectLocation = document.indexes.objectsById.find(objectId);
             const Json *currentObject = currentObjectLocation == document.indexes.objectsById.end()
                 ? nullptr : resolve_object(document.root, currentObjectLocation->second);
             if (currentObject == nullptr || has_component_type(*currentObject, type))
                 continue;
+            anyComponent = true;
             if (ImGui::MenuItem(label))
             {
                 const Selection before = selection.current();
@@ -666,9 +1774,363 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                 break;
             }
         }
+        if (!anyComponent)
+            ImGui::TextDisabled("No compatible components match this search.");
         ImGui::EndPopup();
     }
     if (!feedback_.empty())
         ImGui::TextWrapped("%s", feedback_.c_str());
+}
+
+void InspectorPanel::draw_multi_object_fields(DocumentSession &document, SelectionModel &selection,
+                                               EditCommandService &commands, const BehaviorCatalog &catalog,
+                                               const std::vector<int> &objectIds)
+{
+    draw_search_bar();
+    ImGui::Separator();
+    std::string selectionScope("multi");
+    for (const int objectId : objectIds)
+    {
+        selectionScope.push_back(':');
+        selectionScope += std::to_string(objectId);
+    }
+    ImGui::PushID(selectionScope.c_str());
+    ImGui::Text("%zu objects selected", objectIds.size());
+
+    const auto common_values = [&](const std::vector<FieldPathSegment> &path, auto compatible)
+        -> std::optional<std::vector<Json>> {
+        std::vector<Json> values;
+        values.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+        {
+            const Json *value = address_value(document, objectId, std::nullopt, path);
+            if (value == nullptr || !compatible(*value))
+                return std::nullopt;
+            values.push_back(*value);
+        }
+        return values;
+    };
+    const auto commit_common = [&](const std::vector<FieldPathSegment> &path, Json value) {
+        std::vector<BatchPropertyEdit> edits;
+        edits.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+            edits.push_back({address_for_document(document, objectId, std::nullopt, std::nullopt, path),
+                             PropertyValue::of(value)});
+        const Selection current = selection.current();
+        const auto result = commands.apply_batch(document, edits, {current, current});
+        if (result.status == CommandStatus::Rejected || result.status == CommandStatus::StaleAddress)
+            feedback_ = result.message;
+        else
+            feedback_.clear();
+    };
+    const auto draw_common_boolean = [&](std::vector<FieldPathSegment> path, const char *label) {
+        if (!field_matches_search(document, selection.current().objectId.value_or(-1),
+                                  std::nullopt, path, label))
+            return;
+        auto values = common_values(path, [](const Json &value) { return value.is_boolean(); });
+        if (!values)
+            return;
+        bool mixed = std::any_of(values->begin() + 1, values->end(), [&](const Json &value) {
+            return value != values->front();
+        });
+        bool value = values->front().get<bool>();
+        begin_field(label, path);
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+        const bool changed = ImGui::Checkbox("##value", &value);
+        ImGui::PopItemFlag();
+        end_field();
+        if (changed)
+            commit_common(path, Json(value));
+    };
+    const auto draw_common_number = [&](std::vector<FieldPathSegment> path, const char *label,
+                                        std::optional<float> minimum = std::nullopt,
+                                        std::optional<float> maximum = std::nullopt) {
+        if (!field_matches_search(document, selection.current().objectId.value_or(-1),
+                                  std::nullopt, path, label))
+            return;
+        auto values = common_values(path, [](const Json &value) {
+            return value.is_number() && std::isfinite(value.get<double>());
+        });
+        if (!values)
+            return;
+        const bool mixed = std::any_of(values->begin() + 1, values->end(), [&](const Json &value) {
+            return value != values->front();
+        });
+        float value = json_float(&values->front(), 0.0f);
+        const bool reveal = consume_reveal_target(selection.current().objectId.value_or(-1),
+                                                  std::nullopt, path);
+        begin_field(label, path);
+        if (reveal)
+            ImGui::SetKeyboardFocusHere();
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+        const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.9g",
+                                               ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::PopItemFlag();
+        if (reveal)
+            ImGui::SetScrollHereY(0.5f);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        end_field();
+        if (!commit)
+            return;
+        if (!std::isfinite(value) || (minimum && value < *minimum) || (maximum && value > *maximum))
+        {
+            feedback_ = std::string(label) + " is outside the supported range.";
+            return;
+        }
+        commit_common(path, Json(value));
+    };
+
+    draw_common_boolean({std::string("active")}, "Active");
+    ImGui::SeparatorText("Position");
+    draw_common_number({std::string("position"), std::string("x")}, "X");
+    draw_common_number({std::string("position"), std::string("y")}, "Y");
+    draw_common_number({std::string("scale"), std::string("x")}, "Scale X",
+                       std::numeric_limits<float>::min());
+    draw_common_number({std::string("scale"), std::string("y")}, "Scale Y",
+                       std::numeric_limits<float>::min());
+    draw_common_number({std::string("rotation")}, "Rotation");
+
+    const auto component_at_occurrence = [&](int objectId, int type, std::size_t occurrence)
+        -> std::optional<std::pair<int, const Json *>> {
+        const auto objectLocation = document.indexes.objectsById.find(objectId);
+        if (objectLocation == document.indexes.objectsById.end())
+            return std::nullopt;
+        const Json *object = resolve_object(document.root, objectLocation->second);
+        if (object == nullptr)
+            return std::nullopt;
+        const auto components = object->find("components");
+        if (components == object->end() || !components->is_array())
+            return std::nullopt;
+        std::size_t currentOccurrence = 0;
+        for (const auto &component : *components)
+        {
+            if (!component.is_object() ||
+                json_integer(component.contains("type") ? &component["type"] : nullptr, -1) != type)
+                continue;
+            if (currentOccurrence++ != occurrence)
+                continue;
+            const int componentId = json_integer(component.contains("id") ? &component["id"] : nullptr, -1);
+            return componentId >= 0 ? std::optional<std::pair<int, const Json *>>(
+                                         std::pair<int, const Json *>{componentId, &component})
+                                   : std::nullopt;
+        }
+        return std::nullopt;
+    };
+    const auto category = [](const Json &value) {
+        if (value.is_boolean()) return 1;
+        if (value.is_number_float()) return 2;
+        if (value.is_number_integer() && !value.is_number_unsigned()) return 3;
+        if (value.is_number_unsigned()) return 4;
+        if (value.is_string()) return 5;
+        return 0;
+    };
+    const auto primaryLocation = document.indexes.objectsById.find(selection.current().objectId.value_or(-1));
+    if (primaryLocation != document.indexes.objectsById.end())
+    {
+        const Json *primaryObject = resolve_object(document.root, primaryLocation->second);
+        const auto primaryComponents = primaryObject != nullptr
+                                           ? primaryObject->find("components")
+                                           : Json::const_iterator{};
+        bool componentSectionShown = false;
+        if (primaryObject != nullptr && primaryComponents != primaryObject->end() &&
+            primaryComponents->is_array())
+        {
+            std::unordered_map<int, std::size_t> occurrences;
+            for (const auto &primaryComponent : *primaryComponents)
+            {
+                if (!primaryComponent.is_object())
+                    continue;
+                const int type = json_integer(primaryComponent.contains("type")
+                                                  ? &primaryComponent["type"] : nullptr, -1);
+                if (type < 0)
+                    continue;
+                const std::size_t occurrence = occurrences[type]++;
+                std::vector<std::pair<int, const Json *>> matching;
+                matching.reserve(objectIds.size());
+                for (const int objectId : objectIds)
+                {
+                    const auto component = component_at_occurrence(objectId, type, occurrence);
+                    if (!component)
+                        break;
+                    matching.push_back(*component);
+                }
+                if (matching.size() != objectIds.size())
+                    continue;
+
+                if (!componentSectionShown)
+                {
+                    ImGui::SeparatorText("Common component fields");
+                    componentSectionShown = true;
+                }
+                const std::string componentScope = "component:" + std::to_string(type) + ":" +
+                                                   std::to_string(occurrence);
+                ImGui::PushID(componentScope.c_str());
+                ImGui::Text("%s", component_label(type));
+                std::vector<ComponentSettingsTarget> groupTargets;
+                groupTargets.reserve(matching.size());
+                for (std::size_t index = 0; index < matching.size(); ++index)
+                    groupTargets.emplace_back(objectIds[index], matching[index].first);
+                if (ImGui::SmallButton("Copy Settings"))
+                {
+                    std::string error;
+                    auto copied = copy_component_settings(*matching.front().second, catalog, error);
+                    if (copied)
+                    {
+                        componentSettingsClipboard_ = std::move(*copied);
+                        feedback_.clear();
+                    }
+                    else
+                        feedback_ = std::move(error);
+                }
+                ImGui::SameLine();
+                const bool clipboardMatches = componentSettingsClipboard_ &&
+                    componentSettingsClipboard_->value("componentType", -1) == type;
+                ImGui::BeginDisabled(!clipboardMatches);
+                if (ImGui::SmallButton("Paste Settings to Selection"))
+                {
+                    const Selection current = selection.current();
+                    const auto pasted = paste_component_settings_group(document, commands, groupTargets,
+                        *componentSettingsClipboard_, catalog, SelectionState{current, current});
+                    if (pasted.status == CommandStatus::Rejected || pasted.status == CommandStatus::StaleAddress)
+                        feedback_ = pasted.message;
+                    else
+                        feedback_.clear();
+                }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Reset Settings for Selection"))
+                {
+                    const Selection current = selection.current();
+                    const auto reset = reset_component_settings_group(document, commands, groupTargets,
+                        catalog, SelectionState{current, current});
+                    if (reset.status == CommandStatus::Rejected || reset.status == CommandStatus::StaleAddress)
+                        feedback_ = reset.message;
+                    else
+                        feedback_.clear();
+                }
+                for (auto it = matching.front().second->begin(); it != matching.front().second->end(); ++it)
+                {
+                    const std::string key = it.key();
+                    if (key == "id" || key == "type" || key == "behaviors")
+                        continue;
+                    std::vector<Json> values;
+                    values.reserve(matching.size());
+                    const int valueCategory = category(it.value());
+                    if (valueCategory == 0)
+                        continue;
+                    bool compatible = true;
+                    for (const auto &component : matching)
+                    {
+                        const auto found = component.second->find(key);
+                        if (found == component.second->end() || category(*found) != valueCategory)
+                        {
+                            compatible = false;
+                            break;
+                        }
+                        values.push_back(*found);
+                    }
+                    if (!compatible)
+                        continue;
+                    const bool mixed = std::any_of(values.begin() + 1, values.end(),
+                                                   [&](const Json &value) { return value != values.front(); });
+                    const std::vector<FieldPathSegment> path{key};
+                    if (!field_matches_search(document, objectIds.front(), matching.front().first,
+                                              path, key))
+                        continue;
+                    const auto commit_component = [&](Json value) {
+                        std::vector<BatchPropertyEdit> edits;
+                        edits.reserve(matching.size());
+                        for (std::size_t index = 0; index < matching.size(); ++index)
+                            edits.push_back({address_for_document(document, objectIds[index],
+                                                                  matching[index].first, std::nullopt,
+                                                                  path),
+                                             PropertyValue::of(value)});
+                        const Selection current = selection.current();
+                        const auto result = commands.apply_batch(document, edits, {current, current});
+                        if (result.status == CommandStatus::Rejected ||
+                            result.status == CommandStatus::StaleAddress)
+                            feedback_ = result.message;
+                        else
+                            feedback_.clear();
+                    };
+                    begin_field(key.c_str(), path);
+                    ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+                    if (valueCategory == 1)
+                    {
+                        bool value = values.front().get<bool>();
+                        const bool changed = ImGui::Checkbox("##value", &value);
+                        ImGui::PopItemFlag();
+                        end_field();
+                        if (changed)
+                            commit_component(value);
+                    }
+                    else if (valueCategory == 2)
+                    {
+                        double value = values.front().get<double>();
+                        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0,
+                                                                "%.17g", ImGuiInputTextFlags_EnterReturnsTrue);
+                        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                        const bool shouldCommit = !cancel &&
+                            (changed || ImGui::IsItemDeactivatedAfterEdit());
+                        ImGui::PopItemFlag();
+                        end_field();
+                        if (shouldCommit && std::isfinite(value))
+                            commit_component(value);
+                    }
+                    else if (valueCategory == 3)
+                    {
+                        std::int64_t value = values.front().get<std::int64_t>();
+                        const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value,
+                            nullptr, nullptr, "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
+                        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                        const bool shouldCommit = !cancel &&
+                            (changed || ImGui::IsItemDeactivatedAfterEdit());
+                        ImGui::PopItemFlag();
+                        end_field();
+                        if (shouldCommit)
+                            commit_component(value);
+                    }
+                    else if (valueCategory == 4)
+                    {
+                        std::uint64_t value = values.front().get<std::uint64_t>();
+                        const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value,
+                            nullptr, nullptr, "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
+                        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                        const bool shouldCommit = !cancel &&
+                            (changed || ImGui::IsItemDeactivatedAfterEdit());
+                        ImGui::PopItemFlag();
+                        end_field();
+                        if (shouldCommit)
+                            commit_component(value);
+                    }
+                    else
+                    {
+                        const std::string &stored = values.front().get_ref<const std::string &>();
+                        if (stored.size() >= 2048)
+                        {
+                            ImGui::PopItemFlag();
+                            end_field();
+                            ImGui::TextDisabled("%s is too long for inline editing.", key.c_str());
+                            continue;
+                        }
+                        std::array<char, 2048> buffer{};
+                        std::memcpy(buffer.data(), stored.data(), stored.size());
+                        const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
+                                                              ImGuiInputTextFlags_EnterReturnsTrue);
+                        const bool shouldCommit = changed || ImGui::IsItemDeactivatedAfterEdit();
+                        ImGui::PopItemFlag();
+                        end_field();
+                        if (shouldCommit)
+                            commit_component(std::string(buffer.data()));
+                    }
+                }
+                ImGui::PopID();
+            }
+        }
+    }
+    if (!feedback_.empty())
+        ImGui::TextWrapped("%s", feedback_.c_str());
+    ImGui::PopID();
 }
 } // namespace platformator_editor

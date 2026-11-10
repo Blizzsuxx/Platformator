@@ -21,7 +21,7 @@ ctest --test-dir bin/cleanup-debug -N
 ctest --test-dir bin/cleanup-debug --output-on-failure
 ```
 
-Expected: all project tests pass; ordinary CTest does not list missing/unbuilt TBB tests. Header checks compile public headers individually and at least one consumer uses no private src headers. Build a second configuration with examples OFF to expose accidental dependencies on example assets.
+Expected: all project tests pass; work-probe oracle tests report `Skipped` unless `PLATFORMATOR_ENABLE_WORK_PROBES=ON` (build `cleanup-work` for those); ordinary CTest does not list missing/unbuilt TBB tests. Header checks compile public headers individually and at least one consumer uses no private src headers. Build a second configuration with examples OFF to expose accidental dependencies on example assets.
 
 During development run the relevant labels, then the whole suite only when warranted by broader changes:
 

@@ -12,6 +12,8 @@ cmake --build --preset cleanup-debug --parallel 4
 ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke
 ```
 
+Work-probe oracle tests report `Skipped` in this configuration; build the `cleanup-work` preset to exercise them.
+
 The standalone runner is `bin/cleanup-debug/main`. Supply a scene and its asset root explicitly:
 
 ```sh

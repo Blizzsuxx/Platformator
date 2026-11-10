@@ -163,6 +163,11 @@ void run()
 
 int main()
 {
+#if !PLATFORMATOR_ENABLE_WORK_PROBES
+    std::cout << "[SKIP] render_culling_contract_test requires "
+                 "PLATFORMATOR_ENABLE_WORK_PROBES=ON for culling state and submission observation\n";
+    return 77;
+#else
     try
     {
         run();
@@ -174,4 +179,5 @@ int main()
         std::cerr << "[FAIL] render_culling_contract_test: " << exception.what() << '\n';
         return 1;
     }
+#endif
 }

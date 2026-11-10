@@ -173,6 +173,7 @@ void checkMovementRemovalAndNodeReuse()
     test_support::require(state.validateSpatialInvariants(), "Movement/removal left invalid links or backlinks");
 }
 
+#if PLATFORMATOR_ENABLE_WORK_PROBES
 void checkHashCollisionsAndQueryStampWrap()
 {
     std::unordered_map<size_t, int64_t> firstByHash;
@@ -217,6 +218,7 @@ void checkHashCollisionsAndQueryStampWrap()
                           "Hash-colliding cell keys aliased distinct record identities");
     test_support::require(state.validateSpatialInvariants(), "Hash collision or stamp wrap damaged grid links");
 }
+#endif // PLATFORMATOR_ENABLE_WORK_PROBES
 
 void checkCachedLinearHasNoGrid()
 {
@@ -462,7 +464,9 @@ void run()
 {
     checkCellCoverageAndConservativeEntries();
     checkMovementRemovalAndNodeReuse();
+#if PLATFORMATOR_ENABLE_WORK_PROBES
     checkHashCollisionsAndQueryStampWrap();
+#endif
     checkCachedLinearHasNoGrid();
     checkOwnedByteObservationAccountsCachedAndIndexedBuffers();
     checkSwapRemovalPendingDirtyAndGenerationReuse();
@@ -473,6 +477,11 @@ void run()
 
 int main()
 {
+#if !PLATFORMATOR_ENABLE_WORK_PROBES
+    std::cout << "[SKIP] render_culling_index_test requires "
+                 "PLATFORMATOR_ENABLE_WORK_PROBES=ON for index and counter observation\n";
+    return 77;
+#else
     try
     {
         run();
@@ -484,4 +493,5 @@ int main()
         std::cerr << "[FAIL] render_culling_index_test: " << exception.what() << '\n';
         return 1;
     }
+#endif
 }

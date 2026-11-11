@@ -361,7 +361,7 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
             focusedControl_ = id;
     };
     ImGui::BeginDisabled(busy);
-    if (ImGui::Button("Refresh presets and targets"))
+    if (ImGui::Button("Rediscover Targets"))
     {
         refresh_discovery(true);
         action = RunPanelAction::RefreshDiscovery;
@@ -400,7 +400,9 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
     bool embeddedGameView = false;
     ImGui::Checkbox("Embed Game view in editor", &embeddedGameView);
     ImGui::EndDisabled();
-    ImGui::TextDisabled("Rebuild Platformator with PLATFORMATOR_ENABLE_EDITOR_SESSION=ON to enable the embedded Game view.");
+    ImGui::TextDisabled("Embedded Game view is unavailable in this build.");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Rebuild with PLATFORMATOR_ENABLE_EDITOR_SESSION=ON to enable it.");
 #endif
     if (!discovery_.executableTargets.empty())
     {
@@ -494,12 +496,12 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
     ImGui::EndDisabled();
 
     if (preferences.catalogProtocol == "unavailable")
-        ImGui::TextWrapped("Automatic Run is unavailable until this project declares common-runner-v1 and exports its linked behaviors through the shared runner catalog. Custom entries remain editable and buildable. Add compatible catalog export integration to the custom runner before declaring support.");
-    ImGui::Text("Operation: %s", stage_name(status.stage));
+        ImGui::TextWrapped("Automatic Run needs a common-runner-v1 target that exports its behavior catalog. Custom entries can still be built and launched with advanced overrides.");
+    ImGui::Text("Status: %s", stage_name(status.stage));
     if (!status.message.empty())
         ImGui::TextWrapped("%s", status.message.c_str());
     ImGui::BeginDisabled(busy);
-    if (ImGui::Button("Refresh sources"))
+    if (ImGui::Button("Recheck Sources"))
         action = RunPanelAction::RefreshSources;
     remember_focus("refresh-sources");
     ImGui::EndDisabled();
@@ -510,7 +512,7 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
     remember_focus("build");
     ImGui::SameLine();
     ImGui::BeginDisabled(preferences.catalogProtocol != "common-runner-v1");
-    if (ImGui::Button("Build & Run"))
+    if (ImGui::Button("Build and Run"))
         action = RunPanelAction::BuildAndRun;
     remember_focus("build-and-run");
     ImGui::EndDisabled();
@@ -522,7 +524,7 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
     remember_focus("stop");
     ImGui::EndDisabled();
     if (documentDirty)
-        ImGui::TextDisabled("Build & Run will ask you to save the current scene first.");
+        ImGui::TextDisabled("Build and Run saves the current scene first.");
     return action;
 }
 } // namespace platformator_editor

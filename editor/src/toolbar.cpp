@@ -24,9 +24,6 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
     const auto iconButtonWidth = [&](const char *label) {
         return textWidth(label) + frameHeight + style.FramePadding.x * 2.0f;
     };
-    const auto selectableWidth = [&](const char *label) {
-        return textWidth(label) + style.FramePadding.x * 2.0f;
-    };
     const std::string identity =
         (state.projectLabel.empty() ? std::string("No Project") : state.projectLabel) +
         " / " + (state.sceneLabel.empty() ? std::string("Untitled Scene") : state.sceneLabel);
@@ -34,9 +31,7 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
         : std::min(textWidth(identity.c_str()), contentWidth * 0.48f);
     const std::array fullRowWidths{
         iconButtonWidth("Open Scene"), iconButtonWidth("Save"),
-        selectableWidth("Move (W)"), selectableWidth("Rotate (E)"),
-        selectableWidth("Scale (R)"), iconButtonWidth("Build"),
-        iconButtonWidth("Build and Run"), iconButtonWidth("Stop")};
+        iconButtonWidth("Build"), iconButtonWidth("Build and Run"), iconButtonWidth("Stop")};
     float fullRowWidth = 0.0f;
     for (const float width : fullRowWidths)
         fullRowWidth += width;
@@ -46,13 +41,8 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
     result.compact = fullRowWidth > contentWidth;
 
     const char *openLabel = result.compact ? "Open" : "Open Scene";
-    const char *moveLabel = result.compact ? "Move" : "Move (W)";
-    const char *rotateLabel = result.compact ? "Rotate" : "Rotate (E)";
-    const char *scaleLabel = result.compact ? "Scale" : "Scale (R)";
     const char *runLabel = result.compact ? "Run" : "Build and Run";
     const std::array fileWidths{iconButtonWidth(openLabel), iconButtonWidth("Save")};
-    const std::array toolWidths{selectableWidth(moveLabel), selectableWidth(rotateLabel),
-                                selectableWidth(scaleLabel)};
     const std::array operationWidths{iconButtonWidth("Build"), iconButtonWidth(runLabel),
                                      iconButtonWidth("Stop")};
     const std::array infoWidths{identityWidth, statusWidth};
@@ -71,11 +61,15 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
         }
         return rows;
     };
+    const float infoWidth = identityWidth +
+        (identityWidth > 0.0f && statusWidth > 0.0f ? itemSpacing : 0.0f) + statusWidth;
+    const bool infoOnSameRow = !result.compact && infoWidth > 0.0f &&
+        fullRowWidth + itemSpacing + infoWidth <= contentWidth;
     const std::size_t infoRowCount = identityWidth > 0.0f || statusWidth > 0.0f
         ? groupRows(infoWidths) : 0U;
     const std::size_t rowCount = result.compact
-        ? groupRows(fileWidths) + groupRows(toolWidths) + groupRows(operationWidths) + infoRowCount
-        : 1U + infoRowCount;
+        ? groupRows(fileWidths) + groupRows(operationWidths) + infoRowCount
+        : 1U + (infoOnSameRow ? 0U : infoRowCount);
     const float rowHeight = ImGui::GetFrameHeight();
     const float rowCountFloat = static_cast<float>(rowCount);
     result.height = rowCountFloat * rowHeight + (rowCountFloat - 1.0f) * style.ItemSpacing.y * 0.7f +
@@ -143,29 +137,12 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
     if (icon_label_button(EditorIcon::Open, openLabel, "Open a scene (Ctrl+O)"))
         invoke(actions.openScene);
     remember("Open Scene");
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(state.projectLocked || !state.saveEnabled);
     place(fileWidths[1]);
     if (icon_label_button(EditorIcon::Save, "Save", "Save the current scene (Ctrl+S)"))
         invoke(actions.save);
     remember("Save");
-    ImGui::EndDisabled();
-
-    next_group();
-    ImGui::BeginDisabled(!state.sceneAvailable || state.projectLocked);
-    place(toolWidths[0]);
-    if (ImGui::Selectable(moveLabel, state.activeSceneTool == SceneTool::Move,
-                          0, ImVec2(toolWidths[0], 0.0f)))
-        invoke(actions.moveTool);
-    remember("Move Tool");
-    place(toolWidths[1]);
-    if (ImGui::Selectable(rotateLabel, state.activeSceneTool == SceneTool::Rotate,
-                          0, ImVec2(toolWidths[1], 0.0f)))
-        invoke(actions.rotateTool);
-    remember("Rotate Tool");
-    place(toolWidths[2]);
-    if (ImGui::Selectable(scaleLabel, state.activeSceneTool == SceneTool::Scale,
-                          0, ImVec2(toolWidths[2], 0.0f)))
-        invoke(actions.scaleTool);
-    remember("Scale Tool");
     ImGui::EndDisabled();
 
     next_group();
@@ -190,7 +167,7 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
     {
         if (result.compact)
             next_group();
-        else
+        else if (!infoOnSameRow)
             next_row();
     }
     if (identityWidth > 0.0f)
@@ -217,6 +194,9 @@ EditorToolbarFrame draw_editor_toolbar(const EditorToolbarState &state,
     }
     if (statusWidth > 0.0f)
     {
+        if (!result.compact && usedWidth > 0.0f &&
+            usedWidth + itemSpacing + statusWidth > contentWidth)
+            next_row();
         place(statusWidth);
         ImGui::Dummy(ImVec2(statusWidth, frameHeight));
         const ImVec2 minimum = ImGui::GetItemRectMin();

@@ -76,9 +76,9 @@ class InspectorPanel
     std::string searchQuery_;
     std::string templateName_;
     std::string templateNameSelectionKey_;
-    std::string componentPickerQuery_;
-    std::string behaviorPickerQuery_;
+    std::string addPickerQuery_;
     std::string lastSelectionKey_;
+    std::string lastObjectSelectionKey_;
     std::optional<Json> componentSettingsClipboard_;
     std::uint64_t hostGeneration_ = 0;
     std::optional<int> revealObjectId_;

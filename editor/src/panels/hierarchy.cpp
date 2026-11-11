@@ -1099,29 +1099,10 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         }
         invalidate();
     };
-    if (ImGui::Button("+ Root Object"))
+    if (ImGui::Button("+ Object"))
         create_object(std::nullopt);
     ImGui::SameLine();
     ImGui::TextDisabled("%zu objects", document.indexes.objectsById.size());
-    if (duplicationReferencePolicy != nullptr)
-    {
-        const bool remap = *duplicationReferencePolicy == "remap-internal-targets";
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::BeginCombo("Duplicate references",
-                              remap ? "Remap internal" : "Preserve existing"))
-        {
-            if (ImGui::Selectable("Preserve existing targets", !remap))
-                *duplicationReferencePolicy = "preserve-existing-targets";
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Duplicate references continue pointing at their original objects.");
-            if (ImGui::Selectable("Remap internal targets", remap))
-                *duplicationReferencePolicy = "remap-internal-targets";
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("References to objects or components copied together follow the copies. External targets stay unchanged.");
-            ImGui::EndCombo();
-        }
-    }
     if (!duplicatePolicyStatus_.empty())
         ImGui::TextWrapped("%s", duplicatePolicyStatus_.c_str());
     ImGui::Separator();
@@ -1130,7 +1111,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     const std::size_t searchLength = std::min(searchQuery_.size(), searchBuffer.size() - 1);
     std::memcpy(searchBuffer.data(), searchQuery_.data(), searchLength);
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::InputTextWithHint("##hierarchy-search", "Search name, type, tag, path, or ID",
+    if (ImGui::InputTextWithHint("##hierarchy-search", "Search objects",
                                  searchBuffer.data(), searchBuffer.size()))
         set_search_query(searchBuffer.data());
     update_search_matches(document);
@@ -1143,6 +1124,9 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     else if (!selection.current().objectId)
         lastRevealedObjectId_.reset();
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::BeginChild("HierarchyRows", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoBackground);
     const auto &rows = visible_rows(document);
     update_search_visibility(document, selection.current().objectId);
     const std::vector<int> &selectionOrder = searchQuery_.empty()
@@ -1159,9 +1143,18 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         const auto row = objectRowIndexes_.find(*pendingScrollObjectId_);
         if (row != objectRowIndexes_.end())
         {
-            const float targetContentY = ImGui::GetCursorPosY() +
-                static_cast<float>(row->second) * rowStride;
-            ImGui::SetScrollY(std::max(0.0f, targetContentY - ImGui::GetWindowHeight() * 0.5f));
+            const float targetTop = static_cast<float>(row->second) * rowStride;
+            const float scrollTop = ImGui::GetScrollY();
+            const float viewHeight = ImGui::GetWindowHeight();
+            const float margin = rowHeight;
+            const bool above = targetTop < scrollTop + margin;
+            const bool below = targetTop + rowHeight > scrollTop + viewHeight - margin;
+            if (above || below)
+            {
+                const float maxScroll = std::max(0.0f, ImGui::GetScrollMaxY());
+                const float target = targetTop - margin;
+                ImGui::SetScrollY(std::clamp(target, 0.0f, maxScroll));
+            }
             pendingScrollObjectId_.reset();
         }
     }
@@ -1307,11 +1300,14 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         selection.toggle_object(document, row.id);
                     else
                         selection.set_objects(document, {row.id}, row.id, row.id);
+                    // The clicked row is already visible; do not ask for a reveal/scroll.
+                    lastRevealedObjectId_ = row.id;
                     focus_hierarchy();
                 }
                 else if (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter))
                 {
                     selection.set_objects(document, {row.id}, row.id, row.id);
+                    lastRevealedObjectId_ = row.id;
                     focus_hierarchy();
                 }
                 if (ImGui::BeginDragDropSource())
@@ -1491,16 +1487,25 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     invalidate();
                 }
                 if (ImGui::IsItemClicked())
+                {
                     selection.set(document, selected_object(row.ownerObjectId));
+                    lastRevealedObjectId_ = row.ownerObjectId;
+                }
                 else if (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter))
+                {
                     selection.set(document, selected_object(row.ownerObjectId));
+                    lastRevealedObjectId_ = row.ownerObjectId;
+                }
             }
             else
             {
                 const bool selected = selection.current().componentId == row.id;
                 if (ImGui::Selectable(row.label.c_str(), selected))
+                {
                     selection.set(document, Selection{row.ownerObjectId, row.id, std::nullopt,
                                                       FocusedPanel::Hierarchy});
+                    lastRevealedObjectId_ = row.ownerObjectId;
+                }
                 const ImVec2 rowMinimum = ImGui::GetItemRectMin();
                 const ImVec2 rowMaximum = ImGui::GetItemRectMax();
                 semanticBounds = {rowMinimum.x, rowMinimum.y,
@@ -1540,5 +1545,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             create_object(std::nullopt);
         ImGui::EndPopup();
     }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
 }
 } // namespace platformator_editor

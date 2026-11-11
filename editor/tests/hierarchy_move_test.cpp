@@ -179,8 +179,20 @@ void hierarchy_focus_without_delete_key_does_not_delete_selection()
                          ImGuiWindowFlags_NoSavedSettings);
         panel.draw(document, selection, commands, true, nullptr, nullptr, nullptr, nullptr,
                    {}, {}, deleteKeyPressed, mouseButtonEventThisFrame);
-        const ImVec2 rowMinimum = ImGui::GetItemRectMin();
-        const ImVec2 rowMaximum = ImGui::GetItemRectMax();
+        ImVec2 rowMinimum{};
+        ImVec2 rowMaximum{};
+        for (const auto &node : panel.semantic_nodes(document, selection.current(),
+                                                     "test/tab/1/document/1"))
+        {
+            if (node.id == "test/tab/1/document/1/object/40" && node.bounds)
+            {
+                rowMinimum = {static_cast<float>(node.bounds->x),
+                              static_cast<float>(node.bounds->y)};
+                rowMaximum = {static_cast<float>(node.bounds->x + node.bounds->width),
+                              static_cast<float>(node.bounds->y + node.bounds->height)};
+                break;
+            }
+        }
         ImGui::End();
         ImGui::Render();
         return std::pair{rowMinimum, rowMaximum};

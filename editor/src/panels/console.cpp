@@ -89,19 +89,10 @@ void set_clipboard_text(std::string_view value, std::string &feedback)
 
 void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
 {
+    (void)status;
     itemBounds_.clear();
     drawnRows_.clear();
     focusedItem_.clear();
-    if (!status.command.empty())
-    {
-        ImGui::TextWrapped("Command: %s", status.command.c_str());
-        remember_item("command");
-    }
-    if (!status.message.empty())
-    {
-        ImGui::TextWrapped("Result: %s", status.message.c_str());
-        remember_item("status");
-    }
 
     const bool newOutput = projectedRevision_ != console.revision();
     projection_.set_collapse_repeats(collapseRepeats_);
@@ -114,10 +105,33 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
     }
     projection_.set_search(search_.data());
 
+    const ImGuiStyle &style = ImGui::GetStyle();
+    bool lineHasItem = false;
+    const auto place = [&](float width) {
+        if (!lineHasItem)
+        {
+            lineHasItem = true;
+            return;
+        }
+        const float lastRight = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
+        if (lastRight + style.ItemSpacing.x + width > ImGui::GetContentRegionMax().x)
+            ImGui::NewLine();
+        else
+            ImGui::SameLine();
+    };
+    const auto button_width = [&](const char *label) {
+        return ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0f;
+    };
+    const auto checkbox_width = [&](const char *label) {
+        return ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x;
+    };
+
+    ImGui::BeginDisabled(console.text().empty());
+    place(button_width("Copy All"));
     if (ImGui::Button("Copy All"))
         set_clipboard_text(projection_.copy_all(console), feedback_);
     remember_item("copy-all");
-    ImGui::SameLine();
+    place(button_width("Clear"));
     if (ImGui::Button("Clear"))
     {
         console.clear();
@@ -127,7 +141,14 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         feedback_ = "Console output cleared.";
     }
     remember_item("clear");
-    ImGui::SameLine();
+    ImGui::EndDisabled();
+    place(button_width("Copy selected"));
+    ImGui::BeginDisabled(!selectedRow_);
+    if (ImGui::Button("Copy selected") && selectedRow_)
+        set_clipboard_text(projection_.copy_row(console, *selectedRow_), feedback_);
+    ImGui::EndDisabled();
+    remember_item("copy-selected");
+    place(checkbox_width("Collapse repeats"));
     ImGui::Checkbox("Collapse repeats", &collapseRepeats_);
     remember_item("collapse-repeats");
     if (ImGui::IsItemEdited())
@@ -138,23 +159,25 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         if (selectedRow_ && *selectedRow_ >= projection_.rows().size())
             selectedRow_.reset();
     }
-    ImGui::SameLine();
+    place(checkbox_width("Follow"));
     bool follow = projection_.auto_follow();
     if (ImGui::Checkbox("Follow", &follow))
         projection_.set_auto_follow(follow);
     remember_item("follow");
-    ImGui::SameLine();
-    if (ImGui::Button("Copy selected") && selectedRow_)
-        set_clipboard_text(projection_.copy_row(console, *selectedRow_), feedback_);
-    remember_item("copy-selected");
 
-    ImGui::SetNextItemWidth(240.0f);
-    if (ImGui::InputText("Search", search_.data(), search_.size()))
+    const float searchWidth = std::clamp(ImGui::GetContentRegionAvail().x - 130.0f,
+                                         120.0f, 240.0f);
+    place(searchWidth);
+    ImGui::SetNextItemWidth(searchWidth);
+    if (ImGui::InputTextWithHint("##console-search", "Search output", search_.data(), search_.size()))
         projection_.set_search(search_.data());
     remember_item("search");
-    ImGui::SameLine();
+    place(120.0f);
+    ImGui::SetNextItemWidth(120.0f);
     constexpr const char *filterNames[] = {"All severities", "Errors", "Warnings", "Info"};
-    const bool severityOpen = ImGui::BeginCombo("Severity", filterNames[severityFilter_]);
+    const bool severityOpen = ImGui::BeginCombo("##console-severity", filterNames[severityFilter_]);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Filter rows by severity");
     remember_item("severity");
     if (severityOpen)
     {
@@ -179,12 +202,7 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
 
     if (console.truncated())
     {
-        ImGui::TextDisabled("Older output was removed at the 1 MiB retention limit. All retained bytes remain searchable and copyable.");
-        remember_item("output");
-    }
-    else
-    {
-        ImGui::TextDisabled("%zu bytes retained (1 MiB limit).", console.text().size());
+        ImGui::TextDisabled("Older output removed at the 1 MiB retention limit; Copy All includes all retained bytes.");
         remember_item("output");
     }
     if (projection_.omitted_rows() != 0)

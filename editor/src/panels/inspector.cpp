@@ -1258,6 +1258,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     {
         integerDrafts_.clear();
         lastSelectionKey_.clear();
+        lastObjectSelectionKey_.clear();
         draw_multi_object_fields(document, selection, commands, catalog,
                                  selection.current().selectedObjectIds);
         behaviorFields_.draw_multi_object_fields(document, selection.current(), commands, catalog,
@@ -1269,10 +1270,19 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     {
         integerDrafts_.clear();
         lastSelectionKey_.clear();
+        lastObjectSelectionKey_.clear();
         ImGui::TextDisabled("Select an object to edit its properties.");
         return;
     }
     const int objectId = *selection.current().objectId;
+    const std::string objectSelectionKey = std::to_string(document.projectGeneration) + ":" +
+        std::to_string(document.tabId.value) + ":" + std::to_string(document.documentGeneration) + ":" +
+        std::to_string(objectId);
+    if (lastObjectSelectionKey_ != objectSelectionKey)
+    {
+        lastObjectSelectionKey_ = objectSelectionKey;
+        ImGui::SetScrollY(0.0f);
+    }
     if (revealObjectId_ && *revealObjectId_ != objectId)
     {
         revealObjectId_.reset();
@@ -1387,65 +1397,24 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     }
 
     draw_search_bar();
-    const auto behaviorCatalog = catalog.snapshot();
-    ImGui::BeginDisabled(!behaviorCatalog);
-    if (ImGui::Button("Add Behavior"))
-        ImGui::OpenPopup("Add Behavior Menu");
-    ImGui::EndDisabled();
-    if (!behaviorCatalog && ImGui::IsItemHovered())
-        ImGui::SetTooltip("Build or refresh the project behavior catalog, or drop a behavior header here.");
-    if (ImGui::BeginPopup("Add Behavior Menu"))
-    {
-        std::array<char, 192> behaviorBuffer{};
-        const std::size_t behaviorLength = std::min(behaviorPickerQuery_.size(),
-                                                    behaviorBuffer.size() - 1);
-        std::memcpy(behaviorBuffer.data(), behaviorPickerQuery_.data(), behaviorLength);
-        if (ImGui::InputTextWithHint("##behavior-picker-search", "Search behavior type",
-                                     behaviorBuffer.data(), behaviorBuffer.size()))
-            behaviorPickerQuery_ = behaviorBuffer.data();
-        bool anyBehavior = false;
-        const auto behaviors = behaviorCatalog->document.find("behaviors");
-        if (behaviors != behaviorCatalog->document.end() && behaviors->is_array())
-        {
-            for (const auto &behavior : *behaviors)
-            {
-                if (!behavior.is_object() || !behavior.contains("name") ||
-                    !behavior["name"].is_string())
-                    continue;
-                const std::string behaviorType = behavior["name"].get<std::string>();
-                const std::string searchText = behaviorType + " behavior";
-                if (!discovery_query_matches(behaviorPickerQuery_, searchText))
-                    continue;
-                anyBehavior = true;
-                if (ImGui::MenuItem(behaviorType.c_str()))
-                {
-                    attach_behavior(behaviorType);
-                    ImGui::CloseCurrentPopup();
-                    break;
-                }
-            }
-        }
-        if (!anyBehavior)
-            ImGui::TextDisabled("No behaviors match this search.");
-        ImGui::EndPopup();
-    }
     ImGui::Separator();
-    ImGui::Text("Object %d", objectId);
-    ImGui::SeparatorText("Object Template");
-    std::array<char, 256> templateNameBuffer{};
-    const std::size_t templateNameLength = std::min(templateName_.size(), templateNameBuffer.size() - 1);
-    std::memcpy(templateNameBuffer.data(), templateName_.data(), templateNameLength);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::InputTextWithHint("##object-template-name", "Template name",
-                                 templateNameBuffer.data(), templateNameBuffer.size()))
-        templateName_ = templateNameBuffer.data();
-    const bool canSaveTemplate = !templateName_.empty() && !document.assetRoot.empty();
-    ImGui::BeginDisabled(!canSaveTemplate);
-    if (ImGui::Button("Save Selected Object as Template"))
-        save_selected_template(document, objectId, catalog);
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered() && !canSaveTemplate)
-        ImGui::SetTooltip("A template name and project asset root are required.");
+    if (ImGui::CollapsingHeader("Object Template"))
+    {
+        std::array<char, 256> templateNameBuffer{};
+        const std::size_t templateNameLength = std::min(templateName_.size(), templateNameBuffer.size() - 1);
+        std::memcpy(templateNameBuffer.data(), templateName_.data(), templateNameLength);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::InputTextWithHint("##object-template-name", "Template name",
+                                     templateNameBuffer.data(), templateNameBuffer.size()))
+            templateName_ = templateNameBuffer.data();
+        const bool canSaveTemplate = !templateName_.empty() && !document.assetRoot.empty();
+        ImGui::BeginDisabled(!canSaveTemplate);
+        if (ImGui::Button("Save as Template"))
+            save_selected_template(document, objectId, catalog);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered() && !canSaveTemplate)
+            ImGui::SetTooltip("A template name and project asset root are required.");
+    }
     if (revealObjectId_ && *revealObjectId_ == objectId && !revealComponentId_)
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     const bool gameObjectExpanded = ImGui::CollapsingHeader(
@@ -1735,26 +1704,29 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::PopID();
     }
 
-    if (ImGui::Button("Add Component"))
-        ImGui::OpenPopup("Add Component Menu");
-    if (ImGui::BeginPopup("Add Component Menu"))
+    if (ImGui::Button("Add Component...", ImVec2(-FLT_MIN, 0.0f)))
+        ImGui::OpenPopup("Add Component or Behavior");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Add a built-in component, or attach a script behavior to this GameObject.");
+    if (ImGui::BeginPopup("Add Component or Behavior"))
     {
-        std::array<char, 192> componentBuffer{};
-        const std::size_t componentLength = std::min(componentPickerQuery_.size(),
-                                                      componentBuffer.size() - 1);
-        std::memcpy(componentBuffer.data(), componentPickerQuery_.data(), componentLength);
-        if (ImGui::InputTextWithHint("##component-picker-search", "Search component type",
-                                     componentBuffer.data(), componentBuffer.size()))
-            componentPickerQuery_ = componentBuffer.data();
+        std::array<char, 192> addBuffer{};
+        const std::size_t addLength = std::min(addPickerQuery_.size(), addBuffer.size() - 1);
+        std::memcpy(addBuffer.data(), addPickerQuery_.data(), addLength);
+        ImGui::SetNextItemWidth(240.0f);
+        if (ImGui::InputTextWithHint("##add-picker-search", "Search components or behaviors",
+                                     addBuffer.data(), addBuffer.size()))
+            addPickerQuery_ = addBuffer.data();
+        ImGui::SeparatorText("Components");
         bool anyComponent = false;
+        const auto currentObjectLocation = document.indexes.objectsById.find(objectId);
+        const Json *currentObject = currentObjectLocation == document.indexes.objectsById.end()
+            ? nullptr : resolve_object(document.root, currentObjectLocation->second);
         for (const auto &[type, label] : kComponentChoices)
         {
             const std::string searchText = std::string(label) + " component " + std::to_string(type);
-            if (!discovery_query_matches(componentPickerQuery_, searchText))
+            if (!discovery_query_matches(addPickerQuery_, searchText))
                 continue;
-            const auto currentObjectLocation = document.indexes.objectsById.find(objectId);
-            const Json *currentObject = currentObjectLocation == document.indexes.objectsById.end()
-                ? nullptr : resolve_object(document.root, currentObjectLocation->second);
             if (currentObject == nullptr || has_component_type(*currentObject, type))
                 continue;
             anyComponent = true;
@@ -1768,6 +1740,8 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                     selection.set(document, Selection{objectId, newComponentId, std::nullopt,
                                                        selection.current().focusedPanel});
                     commands.set_last_selection_state({before, selection.current()});
+                    feedback_.clear();
+                    ImGui::CloseCurrentPopup();
                 }
                 else
                     feedback_ = result.message;
@@ -1776,6 +1750,36 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         if (!anyComponent)
             ImGui::TextDisabled("No compatible components match this search.");
+        ImGui::SeparatorText("Behaviors");
+        bool anyBehavior = false;
+        const auto behaviorCatalog = catalog.snapshot();
+        if (!behaviorCatalog)
+            ImGui::TextDisabled("Build the project to load the behavior catalog.");
+        else
+        {
+            const auto behaviors = behaviorCatalog->document.find("behaviors");
+            if (behaviors != behaviorCatalog->document.end() && behaviors->is_array())
+            {
+                for (const auto &behavior : *behaviors)
+                {
+                    if (!behavior.is_object() || !behavior.contains("name") ||
+                        !behavior["name"].is_string())
+                        continue;
+                    const std::string behaviorType = behavior["name"].get<std::string>();
+                    if (!discovery_query_matches(addPickerQuery_, behaviorType + " behavior"))
+                        continue;
+                    anyBehavior = true;
+                    if (ImGui::MenuItem(behaviorType.c_str()))
+                    {
+                        attach_behavior(behaviorType);
+                        ImGui::CloseCurrentPopup();
+                        break;
+                    }
+                }
+            }
+            if (!anyBehavior)
+                ImGui::TextDisabled("No behaviors match this search.");
+        }
         ImGui::EndPopup();
     }
     if (!feedback_.empty())

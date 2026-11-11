@@ -823,12 +823,12 @@ ProjectRunDiscovery discover_project_run_options(const std::filesystem::path &pr
     }
     if (result.status.empty())
     {
-        result.status = "Discovered " + std::to_string(result.configurePresets.size()) +
-            " configure preset(s), " + std::to_string(result.buildPresets.size()) +
-            " build preset(s), and " + std::to_string(result.executableTargets.size()) +
-            " built executable target(s).";
         if (result.executableTargets.empty())
-            result.status += " Run CMake configure to publish target choices.";
+            result.status = "No build targets discovered. Run Configure to publish target choices.";
+        else
+            result.status = std::to_string(result.configurePresets.size()) + " configure preset(s), " +
+                std::to_string(result.buildPresets.size()) + " build preset(s), " +
+                std::to_string(result.executableTargets.size()) + " executable target(s).";
     }
     if (result.truncated)
         result.status += " Discovery stopped at a documented size or entry limit; use advanced overrides for missing choices.";

@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <numbers>
 #include <string>
@@ -1149,22 +1150,32 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
     if (ImGui::Selectable("Move (W)", tool_ == SceneTool::Move, ImGuiSelectableFlags_None,
                           ImVec2(buttonWidth("Move (W)"), 0.0f)))
         tool_ = SceneTool::Move;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Select and drag objects (W)");
     placeControl(buttonWidth("Rotate (E)"));
     if (ImGui::Selectable("Rotate (E)", tool_ == SceneTool::Rotate, ImGuiSelectableFlags_None,
                           ImVec2(buttonWidth("Rotate (E)"), 0.0f)))
         tool_ = SceneTool::Rotate;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Rotate the selected object (E); the angle is shown in the viewport and Inspector");
     placeControl(buttonWidth("Scale (R)"));
     if (ImGui::Selectable("Scale (R)", tool_ == SceneTool::Scale, ImGuiSelectableFlags_None,
                           ImVec2(buttonWidth("Scale (R)"), 0.0f)))
         tool_ = SceneTool::Scale;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Scale the selected object (R)");
     placeControl(buttonWidth("Rectangle"));
     if (ImGui::Selectable("Rectangle", tool_ == SceneTool::Rectangle, ImGuiSelectableFlags_None,
                           ImVec2(buttonWidth("Rectangle"), 0.0f)))
         tool_ = SceneTool::Rectangle;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Resize sprite and collider bounds with the orange handles");
     ImGui::EndDisabled();
     placeControl(buttonWidth("Snap Settings"));
     if (ImGui::Button("Snap Settings"))
         ImGui::OpenPopup("##scene-snap-settings");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Configure position, rotation, and scale increments; hold Ctrl while dragging to snap");
     if (ImGui::BeginPopup("##scene-snap-settings"))
     {
         ImGui::DragFloat("Position step", &snapPreferences.position, 0.1f, 0.0001f, 1000000.0f, "%.3g");
@@ -1183,34 +1194,6 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
     bool frameSelected = ImGui::Button("Frame Selected") || frameSelectedRequested_;
     frameAllRequested_ = false;
     frameSelectedRequested_ = false;
-    ImGui::BeginDisabled(!editingEnabled || !selection.current().objectId ||
-                         hiddenObjectIds == nullptr || lockedObjectIds == nullptr);
-    if (selection.current().objectId && hiddenObjectIds != nullptr &&
-        lockedObjectIds != nullptr)
-    {
-        const auto roots = selected_top_level_roots(document, selection.current());
-        const int primaryId = *selection.current().objectId;
-        const bool hidden = hiddenIds.contains(primaryId);
-        placeControl(textWidth(hidden ? "Show" : "Hide") + ImGui::GetStyle().FramePadding.x);
-        if (ImGui::SmallButton(hidden ? "Show" : "Hide"))
-            for (const int id : roots)
-                set_editor_object_id_state(*hiddenObjectIds, id, !hidden);
-        const bool locked = lockedIds.contains(primaryId);
-        placeControl(textWidth(locked ? "Unlock" : "Lock") + ImGui::GetStyle().FramePadding.x);
-        if (ImGui::SmallButton(locked ? "Unlock" : "Lock"))
-            for (const int id : roots)
-                set_editor_object_id_state(*lockedObjectIds, id, !locked);
-    }
-    ImGui::EndDisabled();
-    placeControl(textWidth("Zoom 1000%"));
-    ImGui::Text("Zoom %.0f%%", viewZoom_ * 100.0f);
-    if (tool_ == SceneTool::Rotate && selection.current().objectId)
-        if (const Json *rotating = resolve_object(document, *selection.current().objectId))
-        {
-            placeControl(textWidth("Angle 360.0°"));
-            ImGui::Text("Angle %.1f°", rotation_of(*rotating) * 180.0f / std::numbers::pi_v<float>);
-        }
-    ImGui::SetItemTooltip("Choose Move, Rotate, Scale, or Rectangle. Hold Ctrl during a drag to snap to configured increments.");
     if (!document.sourcePath)
         ImGui::TextDisabled("No authored scene is loaded. Use Open Scene or New Scene to begin.");
     const ImVec2 viewportAvailable = ImGui::GetContentRegionAvail();
@@ -1399,6 +1382,39 @@ void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview,
                 draw_transform_gizmo(drawList, transform_,
                                      object_world_position(document, *selected.objectId),
                                      rotationDegrees, tool_, uiScale);
+            }
+        }
+    }
+    if (transformReady && content.width > 16.0f && content.height > 16.0f)
+    {
+        const float overlayPad = 8.0f * uiScale;
+        char zoomText[40];
+        std::snprintf(zoomText, sizeof(zoomText), "Zoom %.0f%%", viewZoom_ * 100.0f);
+        const ImVec2 zoomSize = ImGui::CalcTextSize(zoomText);
+        const ImVec2 zoomMinimum{content.x + overlayPad,
+                                 content.y + content.height - zoomSize.y - overlayPad * 2.0f};
+        drawList->AddRectFilled(zoomMinimum,
+                                {zoomMinimum.x + zoomSize.x + overlayPad * 2.0f,
+                                 zoomMinimum.y + zoomSize.y + overlayPad},
+                                IM_COL32(18, 20, 24, 190), 3.0f);
+        drawList->AddText({zoomMinimum.x + overlayPad, zoomMinimum.y + overlayPad * 0.5f},
+                          IM_COL32(190, 196, 205, 235), zoomText);
+        if (tool_ == SceneTool::Rotate && selection.current().objectId)
+        {
+            if (const Json *rotating = resolve_object(document, *selection.current().objectId))
+            {
+                char angleText[48];
+                std::snprintf(angleText, sizeof(angleText), "Angle %.1f deg",
+                              rotation_of(*rotating) * 180.0f / std::numbers::pi_v<float>);
+                const ImVec2 angleSize = ImGui::CalcTextSize(angleText);
+                const ImVec2 angleMinimum{content.x + overlayPad,
+                                          zoomMinimum.y - angleSize.y - overlayPad};
+                drawList->AddRectFilled(angleMinimum,
+                                        {angleMinimum.x + angleSize.x + overlayPad * 2.0f,
+                                         angleMinimum.y + angleSize.y + overlayPad},
+                                        IM_COL32(18, 20, 24, 190), 3.0f);
+                drawList->AddText({angleMinimum.x + overlayPad, angleMinimum.y + overlayPad * 0.5f},
+                                  IM_COL32(190, 196, 205, 235), angleText);
             }
         }
     }

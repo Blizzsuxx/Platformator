@@ -977,7 +977,7 @@ std::size_t ProjectPanel::apply_changes(const ProjectChangeBatch &batch,
     {
         rootRecoveryActive_ = false;
         if (batch.coverage == ProjectCoverageState::Current)
-            coverageMessage_ = "Monitoring asset changes.";
+            coverageMessage_.clear();
     }
     if (!batch.rootDirty && batch.coverage == ProjectCoverageState::Degraded)
         coverageMessage_ = "Asset monitoring is recovering; visible folders can still be refreshed.";
@@ -2709,8 +2709,11 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
         refresh();
         referenceRetryRequested_ = true;
     }
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", coverageMessage_.c_str());
+    if (!coverageMessage_.empty())
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", coverageMessage_.c_str());
+    }
     if (!referenceRetryMessage_.empty())
         ImGui::TextDisabled("%s", referenceRetryMessage_.c_str());
 

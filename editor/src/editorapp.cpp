@@ -1117,6 +1117,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::optional<AnimationDestinationOverwrite> animationDestinationOverwrite;
         bool showAnimationEditorWindow = true;
         bool animationWindowPlaybackVisible = false;
+        bool runPanelVisibleLastFrame = true;
+        bool validationPanelVisibleLastFrame = true;
         std::string statusMessage = startupMessage;
         PendingRunValidation pendingRunValidation;
         AccessibilitySnapshots accessibilitySnapshots;
@@ -1363,7 +1365,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return false;
 
             if (pendingRunValidation.cancel())
-                statusMessage = "Pending Build & Run cancelled because the active Scene tab changed.";
+                statusMessage = "Pending Build and Run cancelled because the active Scene tab changed.";
 
             if (activeDocumentTab != nullptr && activeTabStateInitialized)
             {
@@ -1699,7 +1701,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 if (workspace->dirty() || !workspace->document().sourcePath)
                 {
-                    statusMessage = "Save the scene before Build & Run.";
+                    statusMessage = "Save the scene before Build and Run.";
                     return false;
                 }
             }
@@ -1784,7 +1786,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             statusMessage = forcedCleanFirst
                 ? (buildOnly ? "Forced clean rebuild started after source freshness changed."
                              : "Forced clean rebuild and Run started after source freshness changed.")
-                : (buildOnly ? "Build started." : "Build & Run started.");
+                : (buildOnly ? "Build started." : "Build and Run started.");
             return true;
         };
         auto queue_pipeline = [&](bool buildOnly) {
@@ -1814,7 +1816,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 request_source_scan();
                 nextSourceScan = std::chrono::steady_clock::now() + source_scan_interval();
                 statusMessage = buildOnly ? "Refreshing source identity before Build..."
-                                          : "Refreshing source identity before Build & Run...";
+                                          : "Refreshing source identity before Build and Run...";
             }
             catch (const std::exception &error)
             {
@@ -1956,7 +1958,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 else if (decision == UnsavedDecision::Save)
                     result = workspace->save();
                 else
-                    result = {WorkspaceActionStatus::Failed, "Build & Run requires a saved scene."};
+                    result = {WorkspaceActionStatus::Failed, "Build and Run requires a saved scene."};
             }
             else if (pendingAction == PendingAction::Exit)
             {
@@ -2118,7 +2120,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             deferredPreferenceSave.schedule(std::chrono::steady_clock::now());
             statusMessage = result.message.empty() ? "Scene tab closed." : result.message;
             if (cancelledPendingRun)
-                statusMessage = "Pending Build & Run cancelled because its Scene tab was closed. " +
+                statusMessage = "Pending Build and Run cancelled because its Scene tab was closed. " +
                                 statusMessage;
             return result;
         };
@@ -2417,7 +2419,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 #endif
         auto stop_owned_operation = [&] {
             if (pendingRunValidation.cancel())
-                statusMessage = "Build & Run cancelled while waiting for current scene validation.";
+                statusMessage = "Build and Run cancelled while waiting for current scene validation.";
             else if (pendingPipelineBuildOnly)
             {
                 pendingPipelineBuildOnly.reset();
@@ -2427,7 +2429,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             {
                 pendingAction = PendingAction::None;
                 showUnsavedPrompt = false;
-                statusMessage = "Build & Run cancelled before the pipeline started.";
+                statusMessage = "Build and Run cancelled before the pipeline started.";
             }
             else if (catalogQuery.running())
             {
@@ -2470,7 +2472,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
             const bool cancelledPendingRun = pendingRunValidation.cancel();
             const std::string runCancellationMessage = cancelledPendingRun
-                ? "Pending Build & Run cancelled because project roots changed. " : "";
+                ? "Pending Build and Run cancelled because project roots changed. " : "";
 
             const auto oldPreferencePaths = preferencePaths;
             const bool oldProjectOpened = projectOpened;
@@ -3279,7 +3281,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 {
                     pendingAction = PendingAction::None;
                     showUnsavedPrompt = false;
-                    statusMessage = "Build & Run cancelled while choosing a scene path.";
+                    statusMessage = "Build and Run cancelled while choosing a scene path.";
                 }
                 if (result.identity.kind == AsyncRequestKind::SaveScene &&
                     result.outcome == AsyncRequestOutcome::Cancelled && closeAfterSaveTab)
@@ -3439,7 +3441,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (ticket->document != activeDocumentTab->identity())
                 {
                     pendingRunValidation.cancel();
-                    statusMessage = "Pending Build & Run cancelled because its originating document is no longer active.";
+                    statusMessage = "Pending Build and Run cancelled because its originating document is no longer active.";
                 }
                 else if (validationService.is_current(currentDocument, validation))
                     runValidationReadyThisFrame = *ticket;
@@ -3615,6 +3617,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                                pendingAction == PendingAction::BuildAndRun ||
                                                pendingAction == PendingAction::ChangeProjectRoots ||
                                                applyProjectRootsAfterFrame;
+            bool hasDirtySceneTab = false;
+            for (const TabId id : documentManager.tab_ids())
+            {
+                const auto *tab = documentManager.find(id);
+                hasDirtySceneTab |= tab != nullptr && tab->workspace().dirty();
+            }
             const auto panelStateBefore = preferences.panelVisibility;
             const bool mainMenuBarVisible = ImGui::BeginMainMenuBar();
             if (mainMenuBarVisible)
@@ -3628,9 +3636,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::MenuItem("Open Project Folder...", nullptr, false, !projectLocked))
                         request_project_folder();
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Save", "Ctrl+S", false, !projectLocked))
+                    if (ImGui::MenuItem("Save", "Ctrl+S", false,
+                                        !projectLocked &&
+                                            (workspace->dirty() || !workspace->document().sourcePath)))
                         save_current();
-                    if (ImGui::MenuItem("Save All", nullptr, false, !projectLocked))
+                    if (ImGui::MenuItem("Save All", nullptr, false,
+                                        !projectLocked && hasDirtySceneTab))
                         save_all_documents();
                     if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, !projectLocked))
                         request_save_as();
@@ -3645,6 +3656,22 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::MenuItem("Undo", "Ctrl+Z", false, history.canUndo && !projectLocked)) undo_edit();
                     if (ImGui::MenuItem("Redo", "Ctrl+Y", false, history.canRedo && !projectLocked)) redo_edit();
                     ImGui::Separator();
+                    if (ImGui::BeginMenu("Duplicate References"))
+                    {
+                        const bool remap = preferences.duplicationReferencePolicy ==
+                            "remap-internal-targets";
+                        if (ImGui::MenuItem("Preserve Existing Targets", nullptr, !remap))
+                        {
+                            preferences.duplicationReferencePolicy = "preserve-existing-targets";
+                            schedule_preference_save();
+                        }
+                        if (ImGui::MenuItem("Remap Internal Targets", nullptr, remap))
+                        {
+                            preferences.duplicationReferencePolicy = "remap-internal-targets";
+                            schedule_preference_save();
+                        }
+                        ImGui::EndMenu();
+                    }
                     if (ImGui::MenuItem("Validate Scene", "F6")) request_validation();
                     ImGui::EndMenu();
                 }
@@ -3667,7 +3694,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::MenuItem("Animation Assets", nullptr, &showAnimationEditor))
                         showAnimationEditorWindow = showAnimationEditor;
                     panel_item("Console", "panel.console");
-                    panel_item("Build and Run", "panel.run");
+                    panel_item("Build and Run Settings", "panel.run");
                     panel_item("Validation", "panel.validation");
                     if (ImGui::BeginMenu("Panel Windows"))
                     {
@@ -3677,7 +3704,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             {"Inspector", "panel.inspector"},
                             {"Project and Assets", "panel.project"},
                             {"Console", "panel.console"},
-                            {"Build and Run", "panel.run"},
+                            {"Build and Run Settings", "panel.run"},
                             {"Validation", "panel.validation"}};
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
                         hostPanels.emplace_back("Game", "panel.game");
@@ -3887,8 +3914,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             toolbarState.projectLocked = projectLocked;
             toolbarState.operationActive = gamePipeline.busy() || catalogQuery.running() ||
                                            pendingPipelineBuildOnly.has_value();
-            toolbarState.sceneAvailable = projectOpened && !documentEditingLocked;
-            toolbarState.activeSceneTool = scenePanel.tool();
+            toolbarState.saveEnabled = workspace->dirty() || !workspace->document().sourcePath;
             const auto path_to_utf8 = [](const std::filesystem::path &path) {
                 const auto encoded = path.u8string();
                 return std::string(reinterpret_cast<const char *>(encoded.data()), encoded.size());
@@ -3938,9 +3964,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             toolbarActions.build = [&] { queue_pipeline(true); };
             toolbarActions.buildAndRun = request_build_and_run;
             toolbarActions.stop = stop_owned_operation;
-            toolbarActions.moveTool = [&] { scenePanel.set_tool(SceneTool::Move); };
-            toolbarActions.rotateTool = [&] { scenePanel.set_tool(SceneTool::Rotate); };
-            toolbarActions.scaleTool = [&] { scenePanel.set_tool(SceneTool::Scale); };
             const auto toolbarFrame = draw_editor_toolbar(toolbarState, toolbarActions);
             constexpr float sceneTabBarHeight = 32.0f;
             const ImGuiViewport *mainViewport = ImGui::GetMainViewport();
@@ -3962,41 +3985,19 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 applyProjectRootsAfterFrame;
             const bool sceneTabActionsEnabled = !tabActionsLocked && !projectLocked;
             std::optional<SemanticBounds> newSceneBounds;
-            std::optional<SemanticBounds> saveAllBounds;
             std::unordered_map<std::uint64_t, SemanticBounds> sceneTabBounds;
             std::unordered_map<std::uint64_t, SemanticBounds> sceneTabCloseBounds;
             std::unordered_set<std::uint64_t> focusedSceneTabIds;
             ImGui::BeginDisabled(!sceneTabActionsEnabled);
-            const bool newSceneClicked = ImGui::Button("+ Scene");
-            {
-                const ImVec2 minimum = ImGui::GetItemRectMin();
-                const ImVec2 maximum = ImGui::GetItemRectMax();
-                newSceneBounds = SemanticBounds{minimum.x, minimum.y,
-                                                maximum.x - minimum.x,
-                                                maximum.y - minimum.y};
-            }
-            if (newSceneClicked)
-                create_scene_tab();
-            ImGui::SameLine();
-            const bool saveAllClicked = ImGui::Button("Save All");
-            {
-                const ImVec2 minimum = ImGui::GetItemRectMin();
-                const ImVec2 maximum = ImGui::GetItemRectMax();
-                saveAllBounds = SemanticBounds{minimum.x, minimum.y,
-                                               maximum.x - minimum.x,
-                                               maximum.y - minimum.y};
-            }
-            if (saveAllClicked)
-                save_all_documents();
-            ImGui::SameLine();
             for (const TabId tabId : documentManager.tab_ids())
             {
                 const auto *tab = documentManager.find(tabId);
                 if (tab == nullptr)
                     continue;
-                std::string tabName = tab->workspace().document().sourcePath
+                const std::string cleanName = tab->workspace().document().sourcePath
                     ? path_to_utf8(tab->workspace().document().sourcePath->filename())
                     : "Untitled";
+                std::string tabName = cleanName;
                 if (tab->workspace().dirty())
                     tabName += " *";
                 const auto sourceStatus = std::find_if(cachedSourceStatuses.begin(), cachedSourceStatuses.end(),
@@ -4009,7 +4010,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const bool isActive = tabId == activeDocumentTab->id();
                 if (isActive)
                     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                const bool tabClicked = ImGui::Button((tabName + hiddenId).c_str());
+                // Reserve the same marker space for every tab so saving or an external change
+                // cannot move the close button and all following tabs.
+                const float markerWidth = ImGui::CalcTextSize(" * !").x;
+                const float tabWidth = ImGui::CalcTextSize(cleanName.c_str()).x + markerWidth +
+                                       ImGui::GetStyle().FramePadding.x * 2.0f;
+                const bool tabClicked = ImGui::Button((tabName + hiddenId).c_str(),
+                                                      ImVec2(tabWidth, 0.0f));
                 {
                     const ImVec2 minimum = ImGui::GetItemRectMin();
                     const ImVec2 maximum = ImGui::GetItemRectMax();
@@ -4030,7 +4037,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 ImGui::SameLine();
                 const std::string tabPushId = std::to_string(tabId.value);
                 ImGui::PushID(tabPushId.c_str());
-                const bool closeTabClicked = ImGui::SmallButton("x");
+                const bool closeTabClicked = ImGui::SmallButton("×");
                 {
                     const ImVec2 minimum = ImGui::GetItemRectMin();
                     const ImVec2 maximum = ImGui::GetItemRectMax();
@@ -4048,6 +4055,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 ImGui::PopID();
                 ImGui::SameLine();
             }
+            const bool newSceneClicked = ImGui::Button("+ Scene");
+            {
+                const ImVec2 minimum = ImGui::GetItemRectMin();
+                const ImVec2 maximum = ImGui::GetItemRectMax();
+                newSceneBounds = SemanticBounds{minimum.x, minimum.y,
+                                                maximum.x - minimum.x,
+                                                maximum.y - minimum.y};
+            }
+            if (newSceneClicked)
+                create_scene_tab();
             ImGui::EndDisabled();
             ImGui::End();
             submit_editor_dockspace(kEditorDockspaceId, toolbarFrame.height + sceneTabBarHeight);
@@ -4865,13 +4882,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             animationRoot.visible = animationSemanticsVisible;
             animationSnapshot.nodes.push_back(std::move(animationRoot));
 
-            bool hasDirtySceneTab = false;
-            for (const TabId id : documentManager.tab_ids())
-            {
-                const auto *tab = documentManager.find(id);
-                hasDirtySceneTab |= tab != nullptr && tab->workspace().dirty();
-            }
-
             SemanticNode menuBarRoot;
             menuBarRoot.id = "main/menu-bar";
             menuBarRoot.role = SemanticRole::Group;
@@ -5065,19 +5075,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 closeNode.actions = {"activate"};
                 animationSnapshot.nodes.push_back(std::move(closeNode));
             }
-
-            SemanticNode saveAllNode;
-            saveAllNode.id = "main/scene-tabs/save-all";
-            saveAllNode.parentId = "main/scene-tabs";
-            saveAllNode.role = SemanticRole::Button;
-            saveAllNode.name = "Save all Scene tabs";
-            saveAllNode.help = "Save every modified Scene document.";
-            saveAllNode.bounds = saveAllBounds;
-            saveAllNode.visible = sceneTabBarVisible;
-            saveAllNode.enabled = sceneTabActionsEnabled && hasDirtySceneTab;
-            saveAllNode.value = hasDirtySceneTab ? "modified documents available" : "all saved";
-            saveAllNode.actions = {"activate"};
-            animationSnapshot.nodes.push_back(std::move(saveAllNode));
 
             if (!projectOpened)
             {
@@ -5554,6 +5551,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
             bool showRun = show_panel("panel.run");
             ImGuiContext *previousRunContext = activate_panel_context("panel.run");
+            if (showRun && !runPanelVisibleLastFrame)
+                ImGui::SetNextWindowFocus();
             const auto runFrame = begin_panel_window(showRun,
                 "Build and Run###panel.run", &showRun);
             if (runFrame.contentsVisible)
@@ -5599,11 +5598,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 addRunButton("build-and-run", "Build and Run", projectOpened && !runBusy);
                 addRunButton("stop", "Stop owned operation", gamePipeline.busy() ||
                     catalogQuery.running() || pendingPipelineBuildOnly || pendingRunValidation.active());
-                addRunButton("refresh-discovery", "Refresh presets and built targets",
+                addRunButton("refresh-discovery", "Rediscover Build Targets",
                     projectOpened && !runBusy);
                 addRunButton("browse-executable", "Browse for game executable",
                     projectOpened && !runBusy);
-                addRunButton("refresh-sources", "Refresh source identity", projectOpened && !runBusy);
+                addRunButton("refresh-sources", "Recheck Sources", projectOpened && !runBusy);
                 auto runOptionNodes = runSettingsPanel.semantic_nodes(
                     preferences.run, "main/panel/run", runBusy);
                 animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
@@ -5659,34 +5658,26 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
             end_panel_window(runFrame);
             restore_panel_context(previousRunContext);
+            runPanelVisibleLastFrame = showRun;
             preferences.panelVisibility["panel.run"] = showRun;
 
             if (statusMessage.empty() && !editCommands->last_error().empty())
                 statusMessage = editCommands->last_error();
             bool showValidationPanel = show_panel("panel.validation");
             ImGuiContext *previousValidationContext = activate_panel_context("panel.validation");
+            if (showValidationPanel && !validationPanelVisibleLastFrame)
+                ImGui::SetNextWindowFocus();
             const auto validationFrame = begin_panel_window(showValidationPanel,
                 "Validation###panel.validation", &showValidationPanel);
             if (validationFrame.contentsVisible)
             {
                 const bool validationCurrent =
                     validationService.is_current(workspace->document(), validation);
-                if (ImGui::Button("Validate Scene (F6)"))
+                if (ImGui::Button("Validate (F6)"))
                     request_validation();
                 const bool validationRefreshFocused = ImGui::IsItemFocused();
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", validationCurrent ? "Current" : "Pending");
-                ImGui::Text("Objects: %zu | Components: %zu", workspace->document().indexes.objectsById.size(),
-                            workspace->document().indexes.componentsById.size());
-                const auto currentHistory = editCommands->history_status();
-                if (currentHistory.overBudget)
-                    ImGui::TextWrapped("History limit: retained %zu bytes of %zu; keeping the newest oversized edit.",
-                                       currentHistory.retainedBytes, currentHistory.budgetBytes);
-                else
-                    ImGui::Text("History: %zu undo / %zu redo | %zu / %zu bytes retained",
-                                currentHistory.undoCommands, currentHistory.redoCommands,
-                                currentHistory.retainedBytes, currentHistory.budgetBytes);
-                ImGui::TextUnformatted("Preview does not instantiate behaviors or simulate gameplay.");
                 if (!validationCurrent)
                     ImGui::TextDisabled("Previous results are withheld until the current revision finishes.");
                 else if (validation.issues.empty())
@@ -5715,6 +5706,21 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             preferences.panelVisibility["panel.inspector"] = true;
                         }
                     }
+                if (ImGui::CollapsingHeader("Details"))
+                {
+                    ImGui::Text("Objects: %zu | Components: %zu",
+                                workspace->document().indexes.objectsById.size(),
+                                workspace->document().indexes.componentsById.size());
+                    const auto currentHistory = editCommands->history_status();
+                    if (currentHistory.overBudget)
+                        ImGui::TextWrapped("History limit: retained %zu bytes of %zu; keeping the newest oversized edit.",
+                                           currentHistory.retainedBytes, currentHistory.budgetBytes);
+                    else
+                        ImGui::Text("History: %zu undo / %zu redo | %zu / %zu bytes retained",
+                                    currentHistory.undoCommands, currentHistory.redoCommands,
+                                    currentHistory.retainedBytes, currentHistory.budgetBytes);
+                    ImGui::TextUnformatted("Preview does not instantiate behaviors or simulate gameplay.");
+                }
                 if (!statusMessage.empty()) ImGui::TextWrapped("%s", statusMessage.c_str());
 
                 SemanticNode root;
@@ -5807,6 +5813,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
             end_panel_window(validationFrame);
             restore_panel_context(previousValidationContext);
+            validationPanelVisibleLastFrame = showValidationPanel;
             preferences.panelVisibility["panel.validation"] = showValidationPanel;
 
             bool showScene = show_panel("panel.scene");

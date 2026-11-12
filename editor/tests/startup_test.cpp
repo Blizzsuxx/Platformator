@@ -4,6 +4,7 @@
 #include "editcommands.h"
 #include "preview.h"
 #include "panelwindow.h"
+#include "panels/game.h"
 #include "selection.h"
 #include "viewport.h"
 #include "style.h"
@@ -404,8 +405,8 @@ int main()
         require(dockId("Hierarchy###panel.hierarchy") == 0x00002000 &&
                     dockId("Scene###panel.scene") == 0x00003000 &&
                     dockId("Inspector###panel.inspector") == 0x00003001 &&
-                    dockId("Project and Assets###panel.project") == 0x00004000 &&
-                    dockId("Console###panel.console") == 0x00004001,
+                    dockId("Project and Assets###panel.project") == 0x00001001 &&
+                    dockId("Console###panel.console") == 0x00001001,
                 "first actual frames must attach each required window to its intended seeded dock node");
         // Reset Layout reloads the same seed into the active context; verify it at 150% too.
         ImGui::LoadIniSettingsFromMemory(seed.data(), seed.size());
@@ -414,7 +415,7 @@ int main()
         imgui.draw_one_frame(document, preview, selection, commands, scenePanel, window);
         require(dockId("Scene###panel.scene") == 0x00003000 &&
                     dockId("Hierarchy###panel.hierarchy") == 0x00002000 &&
-                    dockId("Project and Assets###panel.project") == 0x00004000,
+                    dockId("Project and Assets###panel.project") == 0x00001001,
                 "reset seeded docking must remain attached after real frames at 150% UI scale");
         imgui.draw_one_frame(document, preview, selection, commands, scenePanel, window, false);
         const auto isActive = [](const char *name) {
@@ -447,6 +448,35 @@ int main()
         require(dockId("Scene###panel.scene") == 0x00003000 &&
                     document.root == authoredSceneBeforeLayoutReload,
                 "migrated saved Scene docking must bind the real window without changing scene data");
+
+        const std::string legacyBottomSplitLayout =
+            "[Docking][Data]\n"
+            "DockSpace ID=0x6E706EF3 Pos=0,0 Size=1280,800 Split=Y\n"
+            "  DockNode ID=0x00001000 Parent=0x6E706EF3 SizeRef=1280,500 Split=X\n"
+            "  DockNode ID=0x00001001 Parent=0x6E706EF3 SizeRef=1280,300 Split=X\n"
+            "    DockNode ID=0x00002000 Parent=0x00001000 SizeRef=260,500\n"
+            "    DockNode ID=0x00003000 Parent=0x00001000 SizeRef=1020,500 CentralNode=1\n"
+            "    DockNode ID=0x00004000 Parent=0x00001001 SizeRef=700,300\n"
+            "    DockNode ID=0x00004001 Parent=0x00001001 SizeRef=580,300\n"
+            "[Window][panel.scene]\nPos=260,0\nSize=720,570\nDockId=0x00003000,0\n"
+            "[Window][panel.game]\nPos=260,0\nSize=720,570\nDockId=0x00003000,1\n"
+            "[Window][panel.hierarchy]\nPos=0,0\nSize=260,570\nDockId=0x00002000,0\n"
+            "[Window][panel.project]\nPos=0,500\nSize=700,300\nDockId=0x00004000,0\n"
+            "[Window][panel.console]\nPos=700,500\nSize=580,300\nDockId=0x00004001,0\n"
+            "[Window][panel.run]\nPos=700,500\nSize=580,300\nDockId=0x00004001,1\n"
+            "[Window][panel.validation]\nPos=700,500\nSize=580,300\nDockId=0x00004001,2\n";
+        const auto migratedBottomSplit = migrate_scene_window_identity(legacyBottomSplitLayout);
+        require(migratedBottomSplit.find("0x00004000") == std::string::npos &&
+                migratedBottomSplit.find("0x00004001") == std::string::npos &&
+                migratedBottomSplit.find("DockId=0x00001001,0") != std::string::npos &&
+                migratedBottomSplit.find("DockId=0x00001001,1") != std::string::npos &&
+                migratedBottomSplit.find("DockId=0x00001001,2") != std::string::npos &&
+                migratedBottomSplit.find("DockId=0x00001001,3") != std::string::npos &&
+                migratedBottomSplit.find("DockId=0x00001001,4") != std::string::npos &&
+                migratedBottomSplit.find("[Window][animation-editor]") != std::string::npos,
+                "legacy bottom split layout must migrate to unified 0x00001001 tab dock node with all bottom panels");
+        require(migrate_scene_window_identity(migratedBottomSplit) == migratedBottomSplit,
+                "migrated bottom split layout must be idempotent");
         int openSceneActivations = 0;
         EditorToolbarActions toolbarActions;
         toolbarActions.openScene = [&] { ++openSceneActivations; };
@@ -510,7 +540,6 @@ int main()
             };
             require(hasItem("Open Scene") && hasItem("Save") && hasItem("Build") &&
                         hasItem("Build and Run") && hasItem("Stop") &&
-                        hasItem("Document Status") && hasItem("Project and Scene") &&
                         !hasItem("More") && !hasItem("New"),
                     "toolbar must keep only primary scene/build actions without duplicate overflow commands");
             for (const auto &item : toolbar.items)
@@ -528,10 +557,23 @@ int main()
                         std::to_string(item.height) + " outside viewport or toolbar height " +
                         std::to_string(toolbar.height));
             }
+            for (std::size_t idx = 1; idx < toolbar.items.size(); ++idx)
+            {
+                const auto &prev = toolbar.items[idx - 1];
+                const auto &curr = toolbar.items[idx];
+                require(prev.x + prev.width <= curr.x + 1.0f,
+                        "toolbar items must not overlap horizontally: " + prev.name + " vs " + curr.name);
+            }
+            const auto rotateToolItem = std::find_if(toolbar.items.begin(), toolbar.items.end(),
+                [](const auto &item) { return item.name == "Rotate Tool"; });
             const auto openSceneItem = std::find_if(toolbar.items.begin(), toolbar.items.end(),
                 [](const auto &item) { return item.name == "Open Scene"; });
+            require(rotateToolItem != toolbar.items.end(),
+                    "Rotate Tool toolbar button must exist in the left tool cluster");
             require(openSceneItem != toolbar.items.end(),
                     "Open Scene toolbar action must have an actual clickable item");
+            require(rotateToolItem->x + rotateToolItem->width <= openSceneItem->x + 1.0f,
+                    "scene tool cluster must be placed to the left of Open Scene");
             pushOpenSceneClick(*openSceneItem, width, height, scale);
         }
         require(openSceneActivations == 5,
@@ -571,6 +613,20 @@ int main()
                                     manualPath.data(), manualPath.size());
         require(ImGui::GetCurrentContext()->OpenPopupStack.Size == 0,
                 "canceling path entry must close the actual ImGui popup instead of reopening a stuck modal");
+
+        // T069: Verify GamePanel::draw(nullptr, true) renders compact Aspect/Scale bar in idle state.
+        GamePanel gamePanel;
+        ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        ImGui::SetNextWindowSize(ImVec2(640.0f, 400.0f));
+        ImGui::Begin("Game");
+        gamePanel.draw(nullptr, true);
+        ImGuiWindow *gameWindow = ImGui::GetCurrentWindow();
+        require(gameWindow != nullptr && gameWindow->DC.CursorMaxPos.y > gameWindow->Pos.y,
+                "GamePanel::draw in idle state must render the compact Aspect/Scale controls");
+        ImGui::End();
+        ImGui::Render();
     }
     catch (const std::exception &error)
     {

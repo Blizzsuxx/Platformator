@@ -24,7 +24,6 @@ class Animator : public Component
     bool getIsPaused() const;
     // Compatibility alias for getCurrentClip().
     const AnimationClip *getCurrentAnimationClip() const;
-    const std::string &getCurrentClipName() const;
 
     bool play(const AnimationClip *animationClip);
     void stop();

@@ -95,12 +95,11 @@ class TemporaryAssets
         if (!imageSaved)
             throw std::runtime_error(std::string("could not save asymmetric texture fixture: ") + SDL_GetError());
         const Json clip{{"frames", Json::array({
-                            Json{{"duration", 0.0}, {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
+                            Json{{"duration", 0.1}, {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
                                  {"hasSourceRect", false}, {"textureWrapperFilePath", "assets/textures/red_circle.png"}},
-                            Json{{"duration", 0.0}, {"sourceRect", {{"x", 2.0}, {"y", 3.0}, {"w", 20.0}, {"h", 18.0}}},
+                            Json{{"duration", 0.1}, {"sourceRect", {{"x", 2.0}, {"y", 3.0}, {"w", 20.0}, {"h", 18.0}}},
                                  {"hasSourceRect", true}, {"textureWrapperFilePath", "assets/textures/black_square.png"}}})},
-                          {"framesPerSecond", 12}, {"loop", true}, {"width", 24}, {"height", 20},
-                          {"name", "Preview Fixture"}, {"filePath", "assets/animations/preview.animset"}};
+                          {"loop", true}, {"filePath", "assets/animations/preview.animset"}};
         std::ofstream output(root / "assets" / "animations" / "preview.animset");
         output << clip.dump(2);
         if (!output)
@@ -145,15 +144,14 @@ void write_solid_png(const std::filesystem::path &path, std::uint8_t red,
     require(saved, std::string("save solid texture fixture: ") + SDL_GetError());
 }
 
-Json animation_asset(std::string frameTexture, std::string filePath, std::string name)
+Json animation_asset(std::string frameTexture, std::string filePath, std::string /*name*/)
 {
-    return Json{{"frames", Json::array({Json{{"duration", 0.0},
+    return Json{{"frames", Json::array({Json{{"duration", 0.1},
                                              {"sourceRect", { {"x", 0.0}, {"y", 0.0},
                                                                {"w", 0.0}, {"h", 0.0} }},
                                              {"hasSourceRect", false},
                                              {"textureWrapperFilePath", std::move(frameTexture)}}})},
-                {"framesPerSecond", 12}, {"loop", true}, {"width", 24}, {"height", 20},
-                {"name", std::move(name)}, {"filePath", std::move(filePath)}};
+                {"loop", true}, {"filePath", std::move(filePath)}};
 }
 
 void write_animation(const std::filesystem::path &path, const Json &animation)

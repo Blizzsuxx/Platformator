@@ -1388,9 +1388,9 @@ void testAnimatorComponentPlayback()
         require(frameATexture != nullptr && frameBTexture != nullptr,
                 "Animator regression failed to load the test frame textures.");
 
-        const std::vector<AnimationFrame> blinkFrames = {AnimationFrame(frameATexture, 0.0f),
-                                                         AnimationFrame(frameBTexture, 0.0f)};
-        const AnimationClip blinkAnimationClip(blinkFrames, 10.0f, true, 8.0f, 8.0f, "blink");
+        const std::vector<AnimationFrame> blinkFrames = {AnimationFrame(frameATexture, 0.1f),
+                                                         AnimationFrame(frameBTexture, 0.1f)};
+        const AnimationClip blinkAnimationClip(blinkFrames, true);
 
         require(animator->play(&blinkAnimationClip), "Animator regression failed to start the test animation clip.");
         require(sprite->getTextureWrapper() != nullptr &&
@@ -1461,13 +1461,13 @@ void testAnimatorAdvancedPlayback()
         require(idleTexture != nullptr && sheetTexture != nullptr,
                 "Advanced animator regression failed to load the clip textures.");
 
-        const std::vector<AnimationFrame> idleFrames = {AnimationFrame(idleTexture, 0.0f)};
+        const std::vector<AnimationFrame> idleFrames = {AnimationFrame(idleTexture, 1.0f)};
 
         const std::vector<AnimationFrame> stripFrames = {
             AnimationFrame(sheetTexture, SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
             AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
-        const AnimationClip stripAnimationClip(stripFrames, 20.0f, false, 4.0f, 4.0f, "strip");
-        const AnimationClip idleAnimationClip(idleFrames, 1.0f, true, 4.0f, 4.0f, "idle");
+        const AnimationClip stripAnimationClip(stripFrames, false);
+        const AnimationClip idleAnimationClip(idleFrames, true);
 
         require(animator->play(&stripAnimationClip), "Advanced animator regression failed to start one-shot playback.");
 
@@ -1537,8 +1537,8 @@ void testAnimationClipFileRoundTrip()
                 "Animation clip file round-trip regression failed to load the source textures.");
 
         const std::vector<AnimationFrame> frames = {
-            AnimationFrame(idleTexture, 0.0f), AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
-        const AnimationClip sourceClip(frames, 20.0f, false, 4.0f, 4.0f, "saved_clip", canonicalAssetPathForTest(clipPath));
+            AnimationFrame(idleTexture, 0.05f), AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+        const AnimationClip sourceClip(frames, false, canonicalAssetPathForTest(clipPath));
 
         writeJsonFile(clipPath, nlohmann::json(sourceClip),
                       "Animation clip file round-trip regression failed to create the clip file.");
@@ -1547,35 +1547,73 @@ void testAnimationClipFileRoundTrip()
                 "Animation clip file round-trip regression failed to load the saved clip file.");
         const AnimationClip &loadedClip = *loadedClipPointer;
 
-        require(loadedClip.getName() == "saved_clip", "Animation clip file round-trip regression lost the clip name.");
-        require(std::abs(loadedClip.getFramesPerSecond() - 20.0) <= 1e-6,
-                "Animation clip file round-trip regression lost the clip playback speed.");
         require(!loadedClip.getLoop(), "Animation clip file round-trip regression lost the clip loop flag.");
-        require(std::abs(loadedClip.getWidth() - 4.0f) <= 1e-5f && std::abs(loadedClip.getHeight() - 4.0f) <= 1e-5f,
-                "Animation clip file round-trip regression lost the clip size.");
         require(loadedClip.getFrames().size() == 2,
                 "Animation clip file round-trip regression lost clip frames during save/load.");
 
         const AnimationFrame &loadedIdleFrame = loadedClip.getFrames()[0];
         const AnimationFrame &loadedStripFrame = loadedClip.getFrames()[1];
 
-        require(loadedIdleFrame.textureWrapper != nullptr &&
-                    loadedIdleFrame.textureWrapper->getFilePath() == canonicalFrameAPath,
+        require(loadedIdleFrame.getTextureWrapper() != nullptr &&
+                    loadedIdleFrame.getTextureWrapper()->getFilePath() == canonicalFrameAPath,
                 "Animation clip file round-trip regression lost the first frame texture path.");
-        require(!loadedIdleFrame.hasSourceRect,
+        require(!loadedIdleFrame.region.hasSourceRect,
                 "Animation clip file round-trip regression added an unexpected source rectangle to the first frame.");
-        require(loadedStripFrame.textureWrapper != nullptr &&
-                    loadedStripFrame.textureWrapper->getFilePath() == canonicalSheetPath,
+        require(loadedStripFrame.getTextureWrapper() != nullptr &&
+                    loadedStripFrame.getTextureWrapper()->getFilePath() == canonicalSheetPath,
                 "Animation clip file round-trip regression lost the second frame texture path.");
-        require(loadedStripFrame.hasSourceRect,
+        require(loadedStripFrame.region.hasSourceRect,
                 "Animation clip file round-trip regression lost the strip frame source rectangle.");
         require(std::abs(loadedStripFrame.duration - 0.05f) <= 1e-5f,
                 "Animation clip file round-trip regression lost the strip frame duration.");
-        require(std::abs(loadedStripFrame.sourceRect.x - 4.0f) <= 1e-5f &&
-                    std::abs(loadedStripFrame.sourceRect.y) <= 1e-5f &&
-                    std::abs(loadedStripFrame.sourceRect.w - 4.0f) <= 1e-5f &&
-                    std::abs(loadedStripFrame.sourceRect.h - 4.0f) <= 1e-5f,
+        require(std::abs(loadedStripFrame.region.sourceRect.x - 4.0f) <= 1e-5f &&
+                    std::abs(loadedStripFrame.region.sourceRect.y) <= 1e-5f &&
+                    std::abs(loadedStripFrame.region.sourceRect.w - 4.0f) <= 1e-5f &&
+                    std::abs(loadedStripFrame.region.sourceRect.h - 4.0f) <= 1e-5f,
                 "Animation clip file round-trip regression lost the strip frame source rectangle contents.");
+
+        // T061: reject finite positive doubles that overflow or underflow float duration on AnimationClip & AnimationFrame
+        for (const double extremeDuration : {1e39, 1e-50})
+        {
+            AnimationFrame preservedFrame(nullptr, 0.25f);
+            bool frameRejected = false;
+            try
+            {
+                const nlohmann::json badFrameJson = {
+                    {"duration", extremeDuration},
+                    {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
+                    {"hasSourceRect", false},
+                    {"textureWrapperFilePath", ""}};
+                from_json(badFrameJson, preservedFrame);
+            }
+            catch (const std::exception &)
+            {
+                frameRejected = true;
+            }
+            require(frameRejected && std::abs(preservedFrame.duration - 0.25f) <= 1e-6f,
+                    "AnimationFrame deserialization must reject float-overflow/underflow duration without mutation.");
+
+            AnimationClip preservedClip({AnimationFrame(nullptr, 0.5f)}, false, "assets/preserved.animset");
+            bool clipRejected = false;
+            try
+            {
+                const nlohmann::json badClipJson = {
+                    {"frames", nlohmann::json::array({{
+                        {"duration", extremeDuration},
+                        {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
+                        {"hasSourceRect", false},
+                        {"textureWrapperFilePath", ""}}})},
+                    {"loop", true},
+                    {"filePath", "assets/bad.animset"}};
+                from_json(badClipJson, preservedClip);
+            }
+            catch (const std::exception &)
+            {
+                clipRejected = true;
+            }
+            require(clipRejected && preservedClip.getFrames().size() == 1 && !preservedClip.getLoop(),
+                    "AnimationClip deserialization must reject float-overflow/underflow duration without mutation.");
+        }
 
         cleanupFiles();
     }

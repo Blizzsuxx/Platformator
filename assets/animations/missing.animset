@@ -1,7 +1,7 @@
 {
     "frames": [
         {
-            "duration": 0,
+            "duration": 1.0,
             "sourceRect": {
                 "x": 0,
                 "y": 0,
@@ -12,10 +12,6 @@
             "textureWrapperFilePath": "assets/textures/missing.png"
         }
     ],
-    "framesPerSecond": 1,
     "loop": true,
-    "width": 16,
-    "height": 16,
-    "name": "Missing",
     "filePath": "assets/animations/missing.animset"
 }

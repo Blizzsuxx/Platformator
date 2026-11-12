@@ -138,46 +138,7 @@ void Animator::applyCurrentFrame() const
     }
 
     const AnimationFrame &frame = clip->getFrames()[currentFrameIndex];
-    TextureWrapper *textureWrapper = frame.textureWrapper;
-    sprite->setTextureWrapper(textureWrapper);
-
-    if (frame.hasSourceRect)
-    {
-        sprite->setSourceRect(frame.sourceRect);
-    }
-    else
-    {
-        sprite->clearSourceRect();
-    }
-
-    float width = clip->getWidth();
-    float height = clip->getHeight();
-    if (width <= 0.0f && frame.hasSourceRect)
-    {
-        width = frame.sourceRect.w;
-    }
-    if (height <= 0.0f && frame.hasSourceRect)
-    {
-        height = frame.sourceRect.h;
-    }
-
-    if ((width <= 0.0f || height <= 0.0f) && textureWrapper != nullptr && textureWrapper->getTexture() != nullptr)
-    {
-        float textureWidth = 0.0f;
-        float textureHeight = 0.0f;
-        SDL_GetTextureSize(textureWrapper->getTexture(), &textureWidth, &textureHeight);
-        if (width <= 0.0f)
-        {
-            width = textureWidth;
-        }
-        if (height <= 0.0f)
-        {
-            height = textureHeight;
-        }
-    }
-
-    sprite->setWidth(width);
-    sprite->setHeight(height);
+    sprite->setTextureRegion(frame.region);
 }
 
 const AnimationClip *Animator::getCurrentClip() const
@@ -194,9 +155,7 @@ double Animator::getCurrentFrameDuration() const
     }
 
     const AnimationFrame &frame = clip->getFrames()[currentFrameIndex];
-    const auto timing = resolve_animation_frame_timing(frame.duration,
-                                                        clip->getFramesPerSecond());
-    return timing.valid() ? timing.seconds : 0.0;
+    return is_valid_animation_frame_duration(frame.duration) ? static_cast<double>(frame.duration) : 0.0;
 }
 
 void Animator::advanceFrame()
@@ -228,18 +187,6 @@ void Animator::advanceFrame()
     for (size_t i = 0; i < callbackCount && getIsCallbackEligible() && !isRetired() && getGameObject()->getActive();
          ++i)
         (*onClipEndCallbacks[i])();
-}
-
-const std::string &Animator::getCurrentClipName() const
-{
-    const AnimationClip *clip = getCurrentClip();
-    if (clip == nullptr)
-    {
-        static const std::string emptyString;
-        return emptyString;
-    }
-
-    return clip->getName();
 }
 
 size_t Animator::getGameManagerIndex() const

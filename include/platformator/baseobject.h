@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <memory>
 #include <string>
 #include <utility>
 #include <stdexcept>
@@ -81,6 +83,30 @@ class Asset
     }
 
   public:
+    template <typename T> struct ReleaseReference
+    {
+        void operator()(T *asset) const
+        {
+            if (asset != nullptr)
+            {
+                asset->removeReferenceAndFreeIfNoReferences();
+            }
+        }
+    };
+
+    template <typename T> using Reference = std::unique_ptr<T, ReleaseReference<T>>;
+
+    template <typename T> static Reference<T> retain(T *asset)
+    {
+        if (asset != nullptr)
+        {
+            asset->addReference();
+        }
+        return Reference<T>(asset);
+    }
+
+    virtual ~Asset() = default;
+
     uint64_t getRuntimeSerial() const
     {
         return runtimeSerial;
@@ -95,7 +121,37 @@ class Asset
         filePath = newFilePath;
     }
 
+    size_t getReferenceCount() const
+    {
+        return referenceCount;
+    }
+
+    void addReference()
+    {
+        ++referenceCount;
+    }
+
+    bool removeReferenceAndFreeIfNoReferences()
+    {
+        if (referenceCount > 0)
+        {
+            --referenceCount;
+        }
+        if (referenceCount == 0 && !filePath.empty())
+        {
+            freeFromRuntime();
+            return true;
+        }
+        return false;
+    }
+
+  protected:
+    virtual void freeFromRuntime()
+    {
+    }
+
   private:
     uint64_t runtimeSerial = 0;
     std::string filePath;
+    size_t referenceCount = 0;
 };

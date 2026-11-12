@@ -11,72 +11,46 @@
 
 struct AnimationFrame
 {
-    TextureWrapper *textureWrapper;
-    float duration;
-    SDL_FRect sourceRect;
-    bool hasSourceRect;
+    TextureRegion region;
+    float duration = 0.1f;
 
-    AnimationFrame();
-    AnimationFrame(TextureWrapper *textureWrapper, float duration);
-    AnimationFrame(TextureWrapper *textureWrapper, const SDL_FRect &sourceRect, float duration);
-    AnimationFrame(const AnimationFrame &other);
-    AnimationFrame &operator=(const AnimationFrame &other);
-    AnimationFrame(AnimationFrame &&other) noexcept;
-    AnimationFrame &operator=(AnimationFrame &&other) noexcept;
-    ~AnimationFrame();
+    AnimationFrame() = default;
+    AnimationFrame(TextureWrapper *textureWrapper, float duration)
+        : region(textureWrapper), duration(duration)
+    {
+    }
+    AnimationFrame(TextureWrapper *textureWrapper, const SDL_FRect &sourceRect, float duration)
+        : region(textureWrapper, sourceRect), duration(duration)
+    {
+    }
 
-    void setTextureWrapper(TextureWrapper *newTextureWrapper);
-    TextureWrapper *getTextureWrapper() const;
-
-private:
-    void retainTexture() const;
-    void releaseTexture();
+    void setTextureWrapper(TextureWrapper *newTextureWrapper)
+    {
+        region.setTextureWrapper(newTextureWrapper);
+    }
+    TextureWrapper *getTextureWrapper() const noexcept
+    {
+        return region.getTextureWrapper();
+    }
 };
 
 struct AnimationClip : public Asset
 {
     AnimationClip();
-    AnimationClip(std::vector<AnimationFrame> frames, double framesPerSecond, bool loop, float width, float height, std::string name, std::string filePath = "");
-    ~AnimationClip();
+    AnimationClip(std::vector<AnimationFrame> frames, bool loop, std::string filePath = "");
+    ~AnimationClip() override;
 
     const std::vector<AnimationFrame> &getFrames() const;
-    double getFramesPerSecond() const;
     bool getLoop() const;
-    float getWidth() const;
-    float getHeight() const;
-    const std::string &getName() const;
-
-    void addReference();
-    bool removeReferenceAndFreeIfNoReferences();
 
     std::vector<AnimationFrame> frames;
-    double framesPerSecond;
-    bool loop;
-    float width;
-    float height;
-    std::string name;
-    size_t referenceCount;
+    bool loop = true;
+
+protected:
+    void freeFromRuntime() override;
 };
 
-enum class AnimationTimingError
-{
-    None,
-    InvalidFrameDuration,
-    InvalidFallbackRate
-};
-
-struct AnimationFrameTiming
-{
-    double seconds = 0.0;
-    AnimationTimingError error = AnimationTimingError::None;
-
-    bool valid() const noexcept { return error == AnimationTimingError::None; }
-};
-
-// Positive duration overrides FPS; zero means the existing FPS fallback.
-// Negative/nonfinite durations and unusable fallback rates fail.
-AnimationFrameTiming resolve_animation_frame_timing(double durationSeconds,
-                                                     double fallbackFramesPerSecond) noexcept;
+bool is_valid_animation_frame_duration(double durationSeconds) noexcept;
 
 void to_json(nlohmann::json &j, const AnimationFrame &frame);
 void from_json(const nlohmann::json &j, AnimationFrame &frame);

@@ -12,26 +12,23 @@
 class AudioWrapper : public Asset
 {
 public:
-    struct ReleaseReference
-    {
-        void operator()(AudioWrapper *audio) const;
-    };
-
     // Owns one existing reference; use retain() to acquire a new reference.
-    using Reference = std::unique_ptr<AudioWrapper, ReleaseReference>;
-    static Reference retain(AudioWrapper *audio);
+    using Reference = Asset::Reference<AudioWrapper>;
+    static Reference retain(AudioWrapper *audio)
+    {
+        return Asset::retain(audio);
+    }
 
     AudioWrapper(MIX_Audio *audio, const std::string &filePath);
-    ~AudioWrapper();
+    ~AudioWrapper() override;
 
     MIX_Audio *getAudio() const;
-    size_t getReferenceCount() const;
-    void addReference();
-    bool removeReferenceAndFreeIfNoReferences();
+
+protected:
+    void freeFromRuntime() override;
 
 private:
     MIX_Audio *audio;
-    size_t referenceCount;
 
     void destroyAudio();
 };

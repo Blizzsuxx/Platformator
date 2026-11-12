@@ -4,7 +4,7 @@
 #include "runtimeaccess.h"
 
 TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath)
-    : Asset(filePath), texture(texture), referenceCount(0)
+    : Asset(filePath), texture(texture)
 {
 }
 
@@ -18,28 +18,9 @@ SDL_Texture *TextureWrapper::getTexture() const
     return texture;
 }
 
-size_t TextureWrapper::getReferenceCount() const
+void TextureWrapper::freeFromRuntime()
 {
-    return referenceCount;
-}
-
-void TextureWrapper::addReference()
-{
-    referenceCount++;
-}
-
-bool TextureWrapper::removeReferenceAndFreeIfNoReferences()
-{
-    if (referenceCount > 0)
-    {
-        referenceCount--;
-    }
-    if (referenceCount == 0 && !getFilePath().empty())
-    {
-        platformator_detail::RuntimeAccess::freeTexture(this);
-        return true;
-    }
-    return false;
+    platformator_detail::RuntimeAccess::freeTexture(this);
 }
 
 void TextureWrapper::destroyTexture()

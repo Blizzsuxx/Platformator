@@ -71,3 +71,27 @@ The check uses current transformed sprite values and preserves the original sequ
 `WindowSettings::highPixelDensity` was appended with a default of `false`. Existing runtime windows therefore keep their ordinary SDL pixel-density behavior. The optional Linux editor opts in so its style and default font can follow the logical-to-pixel ratio; the editor still maps Scene viewport input in logical coordinates and render targets in physical pixels. Because this public settings struct grew, rebuild the engine library and all consumer translation units together when adopting the new header. This additive field does not change scene serialization or runtime defaults.
 
 The optional native editor is enabled with `-DPLATFORMATOR_BUILD_EDITOR=ON` (the `editor-debug` preset does this). It uses Dear ImGui rather than adding editor dependencies to `Platformator::platformator`; editor-off builds and installed runtime consumers remain independent. See [editor setup and limits](../editor/README.md).
+
+## Shared Asset retention, TextureRegion, and simplified AnimationClip / Animator
+
+Rebuild `Platformator::platformator` and all consumer translation units together. Moving reference-counting fields into `Asset`, replacing raw texture/crop fields with `TextureRegion`, and removing clip-level metadata changed the public C++ layout and constructors of `Asset`, `TextureWrapper`, `AudioWrapper`, `Sprite`, `AnimationFrame`, `AnimationClip`, and `Animator`.
+
+### Unified `Asset` reference counting and RAII handles
+
+Reference counting (`getReferenceCount()`, `addReference()`, `removeReferenceAndFreeIfNoReferences()`) now lives on `Asset` (`<platformator/baseobject.h>`) with a `protected: virtual void freeFromRuntime()` hook overridden by `TextureWrapper`, `AudioWrapper`, and `AnimationClip`. `Asset::Reference<T>` and `Asset::retain<T>(ptr)` provide the shared RAII handle across all three asset types (`AudioWrapper::Reference` and `AudioWrapper::retain` remain as type/function aliases). Keep retained handles within the owning `Runtime` lifetime.
+
+### `TextureRegion` and `Sprite` constructors
+
+`TextureRegion` (`<platformator/texturewrapper.h>`) pairs an `Asset::Reference<TextureWrapper>` with `SDL_FRect sourceRect` and `bool hasSourceRect`. Both `Sprite` (`<platformator/sprite.h>`) and `AnimationFrame` (`<platformator/animationclip.h>`) store a `TextureRegion region`, giving `AnimationFrame` Rule-of-Zero copy/move/destruction and eliminating manual texture refcount boilerplate in `Sprite`.
+
+- Use `Sprite::getTextureRegion()` / `Sprite::setTextureRegion(const TextureRegion &)` to read or swap the texture and optional crop atomically without altering `Sprite::width` or `Sprite::height`.
+- Redundant `Sprite` constructor overloads were collapsed via default arguments (`flip = SDL_FLIP_NONE`, `width = 0.0f`, `height = 0.0f`). Existing two-argument and four-argument calls remain supported.
+
+### Simplified `AnimationClip`, `AnimationFrame`, and `Animator`
+
+- **Removed members**: `AnimationClip::width`, `AnimationClip::height`, `AnimationClip::name`, `AnimationClip::framesPerSecond`, and `Animator::getCurrentClipName()` were removed. Read `clip->getFilePath()` when an asset identifier is needed, and author display size on the target `Sprite` (`Sprite::width` / `Sprite::height`, scaled by `GameObject::scale`).
+- **Removed constructors**: `AnimationClip` constructors taking `(frames, framesPerSecond, loop, width, height, name, filePath)` were replaced by `AnimationClip(std::vector<AnimationFrame> frames, bool loop, std::string filePath = "")`.
+- **Explicit positive frame durations**: Every `AnimationFrame::duration` must be a finite, strictly positive `float` (default `0.1f`, checked by `is_valid_animation_frame_duration()` and validated during `AnimationClip` / `AnimationFrame` JSON deserialization, including overflow/underflow checks). Legacy `.animset` files that relied on `"duration": 0.0` with `"framesPerSecond"` must be migrated to explicit per-frame `"duration"` values (e.g. `1.0 / framesPerSecond`) and drop `framesPerSecond`, `width`, `height`, and `name`.
+- **Frame application**: `Animator::applyCurrentFrame()` now calls `sprite->setTextureRegion(frame.region)` without overwriting `Sprite` dimensions.
+
+*(Historical notes in earlier audit/walkthrough documents that mention `AnimationClip::framesPerSecond`, `width`/`height`/`name`, or `AudioWrapper`-only reference counting describe the prior design.)*

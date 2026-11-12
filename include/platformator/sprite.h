@@ -6,26 +6,23 @@
 #include <json.hpp>
 
 #include "platformator/gameobject.h"
-
-class TextureWrapper;
+#include "platformator/texturewrapper.h"
 
 class Sprite : public Component
 {
 public:
 	Sprite();
-	Sprite(GameObject *gameObject);
-	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper);
-	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip);
+	explicit Sprite(GameObject *gameObject, TextureWrapper *textureWrapper = nullptr,
+	                SDL_FlipMode flip = SDL_FLIP_NONE, float width = 0.0f, float height = 0.0f);
 	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float width, float height);
-	Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height);
-	Sprite(GameObject *gameObject, const char *filePath);
-	Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip);
+	Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip = SDL_FLIP_NONE,
+	       float width = 0.0f, float height = 0.0f);
 	Sprite(GameObject *gameObject, const char *filePath, float width, float height);
-	Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height);
-	~Sprite();
+	~Sprite() override = default;
 
 	SDL_Texture *getTexture() const;
 	TextureWrapper *getTextureWrapper() const;
+	const TextureRegion &getTextureRegion() const;
 	SDL_FlipMode getFlip() const;
 	float getWidth() const;
 	float getHeight() const;
@@ -35,6 +32,7 @@ public:
 	float getHeightWithoutScale() const;
 
 	void setTextureWrapper(TextureWrapper *textureWrapper);
+	void setTextureRegion(const TextureRegion &region);
 	void setFlip(SDL_FlipMode flip);
 	void setWidth(float width);
 	void setHeight(float height);
@@ -47,16 +45,12 @@ public:
 	void setWindowIndex(size_t windowIndex);
 
 private:
-	TextureWrapper *textureWrapper;
+	TextureRegion region;
 	SDL_FlipMode flip;
 	float width;
 	float height;
-	SDL_FRect sourceRect;
-	bool sourceRectEnabled;
 	bool isRegisteredInWindow;
 	size_t windowIndex;
-
-	void freeTexture();
 };
 
 template <>

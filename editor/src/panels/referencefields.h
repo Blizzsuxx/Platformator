@@ -36,6 +36,31 @@ struct AssetReferenceInfo
 };
 
 using AssetBrowseCallback = std::function<void(PropertyAddress, std::string, bool)>;
+using MultiAssetBrowseCallback =
+    std::function<void(std::vector<PropertyAddress>, Selection, std::string, bool)>;
+
+struct AssetCompletionResult
+{
+    bool applied = false;
+    std::string message;
+};
+
+AssetCompletionResult apply_asset_browse_completion(
+    DocumentSession &document, EditCommandService &commands,
+    const std::vector<PropertyAddress> &targets,
+    const Selection &originSelection,
+    const DocumentIdentity &dialogIdentity,
+    const std::filesystem::path &activeAssetRoot,
+    const std::filesystem::path &selectedPath,
+    std::string_view expectedAssetType,
+    bool nullable);
+
+std::size_t multi_asset_picker_scan_count_for_test() noexcept;
+
+void draw_clipped_property_label(void *drawListPtr, float x, float y,
+                                 float labelWidth, float frameHeight,
+                                 const char *label, std::uint32_t color,
+                                 bool hovered);
 
 SceneReferenceInfo inspect_scene_reference(const DocumentSession &document, const Json &value,
                                            std::string_view expectedTarget);
@@ -71,4 +96,14 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                 std::string_view expectedAssetType, bool nullable, const char *label,
                                 const AssetBrowseCallback &browse = {}, Json clearValue = nullptr,
                                 ResourceIndex *resourceIndex = nullptr);
+void draw_multi_asset_reference_field(DocumentSession &document, EditCommandService &commands,
+                                      const std::vector<PropertyAddress> &targets,
+                                      const std::vector<Json> &values,
+                                      const Selection &currentSelection,
+                                      std::string_view expectedAssetType, bool nullable,
+                                      const char *label,
+                                      const AssetBrowseCallback &browse = {},
+                                      Json clearValue = nullptr,
+                                      ResourceIndex *resourceIndex = nullptr,
+                                      const MultiAssetBrowseCallback &multiBrowse = {});
 } // namespace platformator_editor

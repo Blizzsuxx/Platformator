@@ -82,9 +82,6 @@ class AnimationPanel
     int semanticSourceHeight_ = 0;
     std::string semanticSourceReference_;
     std::uint64_t viewRevision_ = 1;
-    AddressNumericDraft framesPerSecondDraft_;
-    AddressNumericDraft widthDraft_;
-    AddressNumericDraft heightDraft_;
     AddressNumericDraft durationDraft_;
 };
 } // namespace platformator_editor

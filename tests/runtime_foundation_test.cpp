@@ -216,15 +216,15 @@ void resourceRetention()
 {
     AnimationClip clip;
     AssetReference<AnimationClip> retained(&clip);
-    require(clip.referenceCount == 1, "Asset reference must retain clip");
+    require(clip.getReferenceCount() == 1, "Asset reference must retain clip");
     Runtime runtime;
     auto *animator = runtime.createGameObject()->addComponent<Animator>()->getComponent<Animator>();
     animator->setCurrentClip(&clip);
-    require(clip.referenceCount == 2, "Animator must retain its clip");
+    require(clip.getReferenceCount() == 2, "Animator must retain its clip");
     animator->setCurrentClip(&clip);
-    require(clip.referenceCount == 2, "Same clip assignment must preserve ownership");
+    require(clip.getReferenceCount() == 2, "Same clip assignment must preserve ownership");
     runtime.clearScene();
-    require(clip.referenceCount == 1, "Animator retirement must release its clip");
+    require(clip.getReferenceCount() == 1, "Animator retirement must release its clip");
 }
 
 struct StartCounter : Counter

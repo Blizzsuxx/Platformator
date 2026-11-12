@@ -305,15 +305,26 @@ std::vector<SemanticNode> HierarchyPanel::semantic_nodes(
         return std::string(scope) + "/object/" + std::to_string(id);
     };
     std::unordered_set<int> visibleRows;
-    visibleRows.reserve(semanticVisibleRows_.size());
-    for (const auto &visible : semanticVisibleRows_)
-        visibleRows.insert(visible.rowIndex);
-
-    for (const auto &visible : semanticVisibleRows_)
+    if (!semanticVisibleRows_.empty())
     {
-        if (visible.rowIndex < 0 || static_cast<std::size_t>(visible.rowIndex) >= rows_.size())
+        visibleRows.reserve(semanticVisibleRows_.size());
+        for (const auto &visible : semanticVisibleRows_)
+            visibleRows.insert(visible.rowIndex);
+    }
+    else
+    {
+        visibleRows.reserve(rows_.size());
+        for (std::size_t i = 0; i < rows_.size(); ++i)
+            visibleRows.insert(static_cast<int>(i));
+    }
+
+    const std::size_t count = !semanticVisibleRows_.empty() ? semanticVisibleRows_.size() : rows_.size();
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const int rowIndex = !semanticVisibleRows_.empty() ? semanticVisibleRows_[i].rowIndex : static_cast<int>(i);
+        if (rowIndex < 0 || static_cast<std::size_t>(rowIndex) >= rows_.size())
             continue;
-        const auto &row = rows_[static_cast<std::size_t>(visible.rowIndex)];
+        const auto &row = rows_[static_cast<std::size_t>(rowIndex)];
         if (!document.indexes.objectsById.contains(row.id))
             continue;
         SemanticNode node;
@@ -322,7 +333,8 @@ std::vector<SemanticNode> HierarchyPanel::semantic_nodes(
         node.value = std::to_string(row.id);
         node.visible = true;
         node.enabled = true;
-        node.bounds = visible.bounds;
+        if (!semanticVisibleRows_.empty())
+            node.bounds = semanticVisibleRows_[i].bounds;
         node.actions = {"activate"};
 
         node.id = objectNodeId(row.id);
@@ -333,11 +345,10 @@ std::vector<SemanticNode> HierarchyPanel::semantic_nodes(
             if (parent.kind == HierarchyRowKind::Object)
                 node.parentId = objectNodeId(parent.id);
         }
-        node.selected = !selection.componentId &&
-            (selection.objectId == row.id ||
-             std::find(selection.selectedObjectIds.begin(),
-                       selection.selectedObjectIds.end(), row.id) !=
-                 selection.selectedObjectIds.end());
+        node.selected = selection.objectId == row.id ||
+            std::find(selection.selectedObjectIds.begin(),
+                      selection.selectedObjectIds.end(), row.id) !=
+                selection.selectedObjectIds.end();
         node.focused = node.selected && selection.focusedPanel == FocusedPanel::Hierarchy;
         node.expanded = expandedObjects_.contains(row.id);
         node.help = "GameObject, ID " + std::to_string(row.id);
@@ -826,7 +837,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         modalOpen, activeGesture, false, hierarchyFocused};
     const auto start_rename = [&]() {
         const auto objectId = selection.current().objectId;
-        if (!objectId || selection.current().componentId)
+        if (!objectId)
             return;
         const auto location = document.indexes.objectsById.find(*objectId);
         const Json *object = location == document.indexes.objectsById.end()
@@ -975,11 +986,6 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
 
     if (icon_button(EditorIcon::Plus, "##hierarchy-create-button", false, "Create GameObject preset"))
         ImGui::OpenPopup("##hierarchy-create-popup");
-    ImGui::SameLine(0.0f, 2.0f);
-    if (ImGui::Button("+ Object"))
-        ImGui::OpenPopup("##hierarchy-create-popup");
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Create GameObject preset");
     ImGui::SameLine();
     ImGui::TextDisabled("%zu objects", document.indexes.objectsById.size());
 
@@ -1002,17 +1008,26 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
 
         ImGui::EndPopup();
     }
-    if (!duplicatePolicyStatus_.empty())
-        ImGui::TextWrapped("%s", duplicatePolicyStatus_.c_str());
     ImGui::Separator();
 
     std::array<char, 256> searchBuffer{};
     const std::size_t searchLength = std::min(searchQuery_.size(), searchBuffer.size() - 1);
     std::memcpy(searchBuffer.data(), searchQuery_.data(), searchLength);
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    const float clearBtnWidth = ImGui::GetFrameHeight();
+    const float clearSpacing = ImGui::GetStyle().ItemSpacing.x;
+    if (!searchQuery_.empty())
+        ImGui::SetNextItemWidth(std::max(40.0f, ImGui::GetContentRegionAvail().x - clearBtnWidth - clearSpacing));
+    else
+        ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::InputTextWithHint("##hierarchy-search", "Search objects",
                                  searchBuffer.data(), searchBuffer.size()))
         set_search_query(searchBuffer.data());
+    if (!searchQuery_.empty())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("×##clear-hierarchy-search", ImVec2(clearBtnWidth, clearBtnWidth)))
+            set_search_query("");
+    }
     update_search_matches(document);
     // Search expansion restores the user's pre-search state. Reveal the active
     // selection after that restoration so navigation from another panel remains
@@ -1023,14 +1038,19 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     else if (!selection.current().objectId)
         lastRevealedObjectId_.reset();
 
+    const float footerHeight = duplicatePolicyStatus_.empty()
+        ? 0.0f
+        : (ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::BeginChild("HierarchyRows", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
+    ImGui::BeginChild("HierarchyRows", ImVec2(0.0f, -footerHeight), ImGuiChildFlags_None,
                       ImGuiWindowFlags_NoBackground);
     const auto &rows = visible_rows(document);
     update_search_visibility(document, selection.current().objectId);
     const std::vector<int> &selectionOrder = searchQuery_.empty()
         ? displayedObjectOrder_ : searchResultObjectOrder_;
-    constexpr float hierarchyIndent = 24.0f;
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const float hierarchyIndent = std::clamp(ImGui::GetStyle().IndentSpacing, 18.0f * uiScale, 28.0f * uiScale);
+    const float connectorOffset = 8.0f * uiScale;
     const float treeBaseX = ImGui::GetCursorScreenPos().x;
     const ImU32 lineColor = ImGui::GetColorU32(ImGuiCol_TreeLines);
     const float lineThickness = std::max(1.0f, ImGui::GetStyle().TreeLinesSize);
@@ -1101,7 +1121,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         if (firstChild < 0 || lastChild < firstVisibleRow || firstChild >= lastVisibleRow)
             continue;
         const auto &parent = rows[parentSlot];
-        const float parentX = treeBaseX + static_cast<float>(parent.depth) * hierarchyIndent + 8.0f;
+        const float parentX = treeBaseX + static_cast<float>(parent.depth) * hierarchyIndent + connectorOffset;
         const float parentCenterY = firstRowPosition.y + static_cast<float>(parentIndex) * rowStride +
                                     rowHeight * 0.5f;
         const float lastChildCenterY = firstRowPosition.y + static_cast<float>(lastChild) * rowStride +
@@ -1121,8 +1141,8 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         if (parentIndex < 0)
             continue;
         const auto &parent = rows[static_cast<std::size_t>(parentIndex)];
-        const auto rowX = treeBaseX + static_cast<float>(row.depth) * hierarchyIndent + 8.0f;
-        const float parentX = treeBaseX + static_cast<float>(parent.depth) * hierarchyIndent + 8.0f;
+        const auto rowX = treeBaseX + static_cast<float>(row.depth) * hierarchyIndent + connectorOffset;
+        const float parentX = treeBaseX + static_cast<float>(parent.depth) * hierarchyIndent + connectorOffset;
         const float rowCenterY = firstRowPosition.y + static_cast<float>(rowIndex) * rowStride + rowHeight * 0.5f;
         drawList->AddLine({parentX, rowCenterY}, {rowX, rowCenterY}, lineColor, lineThickness);
         work::record(work::Counter::HierarchyConnectors);
@@ -1149,11 +1169,10 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             if (row.kind == HierarchyRowKind::Object)
             {
                 const auto &currentSelection = selection.current();
-                const bool selected = !currentSelection.componentId &&
-                    (currentSelection.objectId == row.id ||
-                     std::find(currentSelection.selectedObjectIds.begin(),
-                               currentSelection.selectedObjectIds.end(), row.id) !=
-                         currentSelection.selectedObjectIds.end());
+                const bool selected = currentSelection.objectId == row.id ||
+                    std::find(currentSelection.selectedObjectIds.begin(),
+                              currentSelection.selectedObjectIds.end(), row.id) !=
+                        currentSelection.selectedObjectIds.end();
                 ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth |
                                            ImGuiTreeNodeFlags_OpenOnArrow |
                                            ImGuiTreeNodeFlags_FramePadding |
@@ -1164,18 +1183,20 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     flags |= ImGuiTreeNodeFlags_Leaf;
                 const bool wasExpanded = expandedObjects_.contains(row.id);
                 ImGui::SetNextItemOpen(wasExpanded, ImGuiCond_Always);
-                const bool open = ImGui::TreeNodeEx(row.label.c_str(), flags);
+                const std::string treeNodeId = "###obj_" + std::to_string(row.id);
+                const bool open = ImGui::TreeNodeEx(treeNodeId.c_str(), flags, "");
                 const ImVec2 rowMinimum = ImGui::GetItemRectMin();
                 const ImVec2 rowMaximum = ImGui::GetItemRectMax();
                 semanticBounds = {rowMinimum.x, rowMinimum.y,
                                   rowMaximum.x - rowMinimum.x,
                                   rowMaximum.y - rowMinimum.y};
                 hasSemanticBounds = true;
-                const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
                 const float iconSize = 14.0f * uiScale;
                 const float iconX = rowMinimum.x + ImGui::GetTreeNodeToLabelSpacing() + 3.0f * uiScale;
                 const float iconY = rowMinimum.y + (rowMaximum.y - rowMinimum.y - iconSize) * 0.5f;
                 ImDrawList *drawList = ImGui::GetWindowDrawList();
+                draw_editor_icon(EditorIcon::GameObject, drawList, {iconX, iconY}, iconSize,
+                                 ImGui::GetColorU32(ImGuiCol_TextDisabled));
 
                 const bool isHidden = hiddenObjectIds != nullptr &&
                     std::binary_search(hiddenObjectIds->begin(), hiddenObjectIds->end(), row.id);
@@ -1187,6 +1208,15 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 const float eyeX = rowMaximum.x - gutterBtnWidth - 2.0f * uiScale;
                 const float lockX = eyeX - gutterBtnWidth - 2.0f * uiScale;
                 const ImVec2 mouse = ImGui::GetMousePos();
+
+                const float textX = iconX + iconSize + 5.0f * uiScale;
+                const float textY = rowMinimum.y + (rowMaximum.y - rowMinimum.y - ImGui::GetTextLineHeight()) * 0.5f;
+                const std::string_view stripped = strip_identity_suffix(row.label);
+                const ImVec4 clipRect(textX, rowMinimum.y, std::max(textX, lockX - 4.0f * uiScale), rowMaximum.y);
+                drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), {textX, textY},
+                                  ImGui::GetColorU32(ImGuiCol_Text),
+                                  stripped.data(), stripped.data() + stripped.size(),
+                                  0.0f, &clipRect);
 
                 bool lockHovered = false;
                 bool eyeHovered = false;
@@ -1233,12 +1263,6 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     else if (eyeHovered)
                         ImGui::SetTooltip("%s", isHidden ? "Show object in Scene view" : "Hide object in Scene view");
                 }
-                else
-                {
-                    draw_editor_icon(EditorIcon::GameObject, drawList,
-                                     {rowMaximum.x - iconSize - 4.0f, iconY}, iconSize,
-                                     ImGui::GetColorU32(ImGuiCol_TextDisabled));
-                }
 
                 if (row.hasChildren)
                 {
@@ -1281,7 +1305,8 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 if (ImGui::BeginDragDropSource())
                 {
                     ImGui::SetDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT", &row.id, sizeof(row.id));
-                    ImGui::TextUnformatted(row.label.c_str());
+                    const std::string displayLabel = std::string(strip_identity_suffix(row.label));
+                    ImGui::TextUnformatted(displayLabel.c_str());
                     ImGui::EndDragDropSource();
                 }
                 if (ImGui::BeginDragDropTarget())
@@ -1536,5 +1561,16 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     }
     ImGui::EndChild();
     ImGui::PopStyleVar();
+    if (!duplicatePolicyStatus_.empty())
+    {
+        ImGui::Separator();
+        ImGui::TextDisabled("%s", duplicatePolicyStatus_.c_str());
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(duplicatePolicyStatus_.c_str());
+            ImGui::EndTooltip();
+        }
+    }
 }
 } // namespace platformator_editor

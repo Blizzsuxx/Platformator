@@ -333,10 +333,11 @@ nlohmann::json component_snapshot(Component &component)
         kind = ObjectKind::Animator;
         typeName = "animator";
         bool clipNameTruncated = false;
+        const std::string clipPath = value.getCurrentClip() ? value.getCurrentClip()->getFilePath() : std::string{};
         properties = {{"playing", value.getIsPlaying()}, {"paused", value.getIsPaused()},
                       {"frame_index", value.getCurrentFrameIndex()},
                       {"playback_speed", safe_number(value.getPlaybackSpeed())},
-                      {"clip_name", bounded_utf8(value.getCurrentClipName(), 128, clipNameTruncated)},
+                      {"clip_name", bounded_utf8(clipPath, 128, clipNameTruncated)},
                       {"clip_name_truncated", clipNameTruncated}};
         break;
     }

@@ -1196,10 +1196,10 @@ namespace platformator_editor
             tool_ = SceneTool::Rectangle;
         ImGui::EndDisabled();
 
-        const float rightControlsWidth = 270.0f;
+        const float rightControlsWidth = 240.0f * uiScale;
         const float currentX = ImGui::GetCursorPosX();
         const float availWidth = ImGui::GetContentRegionAvail().x + currentX;
-        if (availWidth > currentX + rightControlsWidth + 10.0f)
+        if (availWidth > currentX + rightControlsWidth + 10.0f * uiScale)
             ImGui::SameLine(availWidth - rightControlsWidth);
         else
             ImGui::SameLine();
@@ -1210,7 +1210,9 @@ namespace platformator_editor
             ImGui::SetTooltip("Toggle background grid display");
 
         ImGui::SameLine();
-        if (ImGui::SmallButton("Snap"))
+        char snapBuf[32];
+        std::snprintf(snapBuf, sizeof(snapBuf), "Snap: %.2g", snapPreferences.position);
+        if (ImGui::SmallButton(snapBuf))
             ImGui::OpenPopup("##scene-snap-settings");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Configure position, rotation, and scale increments; hold Ctrl while dragging to snap");
@@ -1226,14 +1228,6 @@ namespace platformator_editor
             ImGui::TextDisabled("Hold Ctrl while dragging to apply the configured increments.");
             ImGui::EndPopup();
         }
-
-        ImGui::SameLine();
-        char stepBuf[32];
-        std::snprintf(stepBuf, sizeof(stepBuf), "Step: %.2g", snapPreferences.position);
-        if (ImGui::SmallButton(stepBuf))
-            ImGui::OpenPopup("##scene-snap-settings");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Position snap step. Click to configure snap settings.");
 
         ImGui::SameLine();
         char zoomBuf[32];
@@ -1254,8 +1248,6 @@ namespace platformator_editor
 
         frameAllRequested_ = false;
         frameSelectedRequested_ = false;
-        if (!document.sourcePath)
-            ImGui::TextDisabled("No authored scene is loaded. Use Open Scene or New Scene to begin.");
         const ImVec2 viewportAvailable = ImGui::GetContentRegionAvail();
         const ImVec2 origin = ImGui::GetCursorScreenPos();
         const ViewportRect imageRect{origin.x, origin.y, std::max(0.0f, viewportAvailable.x),
@@ -1487,17 +1479,6 @@ namespace platformator_editor
         if (transformReady && content.width > 16.0f && content.height > 16.0f)
         {
             const float overlayPad = 8.0f * uiScale;
-            char zoomText[40];
-            std::snprintf(zoomText, sizeof(zoomText), "Zoom %.0f%%", viewZoom_ * 100.0f);
-            const ImVec2 zoomSize = ImGui::CalcTextSize(zoomText);
-            const ImVec2 zoomMinimum{content.x + overlayPad,
-                                     content.y + content.height - zoomSize.y - overlayPad * 2.0f};
-            drawList->AddRectFilled(zoomMinimum,
-                                    {zoomMinimum.x + zoomSize.x + overlayPad * 2.0f,
-                                     zoomMinimum.y + zoomSize.y + overlayPad},
-                                    IM_COL32(18, 20, 24, 190), 3.0f);
-            drawList->AddText({zoomMinimum.x + overlayPad, zoomMinimum.y + overlayPad * 0.5f},
-                              IM_COL32(190, 196, 205, 235), zoomText);
             if (tool_ == SceneTool::Rotate && selection.current().objectId)
             {
                 if (const Json *rotating = resolve_object(document, *selection.current().objectId))
@@ -1507,7 +1488,7 @@ namespace platformator_editor
                                   rotation_of(*rotating) * 180.0f / std::numbers::pi_v<float>);
                     const ImVec2 angleSize = ImGui::CalcTextSize(angleText);
                     const ImVec2 angleMinimum{content.x + overlayPad,
-                                              zoomMinimum.y - angleSize.y - overlayPad};
+                                              content.y + content.height - angleSize.y - overlayPad * 2.0f};
                     drawList->AddRectFilled(angleMinimum,
                                             {angleMinimum.x + angleSize.x + overlayPad * 2.0f,
                                              angleMinimum.y + angleSize.y + overlayPad},

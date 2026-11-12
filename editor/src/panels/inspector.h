@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+#include <functional>
 #include <optional>
 #include <cstdint>
 #include <string>
@@ -12,18 +14,46 @@
 #include "../accessibility.h"
 #include "behaviorfields.h"
 #include "selection.h"
+#include "spriteeditor.h"
 
 namespace platformator_editor
 {
 class InspectorPanel
 {
   public:
+    struct PreparedTextureInfo
+    {
+        SDL_Texture *texture = nullptr;
+        int sourceWidth = 0;
+        int sourceHeight = 0;
+    };
+    using TexturePreparer = std::function<PreparedTextureInfo(const std::filesystem::path &)>;
+
     void draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
               const BehaviorCatalog &catalog, const AssetBrowseCallback &browse = {},
               ResourceIndex *resourceIndex = nullptr);
     void reveal_field(int objectId, std::optional<int> componentId, std::string fieldPath);
-    void set_host_generation(std::uint64_t generation) noexcept;
+    void set_host_generation(std::uint64_t generation, DocumentSession *document = nullptr) noexcept;
+    void cancel_active_interactions(DocumentSession *document = nullptr);
     const std::string &feedback() const noexcept;
+    const std::string &search_query() const noexcept { return searchQuery_; }
+    void set_search_query(std::string query) { searchQuery_ = std::move(query); }
+    void set_open_animation_callback(std::function<void(const std::filesystem::path &)> callback)
+    {
+        openAnimationCallback_ = std::move(callback);
+    }
+    void set_multi_asset_browse_callback(MultiAssetBrowseCallback callback)
+    {
+        multiAssetBrowseCallback_ = std::move(callback);
+    }
+    void set_texture_preparer(TexturePreparer callback)
+    {
+        texturePreparer_ = std::move(callback);
+    }
+    const SpriteSourceRegionWidget &sprite_region_widget() const noexcept
+    {
+        return spriteRegionWidget_;
+    }
     std::vector<Json> template_author_bindings(const DocumentSession &document) const;
     std::vector<TemplateAuthorSchemaDeclaration> template_author_schemas(
         const DocumentSession &document) const;
@@ -81,7 +111,8 @@ class InspectorPanel
     void draw_search_bar();
     void draw_multi_object_fields(DocumentSession &document, SelectionModel &selection,
                                   EditCommandService &commands, const BehaviorCatalog &catalog,
-                                  const std::vector<int> &objectIds);
+                                  const std::vector<int> &objectIds,
+                                  const AssetBrowseCallback &browse = {});
     void save_selected_template(DocumentSession &document, int objectId,
                                 const BehaviorCatalog &catalog);
     bool consume_reveal_target(int objectId, std::optional<int> componentId,
@@ -94,7 +125,9 @@ class InspectorPanel
     std::string addPickerQuery_;
     std::string lastSelectionKey_;
     std::string lastObjectSelectionKey_;
+    std::vector<int> currentOrderedSelection_;
     std::optional<Json> componentSettingsClipboard_;
+    std::optional<Json> transformSettingsClipboard_;
     std::uint64_t hostGeneration_ = 0;
     std::optional<int> revealObjectId_;
     std::optional<int> revealComponentId_;
@@ -108,17 +141,27 @@ class InspectorPanel
     struct NumericScrubState
     {
         bool active = false;
-        float startValue = 0.0f;
-        float currentValue = 0.0f;
+        bool moved = false;
+        bool seenThisFrame = false;
+        std::uint32_t widgetId = 0;
+        double accumDelta = 0.0;
+        std::uint64_t projectGeneration = 0;
+        std::uint64_t tabId = 0;
+        std::uint64_t documentGeneration = 0;
+        std::uint64_t hostGeneration = 0;
+        std::vector<int> orderedSelection;
         std::vector<FieldPathSegment> path;
         int objectId = 0;
         std::optional<int> componentId;
+        Json originalSingleJson;
+        bool singleHadValue = false;
         std::vector<int> targetObjectIds;
-        std::vector<float> multiStartValues;
-        float baseStep = 0.1f;
-        float snapIncrement = 0.5f;
-        std::optional<float> minimum;
-        std::optional<float> maximum;
+        std::vector<std::optional<int>> targetComponentIds;
+        std::vector<Json> originalMultiJson;
+        double baseStep = 0.1;
+        double snapIncrement = 0.5;
+        std::optional<double> minimum;
+        std::optional<double> maximum;
     };
     NumericScrubState scrubState_;
     BehaviorFieldsPanel behaviorFields_;
@@ -132,7 +175,8 @@ class InspectorPanel
         PasteSettings,
         ResetSettings,
         RemoveComponent,
-        SaveTemplate
+        SaveTemplate,
+        EditClip
     };
     struct SemanticTarget
     {
@@ -144,5 +188,11 @@ class InspectorPanel
     };
     std::unordered_map<std::string, SemanticTarget> semanticTargets_;
     std::optional<std::string> semanticFocusNode_;
+    std::function<void(const std::filesystem::path &)> openAnimationCallback_;
+    MultiAssetBrowseCallback multiAssetBrowseCallback_;
+    TexturePreparer texturePreparer_;
+    SpriteSourceRegionWidget spriteRegionWidget_;
+    PreparedTextureInfo prepare_sprite_texture(const DocumentSession &document,
+                                               std::string_view textureRef);
 };
 } // namespace platformator_editor

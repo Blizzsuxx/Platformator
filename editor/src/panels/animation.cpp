@@ -70,24 +70,16 @@ std::string animation_numeric_address(const AssetDocument &document,
         std::string(jsonPointer);
 }
 
-double fallback_fps_of(const Json &clip)
-{
-    if (!clip.is_object())
-        return std::numeric_limits<double>::quiet_NaN();
-    const auto fps = clip.find("framesPerSecond");
-    return fps != clip.end() && fps->is_number()
-        ? fps->get<double>() : std::numeric_limits<double>::quiet_NaN();
-}
-
-double frame_duration(const Json &frame, double fallbackFps)
+double frame_duration(const Json &frame)
 {
     if (!frame.is_object())
         return std::numeric_limits<double>::quiet_NaN();
     const auto duration = frame.find("duration");
     if (duration == frame.end() || !duration->is_number())
         return std::numeric_limits<double>::quiet_NaN();
-    const auto timing = resolve_animation_frame_timing(duration->get<double>(), fallbackFps);
-    return timing.valid() ? timing.seconds : std::numeric_limits<double>::quiet_NaN();
+    const double seconds = duration->get<double>();
+    return is_valid_animation_frame_duration(seconds) ? seconds
+        : std::numeric_limits<double>::quiet_NaN();
 }
 
 void bump_revision(std::uint64_t &revision) noexcept
@@ -203,11 +195,10 @@ std::size_t animation_frame_at_time(const Json &clip, double seconds) noexcept
     const Json *frames = frames_of(clip);
     if (frames == nullptr || frames->empty() || !std::isfinite(seconds) || seconds < 0.0)
         return 0;
-    const double fallbackFps = fallback_fps_of(clip);
     double total = 0.0;
     for (const auto &frame : *frames)
     {
-        const double duration = frame_duration(frame, fallbackFps);
+        const double duration = frame_duration(frame);
         if (!std::isfinite(duration) || duration <= 0.0 || !std::isfinite(total + duration))
             return 0;
         total += duration;
@@ -223,7 +214,7 @@ std::size_t animation_frame_at_time(const Json &clip, double seconds) noexcept
     double cursor = 0.0;
     for (std::size_t index = 0; index < frames->size(); ++index)
     {
-        cursor += frame_duration((*frames)[index], fallbackFps);
+        cursor += frame_duration((*frames)[index]);
         if (seconds < cursor)
             return index;
     }
@@ -257,11 +248,10 @@ void AnimationPanel::scrub_to(const Json &clip, std::size_t frameIndex) noexcept
     const Json *frames = frames_of(clip);
     if (frames == nullptr || frameIndex >= frames->size())
         return;
-    const double fallbackFps = fallback_fps_of(clip);
     playbackSeconds_ = 0.0;
     for (std::size_t index = 0; index < frameIndex; ++index)
     {
-        const double duration = frame_duration((*frames)[index], fallbackFps);
+        const double duration = frame_duration((*frames)[index]);
         if (!std::isfinite(duration) || duration <= 0.0 ||
             !std::isfinite(playbackSeconds_ + duration))
         {
@@ -305,11 +295,10 @@ AnimationPanel::next_playback_deadline(
     if (frames == nullptr || frames->empty())
         return std::nullopt;
 
-    const double fallbackFps = fallback_fps_of(clip);
     double totalDuration = 0.0;
     for (const auto &frame : *frames)
     {
-        const double duration = frame_duration(frame, fallbackFps);
+        const double duration = frame_duration(frame);
         if (!std::isfinite(duration) || duration <= 0.0 ||
             !std::isfinite(totalDuration + duration))
             return std::nullopt;
@@ -329,7 +318,7 @@ AnimationPanel::next_playback_deadline(
     double frameEnd = 0.0;
     for (const auto &frame : *frames)
     {
-        const double duration = frame_duration(frame, fallbackFps);
+        const double duration = frame_duration(frame);
         frameEnd += duration;
         if (position < frameEnd)
         {
@@ -351,9 +340,6 @@ AnimationPanel::next_playback_deadline(
 
 void AnimationPanel::cancel_numeric_drafts() noexcept
 {
-    framesPerSecondDraft_.cancel();
-    widthDraft_.cancel();
-    heightDraft_.cancel();
     durationDraft_.cancel();
     if (sourceRegionEditor_)
         sourceRegionEditor_->cancel_numeric_drafts();
@@ -382,26 +368,6 @@ std::vector<SemanticNode> AnimationPanel::semantic_nodes(const AssetDocument &do
         nodes.push_back(std::move(invalid));
         return nodes;
     }
-
-    const auto add_number = [&](std::string_view key, std::string_view label,
-                                double minimum, double maximum) {
-        const auto found = clip.find(std::string(key));
-        if (found == clip.end() || !found->is_number())
-            return;
-        auto node = semantic_node(prefix + "/" + std::string(key), rootId,
-            key == "framesPerSecond" ? SemanticRole::TextField : SemanticRole::TextField,
-            std::string(label), found->dump());
-        node.minimum = minimum;
-        node.maximum = maximum;
-        node.actions = {"set_value"};
-        nodes.push_back(std::move(node));
-    };
-    add_number("framesPerSecond", "Frames per second", 0.000001,
-               std::numeric_limits<double>::max());
-    add_number("width", "Animation frame width", 0.0,
-               std::numeric_limits<double>::max());
-    add_number("height", "Animation frame height", 0.0,
-               std::numeric_limits<double>::max());
 
     const auto loop = clip.find("loop");
     if (loop != clip.end() && loop->is_boolean())
@@ -740,22 +706,14 @@ bool AnimationPanel::dispatch_semantic_action(AssetDocument &document,
             return fail(result.error);
         return result.changed;
     }
-    if (suffix == "framesPerSecond" || suffix == "width" || suffix == "height" ||
-        suffix == "duration")
+    if (suffix == "duration")
     {
         double value = 0.0;
         if (!parse_finite_double(action.value, value))
             return fail("numeric animation values must be finite numbers");
-        if (suffix == "framesPerSecond" && value <= 0.0)
-            return fail("frames per second must be positive");
-        if (suffix == "duration" && (value < 0.0 || frames->empty()))
-            return fail("frame duration must be nonnegative and a frame must be selected");
-        if ((suffix == "width" || suffix == "height") && value < 0.0)
-            return fail("animation dimensions must be nonnegative");
-        const std::string path = suffix == "duration"
-            ? "/frames/" + std::to_string(selected) + "/duration"
-            : "/" + std::string(suffix);
-        return set(path, value);
+        if (value <= 0.0 || frames->empty())
+            return fail("frame duration must be positive and a frame must be selected");
+        return set("/frames/" + std::to_string(selected) + "/duration", value);
     }
     return false;
 }
@@ -773,71 +731,6 @@ void AnimationPanel::draw(AssetDocument &document,
         return;
     }
 
-    const auto fps = clip.find("framesPerSecond");
-    if (fps != clip.end() && fps->is_number())
-    {
-        const double value = fps->get<double>();
-        ImGui::SetNextItemWidth(100.0f);
-        const auto outcome = framesPerSecondDraft_.draw("FPS",
-            animation_numeric_address(document, assetRoot, "/framesPerSecond"), value, 0.1);
-        if (outcome.kind == NumericDraftOutcomeKind::Invalid)
-            feedback_ = "Enter a complete finite FPS value.";
-        else if (outcome.kind == NumericDraftOutcomeKind::Commit)
-        {
-            if (outcome.value <= 0.0)
-                feedback_ = "Frames per second must be positive.";
-            else
-            {
-                const auto result = document.set("/framesPerSecond", outcome.value);
-                if (!result.error.empty()) feedback_ = result.error;
-                else feedback_.clear();
-                if (result.changed) return;
-            }
-        }
-    }
-    else
-        ImGui::TextDisabled("FPS is missing or invalid.");
-
-    const auto loop = clip.find("loop");
-    if (loop != clip.end() && loop->is_boolean())
-    {
-        bool value = loop->get<bool>();
-        if (ImGui::Checkbox("Loop", &value))
-        {
-            const auto result = document.set("/loop", value);
-            if (!result.error.empty()) feedback_ = result.error;
-            if (result.changed) return;
-        }
-    }
-    for (const auto *dimension : {"width", "height"})
-    {
-        const auto found = clip.find(dimension);
-        if (found == clip.end() || !found->is_number())
-            continue;
-        const double value = found->get<double>();
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(90.0f);
-        AddressNumericDraft &draft = std::string_view(dimension) == "width"
-            ? widthDraft_ : heightDraft_;
-        const std::string pointer = std::string("/") + dimension;
-        const auto outcome = draft.draw(dimension,
-            animation_numeric_address(document, assetRoot, pointer), value, 1.0);
-        if (outcome.kind == NumericDraftOutcomeKind::Invalid)
-            feedback_ = "Enter a complete finite animation dimension.";
-        else if (outcome.kind == NumericDraftOutcomeKind::Commit)
-        {
-            if (outcome.value < 0.0)
-                feedback_ = "Animation dimensions must be nonnegative.";
-            else
-            {
-                const auto result = document.set(pointer, outcome.value);
-                if (!result.error.empty()) feedback_ = result.error;
-                else feedback_.clear();
-                if (result.changed) return;
-            }
-        }
-    }
-
     if (!validation.valid())
     {
         ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "Clip has validation issues:");
@@ -849,6 +742,32 @@ void AnimationPanel::draw(AssetDocument &document,
     if (selectedFrame_ >= frameCount)
         selectedFrame_ = frameCount == 0 ? 0 : frameCount - 1;
 
+    const float availableWidth = ImGui::GetContentRegionAvail().x;
+    const bool splitColumns = availableWidth >= 480.0f;
+    const float leftColumnWidth = std::clamp(availableWidth * 0.42f, 240.0f, 320.0f);
+
+    if (splitColumns)
+    {
+        ImGui::Columns(2, "##animation-panel-columns", false);
+        ImGui::SetColumnWidth(0, leftColumnWidth);
+    }
+
+    const auto loop = clip.find("loop");
+    if (loop != clip.end() && loop->is_boolean())
+    {
+        bool value = loop->get<bool>();
+        if (ImGui::Checkbox("Loop", &value))
+        {
+            const auto result = document.set("/loop", value);
+            if (!result.error.empty()) feedback_ = result.error;
+            if (result.changed)
+            {
+                if (splitColumns) ImGui::Columns(1);
+                return;
+            }
+        }
+    }
+
     if (ImGui::Button("Add Frame"))
     {
         const auto result = add_animation_frame(document, make_default_animation_frame());
@@ -856,6 +775,7 @@ void AnimationPanel::draw(AssetDocument &document,
         {
             selectedFrame_ = frameCount;
             textureDraftFrame_ = static_cast<std::size_t>(-1);
+            if (splitColumns) ImGui::Columns(1);
             return;
         }
         if (!result.error.empty()) feedback_ = result.error;
@@ -863,120 +783,209 @@ void AnimationPanel::draw(AssetDocument &document,
     ImGui::SameLine();
     ImGui::Text("%zu frames", frameCount);
 
+    const float listHeight = splitColumns ? 120.0f : 100.0f;
+    if (ImGui::BeginChild("##frame-list", ImVec2(0.0f, listHeight), ImGuiChildFlags_Borders))
+    {
+        if (frameCount != 0)
+        {
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(std::min<std::size_t>(frameCount,
+                static_cast<std::size_t>(std::numeric_limits<int>::max()))));
+            while (clipper.Step())
+            {
+                for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+                {
+                    const auto index = static_cast<std::size_t>(i);
+                    const std::string label = "Frame " + std::to_string(index + 1) + "##animation-frame";
+                    if (ImGui::Selectable(label.c_str(), selectedFrame_ == index))
+                        scrub_to(clip, index);
+                }
+            }
+        }
+        else
+        {
+            ImGui::TextDisabled("No frames");
+        }
+    }
+    ImGui::EndChild();
+
+    ImGui::BeginDisabled(frameCount == 0 || selectedFrame_ == 0);
+    if (ImGui::Button("Move Up"))
+    {
+        const auto result = move_animation_frame(document, selectedFrame_, selectedFrame_ - 1);
+        if (result.changed)
+        {
+            --selectedFrame_;
+            textureDraftFrame_ = static_cast<std::size_t>(-1);
+            if (splitColumns) ImGui::Columns(1);
+            return;
+        }
+        if (!result.error.empty()) feedback_ = result.error;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(frameCount == 0 || selectedFrame_ + 1 >= frameCount);
+    if (ImGui::Button("Move Down"))
+    {
+        const auto result = move_animation_frame(document, selectedFrame_, selectedFrame_ + 1);
+        if (result.changed)
+        {
+            ++selectedFrame_;
+            textureDraftFrame_ = static_cast<std::size_t>(-1);
+            if (splitColumns) ImGui::Columns(1);
+            return;
+        }
+        if (!result.error.empty()) feedback_ = result.error;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(frameCount == 0);
+    if (ImGui::Button("Remove Frame"))
+    {
+        const auto result = remove_animation_frame(document, selectedFrame_);
+        if (result.changed)
+        {
+            selectedFrame_ = selectedFrame_ >= frameCount - 1 && frameCount > 1
+                ? frameCount - 2 : (frameCount == 1 ? 0 : selectedFrame_);
+            textureDraftFrame_ = static_cast<std::size_t>(-1);
+            if (splitColumns) ImGui::Columns(1);
+            return;
+        }
+        if (!result.error.empty()) feedback_ = result.error;
+    }
+    ImGui::EndDisabled();
+
     if (frameCount != 0)
     {
-        ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(std::min<std::size_t>(frameCount,
-            static_cast<std::size_t>(std::numeric_limits<int>::max()))));
-        while (clipper.Step())
-        {
-            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
-            {
-                const auto index = static_cast<std::size_t>(i);
-                const std::string label = "Frame " + std::to_string(index + 1) + "##animation-frame";
-                if (ImGui::Selectable(label.c_str(), selectedFrame_ == index))
-                    scrub_to(clip, index);
-            }
-        }
-
-        ImGui::BeginDisabled(selectedFrame_ == 0);
-        if (ImGui::Button("Move Up"))
-        {
-            const auto result = move_animation_frame(document, selectedFrame_, selectedFrame_ - 1);
-            if (result.changed)
-            {
-                --selectedFrame_;
-                textureDraftFrame_ = static_cast<std::size_t>(-1);
-                return;
-            }
-            if (!result.error.empty()) feedback_ = result.error;
-        }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        ImGui::BeginDisabled(selectedFrame_ + 1 >= frameCount);
-        if (ImGui::Button("Move Down"))
-        {
-            const auto result = move_animation_frame(document, selectedFrame_, selectedFrame_ + 1);
-            if (result.changed)
-            {
-                ++selectedFrame_;
-                textureDraftFrame_ = static_cast<std::size_t>(-1);
-                return;
-            }
-            if (!result.error.empty()) feedback_ = result.error;
-        }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (ImGui::Button("Remove Frame"))
-        {
-            const auto result = remove_animation_frame(document, selectedFrame_);
-            if (result.changed)
-            {
-                selectedFrame_ = selectedFrame_ >= frameCount - 1 && frameCount > 1
-                    ? frameCount - 2 : (frameCount == 1 ? 0 : selectedFrame_);
-                textureDraftFrame_ = static_cast<std::size_t>(-1);
-                return;
-            }
-            if (!result.error.empty()) feedback_ = result.error;
-        }
-
         const Json &frame = (*frames)[selectedFrame_];
         const auto duration = frame.is_object() ? frame.find("duration") : Json::const_iterator{};
         if (frame.is_object() && duration != frame.end() && duration->is_number())
         {
             const double value = duration->get<double>();
-            ImGui::SetNextItemWidth(190.0f);
+            ImGui::SetNextItemWidth(120.0f);
             const std::string pointer = "/frames/" + std::to_string(selectedFrame_) + "/duration";
-            const auto outcome = durationDraft_.draw("Duration (seconds; 0 uses FPS)",
+            const auto outcome = durationDraft_.draw("Duration (seconds)",
                 animation_numeric_address(document, assetRoot, pointer), value, 0.05);
             if (outcome.kind == NumericDraftOutcomeKind::Invalid)
                 feedback_ = "Enter a complete finite frame duration.";
             else if (outcome.kind == NumericDraftOutcomeKind::Commit)
             {
-                if (outcome.value < 0.0)
-                    feedback_ = "Frame duration must be nonnegative.";
+                if (outcome.value <= 0.0)
+                    feedback_ = "Frame duration must be positive.";
                 else
                 {
                     const auto result = document.set(pointer, outcome.value);
                     if (!result.error.empty()) feedback_ = result.error;
                     else feedback_.clear();
-                    if (result.changed) return;
+                    if (result.changed)
+                    {
+                        if (splitColumns) ImGui::Columns(1);
+                        return;
+                    }
                 }
             }
         }
 
         if (textureDraftFrame_ != selectedFrame_)
             sync_texture_draft(frame);
-        if (ImGui::InputText("Texture path", textureDraftBuffer_.data(), textureDraftBuffer_.size()))
+
+        ImGui::SetNextItemWidth(std::max(80.0f, leftColumnWidth - 140.0f));
+        const bool textSubmitted = ImGui::InputText("Texture", textureDraftBuffer_.data(),
+                                                    textureDraftBuffer_.size(),
+                                                    ImGuiInputTextFlags_EnterReturnsTrue);
+        if (textSubmitted)
             textureDraft_ = textureDraftBuffer_.data();
+        else
+            textureDraft_ = textureDraftBuffer_.data();
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+            {
+                if (payload->Data != nullptr && payload->DataSize > 0)
+                {
+                    std::string dropped;
+                    bool isImage = true;
+                    if (payload->DataSize == sizeof(AssetDragPayload))
+                    {
+                        const auto *drag = static_cast<const AssetDragPayload *>(payload->Data);
+                        dropped = drag->relativeAssetPath;
+                        isImage = (drag->kind == EditorAssetKind::Image);
+                    }
+                    else
+                    {
+                        dropped = static_cast<const char *>(payload->Data);
+                    }
+                    while (!dropped.empty() && dropped.back() == '\0')
+                        dropped.pop_back();
+                    std::replace(dropped.begin(), dropped.end(), '\\', '/');
+
+                    if (isImage && animation_texture_is_compatible(assetRoot, dropped))
+                    {
+                        textureDraft_ = dropped;
+                        std::snprintf(textureDraftBuffer_.data(), textureDraftBuffer_.size(), "%s", dropped.c_str());
+                        const auto result = document.set("/frames/" + std::to_string(selectedFrame_) +
+                                                         "/textureWrapperFilePath", dropped);
+                        if (!result.error.empty()) feedback_ = result.error;
+                        else feedback_.clear();
+                        if (result.changed)
+                        {
+                            if (splitColumns) ImGui::Columns(1);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        feedback_ = "Dropped asset is not a compatible image texture.";
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         ImGui::SameLine();
         const bool compatible = animation_texture_is_compatible(assetRoot, textureDraft_);
         ImGui::BeginDisabled(!compatible);
-        if (ImGui::Button("Assign Texture"))
+        if (ImGui::Button("Assign Texture") || (textSubmitted && compatible))
         {
             const auto result = document.set("/frames/" + std::to_string(selectedFrame_) +
                                              "/textureWrapperFilePath", textureDraft_);
             if (!result.error.empty()) feedback_ = result.error;
             else feedback_.clear();
-            if (result.changed) return;
+            if (result.changed)
+            {
+                if (splitColumns) ImGui::Columns(1);
+                return;
+            }
         }
         ImGui::EndDisabled();
         if (!compatible)
-            ImGui::TextDisabled("Choose an existing image inside the configured asset folder.");
+            ImGui::TextDisabled("Choose an existing image inside the asset folder.");
+    }
 
-        const auto assignedPath = texture_path_of(frame);
+    if (splitColumns)
+        ImGui::NextColumn();
+    else
         ImGui::Separator();
+
+    if (frameCount != 0)
+    {
+        if (ImGui::Button(playing_ ? "Pause" : "Play"))
+            set_playing(!playing_);
+        ImGui::SameLine();
+
         ImGui::BeginDisabled(frameCount <= 1);
         const int sliderMaximum = static_cast<int>(std::min<std::size_t>(
             frameCount - 1, static_cast<std::size_t>(std::numeric_limits<int>::max())));
         int scrub = static_cast<int>(std::min<std::size_t>(selectedFrame_,
             static_cast<std::size_t>(sliderMaximum)));
+        ImGui::SetNextItemWidth(std::max(100.0f, ImGui::GetContentRegionAvail().x - 60.0f));
         if (ImGui::SliderInt("Scrub", &scrub, 0, sliderMaximum))
             scrub_to(clip, static_cast<std::size_t>(scrub));
         ImGui::EndDisabled();
-        if (ImGui::Button(playing_ ? "Pause" : "Play"))
-            set_playing(!playing_);
-        ImGui::SameLine();
+
+        const auto &frame = (*frames)[selectedFrame_];
+        const auto assignedPath = texture_path_of(frame);
         if (preparedTexture && animation_texture_is_compatible(assetRoot, assignedPath))
         {
             const auto prepared = preparedTexture(animation_texture_path(assetRoot, assignedPath));
@@ -985,13 +994,19 @@ void AnimationPanel::draw(AssetDocument &document,
             if (sourceRegionEditor_->draw(document, selectedFrame_, assetRoot, assignedPath,
                                           prepared.texture, prepared.sourceWidth,
                                           prepared.sourceHeight))
+            {
+                if (splitColumns) ImGui::Columns(1);
                 return;
+            }
         }
         else
             ImGui::TextDisabled("Assign a compatible prepared texture to preview this frame.");
     }
     else
         ImGui::TextDisabled("Add a frame to begin editing this animation.");
+
+    if (splitColumns)
+        ImGui::Columns(1);
 
     if (!feedback_.empty())
         ImGui::TextWrapped("%s", feedback_.c_str());

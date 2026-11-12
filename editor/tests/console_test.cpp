@@ -301,6 +301,12 @@ void test_console_row_severity_icons_and_colors()
             "warning severity icon must be [!]");
     require(std::string(severity_icon(DiagnosticSeverity::Info)) == "[i]",
             "info severity icon must be [i]");
+    require(severity_editor_icon(DiagnosticSeverity::Error) == EditorIcon::Error,
+            "error severity vector icon must be EditorIcon::Error");
+    require(severity_editor_icon(DiagnosticSeverity::Warning) == EditorIcon::Warning,
+            "warning severity vector icon must be EditorIcon::Warning");
+    require(severity_editor_icon(DiagnosticSeverity::Info) == EditorIcon::Info,
+            "info severity vector icon must be EditorIcon::Info");
 
     const auto errColor = severity_color(DiagnosticSeverity::Error);
     require(errColor.x > errColor.y && errColor.x > errColor.z,
@@ -335,6 +341,48 @@ void test_console_row_severity_icons_and_colors()
 
     ImGui::DestroyContext(context);
 }
+
+void test_console_toolbar_scaling()
+{
+    BoundedConsole raw;
+    raw.append("info message\nwarning message\nerror message\n");
+    PipelineStatus status;
+    status.stage = PipelineStage::Idle;
+
+    ImGuiContext *context = ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(1440.0f, 900.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    require(io.Fonts->Build(), "font atlas required");
+
+    for (const float scale : {1.0f, 1.5f, 2.0f})
+    {
+        io.FontGlobalScale = scale;
+        ConsolePanel panel;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowSize(ImVec2(640.0f * scale, 360.0f * scale));
+        ImGui::Begin("ConsoleScaleTest");
+        panel.draw(status, raw);
+        ImGui::End();
+        ImGui::Render();
+
+        const auto nodes = panel.semantic_nodes(status, raw, "main/panel/console");
+        require(!nodes.empty(), "console semantic nodes must not be empty");
+        bool sawBounded = false;
+        for (const auto &node : nodes)
+        {
+            if (node.bounds)
+            {
+                sawBounded = true;
+                require(node.bounds->width > 0.0f && node.bounds->height > 0.0f,
+                        "console toolbar items must have positive scaled bounds");
+            }
+        }
+        require(sawBounded, "console semantic nodes must report scaled bounds");
+    }
+
+    ImGui::DestroyContext(context);
+}
 } // namespace
 
 int main()
@@ -346,5 +394,6 @@ int main()
     test_console_semantics_and_owner_actions();
     test_independent_console_severity_badge_filtering();
     test_console_row_severity_icons_and_colors();
+    test_console_toolbar_scaling();
     return 0;
 }

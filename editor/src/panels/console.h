@@ -3,6 +3,7 @@
 #include "../accessibility.h"
 #include "../diagnostics.h"
 #include "../process.h"
+#include "../style.h"
 
 #include <imgui.h>
 
@@ -16,6 +17,7 @@
 namespace platformator_editor
 {
 const char *severity_icon(DiagnosticSeverity severity) noexcept;
+EditorIcon severity_editor_icon(DiagnosticSeverity severity) noexcept;
 ImVec4 severity_color(DiagnosticSeverity severity) noexcept;
 
 struct ConsoleFilterState

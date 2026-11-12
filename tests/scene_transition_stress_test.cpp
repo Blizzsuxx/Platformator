@@ -85,7 +85,7 @@ int main()
     {
         writeScene(a, "old");
         writeScene(b, "new");
-        AnimationClip clip({AnimationFrame(nullptr, 0)}, 120, false, 0, 0, "once");
+        AnimationClip clip({AnimationFrame(nullptr, 0.005f)}, false);
         int requests = 0, destroyed = 0;
         platformator::Runtime runtime;
         for (int iteration = 0; iteration < 1000; ++iteration)

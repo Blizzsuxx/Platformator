@@ -1602,9 +1602,8 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
         proxy.failedAssetMessage.clear();
     }
 
-    TextureWrapper *texture = nullptr;
-    SDL_FRect sourceRectangle{};
-    bool hasSourceRectangle = false;
+    TextureRegion region;
+    bool hasAnimationRegion = false;
     float width = spriteInputs.width;
     float height = spriteInputs.height;
     int flip = spriteInputs.flip;
@@ -1631,20 +1630,22 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
                 static_cast<std::size_t>(frameIndex) < proxy.clip->getFrames().size())
             {
                 const auto &frame = proxy.clip->getFrames()[static_cast<std::size_t>(frameIndex)];
-                texture = frame.getTextureWrapper();
-                if (frame.hasSourceRect)
+                if (frame.getTextureWrapper() != nullptr)
                 {
-                    sourceRectangle = frame.sourceRect;
-                    hasSourceRectangle = true;
+                    region = frame.region;
+                    hasAnimationRegion = true;
                 }
-                width = proxy.clip->getWidth() > 0.0f ? proxy.clip->getWidth()
-                       : frame.hasSourceRect ? frame.sourceRect.w : width;
-                height = proxy.clip->getHeight() > 0.0f ? proxy.clip->getHeight()
-                        : frame.hasSourceRect ? frame.sourceRect.h : height;
             }
         }
-        if (texture == nullptr && !spritePath.empty())
-            texture = platformator_detail::RuntimeAccess::findTexture(spritePath);
+        if (!hasAnimationRegion && !spritePath.empty())
+        {
+            region.setTextureWrapper(platformator_detail::RuntimeAccess::findTexture(spritePath));
+            if (spriteInputs.sourceRectEnabled)
+            {
+                region.setSourceRect(SDL_FRect{spriteInputs.sourceRectX, spriteInputs.sourceRectY,
+                                               spriteInputs.sourceRectWidth, spriteInputs.sourceRectHeight});
+            }
+        }
     }
     catch (const std::exception &error)
     {
@@ -1654,19 +1655,8 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
         lastError_ = proxy.info.assetError;
     }
 
-    if (texture != proxy.sprite->getTextureWrapper())
-        proxy.sprite->setTextureWrapper(texture);
+    proxy.sprite->setTextureRegion(region);
     proxy.sprite->setFlip(static_cast<SDL_FlipMode>(flip));
-    if (hasSourceRectangle)
-        proxy.sprite->setSourceRect(sourceRectangle);
-    else if (spriteInputs.sourceRectEnabled)
-    {
-        SDL_FRect rect{spriteInputs.sourceRectX, spriteInputs.sourceRectY,
-                       spriteInputs.sourceRectWidth, spriteInputs.sourceRectHeight};
-        proxy.sprite->setSourceRect(rect);
-    }
-    else
-        proxy.sprite->clearSourceRect();
     proxy.sprite->setWidth(width);
     proxy.sprite->setHeight(height);
     proxy.info.width = width * proxy.info.localScaleX;

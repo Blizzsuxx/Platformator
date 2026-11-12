@@ -1,6 +1,12 @@
 #include "documentmanager.h"
 #include "async_requests.h"
+#include "editcommands.h"
+#include "editorapp.h"
+#include "preview.h"
+#include "resourceindex.h"
+#include "selection.h"
 #include "test_support.h"
+#include <platformator/runtime.h>
 #include "platform/nativefile.h"
 #include "platform/nativefile_testhooks.h"
 
@@ -792,6 +798,134 @@ void test_save_as_rejects_open_canonical_sources_without_rebasing_drafts()
 }
 } // namespace
 
+void test_focused_animation_undo_redo_is_terminal()
+{
+    TemporaryDirectory temporary;
+    const auto project = temporary.path() / "project";
+    const auto assets = project / "assets";
+    std::filesystem::create_directories(assets);
+    std::ofstream(project / "CMakeLists.txt") << "project(tabs-focused-undo-test)\n";
+
+    const auto animPath = assets / "walk.animset";
+    write_json(animPath, Json{{"frames", Json::array({{{"duration", 0.2},
+                                                        {"textureWrapperFilePath", ""}}})},
+                              {"loop", true},
+                              {"filePath", "assets/walk.animset"}});
+
+    DocumentManager documents(project, assets);
+    auto *sceneTab = documents.active_tab();
+    require(sceneTab != nullptr, "default scene tab must exist");
+    const auto sceneId = sceneTab->id();
+    const auto nameAddress = address_for_document(sceneTab->workspace().document(), 0,
+                                                  std::nullopt, std::nullopt, {std::string("name")});
+    require(sceneTab->history().set_property(sceneTab->workspace().document_for_edit(),
+                                             nameAddress, "Renamed") &&
+                sceneTab->history().history_status().canUndo,
+            "scene history must contain an undoable edit");
+
+    const auto animId = documents.open_animation(animPath);
+    require(animId.has_value(), "animation tab must open");
+    auto *animTab = documents.find_animation_tab(*animId);
+    require(animTab != nullptr && !animTab->document().can_undo() && !animTab->document().can_redo(),
+            "fresh animation tab must have empty undo/redo stacks");
+
+    std::string status;
+    auto &editCommands = sceneTab->history();
+    auto &selection = sceneTab->selection();
+    auto &sceneDocument = sceneTab->workspace().document_for_edit();
+    require(!can_execute_focused_undo(true, documents, editCommands) &&
+                !can_execute_focused_redo(true, documents, editCommands),
+            "focused Animation Assets with empty history must report undo/redo unavailable");
+    require(!execute_focused_undo(true, documents, editCommands, sceneDocument, selection, status) &&
+                editCommands.history_status().canUndo &&
+                sceneDocument.root[0]["name"] == "Renamed",
+            "focused Animation Assets undo must never fall through into Scene history");
+    require(!execute_focused_redo(true, documents, editCommands, sceneDocument, selection, status) &&
+                editCommands.history_status().canUndo,
+            "focused Animation Assets redo must never fall through into Scene history");
+
+    require(animTab->document().set("/loop", false).changed && animTab->document().can_undo(),
+            "animation edit must record one animation undo step");
+    require(can_execute_focused_undo(true, documents, editCommands) &&
+                execute_focused_undo(true, documents, editCommands, sceneDocument, selection, status) &&
+                animTab->document().root()["loop"] == true &&
+                !animTab->document().can_undo() && animTab->document().can_redo() &&
+                sceneDocument.root[0]["name"] == "Renamed",
+            "focused animation undo must undo only the animation and leave Scene history untouched");
+    require(!execute_focused_undo(true, documents, editCommands, sceneDocument, selection, status) &&
+                sceneDocument.root[0]["name"] == "Renamed",
+            "exhausted animation undo must remain terminal and not touch Scene history");
+    require(execute_focused_redo(true, documents, editCommands, sceneDocument, selection, status) &&
+                animTab->document().root()["loop"] == false &&
+                !animTab->document().can_redo() &&
+                sceneDocument.root[0]["name"] == "Renamed",
+            "focused animation redo must redo only the animation");
+    require(!execute_focused_redo(true, documents, editCommands, sceneDocument, selection, status) &&
+                sceneDocument.root[0]["name"] == "Renamed",
+            "exhausted animation redo must remain terminal and not touch Scene history");
+    (void)sceneId;
+}
+
+void test_save_all_syncs_saved_animations_before_later_failure()
+{
+    TemporaryDirectory temporary;
+    const auto project = temporary.path() / "project";
+    const auto assets = project / "assets";
+    std::filesystem::create_directories(assets);
+    std::ofstream(project / "CMakeLists.txt") << "project(tabs-save-all-sync-test)\n";
+
+    const auto animPath = assets / "hero.animset";
+    write_json(animPath, Json{{"frames", Json::array({{{"duration", 0.25},
+                                                        {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
+                                                        {"hasSourceRect", false},
+                                                        {"textureWrapperFilePath", ""}}})},
+                              {"loop", true},
+                              {"filePath", "assets/hero.animset"}});
+    const auto failingAnimPath = assets / "later.animset";
+    write_json(failingAnimPath, Json{{"frames", Json::array({{{"duration", 0.25},
+                                                               {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
+                                                               {"hasSourceRect", false},
+                                                               {"textureWrapperFilePath", ""}}})},
+                                     {"loop", true},
+                                     {"filePath", "assets/later.animset"}});
+
+    DocumentManager documents(project, assets);
+    auto *sceneTab = documents.active_tab();
+    const auto animId = documents.open_animation(animPath);
+    const auto failingAnimId = documents.open_animation(failingAnimPath);
+    require(sceneTab != nullptr && animId.has_value() && failingAnimId.has_value(),
+            "animation tabs and scene tab must open");
+
+    auto *animTab = documents.find_animation_tab(*animId);
+    auto *failingAnimTab = documents.find_animation_tab(*failingAnimId);
+    require(animTab != nullptr && failingAnimTab != nullptr, "opened animation tabs must be addressable");
+    require(animTab->document().set("/loop", false).changed, "first animation must become dirty");
+    require(failingAnimTab->document().set("/loop", false).changed, "later animation must become dirty");
+
+    // Cause the later animation save to fail by replacing its target file with a directory.
+    std::filesystem::remove(failingAnimPath);
+    std::filesystem::create_directory(failingAnimPath);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{1}, assets);
+    resources.register_consumer("assets/hero.animset", ResourceKind::Animation,
+                                ResourceConsumer{sceneTab->identity(), 10, std::nullopt, "animator.clip"});
+
+    RuntimeOptions runtimeOptions;
+    runtimeOptions.assetRoot = assets;
+    runtimeOptions.windowSettings.headless = true;
+    platformator::Runtime runtime(runtimeOptions);
+    EditorPreview preview(runtime);
+
+    const auto result = documents.save_all();
+    require(result.failedTab.has_value() && *result.failedTab == *failingAnimId &&
+                std::find(result.savedTabs.begin(), result.savedTabs.end(), *animId) != result.savedTabs.end(),
+            "save_all must report the saved animation tab alongside the later failed animation tab");
+    const bool synced = sync_saved_animation_tabs(documents, result.savedTabs, resources,
+                                                   preview, sceneTab->workspace().document());
+    require(synced, "partial save_all must immediately sync saved animation tabs");
+}
+
 int main()
 {
     try
@@ -802,6 +936,8 @@ int main()
         test_animation_external_changes_keep_observed_versions_and_identities();
         test_animation_tabs_migrate_roots_without_adopting_another_project();
         test_save_as_rejects_open_canonical_sources_without_rebasing_drafts();
+        test_focused_animation_undo_redo_is_terminal();
+        test_save_all_syncs_saved_animations_before_later_failure();
         return 0;
     }
     catch (const std::exception &error)

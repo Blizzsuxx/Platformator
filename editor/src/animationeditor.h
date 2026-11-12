@@ -44,7 +44,6 @@ struct AnimationPreviewDocument
 
     std::vector<AnimationPreviewFrame> frames;
     std::vector<double> frameEndTimes;
-    double framesPerSecond = 1.0;
     double totalDuration = 0.0;
     bool loop = true;
     bool valid = false;

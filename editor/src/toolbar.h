@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "accessibility.h"
+#include "viewport.h"
 
 namespace platformator_editor
 {
@@ -18,6 +19,7 @@ struct EditorToolbarState
     bool isPaused = false;
     bool pauseResumeEnabled = false;
     bool stepEnabled = false;
+    SceneTool activeTool = SceneTool::Move;
     std::string projectLabel;
     std::string projectPath;
     std::string sceneLabel;
@@ -35,6 +37,7 @@ struct EditorToolbarActions
     std::function<void()> resume;
     std::function<void()> step;
     std::function<void()> stop;
+    std::function<void(SceneTool)> selectTool;
 };
 
 struct EditorToolbarItemBounds

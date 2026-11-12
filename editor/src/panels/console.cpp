@@ -28,6 +28,20 @@ const char *severity_icon(DiagnosticSeverity severity) noexcept
     }
 }
 
+EditorIcon severity_editor_icon(DiagnosticSeverity severity) noexcept
+{
+    switch (severity)
+    {
+    case DiagnosticSeverity::Error:
+        return EditorIcon::Error;
+    case DiagnosticSeverity::Warning:
+        return EditorIcon::Warning;
+    case DiagnosticSeverity::Info:
+    default:
+        return EditorIcon::Info;
+    }
+}
+
 ImVec4 severity_color(DiagnosticSeverity severity) noexcept
 {
     switch (severity)
@@ -208,18 +222,45 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         projection_.set_auto_follow(follow);
     remember_item("follow");
 
-    const float searchWidth = std::clamp(ImGui::GetContentRegionAvail().x - 260.0f,
-                                         90.0f, 200.0f);
-    place(searchWidth);
-    ImGui::SetNextItemWidth(searchWidth);
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const bool hasSearch = search_[0] != '\0';
+    const float clearBtnWidth = ImGui::GetFrameHeight();
+    const float clearSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float minSearchWidth = std::max(90.0f * uiScale,
+                                          ImGui::CalcTextSize("Search output").x + style.FramePadding.x * 2.0f + 12.0f * uiScale);
+    const float maxSearchWidth = std::max(minSearchWidth, 200.0f * uiScale);
+    const float badgeReserve = 260.0f * uiScale;
+    const float searchTotalWidth = std::clamp(ImGui::GetContentRegionAvail().x - badgeReserve,
+                                              minSearchWidth, maxSearchWidth);
+    const float searchInputWidth = hasSearch
+        ? std::max(40.0f * uiScale, searchTotalWidth - clearBtnWidth - clearSpacing)
+        : searchTotalWidth;
+    place(searchTotalWidth);
+    ImGui::SetNextItemWidth(searchInputWidth);
     if (ImGui::InputTextWithHint("##console-search", "Search output", search_.data(), search_.size()))
         projection_.set_search(search_.data());
     remember_item("search");
+    if (hasSearch)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("×##clear-console-search", ImVec2(clearBtnWidth, clearBtnWidth)))
+        {
+            search_.fill('\0');
+            projection_.set_search(search_.data());
+        }
+        remember_item("clear-search");
+    }
 
-    auto draw_badge = [&](const char *label, const char *id, bool &active, std::size_t count, ImVec4 activeColor) {
-        std::string text = std::string(label) + " " + std::to_string(count) + "###" + id;
-        const float bw = button_width(text.c_str());
+    auto draw_badge = [&](EditorIcon icon, const char *label, const char *id, bool &active, std::size_t count, ImVec4 activeColor) {
+        const float frameHeight = ImGui::GetFrameHeight();
+        const float iconSize = frameHeight * 0.65f;
+        const float spacing = style.ItemInnerSpacing.x;
+        const std::string countStr = std::string(label) + " " + std::to_string(count);
+        const float textWidth = ImGui::CalcTextSize(countStr.c_str()).x;
+        const float bw = iconSize + spacing + textWidth + style.FramePadding.x * 2.0f;
         place(bw);
+        const std::string btnId = "###" + std::string(id);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
         if (active)
         {
             ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
@@ -232,20 +273,29 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.25f, 0.8f));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
         }
-        if (ImGui::Button(text.c_str()))
+        if (ImGui::Button(btnId.c_str(), ImVec2(bw, frameHeight)))
         {
             active = !active;
             projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
         }
+        ImDrawList *draw = ImGui::GetWindowDrawList();
+        const ImU32 iconColor = active ? ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f))
+                                       : ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        const ImU32 textColor = active ? ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f))
+                                       : ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        draw_editor_icon(icon, draw, ImVec2(pos.x + style.FramePadding.x, pos.y + (frameHeight - iconSize) * 0.5f), iconSize, iconColor);
+        draw->AddText(ImVec2(pos.x + style.FramePadding.x + iconSize + spacing,
+                             pos.y + (frameHeight - ImGui::GetTextLineHeight()) * 0.5f),
+                      textColor, countStr.c_str());
         ImGui::PopStyleColor(3);
         remember_item(id);
     };
 
-    draw_badge("Info", "console-badge-info", filterState_.showInfo, filterState_.infoCount,
+    draw_badge(EditorIcon::Info, "Info", "console-badge-info", filterState_.showInfo, filterState_.infoCount,
                ImVec4(0.20f, 0.40f, 0.60f, 1.0f));
-    draw_badge("Warning", "console-badge-warning", filterState_.showWarnings, filterState_.warningCount,
+    draw_badge(EditorIcon::Warning, "Warning", "console-badge-warning", filterState_.showWarnings, filterState_.warningCount,
                ImVec4(0.65f, 0.48f, 0.12f, 1.0f));
-    draw_badge("Error", "console-badge-error", filterState_.showErrors, filterState_.errorCount,
+    draw_badge(EditorIcon::Error, "Error", "console-badge-error", filterState_.showErrors, filterState_.errorCount,
                ImVec4(0.70f, 0.20f, 0.20f, 1.0f));
 
     if (console.truncated())
@@ -259,7 +309,8 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
 
     const auto visibleRows = projection_.visible_rows(console.text());
     const float availableHeight = ImGui::GetContentRegionAvail().y;
-    const float listHeight = std::max(48.0f, availableHeight * 0.62f);
+    const bool hasSelection = selectedRow_.has_value() && *selectedRow_ < projection_.rows().size();
+    const float listHeight = hasSelection ? std::max(48.0f, availableHeight * 0.62f) : 0.0f;
     const bool drawRows = ImGui::BeginChild("ConsoleRows", ImVec2(0.0f, listHeight),
                                             ImGuiChildFlags_Borders);
     bool wasAtBottom = true;
@@ -282,10 +333,13 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
                 const ImVec4 rowColor = severity_color(row.severity);
                 ImGui::PushStyleColor(ImGuiCol_Text, rowColor);
 
-                std::string label = severity_icon(row.severity);
-                label.append(" ");
-                label.append(severity_name(row.severity));
-                label.append("  ");
+                const ImVec2 rowPos = ImGui::GetCursorScreenPos();
+                const float iconSize = ImGui::GetTextLineHeight() * 0.85f;
+                const float iconIndent = iconSize + ImGui::GetStyle().ItemInnerSpacing.x * 1.5f;
+
+                std::string label;
+                const int spaceCount = std::max(2, static_cast<int>(iconIndent / ImGui::CalcTextSize(" ").x) + 1);
+                label.append(spaceCount, ' ');
                 label.append(line);
                 if (row.repeatCount > 1)
                 {
@@ -299,6 +353,13 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
                 if (ImGui::Selectable(label.c_str(), selectedRow_ == rowIndex,
                                       ImGuiSelectableFlags_AllowDoubleClick))
                     selectedRow_ = rowIndex;
+
+                ImDrawList *draw = ImGui::GetWindowDrawList();
+                const float iconY = rowPos.y + (ImGui::GetTextLineHeight() - iconSize) * 0.5f;
+                draw_editor_icon(severity_editor_icon(row.severity), draw,
+                                 ImVec2(rowPos.x + ImGui::GetStyle().FramePadding.x, iconY),
+                                 iconSize, ImGui::GetColorU32(rowColor));
+
                 ImGui::PopStyleColor();
                 remember_item("row/" + std::to_string(rowIndex));
                 drawnRows_.push_back(rowIndex);
@@ -343,8 +404,13 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         const auto &row = projection_.rows()[*selectedRow_];
         const auto line = std::string_view(console.text()).substr(row.byteOffset, row.byteLength);
         ImGui::Separator();
-        ImGui::TextColored(severity_color(row.severity), "%s %s%s",
-                           severity_icon(row.severity), severity_name(row.severity),
+        const ImVec2 detailPos = ImGui::GetCursorScreenPos();
+        const float detailIconSize = ImGui::GetTextLineHeight();
+        const ImVec4 color = severity_color(row.severity);
+        draw_editor_icon(severity_editor_icon(row.severity), ImGui::GetWindowDrawList(),
+                         detailPos, detailIconSize, ImGui::GetColorU32(color));
+        ImGui::SetCursorScreenPos(ImVec2(detailPos.x + detailIconSize + style.ItemInnerSpacing.x * 1.5f, detailPos.y));
+        ImGui::TextColored(color, "%s%s", severity_name(row.severity),
                            row.repeatCount > 1 ? " (repeated)" : "");
         if (row.source)
         {
@@ -495,6 +561,9 @@ std::vector<SemanticNode> ConsolePanel::semantic_nodes(const PipelineStatus &sta
     searchNode.actions = {"set_value"};
     nodes.push_back(std::move(searchNode));
 
+    if (search_[0] != '\0')
+        add_button(nodes, "clear-search", "Clear Console search", true);
+
     constexpr const char *filterNames[] = {"All severities", "Errors", "Warnings", "Info"};
     auto severity = make_node("severity", SemanticRole::Button, "Filter Console severity");
     severity.value = filterNames[std::clamp(severityFilter_, 0, 3)];
@@ -570,6 +639,12 @@ bool ConsolePanel::dispatch_semantic_action(const SemanticAction &action,
         search_.fill('\0');
         std::memcpy(search_.data(), action.value.data(), action.value.size());
         projection_.set_search(action.value);
+        return true;
+    }
+    if (action.nodeId == base + "clear-search" && action.action == "activate")
+    {
+        search_.fill('\0');
+        projection_.set_search(search_.data());
         return true;
     }
     if (projectedRevision_ != console.revision())

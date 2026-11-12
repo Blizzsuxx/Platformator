@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <imgui.h>
 
 namespace platformator_editor
@@ -16,86 +17,76 @@ namespace platformator_editor
         const float availableWidth = viewport == nullptr ? 1280.0f : viewport->WorkSize.x;
         const ImGuiStyle &style = ImGui::GetStyle();
         const float contentWidth = std::max(1.0f, availableWidth - style.WindowPadding.x * 2.0f);
-        const float itemSpacing = style.ItemSpacing.x * 0.85f;
+        const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+        result.height = 40.0f * uiScale;
+
+        const bool iconOnly = contentWidth < 680.0f * uiScale;
+        const float itemSpacing = iconOnly ? (2.0f * uiScale) : (style.ItemSpacing.x * 0.85f);
         const float frameHeight = ImGui::GetFrameHeight();
+        const float toolBtnWidth = iconOnly
+            ? std::min(frameHeight, std::max(18.0f, (contentWidth - itemSpacing * 11.0f) / 12.0f))
+            : frameHeight;
+        const float maxBtnWidth = iconOnly ? toolBtnWidth : 0.0f;
+        const float groupGap = iconOnly ? itemSpacing : std::max(itemSpacing, 8.0f * uiScale);
         const auto textWidth = [](const char *label)
         {
-            return ImGui::CalcTextSize(label).x;
+            const char *textEnd = (label != nullptr && !(label[0] == '#' && label[1] == '#'))
+                ? (std::strstr(label, "##") ? std::strstr(label, "##") : label + std::strlen(label))
+                : label;
+            return ImGui::CalcTextSize(label, textEnd).x;
         };
         const auto iconButtonWidth = [&](const char *label)
         {
-            return textWidth(label) + frameHeight + style.FramePadding.x * 2.0f;
+            if (iconOnly)
+                return maxBtnWidth;
+            const float w = textWidth(label);
+            const float iconSize = frameHeight * 0.70f;
+            const float iconPadding = style.FramePadding.x;
+            const float spacing = style.ItemInnerSpacing.x;
+            const float textOffset = iconPadding + iconSize + spacing;
+            return w > 0.0f ? (textOffset + w + iconPadding) : frameHeight;
         };
-        const std::string identity =
-            (state.projectLabel.empty() ? std::string("No Project") : state.projectLabel) +
-            " / " + (state.sceneLabel.empty() ? std::string("Untitled Scene") : state.sceneLabel);
-        const float identityWidth = state.projectLabel.empty() && state.sceneLabel.empty() ? 0.0f
-                                                                                           : std::min(textWidth(identity.c_str()), contentWidth * 0.48f);
-        const std::array fullRowWidths{
-            iconButtonWidth("Open Scene"), iconButtonWidth("Save"),
-            iconButtonWidth("Build"), iconButtonWidth("Build and Run"), iconButtonWidth("Stop")};
-        float fullRowWidth = 0.0f;
-        for (const float width : fullRowWidths)
-            fullRowWidth += width;
-        fullRowWidth += itemSpacing * static_cast<float>(fullRowWidths.size() - 1);
-        const float statusWidth = state.status.empty() ? 0.0f
-                                                       : std::min(textWidth(state.status.c_str()), contentWidth * 0.48f);
-        result.compact = fullRowWidth > contentWidth;
 
-        const char *openLabel = result.compact ? "Open" : "Open Scene";
-        const char *runLabel = result.compact ? "Run" : "Build and Run";
-        const char *pauseResumeLabel = state.isPaused ? "Resume" : "Pause";
+        const float toolClusterWidth = 5.0f * toolBtnWidth + 4.0f * itemSpacing;
+        const auto sum_widths = [&](const auto &widths)
+        {
+            float total = 0.0f;
+            for (const float w : widths)
+                total += (total > 0.0f ? itemSpacing : 0.0f) + w;
+            return total;
+        };
+
+        if (!iconOnly)
+        {
+            const std::array fullLeft{iconButtonWidth("Open Scene"), iconButtonWidth("Save"), iconButtonWidth("Build")};
+            const std::array fullPlayback{iconButtonWidth("Build and Run"),
+                                          iconButtonWidth(state.isPaused ? "Resume" : "Pause"),
+                                          iconButtonWidth("Step"), iconButtonWidth("Stop")};
+            const float fullTotal = toolClusterWidth + groupGap + sum_widths(fullLeft) + groupGap + sum_widths(fullPlayback);
+            result.compact = fullTotal > contentWidth;
+        }
+        else
+        {
+            result.compact = true;
+        }
+
+        const char *openLabel = iconOnly ? "##Open" : (result.compact ? "Open" : "Open Scene");
+        const char *saveLabel = iconOnly ? "##Save" : "Save";
+        const char *buildLabel = iconOnly ? "##Build" : "Build";
+        const char *runLabel = iconOnly ? "##Run" : (result.compact ? "Run" : "Build and Run");
+        const char *pauseResumeLabel = iconOnly
+            ? (state.isPaused ? "##Resume" : "##Pause")
+            : (state.isPaused ? "Resume" : "Pause");
+        const char *stepLabel = iconOnly ? "##Step" : "Step";
+        const char *stopLabel = iconOnly ? "##Stop" : "Stop";
         const EditorIcon pauseResumeIcon = state.isPaused ? EditorIcon::Run : EditorIcon::Pause;
 
-        const std::array leftWidths{iconButtonWidth(openLabel), iconButtonWidth("Save"), iconButtonWidth("Build")};
+        const std::array leftWidths{iconButtonWidth(openLabel), iconButtonWidth(saveLabel), iconButtonWidth(buildLabel)};
         const std::array playbackWidths{iconButtonWidth(runLabel), iconButtonWidth(pauseResumeLabel),
-                                        iconButtonWidth("Step"), iconButtonWidth("Stop")};
-        const std::array infoWidths{identityWidth, statusWidth};
+                                        iconButtonWidth(stepLabel), iconButtonWidth(stopLabel)};
 
-        float leftTotalWidth = 0.0f;
-        for (const float w : leftWidths)
-            leftTotalWidth += (leftTotalWidth > 0.0f ? itemSpacing : 0.0f) + w;
-
-        float playbackTotalWidth = 0.0f;
-        for (const float w : playbackWidths)
-            playbackTotalWidth += (playbackTotalWidth > 0.0f ? itemSpacing : 0.0f) + w;
-
-        const float infoWidth = identityWidth +
-                                (identityWidth > 0.0f && statusWidth > 0.0f ? itemSpacing : 0.0f) + statusWidth;
-
-        const float totalSingleRowWidth = leftTotalWidth + itemSpacing + playbackTotalWidth +
-                                          (infoWidth > 0.0f ? itemSpacing + infoWidth : 0.0f);
-
-        result.compact = totalSingleRowWidth > contentWidth;
-
-        const auto groupRows = [&](const auto &widths)
-        {
-            std::size_t rows = 1;
-            float rowWidth = 0.0f;
-            for (const float width : widths)
-            {
-                if (rowWidth > 0.0f && rowWidth + itemSpacing + width > contentWidth)
-                {
-                    ++rows;
-                    rowWidth = width;
-                }
-                else
-                    rowWidth = rowWidth > 0.0f ? rowWidth + itemSpacing + width : width;
-            }
-            return rows;
-        };
-        const bool infoOnSameRow = !result.compact && infoWidth > 0.0f &&
-                                   totalSingleRowWidth <= contentWidth;
-        const std::size_t infoRowCount = identityWidth > 0.0f || statusWidth > 0.0f
-                                             ? groupRows(infoWidths)
-                                             : 0U;
-        const std::size_t rowCount = result.compact
-                                         ? groupRows(leftWidths) + groupRows(playbackWidths) + infoRowCount
-                                         : 1U + (infoOnSameRow ? 0U : infoRowCount);
-        const float rowHeight = ImGui::GetFrameHeight();
-        const float rowCountFloat = static_cast<float>(rowCount);
-        result.height = rowCountFloat * rowHeight + (rowCountFloat - 1.0f) * style.ItemSpacing.y * 0.7f +
-                        style.WindowPadding.y * 1.1f;
+        const float leftTotalWidth = toolClusterWidth + groupGap + sum_widths(leftWidths);
+        const float playbackTotalWidth = sum_widths(playbackWidths);
 
         if (viewport != nullptr)
         {
@@ -109,16 +100,7 @@ namespace platformator_editor
                                                   ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBringToFrontOnFocus;
         push_editor_toolbar_style(state.isRunning || state.isPaused);
         ImGui::Begin("##EditorToolbar", nullptr, toolbarFlags);
-        const float firstRowX = ImGui::GetCursorPosX();
-        float currentRowY = ImGui::GetCursorPosY();
         float usedWidth = 0.0f;
-        const float compactRowAdvance = rowHeight + style.ItemSpacing.y * 0.7f;
-        const auto next_row = [&]
-        {
-            currentRowY += compactRowAdvance;
-            ImGui::SetCursorPos(ImVec2(firstRowX, currentRowY));
-            usedWidth = 0.0f;
-        };
 
         const auto remember = [&](const char *name)
         {
@@ -132,147 +114,81 @@ namespace platformator_editor
             if (callback)
                 callback();
         };
-        const auto place = [&](float width)
+        const std::array<std::tuple<SceneTool, EditorIcon, const char *, const char *, const char *>, 5> toolButtons{{
+            {SceneTool::Hand, EditorIcon::HandTool, "##ToolHand", "Hand Tool (Q)", "Hand Tool"},
+            {SceneTool::Move, EditorIcon::MoveTool, "##ToolMove", "Move Tool (W)", "Move Tool"},
+            {SceneTool::Rotate, EditorIcon::RotateTool, "##ToolRotate", "Rotate Tool (E)", "Rotate Tool"},
+            {SceneTool::Scale, EditorIcon::ScaleTool, "##ToolScale", "Scale Tool (R)", "Scale Tool"},
+            {SceneTool::Rectangle, EditorIcon::RectTool, "##ToolRect", "Rect Tool (T)", "Rect Tool"},
+        }};
+        for (std::size_t i = 0; i < toolButtons.size(); ++i)
         {
-            if (!result.compact)
+            if (i > 0)
+                ImGui::SameLine(0.0f, itemSpacing);
+            const auto &[tool, icon, strId, tooltip, itemName] = toolButtons[i];
+            if (icon_button(icon, strId, state.activeTool == tool, tooltip, ImVec2(toolBtnWidth, frameHeight)))
             {
-                if (usedWidth > 0.0f)
-                    ImGui::SameLine();
-                usedWidth += (usedWidth > 0.0f ? itemSpacing : 0.0f) + width;
-                return;
+                if (actions.selectTool)
+                    actions.selectTool(tool);
             }
-            if (usedWidth > 0.0f && usedWidth + itemSpacing + width <= contentWidth)
-            {
-                ImGui::SameLine();
-                usedWidth += itemSpacing + width;
-            }
-            else
-            {
-                if (usedWidth > 0.0f)
-                    next_row();
-                usedWidth = width;
-            }
-        };
-        const auto next_group = [&]
-        {
-            if (result.compact)
-                next_row();
-        };
+            remember(itemName);
+        }
 
+        ImGui::SameLine(0.0f, groupGap);
         ImGui::BeginDisabled(state.projectLocked);
-        place(leftWidths[0]);
-        if (icon_label_button(EditorIcon::Open, openLabel, "Open a scene (Ctrl+O)"))
+        if (icon_label_button(EditorIcon::Open, openLabel, "Open a scene (Ctrl+O)", maxBtnWidth))
             invoke(actions.openScene);
         remember("Open Scene");
         ImGui::EndDisabled();
+
         ImGui::BeginDisabled(state.projectLocked || !state.saveEnabled);
-        place(leftWidths[1]);
-        if (icon_label_button(EditorIcon::Save, "Save", "Save the current scene (Ctrl+S)"))
+        ImGui::SameLine(0.0f, itemSpacing);
+        if (icon_label_button(EditorIcon::Save, saveLabel, "Save the current scene (Ctrl+S)", maxBtnWidth))
             invoke(actions.save);
         remember("Save");
         ImGui::EndDisabled();
+
         ImGui::BeginDisabled(state.projectLocked);
-        place(leftWidths[2]);
-        if (icon_label_button(EditorIcon::Build, "Build", "Build the configured target (Ctrl+B)"))
+        ImGui::SameLine(0.0f, itemSpacing);
+        if (icon_label_button(EditorIcon::Build, buildLabel, "Build the configured target (Ctrl+B)", maxBtnWidth))
             invoke(actions.build);
         remember("Build");
         ImGui::EndDisabled();
 
-        if (!result.compact)
-        {
-            const float targetCenterX = std::max(usedWidth + itemSpacing, (contentWidth - playbackTotalWidth) * 0.5f);
+        const float targetCenterX = style.WindowPadding.x +
+                                    std::max(leftTotalWidth + groupGap, (contentWidth - playbackTotalWidth) * 0.5f);
+        if (leftTotalWidth + groupGap + playbackTotalWidth <= contentWidth)
             ImGui::SameLine(targetCenterX);
-            usedWidth = targetCenterX;
-        }
         else
-            next_group();
+            ImGui::SameLine(0.0f, itemSpacing);
 
         ImGui::BeginDisabled(state.projectLocked || state.isRunning);
-        place(playbackWidths[0]);
-        if (icon_label_button(EditorIcon::Run, runLabel, "Build, verify and launch (F5)"))
+        if (icon_label_button(EditorIcon::Run, runLabel, "Build, verify and launch (F5)", maxBtnWidth))
             invoke(actions.buildAndRun);
         remember("Build and Run");
         ImGui::EndDisabled();
 
         ImGui::BeginDisabled(!state.pauseResumeEnabled);
-        place(playbackWidths[1]);
-        if (icon_label_button(pauseResumeIcon, pauseResumeLabel, state.isPaused ? "Resume playback" : "Pause playback"))
+        ImGui::SameLine(0.0f, itemSpacing);
+        if (icon_label_button(pauseResumeIcon, pauseResumeLabel, state.isPaused ? "Resume playback" : "Pause playback", maxBtnWidth))
             invoke(state.isPaused ? actions.resume : actions.pause);
-        remember(pauseResumeLabel);
+        remember(state.isPaused ? "Resume" : "Pause");
         ImGui::EndDisabled();
 
         ImGui::BeginDisabled(!state.stepEnabled);
-        place(playbackWidths[2]);
-        if (icon_label_button(EditorIcon::StepForward, "Step", "Advance one frame"))
+        ImGui::SameLine(0.0f, itemSpacing);
+        if (icon_label_button(EditorIcon::StepForward, stepLabel, "Advance one frame", maxBtnWidth))
             invoke(actions.step);
         remember("Step");
         ImGui::EndDisabled();
 
-        place(playbackWidths[3]);
         ImGui::BeginDisabled(!state.operationActive);
-        if (icon_label_button(EditorIcon::Stop, "Stop", "Stop the owned build, query or game (Shift+F5)"))
+        ImGui::SameLine(0.0f, itemSpacing);
+        if (icon_label_button(EditorIcon::Stop, stopLabel, "Stop the owned build, query or game (Shift+F5)", maxBtnWidth))
             invoke(actions.stop);
         remember("Stop");
         ImGui::EndDisabled();
 
-        if (identityWidth > 0.0f || statusWidth > 0.0f)
-        {
-            if (result.compact)
-                next_group();
-            else if (infoOnSameRow)
-            {
-                const float targetRightX = contentWidth - infoWidth;
-                if (targetRightX > usedWidth + itemSpacing)
-                {
-                    ImGui::SameLine(targetRightX);
-                    usedWidth = targetRightX;
-                }
-                else
-                    ImGui::SameLine();
-            }
-            else
-                next_row();
-        }
-        if (identityWidth > 0.0f)
-        {
-            place(identityWidth);
-            ImGui::Dummy(ImVec2(identityWidth, frameHeight));
-            const ImVec2 minimum = ImGui::GetItemRectMin();
-            const ImVec2 maximum = ImGui::GetItemRectMax();
-            ImDrawList *draw = ImGui::GetWindowDrawList();
-            draw->PushClipRect(minimum, maximum, true);
-            const float textY = minimum.y + std::max(0.0f, (frameHeight - ImGui::GetTextLineHeight()) * 0.5f);
-            draw->AddText(ImVec2(minimum.x, textY), ImGui::GetColorU32(ImGuiCol_Text), identity.c_str());
-            draw->PopClipRect();
-            if (ImGui::IsItemHovered())
-            {
-                if (!state.projectPath.empty() || !state.scenePath.empty())
-                    ImGui::SetTooltip("Project: %s\nScene: %s",
-                                      state.projectPath.empty() ? state.projectLabel.c_str() : state.projectPath.c_str(),
-                                      state.scenePath.empty() ? state.sceneLabel.c_str() : state.scenePath.c_str());
-                else if (textWidth(identity.c_str()) > identityWidth)
-                    ImGui::SetTooltip("%s", identity.c_str());
-            }
-            remember("Project and Scene");
-        }
-        if (statusWidth > 0.0f)
-        {
-            if (!result.compact && !infoOnSameRow && usedWidth > 0.0f &&
-                usedWidth + itemSpacing + statusWidth > contentWidth)
-                next_row();
-            place(statusWidth);
-            ImGui::Dummy(ImVec2(statusWidth, frameHeight));
-            const ImVec2 minimum = ImGui::GetItemRectMin();
-            const ImVec2 maximum = ImGui::GetItemRectMax();
-            ImDrawList *draw = ImGui::GetWindowDrawList();
-            draw->PushClipRect(minimum, maximum, true);
-            const float textY = minimum.y + std::max(0.0f, (frameHeight - ImGui::GetTextLineHeight()) * 0.5f);
-            draw->AddText(ImVec2(minimum.x, textY), ImGui::GetColorU32(ImGuiCol_Text), state.status.c_str());
-            draw->PopClipRect();
-            if (ImGui::IsItemHovered() && textWidth(state.status.c_str()) > statusWidth)
-                ImGui::SetTooltip("%s", state.status.c_str());
-            remember("Document Status");
-        }
         ImGui::End();
         pop_editor_toolbar_style();
         return result;
@@ -308,7 +224,6 @@ namespace platformator_editor
             return text;
         };
 
-        if (const auto bounds = bounds_for("Project and Scene"))
         {
             SemanticNode identity;
             identity.id = "main/toolbar/identity";
@@ -320,11 +235,11 @@ namespace platformator_editor
                 " / " + (state.sceneLabel.empty() ? std::string("Untitled Scene") : state.sceneLabel));
             identity.help = bounded_text("Project path: " + state.projectPath +
                                          "\nScene path: " + state.scenePath);
-            identity.bounds = bounds;
+            const auto bounds = bounds_for("Project and Scene");
+            identity.bounds = bounds ? bounds : SemanticBounds{0.0f, 0.0f, 0.0f, frame.height};
             identity.visible = true;
             nodes.push_back(std::move(identity));
         }
-        if (const auto bounds = bounds_for("Document Status"))
         {
             SemanticNode status;
             status.id = "main/toolbar/status";
@@ -333,7 +248,8 @@ namespace platformator_editor
             status.name = "Document and operation status";
             status.value = bounded_text(state.status);
             status.error = state.status.find("Failed") != std::string::npos;
-            status.bounds = bounds;
+            const auto bounds = bounds_for("Document Status");
+            status.bounds = bounds ? bounds : SemanticBounds{0.0f, 0.0f, 0.0f, frame.height};
             status.visible = true;
             nodes.push_back(std::move(status));
         }

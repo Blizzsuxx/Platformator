@@ -38,8 +38,12 @@ struct ProjectBrowserViewState
     std::filesystem::path contextTargetPath;
     char renameBuffer[256] = {0};
     bool renaming = false;
+    bool renameFocusPending = false;
     std::filesystem::path renamingPath;
+    bool confirmDeletePending = false;
+    std::filesystem::path pendingDeletePath;
 };
+using ProjectViewState = ProjectBrowserViewState;
 
 class ProjectPanel
 {
@@ -173,7 +177,6 @@ class ProjectPanel
     struct AnimationPreview
     {
         std::vector<AnimationFramePreview> frames;
-        float framesPerSecond = 1.0f;
         double totalDuration = 0.0;
         std::vector<double> frameEndTimes;
         bool loop = true;
@@ -234,6 +237,8 @@ class ProjectPanel
     void draw_sprite_region_editor(DocumentSession &document, EditCommandService &commands,
                                    const AssetAssignmentTarget &target,
                                    const std::filesystem::path &assetPath);
+    void service_template_state(DocumentSession &document, EditCommandService &commands,
+                                 SelectionModel *selection);
     void draw_assignment_controls(DocumentSession &document, EditCommandService &commands,
                                   SelectionModel *selection);
     SDL_Texture *thumbnail_for(const std::filesystem::path &path);

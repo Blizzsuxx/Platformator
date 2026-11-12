@@ -1,5 +1,8 @@
 #include "document.h"
 #include "selection.h"
+#include "componenttypes.h"
+#include "panels/hierarchy.h"
+#include "panels/inspector.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -86,6 +89,45 @@ void ordered_multi_selection_repairs_and_normalizes_group_roots()
                 !selection.current().componentId,
             "stale object, component and multi-selection IDs must not survive repair");
 }
+
+void scene_picked_selection_highlights_hierarchy_and_shows_all_inspector_components()
+{
+    DocumentSession document = make_default_document();
+    Json spriteComp = default_component_record(6);
+    spriteComp["id"] = 101;
+    Json colliderComp = default_component_record(3);
+    colliderComp["id"] = 102;
+    document.root = Json::array({object(10, Json::array()), object(20, Json::array())});
+    document.root[0]["components"] = Json::array({spriteComp, colliderComp});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    Selection picked;
+    picked.objectId = 10;
+    picked.selectedObjectIds = {10};
+    picked.componentId = 102;
+    picked.focusedPanel = FocusedPanel::Scene;
+    selection.set(document, picked);
+
+    HierarchyPanel hierarchy;
+    hierarchy.visible_rows(document);
+    const auto hierarchyNodes = hierarchy.semantic_nodes(document, selection.current(), "hierarchy");
+    const auto obj10Node = std::find_if(hierarchyNodes.begin(), hierarchyNodes.end(),
+        [](const SemanticNode &node) { return node.id == "hierarchy/object/10"; });
+    require(obj10Node != hierarchyNodes.end() && obj10Node->selected,
+            "hierarchy row must be selected even when componentId is set by scene picking");
+
+    InspectorPanel inspector;
+    BehaviorCatalog catalog;
+    const auto inspectorNodes = inspector.semantic_nodes(document, selection.current(), "inspector", &catalog);
+    const bool hasSprite = std::any_of(inspectorNodes.begin(), inspectorNodes.end(),
+        [](const SemanticNode &node) { return node.id.find("101") != std::string::npos; });
+    const bool hasCollider = std::any_of(inspectorNodes.begin(), inspectorNodes.end(),
+        [](const SemanticNode &node) { return node.id.find("102") != std::string::npos; });
+    require(hasSprite && hasCollider,
+            "inspector must expose all components of the selected object when componentId is set by scene picking");
+}
 } // namespace
 
 int main()
@@ -93,6 +135,7 @@ int main()
     try
     {
         ordered_multi_selection_repairs_and_normalizes_group_roots();
+        scene_picked_selection_highlights_hierarchy_and_shows_all_inspector_components();
         std::cout << "[PASS] platformator_editor_selection_test\n";
         return 0;
     }

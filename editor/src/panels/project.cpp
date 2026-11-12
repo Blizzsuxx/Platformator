@@ -800,8 +800,6 @@ ProjectPanel::AnimationPreview ProjectPanel::convert_animation_preview(
     AnimationPreview preview;
     if (!source.valid)
         return preview;
-    preview.framesPerSecond = std::isfinite(source.framesPerSecond)
-        ? static_cast<float>(source.framesPerSecond) : 0.0f;
     preview.totalDuration = source.totalDuration;
     preview.frameEndTimes = source.frameEndTimes;
     preview.loop = source.loop;
@@ -1519,8 +1517,6 @@ void ProjectPanel::draw_folder_tree(const std::filesystem::path &root,
     drawList->AddText({textX, rowMinimum.y + (rowMaximum.y - rowMinimum.y - textSize.y) * 0.5f},
                       ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
     drawList->PopClipRect();
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", label.c_str());
     if (ImGui::IsItemClicked())
     {
         selectedDirectory_ = directory;
@@ -1851,19 +1847,58 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
     const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
     const float textX = minimum.x + 5.0f * uiScale;
     const float textY = maximum.y - textSize.y - 6.0f * uiScale;
-    drawList->PushClipRect({minimum.x + 3.0f * uiScale, textY},
-                           {maximum.x - 3.0f * uiScale, maximum.y - 3.0f * uiScale}, true);
-    drawList->AddText({textX, textY}, ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
-    drawList->PopClipRect();
+    if (viewState_.renaming && viewState_.renamingPath == path)
+    {
+        ImGui::SetCursorScreenPos({minimum.x + 3.0f * uiScale, textY - 2.0f * uiScale});
+        ImGui::SetNextItemWidth(maximum.x - minimum.x - 6.0f * uiScale);
+        if (viewState_.renameFocusPending)
+        {
+            ImGui::SetKeyboardFocusHere();
+            viewState_.renameFocusPending = false;
+        }
+        const bool enter = ImGui::InputText("##inline-rename", viewState_.renameBuffer,
+                                            sizeof(viewState_.renameBuffer),
+                                            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        const bool escape = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        if (enter || ImGui::IsItemDeactivatedAfterEdit())
+        {
+            if (!escape && viewState_.renaming)
+            {
+                execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
+            }
+            viewState_.renaming = false;
+        }
+        else if (escape)
+        {
+            viewState_.renaming = false;
+        }
+    }
+    else
+    {
+        drawList->PushClipRect({minimum.x + 3.0f * uiScale, textY},
+                               {maximum.x - 3.0f * uiScale, maximum.y - 3.0f * uiScale}, true);
+        drawList->AddText({textX, textY}, ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+        drawList->PopClipRect();
+    }
 
-    if (hovered)
+    std::string displayPath;
+    if (path_is_within(assetRoot, path))
+    {
+        const auto rel = path.lexically_relative(assetRoot).generic_string();
+        displayPath = rel.empty() ? "assets" : "assets/" + rel;
+    }
+    else
+    {
+        displayPath = path.string();
+    }
+    if (hovered && !viewState_.renaming)
     {
         if (!previewDetail.empty())
-            ImGui::SetTooltip("%s\n%s", path.string().c_str(), previewDetail.c_str());
+            ImGui::SetTooltip("%s\n%s", displayPath.c_str(), previewDetail.c_str());
         else if (!previewState.empty())
-            ImGui::SetTooltip("%s\n%s", path.string().c_str(), previewState.c_str());
+            ImGui::SetTooltip("%s\n%s", displayPath.c_str(), previewState.c_str());
         else
-            ImGui::SetTooltip("%s", path.string().c_str());
+            ImGui::SetTooltip("%s", displayPath.c_str());
     }
     const bool doubleClicked = hovered &&
         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
@@ -1956,6 +1991,7 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         {
             viewState_.renaming = true;
             viewState_.renamingPath = path;
+            viewState_.renameFocusPending = true;
             std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
                           path.filename().string().c_str());
         }
@@ -1965,7 +2001,8 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         }
         if (ImGui::MenuItem("Delete", "Delete"))
         {
-            execute_context_delete(path);
+            viewState_.confirmDeletePending = true;
+            viewState_.pendingDeletePath = path;
         }
         ImGui::Separator();
         if (ImGui::BeginMenu("Create"))
@@ -1979,6 +2016,8 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
                 execute_context_create("Scene", targetDir);
             if (ImGui::MenuItem("Object Template"))
                 execute_context_create("Object Template", targetDir);
+            if (ImGui::MenuItem("Animation Clip"))
+                execute_context_create("Animation Clip", targetDir);
             ImGui::EndMenu();
         }
         ImGui::EndPopup();
@@ -2040,8 +2079,38 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
                      ImGui::GetColorU32(ImGuiCol_Text));
 
     const float textY = minimum.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f;
-    drawList->AddText({minimum.x + 22.0f * uiScale, textY},
-                      ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+    if (viewState_.renaming && viewState_.renamingPath == path)
+    {
+        const float inputX = minimum.x + 22.0f * uiScale;
+        ImGui::SetCursorScreenPos({inputX, textY - 2.0f * uiScale});
+        ImGui::SetNextItemWidth(std::max(80.0f * uiScale, maximum.x - inputX - 100.0f * uiScale));
+        if (viewState_.renameFocusPending)
+        {
+            ImGui::SetKeyboardFocusHere();
+            viewState_.renameFocusPending = false;
+        }
+        const bool enter = ImGui::InputText("##inline-rename", viewState_.renameBuffer,
+                                            sizeof(viewState_.renameBuffer),
+                                            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        const bool escape = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        if (enter || ImGui::IsItemDeactivatedAfterEdit())
+        {
+            if (!escape && viewState_.renaming)
+            {
+                execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
+            }
+            viewState_.renaming = false;
+        }
+        else if (escape)
+        {
+            viewState_.renaming = false;
+        }
+    }
+    else
+    {
+        drawList->AddText({minimum.x + 22.0f * uiScale, textY},
+                          ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+    }
 
     const std::string typeText = isDirectory ? "Folder" : asset_search_type(path, false);
     const float typeWidth = ImGui::CalcTextSize(typeText.c_str()).x;
@@ -2110,6 +2179,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         {
             viewState_.renaming = true;
             viewState_.renamingPath = path;
+            viewState_.renameFocusPending = true;
             std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
                           path.filename().string().c_str());
         }
@@ -2119,7 +2189,8 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         }
         if (ImGui::MenuItem("Delete", "Delete"))
         {
-            execute_context_delete(path);
+            viewState_.confirmDeletePending = true;
+            viewState_.pendingDeletePath = path;
         }
         ImGui::Separator();
         if (ImGui::BeginMenu("Create"))
@@ -2133,6 +2204,8 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
                 execute_context_create("Scene", targetDir);
             if (ImGui::MenuItem("Object Template"))
                 execute_context_create("Object Template", targetDir);
+            if (ImGui::MenuItem("Animation Clip"))
+                execute_context_create("Animation Clip", targetDir);
             ImGui::EndMenu();
         }
         ImGui::EndPopup();
@@ -2208,6 +2281,31 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
             out << "{\n    \"schema\": \"platformator/template/v1\",\n    \"root\": {\n        \"id\": 1,\n        \"name\": \"New Template\",\n        \"components\": []\n    },\n    \"reference_bindings\": []\n}\n";
             out.close();
             refresh();
+            return true;
+        }
+        return false;
+    }
+    if (itemType == "Animation Clip")
+    {
+        std::filesystem::path candidate = targetDir / "New Animation.animset";
+        int counter = 1;
+        while (std::filesystem::exists(candidate, ec))
+        {
+            candidate = targetDir / ("New Animation (" + std::to_string(counter++) + ").animset");
+        }
+        nlohmann::json clipJson = {
+            {"frames", nlohmann::json::array()},
+            {"loop", true},
+            {"filePath", candidate.string()}
+        };
+        std::ofstream out(candidate, std::ios::binary);
+        if (out.is_open())
+        {
+            out << clipJson.dump(4) << "\n";
+            out.close();
+            refresh();
+            if (openAnimationCallback_)
+                openAnimationCallback_(candidate);
             return true;
         }
         return false;
@@ -2322,10 +2420,21 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     std::array<char, 256> searchBuffer{};
     const std::size_t searchLength = std::min(searchQuery_.size(), searchBuffer.size() - 1);
     std::memcpy(searchBuffer.data(), searchQuery_.data(), searchLength);
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    const float clearBtnWidth = ImGui::GetFrameHeight();
+    const float clearSpacing = ImGui::GetStyle().ItemSpacing.x;
+    if (!searchQuery_.empty())
+        ImGui::SetNextItemWidth(std::max(40.0f, ImGui::GetContentRegionAvail().x - clearBtnWidth - clearSpacing));
+    else
+        ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::InputTextWithHint("##project-search", "Search name, type, or path",
                                  searchBuffer.data(), searchBuffer.size()))
         searchQuery_ = searchBuffer.data();
+    if (!searchQuery_.empty())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("×##clear-project-search", ImVec2(clearBtnWidth, clearBtnWidth)))
+            searchQuery_.clear();
+    }
     ImGui::Separator();
 
     if (!state.entriesValid || state.entriesBehaviorFilter != behaviorRoot)
@@ -2443,6 +2552,8 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
                 execute_context_create("Scene", selectedDirectory_);
             if (ImGui::MenuItem("Object Template"))
                 execute_context_create("Object Template", selectedDirectory_);
+            if (ImGui::MenuItem("Animation Clip"))
+                execute_context_create("Animation Clip", selectedDirectory_);
             ImGui::EndMenu();
         }
         if (ImGui::MenuItem("Reveal in File Manager"))
@@ -2458,6 +2569,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         {
             viewState_.renaming = true;
             viewState_.renamingPath = *selectedEntry_;
+            viewState_.renameFocusPending = true;
             std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
                           selectedEntry_->filename().string().c_str());
         }
@@ -2467,7 +2579,8 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         }
         else if (ImGui::IsKeyPressed(ImGuiKey_Delete))
         {
-            execute_context_delete(*selectedEntry_);
+            viewState_.confirmDeletePending = true;
+            viewState_.pendingDeletePath = *selectedEntry_;
         }
     }
 
@@ -2486,29 +2599,26 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Thumbnail scale (0 = compact list, >0 = scalable grid)");
 
-    if (viewState_.renaming)
+    if (viewState_.confirmDeletePending)
     {
-        ImGui::OpenPopup("Rename Asset##modal");
+        ImGui::OpenPopup("Delete Asset##modal");
+        viewState_.confirmDeletePending = false;
     }
-    if (ImGui::BeginPopupModal("Rename Asset##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    if (ImGui::BeginPopupModal("Delete Asset##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     {
-        ImGui::Text("Rename: %s", viewState_.renamingPath.filename().string().c_str());
-        ImGui::SetNextItemWidth(250.0f * uiScale);
-        if (ImGui::IsWindowAppearing())
-            ImGui::SetKeyboardFocusHere();
-        const bool enter = ImGui::InputText("##rename-input", viewState_.renameBuffer,
-                                            sizeof(viewState_.renameBuffer),
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-        if (ImGui::Button("OK") || enter)
+        ImGui::Text("Are you sure you want to delete '%s'?", viewState_.pendingDeletePath.filename().string().c_str());
+        ImGui::TextDisabled("This action cannot be undone.");
+        ImGui::Spacing();
+        if (ImGui::Button("Delete", ImVec2(100.0f * uiScale, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Enter))
         {
-            execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
-            viewState_.renaming = false;
+            execute_context_delete(viewState_.pendingDeletePath);
+            viewState_.pendingDeletePath.clear();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        if (ImGui::Button("Cancel", ImVec2(100.0f * uiScale, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
-            viewState_.renaming = false;
+            viewState_.pendingDeletePath.clear();
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -2614,6 +2724,158 @@ bool ProjectPanel::assign_asset_target(DocumentSession &document, EditCommandSer
         return true;
     error = result.message.empty() ? "Asset reference was unchanged." : result.message;
     return false;
+}
+
+void ProjectPanel::service_template_state(DocumentSession &document, EditCommandService &commands,
+                                          SelectionModel *selection)
+{
+    if (!selectedEntry_)
+    {
+        assetDoubleClickPending_ = false;
+        return;
+    }
+    if (editor_asset_is(*selectedEntry_, EditorAssetKind::Template))
+    {
+        if (assetDoubleClickPending_)
+        {
+            assetDoubleClickPending_ = false;
+            load_selected_template(document);
+        }
+        if (selectedTemplate_ && selectedTemplatePath_ != *selectedEntry_)
+        {
+            selectedTemplate_.reset();
+            selectedTemplatePath_.clear();
+            externalTemplateTargets_.clear();
+            pendingTemplateInstantiate_ = false;
+        }
+        const DocumentIdentity currentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
+                                               DocumentGeneration{document.documentGeneration}};
+        if (selectedTemplate_ && templateAssignmentIdentity_ != currentIdentity)
+        {
+            externalTemplateTargets_.clear();
+            templateAssignmentIdentity_ = currentIdentity;
+        }
+        if (selectedTemplate_)
+        {
+            if (templateTargetsStructureRevision_ != document.structureRevision ||
+                templateTargetsValueRevision_ != document.valueRevision)
+            {
+                templateTargetCandidates_.clear();
+                for (const int objectId : document.indexes.orderedObjectIds)
+                {
+                    const auto objectLocation = document.indexes.objectsById.find(objectId);
+                    const Json *object = objectLocation == document.indexes.objectsById.end()
+                        ? nullptr : resolve_object(document.root, objectLocation->second);
+                    if (object == nullptr)
+                        continue;
+                    const std::string objectLabel = object->value("name", std::string("GameObject")) +
+                        " (#" + std::to_string(objectId) + ")";
+                    templateTargetCandidates_["GameObject"].emplace_back(objectId, objectLabel);
+                    templateTargetCandidates_["Object"].emplace_back(objectId, objectLabel);
+                    const auto components = object->find("components");
+                    if (components == object->end() || !components->is_array())
+                        continue;
+                    for (const auto &component : *components)
+                    {
+                        if (!component.is_object())
+                            continue;
+                        const int componentId = component.value("id", -1);
+                        if (componentId < 0)
+                            continue;
+                        const int type = component.value("type", -1);
+                        const std::string label = objectLabel + " / " + component_label(type) +
+                            " (#" + std::to_string(componentId) + ")";
+                        templateTargetCandidates_["Component"].emplace_back(componentId, label);
+                    }
+                }
+                templateTargetsStructureRevision_ = document.structureRevision;
+                templateTargetsValueRevision_ = document.valueRevision;
+            }
+
+            const Json bindings = selectedTemplate_->reference_bindings();
+            const std::string destinationIdentity = template_scene_identity(document);
+            std::vector<TemplateExternalAssignment> assignments;
+            bool allExternalTargetsReady = true;
+            if (bindings.is_array())
+            {
+                for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
+                {
+                    const auto &binding = bindings[bindingIndex];
+                    if (!binding.is_object() || binding.value("scope", std::string{}) != "external")
+                        continue;
+                    const std::string kind = binding.value("target_kind", std::string{});
+                    const int originalId = binding.value("original_target_id", -1);
+                    const std::string key = std::to_string(binding.value("owner_id", -1)) + ":" +
+                        std::to_string(binding.value("component_id", -1)) + ":" +
+                        binding.value("path", std::string{});
+                    const auto candidates = templateTargetCandidates_.find(kind);
+                    const bool originalStillValid = candidates != templateTargetCandidates_.end() &&
+                        std::any_of(candidates->second.begin(), candidates->second.end(),
+                            [originalId](const auto &candidate) { return candidate.first == originalId; });
+                    const bool sameSceneAndValid =
+                        binding.value("source_scene_identity", std::string{}) == destinationIdentity &&
+                        originalStillValid;
+                    if (sameSceneAndValid)
+                        continue;
+
+                    const auto assigned = externalTemplateTargets_.find(key);
+                    const bool assignedValid = assigned != externalTemplateTargets_.end() &&
+                        candidates != templateTargetCandidates_.end() &&
+                        std::any_of(candidates->second.begin(), candidates->second.end(),
+                            [&](const auto &candidate) { return candidate.first == assigned->second; });
+                    if (!assignedValid)
+                        allExternalTargetsReady = false;
+                    else
+                        assignments.push_back({binding.value("owner_id", -1),
+                            binding.contains("component_id")
+                                ? std::optional<int>(binding.value("component_id", -1)) : std::nullopt,
+                            binding.value("path", std::string{}), assigned->second});
+                }
+            }
+            const bool canInstantiate = selection != nullptr && allExternalTargetsReady;
+            templateCanInstantiate_ = canInstantiate;
+            const bool semanticInstantiate = std::exchange(pendingTemplateInstantiate_, false);
+            if (semanticInstantiate && canInstantiate)
+            {
+                const Selection before = selection->current();
+                std::optional<int> parentId;
+                std::size_t insertionIndex = std::numeric_limits<std::size_t>::max();
+                if (before.objectId)
+                {
+                    const auto parent = document.indexes.parentById.find(*before.objectId);
+                    if (parent != document.indexes.parentById.end())
+                        parentId = parent->second;
+                    const auto location = document.indexes.objectsById.find(*before.objectId);
+                    if (location != document.indexes.objectsById.end() &&
+                        !location->second.childIndices.empty())
+                        insertionIndex = location->second.childIndices.back() + 1;
+                }
+                const auto coverage = template_asset_binding_coverage(*selectedTemplate_);
+                const auto inserted = insert_template(commands, document, *selectedTemplate_,
+                    destinationIdentity, coverage, parentId, insertionIndex, assignments,
+                    SelectionState{before, before});
+                if (!inserted)
+                    templateFeedback_ = inserted.error.empty()
+                        ? "Template could not be instantiated." : inserted.error;
+                else if (!inserted.insertedObjectIds.empty())
+                {
+                    const Selection after{inserted.insertedObjectIds.front(), std::nullopt,
+                                          std::nullopt, FocusedPanel::Hierarchy};
+                    selection->set(document, after);
+                    commands.set_last_selection_state({before, after});
+                    templateFeedback_ = "Template instantiated as one undoable operation.";
+                }
+            }
+        }
+        return;
+    }
+    if (editor_asset_format(*selectedEntry_).kind == EditorAssetKind::Animation && assetDoubleClickPending_ &&
+        openAnimationCallback_)
+    {
+        assetDoubleClickPending_ = false;
+        openAnimationCallback_(*selectedEntry_);
+        return;
+    }
 }
 
 void ProjectPanel::draw_template_controls(DocumentSession &document, EditCommandService &commands,
@@ -3209,7 +3471,7 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
         selectedIsBehavior = false;
     }
 
-    draw_assignment_controls(document, commands, selection);
+    service_template_state(document, commands, selection);
 
     const ImVec2 available = ImGui::GetContentRegionAvail();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);

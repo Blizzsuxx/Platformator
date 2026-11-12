@@ -84,5 +84,6 @@ class GamePanel
     GameAspectPreset aspectPreset_ = GameAspectPreset::Aspect16x9;
     float zoomScale_ = 1.0f;
     bool capturingInput_ = false;
+    bool showRuntimeDetails_ = false;
 };
 } // namespace platformator_editor

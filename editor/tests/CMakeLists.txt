@@ -124,16 +124,17 @@ target_compile_features(platformator_editor_playsession_test PRIVATE cxx_std_20)
 target_include_directories(platformator_editor_playsession_test PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_BINARY_DIR}/generated"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
 if(PLATFORMATOR_ENABLE_EDITOR_SESSION)
     target_link_libraries(platformator_editor_playsession_test PRIVATE
-        platformator_editor_core Platformator::platformator nlohmann_json::nlohmann_json)
+        platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
 else()
     target_sources(platformator_editor_playsession_test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../src/playsession.cpp"
         "${PROJECT_SOURCE_DIR}/src/editorprotocol.cpp")
     target_link_libraries(platformator_editor_playsession_test PRIVATE
-        platformator_editor_core Platformator::platformator nlohmann_json::nlohmann_json)
+        platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
 endif()
 add_test(NAME platformator_editor_playsession_test COMMAND platformator_editor_playsession_test)
 set_tests_properties(platformator_editor_playsession_test PROPERTIES
@@ -162,6 +163,7 @@ platformator_editor_add_test_if_sources(platformator_editor_workspace_test
 
 platformator_editor_add_test_if_sources(platformator_editor_startup_test startup_test.cpp)
 target_include_directories(platformator_editor_startup_test PRIVATE
+    "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
 target_link_libraries(platformator_editor_startup_test PRIVATE platformator_imgui)
 

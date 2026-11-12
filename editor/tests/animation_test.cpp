@@ -1,7 +1,11 @@
 #include "animationeditor.h"
 #include "assetdocument.h"
+#include "document.h"
 #include "documentmanager.h"
+#include "preview.h"
 #include "panels/animation.h"
+#include "panels/inspector.h"
+#include "panels/project.h"
 #include "resourceindex.h"
 #include "test_support.h"
 
@@ -11,6 +15,9 @@
 #include <platformator/runtime.h>
 #include <platformator/runtimeoptions.h>
 #include "platformator/animationclip.h"
+#include "platformator/animator.h"
+#include "platformator/sprite.h"
+#include "platformator/gameobject.h"
 
 #include <filesystem>
 #include <fstream>
@@ -113,48 +120,36 @@ Json runtime_default_frame(std::string texture, double duration)
 
 void test_shared_frame_duration_rules()
 {
-    const auto explicitDuration = resolve_animation_frame_timing(0.25, 0.0);
-    require(explicitDuration.valid() && explicitDuration.seconds == 0.25,
-            "a positive frame duration overrides an unused FPS value");
-    const auto fallback = resolve_animation_frame_timing(0.0, 4.0);
-    require(fallback.valid() && std::abs(fallback.seconds - 0.25) < 1e-12,
-            "zero duration uses the legacy reciprocal-FPS fallback");
-    require(resolve_animation_frame_timing(-0.1, 4.0).error ==
-                AnimationTimingError::InvalidFrameDuration &&
-                resolve_animation_frame_timing(std::numeric_limits<double>::infinity(), 4.0).error ==
-                    AnimationTimingError::InvalidFrameDuration,
-            "negative and nonfinite frame durations are invalid");
-    require(resolve_animation_frame_timing(0.0, 0.0).error ==
-                AnimationTimingError::InvalidFallbackRate &&
-                resolve_animation_frame_timing(0.0, -4.0).error ==
-                    AnimationTimingError::InvalidFallbackRate &&
-                resolve_animation_frame_timing(0.0, std::numeric_limits<double>::quiet_NaN()).error ==
-                    AnimationTimingError::InvalidFallbackRate,
-            "zero-duration frames require a finite positive fallback FPS");
+    require(is_valid_animation_frame_duration(0.25),
+            "a positive finite frame duration is valid");
+    require(!is_valid_animation_frame_duration(0.0) &&
+                !is_valid_animation_frame_duration(-0.1) &&
+                !is_valid_animation_frame_duration(std::numeric_limits<double>::infinity()) &&
+                !is_valid_animation_frame_duration(std::numeric_limits<double>::quiet_NaN()),
+            "zero, negative, and nonfinite frame durations are invalid");
 }
 
 void test_clip_document_validation_and_serialization()
 {
     nlohmann::json valid = {
         {"frames", nlohmann::json::array({
-            {{"duration", 0.0}, {"textureWrapperFilePath", "walk.png"},
+            {{"duration", 0.25}, {"textureWrapperFilePath", "walk.png"},
              {"hasSourceRect", false}, {"sourceRect", {{"x", 0.0}, {"y", 0.0},
                                                             {"w", 0.0}, {"h", 0.0}}},
              {"vendorFrameField", 8}},
             {{"duration", 0.25}, {"textureWrapperFilePath", "run.png"},
              {"hasSourceRect", false}, {"sourceRect", {{"x", 0.0}, {"y", 0.0},
                                                             {"w", 0.0}, {"h", 0.0}}}}})},
-        {"framesPerSecond", 4.0}, {"loop", true}, {"width", 16.0}, {"height", 16.0},
-        {"name", "clip"}, {"filePath", ""},
+        {"loop", true}, {"filePath", ""},
         {"unknownClipField", { {"retain", true} }}};
     const auto accepted = validate_animation_clip_document(valid);
     require(accepted.valid(), "unknown asset members must not affect clip timing validation");
 
-    auto invalidRate = valid;
-    invalidRate["framesPerSecond"] = 0.0;
-    const auto rateIssues = validate_animation_clip_document(invalidRate);
-    require(!rateIssues.valid() && rateIssues.issues.front().jsonPointer == "/framesPerSecond",
-            "validation must identify the FPS field used by a zero-duration frame");
+    auto zeroDuration = valid;
+    zeroDuration["frames"][0]["duration"] = 0.0;
+    const auto zeroIssues = validate_animation_clip_document(zeroDuration);
+    require(!zeroIssues.valid() && zeroIssues.issues.front().jsonPointer == "/frames/0/duration",
+            "validation must reject a zero frame duration by JSON pointer");
 
     auto invalidDuration = valid;
     invalidDuration["frames"][1]["duration"] = -0.5;
@@ -184,33 +179,17 @@ void test_clip_document_validation_and_serialization()
     missingLoop.erase("loop");
     require(hasIssue(validate_animation_clip_document(missingLoop), "/loop"),
             "missing runtime root loop data must be field-addressed");
-    auto wrongNameType = valid;
-    wrongNameType["name"] = 7;
-    require(hasIssue(validate_animation_clip_document(wrongNameType), "/name"),
-            "wrong-kind runtime root name data must be field-addressed");
     auto wrongFilePathType = valid;
     wrongFilePathType["filePath"] = nullptr;
     require(hasIssue(validate_animation_clip_document(wrongFilePathType), "/filePath"),
             "wrong-kind runtime root filePath data must be field-addressed");
-    auto unrepresentableWidth = valid;
-    unrepresentableWidth["width"] = 1e100;
-    require(hasIssue(validate_animation_clip_document(unrepresentableWidth), "/width"),
-            "animation dimensions must fit their runtime float representation");
-    auto underflowHeight = valid;
-    underflowHeight["height"] = 1e-100;
-    require(hasIssue(validate_animation_clip_document(underflowHeight), "/height"),
-            "positive animation dimensions must not underflow to zero in the runtime float");
-    auto negativeHeight = valid;
-    negativeHeight["height"] = -1.0;
-    require(hasIssue(validate_animation_clip_document(negativeHeight), "/height"),
-            "animation dimensions must retain the editor's nonnegative boundary");
 
-    AnimationClip clip({AnimationFrame(nullptr, 0.25f)}, 0.0, true, 16.0f, 16.0f, "explicit");
+    AnimationClip clip({AnimationFrame(nullptr, 0.25f)}, true);
     const nlohmann::json serialized = clip;
     require(serialized["frames"][0]["duration"] == 0.25f,
-            "engine serialization retains a positive frame duration even when FPS is unused");
+            "engine serialization retains a positive frame duration");
 
-    AnimationClip invalidClip({AnimationFrame(nullptr, -0.1f)}, 4.0, true, 16.0f, 16.0f, "invalid");
+    AnimationClip invalidClip({AnimationFrame(nullptr, -0.1f)}, true);
     bool rejected = false;
     try
     {
@@ -232,10 +211,10 @@ void test_root_schema_save_rejection_preserves_animation_draft()
     const auto animationDirectory = assets / "animations";
     std::filesystem::create_directories(animationDirectory);
     std::ofstream(project / "CMakeLists.txt") << "project(animation-root-schema-test)\n";
-    const auto path = animationDirectory / "missing-name.animset";
-    Json malformed{{"frames", Json::array()}, {"framesPerSecond", 8.0},
-                   {"loop", true}, {"width", 16.0}, {"height", 16.0},
-                   {"filePath", path.string()}, {"vendor", Json{{"kept", true}}}};
+    const auto path = animationDirectory / "missing-filepath.animset";
+    Json malformed{{"frames", Json::array()},
+                   {"loop", true},
+                   {"vendor", Json{{"kept", true}}}};
     platformator_editor_test::write_json(path, malformed);
 
     DocumentManager documents(project, assets);
@@ -249,7 +228,7 @@ void test_root_schema_save_rejection_preserves_animation_draft()
     const auto savedHistory = tab->document().saved_history_token();
     const auto blocked = documents.save_animation_tab(*id);
     require(blocked.status == WorkspaceActionStatus::Failed &&
-                blocked.message.find("/name") != std::string::npos &&
+                blocked.message.find("/filePath") != std::string::npos &&
                 tab->document().root() == draft && tab->document().dirty() &&
                 tab->document().history_token() == history &&
                 tab->document().saved_history_token() == savedHistory &&
@@ -288,7 +267,7 @@ void test_frame_order_and_history_are_lossless()
             "out-of-range frame moves must leave the document unchanged");
 
     const auto add = add_animation_frame(document,
-        Json{{"duration", 0.0}, {"textureWrapperFilePath", "assets/c.png"}, {"newFrameField", 17}});
+        Json{{"duration", 0.1}, {"textureWrapperFilePath", "assets/c.png"}, {"newFrameField", 17}});
     require(add.changed && document.root()["frames"].size() == 3,
             "adding a frame must add one authored array entry");
     require(document.root()["frames"][2]["hasSourceRect"] == false &&
@@ -306,13 +285,13 @@ void test_playback_and_scrubbing_are_view_only()
 {
     const Json clip = {
         {"frames", Json::array({
-            {{"duration", 0.25}}, {{"duration", 0.0}}, {{"duration", 0.5}}})},
-        {"framesPerSecond", 4.0}, {"loop", true}};
+            {{"duration", 0.25}}, {{"duration", 0.25}}, {{"duration", 0.5}}})},
+        {"loop", true}};
     require(animation_frame_at_time(clip, 0.1) == 0 &&
                 animation_frame_at_time(clip, 0.4) == 1 &&
                 animation_frame_at_time(clip, 0.8) == 2 &&
                 animation_frame_at_time(clip, 1.0) == 0,
-            "playback must use explicit duration, zero/FPS fallback and loop boundaries");
+            "playback must use explicit frame durations and loop boundaries");
 
     auto nonLooping = clip;
     nonLooping["loop"] = false;
@@ -495,9 +474,9 @@ void test_bounded_preview_projection_and_resource_dependencies()
     Json clip = {
         {"frames", Json::array({
             {{"duration", 0.25}, {"textureWrapperFilePath", "assets/frame.png"}},
-            {{"duration", 0.0}, {"textureWrapperFilePath", "assets/frame.png"}},
+            {{"duration", 0.25}, {"textureWrapperFilePath", "assets/frame.png"}},
             {{"duration", 0.5}, {"textureWrapperFilePath", "assets/frame.png"}}})},
-        {"framesPerSecond", 4.0}, {"loop", true},
+        {"loop", true},
         {"unknown", Json{{"preserved", true}}}};
     const auto preview = prepare_animation_preview(clip, root / "assets");
     require(preview.valid && preview.frames.size() == 3 &&
@@ -610,9 +589,9 @@ void test_reordered_animation_asset_saves_reopens_and_prepares_identically()
             {{"duration", 0.25}, {"textureWrapperFilePath", "assets/sheet.png"},
              {"hasSourceRect", true}, {"sourceRect", {{"x", 4}, {"y", 0}, {"w", 4}, {"h", 4}}},
              {"vendorFrame", {{"tag", "first"}}}},
-            {{"duration", 0.0}, {"textureWrapperFilePath", "assets/idle.png"},
+            {{"duration", 0.25}, {"textureWrapperFilePath", "assets/idle.png"},
              {"hasSourceRect", false}, {"sourceRect", {{"x", 0}, {"y", 0}, {"w", 0}, {"h", 0}}}}})},
-        {"framesPerSecond", 4.0}, {"loop", false}, {"width", 4.0}, {"height", 4.0},
+        {"loop", false},
         {"vendorClip", {{"preserve", true}}}};
 
     AssetDocument document(initial);
@@ -673,7 +652,7 @@ void test_add_frame_ui_semantics_save_reload_and_runtime_consumption()
     gui.click_add_frame(uiPanel, uiDocument, assetRoot);
     const Json afterUiAdd = uiDocument.root();
     require(afterUiAdd["frames"].size() == 2 && uiPanel.selected_frame() == 1 &&
-                afterUiAdd["frames"][1]["duration"] == 0.0 &&
+                afterUiAdd["frames"][1]["duration"] == 0.1 &&
                 afterUiAdd["frames"][1]["textureWrapperFilePath"] == "" &&
                 afterUiAdd["frames"][1]["hasSourceRect"] == false &&
                 afterUiAdd["frames"][1]["sourceRect"] ==
@@ -741,22 +720,20 @@ void test_add_frame_ui_semantics_save_reload_and_runtime_consumption()
                 preview.frames[1].texturePath.empty() &&
                 preview.frames[2].texturePath == texturePath &&
                 preview.frames[0].durationSeconds == 0.125 &&
-                preview.frames[1].durationSeconds == 0.25 &&
-                preview.frames[2].durationSeconds == 0.25,
-            "saved preview order and durations must preserve explicit timing, FPS fallback and empty/assigned paths");
+                preview.frames[1].durationSeconds == 0.1 &&
+                preview.frames[2].durationSeconds == 0.1,
+            "saved preview order and durations must preserve explicit timing and empty/assigned paths");
 
     AnimationClip *loaded = runtime.loadAnimationClip("assets/animations/added.animset");
     require(loaded != nullptr && loaded->frames.size() == 3 &&
                 std::abs(loaded->frames[0].duration - 0.125f) < 1e-6f &&
-                loaded->frames[1].duration == 0.0f && loaded->frames[2].duration == 0.0f &&
-                loaded->framesPerSecond == 4.0 &&
-                loaded->frames[0].textureWrapper != nullptr &&
-                loaded->frames[1].textureWrapper == nullptr &&
-                loaded->frames[2].textureWrapper != nullptr &&
-                !loaded->frames[1].hasSourceRect && loaded->frames[1].sourceRect.w == 0.0f &&
-                resolve_animation_frame_timing(loaded->frames[1].duration,
-                                               loaded->framesPerSecond).seconds == 0.25,
-            "ordinary Runtime loading must preserve zero/FPS fallback and consume empty/assigned frames");
+                std::abs(loaded->frames[1].duration - 0.1f) < 1e-6f &&
+                std::abs(loaded->frames[2].duration - 0.1f) < 1e-6f &&
+                loaded->frames[0].getTextureWrapper() != nullptr &&
+                loaded->frames[1].getTextureWrapper() == nullptr &&
+                loaded->frames[2].getTextureWrapper() != nullptr &&
+                !loaded->frames[1].region.hasSourceRect && loaded->frames[1].region.sourceRect.w == 0.0f,
+            "ordinary Runtime loading must preserve explicit durations and consume empty/assigned frames");
 
     const auto invalidPath = animationDirectory / "invalid-frame-schema.animset";
     Json invalid = initial;
@@ -779,6 +756,255 @@ void test_add_frame_ui_semantics_save_reload_and_runtime_consumption()
                 blockedSaveAll.failedTab == invalidId && invalidTab->document().dirty(),
             "Save All must apply the same animation runtime-schema gate without losing work");
 }
+
+void test_authored_sprite_dimensions_preserved_across_animation_and_preview()
+{
+    platformator_editor_test::TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    std::filesystem::create_directories(assetRoot / "animations");
+
+    RuntimeOptions runtimeOptions;
+    runtimeOptions.windowSettings.width = 64;
+    runtimeOptions.windowSettings.height = 64;
+    runtimeOptions.assetRoot = assetRoot.string();
+    platformator::Runtime runtime(runtimeOptions);
+
+    // Part A: Animator::applyCurrentFrame preserves positive authored Sprite width & height
+    GameObject *gameObject = runtime.createGameObject();
+    gameObject->addComponent<Sprite>();
+    Sprite *sprite = gameObject->getComponent<Sprite>();
+    sprite->setWidth(48.0f);
+    sprite->setHeight(64.0f);
+
+    std::vector<AnimationFrame> frames;
+    AnimationFrame frame1;
+    frame1.duration = 0.1f;
+    frame1.region.setSourceRect(SDL_FRect{0.0f, 0.0f, 16.0f, 16.0f});
+    frames.push_back(frame1);
+
+    AnimationFrame frame2;
+    frame2.duration = 0.1f;
+    frame2.region.setSourceRect(SDL_FRect{16.0f, 0.0f, 32.0f, 32.0f});
+    frames.push_back(frame2);
+
+    AnimationClip clip(frames, true, "");
+
+    gameObject->addComponent<Animator>();
+    Animator *animator = gameObject->getComponent<Animator>();
+    animator->play(&clip);
+
+    require(sprite->getWidth() == 48.0f && sprite->getHeight() == 64.0f,
+            "Animator::applyCurrentFrame must preserve positive authored Sprite width and height");
+
+    animator->setCurrentFrameIndex(1);
+    require(sprite->getWidth() == 48.0f && sprite->getHeight() == 64.0f,
+            "Advancing animation frame must preserve positive authored Sprite width and height");
+
+    // Part B: EditorPreview preservation
+    const auto animPath = assetRoot / "animations" / "test.animset";
+    Json clipJson = Json::object();
+    clipJson["frames"] = Json::array({
+        Json{{"duration", 0.1}, {"hasSourceRect", true},
+             {"sourceRect", Json{{"x", 0.0}, {"y", 0.0}, {"w", 12.0}, {"h", 12.0}}},
+             {"textureWrapperFilePath", ""}}
+    });
+    clipJson["framesPerSecond"] = 8.0;
+    clipJson["loop"] = true;
+    clipJson["width"] = 16.0;
+    clipJson["height"] = 16.0;
+    clipJson["name"] = "test";
+    clipJson["filePath"] = animPath.string();
+    platformator_editor_test::write_json(animPath, clipJson);
+
+    Json sceneRoots = Json::array({
+        Json{
+            {"id", 100},
+            {"name", "Hero"},
+            {"tag", ""},
+            {"active", true},
+            {"position", Json{{"x", 0.0}, {"y", 0.0}}},
+            {"scale", Json{{"x", 1.0}, {"y", 1.0}}},
+            {"rotation", 0.0},
+            {"components", Json::array({
+                Json{
+                    {"id", 101},
+                    {"type", 6}, // Sprite
+                    {"enabled", true},
+                    {"width", 50.0},
+                    {"height", 75.0},
+                    {"textureFilePath", ""},
+                    {"flip", 0},
+                    {"sourceRectEnabled", false},
+                    {"sourceRect", nullptr}
+                },
+                Json{
+                    {"id", 102},
+                    {"type", 0}, // Animator
+                    {"enabled", true},
+                    {"animationClipFilePath", "assets/animations/test.animset"},
+                    {"currentFrameIndex", 0},
+                    {"playbackSpeed", 1.0},
+                    {"playing", true}
+                }
+            })},
+            {"children", Json::array()}
+        }
+    });
+
+    auto parsed = parse_document(std::move(sceneRoots), 1, std::nullopt, projectRoot, assetRoot);
+    require(static_cast<bool>(parsed), ("document must parse cleanly: " + parsed.error).c_str());
+    DocumentSession document = std::move(*parsed.document);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{document.projectGeneration}, assetRoot);
+
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+    preview.reconcile(document, true);
+
+    const auto *info = preview.object_info(100);
+    require(info != nullptr, "preview must have object info for Hero");
+    require(info->width == 50.0f && info->height == 75.0f,
+            "EditorPreview must preserve positive authored Sprite width and height");
+}
+
+void test_animation_clip_optional_dimensions_validation_and_deserialization()
+{
+    platformator_editor_test::TemporaryDirectory temporary;
+    const auto assetRoot = temporary.path() / "assets";
+    std::filesystem::create_directories(assetRoot);
+
+    RuntimeOptions runtimeOptions;
+    runtimeOptions.windowSettings.width = 64;
+    runtimeOptions.windowSettings.height = 64;
+    runtimeOptions.assetRoot = assetRoot.string();
+    platformator::Runtime runtime(runtimeOptions);
+
+    Json minimal = {
+        {"frames", Json::array({
+            Json{{"duration", 0.1}, {"hasSourceRect", false},
+                 {"sourceRect", Json{{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}},
+                 {"textureWrapperFilePath", ""}}
+        })},
+        {"loop", true},
+        {"filePath", "test.animset"}
+    };
+
+    const auto validationValid = validate_animation_clip_document(minimal);
+    require(validationValid.valid(),
+            "AnimationClip document without width/height/name/framesPerSecond must validate cleanly");
+
+    AnimationClip clip;
+    from_json(minimal, clip);
+    require(clip.getFrames().size() == 1 && clip.getLoop() && clip.getFilePath() == "test.animset",
+            "AnimationClip deserialized from minimal schema must preserve frames, loop, and filePath");
+}
+
+void test_project_panel_create_animation_clip_and_open()
+{
+    platformator_editor_test::TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    const auto animDir = assetRoot / "animations";
+    std::filesystem::create_directories(animDir);
+
+    ProjectContext context;
+    context.set_roots(projectRoot, assetRoot);
+    ProjectChanges changes;
+    ProjectScanService scans(1);
+    ProjectPanel projectPanel(context, changes, scans, nullptr);
+
+    std::filesystem::path openedCallbackPath;
+    projectPanel.set_open_animation_callback([&](const std::filesystem::path &p) {
+        openedCallbackPath = p;
+    });
+
+    const bool created = projectPanel.execute_context_create("Animation Clip", animDir);
+    require(created, "ProjectPanel::execute_context_create('Animation Clip') must succeed");
+
+    const auto clipPath = animDir / "New Animation.animset";
+    require(std::filesystem::exists(clipPath),
+            "New Animation.animset must exist on disk after creation");
+    require(openedCallbackPath == clipPath,
+            "ProjectPanel must invoke open_animation_callback with created clip path");
+
+    const Json diskJson = platformator_editor_test::read_json(clipPath);
+    require(diskJson.is_object() && diskJson.contains("frames") && diskJson["frames"].is_array() &&
+            diskJson["loop"] == true && diskJson["filePath"] == clipPath.string(),
+            "Created .animset must contain valid minimal runtime payload");
+
+    DocumentManager documents(projectRoot, assetRoot);
+    const auto tabId = documents.open_animation(clipPath);
+    require(tabId.has_value(),
+            "DocumentManager::open_animation must open the newly created .animset without error");
+
+    const auto *tab = documents.find_animation_tab(*tabId);
+    require(tab != nullptr && !tab->document().dirty(),
+            "Opened animation tab must exist and be initially clean");
+
+    // Verify collision suffixing on second creation
+    const bool created2 = projectPanel.execute_context_create("Animation Clip", animDir);
+    require(created2, "Second execute_context_create('Animation Clip') must succeed");
+    const auto collisionPath = animDir / "New Animation (1).animset";
+    require(std::filesystem::exists(collisionPath),
+            "Second creation must generate New Animation (1).animset");
+    const auto tabId2 = documents.open_animation(collisionPath);
+    require(tabId2.has_value(), "Collision-suffixed .animset must open cleanly");
+}
+
+void test_inspector_edit_clip_resolves_assets_prefix()
+{
+    platformator_editor_test::TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    const auto animDir = assetRoot / "animations";
+    std::filesystem::create_directories(animDir);
+    const auto clipPath = animDir / "walk.animset";
+    platformator_editor_test::write_json(clipPath, Json{
+        {"frames", Json::array()}, {"loop", true}, {"filePath", "assets/animations/walk.animset"}});
+
+    Json sceneRoots = Json::array({
+        Json{
+            {"id", 10}, {"name", "Player"}, {"tag", ""}, {"active", true},
+            {"position", Json{{"x", 0.0}, {"y", 0.0}}},
+            {"scale", Json{{"x", 1.0}, {"y", 1.0}}},
+            {"rotation", 0.0},
+            {"components", Json::array({
+                Json{{"id", 20}, {"type", 0}, {"enabled", true},
+                     {"animationClipFilePath", "assets/animations/walk.animset"},
+                     {"currentFrameIndex", 0}, {"playbackSpeed", 1.0}, {"playing", false}}
+            })},
+            {"children", Json::array()}}
+    });
+    auto parsed = parse_document(std::move(sceneRoots), 1, std::nullopt, projectRoot, assetRoot);
+    require(static_cast<bool>(parsed), "scene document must parse cleanly");
+    DocumentSession document = std::move(*parsed.document);
+    SelectionModel selection;
+    Selection targetSelection;
+    targetSelection.objectId = 10;
+    targetSelection.selectedObjectIds = {10};
+    selection.set(document, std::move(targetSelection));
+
+    InspectorPanel inspector;
+    std::filesystem::path openedPath;
+    inspector.set_open_animation_callback([&](const std::filesystem::path &path) {
+        openedPath = path;
+    });
+    EditCommandService commands;
+    const auto nodes = inspector.semantic_nodes(document, selection.current(), "inspector", nullptr);
+    const auto editAction = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
+        return node.id.ends_with("/edit-clip");
+    });
+    require(editAction != nodes.end(), "Inspector semantic nodes must expose Edit animation clip action");
+    require(inspector.dispatch_semantic_action(
+                document, selection,
+                SemanticAction{.nodeId = editAction->id, .action = "activate"},
+                "inspector", nullptr, &commands),
+            "Inspector EditClip semantic action must succeed");
+    require(openedPath == clipPath,
+            "Inspector EditClip must strip leading assets/ prefix instead of duplicating assetRoot");
+}
 } // namespace
 
 int main()
@@ -796,6 +1022,10 @@ int main()
         test_texture_compatibility_is_contained_and_typed();
         test_reordered_animation_asset_saves_reopens_and_prepares_identically();
         test_add_frame_ui_semantics_save_reload_and_runtime_consumption();
+        test_authored_sprite_dimensions_preserved_across_animation_and_preview();
+        test_animation_clip_optional_dimensions_validation_and_deserialization();
+        test_project_panel_create_animation_clip_and_open();
+        test_inspector_edit_clip_resolves_assets_prefix();
         std::cout << "animation timing tests passed\n";
         return EXIT_SUCCESS;
     }

@@ -394,7 +394,7 @@ RunPanelAction RunSettingsPanel::draw(RunPreferences &preferences, const Pipelin
     choose_name("Executable target", preferences.target, discoveredTargets);
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
     ImGui::Checkbox("Embed Game view in editor", &preferences.embeddedGameView);
-    ImGui::SetItemTooltip("Use the opt-in editor-session protocol to show a read-only game image and runtime controls. The game does not receive mouse or keyboard input.");
+    ImGui::SetItemTooltip("Use the opt-in editor-session protocol to embed the game viewport and runtime controls in the editor. Click the view to capture gameplay keyboard and mouse input (Esc to release).");
 #else
     ImGui::BeginDisabled();
     bool embeddedGameView = false;

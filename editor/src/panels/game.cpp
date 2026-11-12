@@ -1,4 +1,6 @@
 #include "game.h"
+#include "componenttypes.h"
+#include "style.h"
 
 #include <algorithm>
 #include <charconv>
@@ -374,44 +376,112 @@ void GamePanel::draw(PlaySession *session, bool visible)
     {
         release_input_capture(session);
     }
-    if (session == nullptr || session->state() == PlaySessionState::Idle)
+    const bool idle = session == nullptr || session->state() == PlaySessionState::Idle;
+    const bool running = !idle && session->state() == PlaySessionState::Running;
+    const bool paused = !idle && session->state() == PlaySessionState::Paused;
+    const auto capabilities = idle ? decltype(session->capabilities()){} : session->capabilities();
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+
+    // Fixed-height single-row toolbar: [Aspect] [Scale] [Details?] [Build & Restart?] (or compact "..." overflow)
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const float totalAvail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const float spacing = style.ItemSpacing.x;
+    const float padX = style.FramePadding.x * 2.0f;
+
+    const bool hasDetails = !idle && capabilities.runtimeInspection;
+    const bool hasRestart = restartAvailable_ && restartCallback_;
+    const char *detailsLabel = showRuntimeDetails_ ? "Hide Details" : "Details";
+    const float detailsFullW = hasDetails ? (ImGui::CalcTextSize(detailsLabel).x + padX) : 0.0f;
+    const float restartFullW = hasRestart ? (ImGui::CalcTextSize("Build & Restart").x + padX) : 0.0f;
+    const float overflowW = ImGui::CalcTextSize("...").x + padX;
+    const float minControlPairW = std::min(totalAvail * 0.65f, 120.0f * uiScale);
+
+    bool showDetailsInline = hasDetails;
+    bool showRestartInline = hasRestart;
+    bool showOverflow = false;
+    auto inline_actions_width = [&](bool det, bool rst, bool ovf) {
+        float w = 0.0f;
+        if (det)
+            w += spacing + detailsFullW;
+        if (rst)
+            w += spacing + restartFullW;
+        if (ovf)
+            w += spacing + overflowW;
+        return w;
+    };
+    if (totalAvail - inline_actions_width(showDetailsInline, showRestartInline, false) < minControlPairW)
+    {
+        if (hasDetails && hasRestart)
+        {
+            showRestartInline = false;
+            showOverflow = true;
+            if (totalAvail - inline_actions_width(showDetailsInline, false, true) < minControlPairW)
+                showDetailsInline = false;
+        }
+        else if (hasDetails || hasRestart)
+        {
+            showDetailsInline = false;
+            showRestartInline = false;
+            showOverflow = true;
+        }
+    }
+    const float actionsW = inline_actions_width(showDetailsInline, showRestartInline, showOverflow);
+    const float controlsAvail = std::max(1.0f, totalAvail - actionsW);
+    const float aspectWidth = std::min(115.0f * uiScale, std::max(1.0f, (controlsAvail - spacing) * 0.48f));
+    const float scaleWidth = std::min(125.0f * uiScale, std::max(1.0f, controlsAvail - spacing - aspectWidth));
+
+    const char *aspectNames[] = {"Free Aspect", "16:9", "4:3", "Native 640x360"};
+    int currentAspect = static_cast<int>(aspectPreset_);
+    ImGui::SetNextItemWidth(aspectWidth);
+    if (ImGui::Combo("##game_aspect", &currentAspect, aspectNames, IM_ARRAYSIZE(aspectNames)))
+        aspectPreset_ = static_cast<GameAspectPreset>(currentAspect);
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(scaleWidth);
+    ImGui::SliderFloat("##game_scale", &zoomScale_, 0.5f, 4.0f, "Scale %.1fx");
+    zoomScale_ = std::clamp(zoomScale_, 0.5f, 4.0f);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Game view zoom scale");
+
+    if (showDetailsInline)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button(detailsLabel))
+            showRuntimeDetails_ = !showRuntimeDetails_;
+    }
+    if (showRestartInline)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Build & Restart"))
+            restartCallback_();
+    }
+    if (showOverflow)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("...##game_toolbar_overflow"))
+            ImGui::OpenPopup("##game_toolbar_overflow_popup");
+        if (ImGui::BeginPopup("##game_toolbar_overflow_popup"))
+        {
+            if (hasDetails && !showDetailsInline && ImGui::MenuItem(detailsLabel))
+                showRuntimeDetails_ = !showRuntimeDetails_;
+            if (hasRestart && !showRestartInline && ImGui::MenuItem("Build & Restart"))
+                restartCallback_();
+            ImGui::EndPopup();
+        }
+    }
+
+    if (idle)
     {
         const auto &displayStatus = pipelineStatus_.empty() ? status_ : pipelineStatus_;
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const ImVec2 textSize = ImGui::CalcTextSize(displayStatus.c_str(), nullptr, false, std::max(120.0f, avail.x - 16.0f));
+        const ImVec2 cursor = ImGui::GetCursorPos();
+        ImGui::SetCursorPosY(cursor.y + std::max(0.0f, (avail.y - textSize.y) * 0.45f));
         ImGui::TextWrapped("%s", displayStatus.c_str());
-        if (pipelineStatus_.find("external game window") != std::string::npos)
-            ImGui::TextDisabled("Turn off Embed Game view in Build and Run settings to use the compatible target in its external window.");
-        else
-            ImGui::TextDisabled("Choose Embedded Game in Build and Run settings, then build and run a compatible target.");
-        if (restartAvailable_ && restartCallback_ && ImGui::Button("Build & Restart"))
-            restartCallback_();
         return;
     }
 
-    const bool running = session->state() == PlaySessionState::Running;
-    const bool paused = session->state() == PlaySessionState::Paused;
-    const auto &capabilities = session->capabilities();
-    ImGui::BeginDisabled(!running || !capabilities.playControl);
-    if (ImGui::Button("Pause", ImVec2(70.0f, 0.0f)))
-        session->request_pause();
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!paused || !capabilities.playControl);
-    if (ImGui::Button("Resume", ImVec2(76.0f, 0.0f)))
-        session->request_resume();
-    ImGui::SameLine();
-    if (ImGui::Button("Step", ImVec2(60.0f, 0.0f)))
-        session->request_step();
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(session->state() == PlaySessionState::Stopping);
-    if (ImGui::Button("Stop", ImVec2(60.0f, 0.0f)))
-        session->request_stop();
-    ImGui::EndDisabled();
-    if (!capabilities.playControl)
-        ImGui::TextDisabled("Pause, Resume, and Step are not advertised by this runner.");
-    if (!capabilities.inputForwarding)
-        ImGui::TextDisabled("Embedded v1 is read-only. Use the external game window for native gameplay input.");
-    else if (running || paused)
+    if (running || paused)
     {
         if (capturingInput_)
             status_ = "Embedded game running · Capturing gameplay input (Esc to release)";
@@ -421,25 +491,14 @@ void GamePanel::draw(PlaySession *session, bool visible)
     else
         capturingInput_ = false;
 
-    ImGui::TextWrapped("%s", status_.c_str());
-    if (!pipelineStatus_.empty())
-        ImGui::TextWrapped("%s", pipelineStatus_.c_str());
-    if (restartAvailable_ && restartCallback_ && ImGui::Button("Build & Restart"))
-        restartCallback_();
-
-    const char *aspectNames[] = {"Free Aspect", "16:9", "4:3", "Native 640x360"};
-    int currentAspect = static_cast<int>(aspectPreset_);
-    ImGui::SetNextItemWidth(120.0f);
-    if (ImGui::Combo("##game_aspect", &currentAspect, aspectNames, IM_ARRAYSIZE(aspectNames)))
-        aspectPreset_ = static_cast<GameAspectPreset>(currentAspect);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(100.0f);
-    ImGui::SliderFloat("Scale", &zoomScale_, 0.5f, 4.0f, "%.1fx");
-    zoomScale_ = std::clamp(zoomScale_, 0.5f, 4.0f);
+    const bool drawerOpen = capabilities.runtimeInspection && showRuntimeDetails_;
+    const float drawerReserve = drawerOpen ? std::min(220.0f * uiScale, ImGui::GetContentRegionAvail().y * 0.42f) : 0.0f;
+    const float canvasAvailHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y - drawerReserve -
+                                                       (drawerOpen ? ImGui::GetStyle().ItemSpacing.y : 0.0f));
 
     if (frameTexture_ != nullptr && hasFramePixels_)
     {
-        ImVec2 available = ImGui::GetContentRegionAvail();
+        ImVec2 available(ImGui::GetContentRegionAvail().x, canvasAvailHeight);
         float targetWidth = static_cast<float>(FrameWidth);
         float targetHeight = static_cast<float>(FrameHeight);
         if (aspectPreset_ == GameAspectPreset::Native640x360)
@@ -479,6 +538,9 @@ void GamePanel::draw(PlaySession *session, bool visible)
             targetHeight = (available.y > 0.0f ? available.y : 360.0f) * zoomScale_;
         }
         const ImVec2 size(std::max(1.0f, targetWidth), std::max(1.0f, targetHeight));
+        const ImVec2 cursor = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(cursor.x + std::max(0.0f, (available.x - size.x) * 0.5f),
+                                   cursor.y + std::max(0.0f, (available.y - size.y) * 0.5f)));
         const auto textureId = static_cast<ImTextureID>(
             reinterpret_cast<std::uintptr_t>(frameTexture_));
         ImGui::Image(ImTextureRef(textureId), size);
@@ -547,27 +609,40 @@ void GamePanel::draw(PlaySession *session, bool visible)
         }
     }
     else
-        ImGui::TextDisabled("Waiting for the first visible 640 × 360 game frame.");
-
-    if (capabilities.runtimeInspection)
     {
-        if (ImGui::Button("Refresh Runtime Objects") &&
-            session->request_object_page())
-        {
-            runtimeObjects_.clear();
-            selectedHandle_.reset();
-            selectedSnapshot_ = Json::object();
-            snapshotRevision_ = 0;
-            nextCursor_.reset();
-            awaitingRuntimePage_ = true;
-        }
-        if (nextCursor_ && ImGui::Button("Load More Runtime Objects") &&
-            session->request_object_page(nextCursor_, snapshotRevision_))
-            awaitingRuntimePage_ = true;
-        draw_runtime_inspection(session);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Waiting for the first visible 640 × 360 game frame.");
+        ImGui::PopStyleColor();
     }
-    else
-        ImGui::TextDisabled("This runner does not advertise read-only runtime inspection.");
+
+    if (drawerOpen)
+    {
+        if (ImGui::BeginChild("RuntimeDetailsDrawer", ImVec2(0.0f, drawerReserve), ImGuiChildFlags_Borders))
+        {
+            if (ImGui::Button("Refresh Runtime Objects") && session->request_object_page())
+            {
+                runtimeObjects_.clear();
+                selectedHandle_.reset();
+                selectedSnapshot_ = Json::object();
+                snapshotRevision_ = 0;
+                nextCursor_.reset();
+                awaitingRuntimePage_ = true;
+            }
+            if (nextCursor_)
+            {
+                const float loadMoreWidth =
+                    ImGui::CalcTextSize("Load More Runtime Objects").x + style.FramePadding.x * 2.0f;
+                ImGui::SameLine();
+                if (ImGui::GetContentRegionAvail().x < loadMoreWidth)
+                    ImGui::NewLine();
+                if (ImGui::Button("Load More Runtime Objects") &&
+                    session->request_object_page(nextCursor_, snapshotRevision_))
+                    awaitingRuntimePage_ = true;
+            }
+            draw_runtime_inspection(session);
+        }
+        ImGui::EndChild();
+    }
 }
 
 void GamePanel::draw_runtime_inspection(PlaySession *session)
@@ -600,22 +675,75 @@ void GamePanel::draw_runtime_inspection(PlaySession *session)
     ImGui::EndChild();
     if (selectedSnapshot_.is_object() && selectedSnapshot_.value("status", std::string{}) == "ok")
     {
-        ImGui::Text("Runtime object: %s", selectedSnapshot_.value("name", std::string("GameObject")).c_str());
-        ImGui::Text("Tag: %s · Active: %s", selectedSnapshot_.value("tag", std::string{}).c_str(),
-                    selectedSnapshot_.value("active", false) ? "yes" : "no");
+        ImGui::SeparatorText("Selected Runtime Object");
+        ImGui::Text("Name: %s", selectedSnapshot_.value("name", std::string("GameObject")).c_str());
+        ImGui::Text("Tag: %s · Active: %s", selectedSnapshot_.value("tag", std::string{"None"}).c_str(),
+                    selectedSnapshot_.value("active", false) ? "true" : "false");
         const auto position = selectedSnapshot_.find("position");
         if (position != selectedSnapshot_.end() && position->is_object())
-            ImGui::Text("Position: %s", position->dump().c_str());
+        {
+            const double px = position->value("x", 0.0);
+            const double py = position->value("y", 0.0);
+            ImGui::Text("Position: X: %s  Y: %s", format_clean_float(px).c_str(), format_clean_float(py).c_str());
+        }
         const auto scale = selectedSnapshot_.find("scale");
         if (scale != selectedSnapshot_.end() && scale->is_object())
-            ImGui::Text("Scale: %s", scale->dump().c_str());
+        {
+            const double sx = scale->value("x", 1.0);
+            const double sy = scale->value("y", 1.0);
+            ImGui::Text("Scale: X: %s  Y: %s", format_clean_float(sx).c_str(), format_clean_float(sy).c_str());
+        }
         const auto components = selectedSnapshot_.find("components");
         if (components != selectedSnapshot_.end() && components->is_array())
+        {
+            ImGui::SeparatorText("Runtime Components");
             for (std::size_t index = 0; index < std::min<std::size_t>(components->size(), 32); ++index)
             {
                 const auto &component = (*components)[index];
-                ImGui::TextWrapped("%s", component.dump().c_str());
+                if (!component.is_object())
+                    continue;
+                const int type = component.value("type", -1);
+                const char *label = component_label(type);
+                if (ImGui::TreeNode(reinterpret_cast<void *>(static_cast<std::intptr_t>(index)), "%s", label))
+                {
+                    for (auto it = component.begin(); it != component.end(); ++it)
+                    {
+                        const std::string &key = it.key();
+                        if (key == "id" || key == "type")
+                            continue;
+                        if (it.value().is_primitive())
+                        {
+                            if (it.value().is_number_float())
+                                ImGui::Text("%s: %s", key.c_str(), format_clean_float(it.value().get<double>()).c_str());
+                            else if (it.value().is_boolean())
+                                ImGui::Text("%s: %s", key.c_str(), it.value().get<bool>() ? "true" : "false");
+                            else if (it.value().is_string())
+                                ImGui::Text("%s: %s", key.c_str(), it.value().get<std::string>().c_str());
+                            else
+                                ImGui::Text("%s: %s", key.c_str(), it.value().dump().c_str());
+                        }
+                        else if (it.value().is_object())
+                        {
+                            ImGui::Text("%s:", key.c_str());
+                            for (auto subIt = it.value().begin(); subIt != it.value().end(); ++subIt)
+                            {
+                                if (subIt.value().is_number_float())
+                                    ImGui::BulletText("%s: %s", subIt.key().c_str(), format_clean_float(subIt.value().get<double>()).c_str());
+                                else if (subIt.value().is_string())
+                                    ImGui::BulletText("%s: %s", subIt.key().c_str(), subIt.value().get<std::string>().c_str());
+                                else
+                                    ImGui::BulletText("%s: %s", subIt.key().c_str(), subIt.value().dump().c_str());
+                            }
+                        }
+                        else if (it.value().is_array())
+                        {
+                            ImGui::Text("%s: [%zu items]", key.c_str(), it.value().size());
+                        }
+                    }
+                    ImGui::TreePop();
+                }
             }
+        }
     }
 }
 

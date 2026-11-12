@@ -60,10 +60,7 @@ const Json *object_at(const Json &root, const ObjectLocation &location)
 
 void AnimationFrameRegionEditor::cancel_numeric_drafts() noexcept
 {
-    xDraft_.cancel();
-    yDraft_.cancel();
-    widthDraft_.cancel();
-    heightDraft_.cancel();
+    widget_.cancel_numeric_drafts();
 }
 
 bool validate_sprite_source_region(const SpriteSourceRegion &region,
@@ -196,6 +193,182 @@ AssetEditResult commit_animation_frame_source_region(
     return destination.document.set("/frames", std::move(nextFrames));
 }
 
+void SpriteSourceRegionWidget::cancel_numeric_drafts() noexcept
+{
+    xDraft_.cancel();
+    yDraft_.cancel();
+    widthDraft_.cancel();
+    heightDraft_.cancel();
+    activeNumericScope_.clear();
+}
+
+bool SpriteSourceRegionWidget::draw(
+    const char *canvasButtonId,
+    SDL_Texture *preparedThumbnail,
+    int sourceWidth, int sourceHeight,
+    const SpriteSourceRegion &currentRegion,
+    const std::function<std::string(std::string_view)> &addressForField,
+    const std::function<CommitOutcome(const SpriteSourceRegion &)> &onCommit,
+    bool allowSameLineNumericFields)
+{
+    const std::string dragScope = addressForField ? addressForField("canvas") : std::string(canvasButtonId);
+    if (dragging_ && activeDragScope_ != dragScope)
+        cancel_drag();
+    if (!activeNumericScope_.empty() && activeNumericScope_ != dragScope)
+        cancel_numeric_drafts();
+    activeNumericScope_ = dragScope;
+
+    if (preparedThumbnail == nullptr || sourceWidth <= 0 || sourceHeight <= 0)
+    {
+        cancel_drag();
+        cancel_numeric_drafts();
+        ImGui::TextDisabled("Preparing the source image and its original dimensions...");
+        return false;
+    }
+
+    float thumbnailWidth = 0.0f;
+    float thumbnailHeight = 0.0f;
+    if (!SDL_GetTextureSize(preparedThumbnail, &thumbnailWidth, &thumbnailHeight) ||
+        thumbnailWidth <= 0.0f || thumbnailHeight <= 0.0f)
+    {
+        ImGui::TextDisabled("Source thumbnail dimensions are unavailable.");
+        cancel_drag();
+        return false;
+    }
+
+    SpriteSourceRegion region = currentRegion;
+    ImGui::Text("Original image: %d × %d pixels", sourceWidth, sourceHeight);
+    ImGui::TextDisabled("Drag on the image or enter pixel bounds. Each commit is one Undo step.");
+    const float maximumWidth = std::min(std::max(1.0f, ImGui::GetContentRegionAvail().x), 360.0f);
+    const float maximumHeight = ImGui::GetTextLineHeight() * 12.0f;
+    const float scale = std::min(maximumWidth / thumbnailWidth, maximumHeight / thumbnailHeight);
+    const ImVec2 displaySize{std::max(1.0f, thumbnailWidth * scale),
+                             std::max(1.0f, thumbnailHeight * scale)};
+    ImGui::InvisibleButton(canvasButtonId, displaySize);
+    const ImVec2 minimum = ImGui::GetItemRectMin();
+    const ImVec2 maximum = ImGui::GetItemRectMax();
+    lastCanvasMin_ = minimum;
+    lastCanvasMax_ = maximum;
+    const bool hovered = ImGui::IsItemHovered();
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    const auto textureId = static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(preparedThumbnail));
+    drawList->AddImage(textureId, minimum, maximum);
+    drawList->AddRect(minimum, maximum, ImGui::GetColorU32(ImGuiCol_Border));
+
+    const auto pointToSource = [&](ImVec2 point) {
+        const float localX = std::clamp(point.x - minimum.x, 0.0f, displaySize.x);
+        const float localY = std::clamp(point.y - minimum.y, 0.0f, displaySize.y);
+        return std::pair<double, double>{
+            std::floor(static_cast<double>(localX / displaySize.x) * sourceWidth),
+            std::floor(static_cast<double>(localY / displaySize.y) * sourceHeight)};
+    };
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+    {
+        const auto [x, y] = pointToSource(ImGui::GetIO().MousePos);
+        dragStartX_ = static_cast<float>(x);
+        dragStartY_ = static_cast<float>(y);
+        activeDragScope_ = dragScope;
+        dragging_ = true;
+    }
+
+    if (dragging_)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            cancel_drag();
+            feedback_ = "Source region drag cancelled.";
+        }
+        else
+        {
+            const auto [x, y] = pointToSource(ImGui::GetIO().MousePos);
+            const SpriteSourceRegion dragged{std::min<double>(dragStartX_, x),
+                std::min<double>(dragStartY_, y), std::abs(x - dragStartX_),
+                std::abs(y - dragStartY_)};
+            if (dragged.width > 0.0 && dragged.height > 0.0)
+            {
+                region = dragged;
+                const ImVec2 rectangleMinimum{
+                    minimum.x + static_cast<float>(dragged.x) * displaySize.x / sourceWidth,
+                    minimum.y + static_cast<float>(dragged.y) * displaySize.y / sourceHeight};
+                const ImVec2 rectangleMaximum{
+                    rectangleMinimum.x + static_cast<float>(dragged.width) * displaySize.x / sourceWidth,
+                    rectangleMinimum.y + static_cast<float>(dragged.height) * displaySize.y / sourceHeight};
+                drawList->AddRect(rectangleMinimum, rectangleMaximum,
+                                  ImGui::GetColorU32(ImGuiCol_NavHighlight), 0.0f, 0, 2.0f);
+            }
+            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+            {
+                dragging_ = false;
+                const auto result = onCommit(dragged);
+                feedback_ = result.feedback;
+                return result.changed;
+            }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                dragging_ = false;
+        }
+    }
+
+    if (!dragging_)
+    {
+        const ImVec2 rectangleMinimum{
+            minimum.x + static_cast<float>(region.x) * displaySize.x / sourceWidth,
+            minimum.y + static_cast<float>(region.y) * displaySize.y / sourceHeight};
+        const ImVec2 rectangleMaximum{
+            rectangleMinimum.x + static_cast<float>(region.width) * displaySize.x / sourceWidth,
+            rectangleMinimum.y + static_cast<float>(region.height) * displaySize.y / sourceHeight};
+        drawList->AddRect(rectangleMinimum, rectangleMaximum,
+                          ImGui::GetColorU32(ImGuiCol_NavHighlight), 0.0f, 0, 2.0f);
+    }
+
+    const auto submit_field = [&](AddressNumericDraft &draft, const char *label,
+                                  std::string_view field, double committed,
+                                  double step, auto update) {
+        ImGui::SetNextItemWidth(80.0f);
+        const auto outcome = draft.draw(label, addressForField(field), committed, step);
+        if (outcome.kind == NumericDraftOutcomeKind::Invalid)
+        {
+            feedback_ = "Enter a complete finite source-region value.";
+            return false;
+        }
+        if (outcome.kind != NumericDraftOutcomeKind::Commit)
+            return false;
+        SpriteSourceRegion candidate = region;
+        update(candidate, outcome.value);
+        std::string error;
+        if (!validate_sprite_source_region(candidate, sourceWidth, sourceHeight, error))
+        {
+            feedback_ = std::move(error);
+            return false;
+        }
+        const auto result = onCommit(candidate);
+        feedback_ = result.feedback;
+        if (result.changed)
+        {
+            cancel_numeric_drafts();
+            return true;
+        }
+        return false;
+    };
+    if (submit_field(xDraft_, "X", "x", region.x, 1.0,
+                     [](SpriteSourceRegion &value, double next) { value.x = next; }))
+        return true;
+    if (allowSameLineNumericFields) ImGui::SameLine();
+    if (submit_field(yDraft_, "Y", "y", region.y, 1.0,
+                     [](SpriteSourceRegion &value, double next) { value.y = next; }))
+        return true;
+    if (allowSameLineNumericFields) ImGui::SameLine();
+    if (submit_field(widthDraft_, "Width", "width", region.width, 1.0,
+                     [](SpriteSourceRegion &value, double next) { value.width = next; }))
+        return true;
+    if (allowSameLineNumericFields) ImGui::SameLine();
+    if (submit_field(heightDraft_, "Height", "height", region.height, 1.0,
+                     [](SpriteSourceRegion &value, double next) { value.height = next; }))
+        return true;
+    if (!feedback_.empty())
+        ImGui::TextWrapped("%s", feedback_.c_str());
+    return false;
+}
+
 bool AnimationFrameRegionEditor::draw(AssetDocument &document, std::size_t frameIndex,
                                       const std::filesystem::path &assetRoot,
                                       std::string_view textureReference,
@@ -204,7 +377,7 @@ bool AnimationFrameRegionEditor::draw(AssetDocument &document, std::size_t frame
 {
     if (document_ != &document || frameIndex_ != frameIndex ||
         assetRoot_ != assetRoot || textureReference_ != textureReference)
-        dragging_ = false;
+        widget_.cancel_drag();
     document_ = &document;
     frameIndex_ = frameIndex;
     assetRoot_ = assetRoot;
@@ -215,20 +388,14 @@ bool AnimationFrameRegionEditor::draw(AssetDocument &document, std::size_t frame
         ? &document.root()["frames"] : nullptr;
     if (frames == nullptr || frameIndex >= frames->size() || !(*frames)[frameIndex].is_object())
     {
-        dragging_ = false;
+        widget_.cancel_drag();
         ImGui::TextDisabled("The selected animation frame is unavailable.");
-        return false;
-    }
-    if (preparedThumbnail == nullptr || sourceWidth <= 0 || sourceHeight <= 0)
-    {
-        dragging_ = false;
-        ImGui::TextDisabled("Preparing the source image and its original dimensions...");
         return false;
     }
     if (!animation_texture_is_compatible(assetRoot, textureReference))
     {
         ImGui::TextDisabled("Assign an existing image inside the configured asset folder first.");
-        dragging_ = false;
+        widget_.cancel_drag();
         return false;
     }
 
@@ -255,147 +422,23 @@ bool AnimationFrameRegionEditor::draw(AssetDocument &document, std::size_t frame
             region = stored;
     }
 
-    float thumbnailWidth = 0.0f;
-    float thumbnailHeight = 0.0f;
-    if (!SDL_GetTextureSize(preparedThumbnail, &thumbnailWidth, &thumbnailHeight) ||
-        thumbnailWidth <= 0.0f || thumbnailHeight <= 0.0f)
-    {
-        ImGui::TextDisabled("Source thumbnail dimensions are unavailable.");
-        dragging_ = false;
-        return false;
-    }
-    ImGui::Text("Original image: %d × %d pixels", sourceWidth, sourceHeight);
-    ImGui::TextDisabled("Drag on the image or enter pixel bounds. Each commit is one Undo step.");
-    const float maximumWidth = std::min(std::max(1.0f, ImGui::GetContentRegionAvail().x), 360.0f);
-    const float maximumHeight = ImGui::GetTextLineHeight() * 12.0f;
-    const float scale = std::min(maximumWidth / thumbnailWidth, maximumHeight / thumbnailHeight);
-    const ImVec2 displaySize{std::max(1.0f, thumbnailWidth * scale),
-                             std::max(1.0f, thumbnailHeight * scale)};
-    ImGui::InvisibleButton("##animation-frame-source-region", displaySize);
-    const ImVec2 minimum = ImGui::GetItemRectMin();
-    const ImVec2 maximum = ImGui::GetItemRectMax();
-    const bool hovered = ImGui::IsItemHovered();
-    ImDrawList *drawList = ImGui::GetWindowDrawList();
-    const auto textureId = static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(preparedThumbnail));
-    drawList->AddImage(textureId, minimum, maximum);
-    drawList->AddRect(minimum, maximum, ImGui::GetColorU32(ImGuiCol_Border));
-
-    const auto pointToSource = [&](ImVec2 point) {
-        const float localX = std::clamp(point.x - minimum.x, 0.0f, displaySize.x);
-        const float localY = std::clamp(point.y - minimum.y, 0.0f, displaySize.y);
-        return std::pair<double, double>{
-            std::floor(static_cast<double>(localX / displaySize.x) * sourceWidth),
-            std::floor(static_cast<double>(localY / displaySize.y) * sourceHeight)};
-    };
-    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-    {
-        const auto [x, y] = pointToSource(ImGui::GetIO().MousePos);
-        dragStartX_ = static_cast<float>(x);
-        dragStartY_ = static_cast<float>(y);
-        dragging_ = true;
-    }
-
-    if (dragging_)
-    {
-        const auto [x, y] = pointToSource(ImGui::GetIO().MousePos);
-        const SpriteSourceRegion dragged{std::min<double>(dragStartX_, x),
-            std::min<double>(dragStartY_, y), std::abs(x - dragStartX_),
-            std::abs(y - dragStartY_)};
-        if (dragged.width > 0.0 && dragged.height > 0.0)
-        {
-            region = dragged;
-            const ImVec2 rectangleMinimum{
-                minimum.x + static_cast<float>(dragged.x) * displaySize.x / sourceWidth,
-                minimum.y + static_cast<float>(dragged.y) * displaySize.y / sourceHeight};
-            const ImVec2 rectangleMaximum{
-                rectangleMinimum.x + static_cast<float>(dragged.width) * displaySize.x / sourceWidth,
-                rectangleMinimum.y + static_cast<float>(dragged.height) * displaySize.y / sourceHeight};
-            drawList->AddRect(rectangleMinimum, rectangleMaximum,
-                              ImGui::GetColorU32(ImGuiCol_NavHighlight), 0.0f, 0, 2.0f);
-        }
-        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-        {
-            dragging_ = false;
-            std::string error;
+    return widget_.draw(
+        "##animation-frame-source-region",
+        preparedThumbnail, sourceWidth, sourceHeight, region,
+        [&](std::string_view field) {
+            return frame_region_numeric_address(document, frameIndex, assetRoot,
+                                                textureReference, field);
+        },
+        [&](const SpriteSourceRegion &candidate) -> SpriteSourceRegionWidget::CommitOutcome {
             const auto result = commit_animation_frame_source_region(
-                {document, frameIndex}, textureReference, assetRoot, dragged,
+                {document, frameIndex}, textureReference, assetRoot, candidate,
                 sourceWidth, sourceHeight);
-            feedback_ = result.error.empty()
-                ? (result.changed ? "Animation frame region committed as one Undo step."
-                                  : "Animation frame region is unchanged.")
-                : result.error;
-            return result.changed;
-        }
-        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
-            dragging_ = false;
-    }
-
-    if (!dragging_)
-    {
-        const ImVec2 rectangleMinimum{
-            minimum.x + static_cast<float>(region.x) * displaySize.x / sourceWidth,
-            minimum.y + static_cast<float>(region.y) * displaySize.y / sourceHeight};
-        const ImVec2 rectangleMaximum{
-            rectangleMinimum.x + static_cast<float>(region.width) * displaySize.x / sourceWidth,
-            rectangleMinimum.y + static_cast<float>(region.height) * displaySize.y / sourceHeight};
-        drawList->AddRect(rectangleMinimum, rectangleMaximum,
-                          ImGui::GetColorU32(ImGuiCol_NavHighlight), 0.0f, 0, 2.0f);
-    }
-
-    const auto submit_field = [&](AddressNumericDraft &draft, const char *label,
-                                  std::string_view field, double committed,
-                                  double step, auto update) {
-        ImGui::SetNextItemWidth(80.0f);
-        const auto outcome = draft.draw(label,
-            frame_region_numeric_address(document, frameIndex, assetRoot,
-                                         textureReference, field),
-            committed, step);
-        if (outcome.kind == NumericDraftOutcomeKind::Invalid)
-        {
-            feedback_ = "Enter a complete finite source-region value.";
-            return false;
-        }
-        if (outcome.kind != NumericDraftOutcomeKind::Commit)
-            return false;
-        SpriteSourceRegion candidate = region;
-        update(candidate, outcome.value);
-        std::string error;
-        if (!validate_sprite_source_region(candidate, sourceWidth, sourceHeight, error))
-        {
-            feedback_ = std::move(error);
-            return false;
-        }
-        const auto result = commit_animation_frame_source_region(
-            {document, frameIndex}, textureReference, assetRoot, candidate,
-            sourceWidth, sourceHeight);
-        feedback_ = result.error.empty()
-            ? (result.changed ? "Animation frame region committed as one Undo step."
-                              : "Animation frame region is unchanged.")
-            : result.error;
-        if (result.changed)
-        {
-            cancel_numeric_drafts();
-            return true;
-        }
-        return false;
-    };
-    if (submit_field(xDraft_, "X", "x", region.x, 1.0,
-                     [](SpriteSourceRegion &value, double next) { value.x = next; }))
-        return true;
-    ImGui::SameLine();
-    if (submit_field(yDraft_, "Y", "y", region.y, 1.0,
-                     [](SpriteSourceRegion &value, double next) { value.y = next; }))
-        return true;
-    ImGui::SameLine();
-    if (submit_field(widthDraft_, "Width", "width", region.width, 1.0,
-                     [](SpriteSourceRegion &value, double next) { value.width = next; }))
-        return true;
-    ImGui::SameLine();
-    if (submit_field(heightDraft_, "Height", "height", region.height, 1.0,
-                     [](SpriteSourceRegion &value, double next) { value.height = next; }))
-        return true;
-    if (!feedback_.empty())
-        ImGui::TextWrapped("%s", feedback_.c_str());
-    return false;
+            return {result.changed,
+                    result.error.empty()
+                        ? (result.changed ? "Animation frame region committed as one Undo step."
+                                          : "Animation frame region is unchanged.")
+                        : result.error};
+        },
+        true);
 }
 } // namespace platformator_editor

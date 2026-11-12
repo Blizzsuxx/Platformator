@@ -3,6 +3,7 @@
 #include "../assetformats.h"
 #include "../resourceindex.h"
 #include "../discovery.h"
+#include "../style.h"
 
 #include <algorithm>
 #include <array>
@@ -15,6 +16,7 @@
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace platformator_editor
 {
@@ -122,7 +124,7 @@ bool component_matches(const Json &component, std::string_view expectedTarget)
 }
 
 std::string target_label(const Json &documentRoot, const DocumentIndexes &indexes, int id,
-                         std::string_view target)
+                         std::string_view target, bool includeIds = true)
 {
     if (target == "GameObject")
     {
@@ -155,7 +157,8 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
                 label += " / ";
             label += *name;
         }
-        label += " (#" + std::to_string(id) + ")";
+        if (includeIds)
+            label += " (#" + std::to_string(id) + ")";
         return label;
     }
     const auto location = indexes.componentsById.find(id);
@@ -172,10 +175,12 @@ std::string target_label(const Json &documentRoot, const DocumentIndexes &indexe
         location->second.componentIndex >= components->size())
         return {};
     const std::string ownerName = target_label(documentRoot, indexes,
-                                               location->second.ownerObjectId, "GameObject");
+                                               location->second.ownerObjectId, "GameObject",
+                                               includeIds);
     std::string label = ownerName.empty() ? std::string(target) : ownerName + " / " + std::string(target);
     const Json &component = (*components)[location->second.componentIndex];
-    label += " (#" + std::to_string(id) + ")";
+    if (includeIds)
+        label += " (#" + std::to_string(id) + ")";
     const char *assetField = target == "Audio" ? "filePath"
                              : target == "Animator" ? "animationClipFilePath"
                              : target == "Sprite" ? "textureFilePath"
@@ -561,16 +566,27 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
         ImGui::TextWrapped("%s: %s", label, info.label.c_str());
     const std::string targetType = expectedTarget == "GameObject"
         ? "GameObject" : std::string(expectedTarget) + " component";
+    const std::string cleanInfoLabel = (info.state == ReferenceState::Resolved && info.fileId.has_value())
+        ? target_label(document.root, document.indexes, *info.fileId, expectedTarget, false)
+        : std::string(strip_identity_suffix(info.label));
     const std::string identity = info.state == ReferenceState::Unset
         ? "Select " + targetType + "..."
         : info.state == ReferenceState::Resolved
-            ? (info.label.empty() ? targetType + " (selected)" : targetType + ": " + info.label)
+            ? (cleanInfoLabel.empty() ? targetType + " (selected)" : targetType + ": " + cleanInfoLabel)
             : "Missing " + targetType;
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("%s", label);
     const float available = ImGui::GetContentRegionAvail().x;
-    ImGui::SameLine(ImGui::GetCursorPosX() + std::min(124.0f, available * 0.42f));
-    ImGui::SetNextItemWidth(std::max(50.0f, ImGui::GetContentRegionAvail().x));
+    const float labelWidth = std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f));
+    const float frameHeight = ImGui::GetFrameHeight();
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##scene-ref-label", ImVec2(labelWidth, frameHeight));
+    draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
+                                labelWidth, frameHeight, label,
+                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                ImGui::IsItemHovered());
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x));
     if (ImGui::BeginCombo("##reference-selector", identity.c_str()))
     {
         auto filterBuffer = load_scene_reference_search_buffer();
@@ -612,6 +628,21 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
     }
     pop_field_id(path);
 }
+
+namespace
+{
+void draw_unresolved_asset_notice(const std::string &message)
+{
+    const float availWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##unresolved-asset-notice", ImVec2(availWidth, lineHeight));
+    const std::string text = "Unresolved asset: " + message;
+    draw_clipped_property_label(
+        ImGui::GetWindowDrawList(), pos.x, pos.y, availWidth, lineHeight, text.c_str(),
+        ImGui::GetColorU32(ImGuiCol_TextDisabled), ImGui::IsItemHovered());
+}
+} // namespace
 
 void draw_asset_reference_field(DocumentSession &document, EditCommandService &commands,
                                 int objectId, std::optional<int> componentId,
@@ -657,14 +688,44 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                               : "Missing " + assetType;
     const std::string rawPath = currentValue.is_string()
         ? currentValue.get<std::string>() : std::string{};
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("%s", label);
     const float available = ImGui::GetContentRegionAvail().x;
-    ImGui::SameLine(ImGui::GetCursorPosX() + std::min(124.0f, available * 0.42f));
-    const float clearWidth = nullable ? 46.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+    const float labelWidth = std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f));
+    const float frameHeight = ImGui::GetFrameHeight();
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##asset-ref-label", ImVec2(labelWidth, frameHeight));
+    draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
+                                labelWidth, frameHeight, label,
+                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                ImGui::IsItemHovered());
+    ImGui::SameLine();
+    const float clearWidth = nullable
+        ? ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x
+        : 0.0f;
     const bool choose = ImGui::Button((display + "##asset-selector").c_str(),
-                                      {std::max(50.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
+                                      {std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
     ImGui::SetItemTooltip("Full path: %s", rawPath.empty() ? "(unset)" : rawPath.c_str());
+    if (ImGui::BeginPopupContextItem("AssetReferenceContextMenu"))
+    {
+        if (ImGui::MenuItem("Copy Path", nullptr, false, !rawPath.empty()))
+        {
+            SDL_SetClipboardText(rawPath.c_str());
+        }
+        if (browse && ImGui::MenuItem("Browse..."))
+        {
+            browse(address_for_document(document, objectId, componentId, behaviorOrdinal, path),
+                   std::string(expectedAssetType), nullable);
+        }
+        if (nullable && ImGui::MenuItem("Clear", nullptr, false, !rawPath.empty()))
+        {
+            commands.set_property(document,
+                                  address_for_document(document, objectId, componentId,
+                                                       behaviorOrdinal, path),
+                                  clearValue);
+        }
+        ImGui::EndPopup();
+    }
     if (choose && browse)
         browse(address_for_document(document, objectId, componentId, behaviorOrdinal, path),
                std::string(expectedAssetType), nullable);
@@ -701,41 +762,6 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
         }
         ImGui::EndDragDropTarget();
     }
-    if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
-        info.state == ReferenceState::Invalid)
-        ImGui::TextWrapped("Unresolved asset: %s", info.message.c_str());
-    if (ImGui::TreeNode("Edit asset path"))
-    {
-        ImGui::TextWrapped("Assigned path: %s", rawPath.empty() ? "(unset)" : rawPath.c_str());
-        ImGui::SameLine();
-        ImGui::BeginDisabled(rawPath.empty());
-        if (ImGui::SmallButton("Copy Path"))
-            SDL_SetClipboardText(rawPath.c_str());
-        ImGui::EndDisabled();
-        std::array<char, 2048> buffer{};
-        const auto copied = std::min(rawPath.size(), buffer.size() - 1);
-        std::memcpy(buffer.data(), rawPath.data(), copied);
-        const bool changed = ImGui::InputText("##asset-path", buffer.data(), buffer.size(),
-                                              ImGuiInputTextFlags_EnterReturnsTrue);
-        const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
-        if (commit)
-        {
-            std::string candidate(buffer.data());
-            Json assigned = candidate.empty() && nullable ? clearValue : Json(candidate);
-            std::string error;
-            if (validate_asset_reference_assignment(document, assigned, expectedAssetType, nullable, error))
-            {
-                if (!candidate.empty())
-                    std::replace(candidate.begin(), candidate.end(), '\\', '/');
-                commands.set_property(document,
-                    address_for_document(document, objectId, componentId, behaviorOrdinal, path),
-                    candidate.empty() && nullable ? clearValue : Json(std::move(candidate)));
-            }
-            else
-                ImGui::TextWrapped("Path was not assigned: %s", error.c_str());
-        }
-        ImGui::TreePop();
-    }
     if (nullable)
     {
         ImGui::SameLine();
@@ -745,6 +771,410 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                                        behaviorOrdinal, path),
                                   clearValue);
     }
+    if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
+        info.state == ReferenceState::Invalid)
+        draw_unresolved_asset_notice(info.message);
     pop_field_id(path);
+}
+
+namespace
+{
+struct MultiAssetPickerCache
+{
+    std::uint64_t projectGeneration = 0;
+    std::string rootKey;
+    std::string expectedAssetType;
+    std::uint64_t uncertaintyEpoch = 0;
+    std::vector<std::pair<std::filesystem::path, std::uint64_t>> scannedDirRevisions;
+    bool initialized = false;
+    bool truncated = false;
+    std::string scanError;
+    std::vector<std::string> candidates;
+};
+
+MultiAssetPickerCache &picker_cache()
+{
+    static MultiAssetPickerCache cache;
+    return cache;
+}
+
+std::size_t &picker_scan_counter() noexcept
+{
+    static std::size_t scans = 0;
+    return scans;
+}
+} // namespace
+
+std::size_t multi_asset_picker_scan_count_for_test() noexcept
+{
+    return picker_scan_counter();
+}
+
+void draw_clipped_property_label(void *drawListPtr, float x, float y,
+                                 float labelWidth, float frameHeight,
+                                 const char *label, std::uint32_t color,
+                                 bool hovered)
+{
+    if (drawListPtr == nullptr || label == nullptr || label[0] == '\0' || labelWidth <= 1.0f)
+        return;
+    ImDrawList *drawList = static_cast<ImDrawList *>(drawListPtr);
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const float maxTextWidth = std::max(1.0f, labelWidth - 4.0f * uiScale);
+    const float textY = y + (frameHeight - ImGui::GetFontSize()) * 0.5f;
+    const float fullWidth = ImGui::CalcTextSize(label).x;
+    if (fullWidth <= maxTextWidth)
+    {
+        drawList->AddText(ImVec2(x, textY), color, label);
+        return;
+    }
+
+    const float ellipsisWidth = ImGui::CalcTextSize("...").x;
+    const std::string_view fullView(label);
+    std::size_t bestLen = 0;
+    if (maxTextWidth > ellipsisWidth)
+    {
+        const float targetWidth = maxTextWidth - ellipsisWidth;
+        for (std::size_t i = 0; i < fullView.size(); ++i)
+        {
+            const unsigned char c = static_cast<unsigned char>(fullView[i]);
+            if ((c & 0xC0) == 0x80)
+                continue;
+            const std::size_t candidateLen = i + 1;
+            std::size_t utf8End = candidateLen;
+            while (utf8End < fullView.size() && (static_cast<unsigned char>(fullView[utf8End]) & 0xC0) == 0x80)
+                ++utf8End;
+            const float w = ImGui::CalcTextSize(fullView.data(), fullView.data() + utf8End).x;
+            if (w <= targetWidth)
+                bestLen = utf8End;
+            else
+                break;
+        }
+    }
+    const std::string elided = bestLen > 0
+        ? std::string(fullView.substr(0, bestLen)) + "..."
+        : std::string("...");
+    const ImVec4 clipRect(x, y, x + labelWidth, y + frameHeight);
+    drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(x, textY), color,
+                      elided.c_str(), elided.c_str() + elided.size(), 0.0f, &clipRect);
+    if (hovered)
+        ImGui::SetTooltip("%s", label);
+}
+
+AssetCompletionResult apply_asset_browse_completion(
+    DocumentSession &document, EditCommandService &commands,
+    const std::vector<PropertyAddress> &targets,
+    const Selection &originSelection,
+    const DocumentIdentity &dialogIdentity,
+    const std::filesystem::path &activeAssetRoot,
+    const std::filesystem::path &selectedPath,
+    std::string_view expectedAssetType,
+    bool nullable)
+{
+    if (targets.empty())
+        return {false, "No target property addresses were provided for asset assignment."};
+
+    const DocumentIdentity currentDocIdentity{
+        ProjectGeneration{document.projectGeneration}, document.tabId,
+        DocumentGeneration{document.documentGeneration}};
+    if (currentDocIdentity != dialogIdentity)
+        return {false, "Asset assignment expired because its originating document changed."};
+
+    for (const auto &target : targets)
+    {
+        if (target.identity != dialogIdentity)
+            return {false, "Asset assignment expired because its originating document changed."};
+    }
+
+    std::error_code rootError;
+    const auto assetRoot = std::filesystem::canonical(activeAssetRoot, rootError);
+    std::error_code assetError;
+    const auto selected = std::filesystem::canonical(selectedPath, assetError);
+    const auto relative = selected.lexically_relative(assetRoot);
+    const bool contained = !rootError && !assetError && !relative.empty() && !relative.is_absolute() &&
+        *relative.begin() != "..";
+    if (!contained || !std::filesystem::is_regular_file(selected, assetError) || assetError)
+        return {false, "Selected file is outside the project asset root or is not a regular file."};
+
+    const auto reference = "assets/" + relative.generic_string();
+    std::string validationError;
+    if (!validate_asset_reference_assignment(document, reference, expectedAssetType, nullable, validationError))
+        return {false, validationError};
+
+    if (targets.size() == 1)
+    {
+        const auto changed = commands.set_property(document, targets.front(), reference);
+        return {static_cast<bool>(changed), changed ? "Asset reference assigned." : changed.message};
+    }
+
+    std::vector<BatchPropertyEdit> edits;
+    edits.reserve(targets.size());
+    for (const auto &target : targets)
+        edits.push_back({target, PropertyValue::of(reference)});
+    const auto changed = commands.apply_batch(document, edits, {originSelection, originSelection});
+    return {static_cast<bool>(changed), changed ? "Asset reference assigned." : changed.message};
+}
+
+void draw_multi_asset_reference_field(DocumentSession &document, EditCommandService &commands,
+                                      const std::vector<PropertyAddress> &targets,
+                                      const std::vector<Json> &values,
+                                      const Selection &currentSelection,
+                                      std::string_view expectedAssetType, bool nullable,
+                                      const char *label,
+                                      const AssetBrowseCallback &browse,
+                                      Json clearValue,
+                                      ResourceIndex *resourceIndex,
+                                      const MultiAssetBrowseCallback &multiBrowse)
+{
+    if (targets.empty() || values.empty())
+        return;
+
+    const bool mixed = std::any_of(values.begin() + 1, values.end(),
+                                   [&](const Json &value) { return value != values.front(); });
+    const Json &frontValue = values.front();
+    const auto info = inspect_asset_reference(document, frontValue, expectedAssetType, resourceIndex);
+    const std::string assetType = expectedAssetType == "AnimationClip" || expectedAssetType == "Animation Clip"
+        ? "Animation clip asset"
+        : expectedAssetType.empty() || expectedAssetType == "Asset" ? "Asset"
+        : std::string(expectedAssetType) + " asset";
+    const std::string display = mixed
+        ? "Multiple " + assetType + "s..."
+        : (info.state == ReferenceState::Resolved
+               ? assetType + ": " + std::filesystem::path(info.path).filename().string()
+               : info.state == ReferenceState::Unset ? "Select " + assetType + "..."
+                                                     : "Missing " + assetType);
+    const std::string rawPath = !mixed && frontValue.is_string()
+        ? frontValue.get<std::string>() : std::string{};
+
+    auto commit_all = [&](const Json &next) {
+        std::vector<BatchPropertyEdit> edits;
+        edits.reserve(targets.size());
+        for (const auto &target : targets)
+            edits.push_back({target, PropertyValue::of(next)});
+        commands.apply_batch(document, edits, {currentSelection, currentSelection});
+    };
+
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    ImGui::AlignTextToFramePadding();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const float labelWidth = std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f));
+    const float frameHeight = ImGui::GetFrameHeight();
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##multi-asset-ref-label", ImVec2(labelWidth, frameHeight));
+    draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
+                                labelWidth, frameHeight, label,
+                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                ImGui::IsItemHovered());
+    ImGui::SameLine();
+    const float clearWidth = nullable
+        ? ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x
+        : 0.0f;
+    ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+    const bool choose = ImGui::Button((display + "##asset-selector").c_str(),
+                                      {std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
+    ImGui::PopItemFlag();
+    ImGui::SetItemTooltip("Full path: %s", mixed ? "(multiple values)" : (rawPath.empty() ? "(unset)" : rawPath.c_str()));
+
+    if (ImGui::BeginPopupContextItem("MultiAssetReferenceContextMenu"))
+    {
+        if (ImGui::MenuItem("Copy Path", nullptr, false, !mixed && !rawPath.empty()))
+            SDL_SetClipboardText(rawPath.c_str());
+        if ((multiBrowse || browse) && ImGui::MenuItem("Browse..."))
+        {
+            if (multiBrowse)
+                multiBrowse(targets, currentSelection, std::string(expectedAssetType), nullable);
+            else
+                browse(targets.front(), std::string(expectedAssetType), nullable);
+        }
+        if (nullable && ImGui::MenuItem("Clear", nullptr, false, mixed || !rawPath.empty()))
+            commit_all(clearValue);
+        ImGui::EndPopup();
+    }
+
+    if (choose)
+    {
+        if (multiBrowse)
+            multiBrowse(targets, currentSelection, std::string(expectedAssetType), nullable);
+        else if (browse)
+            browse(targets.front(), std::string(expectedAssetType), nullable);
+        else if (resourceIndex != nullptr && !resourceIndex->asset_root().empty())
+            ImGui::OpenPopup("MultiAssetPickerPopup");
+    }
+
+    if (ImGui::BeginPopup("MultiAssetPickerPopup"))
+    {
+        const auto &root = resourceIndex != nullptr ? resourceIndex->asset_root() : document.assetRoot;
+        const std::string rootKey = root.generic_string();
+        const std::uint64_t projectGen = resourceIndex != nullptr
+            ? resourceIndex->project_generation().value
+            : document.projectGeneration;
+        const std::uint64_t epoch = resourceIndex != nullptr ? resourceIndex->uncertainty_epoch() : 0;
+        auto &cache = picker_cache();
+        bool dirRevisionsChanged = false;
+        if (resourceIndex != nullptr)
+        {
+            for (const auto &[dir, rev] : cache.scannedDirRevisions)
+            {
+                if (resourceIndex->directory_revision(dir) != rev)
+                {
+                    dirRevisionsChanged = true;
+                    break;
+                }
+            }
+        }
+        const bool needsScan = !cache.initialized ||
+            cache.projectGeneration != projectGen ||
+            cache.rootKey != rootKey ||
+            cache.expectedAssetType != expectedAssetType ||
+            cache.uncertaintyEpoch != epoch ||
+            dirRevisionsChanged;
+        if (needsScan)
+        {
+            ++picker_scan_counter();
+            cache.projectGeneration = projectGen;
+            cache.rootKey = rootKey;
+            cache.expectedAssetType = std::string(expectedAssetType);
+            cache.uncertaintyEpoch = epoch;
+            cache.scannedDirRevisions.clear();
+            cache.initialized = true;
+            cache.truncated = false;
+            cache.scanError.clear();
+            cache.candidates.clear();
+            if (resourceIndex != nullptr && !root.empty())
+                cache.scannedDirRevisions.emplace_back(root, resourceIndex->directory_revision(root));
+
+            constexpr std::size_t kMaxVisitedEntries = 2048;
+            constexpr std::size_t kMaxCandidates = 256;
+            std::error_code ec;
+            if (!root.empty() && std::filesystem::exists(root, ec) && !ec)
+            {
+                std::filesystem::recursive_directory_iterator it(
+                    root, std::filesystem::directory_options::skip_permission_denied, ec);
+                std::filesystem::recursive_directory_iterator end;
+                if (ec)
+                {
+                    cache.scanError = ec.message();
+                }
+                else
+                {
+                    std::size_t visited = 0;
+                    while (it != end)
+                    {
+                        if (visited >= kMaxVisitedEntries || cache.candidates.size() >= kMaxCandidates)
+                        {
+                            cache.truncated = true;
+                            break;
+                        }
+                        ++visited;
+                        std::error_code entryEc;
+                        if (it->is_directory(entryEc) && !entryEc)
+                        {
+                            if (resourceIndex != nullptr)
+                                cache.scannedDirRevisions.emplace_back(
+                                    it->path(), resourceIndex->directory_revision(it->path()));
+                        }
+                        else if (it->is_regular_file(entryEc) && !entryEc)
+                        {
+                            const auto rel = it->path().lexically_relative(root).generic_string();
+                            const std::string candidate = "assets/" + rel;
+                            std::string error;
+                            if (validate_asset_reference_assignment(document, candidate, expectedAssetType, nullable, error))
+                                cache.candidates.push_back(candidate);
+                        }
+                        it.increment(ec);
+                        if (ec)
+                        {
+                            cache.scanError = ec.message();
+                            break;
+                        }
+                    }
+                    std::sort(cache.candidates.begin(), cache.candidates.end());
+                }
+            }
+            else if (ec)
+            {
+                cache.scanError = ec.message();
+            }
+        }
+
+        if (!cache.scanError.empty())
+            ImGui::TextDisabled("Asset scan warning: %s", cache.scanError.c_str());
+        if (cache.candidates.empty())
+        {
+            ImGui::TextDisabled("No matching %s candidates found.", assetType.c_str());
+        }
+        else
+        {
+            for (const auto &candidate : cache.candidates)
+            {
+                if (ImGui::Selectable(candidate.c_str(), !mixed && rawPath == candidate))
+                {
+                    std::string error;
+                    const bool valid = validate_asset_reference_assignment(
+                        document, candidate, expectedAssetType, nullable, error);
+                    std::error_code existEc;
+                    const bool existsOnDisk = root.empty() ||
+                        (std::filesystem::is_regular_file(
+                             root / std::filesystem::path(candidate).lexically_relative("assets"), existEc) &&
+                         !existEc);
+                    if (valid && existsOnDisk)
+                    {
+                        commit_all(candidate);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else
+                    {
+                        cache.scanError = !valid ? error
+                            : ("Selected asset is no longer available: " + candidate);
+                        cache.initialized = false;
+                    }
+                }
+            }
+            if (cache.truncated)
+                ImGui::TextDisabled("Listing truncated at bounded scan limit; use Browse... for more.");
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginDragDropTarget())
+    {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+        {
+            if (payload->Data != nullptr && payload->DataSize > 0)
+            {
+                std::string dropped;
+                if (payload->DataSize == sizeof(AssetDragPayload))
+                {
+                    const auto *drag = static_cast<const AssetDragPayload *>(payload->Data);
+                    dropped = drag->relativeAssetPath;
+                }
+                else
+                {
+                    const auto *bytes = static_cast<const char *>(payload->Data);
+                    dropped = bytes;
+                }
+                while (!dropped.empty() && dropped.back() == '\0')
+                    dropped.pop_back();
+                std::string error;
+                if (validate_asset_reference_assignment(document, dropped, expectedAssetType, nullable, error))
+                {
+                    std::replace(dropped.begin(), dropped.end(), '\\', '/');
+                    commit_all(dropped);
+                }
+                else
+                    ImGui::SetTooltip("%s", error.c_str());
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+
+    if (nullable)
+    {
+        ImGui::SameLine();
+        if (ImGui::SmallButton((std::string("Clear##") + label).c_str()))
+            commit_all(clearValue);
+    }
+    if (!mixed && (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
+                   info.state == ReferenceState::Invalid))
+        draw_unresolved_asset_notice(info.message);
 }
 } // namespace platformator_editor

@@ -1,5 +1,6 @@
 #include "behaviorfields.h"
 
+#include "numericscrub.h"
 #include "referencefields.h"
 #include "../discovery.h"
 
@@ -92,6 +93,12 @@ const Json *read_path(const Json *value, const std::vector<FieldPathSegment> &pa
     return value;
 }
 
+Json *mutable_behavior_path(DocumentSession &document, int objectId, int componentId,
+                            std::size_t ordinal, const std::vector<FieldPathSegment> &path)
+{
+    return const_cast<Json *>(read_path(behavior_owner(document, objectId, componentId, ordinal), path));
+}
+
 std::vector<FieldPathSegment> child_path(const std::vector<FieldPathSegment> &path,
                                          std::string key)
 {
@@ -122,14 +129,160 @@ std::string stable_field_id(const std::vector<FieldPathSegment> &path)
     return result;
 }
 
-void begin_field(const std::string &label, const std::vector<FieldPathSegment> &path)
+struct LabelScrubInteraction
 {
+    ImGuiID id = 0;
+    bool activated = false;
+    bool active = false;
+    bool deactivated = false;
+};
+
+bool draw_clipped_tree_node(const char *id, const char *label)
+{
+    const float availWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const bool open = ImGui::TreeNodeEx(
+        id, ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap, "");
+    const ImVec2 itemMin = ImGui::GetItemRectMin();
+    const ImVec2 itemMax = ImGui::GetItemRectMax();
+    const float textStartX = itemMin.x + ImGui::GetTreeNodeToLabelSpacing();
+    const float textWidth = std::max(1.0f, itemMin.x + availWidth - textStartX);
+    draw_clipped_property_label(
+        ImGui::GetWindowDrawList(), textStartX, itemMin.y,
+        textWidth, std::max(1.0f, itemMax.y - itemMin.y), label,
+        ImGui::GetColorU32(ImGuiCol_Text), ImGui::IsItemHovered());
+    return open;
+}
+
+LabelScrubInteraction begin_field(const std::string &label, const std::vector<FieldPathSegment> &path,
+                                  bool allowScrub = false)
+{
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("%s", label.c_str());
     const float available = ImGui::GetContentRegionAvail().x;
-    ImGui::SameLine(ImGui::GetCursorPosX() + std::min(124.0f, available * 0.42f));
+    const float labelWidth = std::min(124.0f * uiScale, available * 0.42f);
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const float frameHeight = ImGui::GetFrameHeight();
+    const std::string scrubId = "##scrub_" + stable_field_id(path);
+    ImGui::InvisibleButton(scrubId.c_str(), ImVec2(labelWidth, frameHeight));
+    const LabelScrubInteraction interaction{
+        ImGui::GetItemID(),
+        ImGui::IsItemActivated(),
+        ImGui::IsItemActive(),
+        ImGui::IsItemDeactivated(),
+    };
+    const bool labelHovered = ImGui::IsItemHovered();
+    if (allowScrub && (labelHovered || interaction.active))
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+    draw_clipped_property_label(
+        ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y, labelWidth, frameHeight,
+        label.c_str(),
+        ImGui::GetColorU32((allowScrub && (labelHovered || interaction.active))
+                               ? ImGuiCol_Text
+                               : ImGuiCol_TextDisabled),
+        labelHovered);
+
+    ImGui::SameLine();
     ImGui::PushID(stable_field_id(path).c_str());
     ImGui::SetNextItemWidth(-FLT_MIN);
+    return interaction;
+}
+
+struct ScrubContext
+{
+    BehaviorFieldsPanel::ScrubState &scrub;
+    DocumentSession &document;
+    const std::vector<int> &orderedSelection;
+    std::uint64_t hostGeneration = 0;
+};
+
+void restore_scrub_targets(DocumentSession &document, const BehaviorFieldsPanel::ScrubState &scrub)
+{
+    if (!scrub.active ||
+        document.projectGeneration != scrub.projectGeneration ||
+        document.tabId.value != scrub.tabId ||
+        document.documentGeneration != scrub.documentGeneration)
+    {
+        return;
+    }
+    for (const auto &target : scrub.targets)
+    {
+        if (!target.hadValue)
+            continue;
+        if (Json *mut = mutable_behavior_path(document, target.objectId, target.componentId,
+                                              target.behaviorOrdinal, target.path))
+        {
+            *mut = target.originalJson;
+            ++document.valueRevision;
+        }
+    }
+}
+
+template <typename CaptureTargetsFn, typename ApplyPreviewFn, typename CommitFn>
+void apply_label_scrub(const ScrubContext &ctx,
+                       const LabelScrubInteraction &interaction,
+                       double baseStep,
+                       double snapIncrement,
+                       std::optional<double> minDelta,
+                       std::optional<double> maxDelta,
+                       CaptureTargetsFn &&captureTargets,
+                       ApplyPreviewFn &&applyPreview,
+                       CommitFn &&commit)
+{
+    auto &scrub = ctx.scrub;
+    if (interaction.activated)
+    {
+        if (scrub.active)
+            restore_scrub_targets(ctx.document, scrub);
+        scrub = {};
+        scrub.active = true;
+        scrub.seenThisFrame = true;
+        scrub.widgetId = interaction.id;
+        scrub.projectGeneration = ctx.document.projectGeneration;
+        scrub.tabId = ctx.document.tabId.value;
+        scrub.documentGeneration = ctx.document.documentGeneration;
+        scrub.hostGeneration = ctx.hostGeneration;
+        scrub.orderedSelection = ctx.orderedSelection;
+        scrub.targets = captureTargets();
+    }
+    else if (interaction.active && scrub.active && scrub.widgetId == interaction.id)
+    {
+        scrub.seenThisFrame = true;
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            restore_scrub_targets(ctx.document, scrub);
+            scrub = {};
+        }
+        else
+        {
+            const ImGuiIO &io = ImGui::GetIO();
+            const float deltaX = io.MouseDelta.x;
+            if (deltaX != 0.0f)
+            {
+                const double mult = io.KeyShift ? 10.0 : (io.KeyAlt ? 0.1 : 1.0);
+                double nextDelta = scrub.accumDelta + static_cast<double>(deltaX) * baseStep * mult;
+                if (io.KeyCtrl && snapIncrement > 0.0)
+                    nextDelta = std::round(nextDelta / snapIncrement) * snapIncrement;
+                if (minDelta && nextDelta < *minDelta)
+                    nextDelta = *minDelta;
+                if (maxDelta && nextDelta > *maxDelta)
+                    nextDelta = *maxDelta;
+                scrub.accumDelta = nextDelta;
+                if (scrub.accumDelta != 0.0)
+                    scrub.moved = true;
+                if (scrub.moved)
+                    applyPreview(scrub.accumDelta);
+            }
+        }
+    }
+    else if (interaction.deactivated && scrub.active && scrub.widgetId == interaction.id)
+    {
+        scrub.seenThisFrame = true;
+        restore_scrub_targets(ctx.document, scrub);
+        if (scrub.moved && scrub.accumDelta != 0.0)
+            commit(scrub.accumDelta);
+        scrub = {};
+    }
 }
 
 void end_field()
@@ -283,16 +436,18 @@ Json default_value(const Json &descriptor)
 
 bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int objectId,
                     int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
-                    const std::string &label);
+                    const std::string &label, const ScrubContext &scrubCtx);
 
 bool draw_typed_value(DocumentSession &document, EditCommandService &commands, int objectId,
                       int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
                       const Json &descriptor, const std::string &label,
-                      const AssetBrowseCallback &browse, ResourceIndex *resourceIndex);
+                      const AssetBrowseCallback &browse, ResourceIndex *resourceIndex,
+                      const ScrubContext &scrubCtx);
 
 bool draw_vector(DocumentSession &document, EditCommandService &commands, int objectId,
                  int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
-                 const Json *current, const std::vector<std::string> &names, const std::string &label)
+                 const Json *current, const std::vector<std::string> &names, const std::string &label,
+                 const ScrubContext &scrubCtx)
 {
     bool changed = false;
     Json draft = current != nullptr && current->is_object() ? *current : Json::object();
@@ -312,13 +467,58 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
                 value = 0.0f;
             }
         }
+        const float originalValue = value;
         ImGui::PushID(name.c_str());
         const auto valuePath = child_path(path, name);
-        begin_field(label + " " + name, valuePath);
-        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.9g",
+        const auto scrubIx = begin_field(label + " " + name, valuePath, true);
+        apply_label_scrub(
+            scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
+            [&]() {
+                const Json *curVal = read_path(behavior_owner(document, objectId, componentId, ordinal), valuePath);
+                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                    objectId, componentId, ordinal, valuePath,
+                    curVal != nullptr ? *curVal : Json(static_cast<double>(originalValue)),
+                    curVal != nullptr}};
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, valuePath))
+                {
+                    *mut = nextJson;
+                    ++document.valueRevision;
+                }
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (!nextJson.is_number() || !std::isfinite(nextJson.get<double>()))
+                    return;
+                draft[name] = nextJson;
+                if (current == nullptr || !current->is_object())
+                    set_value(document, commands, objectId, componentId, ordinal, path, draft);
+                else
+                    set_value(document, commands, objectId, componentId, ordinal, valuePath, nextJson);
+                changed = true;
+            });
+        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+            value = static_cast<float>(apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<double>());
+        const ImGuiID valueId = ImGui::GetID("##value");
+        const bool valueActive = ImGui::GetActiveID() == valueId;
+        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+        const char *formatStr = useFullPrecision ? "%.9g" : "%.3f";
+        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
                                                      ImGuiInputTextFlags_EnterReturnsTrue);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (valueChanged || ImGui::IsItemDeactivatedAfterEdit());
+        if (ImGui::IsItemActivated())
+        {
+            value = originalValue;
+            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->ReloadUserBufAndSelectAll();
+        }
+        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !ImGui::IsItemActivated() && !cancel && (valueChanged || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
         end_field();
         if (commit && std::isfinite(value))
         {
@@ -336,7 +536,7 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
 
 bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int objectId,
                     int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
-                    const std::string &label)
+                    const std::string &label, const ScrubContext &scrubCtx)
 {
     const Json *current = read_path(behavior_owner(document, objectId, componentId, ordinal), path);
     if (current == nullptr)
@@ -357,11 +557,37 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     if (current->is_number_unsigned())
     {
         std::uint64_t value = current->get<std::uint64_t>();
-        begin_field(label, path);
+        const std::uint64_t originalValue = value;
+        const auto scrubIx = begin_field(label, path, true);
+        apply_label_scrub(
+            scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
+            [&]() {
+                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                    objectId, componentId, ordinal, path, *current, true}};
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
+                {
+                    *mut = nextJson;
+                    ++document.valueRevision;
+                }
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (nextJson != scrubCtx.scrub.targets.front().originalJson)
+                    set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
+            });
+        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+            value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<std::uint64_t>();
         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, nullptr, nullptr,
                                                 "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
         end_field();
         if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
@@ -370,11 +596,37 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     if (current->is_number_integer())
     {
         std::int64_t value = current->get<std::int64_t>();
-        begin_field(label, path);
+        const std::int64_t originalValue = value;
+        const auto scrubIx = begin_field(label, path, true);
+        apply_label_scrub(
+            scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
+            [&]() {
+                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                    objectId, componentId, ordinal, path, *current, true}};
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
+                {
+                    *mut = nextJson;
+                    ++document.valueRevision;
+                }
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (nextJson != scrubCtx.scrub.targets.front().originalJson)
+                    set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
+            });
+        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+            value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<std::int64_t>();
         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, nullptr, nullptr,
                                                 "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
         end_field();
         if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
@@ -383,11 +635,48 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     if (current->is_number_float())
     {
         double value = current->get<double>();
-        begin_field(label, path);
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.17g",
+        const double originalValue = value;
+        const auto scrubIx = begin_field(label, path, true);
+        apply_label_scrub(
+            scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
+            [&]() {
+                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                    objectId, componentId, ordinal, path, *current, true}};
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
+                {
+                    *mut = nextJson;
+                    ++document.valueRevision;
+                }
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (nextJson.is_number() && std::isfinite(nextJson.get<double>()) &&
+                    nextJson != scrubCtx.scrub.targets.front().originalJson)
+                    set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
+            });
+        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+            value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<double>();
+        const ImGuiID valueId = ImGui::GetID("##value");
+        const bool valueActive = ImGui::GetActiveID() == valueId;
+        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+        const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
                                                 ImGuiInputTextFlags_EnterReturnsTrue);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        if (ImGui::IsItemActivated())
+        {
+            value = originalValue;
+            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->ReloadUserBufAndSelectAll();
+        }
+        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !ImGui::IsItemActivated() && !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
         end_field();
         if (commit && std::isfinite(value))
             set_value(document, commands, objectId, componentId, ordinal, path, value);
@@ -421,13 +710,13 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     {
         Json objectCopy = *current;
         const std::string treeId = label + "###object";
-        if (ImGui::TreeNode(treeId.c_str(), "%s", label.c_str()))
+        if (draw_clipped_tree_node(treeId.c_str(), label.c_str()))
         {
             for (auto it = objectCopy.begin(); it != objectCopy.end(); ++it)
             {
                 ImGui::PushID(it.key().c_str());
                 const auto nestedPath = child_path(path, it.key());
-                draw_raw_value(document, commands, objectId, componentId, ordinal, nestedPath, it.key());
+                draw_raw_value(document, commands, objectId, componentId, ordinal, nestedPath, it.key(), scrubCtx);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove"))
                     commands.erase_property(document,
@@ -447,7 +736,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         {
             ImGui::PushID(static_cast<int>(index));
             draw_raw_value(document, commands, objectId, componentId, ordinal,
-                           child_path(path, index), "Item " + std::to_string(index));
+                           child_path(path, index), "Item " + std::to_string(index), scrubCtx);
             ImGui::SameLine();
             if (ImGui::SmallButton("Remove"))
             {
@@ -471,7 +760,8 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
 bool draw_typed_value(DocumentSession &document, EditCommandService &commands, int objectId,
                       int componentId, std::size_t ordinal, const std::vector<FieldPathSegment> &path,
                       const Json &descriptor, const std::string &label,
-                      const AssetBrowseCallback &browse, ResourceIndex *resourceIndex)
+                      const AssetBrowseCallback &browse, ResourceIndex *resourceIndex,
+                      const ScrubContext &scrubCtx)
 {
     const Json *current = read_path(behavior_owner(document, objectId, componentId, ordinal), path);
     const std::string kind = descriptor.value("kind", "opaque_json");
@@ -483,20 +773,49 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         end_field();
         if (changed)
             set_value(document, commands, objectId, componentId, ordinal, path, value);
-        if (current == nullptr)
-            ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
+        if (current == nullptr && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Draft: game default retained until edited.");
         return true;
     }
     if (kind == "signed_integer" || kind == "unsigned_integer")
     {
         const bool isUnsigned = kind == "unsigned_integer";
-        begin_field(label, path);
+        const auto scrubIx = begin_field(label, path, true);
         if (isUnsigned)
         {
             std::uint64_t value = json_unsigned(current);
+            const std::uint64_t originalValue = value;
             auto minimum = unsigned_bound(descriptor, "minimum").value_or(0);
             auto maximum = unsigned_bound(descriptor, "maximum");
             std::uint64_t limit = maximum.value_or(std::numeric_limits<std::uint64_t>::max());
+            const auto minOpt = std::optional<double>(static_cast<double>(minimum));
+            const auto maxOpt = maximum ? std::optional<double>(static_cast<double>(*maximum)) : std::nullopt;
+            apply_label_scrub(
+                scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
+                [&]() {
+                    return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                        objectId, componentId, ordinal, path,
+                        current != nullptr ? *current : Json(originalValue), current != nullptr}};
+                },
+                [&](double delta) {
+                    if (scrubCtx.scrub.targets.empty())
+                        return;
+                    const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta, minOpt, maxOpt);
+                    if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
+                    {
+                        *mut = nextJson;
+                        ++document.valueRevision;
+                    }
+                },
+                [&](double delta) {
+                    if (scrubCtx.scrub.targets.empty())
+                        return;
+                    const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta, minOpt, maxOpt);
+                    if (nextJson != scrubCtx.scrub.targets.front().originalJson)
+                        set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
+                });
+            if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+                value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta, minOpt, maxOpt).get<std::uint64_t>();
             const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, &minimum, &limit,
                 "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
             const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
@@ -506,8 +825,37 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         else
         {
             std::int64_t value = json_signed(current);
+            const std::int64_t originalValue = value;
             auto minimum = signed_bound(descriptor, "minimum").value_or(std::numeric_limits<std::int64_t>::min());
             auto maximum = signed_bound(descriptor, "maximum").value_or(std::numeric_limits<std::int64_t>::max());
+            const auto minOpt = signed_bound(descriptor, "minimum") ? std::optional<double>(static_cast<double>(minimum)) : std::nullopt;
+            const auto maxOpt = signed_bound(descriptor, "maximum") ? std::optional<double>(static_cast<double>(maximum)) : std::nullopt;
+            apply_label_scrub(
+                scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
+                [&]() {
+                    return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                        objectId, componentId, ordinal, path,
+                        current != nullptr ? *current : Json(originalValue), current != nullptr}};
+                },
+                [&](double delta) {
+                    if (scrubCtx.scrub.targets.empty())
+                        return;
+                    const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta, minOpt, maxOpt);
+                    if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
+                    {
+                        *mut = nextJson;
+                        ++document.valueRevision;
+                    }
+                },
+                [&](double delta) {
+                    if (scrubCtx.scrub.targets.empty())
+                        return;
+                    const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta, minOpt, maxOpt);
+                    if (nextJson != scrubCtx.scrub.targets.front().originalJson)
+                        set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
+                });
+            if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+                value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta, minOpt, maxOpt).get<std::int64_t>();
             const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, &minimum, &maximum,
                 "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
             const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
@@ -515,23 +863,62 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                 set_value(document, commands, objectId, componentId, ordinal, path, value);
         }
         end_field();
-        if (current == nullptr)
-            ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
+        if (current == nullptr && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Draft: game default retained until edited.");
         return true;
     }
     if (kind == "number")
     {
         double value = current != nullptr && current->is_number() ? current->get<double>() : 0.0;
-        begin_field(label, path);
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.17g",
+        const double originalValue = value;
+        const auto scrubIx = begin_field(label, path, true);
+        apply_label_scrub(
+            scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
+            [&]() {
+                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
+                    objectId, componentId, ordinal, path,
+                    current != nullptr ? *current : Json(originalValue), current != nullptr}};
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
+                {
+                    *mut = nextJson;
+                    ++document.valueRevision;
+                }
+            },
+            [&](double delta) {
+                if (scrubCtx.scrub.targets.empty())
+                    return;
+                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
+                if (nextJson.is_number() && std::isfinite(nextJson.get<double>()) &&
+                    nextJson != scrubCtx.scrub.targets.front().originalJson)
+                    set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
+            });
+        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
+            value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<double>();
+        const ImGuiID valueId = ImGui::GetID("##value");
+        const bool valueActive = ImGui::GetActiveID() == valueId;
+        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+        const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
                                                 ImGuiInputTextFlags_EnterReturnsTrue);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        if (ImGui::IsItemActivated())
+        {
+            value = originalValue;
+            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->ReloadUserBufAndSelectAll();
+        }
+        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !ImGui::IsItemActivated() && !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) &&
+                            (current == nullptr || value != originalValue);
         end_field();
         if (commit && std::isfinite(value))
             set_value(document, commands, objectId, componentId, ordinal, path, value);
-        if (current == nullptr)
-            ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
+        if (current == nullptr && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Draft: game default retained until edited.");
         return true;
     }
     if (kind == "string")
@@ -551,8 +938,8 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         end_field();
         if (commit)
             set_value(document, commands, objectId, componentId, ordinal, path, std::string(buffer.data()));
-        if (current == nullptr)
-            ImGui::SameLine(), ImGui::TextDisabled("draft; game default retained until edited");
+        if (current == nullptr && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Draft: game default retained until edited.");
         return true;
     }
     if (kind == "enum")
@@ -584,10 +971,10 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
     }
     if (kind == "vector2")
         return draw_vector(document, commands, objectId, componentId, ordinal, path, current,
-                           {"x", "y"}, label);
+                           {"x", "y"}, label, scrubCtx);
     if (kind == "rectangle")
         return draw_vector(document, commands, objectId, componentId, ordinal, path, current,
-                           {"x", "y", "w", "h"}, label);
+                           {"x", "y", "w", "h"}, label, scrubCtx);
     if (kind == "asset_reference")
     {
         draw_asset_reference_field(document, commands, objectId, std::optional<int>(componentId),
@@ -627,7 +1014,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             const auto element = descriptor.find("element");
             if (element != descriptor.end())
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
-                                 path, *element, label, browse, resourceIndex);
+                                 path, *element, label, browse, resourceIndex, scrubCtx);
         }
         else
             ImGui::SameLine(), ImGui::TextDisabled(current != nullptr ? "explicit null" : "missing");
@@ -645,7 +1032,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                 ImGui::PushID(static_cast<int>(index));
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
                                  child_path(path, index), *element, "Element " + std::to_string(index), browse,
-                                 resourceIndex);
+                                 resourceIndex, scrubCtx);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove"))
                 {
@@ -674,7 +1061,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             ImGui::TextDisabled("sample/schema unavailable; no value is assumed");
             return true;
         }
-        return draw_raw_value(document, commands, objectId, componentId, ordinal, path, label);
+        return draw_raw_value(document, commands, objectId, componentId, ordinal, path, label, scrubCtx);
     }
     return false;
 }
@@ -907,15 +1294,46 @@ std::vector<TemplateAuthorSchemaDeclaration> BehaviorFieldsPanel::template_autho
     return declarations;
 }
 
+void BehaviorFieldsPanel::set_host_generation(std::uint64_t generation, DocumentSession *document) noexcept
+{
+    if (hostGeneration_ == generation)
+        return;
+    cancel_active_interactions(document);
+    hostGeneration_ = generation;
+}
+
+void BehaviorFieldsPanel::cancel_active_interactions(DocumentSession *document)
+{
+    if (!scrubState_.active)
+        return;
+    if (document != nullptr)
+        restore_scrub_targets(*document, scrubState_);
+    scrubState_ = {};
+}
+
 void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &selection,
                                EditCommandService &commands, const BehaviorCatalog &catalog,
                                const AssetBrowseCallback &browse, ResourceIndex *resourceIndex,
                                std::string_view searchQuery)
 {
     selection.repair(document);
+    if (scrubState_.active &&
+        (document.projectGeneration != scrubState_.projectGeneration ||
+         document.tabId.value != scrubState_.tabId ||
+         document.documentGeneration != scrubState_.documentGeneration ||
+         hostGeneration_ != scrubState_.hostGeneration ||
+         selection.current().selectedObjectIds != scrubState_.orderedSelection))
+    {
+        cancel_active_interactions(&document);
+    }
+    scrubState_.seenThisFrame = false;
+    const ScrubContext scrubCtx{scrubState_, document, selection.current().selectedObjectIds, hostGeneration_};
     if (!selection.current().objectId || !selection.current().componentId)
     {
-        ImGui::TextDisabled("Select a Script component to inspect behavior fields.");
+        cancel_active_interactions(&document);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Select a Script component to inspect behavior fields.");
+        ImGui::PopStyleColor();
         return;
     }
     const int objectId = *selection.current().objectId;
@@ -935,7 +1353,9 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     const Json &component = (*components)[componentLocation->second.componentIndex];
     if (component.value("type", -1) != 5)
     {
-        ImGui::TextDisabled("Behavior fields are available when a Script component is selected.");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Behavior fields are available when a Script component is selected.");
+        ImGui::PopStyleColor();
         return;
     }
     const auto behaviorList = component.find("behaviors");
@@ -951,14 +1371,31 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
         const auto &behavior = (*behaviorList)[index];
         const std::string name = behavior.is_object() ? behavior.value("type", std::string("Unknown")) : "Malformed";
         ImGui::PushID(static_cast<int>(index));
-        if (ImGui::Selectable((std::to_string(index) + ": " + name).c_str(),
-                              selection.current().behaviorOrdinal == index))
+        const std::string itemLabel = std::to_string(index) + ": " + name;
+        const float itemWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+        const float itemHeight = ImGui::GetFrameHeight();
+        const ImVec2 itemPos = ImGui::GetCursorScreenPos();
+        if (ImGui::Selectable("##behavior_item",
+                              selection.current().behaviorOrdinal == index,
+                              0,
+                              ImVec2(itemWidth, itemHeight)))
             selection.set(document, Selection{objectId, componentId, index, FocusedPanel::Behaviors});
+        draw_clipped_property_label(
+            ImGui::GetWindowDrawList(),
+            itemPos.x + ImGui::GetStyle().FramePadding.x,
+            itemPos.y,
+            std::max(1.0f, itemWidth - ImGui::GetStyle().FramePadding.x * 2.0f),
+            itemHeight,
+            itemLabel.c_str(),
+            ImGui::GetColorU32(ImGuiCol_Text),
+            ImGui::IsItemHovered());
         ImGui::PopID();
     }
     if (!selection.current().behaviorOrdinal || *selection.current().behaviorOrdinal >= behaviorList->size())
     {
-        ImGui::TextDisabled("Select a behavior to edit its saved fields.");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Select a behavior to edit its saved fields.");
+        ImGui::PopStyleColor();
         return;
     }
     const auto ordinal = *selection.current().behaviorOrdinal;
@@ -972,7 +1409,11 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     const bool schemaUnavailable = descriptor == nullptr ||
         !descriptor->value("field_schema_available", false);
     if (schemaUnavailable)
-        ImGui::TextDisabled("Registered behavior; field schema is unavailable.");
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Registered behavior; field schema is unavailable.");
+        ImGui::PopStyleColor();
+    }
 
     std::set<std::string> knownFields;
     if (descriptor != nullptr && descriptor->value("field_schema_available", false))
@@ -993,7 +1434,7 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
                     continue;
                 knownFields.insert(fieldName);
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
-                                 {std::string(fieldName)}, field, fieldName, browse, resourceIndex);
+                                 {std::string(fieldName)}, field, fieldName, browse, resourceIndex, scrubCtx);
             }
         }
     }
@@ -1019,7 +1460,7 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     if (!extras.empty() || schemaUnavailable)
     {
         ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-        if (ImGui::TreeNode("Observed extra fields (preserved)"))
+        if (draw_clipped_tree_node("###observed_extra_fields", "Observed extra fields (preserved)"))
         {
             for (const auto &key : extras)
             {
@@ -1105,7 +1546,7 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
                     }
                 }
                 draw_raw_value(document, commands, objectId, componentId, ordinal,
-                               {std::string(key)}, key);
+                               {std::string(key)}, key, scrubCtx);
                 ImGui::PopID();
             }
             ImGui::TreePop();
@@ -1115,9 +1556,13 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     {
         ImGui::TextWrapped("Declare integer references in opaque fields, including nested JSON pointers. Confirm only after reviewing every field that can hold an object or component reference.");
         bool complete = authorDeclaration->schemaCoverageComplete;
-        if (ImGui::Checkbox("Reference declarations cover this behavior", &complete))
+        if (ImGui::Checkbox("##reference_declarations_cover", &complete))
             authorDeclaration->schemaCoverageComplete = complete;
+        ImGui::SameLine();
+        ImGui::TextWrapped("Reference declarations cover this behavior");
     }
+    if (scrubState_.active && !scrubState_.seenThisFrame)
+        cancel_active_interactions(&document);
 }
 
 void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
@@ -1128,8 +1573,22 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                                                    ResourceIndex *resourceIndex,
                                                    std::string_view searchQuery)
 {
+    if (scrubState_.active &&
+        (document.projectGeneration != scrubState_.projectGeneration ||
+         document.tabId.value != scrubState_.tabId ||
+         document.documentGeneration != scrubState_.documentGeneration ||
+         hostGeneration_ != scrubState_.hostGeneration ||
+         objectIds != scrubState_.orderedSelection))
+    {
+        cancel_active_interactions(&document);
+    }
+    scrubState_.seenThisFrame = false;
+    const ScrubContext scrubCtx{scrubState_, document, objectIds, hostGeneration_};
     if (objectIds.size() < 2)
+    {
+        cancel_active_interactions(&document);
         return;
+    }
     const auto catalogSnapshot = catalog.snapshot();
     if (!catalogSnapshot)
         return;
@@ -1297,7 +1756,49 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                     commands.apply_batch(document, edits, {selection, selection});
                 };
 
-                begin_field(field.value("label", fieldName), path);
+                const bool isNumericKind = kind == "number" || kind == "signed_integer" || kind == "unsigned_integer";
+                const auto scrubIx = begin_field(field.value("label", fieldName), path, isNumericKind);
+                const auto capture_multi_targets = [&]() {
+                    std::vector<BehaviorFieldsPanel::ScrubTarget> captured;
+                    captured.reserve(participants.size());
+                    for (std::size_t index = 0; index < participants.size(); ++index)
+                    {
+                        const auto &participant = participants[index];
+                        captured.push_back({participant.objectId, participant.componentId,
+                                            behaviorOrdinal, path, values[index], true});
+                    }
+                    return captured;
+                };
+                const auto commit_multi_delta = [&](double delta) {
+                    std::vector<BatchPropertyEdit> edits;
+                    edits.reserve(scrubState_.targets.size());
+                    for (const auto &target : scrubState_.targets)
+                    {
+                        const Json nextJson = apply_numeric_delta(target.originalJson, delta);
+                        if (nextJson.is_number() &&
+                            (!nextJson.is_number_float() || std::isfinite(nextJson.get<double>())))
+                        {
+                            edits.push_back({address_for_document(document, target.objectId,
+                                                                  target.componentId,
+                                                                  target.behaviorOrdinal, target.path),
+                                             PropertyValue::of(nextJson)});
+                        }
+                    }
+                    if (!edits.empty())
+                        commands.apply_batch(document, edits, {selection, selection});
+                };
+                const auto preview_multi_delta = [&](double delta) {
+                    for (const auto &target : scrubState_.targets)
+                    {
+                        const Json nextJson = apply_numeric_delta(target.originalJson, delta);
+                        if (Json *mut = mutable_behavior_path(document, target.objectId,
+                                                              target.componentId, target.behaviorOrdinal, target.path))
+                        {
+                            *mut = nextJson;
+                            ++document.valueRevision;
+                        }
+                    }
+                };
                 ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
                 if (kind == "boolean")
                 {
@@ -1311,11 +1812,31 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                 else if (kind == "number")
                 {
                     double value = values.front().get<double>();
-                    const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, "%.17g",
+                    const double originalValue = value;
+                    apply_label_scrub(
+                        scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
+                        capture_multi_targets, preview_multi_delta, commit_multi_delta);
+                    if (scrubState_.active && scrubState_.widgetId == scrubIx.id &&
+                        scrubState_.moved && !scrubState_.targets.empty())
+                    {
+                        value = apply_numeric_delta(scrubState_.targets.front().originalJson,
+                                                    scrubState_.accumDelta).get<double>();
+                    }
+                    const ImGuiID valueId = ImGui::GetID("##value");
+                    const bool valueActive = ImGui::GetActiveID() == valueId;
+                    const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+                    const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+                    const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
                                                             ImGuiInputTextFlags_EnterReturnsTrue);
-                    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                    const bool shouldCommit = !cancel &&
-                        (changed || ImGui::IsItemDeactivatedAfterEdit());
+                    if (ImGui::IsItemActivated())
+                    {
+                        value = originalValue;
+                        if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                            state->ReloadUserBufAndSelectAll();
+                    }
+                    const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                    const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
+                        (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
                     ImGui::PopItemFlag();
                     end_field();
                     if (shouldCommit && std::isfinite(value))
@@ -1324,11 +1845,21 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                 else if (kind == "signed_integer")
                 {
                     std::int64_t value = json_signed(&values.front());
+                    const std::int64_t originalValue = value;
+                    apply_label_scrub(
+                        scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
+                        capture_multi_targets, preview_multi_delta, commit_multi_delta);
+                    if (scrubState_.active && scrubState_.widgetId == scrubIx.id &&
+                        scrubState_.moved && !scrubState_.targets.empty())
+                    {
+                        value = apply_numeric_delta(scrubState_.targets.front().originalJson,
+                                                    scrubState_.accumDelta).get<std::int64_t>();
+                    }
                     const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value,
                         nullptr, nullptr, "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
                     const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
                     const bool shouldCommit = !cancel &&
-                        (changed || ImGui::IsItemDeactivatedAfterEdit());
+                        (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
                     ImGui::PopItemFlag();
                     end_field();
                     if (shouldCommit)
@@ -1337,11 +1868,21 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                 else if (kind == "unsigned_integer")
                 {
                     std::uint64_t value = json_unsigned(&values.front());
+                    const std::uint64_t originalValue = value;
+                    apply_label_scrub(
+                        scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
+                        capture_multi_targets, preview_multi_delta, commit_multi_delta);
+                    if (scrubState_.active && scrubState_.widgetId == scrubIx.id &&
+                        scrubState_.moved && !scrubState_.targets.empty())
+                    {
+                        value = apply_numeric_delta(scrubState_.targets.front().originalJson,
+                                                    scrubState_.accumDelta).get<std::uint64_t>();
+                    }
                     const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value,
                         nullptr, nullptr, "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
                     const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
                     const bool shouldCommit = !cancel &&
-                        (changed || ImGui::IsItemDeactivatedAfterEdit());
+                        (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
                     ImGui::PopItemFlag();
                     end_field();
                     if (shouldCommit)
@@ -1377,6 +1918,8 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
         }
     }
     ImGui::PopID();
+    if (scrubState_.active && !scrubState_.seenThisFrame)
+        cancel_active_interactions(&document);
     static_cast<void>(resourceIndex);
 }
 } // namespace platformator_editor

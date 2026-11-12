@@ -540,8 +540,8 @@ void test_project_panel_alias_presentation_invalidation()
     require(!symlinkError, "contained file-alias presentation checks require local symlink support");
     std::filesystem::create_directory_symlink(canonicalTree, aliasTree, symlinkError);
     require(!symlinkError, "contained directory-alias presentation checks require local symlink support");
-    write_json(animationPath, Json{{"framesPerSecond", 1.0}, {"loop", true},
-        {"frames", Json::array({Json{{"duration", 0.0},
+    write_json(animationPath, Json{{"loop", true},
+        {"frames", Json::array({Json{{"duration", 1.0},
                                       {"textureWrapperFilePath", "assets/linked-texture.png"}}})}});
 
     ProjectContext context;
@@ -756,8 +756,8 @@ void test_directory_alias_file_events_refresh_descendant_previews()
         std::ofstream(nested / marker) << marker;
         write_solid_png(nested / frameName, color[0], color[1], color[2]);
         write_json(nested / "preview.animset", Json{
-            {"framesPerSecond", 1.0}, {"loop", true},
-            {"frames", Json::array({Json{{"duration", 0.0},
+            {"loop", true},
+            {"frames", Json::array({Json{{"duration", 1.0},
                 {"textureWrapperFilePath", "assets/folder-alias/nested/" + std::string(frameName)}}})}});
     };
     std::filesystem::create_directories(assetRoot);
@@ -993,8 +993,8 @@ void test_initially_broken_alias_repairs_project_listings_and_previews()
     std::filesystem::create_directories(nested);
     write_solid_png(nested / "frame.png", 20, 180, 60);
     write_json(nested / "preview.animset", Json{
-        {"framesPerSecond", 1.0}, {"loop", true},
-        {"frames", Json::array({Json{{"duration", 0.0},
+        {"loop", true},
+        {"frames", Json::array({Json{{"duration", 1.0},
             {"textureWrapperFilePath", "assets/folder-alias/nested/frame.png"}}})}});
     write_solid_png(unrelatedImage, 120, 30, 150);
     std::error_code symlinkError;
@@ -1249,6 +1249,19 @@ void test_project_template_controls_are_semantically_actionable()
     commands.mark_saved();
 
     (void)frames.draw(panel, document, commands, &selection);
+    const auto find_child = [](const char *substring) -> ImGuiWindow* {
+        if (auto *ctx = ImGui::GetCurrentContext()) {
+            for (ImGuiWindow *win : ctx->Windows) {
+                if (win && std::string_view(win->Name).find(substring) != std::string_view::npos)
+                    return win;
+            }
+        }
+        return nullptr;
+    };
+    ImGuiWindow *foldersWindow = find_child("Asset folders");
+    require(foldersWindow != nullptr, "Asset folders child window must be rendered");
+    const float yUnselected = foldersWindow->Pos.y;
+
     ProjectPanelTestProbe::select_entry(panel, templatePath);
     auto nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
     const auto loadNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
@@ -1263,6 +1276,11 @@ void test_project_template_controls_are_semantically_actionable()
             "semantic template loading must use the same contained-file validation as the visible control");
 
     (void)frames.draw(panel, document, commands, &selection);
+    foldersWindow = find_child("Asset folders");
+    require(foldersWindow != nullptr, "Asset folders child window must remain after selecting template");
+    const float ySelected = foldersWindow->Pos.y;
+    require(std::abs(yUnselected - ySelected) < 0.001f,
+            "selecting an asset in ProjectPanel must produce 0 px vertical shift in folder/content child windows");
     nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
     const auto instantiateNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
         return node.id == "main/panel/project/template/instantiate";
@@ -1484,6 +1502,33 @@ void test_project_browser_context_menu_operations_and_two_column_view()
     const bool deleted = ProjectPanelTestProbe::execute_context_delete(panel, renamedPath);
     require(deleted, "context menu delete must report success");
     require(!std::filesystem::exists(renamedPath), "deleted file must no longer exist on filesystem");
+
+    // Test inline asset rename state transitions
+    viewState.renaming = true;
+    viewState.renamingPath = script;
+    viewState.renameFocusPending = true;
+    std::snprintf(viewState.renameBuffer, sizeof(viewState.renameBuffer), "RenamedScript.cpp");
+    require(viewState.renaming && viewState.renameFocusPending && viewState.renamingPath == script,
+            "inline rename must initialize with active rename state and pending focus");
+    const bool inlineRenamed = ProjectPanelTestProbe::execute_context_rename(
+        panel, viewState.renamingPath, viewState.renameBuffer);
+    require(inlineRenamed, "inline rename execution must succeed");
+    viewState.renaming = false;
+    viewState.renameFocusPending = false;
+    const auto inlineRenamedPath = folder / "RenamedScript.cpp";
+    require(std::filesystem::exists(inlineRenamedPath), "renamed file must exist at new path");
+
+    // Test confirmation-guarded interactive delete
+    viewState.confirmDeletePending = true;
+    viewState.pendingDeletePath = inlineRenamedPath;
+    require(viewState.confirmDeletePending && viewState.pendingDeletePath == inlineRenamedPath,
+            "interactive delete request must populate pending confirmation state");
+    const bool confirmedDelete = ProjectPanelTestProbe::execute_context_delete(
+        panel, viewState.pendingDeletePath);
+    require(confirmedDelete, "confirmed delete execution must succeed");
+    viewState.confirmDeletePending = false;
+    viewState.pendingDeletePath.clear();
+    require(!std::filesystem::exists(inlineRenamedPath), "deleted file must no longer exist");
 
     // Context menu reveal in file manager
     ProjectPanelTestProbe::reveal_in_file_manager(panel, script);

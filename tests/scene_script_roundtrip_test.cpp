@@ -223,15 +223,11 @@ void testSceneVersion2RoundTrip()
     try
     {
         const nlohmann::json animationClipJson = {
-            {"frames", nlohmann::json::array({{{"duration", 0.0f},
+            {"frames", nlohmann::json::array({{{"duration", 1.0f},
                                                {"sourceRect", makeRectJson(0.0f, 0.0f, 0.0f, 0.0f)},
                                                {"hasSourceRect", false},
                                                {"textureWrapperFilePath", textureAssetPath}}})},
-            {"framesPerSecond", 1.0},
             {"loop", true},
-            {"width", 32.0f},
-            {"height", 32.0f},
-            {"name", "idle"},
             {"filePath", animationClipAssetPath}};
         writeJsonFile(animationClipPath, animationClipJson,
                       "Scene v2 round-trip test failed to create the temporary animation clip file.");
@@ -331,7 +327,7 @@ void testSceneVersion2RoundTrip()
         require(std::abs(animator->getPlaybackSpeed() - 1.5f) <= 1e-5f,
                 "Scene v2 round-trip test failed to restore animator playback speed.");
         require(animator->getCurrentAnimationClip() != nullptr &&
-                    animator->getCurrentAnimationClip()->getName() == "idle",
+                    animator->getCurrentAnimationClip()->getFilePath() == animationClipAssetPath,
                 "Scene v2 round-trip test failed to restore the animator clip asset.");
 
         require(animator->getCurrentClip() == animator->getCurrentAnimationClip(),

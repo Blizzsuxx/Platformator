@@ -818,19 +818,25 @@ std::string migrate_scene_window_identity(std::string_view layout)
     constexpr std::string_view retiredBehaviorSection = "[Window][panel.behaviors]";
     constexpr std::string_view retiredSettingsSection = "[Window][panel.settings]";
     constexpr std::string_view gameSection = "[Window][panel.game]";
+    constexpr std::string_view animSection = "[Window][animation-editor]";
     const bool hasDocking = layout.find("[Docking][Data]") != std::string_view::npos;
     const bool hasLegacy = layout.find(legacySection) != std::string_view::npos;
     const bool hasStable = layout.find(stableSection) != std::string_view::npos;
     const bool hasRetiredBehavior = layout.find(retiredBehaviorSection) != std::string_view::npos;
     const bool hasRetiredSettings = layout.find(retiredSettingsSection) != std::string_view::npos;
     const bool hasGame = layout.find(gameSection) != std::string_view::npos;
+    const bool hasLegacyBottomSplit = layout.find("0x00004000") != std::string_view::npos ||
+                                      layout.find("0x00004001") != std::string_view::npos;
+    const bool hasAnim = layout.find(animSection) != std::string_view::npos;
     const bool needsGameMigration = hasDocking && (hasLegacy || hasStable) && !hasGame;
-    if (!hasLegacy && !hasRetiredBehavior && !hasRetiredSettings && !needsGameMigration)
+    const bool needsAnimMigration = hasDocking && hasLegacyBottomSplit && !hasAnim;
+    if (!hasLegacy && !hasRetiredBehavior && !hasRetiredSettings && !needsGameMigration && !hasLegacyBottomSplit)
         return std::string(layout);
 
     std::string migrated;
-    migrated.reserve(layout.size() + (needsGameMigration ? 128 : 0));
+    migrated.reserve(layout.size() + 256);
     bool skippingLegacy = false;
+    std::string currentWindow;
     std::size_t offset = 0;
     while (offset < layout.size())
     {
@@ -840,20 +846,86 @@ std::string migrate_scene_window_identity(std::string_view layout)
         if (!line.empty() && line.back() == '\r')
             line.remove_suffix(1);
         if (line == retiredBehaviorSection || line == retiredSettingsSection)
+        {
             skippingLegacy = true;
+            currentWindow.clear();
+        }
         else if (line == legacySection)
         {
             skippingLegacy = hasStable;
             if (!hasStable)
                 migrated.append(stableSection);
+            currentWindow = "panel.scene";
         }
         else if (line.starts_with("["))
         {
             skippingLegacy = false;
+            if (line.starts_with("[Window]["))
+            {
+                currentWindow = std::string(line.substr(9));
+                if (!currentWindow.empty() && currentWindow.back() == ']')
+                    currentWindow.pop_back();
+            }
+            else
+            {
+                currentWindow.clear();
+            }
             migrated.append(line);
         }
+        else if (hasLegacyBottomSplit && (line.find("ID=0x00004000") != std::string_view::npos ||
+                                          line.find("ID=0x00004001") != std::string_view::npos))
+        {
+            // Skip legacy bottom child dock nodes completely
+            offset = end == std::string_view::npos ? layout.size() : end + 1;
+            continue;
+        }
+        else if (hasLegacyBottomSplit && line.find("ID=0x00001001") != std::string_view::npos)
+        {
+            // Remove Split=X from 0x00001001
+            std::string modified(line);
+            const auto splitPos = modified.find("Split=X");
+            if (splitPos != std::string::npos)
+            {
+                modified.erase(splitPos, 7);
+                while (!modified.empty() && modified.back() == ' ')
+                    modified.pop_back();
+            }
+            migrated.append(modified);
+        }
+        else if (hasLegacyBottomSplit && line.starts_with("DockId="))
+        {
+            if (line.find("0x00004000") != std::string_view::npos ||
+                line.find("0x00004001") != std::string_view::npos)
+            {
+                if (currentWindow == "panel.project")
+                    migrated.append("DockId=0x00001001,0");
+                else if (currentWindow == "panel.console")
+                    migrated.append("DockId=0x00001001,1");
+                else if (currentWindow == "animation-editor")
+                    migrated.append("DockId=0x00001001,2");
+                else if (currentWindow == "panel.run")
+                    migrated.append("DockId=0x00001001,3");
+                else if (currentWindow == "panel.validation")
+                    migrated.append("DockId=0x00001001,4");
+                else
+                {
+                    std::string modified(line);
+                    size_t p = modified.find("0x00004000");
+                    if (p != std::string::npos) modified.replace(p, 10, "0x00001001");
+                    p = modified.find("0x00004001");
+                    if (p != std::string::npos) modified.replace(p, 10, "0x00001001");
+                    migrated.append(modified);
+                }
+            }
+            else
+            {
+                migrated.append(line);
+            }
+        }
         else if (!skippingLegacy)
+        {
             migrated.append(line);
+        }
 
         if (end != std::string_view::npos)
             migrated.push_back('\n');
@@ -864,6 +936,12 @@ std::string migrate_scene_window_identity(std::string_view layout)
         if (!migrated.empty() && migrated.back() != '\n')
             migrated.push_back('\n');
         migrated.append("[Window][panel.game]\nPos=260,0\nSize=720,570\nDockId=0x00003000,1\n");
+    }
+    if (needsAnimMigration)
+    {
+        if (!migrated.empty() && migrated.back() != '\n')
+            migrated.push_back('\n');
+        migrated.append("[Window][animation-editor]\nPos=0,500\nSize=1280,300\nDockId=0x00001001,2\n");
     }
     return migrated;
 }

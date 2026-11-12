@@ -189,6 +189,91 @@ void apply_project_resource_change(ResourceIndex &resources, EditorPreview &prev
         preview.refresh_asset(document, path, directory, consumers);
 }
 
+bool can_execute_focused_undo(bool animationFocused, const DocumentManager &documents,
+                              const EditCommandService &editCommands)
+{
+    if (animationFocused)
+    {
+        if (const auto *animTab = documents.active_animation_tab())
+            return animTab->document().can_undo();
+    }
+    return editCommands.history_status().canUndo;
+}
+
+bool can_execute_focused_redo(bool animationFocused, const DocumentManager &documents,
+                              const EditCommandService &editCommands)
+{
+    if (animationFocused)
+    {
+        if (const auto *animTab = documents.active_animation_tab())
+            return animTab->document().can_redo();
+    }
+    return editCommands.history_status().canRedo;
+}
+
+bool execute_focused_undo(bool animationFocused, DocumentManager &documents,
+                          EditCommandService &editCommands, DocumentSession &sceneDocument,
+                          SelectionModel &selection, std::string &statusMessage)
+{
+    if (animationFocused)
+    {
+        if (auto *animTab = documents.active_animation_tab())
+        {
+            if (animTab->document().can_undo())
+            {
+                animTab->document().undo();
+                statusMessage = "Animation undo completed.";
+                return true;
+            }
+            statusMessage = "Nothing to undo in animation.";
+            return false;
+        }
+    }
+    const auto result = editCommands.undo(sceneDocument, selection);
+    statusMessage = result ? "Undo completed." : result.message;
+    return static_cast<bool>(result);
+}
+
+bool execute_focused_redo(bool animationFocused, DocumentManager &documents,
+                          EditCommandService &editCommands, DocumentSession &sceneDocument,
+                          SelectionModel &selection, std::string &statusMessage)
+{
+    if (animationFocused)
+    {
+        if (auto *animTab = documents.active_animation_tab())
+        {
+            if (animTab->document().can_redo())
+            {
+                animTab->document().redo();
+                statusMessage = "Animation redo completed.";
+                return true;
+            }
+            statusMessage = "Nothing to redo in animation.";
+            return false;
+        }
+    }
+    const auto result = editCommands.redo(sceneDocument, selection);
+    statusMessage = result ? "Redo completed." : result.message;
+    return static_cast<bool>(result);
+}
+
+bool sync_saved_animation_tabs(const DocumentManager &documents, const std::vector<TabId> &savedTabs,
+                               ResourceIndex &resources, EditorPreview &preview,
+                               const DocumentSession &sceneDocument)
+{
+    bool refreshedProjectPreviews = false;
+    for (const TabId id : savedTabs)
+    {
+        if (const auto *animTab = documents.find_animation_tab(id))
+        {
+            if (const auto &source = animTab->document().source_path())
+                apply_project_resource_change(resources, preview, sceneDocument, *source, false);
+            refreshedProjectPreviews = true;
+        }
+    }
+    return refreshedProjectPreviews;
+}
+
 struct RegisteredValidationDependency
 {
     std::filesystem::path path;
@@ -496,7 +581,8 @@ bool same_pipeline_inputs(const PipelineIdentity &left, const PipelineIdentity &
 
 struct PendingAssetAssignment
 {
-    PropertyAddress address;
+    std::vector<PropertyAddress> addresses;
+    Selection selection;
     std::string expectedAssetType;
     bool nullable = false;
 };
@@ -1126,6 +1212,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         };
         std::optional<AnimationDestinationOverwrite> animationDestinationOverwrite;
         bool showAnimationEditorWindow = true;
+        bool animationWindowFocused = false;
+        bool focusAnimationEditorWindow = false;
         bool animationWindowPlaybackVisible = false;
         bool runPanelVisibleLastFrame = true;
         bool validationPanelVisibleLastFrame = true;
@@ -1303,15 +1391,23 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         for (auto &[hostId, host] : detachedHosts)
             start_detached_accessibility(hostId, *host);
 #endif
-        projectPanel.set_open_animation_callback([&](const std::filesystem::path &path) {
+        const auto open_animation_file = [&](const std::filesystem::path &path) {
             std::string error;
             if (documentManager.open_animation(path, &error))
             {
                 showAnimationEditorWindow = true;
+                focusAnimationEditorWindow = true;
                 statusMessage = "Opened animation asset " + path.filename().string() + ".";
             }
             else
                 statusMessage = "Animation asset could not be opened: " + error;
+        };
+        projectPanel.set_open_animation_callback(open_animation_file);
+        inspectorPanel.set_open_animation_callback(open_animation_file);
+        inspectorPanel.set_texture_preparer([&](const std::filesystem::path &path) {
+            const auto prepared = projectPanel.prepared_animation_texture(path);
+            return InspectorPanel::PreparedTextureInfo{
+                prepared.texture, prepared.sourceWidth, prepared.sourceHeight};
         });
         ValidationResult validation;
         std::unordered_map<int, std::vector<RegisteredValidationDependency>>
@@ -1379,7 +1475,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
             if (activeDocumentTab != nullptr && activeTabStateInitialized)
             {
-                scenePanel.commit_gesture();
+                inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
+            scenePanel.commit_gesture();
                 const auto currentView = scenePanel.view_state();
                 activeDocumentTab->view_state() = SceneViewState{
                     currentView.center.x, currentView.center.y, currentView.zoom};
@@ -1426,12 +1524,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         auto activate_document_tab = [&](TabId id) {
             if (activeDocumentTab != nullptr && activeDocumentTab->id() == id)
                 return true;
+            inspectorPanel.cancel_active_interactions(workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             if (!documentManager.activate_tab(id))
                 return false;
             bind_active_document();
             return true;
         };
         auto create_scene_tab = [&] {
+            inspectorPanel.cancel_active_interactions(workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             documentManager.create_scene_tab();
             bind_active_document();
         };
@@ -1535,6 +1635,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             auto host = detachedHosts.find(hostId);
             if (host == detachedHosts.end())
                 return false;
+            inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             capture_detached_host_state();
             if (!windowHosts.close_host(hostId, preferences.panelHostAssignments))
                 return false;
@@ -1587,6 +1689,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             const HostLayoutId previous = assignment->second;
             if (previous == destination)
                 return true;
+            if (panelId == "panel.inspector")
+                inspectorPanel.cancel_active_interactions(
+                    workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             if (!windowHosts.move_panel(panelId, destination, preferences.panelHostAssignments))
                 return false;
             if (previous != main_host_layout_id)
@@ -1842,14 +1947,20 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
         };
         auto undo_edit = [&] {
-            commit_scene_gesture();
-            const auto result = editCommands->undo(workspace->document_for_edit(), *selection);
-            statusMessage = result ? "Undo completed." : result.message;
+            if (!(animationWindowFocused && showAnimationEditorWindow &&
+                  documentManager.active_animation_tab() != nullptr))
+                commit_scene_gesture();
+            execute_focused_undo(animationWindowFocused && showAnimationEditorWindow,
+                                 documentManager, *editCommands, workspace->document_for_edit(),
+                                 *selection, statusMessage);
         };
         auto redo_edit = [&] {
-            commit_scene_gesture();
-            const auto result = editCommands->redo(workspace->document_for_edit(), *selection);
-            statusMessage = result ? "Redo completed." : result.message;
+            if (!(animationWindowFocused && showAnimationEditorWindow &&
+                  documentManager.active_animation_tab() != nullptr))
+                commit_scene_gesture();
+            execute_focused_redo(animationWindowFocused && showAnimationEditorWindow,
+                                 documentManager, *editCommands, workspace->document_for_edit(),
+                                 *selection, statusMessage);
         };
         auto finish_successful_adoption = [&] {
             request_validation();
@@ -1867,6 +1978,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             dialogs->open_scene(window, activeDocumentTab->identity(), activeProjectRoot);
         };
         auto open_scene_in_tab = [&](const std::filesystem::path &path) {
+            inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             std::string error;
             const auto openedTab = documentManager.open_scene(path, &error);
             if (!openedTab)
@@ -1930,10 +2043,19 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         };
         AssetBrowseCallback browse_asset = [&](PropertyAddress address, std::string expectedAssetType,
                                                 bool nullable) {
-            pendingAssetAssignment = PendingAssetAssignment{std::move(address), expectedAssetType, nullable};
+            pendingAssetAssignment = PendingAssetAssignment{
+                {std::move(address)}, selection->current(), expectedAssetType, nullable};
             dialogs->open_asset(window, activeDocumentTab->identity(), activeAssetRoot,
                                 expectedAssetType);
         };
+        inspectorPanel.set_multi_asset_browse_callback(
+            [&](std::vector<PropertyAddress> addresses, Selection originSelection,
+                std::string expectedAssetType, bool nullable) {
+                pendingAssetAssignment = PendingAssetAssignment{
+                    std::move(addresses), std::move(originSelection), expectedAssetType, nullable};
+                dialogs->open_asset(window, activeDocumentTab->identity(), activeAssetRoot,
+                                    expectedAssetType);
+            });
         auto execute_pending = [&](UnsavedDecision decision) {
             if (decision == UnsavedDecision::Save)
                 commit_scene_gesture();
@@ -1963,9 +2085,27 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             {
                 if (decision == UnsavedDecision::Cancel)
                     result = {WorkspaceActionStatus::Cancelled, {}};
-                else if (decision == UnsavedDecision::Discard && !workspace->dirty() &&
-                         workspace->document().sourcePath)
-                    result = {WorkspaceActionStatus::Completed, {}};
+                else if (decision == UnsavedDecision::Discard && workspace->document().sourcePath)
+                {
+                    if (workspace->dirty())
+                    {
+                        const auto reloaded = workspace->reload_source_file();
+                        if (reloaded)
+                        {
+                            selection->repair(workspace->document());
+                            scenePreview->reconcile(workspace->document(), true);
+                            validationService.cancel();
+                            validationService.request(workspace->document());
+                            clear_validation_dependencies();
+                            validation = ValidationResult{};
+                            result = {WorkspaceActionStatus::Completed, "Discarded unsaved changes; reloaded scene from disk."};
+                        }
+                        else
+                            result = {WorkspaceActionStatus::Failed, reloaded.message};
+                    }
+                    else
+                        result = {WorkspaceActionStatus::Completed, {}};
+                }
                 else if (decision == UnsavedDecision::Save && !workspace->document().sourcePath)
                 {
                     request_save_as();
@@ -1991,7 +2131,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 else
                 {
-                    scenePanel.commit_gesture();
+                    inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
+            scenePanel.commit_gesture();
                     const auto savedAll = documentManager.save_all();
                     result = savedAll.action;
                     if (savedAll.failedTab && savedAll.action.conflict)
@@ -2043,11 +2185,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = result.message;
                 if (result.message.find("changed on disk") != std::string::npos)
                     showExternalConflictPrompt = true;
-                else if (decision == UnsavedDecision::Discard &&
-                         pendingAction == PendingAction::OpenDocument)
+                else if (decision == UnsavedDecision::Discard ||
+                         (pendingAction == PendingAction::BuildAndRun &&
+                          result.message.find("changed on disk") == std::string::npos))
                 {
                     pendingAction = PendingAction::None;
                     pendingOpenPath.reset();
+                    pendingProjectRoots.reset();
                     showUnsavedPrompt = false;
                 }
                 else
@@ -2085,12 +2229,15 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             const DocumentIdentity closingIdentity{
                 ProjectGeneration{tab->workspace().document().projectGeneration}, tab->id(),
                 DocumentGeneration{tab->workspace().document().documentGeneration}};
+            inspectorPanel.cancel_active_interactions(&tab->workspace().document_for_edit());
             if (wasActive)
             {
                 if (decision == UnsavedDecision::Discard)
                     scenePanel.cancel_gesture(*editCommands, workspace->document_for_edit());
                 else
-                    scenePanel.commit_gesture();
+                    inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
+            scenePanel.commit_gesture();
                 const auto currentView = scenePanel.view_state();
                 tab->view_state() = SceneViewState{currentView.center.x,
                                                    currentView.center.y,
@@ -2189,6 +2336,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 tab->document().source_path().value_or(tab->asset_root()));
         };
         auto continue_after_animation_save = [&](const DocumentIdentity &identity) {
+            if (const auto *animTab = documentManager.find_animation_tab(identity.tabId))
+            {
+                if (const auto &source = animTab->document().source_path())
+                    apply_project_resource_change(projectSession.resource_index(), *scenePreview,
+                                                  workspace->document(), *source, false);
+            }
+            projectPanel.refresh();
             if (closeAnimationPromptTab == identity.tabId)
             {
                 const auto closed = documentManager.close_animation_tab(
@@ -2249,6 +2403,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
         };
         auto save_as_to = [&](const std::filesystem::path &path, bool overwrite) {
+            inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             commit_scene_gesture();
             const auto saved = documentManager.save_scene_tab_as(
                 activeDocumentTab->identity(), path, overwrite);
@@ -2286,7 +2442,32 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     showUnsavedPrompt = true;
             }
         };
+        auto save_active_animation_tab = [&] {
+            auto *animationTab = documentManager.active_animation_tab();
+            if (animationTab == nullptr)
+                return;
+            const auto identity = animationTab->identity();
+            const auto saved = documentManager.save_animation_tab(identity);
+            statusMessage = saved ? saved.message :
+                "Animation save was not committed: " + saved.message;
+            if (saved)
+            {
+                if (const auto &source = animationTab->document().source_path())
+                    apply_project_resource_change(projectSession.resource_index(),
+                                                  *scenePreview, workspace->document(),
+                                                  *source, false);
+                projectPanel.refresh();
+            }
+            if (saved.conflict)
+                show_animation_conflict(identity);
+        };
         auto save_current = [&] {
+            if (animationWindowFocused && showAnimationEditorWindow &&
+                documentManager.active_animation_tab() != nullptr)
+            {
+                save_active_animation_tab();
+                return;
+            }
             commit_scene_gesture();
             if (!workspace->document().sourcePath)
             {
@@ -2316,8 +2497,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = "Stop the active project operation before saving open documents.";
                 return;
             }
+            inspectorPanel.cancel_active_interactions(
+                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             scenePanel.commit_gesture();
             const auto result = documentManager.save_all();
+            if (sync_saved_animation_tabs(documentManager, result.savedTabs,
+                                          projectSession.resource_index(), *scenePreview,
+                                          workspace->document()))
+                projectPanel.refresh();
+            if (!result.savedTabs.empty())
+                persist_preferences();
             if (result.failedTab)
             {
                 if (documentManager.find_animation_tab(*result.failedTab))
@@ -2343,8 +2532,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return;
             }
             statusMessage = result.action.message;
-            if (!result.savedTabs.empty())
-                persist_preferences();
         };
         auto request_build_and_run = [&] {
             commit_scene_gesture();
@@ -3437,34 +3624,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 {
                     auto assignment = std::move(*pendingAssetAssignment);
                     pendingAssetAssignment.reset();
-                    if (assignment.address.identity != result.identity.documentIdentity)
-                    {
-                        statusMessage = "Asset assignment expired because its originating document changed.";
-                        continue;
-                    }
-                    std::error_code rootError;
-                    const auto assetRoot = std::filesystem::canonical(activeAssetRoot, rootError);
-                    std::error_code assetError;
-                    const auto selected = std::filesystem::canonical(result.selectedPath, assetError);
-                    const auto relative = selected.lexically_relative(assetRoot);
-                    const bool contained = !rootError && !assetError && !relative.empty() && !relative.is_absolute() &&
-                        *relative.begin() != "..";
-                    if (!contained || !std::filesystem::is_regular_file(selected, assetError) || assetError)
-                        statusMessage = "Selected file is outside the project asset root or is not a regular file.";
-                    else
-                    {
-                        const auto reference = "assets/" + relative.generic_string();
-                        std::string validationError;
-                        if (!validate_asset_reference_assignment(workspace->document(), reference,
-                            assignment.expectedAssetType, assignment.nullable, validationError))
-                            statusMessage = validationError;
-                        else
-                        {
-                            const auto changed = editCommands->set_property(workspace->document_for_edit(),
-                                                                           assignment.address, reference);
-                            statusMessage = changed ? "Asset reference assigned." : changed.message;
-                        }
-                    }
+                    const auto completion = apply_asset_browse_completion(
+                        workspace->document_for_edit(), *editCommands,
+                        assignment.addresses, assignment.selection,
+                        result.identity.documentIdentity, activeAssetRoot,
+                        result.selectedPath, assignment.expectedAssetType, assignment.nullable);
+                    statusMessage = completion.message;
                 }
             }
 
@@ -3735,6 +3900,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const auto *tab = documentManager.find(id);
                 hasDirtySceneTab |= tab != nullptr && tab->workspace().dirty();
             }
+            bool hasDirtyAnimationTab = false;
+            for (const TabId id : documentManager.animation_tab_ids())
+            {
+                const auto *tab = documentManager.find_animation_tab(id);
+                hasDirtyAnimationTab |= tab != nullptr && tab->document().dirty();
+            }
             const auto panelStateBefore = preferences.panelVisibility;
             const bool mainMenuBarVisible = ImGui::BeginMainMenuBar();
             if (mainMenuBarVisible)
@@ -3753,7 +3924,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                             (workspace->dirty() || !workspace->document().sourcePath)))
                         save_current();
                     if (ImGui::MenuItem("Save All", nullptr, false,
-                                        !projectLocked && hasDirtySceneTab))
+                                        !projectLocked && (hasDirtySceneTab || hasDirtyAnimationTab)))
                         save_all_documents();
                     if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, !projectLocked))
                         request_save_as();
@@ -3765,8 +3936,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (ImGui::BeginMenu("Edit"))
                 {
                     const auto history = editCommands->history_status();
-                    if (ImGui::MenuItem("Undo", "Ctrl+Z", false, history.canUndo && !projectLocked)) undo_edit();
-                    if (ImGui::MenuItem("Redo", "Ctrl+Y", false, history.canRedo && !projectLocked)) redo_edit();
+                    const bool animActive = animationWindowFocused && showAnimationEditorWindow &&
+                        documentManager.active_animation_tab() != nullptr;
+                    const bool canUndo = animActive
+                        ? documentManager.active_animation_tab()->document().can_undo()
+                        : history.canUndo;
+                    const bool canRedo = animActive
+                        ? documentManager.active_animation_tab()->document().can_redo()
+                        : history.canRedo;
+                    if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo && !projectLocked)) undo_edit();
+                    if (ImGui::MenuItem("Redo", "Ctrl+Y", false, canRedo && !projectLocked)) redo_edit();
                     ImGui::Separator();
                     if (ImGui::BeginMenu("Duplicate References"))
                     {
@@ -3803,6 +3982,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             projectPanel.execute_context_create("Scene", targetDir);
                         if (ImGui::MenuItem("Object Template"))
                             projectPanel.execute_context_create("Object Template", targetDir);
+                        if (ImGui::MenuItem("Animation Clip"))
+                            projectPanel.execute_context_create("Animation Clip", targetDir);
                         ImGui::EndMenu();
                     }
                     ImGui::Separator();
@@ -4015,13 +4196,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         ImGui::EndMenu();
                     }
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Build", "Ctrl+B", false, projectOpened && !projectLocked)) queue_pipeline(true);
-                    if (ImGui::MenuItem("Build and Run", "F5", false, projectOpened && !projectLocked)) request_build_and_run();
-                    if (ImGui::MenuItem("Stop", "Shift+F5", false,
-                                        gamePipeline.busy() || catalogQuery.running() ||
-                                            pendingPipelineBuildOnly || pendingRunValidation.active()))
-                        stop_owned_operation();
-                    ImGui::Separator();
                     bool editorFullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
                     if (ImGui::MenuItem("Fullscreen", nullptr, &editorFullscreen))
                     {
@@ -4030,19 +4204,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         else
                             persist_preferences();
                     }
-                    ImGui::Separator();
-                    if (ImGui::MenuItem("Zoom In", "Ctrl++")) scenePanel.adjust_zoom(1.1f);
-                    if (ImGui::MenuItem("Zoom Out", "Ctrl+-")) scenePanel.adjust_zoom(1.0f / 1.1f);
-                    if (ImGui::MenuItem("Frame Selected", "F")) scenePanel.request_frame_selected();
-                    if (ImGui::MenuItem("Frame All", "Shift+F")) scenePanel.request_frame_all();
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("Help"))
                 {
                     if (ImGui::MenuItem("Keyboard Shortcuts"))
                         showShortcutReference = true;
-                    if (ImGui::MenuItem("Editor Preferences...", "Ctrl+,"))
-                        showPreferences = true;
                     ImGui::Separator();
                     if (ImGui::MenuItem("About Platformator"))
                         statusMessage = "Platformator Editor v0.14";
@@ -4208,6 +4375,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             toolbarState.isPaused = activePlaySession != nullptr && activePlaySession->state() == PlaySessionState::Paused;
             toolbarState.pauseResumeEnabled = playSessionActive && activePlaySession->capabilities().playControl;
             toolbarState.stepEnabled = toolbarState.isPaused && activePlaySession->capabilities().playControl;
+            toolbarState.activeTool = scenePanel.tool();
 
             EditorToolbarActions toolbarActions;
             toolbarActions.openScene = request_open_scene;
@@ -4218,6 +4386,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             toolbarActions.resume = [&] { if (auto *s = gamePipeline.play_session()) s->request_resume(); };
             toolbarActions.step = [&] { if (auto *s = gamePipeline.play_session()) s->request_step(); };
             toolbarActions.stop = stop_owned_operation;
+            toolbarActions.selectTool = [&](SceneTool tool) { scenePanel.set_tool(tool); };
             const auto toolbarFrame = draw_editor_toolbar(toolbarState, toolbarActions);
             constexpr float sceneTabBarHeight = 32.0f;
             const ImGuiViewport *mainViewport = ImGui::GetMainViewport();
@@ -4264,41 +4433,51 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const bool isActive = tabId == activeDocumentTab->id();
                 if (isActive)
                     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                // Reserve the same marker space for every tab so saving or an external change
+                // Reserve the same marker and close button space for every tab so saving or an external change
                 // cannot move the close button and all following tabs.
                 const float markerWidth = ImGui::CalcTextSize(" * !").x;
+                const float closeBtnWidth = ImGui::CalcTextSize("×").x + ImGui::GetStyle().FramePadding.x * 2.0f;
                 const float tabWidth = ImGui::CalcTextSize(cleanName.c_str()).x + markerWidth +
-                                       ImGui::GetStyle().FramePadding.x * 2.0f;
+                                       ImGui::GetStyle().FramePadding.x * 2.0f + closeBtnWidth;
+                ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+                ImGui::SetNextItemAllowOverlap();
                 const bool tabClicked = ImGui::Button((tabName + hiddenId).c_str(),
                                                       ImVec2(tabWidth, 0.0f));
-                {
-                    const ImVec2 minimum = ImGui::GetItemRectMin();
-                    const ImVec2 maximum = ImGui::GetItemRectMax();
-                    sceneTabBounds.emplace(tabId.value, SemanticBounds{
-                        minimum.x, minimum.y, maximum.x - minimum.x,
-                        maximum.y - minimum.y});
-                    if (ImGui::IsItemFocused())
-                        focusedSceneTabIds.insert(tabId.value);
-                }
-                if (tabClicked)
+                ImGui::PopStyleVar();
+                const ImVec2 tabMin = ImGui::GetItemRectMin();
+                const ImVec2 tabMax = ImGui::GetItemRectMax();
+                const bool tabHovered = ImGui::IsItemHovered();
+                sceneTabBounds.emplace(tabId.value, SemanticBounds{
+                    tabMin.x, tabMin.y, tabMax.x - tabMin.x,
+                    tabMax.y - tabMin.y});
+                if (ImGui::IsItemFocused())
+                    focusedSceneTabIds.insert(tabId.value);
+
+                // Embedded close button at the right edge of the tab
+                const ImVec2 closeMin(tabMax.x - closeBtnWidth, tabMin.y);
+                sceneTabCloseBounds.emplace(tabId.value, SemanticBounds{
+                    closeMin.x, closeMin.y, closeBtnWidth,
+                    tabMax.y - tabMin.y});
+
+                const std::string tabPushId = std::to_string(tabId.value);
+                ImGui::PushID(tabPushId.c_str());
+                ImGui::SetCursorScreenPos(closeMin);
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.15f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.30f));
+                const bool closeTabClicked = ImGui::Button("×", ImVec2(closeBtnWidth, tabMax.y - tabMin.y));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+
+                if (tabClicked && !closeTabClicked)
                     activate_document_tab(tabId);
                 if (isActive)
                     ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered() && sourceStatus != cachedSourceStatuses.end() &&
+                if (tabHovered && sourceStatus != cachedSourceStatuses.end() &&
                     sourceStatus->file.state != SourceFileState::Current &&
                     sourceStatus->file.state != SourceFileState::NoSource)
                     ImGui::SetTooltip("%s", sourceStatus->file.message.c_str());
-                ImGui::SameLine();
-                const std::string tabPushId = std::to_string(tabId.value);
-                ImGui::PushID(tabPushId.c_str());
-                const bool closeTabClicked = ImGui::SmallButton("×");
-                {
-                    const ImVec2 minimum = ImGui::GetItemRectMin();
-                    const ImVec2 maximum = ImGui::GetItemRectMax();
-                    sceneTabCloseBounds.emplace(tabId.value, SemanticBounds{
-                        minimum.x, minimum.y, maximum.x - minimum.x,
-                        maximum.y - minimum.y});
-                }
+
                 if (closeTabClicked)
                 {
                     if (tab->workspace().dirty())
@@ -4306,8 +4485,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     else
                         close_document_tab(tabId, UnsavedDecision::Discard);
                 }
-                ImGui::PopID();
-                ImGui::SameLine();
+                ImGui::SetCursorScreenPos(ImVec2(tabMax.x + ImGui::GetStyle().ItemSpacing.x, tabMin.y));
             }
             const bool newSceneClicked = ImGui::Button("+ Scene");
             {
@@ -4354,11 +4532,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         else
                         {
                             const auto result = close_document_tab(id, UnsavedDecision::Save);
+                            closePromptTab.reset();
+                            ImGui::CloseCurrentPopup();
                             if (!result)
                             {
-                                if (pendingGameSessionCloseTab == id)
-                                    ImGui::CloseCurrentPopup();
-                                else
+                                if (pendingGameSessionCloseTab != id)
                                 {
                                     activate_document_tab(id);
                                     statusMessage = result.message;
@@ -4366,8 +4544,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                         showExternalConflictPrompt = true;
                                 }
                             }
-                            else
-                                ImGui::CloseCurrentPopup();
                         }
                     }
                     ImGui::SameLine();
@@ -4375,9 +4551,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     {
                         const auto result = close_document_tab(*closePromptTab,
                                                                UnsavedDecision::Discard);
-                        if (result || pendingGameSessionCloseTab == closePromptTab)
-                            ImGui::CloseCurrentPopup();
-                        else
+                        closePromptTab.reset();
+                        ImGui::CloseCurrentPopup();
+                        if (!result && pendingGameSessionCloseTab != closePromptTab)
                             statusMessage = result.message;
                     }
                     ImGui::SameLine();
@@ -4771,12 +4947,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             closeRequested = true;
                         else if (command == "edit/undo")
                         {
-                            if (!projectLocked && editCommands->history_status().canUndo)
+                            if (!projectLocked &&
+                                can_execute_focused_undo(animationWindowFocused && showAnimationEditorWindow,
+                                                         documentManager, *editCommands))
                                 undo_edit();
                         }
                         else if (command == "edit/redo")
                         {
-                            if (!projectLocked && editCommands->history_status().canRedo)
+                            if (!projectLocked &&
+                                can_execute_focused_redo(animationWindowFocused && showAnimationEditorWindow,
+                                                         documentManager, *editCommands))
                                 redo_edit();
                         }
                         else if (command == "edit/validate")
@@ -4791,6 +4971,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             projectPanel.execute_context_create("Scene", projectPanel.selected_directory());
                         else if (command == "assets/create-template")
                             projectPanel.execute_context_create("Object Template", projectPanel.selected_directory());
+                        else if (command == "assets/create-animation")
+                            projectPanel.execute_context_create("Animation Clip", projectPanel.selected_directory());
                         else if (command == "assets/delete")
                         {
                             if (const auto entry = projectPanel.selected_entry())
@@ -5122,6 +5304,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             const auto saved = documentManager.save_animation_tab(identity);
                             statusMessage = saved ? saved.message :
                                 "Animation save was not committed: " + saved.message;
+                            if (saved)
+                            {
+                                if (const auto &source = tab->document().source_path())
+                                    apply_project_resource_change(projectSession.resource_index(),
+                                                                  *scenePreview, workspace->document(),
+                                                                  *source, false);
+                                projectPanel.refresh();
+                            }
                             if (saved.conflict)
                                 show_animation_conflict(identity);
                         }
@@ -5158,8 +5348,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             if (showAnimationEditorWindow && documentManager.animation_tab_count() != 0)
             {
                 ImGui::SetNextWindowSize(ImVec2(620.0f, 520.0f), ImGuiCond_FirstUseEver);
+                ImGui::SetNextWindowDockID(0x00001001, ImGuiCond_FirstUseEver);
+                if (focusAnimationEditorWindow)
+                {
+                    ImGui::SetNextWindowFocus();
+                    focusAnimationEditorWindow = false;
+                }
                 animationContentsVisible = ImGui::Begin("Animation Assets###animation-editor",
                                                         &showAnimationEditorWindow);
+                animationWindowFocused = animationContentsVisible &&
+                    ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
                 if (animationContentsVisible)
                 {
                     std::optional<TabId> closeRequest;
@@ -5168,8 +5366,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         const auto *tab = documentManager.find_animation_tab(id);
                         if (tab == nullptr)
                             continue;
-                        std::string label = tab->document().source_path()
+                        const std::string cleanLabel = tab->document().source_path()
                             ? tab->document().source_path()->filename().string() : "Animation";
+                        std::string label = cleanLabel;
                         const bool changedOnDisk = std::any_of(
                             cachedSourceStatuses.begin(), cachedSourceStatuses.end(),
                             [&](const DocumentSourceStatus &source) {
@@ -5186,17 +5385,36 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         if (active)
                             ImGui::PushStyleColor(ImGuiCol_Button,
                                 ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                        if (ImGui::Button((label + "###animation-tab." +
-                                           std::to_string(id.value)).c_str()))
+                        const float markerWidth = ImGui::CalcTextSize(" * !").x;
+                        const float closeBtnWidth = ImGui::CalcTextSize("×").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+                        const float tabWidth = ImGui::CalcTextSize(cleanLabel.c_str()).x + markerWidth +
+                                               ImGui::GetStyle().FramePadding.x * 2.0f + closeBtnWidth;
+                        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+                        ImGui::SetNextItemAllowOverlap();
+                        const bool tabClicked = ImGui::Button((label + "###animation-tab." +
+                                           std::to_string(id.value)).c_str(),
+                                          ImVec2(tabWidth, 0.0f));
+                        ImGui::PopStyleVar();
+                        const ImVec2 tabMin = ImGui::GetItemRectMin();
+                        const ImVec2 tabMax = ImGui::GetItemRectMax();
+                        const ImVec2 closeMin(tabMax.x - closeBtnWidth, tabMin.y);
+
+                        ImGui::PushID(static_cast<int>(id.value & 0x7fffffffU));
+                        ImGui::SetCursorScreenPos(closeMin);
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.15f));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.30f));
+                        const bool closeClicked = ImGui::Button("×", ImVec2(closeBtnWidth, tabMax.y - tabMin.y));
+                        ImGui::PopStyleColor(3);
+                        ImGui::PopID();
+
+                        if (closeClicked)
+                            closeRequest = id;
+                        else if (tabClicked)
                             documentManager.activate_animation_tab(id);
                         if (active)
                             ImGui::PopStyleColor();
-                        ImGui::SameLine();
-                        ImGui::PushID(static_cast<int>(id.value & 0x7fffffffU));
-                        if (ImGui::SmallButton("x"))
-                            closeRequest = id;
-                        ImGui::PopID();
-                        ImGui::SameLine();
+                        ImGui::SetCursorScreenPos(ImVec2(tabMax.x + ImGui::GetStyle().ItemSpacing.x, tabMin.y));
                     }
                     ImGui::NewLine();
                     ImGui::Separator();
@@ -5213,19 +5431,39 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
                     if (auto *animationTab = documentManager.active_animation_tab())
                     {
-                        ImGui::TextWrapped("%s", animationTab->document().source_path()
-                            ? animationTab->document().source_path()->string().c_str()
-                            : "Untitled animation");
-                        ImGui::SameLine();
                         if (ImGui::Button("Save"))
+                            save_active_animation_tab();
+                        ImGui::SameLine();
+                        const bool canUndo = animationTab->document().can_undo();
+                        ImGui::BeginDisabled(!canUndo || projectLocked);
+                        if (ImGui::Button("Undo"))
                         {
-                            const auto identity = animationTab->identity();
-                            const auto saved = documentManager.save_animation_tab(identity);
-                            statusMessage = saved ? saved.message :
-                                "Animation save was not committed: " + saved.message;
-                            if (saved.conflict)
-                                show_animation_conflict(identity);
+                            animationTab->document().undo();
                         }
+                        ImGui::EndDisabled();
+                        ImGui::SameLine();
+                        const bool canRedo = animationTab->document().can_redo();
+                        ImGui::BeginDisabled(!canRedo || projectLocked);
+                        if (ImGui::Button("Redo"))
+                        {
+                            animationTab->document().redo();
+                        }
+                        ImGui::EndDisabled();
+                        ImGui::SameLine();
+
+                        std::string displayPath = "Untitled animation";
+                        if (animationTab->document().source_path())
+                        {
+                            const auto &source = *animationTab->document().source_path();
+                            const auto rel = source.lexically_normal().lexically_relative(
+                                activeProjectRoot.lexically_normal());
+                            if (!rel.empty() && rel.string().rfind("..", 0) != 0)
+                                displayPath = rel.generic_string();
+                            else
+                                displayPath = source.filename().generic_string();
+                        }
+                        ImGui::TextDisabled("%s", displayPath.c_str());
+
                         ImGui::Separator();
                         ImGui::BeginDisabled(projectLocked);
                         animationTab->panel().draw(animationTab->document(),
@@ -5361,16 +5599,19 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             addMenuCommand("file/save", "file", "Save current Scene",
                            !projectLocked && workspace->dirty(),
                            workspace->dirty() ? "modified" : "saved");
+            const bool hasDirtyAnyDoc = hasDirtySceneTab || hasDirtyAnimationTab;
             addMenuCommand("file/save-all", "file", "Save All Scenes",
-                           !projectLocked && !tabActionsLocked && hasDirtySceneTab,
-                           hasDirtySceneTab ? "modified documents available" : "all saved");
+                           !projectLocked && !tabActionsLocked && hasDirtyAnyDoc,
+                           hasDirtyAnyDoc ? "modified documents available" : "all saved");
             addMenuCommand("file/save-as", "file", "Save Scene As", !projectLocked);
             addMenuCommand("file/exit", "file", "Exit Editor", true);
 
             // Edit
-            const auto currentHistory = editCommands->history_status();
-            addMenuCommand("edit/undo", "edit", "Undo", !projectLocked && currentHistory.canUndo);
-            addMenuCommand("edit/redo", "edit", "Redo", !projectLocked && currentHistory.canRedo);
+            const bool animFocused = animationWindowFocused && showAnimationEditorWindow;
+            addMenuCommand("edit/undo", "edit", "Undo",
+                           !projectLocked && can_execute_focused_undo(animFocused, documentManager, *editCommands));
+            addMenuCommand("edit/redo", "edit", "Redo",
+                           !projectLocked && can_execute_focused_redo(animFocused, documentManager, *editCommands));
             addMenuCommand("edit/validate", "edit", "Validate Scene", true);
             addMenuCommand("edit/preferences", "edit", "Preferences", true);
 
@@ -5382,6 +5623,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             addMenuCommand("assets/create-script", "assets", "Create Behavior Script", !projectLocked);
             addMenuCommand("assets/create-scene", "assets", "Create Scene", !projectLocked);
             addMenuCommand("assets/create-template", "assets", "Create Object Template", !projectLocked);
+            addMenuCommand("assets/create-animation", "assets", "Create Animation Clip", !projectLocked);
             addMenuCommand("assets/delete", "assets", "Delete Asset", hasSelectedAsset && !projectLocked);
             addMenuCommand("assets/refresh", "assets", "Refresh", true);
 
@@ -5432,18 +5674,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             addMenuCommand("window/fullscreen", "window", "Fullscreen", true,
                            fullscreen ? "enabled" : "disabled", fullscreen,
                            SemanticRole::CheckBox);
-            addMenuCommand("window/zoom-in", "window", "Zoom In", true);
-            addMenuCommand("window/zoom-out", "window", "Zoom Out", true);
-            addMenuCommand("window/frame-all", "window", "Frame All", true);
-            addMenuCommand("window/frame-selected", "window", "Frame Selected", true);
-            addMenuCommand("window/build", "window", "Build Project", projectOpened && !projectLocked);
-            addMenuCommand("window/build-and-run", "window", "Build and Run", projectOpened && !projectLocked);
-            addMenuCommand("window/stop", "window", "Stop Owned Operation",
-                gamePipeline.busy() || catalogQuery.running() || pendingPipelineBuildOnly.has_value());
 
             // Help
             addMenuCommand("help/shortcuts", "help", "Keyboard Shortcuts", true);
-            addMenuCommand("help/preferences", "help", "Editor Preferences", true);
 
             SemanticNode sceneTabsRoot;
             sceneTabsRoot.id = "main/scene-tabs";
@@ -5716,6 +5949,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         }
                         else
                         {
+                            closeAnimationPromptTab.reset();
+                            ImGui::CloseCurrentPopup();
                             statusMessage = "Animation tab remains open: " + result.message;
                             if (result.conflict)
                                 show_animation_conflict(identity);
@@ -5987,16 +6222,30 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
             bool showInspector = show_panel("panel.inspector");
             ImGuiContext *previousInspectorContext = activate_panel_context("panel.inspector");
+            SDL_Renderer *inspectorFrameRenderer = renderer;
+            std::uint64_t inspectorHostGeneration = mainAccessibilityGeneration.value;
+            if (const auto assignment = preferences.panelHostAssignments.find("panel.inspector");
+                assignment != preferences.panelHostAssignments.end() &&
+                assignment->second != main_host_layout_id)
+                if (const auto host = detachedHosts.find(assignment->second); host != detachedHosts.end())
+                {
+                    inspectorFrameRenderer = host->second->renderer();
+                    inspectorHostGeneration = host->second->identity().generation.value;
+                }
+            inspectorPanel.set_host_generation(
+                inspectorHostGeneration, workspace != nullptr ? &workspace->document_for_edit() : nullptr);
+            projectPanel.set_frame_renderer(inspectorFrameRenderer);
             const auto inspectorFrame = begin_panel_window(showInspector,
                 "Inspector###panel.inspector", &showInspector);
+            if (!inspectorFrame.contentsVisible)
+                inspectorPanel.cancel_active_interactions(
+                    workspace != nullptr ? &workspace->document_for_edit() : nullptr);
             if (inspectorFrame.contentsVisible)
             {
                 ImGui::BeginDisabled(documentEditingLocked);
                 inspectorPanel.draw(workspace->document_for_edit(), *selection, *editCommands,
                                      behaviorCatalog, browse_asset, &projectSession.resource_index());
                 ImGui::EndDisabled();
-                if (!inspectorPanel.feedback().empty())
-                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", inspectorPanel.feedback().c_str());
 
                 if (needSemanticRebuild)
                 {
@@ -6039,6 +6288,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
             }
             end_panel_window(inspectorFrame);
+            projectPanel.set_frame_renderer(renderer);
             restore_panel_context(previousInspectorContext);
             preferences.panelVisibility["panel.inspector"] = showInspector;
 
@@ -6489,16 +6739,28 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             {
                 ImGui::TextUnformatted("Save changes before continuing?");
                 if (ImGui::Button("Save"))
+                {
+                    showUnsavedPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     execute_pending(UnsavedDecision::Save);
-                if (pendingAction != PendingAction::BuildAndRun)
+                }
+                if (pendingAction != PendingAction::BuildAndRun || workspace->document().sourcePath)
                 {
                     ImGui::SameLine();
                     if (ImGui::Button("Discard"))
+                    {
+                        showUnsavedPrompt = false;
+                        ImGui::CloseCurrentPopup();
                         execute_pending(UnsavedDecision::Discard);
+                    }
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
+                {
+                    showUnsavedPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     execute_pending(UnsavedDecision::Cancel);
+                }
                 ImGui::EndPopup();
             }
             if (showExternalConflictPrompt)
@@ -6512,6 +6774,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         : externalStatus.message.c_str());
                 if (ImGui::Button("Reload from Disk"))
                 {
+                    showExternalConflictPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     cancel_scene_gesture();
                     const auto reloaded = workspace->reload_source_file();
                     if (reloaded)
@@ -6522,7 +6786,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         validationService.request(workspace->document());
                         clear_validation_dependencies();
                         validation = ValidationResult{};
-                        showExternalConflictPrompt = false;
                         activeDocumentTab->clear_external_change_acknowledgement();
                         statusMessage = "Reloaded the scene from disk; the editor history was reset.";
                         if (pendingAction != PendingAction::None)
@@ -6536,6 +6799,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 {
                     activeDocumentTab->acknowledge_external_change();
                     showExternalConflictPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     statusMessage = "Keeping the in-memory scene; the external file was left untouched.";
                     if (pendingAction != PendingAction::None)
                     {
@@ -6548,11 +6812,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 ImGui::SameLine();
                 if (ImGui::Button("Overwrite"))
                 {
+                    showExternalConflictPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     commit_scene_gesture();
                     const auto saved = workspace->save(true);
                     if (saved)
                     {
-                        showExternalConflictPrompt = false;
                         activeDocumentTab->clear_external_change_acknowledgement();
                         statusMessage = saved.message;
                         if (workspace->document().sourcePath)
@@ -6568,6 +6833,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (ImGui::Button("Save As..."))
                 {
                     showExternalConflictPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     externalSaveAsPending = true;
                     request_save_as();
                 }
@@ -6576,6 +6842,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 {
                     activeDocumentTab->acknowledge_external_change();
                     showExternalConflictPrompt = false;
+                    ImGui::CloseCurrentPopup();
                     if (pendingAction != PendingAction::None)
                         showUnsavedPrompt = true;
                 }
@@ -6587,11 +6854,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             {
                 ImGui::TextWrapped("Replace the existing destination with the current scene?");
                 if (ImGui::Button("Overwrite"))
+                {
+                    showOverwritePrompt = false;
+                    ImGui::CloseCurrentPopup();
                     save_as_to(pendingSaveAsPath, true);
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("Choose another path"))
                 {
                     showOverwritePrompt = false;
+                    ImGui::CloseCurrentPopup();
                     request_save_as();
                 }
                 ImGui::SameLine();
@@ -6600,6 +6872,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     const bool returningToExternalConflict = externalSaveAsPending;
                     externalSaveAsPending = false;
                     showOverwritePrompt = false;
+                    ImGui::CloseCurrentPopup();
                     pendingSaveAsPath.clear();
                     if (returningToExternalConflict)
                         showExternalConflictPrompt = true;

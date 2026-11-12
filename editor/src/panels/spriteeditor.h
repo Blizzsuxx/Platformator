@@ -27,6 +27,47 @@ struct AnimationFrameRegionDestination
     std::size_t frameIndex = 0;
 };
 
+class SpriteSourceRegionWidget
+{
+  public:
+    struct CommitOutcome
+    {
+        bool changed = false;
+        std::string feedback;
+    };
+
+    void cancel_numeric_drafts() noexcept;
+    void cancel_drag() noexcept
+    {
+        dragging_ = false;
+        activeDragScope_.clear();
+    }
+    bool draw(const char *canvasButtonId,
+              SDL_Texture *preparedThumbnail,
+              int sourceWidth, int sourceHeight,
+              const SpriteSourceRegion &currentRegion,
+              const std::function<std::string(std::string_view)> &addressForField,
+              const std::function<CommitOutcome(const SpriteSourceRegion &)> &onCommit,
+              bool allowSameLineNumericFields = true);
+    const std::string &feedback() const noexcept { return feedback_; }
+    ImVec2 last_canvas_min() const noexcept { return lastCanvasMin_; }
+    ImVec2 last_canvas_max() const noexcept { return lastCanvasMax_; }
+
+  private:
+    bool dragging_ = false;
+    std::string activeDragScope_;
+    std::string activeNumericScope_;
+    float dragStartX_ = 0.0f;
+    float dragStartY_ = 0.0f;
+    ImVec2 lastCanvasMin_{0.0f, 0.0f};
+    ImVec2 lastCanvasMax_{0.0f, 0.0f};
+    std::string feedback_;
+    AddressNumericDraft xDraft_;
+    AddressNumericDraft yDraft_;
+    AddressNumericDraft widthDraft_;
+    AddressNumericDraft heightDraft_;
+};
+
 class AnimationFrameRegionEditor
 {
   public:
@@ -37,18 +78,11 @@ class AnimationFrameRegionEditor
               int sourceWidth, int sourceHeight);
 
   private:
-    bool dragging_ = false;
-    float dragStartX_ = 0.0f;
-    float dragStartY_ = 0.0f;
     const AssetDocument *document_ = nullptr;
     std::size_t frameIndex_ = 0;
     std::filesystem::path assetRoot_;
     std::string textureReference_;
-    std::string feedback_;
-    AddressNumericDraft xDraft_;
-    AddressNumericDraft yDraft_;
-    AddressNumericDraft widthDraft_;
-    AddressNumericDraft heightDraft_;
+    SpriteSourceRegionWidget widget_;
 };
 
 bool validate_sprite_source_region(const SpriteSourceRegion &region,

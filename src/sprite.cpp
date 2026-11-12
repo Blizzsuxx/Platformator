@@ -4,17 +4,8 @@
 #include "sdlwindow.h"
 
 Sprite::Sprite()
-    : Component(ComponentType::SPRITE), textureWrapper(nullptr), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f),
-      sourceRect(), sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
-{
-}
-
-Sprite::Sprite(GameObject *gameObject) : Sprite(gameObject, (TextureWrapper *)nullptr, SDL_FLIP_NONE)
-{
-}
-
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper)
-    : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE)
+    : Component(ComponentType::SPRITE), region(), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f),
+      isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
 }
 
@@ -23,28 +14,14 @@ Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float wid
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip)
-    : Sprite(gameObject, textureWrapper, flip, 0, 0)
-{
-}
-
-Sprite::Sprite(GameObject *gameObject, const char *filePath) : Sprite(gameObject, filePath, SDL_FLIP_NONE)
-{
-}
-
 Sprite::Sprite(GameObject *gameObject, const char *filePath, float width, float height)
     : Sprite(gameObject, filePath, SDL_FLIP_NONE, width, height)
 {
 }
 
-Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip)
-    : Sprite(gameObject, filePath, flip, 0, 0)
-{
-}
-
 Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height)
-    : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), sourceRect(),
-      sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+    : Component(gameObject, SPRITE), region(), flip(flip), width(width), height(height),
+      isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (filePath != nullptr)
     {
@@ -54,8 +31,8 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
 }
 
 Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height)
-    : Component(gameObject, SPRITE), textureWrapper(nullptr), flip(flip), width(width), height(height), sourceRect(),
-      sourceRectEnabled(false), isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+    : Component(gameObject, SPRITE), region(), flip(flip), width(width), height(height),
+      isRegisteredInWindow(false), windowIndex(SIZE_MAX)
 {
     if (textureWrapper != nullptr && width == 0 && height == 0)
     {
@@ -64,24 +41,10 @@ Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipM
     setTextureWrapper(textureWrapper);
 }
 
-Sprite::~Sprite()
-{
-    freeTexture();
-}
-
-void Sprite::freeTexture()
-{
-    if (textureWrapper != nullptr)
-    {
-        TextureWrapper *currentTextureWrapper = textureWrapper;
-        textureWrapper = nullptr;
-        currentTextureWrapper->removeReferenceAndFreeIfNoReferences();
-    }
-}
-
 SDL_Texture *Sprite::getTexture() const
 {
-    return textureWrapper != nullptr ? textureWrapper->getTexture() : nullptr;
+    const TextureWrapper *wrapper = region.getTextureWrapper();
+    return wrapper != nullptr ? wrapper->getTexture() : nullptr;
 }
 
 SDL_FlipMode Sprite::getFlip() const
@@ -111,17 +74,22 @@ float Sprite::getHeightWithoutScale() const
 
 bool Sprite::hasSourceRect() const
 {
-    return sourceRectEnabled;
+    return region.hasSourceRect;
 }
 
 const SDL_FRect *Sprite::getSourceRect() const
 {
-    return sourceRectEnabled ? &sourceRect : nullptr;
+    return region.hasSourceRect ? &region.sourceRect : nullptr;
 }
 
 TextureWrapper *Sprite::getTextureWrapper() const
 {
-    return textureWrapper;
+    return region.getTextureWrapper();
+}
+
+const TextureRegion &Sprite::getTextureRegion() const
+{
+    return region;
 }
 
 void Sprite::setFlip(SDL_FlipMode flip)
@@ -149,31 +117,31 @@ void Sprite::setHeight(float height)
 
 void Sprite::setSourceRect(const SDL_FRect &sourceRect)
 {
-    this->sourceRect = sourceRect;
-    sourceRectEnabled = true;
+    region.setSourceRect(sourceRect);
 }
 
 void Sprite::clearSourceRect()
 {
-    sourceRect = SDL_FRect{0.0f, 0.0f, 0.0f, 0.0f};
-    sourceRectEnabled = false;
+    region.clearSourceRect();
 }
 
 void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)
 {
-    if (this->textureWrapper == textureWrapper)
+    if (region.getTextureWrapper() == textureWrapper)
     {
         return;
     }
 
     const bool previouslyDrawable = getTexture() != nullptr;
-    freeTexture();
+    region.setTextureWrapper(textureWrapper);
+    if (isRegisteredInWindow && previouslyDrawable != (getTexture() != nullptr))
+        platformator_detail::RuntimeAccess::window()->notifySpriteGeometryChanged(this);
+}
 
-    this->textureWrapper = textureWrapper;
-    if (this->textureWrapper != nullptr)
-    {
-        this->textureWrapper->addReference();
-    }
+void Sprite::setTextureRegion(const TextureRegion &newRegion)
+{
+    const bool previouslyDrawable = getTexture() != nullptr;
+    region = newRegion;
     if (isRegisteredInWindow && previouslyDrawable != (getTexture() != nullptr))
         platformator_detail::RuntimeAccess::window()->notifySpriteGeometryChanged(this);
 }

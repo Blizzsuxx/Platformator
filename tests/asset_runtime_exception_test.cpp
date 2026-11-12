@@ -200,7 +200,7 @@ void exerciseNestedPublication(platformator::Runtime &runtime, const fs::path &r
         AssetReference<TextureWrapper> held(runtime.loadTexture(path));
         std::vector<AnimationFrame> frames;
         frames.emplace_back(held.get(), 0.1f);
-        auto clip = std::make_unique<AnimationClip>(std::move(frames), 1.0, true, 1.0f, 1.0f, "nested");
+        auto clip = std::make_unique<AnimationClip>(std::move(frames), true);
         std::unordered_map<std::string, std::unique_ptr<AnimationClip>> cache;
         platformator_detail::AssetRequestAliases aliases;
         targetSize = 0;

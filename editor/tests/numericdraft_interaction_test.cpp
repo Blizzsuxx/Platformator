@@ -178,93 +178,73 @@ void test_animation_numeric_transactions()
     const auto assetRoot = std::filesystem::temp_directory_path() / "platformator-numeric-assets";
     const Json original = {
         {"frames", Json::array({{{"duration", 0.25}, {"textureWrapperFilePath", ""}}})},
-        {"framesPerSecond", 8.0}, {"loop", true}, {"width", 32.0}, {"height", 24.0}};
+        {"loop", true}};
     AssetDocument document(original, 19);
     AnimationPanel panel;
     const auto draw = [&] { panel.draw(document, assetRoot); };
-    const ImGuiID fpsId = gui.widget_id(draw,
-        animation_address(document, assetRoot, "/framesPerSecond"), "FPS");
-    const ImVec2 fpsPoint = gui.find_at_x(draw, fpsId, 60.0f);
+    const ImGuiID durationId = gui.widget_id(draw,
+        animation_address(document, assetRoot, "/frames/0/duration"),
+        "Duration (seconds)");
+    const ImVec2 durationPoint = gui.find_at_x(draw, durationId, 60.0f);
 
-    gui.click(draw, fpsPoint);
-    gui.replace_text(draw, fpsPoint, "12.3456789", false);
-    require(document.root()["framesPerSecond"] == 8.0 && !document.can_undo(),
-            "typing a valid FPS draft must leave authored state and history unchanged");
-    const ImGuiID widthId = gui.widget_id(draw,
-        animation_address(document, assetRoot, "/width"), "width");
-    const ImVec2 widthPoint = gui.find_anywhere(draw, widthId);
-    gui.click(draw, widthPoint);
-    require(document.root()["framesPerSecond"] == 812.3456789 && document.can_undo(),
-            "focus loss must commit one complete FPS edit");
-    require(document.undo().changed && document.root()["framesPerSecond"] == 8.0 &&
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "123456789", false);
+    require(document.root()["frames"][0]["duration"] == 0.25 && !document.can_undo(),
+            "typing a valid duration draft must leave authored state and history unchanged");
+    ImGuiID textureId = 0;
+    gui.frame([&] {
+        textureId = ImGui::GetID("Texture");
+        draw();
+    });
+    const ImVec2 texturePoint = gui.find_anywhere(draw, textureId);
+    gui.click(draw, texturePoint);
+    require(document.root()["frames"][0]["duration"].get<double>() > 0.25 && document.can_undo(),
+            "focus loss must commit one complete duration edit");
+    require(document.undo().changed && document.root()["frames"][0]["duration"] == 0.25 &&
                 !document.can_undo(),
-            "one Undo must restore a focus-loss FPS commit");
+            "one Undo must restore a focus-loss duration commit");
 
-    gui.click(draw, widthPoint);
+    gui.click(draw, durationPoint);
     ImGuiIO &io = ImGui::GetIO();
     io.AddKeyEvent(ImGuiKey_Enter, true);
-    draw_panel(gui, panel, document, assetRoot, widthPoint);
+    draw_panel(gui, panel, document, assetRoot, durationPoint);
     io.AddKeyEvent(ImGuiKey_Enter, false);
-    draw_panel(gui, panel, document, assetRoot, widthPoint);
-    require(document.root()["width"] == 32.0 && !document.can_undo(),
-            "committing an unchanged dimension must add no history");
-    gui.click(draw, widthPoint);
-    gui.replace_text(draw, widthPoint, "2", true);
-    require(document.root()["width"] == 2.0 && document.can_undo(),
-            "the animation width control must commit one typed numeric edit");
-    require(document.undo().changed && document.root()["width"] == 32.0 &&
+    draw_panel(gui, panel, document, assetRoot, durationPoint);
+    require(document.root()["frames"][0]["duration"] == 0.25 && !document.can_undo(),
+            "committing an unchanged duration must add no history");
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "2", true);
+    require(document.root()["frames"][0]["duration"].get<double>() != 0.25 && document.can_undo(),
+            "the animation frame duration control must commit one typed numeric edit");
+    require(document.undo().changed && document.root()["frames"][0]["duration"] == 0.25 &&
                 !document.can_undo(),
-            "one Undo must restore an animation dimension edit");
+            "one Undo must restore an animation duration edit");
 
-    gui.click(draw, fpsPoint);
-    gui.replace_text(draw, fpsPoint, "91", false, true);
-    require(document.root()["framesPerSecond"] == 8.0 && !document.can_undo(),
-            "Escape must cancel an active FPS draft without history");
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "91", false, true);
+    require(document.root()["frames"][0]["duration"] == 0.25 && !document.can_undo(),
+            "Escape must cancel an active duration draft without history");
 
-    gui.click(draw, fpsPoint);
-    gui.replace_text(draw, fpsPoint, "-", false);
-    gui.click(draw, {760.0f, 820.0f});
-    require(document.root()["framesPerSecond"] == 8.0 && !document.can_undo(),
-            "an incomplete FPS draft must be rejected when focus leaves the field");
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "-", false);
+    gui.click(draw, texturePoint);
+    require(document.root()["frames"][0]["duration"] == 0.25 && !document.can_undo(),
+            "an incomplete duration draft must be rejected when focus leaves the field");
 
     const ImGuiID plusId = gui.widget_id(draw,
-        animation_address(document, assetRoot, "/framesPerSecond"), "+");
-    const ImVec2 plusPoint = gui.find_at_x(draw, plusId, 185.0f);
+        animation_address(document, assetRoot, "/frames/0/duration"), "+");
+    const ImVec2 plusPoint = gui.find_anywhere(draw, plusId);
     gui.frame(draw, plusPoint, true);
     for (int repeat = 0; repeat < 30; ++repeat)
         draw_panel(gui, panel, document, assetRoot, plusPoint, true);
-    require(document.root()["framesPerSecond"] == 8.0 && !document.can_undo(),
+    require(document.root()["frames"][0]["duration"] == 0.25 && !document.can_undo(),
             "held step repeats must remain a draft until the button is released");
     draw_panel(gui, panel, document, assetRoot, plusPoint, false);
-    require(document.root()["framesPerSecond"].get<double>() > 8.0 && document.can_undo(),
+    require(document.root()["frames"][0]["duration"].get<double>() > 0.25 && document.can_undo(),
             "a held step interaction must commit once on release");
-    require(document.undo().changed && document.root()["framesPerSecond"] == 8.0 &&
-                !document.can_undo(),
-            "one Undo must reverse the entire held step interaction");
-
-    const ImGuiID durationId = gui.widget_id(draw,
-        animation_address(document, assetRoot, "/frames/0/duration"),
-        "Duration (seconds; 0 uses FPS)");
-    const ImVec2 durationPoint = gui.find_at_x(draw, durationId, 60.0f);
-    gui.click(draw, durationPoint);
-    for (int index = 0; index < 3; ++index)
-    {
-        io.AddKeyEvent(ImGuiKey_Backspace, true);
-        draw_panel(gui, panel, document, assetRoot, durationPoint);
-        io.AddKeyEvent(ImGuiKey_Backspace, false);
-        draw_panel(gui, panel, document, assetRoot, durationPoint);
-    }
-    io.AddInputCharacter('0');
-    draw_panel(gui, panel, document, assetRoot, durationPoint);
-    io.AddKeyEvent(ImGuiKey_Enter, true);
-    draw_panel(gui, panel, document, assetRoot, durationPoint);
-    io.AddKeyEvent(ImGuiKey_Enter, false);
-    draw_panel(gui, panel, document, assetRoot, durationPoint);
-    require(document.root()["frames"][0]["duration"] == 0.0 && document.can_undo(),
-            "a committed zero duration must remain valid for the FPS fallback");
     require(document.undo().changed && document.root()["frames"][0]["duration"] == 0.25 &&
                 !document.can_undo(),
-            "one Undo must restore the positive explicit frame duration");
+            "one Undo must reverse the entire held step interaction");
 }
 
 void test_source_region_numeric_transactions_and_selection_scope(SDL_Texture *texture)
@@ -331,7 +311,7 @@ void test_tab_and_project_transition_cancellation()
     std::ofstream(projectB / "CMakeLists.txt") << "project(fixture)\n";
     const Json clip = {
         {"frames", Json::array({{{"duration", 0.25}, {"textureWrapperFilePath", ""}}})},
-        {"framesPerSecond", 8.0}, {"loop", true}, {"width", 32.0}, {"height", 24.0}};
+        {"loop", true}};
     const auto firstPath = assetA / "first.animset";
     const auto secondPath = assetA / "second.animset";
     std::ofstream(firstPath, std::ios::binary) << clip.dump();
@@ -349,37 +329,38 @@ void test_tab_and_project_transition_cancellation()
     const auto draw = [&] {
         tab->panel().draw(tab->document(), tab->asset_root());
     };
-    const ImGuiID fpsId = gui.widget_id(draw,
-        animation_address(tab->document(), assetA, "/framesPerSecond"), "FPS");
-    const ImVec2 fpsPoint = gui.find_at_x(draw, fpsId, 60.0f);
-    gui.click(draw, fpsPoint);
-    gui.replace_text(draw, fpsPoint, "12", false);
-    require(tab->document().root()["framesPerSecond"] == 8.0 &&
+    const ImGuiID durationId = gui.widget_id(draw,
+        animation_address(tab->document(), assetA, "/frames/0/duration"),
+        "Duration (seconds)");
+    const ImVec2 durationPoint = gui.find_at_x(draw, durationId, 60.0f);
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "12", false);
+    require(tab->document().root()["frames"][0]["duration"] == 0.25 &&
                 !tab->document().can_undo(),
             "typing before switching tabs must remain a draft");
     require(manager.activate_animation_tab(*second) &&
                 manager.activate_animation_tab(*first),
             "the active animation tab can move away and back");
     gui.frame(draw);
-    require(tab->document().root()["framesPerSecond"] == 8.0 &&
+    require(tab->document().root()["frames"][0]["duration"] == 0.25 &&
                 !tab->document().can_undo(),
             "switching animation tabs must cancel the prior tab's numeric draft");
 
-    gui.click(draw, fpsPoint);
-    gui.replace_text(draw, fpsPoint, "3", true);
-    require(tab->document().root()["framesPerSecond"] == 3.0 &&
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "3", true);
+    require(tab->document().root()["frames"][0]["duration"].get<double>() != 0.25 &&
                 tab->document().can_undo(),
             "the field can start a fresh numeric edit after tab cancellation");
     require(tab->document().undo().changed && !tab->document().can_undo(),
             "the post-switch edit remains a single independent history entry");
 
-    gui.click(draw, fpsPoint);
-    gui.replace_text(draw, fpsPoint, "12", false);
+    gui.click(draw, durationPoint);
+    gui.replace_text(draw, durationPoint, "12", false);
     const auto rootChange = manager.set_project_roots(projectB, assetB, ProjectGeneration{32});
     require(static_cast<bool>(rootChange),
             "project-root transition commits for an animation tab");
     gui.frame([&] { tab->panel().draw(tab->document(), tab->asset_root()); });
-    require(tab->document().root()["framesPerSecond"] == 8.0 &&
+    require(tab->document().root()["frames"][0]["duration"] == 0.25 &&
                 !tab->document().can_undo(),
             "changing project roots must cancel all animation numeric drafts");
 }

@@ -80,7 +80,7 @@ void validate_animation_frame_runtime_schema(const nlohmann::json &frame,
 nlohmann::json make_default_animation_frame()
 {
     return nlohmann::json{
-        {"duration", 0.0},
+        {"duration", 0.1},
         {"textureWrapperFilePath", ""},
         {"hasSourceRect", false},
         {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}}};
@@ -98,30 +98,9 @@ AnimationClipValidation validate_animation_clip_document(const nlohmann::json &d
     if (loop == document.end() || !loop->is_boolean())
         result.issues.push_back({"/loop", "Loop must be a boolean."});
 
-    for (const char *field : {"name", "filePath"})
-    {
-        const auto value = document.find(field);
-        if (value == document.end() || !value->is_string())
-            result.issues.push_back({std::string("/") + field,
-                                     std::string(field) + " must be a string."});
-    }
-
-    for (const char *field : {"width", "height"})
-    {
-        const auto value = document.find(field);
-        if (value == document.end() || !value->is_number())
-        {
-            result.issues.push_back({std::string("/") + field,
-                                     std::string(field) + " must be a finite, nonnegative runtime float."});
-            continue;
-        }
-        const double dimension = value->get<double>();
-        if (!std::isfinite(dimension) || dimension < 0.0 ||
-            dimension > static_cast<double>(std::numeric_limits<float>::max()) ||
-            (dimension > 0.0 && static_cast<float>(dimension) == 0.0f))
-            result.issues.push_back({std::string("/") + field,
-                                     std::string(field) + " must be a finite, nonnegative runtime float."});
-    }
+    const auto filePath = document.find("filePath");
+    if (filePath == document.end() || !filePath->is_string())
+        result.issues.push_back({"/filePath", "filePath must be a string."});
 
     const auto frames = document.find("frames");
     if (frames == document.end() || !frames->is_array())
@@ -129,13 +108,6 @@ AnimationClipValidation validate_animation_clip_document(const nlohmann::json &d
         result.issues.push_back({"/frames", "Frames must be an array."});
         return result;
     }
-
-    double framesPerSecond = std::numeric_limits<double>::quiet_NaN();
-    const auto fps = document.find("framesPerSecond");
-    if (fps == document.end() || !fps->is_number())
-        result.issues.push_back({"/framesPerSecond", "Frames per second must be numeric."});
-    else
-        framesPerSecond = fps->get<double>();
 
     for (std::size_t index = 0; index < frames->size(); ++index)
     {
@@ -153,18 +125,14 @@ AnimationClipValidation validate_animation_clip_document(const nlohmann::json &d
             result.issues.push_back({framePath + "/duration", "Frame duration must be numeric."});
             continue;
         }
-        const auto timing = resolve_animation_frame_timing(duration->get<double>(), framesPerSecond);
-        if (timing.error == AnimationTimingError::InvalidFrameDuration)
+        const double durationValue = duration->get<double>();
+        if (!is_valid_animation_frame_duration(durationValue))
             result.issues.push_back({framePath + "/duration",
-                                     "Frame duration must be finite and nonnegative."});
-        else if (duration->get<double>() > static_cast<double>(std::numeric_limits<float>::max()) ||
-                 (duration->get<double>() > 0.0 &&
-                  static_cast<float>(duration->get<double>()) == 0.0f))
+                                     "Frame duration must be finite and positive."});
+        else if (durationValue > static_cast<double>(std::numeric_limits<float>::max()) ||
+                 static_cast<float>(durationValue) <= 0.0f)
             result.issues.push_back({framePath + "/duration",
-                                     "Frame duration must be representable as a runtime float."});
-        else if (timing.error == AnimationTimingError::InvalidFallbackRate)
-            result.issues.push_back({"/framesPerSecond",
-                                     "A zero-duration frame requires a finite positive FPS fallback."});
+                                     "Frame duration must be representable as a positive runtime float."});
     }
     return result;
 }
@@ -189,8 +157,6 @@ AnimationPreviewDocument prepare_animation_preview(
         result.error = "Animation preview exceeds the 512-frame limit.";
         return result;
     }
-    const double fps = numeric_member(document, "framesPerSecond");
-    result.framesPerSecond = fps;
     const auto loop = document.find("loop");
     result.loop = loop != document.end() && loop->is_boolean() ? loop->get<bool>() : true;
 
@@ -209,17 +175,14 @@ AnimationPreviewDocument prepare_animation_preview(
             return result;
         }
         const double duration = numeric_member(frame, "duration");
-        const auto timing = resolve_animation_frame_timing(duration, fps);
-        if (!timing.valid())
+        if (!is_valid_animation_frame_duration(duration))
         {
-            result.error = timing.error == AnimationTimingError::InvalidFrameDuration
-                ? "Animation preview contains an invalid frame duration."
-                : "A zero-duration animation frame requires a finite positive FPS fallback.";
+            result.error = "Animation preview contains an invalid frame duration.";
             result.frames.clear();
             result.frameEndTimes.clear();
             return result;
         }
-        if (!std::isfinite(result.totalDuration + timing.seconds))
+        if (!std::isfinite(result.totalDuration + duration))
         {
             result.error = "Animation preview duration exceeds the supported numeric range.";
             result.frames.clear();
@@ -228,7 +191,7 @@ AnimationPreviewDocument prepare_animation_preview(
         }
 
         AnimationPreviewFrame previewFrame;
-        previewFrame.durationSeconds = timing.seconds;
+        previewFrame.durationSeconds = duration;
         const auto texture = frame.find("textureWrapperFilePath");
         std::string reference;
         if (texture != frame.end() && texture->is_string())
@@ -281,7 +244,7 @@ AnimationPreviewDocument prepare_animation_preview(
                 previewFrame.sourceHeight = height;
             }
         }
-        result.totalDuration += timing.seconds;
+        result.totalDuration += duration;
         result.frameEndTimes.push_back(result.totalDuration);
         result.frames.push_back(std::move(previewFrame));
     }

@@ -700,9 +700,19 @@ std::uint64_t ResourceIndex::invalidate(const std::filesystem::path &changedPath
         if (parentRevision != std::numeric_limits<std::uint64_t>::max())
             ++parentRevision;
     }
-    auto &directoryRevision = directoryRevisions_[logical_key(absolute->parent_path())];
-    if (directoryRevision != std::numeric_limits<std::uint64_t>::max())
-        ++directoryRevision;
+    for (std::filesystem::path dir = absolute->parent_path().lexically_normal();
+         !dir.empty() && contains_path(assetRoot_, dir);)
+    {
+        auto &directoryRevision = directoryRevisions_[logical_key(dir)];
+        if (directoryRevision != std::numeric_limits<std::uint64_t>::max())
+            ++directoryRevision;
+        if (dir == assetRoot_)
+            break;
+        const auto parent = dir.parent_path();
+        if (parent == dir)
+            break;
+        dir = parent;
+    }
     return affectedKeys.empty() ? 0 : logicalVersions_[directKey];
 }
 

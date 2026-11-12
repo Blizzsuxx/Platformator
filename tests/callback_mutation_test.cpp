@@ -358,8 +358,8 @@ void growAndDestroy()
 }
 void animationMutation()
 {
-    AnimationClip first({AnimationFrame(nullptr, 0)}, 120, false, 0, 0, "first");
-    AnimationClip second({AnimationFrame(nullptr, 0)}, 120, false, 0, 0, "second");
+    AnimationClip first({AnimationFrame(nullptr, 0.005f)}, false);
+    AnimationClip second({AnimationFrame(nullptr, 0.005f)}, false);
     int callbacks = 0, appended = 0;
     platformator::Runtime runtime;
     auto *owner = runtime.createGameObject()->addComponent<Animator>();

@@ -179,6 +179,12 @@ namespace platformator_editor
     const auto *sceneTool = sceneNode("main/panel/scene/tool/rectangle");
     const auto *frameSelected = sceneNode("main/panel/scene/frame-selected");
     const auto *snapCoordinates = sceneNode("main/panel/scene/snap/coordinates");
+    const auto *zoomNode = sceneNode("main/panel/scene/zoom");
+    require_case(zoomNode != nullptr && zoomNode->role == SemanticRole::Text,
+                 "Scene semantics must report a single zoom indicator");
+    const size_t zoomCount = std::count_if(sceneNodes.begin(), sceneNodes.end(),
+        [](const SemanticNode &n) { return n.id.find("zoom") != std::string::npos; });
+    require_case(zoomCount == 1, "Scene panel must expose exactly one zoom indicator");
     require_case(sceneCanvas != nullptr && sceneCanvas->role == SemanticRole::Group &&
                      sceneTool != nullptr && sceneTool->selected &&
                      frameSelected != nullptr && frameSelected->enabled &&

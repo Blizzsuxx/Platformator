@@ -1,7 +1,7 @@
 {
     "frames": [
         {
-            "duration": 0.0,
+            "duration": 0.25,
             "sourceRect": {
                 "x": 0.0,
                 "y": 0.0,
@@ -12,7 +12,7 @@
             "textureWrapperFilePath": "assets/player/idle_0.png"
         },
         {
-            "duration": 0.0,
+            "duration": 0.25,
             "sourceRect": {
                 "x": 0.0,
                 "y": 0.0,
@@ -23,10 +23,6 @@
             "textureWrapperFilePath": "assets/player/idle_1.png"
         }
     ],
-    "framesPerSecond": 4.0,
     "loop": true,
-    "width": 32.0,
-    "height": 32.0,
-    "name": "idle",
     "filePath": "assets/animations/player.animset"
 }

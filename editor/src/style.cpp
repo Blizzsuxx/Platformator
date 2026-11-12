@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 
 namespace platformator_editor
@@ -281,6 +283,21 @@ void draw_icon(ImDrawList *draw, EditorIcon icon, ImVec2 origin, float size, ImU
         draw->AddLine({x + s * 0.20f, y + s * 0.50f}, {x + s * 0.80f, y + s * 0.50f}, color, t);
         draw->AddLine({x + s * 0.50f, y + s * 0.20f}, {x + s * 0.50f, y + s * 0.80f}, color, t);
         break;
+    case EditorIcon::Info:
+        draw->AddCircle({x + s * 0.50f, y + s * 0.50f}, s * 0.42f, color, 16, t);
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.30f}, std::max(1.0f, s * 0.07f), color);
+        draw->AddLine({x + s * 0.50f, y + s * 0.44f}, {x + s * 0.50f, y + s * 0.72f}, color, t * 1.2f);
+        break;
+    case EditorIcon::Warning:
+        draw->AddTriangle({x + s * 0.50f, y + s * 0.12f}, {x + s * 0.88f, y + s * 0.88f}, {x + s * 0.12f, y + s * 0.88f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.38f}, {x + s * 0.50f, y + s * 0.64f}, color, t * 1.2f);
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.76f}, std::max(1.0f, s * 0.07f), color);
+        break;
+    case EditorIcon::Error:
+        draw->AddCircle({x + s * 0.50f, y + s * 0.50f}, s * 0.42f, color, 16, t);
+        draw->AddLine({x + s * 0.33f, y + s * 0.33f}, {x + s * 0.67f, y + s * 0.67f}, color, t * 1.2f);
+        draw->AddLine({x + s * 0.67f, y + s * 0.33f}, {x + s * 0.33f, y + s * 0.67f}, color, t * 1.2f);
+        break;
     }
 }
 } // namespace
@@ -361,11 +378,21 @@ void pop_editor_toolbar_style()
     ImGui::PopStyleColor(2);
 }
 
-bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip)
+bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip, float customWidth)
 {
-    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    const char *textEnd = (label != nullptr && !(label[0] == '#' && label[1] == '#'))
+        ? (std::strstr(label, "##") ? std::strstr(label, "##") : label + std::strlen(label))
+        : label;
+    const ImVec2 textSize = ImGui::CalcTextSize(label, textEnd);
     const float height = ImGui::GetFrameHeight();
-    const ImVec2 size(textSize.x + height + ImGui::GetStyle().FramePadding.x * 2.0f, height);
+    const float iconSize = height * 0.70f;
+    const float iconPadding = ImGui::GetStyle().FramePadding.x;
+    const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float textOffset = iconPadding + iconSize + spacing;
+    const float btnWidth = (customWidth > 0.0f && textSize.x == 0.0f)
+        ? customWidth
+        : (textSize.x > 0.0f ? (textOffset + textSize.x + iconPadding) : height);
+    const ImVec2 size(btnWidth, height);
     const ImVec2 position = ImGui::GetCursorScreenPos();
     const bool pressed = ImGui::InvisibleButton(label, size);
     const ImGuiID id = ImGui::GetItemID();
@@ -377,11 +404,17 @@ bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip)
     draw->AddRectFilled(position, {position.x + size.x, position.y + size.y}, background,
                         ImGui::GetStyle().FrameRounding);
     const ImU32 iconColor = ImGui::GetColorU32(ImGuiCol_Text);
-    const float iconSize = height * 0.70f;
-    draw_icon(draw, icon, {position.x + ImGui::GetStyle().FramePadding.x,
-                           position.y + (height - iconSize) * 0.5f}, iconSize, iconColor);
-    draw->AddText({position.x + height, position.y + ImGui::GetStyle().FramePadding.y},
-                  ImGui::GetColorU32(ImGuiCol_Text), label);
+    const ImVec2 iconPos = {
+        position.x + (textSize.x > 0.0f ? iconPadding : (size.x - iconSize) * 0.5f),
+        position.y + (height - iconSize) * 0.5f
+    };
+    draw_icon(draw, icon, iconPos, iconSize, iconColor);
+    if (textSize.x > 0.0f)
+    {
+        const float textY = position.y + (height - textSize.y) * 0.5f;
+        draw->AddText({position.x + textOffset, textY},
+                      ImGui::GetColorU32(ImGuiCol_Text), label, textEnd);
+    }
     if (hovered && tooltip != nullptr && *tooltip != '\0')
     {
         ImGui::BeginTooltip();
@@ -429,5 +462,60 @@ void draw_editor_icon(EditorIcon icon, ImDrawList *draw, ImVec2 origin, float si
 {
     if (draw != nullptr && size > 0.0f)
         draw_icon(draw, icon, origin, size, color);
+}
+
+std::string_view strip_identity_suffix(std::string_view label) noexcept
+{
+    if (label.size() < 5 || label.back() != ')')
+        return label;
+
+    const size_t openParen = label.rfind(" (#");
+    if (openParen == std::string_view::npos || openParen == 0)
+        return label;
+
+    const size_t digitsStart = openParen + 3;
+    const size_t digitsEnd = label.size() - 1;
+    if (digitsStart >= digitsEnd)
+        return label;
+
+    for (size_t i = digitsStart; i < digitsEnd; ++i)
+    {
+        if (label[i] < '0' || label[i] > '9')
+            return label;
+    }
+
+    return label.substr(0, openParen);
+}
+
+std::string format_clean_float(double value, int maxDecimals)
+{
+    if (std::isnan(value))
+        return "NaN";
+    if (std::isinf(value))
+        return value < 0 ? "-Inf" : "Inf";
+    if (std::abs(value) < 1e-12)
+        return "0";
+
+    char buffer[64];
+    if (std::abs(value) >= 1e9 || (std::abs(value) > 0.0 && std::abs(value) < 1e-5))
+    {
+        std::snprintf(buffer, sizeof(buffer), "%.*g", std::max(1, maxDecimals), value);
+    }
+    else
+    {
+        std::snprintf(buffer, sizeof(buffer), "%.*f", std::max(0, maxDecimals), value);
+    }
+
+    std::string str = buffer;
+    if (str.find('.') != std::string::npos && str.find('e') == std::string::npos && str.find('E') == std::string::npos)
+    {
+        while (!str.empty() && str.back() == '0')
+            str.pop_back();
+        if (!str.empty() && str.back() == '.')
+            str.pop_back();
+    }
+    if (str == "-0" || str == "-0.")
+        return "0";
+    return str.empty() ? "0" : str;
 }
 } // namespace platformator_editor

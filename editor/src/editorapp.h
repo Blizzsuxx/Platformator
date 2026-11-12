@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "sessionids.h"
 
@@ -45,8 +46,11 @@ std::chrono::milliseconds editor_wait_duration(
     std::optional<EditorWaitClock::duration> pollingInterval = std::nullopt) noexcept;
 
 struct DocumentSession;
+class DocumentManager;
+class EditCommandService;
 class EditorPreview;
 class ResourceIndex;
+class SelectionModel;
 
 struct LaunchOptions
 {
@@ -150,6 +154,20 @@ class EditorAppTickDriver
 void apply_project_resource_change(ResourceIndex &resources, EditorPreview &preview,
                                    const DocumentSession &document,
                                    const std::filesystem::path &path, bool directory);
+
+bool can_execute_focused_undo(bool animationFocused, const DocumentManager &documents,
+                              const EditCommandService &editCommands);
+bool can_execute_focused_redo(bool animationFocused, const DocumentManager &documents,
+                              const EditCommandService &editCommands);
+bool execute_focused_undo(bool animationFocused, DocumentManager &documents,
+                          EditCommandService &editCommands, DocumentSession &sceneDocument,
+                          SelectionModel &selection, std::string &statusMessage);
+bool execute_focused_redo(bool animationFocused, DocumentManager &documents,
+                          EditCommandService &editCommands, DocumentSession &sceneDocument,
+                          SelectionModel &selection, std::string &statusMessage);
+bool sync_saved_animation_tabs(const DocumentManager &documents, const std::vector<TabId> &savedTabs,
+                               ResourceIndex &resources, EditorPreview &preview,
+                               const DocumentSession &sceneDocument);
 
 LaunchOptions parse_launch_options(int argc, const char *const argv[],
                                   const std::filesystem::path &invocationDirectory);

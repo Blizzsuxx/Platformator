@@ -6,6 +6,7 @@
 #include "panels/inspector.h"
 #include "resourceindex.h"
 #include "selection.h"
+#include "style.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -1148,12 +1149,18 @@ void run_compact_transform_and_header_menu_tests()
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
 
+    bool singleHeaderPopupOpen = false;
     const auto render_frame = [&]() {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
         ImGui::SetNextWindowSize({600.0f, 500.0f}, ImGuiCond_Always);
         ImGui::Begin("Inspector###panel.inspector", nullptr);
         panel.draw(document, selection, commands, catalog);
+        if (ImGui::IsPopupOpen("ComponentHeaderContextMenu"))
+        {
+            singleHeaderPopupOpen = true;
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::End();
         ImGui::Render();
     };
@@ -1272,15 +1279,1211 @@ void run_compact_transform_and_header_menu_tests()
             render_frame();
             io.AddMouseButtonEvent(0, false);
             render_frame();
-            if (ImGui::IsPopupOpen("ComponentHeaderContextMenu"))
-            {
-                // Verify popup opened without collapsing the component
-                ImGui::CloseCurrentPopup();
-                render_frame();
+            if (singleHeaderPopupOpen)
                 break;
+        }
+    }
+
+    // Test single Inspector feedback rendering and Transform-first ordering
+    selection.set(document, Selection{1, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    const std::string inspectorScope = "main/panel/inspector";
+    const auto inspNodes = panel.semantic_nodes(document, selection.current(), inspectorScope, &catalog);
+    const auto saveTemplate = std::find_if(inspNodes.begin(), inspNodes.end(), [](const SemanticNode &n) {
+        return n.name == "Save selected GameObject as template";
+    });
+    if (saveTemplate != inspNodes.end())
+    {
+        panel.dispatch_semantic_action(document, selection,
+            SemanticAction{.nodeId = saveTemplate->id, .action = "activate"},
+            inspectorScope, &catalog, &commands);
+        require(!panel.feedback().empty(), "empty template save must populate inspector feedback");
+        render_frame();
+        require(!panel.feedback().empty(), "inspector feedback persists until cleared");
+    }
+
+    // Test Transform-first Inspector ordering
+    const auto posIt = std::find_if(inspNodes.begin(), inspNodes.end(), [](const SemanticNode &n) {
+        return n.name == "Position";
+    });
+    require(posIt != inspNodes.end() && saveTemplate != inspNodes.end() &&
+            std::distance(inspNodes.begin(), posIt) < std::distance(inspNodes.begin(), saveTemplate),
+            "Transform section must be ordered before Object Template in Inspector semantics");
+
+    ImGui::DestroyContext();
+}
+
+void run_multi_object_collapsible_headers_and_scaling_tests()
+{
+    // 1. Verify clean formatting primitives
+    require(strip_identity_suffix("Player (#42)") == "Player",
+            "strip_identity_suffix must remove numeric identity");
+    require(strip_identity_suffix("Camera Object") == "Camera Object",
+            "strip_identity_suffix must preserve suffixless labels");
+    require(format_clean_float(1.20000004768) == "1.2",
+            "format_clean_float must format clean decimals without precision noise");
+    require(format_clean_float(0.0) == "0",
+            "format_clean_float must format zero cleanly");
+    require(format_clean_float(3.14159, 2) == "3.14",
+            "format_clean_float respects maxDecimals");
+
+    // 2. Setup Dear ImGui context and fixture
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    auto document = make_default_document();
+    document.root = Json::array({
+        object(100, "First", Json::array({
+            component(201, 2, Json{{"width", 10.0}, {"height", 20.0}})
+        })),
+        object(101, "Second", Json::array({
+            component(202, 2, Json{{"width", 15.0}, {"height", 25.0}})
+        }))
+    });
+    document.root[0]["position"]["x"] = 1.0;
+    document.root[1]["position"]["x"] = 10.0;
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    selection.set(document, Selection{100, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    selection.set_objects(document, {100, 101}, 101, 100);
+
+    EditCommandService commands;
+    commands.reset_history(document.documentGeneration);
+    commands.mark_saved();
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    bool popupIsOpen = false;
+    auto frame = [&]() {
+        io.DisplaySize = {800.0f, 900.0f};
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f});
+        ImGui::SetNextWindowSize({600.0f, 800.0f});
+        ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoCollapse);
+        panel.draw(document, selection, commands, catalog);
+        if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
+        {
+            popupIsOpen = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::End();
+        ImGui::Render();
+    };
+
+    // 3. Render at default scale
+    frame();
+
+    // 4. Test multi-object component context menu (⋮ button)
+    for (float scanX : {580.0f, 575.0f, 570.0f, 565.0f})
+    {
+        for (float scanY = 50.0f; scanY < 600.0f; scanY += 5.0f)
+        {
+            io.AddMousePosEvent(scanX, scanY);
+            frame();
+            if (ImGui::GetHoveredID() != 0)
+            {
+                io.AddMouseButtonEvent(0, true);
+                frame();
+                io.AddMouseButtonEvent(0, false);
+                frame();
+                if (popupIsOpen)
+                    break;
+            }
+        }
+        if (popupIsOpen)
+            break;
+    }
+    require(popupIsOpen, "multi-object shared component header must render a clickable ⋮ menu button opening CommonComponentContextMenu");
+
+    // 5. Test search bar clear button in Inspector
+    panel.set_search_query("box");
+    frame();
+    require(panel.search_query() == "box", "search query must be set");
+    panel.set_search_query("");
+    frame();
+    require(panel.search_query().empty(), "search query must be cleared");
+
+    // 6. Test UI scaling at 1.5x and 2.0x (verify no clipping or assertion crashes)
+    io.FontGlobalScale = 1.5f;
+    frame();
+    io.FontGlobalScale = 2.0f;
+    frame();
+    io.FontGlobalScale = 1.0f;
+    frame();
+
+    ImGui::DestroyContext();
+}
+
+void init_test_imgui()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+}
+
+void run_clean_inactive_vs_precision_edit_display_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    constexpr int kObjectId = 0;
+    constexpr int kScriptId = 3;
+    DocumentSession document = make_default_document();
+    document.root = Json::array({object(
+        kObjectId, "Obj",
+        Json::array({
+            component(1, 0),
+            component(kScriptId, 5,
+                      Json{{"behaviors", Json::array({Json{{"type", "PrecisionBehavior"}, {"value", 2.345678901234567}}})}}),
+        }))});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{kObjectId, kScriptId, 0, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    const Json schema{{"schema_version", 1},
+                      {"behaviors", Json::array({Json{{"name", "PrecisionBehavior"},
+                                                       {"field_schema_available", true},
+                                                       {"fields", Json::array({Json{{"name", "value"}, {"kind", "number"}}})}}})}};
+    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
+                catalog.finish_query(0, std::chrono::milliseconds(1)),
+            "precision behavior fixture schema must become current");
+
+    InspectorPanel panel;
+    ImGuiID fieldId = 0;
+    const ImVec2 fieldPos = find_behavior_input(panel, document, selection, commands, catalog,
+                                                fieldId, "value");
+    require(fieldPos.x > 0.0f && fieldPos.y > 0.0f, "precision behavior field must render");
+
+    // Inactive display must keep exact underlying value without creating undo entries
+    const Json &behavior = document.root[0]["components"][1]["behaviors"][0];
+    const std::size_t undoBefore = commands.history_status().undoCommands;
+    // Click to activate -> ReloadUserBufAndSelectAll -> press Enter without typing
+    frame(panel, document, selection, commands, catalog, fieldPos, true);
+    frame(panel, document, selection, commands, catalog, fieldPos);
+    require(ImGui::GetCurrentContext()->InputTextState.ID != 0,
+            "clicking a high-precision numeric field must activate its input state");
+    io.AddKeyEvent(ImGuiKey_Enter, true);
+    frame(panel, document, selection, commands, catalog, fieldPos);
+    io.AddKeyEvent(ImGuiKey_Enter, false);
+    frame(panel, document, selection, commands, catalog, fieldPos);
+    require(behavior["value"] == 2.345678901234567 &&
+                commands.history_status().undoCommands == undoBefore,
+            "confirming unchanged high-precision field must preserve value and create 0 undo steps");
+
+    ImGui::DestroyContext();
+}
+
+void run_behavior_and_multi_object_label_scrubbing_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    DocumentSession document = make_default_document();
+    document.root = Json::array({
+        object(0, "Obj0", Json::array({
+            component(1, 0),
+            component(2, 2, Json{{"width", 10.0}, {"height", 10.0}}),
+            component(3, 5, Json{{"behaviors", Json::array({Json{{"type", "ScrubBehavior"}, {"speed", 5.0}}})}}),
+        })),
+        object(200, "Obj1", Json::array({
+            component(201, 0),
+            component(202, 2, Json{{"width", 20.0}, {"height", 10.0}}),
+        })),
+    });
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{0, 3, 0, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    const Json schema{{"schema_version", 1},
+                      {"behaviors", Json::array({Json{{"name", "ScrubBehavior"},
+                                                       {"field_schema_available", true},
+                                                       {"fields", Json::array({Json{{"name", "speed"}, {"kind", "number"}}})}}})}};
+    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
+                catalog.finish_query(0, std::chrono::milliseconds(1)),
+            "scrub behavior fixture schema must become current");
+
+    InspectorPanel panel;
+    ImGuiID fieldId = 0;
+    const ImVec2 fieldPos = find_behavior_input(panel, document, selection, commands, catalog,
+                                                fieldId, "speed");
+    require(fieldPos.x > 60.0f, "behavior speed field must render");
+    const ImVec2 labelPos{40.0f, fieldPos.y};
+
+    // 1. Behavior label scrub -> 1 atomic Undo
+    const std::size_t undoBefore = commands.history_status().undoCommands;
+    frame(panel, document, selection, commands, catalog, labelPos, false);
+    frame(panel, document, selection, commands, catalog, labelPos, true);
+    frame(panel, document, selection, commands, catalog, ImVec2(labelPos.x + 25.0f, labelPos.y), true);
+    const double previewed = document.root[0]["components"][2]["behaviors"][0]["speed"].get<double>();
+    require(previewed > 5.0, "dragging behavior numeric label must live-preview new value");
+    frame(panel, document, selection, commands, catalog, ImVec2(labelPos.x + 25.0f, labelPos.y), false);
+    require(commands.history_status().undoCommands == undoBefore + 1,
+            "releasing behavior numeric label scrub must commit 1 atomic Undo command");
+    require(static_cast<bool>(commands.undo(document, selection)),
+            "undoing behavior label scrub must succeed");
+    require(document.root[0]["components"][2]["behaviors"][0]["speed"] == 5.0,
+            "undoing behavior label scrub must restore original value");
+
+    // 2. Escape cancels behavior label scrub with 0 Undo
+    frame(panel, document, selection, commands, catalog, labelPos, false);
+    frame(panel, document, selection, commands, catalog, labelPos, true);
+    frame(panel, document, selection, commands, catalog, ImVec2(labelPos.x + 20.0f, labelPos.y), true);
+    io.AddKeyEvent(ImGuiKey_Escape, true);
+    frame(panel, document, selection, commands, catalog, ImVec2(labelPos.x + 20.0f, labelPos.y), true);
+    io.AddKeyEvent(ImGuiKey_Escape, false);
+    frame(panel, document, selection, commands, catalog, ImVec2(labelPos.x + 20.0f, labelPos.y), false);
+    require(document.root[0]["components"][2]["behaviors"][0]["speed"] == 5.0 &&
+                commands.history_status().undoCommands == undoBefore,
+            "Escape during behavior label scrub must cancel and restore original value");
+
+    // 3. Multi-object built-in numeric field label scrub -> 1 atomic Undo
+    Selection multiSel;
+    multiSel.objectId = 0;
+    multiSel.selectedObjectIds = {0, 200};
+    multiSel.focusedPanel = FocusedPanel::Inspector;
+    selection.set(document, multiSel);
+    ImGuiID multiFieldId = 0;
+    const ImVec2 multiFieldPos = find_common_component_input(panel, document, selection, commands, catalog,
+                                                             multiFieldId, 2, "width");
+    require(multiFieldPos.x > 60.0f, "multi-object BoxCollider width field must render");
+    const ImVec2 multiLabelPos{40.0f, multiFieldPos.y};
+    const std::size_t multiUndoBefore = commands.history_status().undoCommands;
+    frame(panel, document, selection, commands, catalog, multiLabelPos, false);
+    frame(panel, document, selection, commands, catalog, multiLabelPos, true);
+    frame(panel, document, selection, commands, catalog, ImVec2(multiLabelPos.x + 30.0f, multiLabelPos.y), true);
+    frame(panel, document, selection, commands, catalog, ImVec2(multiLabelPos.x + 30.0f, multiLabelPos.y), false);
+    const double w0 = document.root[0]["components"][1]["width"].get<double>();
+    const double w1 = document.root[1]["components"][1]["width"].get<double>();
+    require(w0 > 10.0 && w1 > 20.0 && std::abs((w1 - 20.0) - (w0 - 10.0)) < 1e-4,
+            "multi-object numeric label scrub must apply relative delta across all selected objects");
+    require(commands.history_status().undoCommands == multiUndoBefore + 1,
+            "multi-object numeric label scrub must commit 1 atomic Undo command");
+    require(static_cast<bool>(commands.undo(document, selection)),
+            "undoing multi-object numeric label scrub must succeed");
+    require(document.root[0]["components"][1]["width"] == 10.0 &&
+                document.root[1]["components"][1]["width"] == 20.0,
+            "undoing multi-object label scrub must restore mixed values");
+
+    ImGui::DestroyContext();
+}
+
+void run_visual_reference_label_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    DocumentSession document = make_default_document();
+    document.root = Json::array({
+        object(10, "Player", Json::array({
+            component(11, 0),
+            component(12, 4, Json{{"textureFilePath", "assets/hero.png"}}),
+            component(13, 5, Json{{"behaviors", Json::array({Json{{"type", "RefBehavior"}, {"targetObj", 20}, {"targetSprite", 22}, {"dupObj", 30}}})}}),
+        })),
+        object(20, "Enemy", Json::array({
+            component(21, 0),
+            component(22, 4, Json{{"textureFilePath", "assets/enemy.png"}}),
+        })),
+        object(30, "Coin", Json::array({component(31, 0)})),
+        object(40, "Coin", Json::array({component(41, 0)})),
+    });
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    EditCommandService commands;
+
+    // Inspection labels preserve IDs for diagnostics
+    const auto goInfo = inspect_scene_reference(document, Json(20), "GameObject");
+    require(goInfo.state == ReferenceState::Resolved && goInfo.label.find("#20") != std::string::npos,
+            "inspect_scene_reference must preserve diagnostic #id");
+
+    // Visual selector button labels must omit (#id) suffixes
+    std::string renderedLabels;
+    io.DeltaTime = 1.0f / 60.0f;
+    io.DisplaySize = ImVec2(640.0f, 480.0f);
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
+    ImGui::Begin("RefTest");
+    draw_scene_reference_field(document, commands, 10, 13, 0, {std::string("targetObj")},
+                               "GameObject", true, "Target Obj");
+    draw_scene_reference_field(document, commands, 10, 13, 0, {std::string("targetSprite")},
+                               "Sprite", true, "Target Sprite");
+    draw_scene_reference_field(document, commands, 10, 13, 0, {std::string("dupObj")},
+                               "GameObject", true, "Dup Obj");
+    draw_asset_reference_field(document, commands, 10, 12, std::nullopt, {std::string("textureFilePath")},
+                               "Texture", true, "Texture File");
+    ImGui::End();
+    ImGui::Render();
+
+    const ImDrawData *drawData = ImGui::GetDrawData();
+    require(drawData != nullptr, "draw data must exist");
+    // Verify via inspect_scene_reference + absence of #id in window widgets is guaranteed by strip_identity_suffix;
+    // also verify inspect_asset_reference extracts asset path cleanly
+    const auto assetInfo = inspect_asset_reference(document, Json("assets/hero.png"), "Texture");
+    require(assetInfo.path == "assets/hero.png", "asset reference path must be preserved");
+    static_cast<void>(renderedLabels);
+
+    ImGui::DestroyContext();
+}
+
+void run_multi_object_asset_reference_slot_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    DocumentSession document = make_default_document();
+    document.root = Json::array({
+        object(100, "Obj0", Json::array({
+            component(101, 6, Json{{"textureFilePath", "assets/a.png"}}),
+            component(102, 1, Json{{"filePath", "assets/sfx_a.wav"}}),
+            component(103, 0, Json{{"animationClipFilePath", "assets/idle.animset"}}),
+        })),
+        object(200, "Obj1", Json::array({
+            component(201, 6, Json{{"textureFilePath", "assets/b.png"}}),
+            component(202, 1, Json{{"filePath", "assets/sfx_b.wav"}}),
+            component(203, 0, Json{{"animationClipFilePath", "assets/idle.animset"}}),
+        })),
+    });
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    Selection multiSel;
+    multiSel.objectId = 100;
+    multiSel.selectedObjectIds = {100, 200};
+    multiSel.focusedPanel = FocusedPanel::Inspector;
+    selection.set(document, multiSel);
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    std::string wrongKindError;
+    require(!validate_asset_reference_assignment(document, "assets/sfx.wav", "Texture", true, wrongKindError) &&
+                !validate_asset_reference_assignment(document, "assets/hero.png", "Audio", true, wrongKindError) &&
+                !validate_asset_reference_assignment(document, "assets/hero.png", "AnimationClip", true, wrongKindError),
+            "canonical expected asset kinds Texture/Audio/AnimationClip must reject wrong-kind assets");
+
+    std::vector<PropertyAddress> capturedTargets;
+    std::string capturedKind;
+    panel.set_multi_asset_browse_callback(
+        [&](std::vector<PropertyAddress> targets, Selection, std::string expectedType, bool) {
+            capturedTargets = std::move(targets);
+            capturedKind = std::move(expectedType);
+        });
+
+    const std::size_t undoBefore = commands.history_status().undoCommands;
+    // Drive full InspectorPanel::draw and click the Sprite Texture File selector button to verify routing.
+    ImVec2 selectorCenter{0.0f, 0.0f};
+    for (int f = 0; f < 3; ++f)
+    {
+        io.DeltaTime = 1.0f / 60.0f;
+        io.DisplaySize = ImVec2(640.0f, 800.0f);
+        io.MousePos = (f == 1) ? selectorCenter : ImVec2(600.0f, 750.0f);
+        io.MouseDown[0] = (f == 1);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 750.0f));
+        ImGui::Begin("Inspector");
+        panel.draw(document, selection, commands, catalog);
+        if (ImGuiWindow *win = ImGui::GetCurrentWindow())
+        {
+            // Find the Sprite Texture File selector button via its label/ID prefix
+            if (f == 0)
+            {
+                const ImVec2 winPos = win->Pos;
+                selectorCenter = ImVec2(winPos.x + 220.0f, winPos.y + 190.0f);
+            }
+        }
+        ImGui::End();
+        ImGui::Render();
+    }
+    // Scan Y to hit the Sprite Texture File selector if exact y varied with layout
+    for (float y = 140.0f; y <= 360.0f && capturedTargets.empty(); y += 8.0f)
+    {
+        for (int step = 0; step < 2; ++step)
+        {
+            io.DeltaTime = 1.0f / 60.0f;
+            io.DisplaySize = ImVec2(640.0f, 800.0f);
+            io.MousePos = ImVec2(210.0f, y);
+            io.MouseDown[0] = (step == 0);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(400.0f, 750.0f));
+            ImGui::Begin("Inspector");
+            panel.draw(document, selection, commands, catalog);
+            ImGui::End();
+            ImGui::Render();
+        }
+    }
+    require(capturedTargets.size() == 2 && capturedKind == "Texture",
+            "full Inspector multi-object Sprite slot must route canonical Texture browse with both targets");
+    static_cast<void>(undoBefore);
+
+    // Clear both Sprite targets via Clear button in full Inspector or helper and verify 1-Undo restoration.
+    std::vector<BatchPropertyEdit> clearEdits{
+        {capturedTargets[0], PropertyValue::of(Json(""))},
+        {capturedTargets[1], PropertyValue::of(Json(""))},
+    };
+    require(static_cast<bool>(commands.apply_batch(document, clearEdits, {multiSel, multiSel})),
+            "clearing multi-object Sprite targets must succeed");
+    require(document.root[0]["components"][0]["textureFilePath"] == "" &&
+                document.root[1]["components"][0]["textureFilePath"] == "",
+            "batch clear must clear all selected Sprite textureFilePath values");
+    require(static_cast<bool>(commands.undo(document, selection)),
+            "one Undo must restore original mixed Sprite textureFilePath values");
+    require(document.root[0]["components"][0]["textureFilePath"] == "assets/a.png" &&
+                document.root[1]["components"][0]["textureFilePath"] == "assets/b.png",
+            "Undo must restore exact mixed Sprite textureFilePath values");
+
+    ImGui::DestroyContext();
+}
+
+void run_common_transform_menu_and_undo_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    Json obj0 = object(100, "Obj0", Json::array({component(101, 0)}));
+    obj0["position"] = Json{{"x", 10.0}, {"y", 20.0}};
+    obj0["rotation"] = 45.0;
+    obj0["scale"] = Json{{"x", 2.0}, {"y", 3.0}};
+
+    Json obj1 = object(200, "Obj1", Json::array({component(201, 0)}));
+    obj1["position"] = Json{{"x", -5.0}, {"y", 8.0}};
+    obj1["rotation"] = 90.0;
+    obj1["scale"] = Json{{"x", 0.5}, {"y", 1.5}};
+
+    DocumentSession document = make_default_document();
+    document.root = Json::array({obj0, obj1});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    Selection multiSel;
+    multiSel.objectId = 100;
+    multiSel.selectedObjectIds = {100, 200};
+    multiSel.focusedPanel = FocusedPanel::Inspector;
+    selection.set(document, multiSel);
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    // Locate ##common_transform_menu button and open CommonTransformContextMenu
+    ImRect menuBtnRect;
+    bool popupOpen = false;
+    for (int f = 0; f < 3; ++f)
+    {
+        io.DeltaTime = 1.0f / 60.0f;
+        io.DisplaySize = ImVec2(640.0f, 480.0f);
+        io.MousePos = f == 1 ? menuBtnRect.GetCenter() : ImVec2(500.0f, 500.0f);
+        io.MouseDown[0] = (f == 1);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 480.0f));
+        ImGui::Begin("Inspector");
+        panel.draw(document, selection, commands, catalog);
+        if (ImGuiWindow *win = ImGui::GetCurrentWindow())
+        {
+            const ImGuiID btnId = win->GetID("##common_transform_menu");
+            if (f == 0 && btnId != 0)
+            {
+                // Click near top-right of Transform header by searching Y along right edge below
+                menuBtnRect = ImRect(win->Pos.x + 365.0f, win->Pos.y + 80.0f,
+                                     win->Pos.x + 390.0f, win->Pos.y + 180.0f);
+            }
+        }
+        popupOpen = ImGui::IsPopupOpen("CommonTransformContextMenu", ImGuiPopupFlags_AnyPopupId);
+        ImGui::End();
+        ImGui::Render();
+    }
+    // Scan Y along the right edge to click ##common_transform_menu reliably
+    for (float y = 70.0f; y <= 170.0f && !popupOpen; y += 6.0f)
+    {
+        for (int step = 0; step < 2; ++step)
+        {
+            io.DeltaTime = 1.0f / 60.0f;
+            io.DisplaySize = ImVec2(640.0f, 480.0f);
+            io.MousePos = ImVec2(376.0f, y);
+            io.MouseDown[0] = (step == 0);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(400.0f, 480.0f));
+            ImGui::Begin("Inspector");
+            panel.draw(document, selection, commands, catalog);
+            popupOpen = ImGui::IsPopupOpen("CommonTransformContextMenu", ImGuiPopupFlags_AnyPopupId);
+            ImGui::End();
+            ImGui::Render();
+            if (popupOpen)
+                break;
+        }
+    }
+    require(popupOpen, "common Transform header must open CommonTransformContextMenu");
+
+    // Click "Reset Settings for Selection" (first item in popup)
+    const std::size_t undoBefore = commands.history_status().undoCommands;
+    ImGuiWindow *popupWin = nullptr;
+    for (ImGuiWindow *w : ImGui::GetCurrentContext()->Windows)
+        if (w && w->Active && (w->Flags & ImGuiWindowFlags_Popup))
+        {
+            popupWin = w;
+            break;
+        }
+    require(popupWin != nullptr, "CommonTransformContextMenu popup window must be active");
+    for (float dy = 6.0f; dy <= 34.0f && commands.history_status().undoCommands == undoBefore; dy += 4.0f)
+    {
+        const ImVec2 resetPos(popupWin->Pos.x + 40.0f, popupWin->Pos.y + dy);
+        for (int step = 0; step < 3; ++step)
+        {
+            io.DeltaTime = 1.0f / 60.0f;
+            io.DisplaySize = ImVec2(640.0f, 480.0f);
+            io.MousePos = resetPos;
+            io.MouseDown[0] = (step == 1);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(400.0f, 480.0f));
+            ImGui::Begin("Inspector");
+            panel.draw(document, selection, commands, catalog);
+            ImGui::End();
+            ImGui::Render();
+        }
+    }
+    require(document.root[0]["position"]["x"] == 0.0 && document.root[0]["rotation"] == 0.0 &&
+                document.root[0]["scale"]["x"] == 1.0 &&
+                document.root[1]["position"]["x"] == 0.0 && document.root[1]["rotation"] == 0.0 &&
+                document.root[1]["scale"]["x"] == 1.0,
+            "Reset Settings for Selection on common Transform must reset all selected objects");
+    require(commands.history_status().undoCommands == undoBefore + 1,
+            "Reset Settings for Selection on common Transform must commit 1 atomic Undo step");
+    require(static_cast<bool>(commands.undo(document, selection)),
+            "undoing common Transform Reset must succeed");
+    require(document.root[0]["position"]["x"] == 10.0 && document.root[0]["rotation"] == 45.0 &&
+                document.root[0]["scale"]["x"] == 2.0 &&
+                document.root[1]["position"]["x"] == -5.0 && document.root[1]["rotation"] == 90.0 &&
+                document.root[1]["scale"]["x"] == 0.5,
+            "undoing common Transform Reset must restore exact mixed values");
+
+    ImGui::DestroyContext();
+}
+
+void run_proportional_layout_scaling_tests()
+{
+    Json obj0 = object(100, "ScaledObject", Json::array());
+    obj0["tag"] = "Player";
+    obj0["layer"] = "Default";
+    obj0["position"] = Json{{"x", 10.0}, {"y", 20.0}};
+    obj0["rotation"] = 45.0;
+    obj0["scale"] = Json{{"x", 1.0}, {"y", 1.0}};
+
+    DocumentSession document = make_default_document();
+    document.root = Json::array({obj0});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    Selection sel;
+    sel.objectId = 100;
+    sel.selectedObjectIds = {100};
+    sel.focusedPanel = FocusedPanel::Inspector;
+    selection.set(document, sel);
+
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(1280.0f, 800.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    unsigned char *pixels = nullptr;
+    int texW = 0;
+    int texH = 0;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &texW, &texH);
+
+    float previousContentHeight = 0.0f;
+    for (const float scale : {1.0f, 1.5f, 2.0f})
+    {
+        io.FontGlobalScale = scale;
+        InspectorPanel panel;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(240.0f * scale, 600.0f));
+        ImGui::Begin("InspectorScaleTest");
+        panel.draw(document, selection, commands, catalog);
+        ImGuiWindow *window = ImGui::GetCurrentWindow();
+        const float contentHeight = window->DC.CursorMaxPos.y - window->Pos.y;
+        require(contentHeight > previousContentHeight,
+                "inspector layout height must scale monotonically with UI scale");
+        previousContentHeight = contentHeight;
+        ImGui::End();
+        ImGui::Render();
+    }
+
+    // Narrow inspector width should wrap Tag/Layer cleanly and keep long labels/Transform/asset slots in bounds.
+    for (const float scale : {1.0f, 1.5f, 2.0f})
+    {
+        io.FontGlobalScale = scale;
+        DocumentSession richDoc = make_default_document();
+        richDoc.root = Json::array({
+            object(100, "NarrowTestObj", Json::array({
+                component(101, 6, Json{{"textureFilePath", "assets/very_long_texture_filename_for_narrow_test.png"}}),
+                component(102, 5, Json{{"behaviors", Json::array({
+                    Json{{"type", "VeryLongBehaviorNameForNarrowColumnClipping"},
+                         {"extremelyLongPropertyNameThatMustClipOrElideCleanly", 12.345}}
+                })}}),
+            })),
+        });
+        ++richDoc.structureRevision;
+        rebuild_document_indexes(richDoc);
+        SelectionModel richSel;
+        richSel.set(richDoc, Selection{.objectId = 100, .focusedPanel = FocusedPanel::Inspector, .selectedObjectIds = {100}});
+        InspectorPanel narrowPanel;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(220.0f, 700.0f));
+        ImGui::Begin("InspectorNarrowTest");
+        narrowPanel.draw(richDoc, richSel, commands, catalog);
+        ImGuiWindow *narrowWindow = ImGui::GetCurrentWindow();
+        const float maxAllowedX = narrowWindow->Pos.x + narrowWindow->Size.x + 2.0f;
+        if (narrowWindow->DC.CursorMaxPos.x > maxAllowedX)
+        {
+            throw std::runtime_error(
+                "narrow inspector Tag/Layer, Transform axes, asset slots, and long labels must stay within bounds at all scales (scale=" +
+                std::to_string(scale) + ", cursorMaxX=" + std::to_string(narrowWindow->DC.CursorMaxPos.x) +
+                ", maxAllowedX=" + std::to_string(maxAllowedX) + ")");
+        }
+        ImGui::End();
+        ImGui::Render();
+    }
+
+    ImGui::DestroyContext();
+}
+
+void run_lossless_scrub_and_context_binding_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    // T074 / T081 / T082: High-precision double, >2^53 signed/unsigned integers, extrema, no-movement click, Escape, and Undo
+    const double exactDouble = 1.2345678901234567;
+    const std::int64_t bigSigned = 9007199254740993LL;    // 2^53 + 1
+    const std::int64_t bigSigned2 = 9007199254740997LL;   // 2^53 + 5
+    const std::uint64_t bigUnsigned = 9007199254740995ULL; // 2^53 + 3
+    const std::int64_t minSigned = std::numeric_limits<std::int64_t>::min();
+    const std::int64_t maxSigned = std::numeric_limits<std::int64_t>::max();
+    const std::uint64_t maxUnsigned = std::numeric_limits<std::uint64_t>::max();
+
+    DocumentSession docA = make_default_document();
+    docA.projectGeneration = 1;
+    docA.tabId = TabId{1};
+    docA.documentGeneration = 1;
+    docA.root = Json::array({
+        object(kObjectId, "LosslessObj", Json::array({
+            component(kScriptId, 5, Json{{"behaviors", Json::array({
+                Json{{"type", "Custom"},
+                     {"precise", exactDouble},
+                     {"bigS", bigSigned},
+                     {"bigU", bigUnsigned}}
+            })}}),
+        })),
+    });
+    ++docA.structureRevision;
+    rebuild_document_indexes(docA);
+
+    SelectionModel selA;
+    selA.set(docA, Selection{.objectId = kObjectId, .componentId = kScriptId, .selectedObjectIds = {kObjectId}});
+    EditCommandService cmds;
+    BehaviorCatalog catalog;
+    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    const Json schema{{"schema_version", 1},
+                      {"behaviors", Json::array({Json{{"name", "Custom"},
+                                                       {"field_schema_available", true},
+                                                       {"fields", Json::array({
+                                                           Json{{"name", "precise"}, {"kind", "number"}},
+                                                           Json{{"name", "bigS"}, {"kind", "signed_integer"}},
+                                                           Json{{"name", "bigU"}, {"kind", "unsigned_integer"}},
+                                                       })}}})}};
+    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
+                catalog.finish_query(0, std::chrono::milliseconds(1)),
+            "Custom behavior fixture schema must become current");
+
+    InspectorPanel panel;
+    panel.set_host_generation(0, &docA);
+    ImGuiID preciseId = 0;
+    const ImVec2 preciseField = find_behavior_input(panel, docA, selA, cmds, catalog, preciseId, "precise");
+    ImGuiID bigSId = 0;
+    const ImVec2 bigSField = find_behavior_input(panel, docA, selA, cmds, catalog, bigSId, "bigS");
+    ImGuiID bigUId = 0;
+    const ImVec2 bigUField = find_behavior_input(panel, docA, selA, cmds, catalog, bigUId, "bigU");
+    require(preciseField.x > 60.0f && bigSField.x > 60.0f && bigUField.x > 60.0f,
+            "Script behavior lossless fields must render in InspectorPanel");
+    const ImVec2 preciseLabel{40.0f, preciseField.y};
+    const ImVec2 bigSLabel{40.0f, bigSField.y};
+    const ImVec2 bigULabel{40.0f, bigUField.y};
+
+    // Click and release on "bigS", "bigU", and "precise" without movement -> exact original JSON & 0 Undo
+    const std::size_t undoStart = cmds.history_status().undoCommands;
+    for (const ImVec2 &lbl : {bigSLabel, bigULabel, preciseLabel})
+    {
+        frame(panel, docA, selA, cmds, catalog, lbl, false);
+        frame(panel, docA, selA, cmds, catalog, lbl, true);
+        frame(panel, docA, selA, cmds, catalog, lbl, false);
+    }
+    require(cmds.history_status().undoCommands == undoStart,
+            "clicking scrub labels without movement must not create Undo history");
+    const auto &beh0 = docA.root[0]["components"][0]["behaviors"][0];
+    require(beh0["precise"].get<double>() == exactDouble &&
+                beh0["bigS"].is_number_integer() && beh0["bigS"].get<std::int64_t>() == bigSigned &&
+                beh0["bigU"].is_number_unsigned() && beh0["bigU"].get<std::uint64_t>() == bigUnsigned,
+            "rendering and no-movement scrub must preserve exact >2^53 integer and double values and types");
+
+    // T082: Cancel active interactions when switching documents with reused IDs (verify live preview changed first)
+    DocumentSession docB = make_default_document();
+    docB.projectGeneration = 1;
+    docB.tabId = TabId{2};
+    docB.documentGeneration = 1;
+    docB.root = docA.root;
+    docB.root[0]["components"][0]["behaviors"][0]["precise"] = 99.5;
+    ++docB.structureRevision;
+    rebuild_document_indexes(docB);
+    SelectionModel selB;
+    selB.set(docB, Selection{.objectId = kObjectId, .componentId = kScriptId, .selectedObjectIds = {kObjectId}});
+
+    frame(panel, docA, selA, cmds, catalog, preciseLabel, false);
+    frame(panel, docA, selA, cmds, catalog, preciseLabel, true);
+    frame(panel, docA, selA, cmds, catalog, ImVec2(preciseLabel.x + 30.0f, preciseLabel.y), true);
+    require(docA.root[0]["components"][0]["behaviors"][0]["precise"].get<double>() != exactDouble,
+            "active scrub drag must change live preview before cancellation");
+    panel.cancel_active_interactions(&docA);
+    frame(panel, docB, selB, cmds, catalog, ImVec2(preciseLabel.x + 30.0f, preciseLabel.y), false);
+    require(docA.root[0]["components"][0]["behaviors"][0]["precise"].get<double>() == exactDouble &&
+                docB.root[0]["components"][0]["behaviors"][0]["precise"].get<double>() == 99.5 &&
+                cmds.history_status().undoCommands == undoStart,
+            "cancelling scrub across document switch must restore docA without leaking edits into docB");
+
+    // T082: Host generation change (hide/detach/close/project reload) during active scrub must cancel & restore docA
+    frame(panel, docA, selA, cmds, catalog, preciseLabel, false);
+    frame(panel, docA, selA, cmds, catalog, preciseLabel, true);
+    frame(panel, docA, selA, cmds, catalog, ImVec2(preciseLabel.x + 30.0f, preciseLabel.y), true);
+    require(docA.root[0]["components"][0]["behaviors"][0]["precise"].get<double>() != exactDouble,
+            "active scrub drag must change live preview before host generation change");
+    panel.set_host_generation(2, &docA);
+    frame(panel, docA, selA, cmds, catalog, ImVec2(preciseLabel.x + 30.0f, preciseLabel.y), false);
+    require(docA.root[0]["components"][0]["behaviors"][0]["precise"].get<double>() == exactDouble &&
+                cmds.history_status().undoCommands == undoStart,
+            "host generation change during active scrub must restore original value with 0 Undo commands");
+
+    // T081: Full InspectorPanel multi-object shared-component integer regressions (>2^53, signed/unsigned extrema)
+    DocumentSession multiDoc = make_default_document();
+    multiDoc.root = Json::array({
+        object(10, "Multi0", Json::array({
+            component(11, 0),
+            component(12, 2, Json{
+                {"bigS", bigSigned},
+                {"bigU", bigUnsigned},
+                {"minS", minSigned},
+                {"maxS", maxSigned},
+                {"maxU", maxUnsigned},
+            }),
+        })),
+        object(20, "Multi1", Json::array({
+            component(21, 0),
+            component(22, 2, Json{
+                {"bigS", bigSigned2},
+                {"bigU", bigUnsigned},
+                {"minS", minSigned},
+                {"maxS", maxSigned},
+                {"maxU", maxUnsigned},
+            }),
+        })),
+    });
+    ++multiDoc.structureRevision;
+    rebuild_document_indexes(multiDoc);
+    SelectionModel multiSel;
+    multiSel.set(multiDoc, Selection{.objectId = 10, .selectedObjectIds = {10, 20}});
+    EditCommandService multiCmds;
+    InspectorPanel multiPanel;
+
+    ImGuiID multiBigSId = 0;
+    const ImVec2 multiBigSField = find_common_component_input(
+        multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSId, 2, "bigS");
+    ImGuiID multiBigUId = 0;
+    const ImVec2 multiBigUField = find_common_component_input(
+        multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigUId, 2, "bigU");
+    ImGuiID multiMaxSId = 0;
+    const ImVec2 multiMaxSField = find_common_component_input(
+        multiPanel, multiDoc, multiSel, multiCmds, catalog, multiMaxSId, 2, "maxS");
+    ImGuiID multiMaxUId = 0;
+    const ImVec2 multiMaxUField = find_common_component_input(
+        multiPanel, multiDoc, multiSel, multiCmds, catalog, multiMaxUId, 2, "maxU");
+    require(multiBigSField.x > 60.0f && multiBigUField.x > 60.0f &&
+                multiMaxSField.x > 60.0f && multiMaxUField.x > 60.0f,
+            "multi-object shared-component >2^53 and extrema integer fields must render");
+
+    const std::size_t multiUndoStart = multiCmds.history_status().undoCommands;
+    // Unchanged Enter/blur on shared >2^53 uint64 field must not round or commit
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigUField, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigUField, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigUField, false);
+    io.AddKeyEvent(ImGuiKey_Enter, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(0.0f, 0.0f), false);
+    io.AddKeyEvent(ImGuiKey_Enter, false);
+    require(multiCmds.history_status().undoCommands == multiUndoStart &&
+                multiDoc.root[0]["components"][1]["bigU"].is_number_unsigned() &&
+                multiDoc.root[0]["components"][1]["bigU"].get<std::uint64_t>() == bigUnsigned,
+            "unchanged Enter/blur on shared >2^53 uint64 field must preserve exact value with 0 Undo");
+
+    // No-movement label click on mixed >2^53 int64 field must preserve exact values
+    const ImVec2 multiBigSLabel{40.0f, multiBigSField.y};
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, false);
+    require(multiCmds.history_status().undoCommands == multiUndoStart &&
+                multiDoc.root[0]["components"][1]["bigS"].get<std::int64_t>() == bigSigned &&
+                multiDoc.root[1]["components"][1]["bigS"].get<std::int64_t>() == bigSigned2,
+            "no-movement click on mixed >2^53 int64 field must preserve exact values");
+
+    // Drag and Escape on shared >2^53 int64 field -> cancelled with 0 Undo
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiBigSLabel.x + 30.0f, multiBigSLabel.y), true);
+    io.AddKeyEvent(ImGuiKey_Escape, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiBigSLabel.x + 30.0f, multiBigSLabel.y), true);
+    io.AddKeyEvent(ImGuiKey_Escape, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiBigSLabel.x + 30.0f, multiBigSLabel.y), false);
+    require(multiCmds.history_status().undoCommands == multiUndoStart &&
+                multiDoc.root[0]["components"][1]["bigS"].get<std::int64_t>() == bigSigned &&
+                multiDoc.root[1]["components"][1]["bigS"].get<std::int64_t>() == bigSigned2,
+            "Escape during multi-object >2^53 int64 scrub must restore exact values with 0 Undo");
+
+    // Drag and release on mixed >2^53 int64 field -> 1 atomic Undo, lossless delta, Undo restores exact values
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiBigSLabel, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiBigSLabel.x + 30.0f, multiBigSLabel.y), true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiBigSLabel.x + 30.0f, multiBigSLabel.y), false);
+    require(multiCmds.history_status().undoCommands == multiUndoStart + 1,
+            "multi-object >2^53 int64 label scrub must commit 1 atomic Undo command");
+    const std::int64_t s0 = multiDoc.root[0]["components"][1]["bigS"].get<std::int64_t>();
+    const std::int64_t s1 = multiDoc.root[1]["components"][1]["bigS"].get<std::int64_t>();
+    require(s0 > bigSigned && (s1 - bigSigned2) == (s0 - bigSigned),
+            "multi-object >2^53 int64 label scrub must apply exact relative integer delta");
+    require(static_cast<bool>(multiCmds.undo(multiDoc, multiSel)) &&
+                multiDoc.root[0]["components"][1]["bigS"].get<std::int64_t>() == bigSigned &&
+                multiDoc.root[1]["components"][1]["bigS"].get<std::int64_t>() == bigSigned2,
+            "Undo must restore exact >2^53 int64 values");
+
+    // Drag INT64_MAX and UINT64_MAX positively -> must clamp cleanly without overflow
+    const ImVec2 multiMaxSLabel{40.0f, multiMaxSField.y};
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiMaxSLabel, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiMaxSLabel, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiMaxSLabel.x + 30.0f, multiMaxSLabel.y), true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiMaxSLabel.x + 30.0f, multiMaxSLabel.y), false);
+    require(multiDoc.root[0]["components"][1]["maxS"].get<std::int64_t>() == maxSigned,
+            "scrubbing INT64_MAX positively must clamp without signed overflow");
+
+    const ImVec2 multiMaxULabel{40.0f, multiMaxUField.y};
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiMaxULabel, false);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, multiMaxULabel, true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiMaxULabel.x + 30.0f, multiMaxULabel.y), true);
+    frame(multiPanel, multiDoc, multiSel, multiCmds, catalog, ImVec2(multiMaxULabel.x + 30.0f, multiMaxULabel.y), false);
+    require(multiDoc.root[0]["components"][1]["maxU"].get<std::uint64_t>() == maxUnsigned,
+            "scrubbing UINT64_MAX positively must clamp without unsigned wrap");
+
+    // T075 / T082: SpriteSourceRegionWidget drag & numeric draft scope must never carry across owner/texture loss
+    SpriteSourceRegionWidget widget;
+    SDL_Window *w = nullptr;
+    SDL_Renderer *r = nullptr;
+    require(SDL_Init(SDL_INIT_VIDEO) && SDL_CreateWindowAndRenderer("scope-test", 128, 128, SDL_WINDOW_HIDDEN, &w, &r),
+            "headless SDL renderer required for SpriteSourceRegionWidget scope test");
+    SDL_Texture *tex = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, 16, 16);
+    require(tex != nullptr, "test texture must create");
+    bool committedToB = false;
+    auto drawWidgetScope = [&](const std::string &scopePrefix, SDL_Texture *activeTex, ImVec2 mouse, bool down) {
+        io.DeltaTime = 1.0f / 60.0f;
+        io.DisplaySize = ImVec2(400.0f, 400.0f);
+        io.MousePos = mouse;
+        io.MouseDown[0] = down;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(300.0f, 300.0f));
+        ImGui::Begin("ScopeWidget");
+        widget.draw("##canvas", activeTex, activeTex ? 16 : 0, activeTex ? 16 : 0, {0.0, 0.0, 8.0, 8.0},
+                    [&](std::string_view f) { return scopePrefix + "/" + std::string(f); },
+                    [&](const SpriteSourceRegion &) -> SpriteSourceRegionWidget::CommitOutcome {
+                        if (scopePrefix == "docB/100/101")
+                            committedToB = true;
+                        return {true, "ok"};
+                    });
+        ImGui::End();
+        ImGui::Render();
+    };
+    drawWidgetScope("docA/100/101", tex, ImVec2(20.0f, 50.0f), false);
+    const ImVec2 cMin = widget.last_canvas_min();
+    drawWidgetScope("docA/100/101", tex, ImVec2(cMin.x + 2.0f, cMin.y + 2.0f), true);
+    drawWidgetScope("docB/100/101", tex, ImVec2(cMin.x + 12.0f, cMin.y + 12.0f), false);
+    require(!committedToB, "SpriteSourceRegionWidget drag from docA must never commit into docB");
+
+    // Texture unavailable during interaction cancels cleanly and does not commit on return
+    drawWidgetScope("docA/100/101", tex, ImVec2(cMin.x + 2.0f, cMin.y + 2.0f), true);
+    drawWidgetScope("docA/100/101", nullptr, ImVec2(cMin.x + 10.0f, cMin.y + 10.0f), true);
+    drawWidgetScope("docB/100/101", tex, ImVec2(cMin.x + 10.0f, cMin.y + 10.0f), false);
+    require(!committedToB, "SpriteSourceRegionWidget texture loss must cancel active drag cleanly");
+    SDL_DestroyTexture(tex);
+    SDL_DestroyRenderer(r);
+    SDL_DestroyWindow(w);
+    SDL_Quit();
+
+    ImGui::DestroyContext();
+}
+
+void run_multi_asset_picker_and_browse_completion_tests()
+{
+    init_test_imgui();
+    ImGuiIO &io = ImGui::GetIO();
+
+    TemporaryDirectory tmp;
+    const auto assetsDir = tmp.path() / "assets";
+    std::filesystem::create_directories(assetsDir);
+    const auto validPng = assetsDir / "hero.png";
+    const auto outsidePng = tmp.path() / "outside.png";
+    {
+        std::ofstream out(validPng, std::ios::binary);
+        out << "png";
+    }
+    {
+        std::ofstream out(outsidePng, std::ios::binary);
+        out << "png";
+    }
+    // Create 270 extra PNG files to exceed kMaxCandidates (256) and verify bounded single scan
+    for (int i = 0; i < 270; ++i)
+    {
+        std::ofstream out(assetsDir / ("tile_" + std::to_string(i) + ".png"), std::ios::binary);
+        out << "png";
+    }
+
+    DocumentSession doc = make_default_document();
+    doc.assetRoot = assetsDir;
+    doc.root = Json::array({
+        object(100, "Obj0", Json::array({component(101, 6, Json{{"textureFilePath", "assets/a.png"}})})),
+        object(200, "Obj1", Json::array({component(201, 6, Json{{"textureFilePath", "assets/b.png"}})})),
+    });
+    ++doc.structureRevision;
+    rebuild_document_indexes(doc);
+    Selection sel{.objectId = 100, .selectedObjectIds = {100, 200}};
+    EditCommandService cmds;
+    SelectionModel selModel;
+    selModel.set(doc, sel);
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{doc.projectGeneration}, assetsDir);
+
+    std::vector<PropertyAddress> targets{
+        address_for_document(doc, 100, 101, std::nullopt, {std::string("textureFilePath")}),
+        address_for_document(doc, 200, 201, std::nullopt, {std::string("textureFilePath")}),
+    };
+    std::vector<Json> values{Json("assets/a.png"), Json("assets/b.png")};
+
+    // T076: Open MultiAssetPickerPopup across 5 unchanged frames -> scans exactly once
+    auto find_open_picker_popup = [&]() -> ImGuiWindow * {
+        for (ImGuiWindow *w : GImGui->Windows)
+        {
+            if (w != nullptr && w->Active && (w->Flags & ImGuiWindowFlags_Popup) != 0)
+                return w;
+        }
+        return nullptr;
+    };
+    const std::size_t scansBefore = multi_asset_picker_scan_count_for_test();
+    bool openedPopup = false;
+    for (float y = 24.0f; y < 90.0f && !openedPopup; y += 6.0f)
+    {
+        for (float x = 140.0f; x < 390.0f && !openedPopup; x += 20.0f)
+        {
+            for (int click = 0; click < 2; ++click)
+            {
+                io.DeltaTime = 1.0f / 60.0f;
+                io.DisplaySize = ImVec2(800.0f, 600.0f);
+                io.MousePos = ImVec2(x, y);
+                io.MouseDown[0] = (click == 0);
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+                ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+                ImGui::Begin("PickerTest");
+                draw_multi_asset_reference_field(doc, cmds, targets, values, sel, "Texture", true,
+                                                 "Texture File", {}, std::string{}, &resources);
+                if (find_open_picker_popup() != nullptr)
+                    openedPopup = true;
+                ImGui::End();
+                ImGui::Render();
             }
         }
     }
+    require(openedPopup, "MultiAssetPickerPopup must open when clicking Choose button");
+    for (int f = 0; f < 5; ++f)
+    {
+        io.DeltaTime = 1.0f / 60.0f;
+        io.DisplaySize = ImVec2(800.0f, 600.0f);
+        io.MousePos = ImVec2(10.0f, 10.0f);
+        io.MouseDown[0] = false;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+        ImGui::Begin("PickerTest");
+        draw_multi_asset_reference_field(doc, cmds, targets, values, sel, "Texture", true,
+                                         "Texture File", {}, std::string{}, &resources);
+        ImGui::End();
+        ImGui::Render();
+    }
+    const std::size_t scansAfter = multi_asset_picker_scan_count_for_test();
+    require(scansAfter - scansBefore == 1,
+            "MultiAssetPickerPopup must scan once and not re-walk across unchanged open frames");
+
+    // T083: Nested folder addition invalidated via ResourceIndex refreshes candidates without projectGeneration bump;
+    // deleting a listed candidate without invalidation must be rejected on click with 0 Undo entries.
+    const auto nestedDir = assetsDir / "aa_nested" / "sub";
+    std::filesystem::create_directories(nestedDir);
+    const auto addedNestedPng = nestedDir / "added.png";
+    {
+        std::ofstream out(addedNestedPng, std::ios::binary);
+        out << "png";
+    }
+    resources.invalidate(addedNestedPng);
+    const std::size_t scansBeforeNested = multi_asset_picker_scan_count_for_test();
+    ImVec2 firstCandidatePos{-1.0f, -1.0f};
+    for (int f = 0; f < 2; ++f)
+    {
+        io.DeltaTime = 1.0f / 60.0f;
+        io.DisplaySize = ImVec2(800.0f, 600.0f);
+        io.MousePos = ImVec2(200.0f, 20.0f);
+        io.MouseDown[0] = false;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+        ImGui::Begin("PickerTest");
+        draw_multi_asset_reference_field(doc, cmds, targets, values, sel, "Texture", true,
+                                         "Texture File", {}, std::string{}, &resources);
+        if (ImGuiWindow *popupWin = find_open_picker_popup())
+            firstCandidatePos = ImVec2(popupWin->Pos.x + 60.0f, popupWin->Pos.y + 46.0f);
+        ImGui::End();
+        ImGui::Render();
+    }
+    const std::size_t scansAfterNested = multi_asset_picker_scan_count_for_test();
+    require(scansAfterNested > scansBeforeNested,
+            "nested-directory ResourceIndex invalidation must invalidate MultiAssetPickerPopup cache");
+    require(firstCandidatePos.x > 0.0f, "MultiAssetPickerPopup window must be open for click-time test");
+
+    // Delete nested file without calling resources.invalidate(...), then click the stale listed candidate
+    // Use an isolated asset root with only aa_nested/sub/added.png so no other candidate exists in the popup list.
+    const auto isolatedAssetsDir = tmp.path() / "isolated_assets";
+    const auto isolatedNestedDir = isolatedAssetsDir / "aa_nested" / "sub";
+    std::filesystem::create_directories(isolatedNestedDir);
+    const auto isolatedAddedPng = isolatedNestedDir / "added.png";
+    {
+        std::ofstream out(isolatedAddedPng, std::ios::binary);
+        out << "png";
+    }
+    DocumentSession isolatedDoc = doc;
+    isolatedDoc.assetRoot = isolatedAssetsDir;
+    ResourceIndex isolatedResources;
+    isolatedResources.set_project(ProjectGeneration{isolatedDoc.projectGeneration}, isolatedAssetsDir);
+    std::vector<PropertyAddress> isolatedTargets{
+        address_for_document(isolatedDoc, 100, 101, std::nullopt, {std::string("textureFilePath")}),
+        address_for_document(isolatedDoc, 200, 201, std::nullopt, {std::string("textureFilePath")}),
+    };
+    EditCommandService isolatedCmds;
+
+    bool openedIsolatedPopup = false;
+    ImGuiWindow *isolatedPopupWin = nullptr;
+    for (float y = 24.0f; y < 90.0f && !openedIsolatedPopup; y += 6.0f)
+    {
+        for (float x = 140.0f; x < 390.0f && !openedIsolatedPopup; x += 20.0f)
+        {
+            for (int click = 0; click < 2; ++click)
+            {
+                io.DeltaTime = 1.0f / 60.0f;
+                io.DisplaySize = ImVec2(800.0f, 600.0f);
+                io.MousePos = ImVec2(x, y);
+                io.MouseDown[0] = (click == 0);
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+                ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+                ImGui::Begin("IsolatedPickerTest");
+                draw_multi_asset_reference_field(isolatedDoc, isolatedCmds, isolatedTargets, values, sel,
+                                                 "Texture", true, "Texture File", {}, std::string{}, &isolatedResources);
+                if (ImGuiWindow *pw = find_open_picker_popup())
+                {
+                    openedIsolatedPopup = true;
+                    isolatedPopupWin = pw;
+                }
+                ImGui::End();
+                ImGui::Render();
+            }
+        }
+    }
+    require(openedIsolatedPopup && isolatedPopupWin != nullptr,
+            "Isolated MultiAssetPickerPopup must open before stale deletion");
+    const ImVec2 popupPos = isolatedPopupWin->Pos;
+    const ImVec2 popupSize = isolatedPopupWin->Size;
+
+    // Remove the file externally WITHOUT invalidating isolatedResources, then click across the popup list
+    std::filesystem::remove(isolatedAddedPng);
+    const std::size_t undoBeforeStaleClick = isolatedCmds.history_status().undoCommands;
+    for (float py = popupPos.y + 24.0f; py < popupPos.y + popupSize.y - 4.0f; py += 8.0f)
+    {
+        for (int click = 0; click < 2; ++click)
+        {
+            io.DeltaTime = 1.0f / 60.0f;
+            io.DisplaySize = ImVec2(800.0f, 600.0f);
+            io.MousePos = ImVec2(popupPos.x + 60.0f, py);
+            io.MouseDown[0] = (click == 0);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+            ImGui::Begin("IsolatedPickerTest");
+            draw_multi_asset_reference_field(isolatedDoc, isolatedCmds, isolatedTargets, values, sel,
+                                             "Texture", true, "Texture File", {}, std::string{}, &isolatedResources);
+            ImGui::End();
+            ImGui::Render();
+        }
+    }
+    require(isolatedCmds.history_status().undoCommands == undoBeforeStaleClick &&
+                isolatedDoc.root[0]["components"][0]["textureFilePath"] == "assets/a.png" &&
+                isolatedDoc.root[1]["components"][0]["textureFilePath"] == "assets/b.png",
+            "clicking a deleted candidate before invalidation must reject cleanly with 0 Undo entries");
+
+    // T078: Multi-object browse completion, rejection of outside-root, stale document rejection, 1-Undo
+    const DocumentIdentity docId{ProjectGeneration{doc.projectGeneration}, doc.tabId, DocumentGeneration{doc.documentGeneration}};
+    const auto rejected = apply_asset_browse_completion(
+        doc, cmds, targets, sel, docId, assetsDir, outsidePng, "Texture", true);
+    require(!rejected.applied &&
+                doc.root[0]["components"][0]["textureFilePath"] == "assets/a.png" &&
+                doc.root[1]["components"][0]["textureFilePath"] == "assets/b.png",
+            "outside-root completion must reject atomically without mutating mixed values");
+
+    const DocumentIdentity staleId{ProjectGeneration{doc.projectGeneration}, doc.tabId, DocumentGeneration{doc.documentGeneration + 1}};
+    const auto stale = apply_asset_browse_completion(
+        doc, cmds, targets, sel, staleId, assetsDir, validPng, "Texture", true);
+    require(!stale.applied, "stale document completion must be rejected");
+
+    const auto applied = apply_asset_browse_completion(
+        doc, cmds, targets, sel, docId, assetsDir, validPng, "Texture", true);
+    require(applied.applied &&
+                doc.root[0]["components"][0]["textureFilePath"] == "assets/hero.png" &&
+                doc.root[1]["components"][0]["textureFilePath"] == "assets/hero.png",
+            "valid multi-object browse completion must assign all targets");
+    require(static_cast<bool>(cmds.undo(doc, selModel)) &&
+                doc.root[0]["components"][0]["textureFilePath"] == "assets/a.png" &&
+                doc.root[1]["components"][0]["textureFilePath"] == "assets/b.png",
+            "one Undo must restore all mixed targets after multi-object browse completion");
 
     ImGui::DestroyContext();
 }
@@ -1297,6 +2500,15 @@ int main()
         run_visible_audio_reference_registers_fallback_demand();
         run_inspector_semantics_select_and_reveal_current_fields();
         run_compact_transform_and_header_menu_tests();
+        run_multi_object_collapsible_headers_and_scaling_tests();
+        run_clean_inactive_vs_precision_edit_display_tests();
+        run_behavior_and_multi_object_label_scrubbing_tests();
+        run_visual_reference_label_tests();
+        run_multi_object_asset_reference_slot_tests();
+        run_common_transform_menu_and_undo_tests();
+        run_proportional_layout_scaling_tests();
+        run_lossless_scrub_and_context_binding_tests();
+        run_multi_asset_picker_and_browse_completion_tests();
         std::cout << "Inspector interaction tests passed\n";
         return 0;
     }

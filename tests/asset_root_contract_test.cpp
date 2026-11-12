@@ -219,7 +219,7 @@ int main()
             require(!behavior->texture, "Behavior assets remain unresolved until startup");
             runtime.simulateFrame(dt);
             require(behavior->texture.get() == texture.get() && behavior->clip &&
-                        behavior->clip->getFrames()[0].textureWrapper == texture.get(),
+                        behavior->clip->getFrames()[0].getTextureWrapper() == texture.get(),
                     "Behavior and nested animation assets use the same root after cwd changes");
             runtime.saveScene(scene.string());
             {

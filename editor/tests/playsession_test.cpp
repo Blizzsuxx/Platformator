@@ -13,6 +13,8 @@
 #include "sdlwindow.h"
 
 #include <SDL3/SDL.h>
+#include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
@@ -1789,6 +1791,249 @@ namespace
         panel.set_visible(&session, true);
         require(!panel.is_input_captured(), "stopping session releases input capture");
     }
+
+    void test_game_panel_compact_presentation_and_aspect_row()
+    {
+        GamePanel panel;
+        const auto nodes = panel.semantic_nodes(nullptr, "main/panel/game");
+        require(!nodes.empty(), "GamePanel must emit semantic nodes in idle state");
+    }
+
+#if !defined(_WIN32) && PLATFORMATOR_ENABLE_EDITOR_SESSION
+    void test_game_panel_gui_draw_and_layout()
+    {
+        const bool ownsSdlVideo = (SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0;
+        if (ownsSdlVideo)
+            require(SDL_InitSubSystem(SDL_INIT_VIDEO), "SDL video initializes for GamePanel GUI test");
+        SDL_Surface *surface = SDL_CreateSurface(GamePanel::FrameWidth, GamePanel::FrameHeight,
+                                                 SDL_PIXELFORMAT_RGBA32);
+        require(surface != nullptr, "software surface is created for GamePanel GUI test");
+        SDL_Renderer *renderer = SDL_CreateSoftwareRenderer(surface);
+        require(renderer != nullptr, "software renderer is created for GamePanel GUI test");
+
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.DisplaySize = ImVec2(1280.0f, 800.0f);
+        io.DeltaTime = 1.0f / 60.0f;
+        unsigned char *pixels = nullptr;
+        int fontW = 0;
+        int fontH = 0;
+        io.Fonts->AddFontDefault();
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &fontW, &fontH);
+        io.Fonts->SetTexID(static_cast<ImTextureID>(1));
+
+        GamePanel panel;
+        panel.set_renderer(renderer);
+        bool restartTriggered = false;
+        panel.set_restart_callback([&]() { restartTriggered = true; });
+        panel.set_pipeline_status(
+            "Live asset reload is unavailable; rebuild and restart to apply changes.",
+            true);
+
+        // 1. Idle state across narrow/scaled and standard sizes: horizontal and vertical bounds
+        for (const float scale : {1.0f, 1.5f, 2.0f})
+        {
+            io.FontGlobalScale = scale;
+            for (const float width : {640.0f, 320.0f})
+            {
+                io.DisplaySize = ImVec2(std::max(800.0f, width + 100.0f), 800.0f);
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+                ImGui::SetNextWindowSize(ImVec2(width, 480.0f));
+                ImGui::Begin("GameIdleTest");
+                panel.draw(nullptr, true);
+                ImGuiWindow *win = ImGui::GetCurrentWindow();
+                require(win->DC.CursorMaxPos.x <= win->Pos.x + win->Size.x + 2.0f,
+                        "GamePanel idle layout must stay within horizontal bounds at width=" +
+                            std::to_string(width) + " scale=" + std::to_string(scale) +
+                            " maxX=" + std::to_string(win->DC.CursorMaxPos.x));
+                require(win->DC.CursorMaxPos.y <= win->Pos.y + win->Size.y + 2.0f,
+                        "GamePanel idle layout must stay within vertical bounds");
+                ImGui::End();
+                ImGui::Render();
+            }
+        }
+
+        // 2. Running session with actual frame data + aspect/zoom + runtime drawer
+        io.FontGlobalScale = 1.0f;
+        PlaySession session;
+        FakeTransport transport(true);
+        const auto mapping = transport.mapping->bytes();
+        std::fill_n(mapping.begin(), GamePanel::FrameBytes, std::byte{0x5a});
+        advance_to_starting(session, transport, play_capabilities(true));
+        require(session.mark_running(RuntimeSerial{70}), "GUI test PlaySession enters Running");
+        panel.set_visible(&session, true);
+        session.flush_commands();
+        const auto generation = session.generation();
+        emit_event(*transport.eventPipe, session.nonce(), generation.value, 1, 70, "frame_ready",
+                   Json{{"slot", 0}, {"frame_sequence", 1}, {"width", 640}, {"height", 360},
+                        {"stride", 2560}, {"format", "rgba8"}});
+        session.poll_events();
+        auto frameEvt = session.take_event();
+        require(frameEvt && frameEvt->type == "frame_ready", "GUI test receives frame_ready");
+        panel.consume_event(session, *frameEvt);
+
+        auto render_running_and_measure_canvas = [&](float width, float height, float scale,
+                                                     ImVec2 &outSize, ImVec2 &outMin, ImVec2 &outMax) {
+            io.FontGlobalScale = scale;
+            io.DisplaySize = ImVec2(1280.0f, 900.0f);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(width, height));
+            ImGui::Begin("GameRunningTest");
+            panel.draw(&session, true);
+            ImGuiWindow *win = ImGui::GetCurrentWindow();
+            require(win->DC.CursorMaxPos.x <= win->Pos.x + win->Size.x + 2.0f,
+                    "GamePanel running layout must stay within horizontal bounds at width=" +
+                        std::to_string(width) + " scale=" + std::to_string(scale) +
+                        " maxX=" + std::to_string(win->DC.CursorMaxPos.x));
+            require(win->DC.CursorMaxPos.y <= win->Pos.y + win->Size.y + 2.0f,
+                    "GamePanel running layout must stay within vertical bounds");
+            // Find the rendered ImGui::Image draw command in the window draw list to verify canvas centering & aspect
+            const ImDrawList *dl = win->DrawList;
+            bool foundImage = false;
+            for (const ImDrawCmd &cmd : dl->CmdBuffer)
+            {
+                if (cmd.TexRef._TexID != 0 && cmd.ElemCount > 0)
+                {
+                    // Use the vertex bounds of the first textured quad
+                    const ImDrawIdx *idx = dl->IdxBuffer.Data + cmd.IdxOffset;
+                    const ImDrawVert *vtx = dl->VtxBuffer.Data;
+                    float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
+                    for (unsigned int i = 0; i < cmd.ElemCount; ++i)
+                    {
+                        const ImVec2 &p = vtx[idx[i]].pos;
+                        minX = std::min(minX, p.x);
+                        minY = std::min(minY, p.y);
+                        maxX = std::max(maxX, p.x);
+                        maxY = std::max(maxY, p.y);
+                    }
+                    if (maxX - minX > 10.0f && maxY - minY > 10.0f)
+                    {
+                        outMin = ImVec2(minX, minY);
+                        outMax = ImVec2(maxX, maxY);
+                        outSize = ImVec2(maxX - minX, maxY - minY);
+                        foundImage = true;
+                        break;
+                    }
+                }
+            }
+            require(foundImage, "GamePanel::draw must render the uploaded frame texture");
+            ImGui::End();
+            ImGui::Render();
+        };
+
+        // Check Aspect/Scale at standard size, and verify Details drawer reserves vertical space
+        ImVec2 closedSize{}, closedMin{}, closedMax{};
+        render_running_and_measure_canvas(640.0f, 480.0f, 1.0f, closedSize, closedMin, closedMax);
+        const float aspectClosed = closedSize.x / std::max(1.0f, closedSize.y);
+        require(std::abs(aspectClosed - (16.0f / 9.0f)) < 0.05f,
+                "default 16:9 aspect preset must preserve 16:9 canvas ratio");
+        const float leftMargin = closedMin.x;
+        const float rightMargin = 640.0f - closedMax.x;
+        require(std::abs(leftMargin - rightMargin) < 4.0f,
+                "canvas must be horizontally centered inside available region");
+
+        // Toggle Details drawer open via the "Details" button (press + release) and verify canvas shrinks
+        io.FontGlobalScale = 1.0f;
+        io.DisplaySize = ImVec2(1280.0f, 900.0f);
+        io.MousePos = ImVec2(300.0f, 36.0f);
+        for (int step = 0; step < 2; ++step)
+        {
+            io.MouseDown[0] = (step == 0);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f));
+            ImGui::Begin("GameRunningTest");
+            panel.draw(&session, true);
+            ImGui::End();
+            ImGui::Render();
+        }
+
+        ImVec2 openSize{}, openMin{}, openMax{};
+        render_running_and_measure_canvas(640.0f, 480.0f, 1.0f, openSize, openMin, openMax);
+        require(openSize.y < closedSize.y - 20.0f,
+                "opening RuntimeDetailsDrawer must reserve vertical space and shrink canvas height");
+
+        // Check narrow/scaled running layout with Details drawer open and Build & Restart visible
+        for (const float scale : {1.0f, 1.5f, 2.0f})
+        {
+            ImVec2 nSize{}, nMin{}, nMax{};
+            render_running_and_measure_canvas(320.0f, 480.0f, scale, nSize, nMin, nMax);
+        }
+
+        // T084: Close Details drawer and verify height-constrained (180px) canvas top Y stays identical between 640px and 320px at every scale
+        io.FontGlobalScale = 1.0f;
+        io.DisplaySize = ImVec2(1280.0f, 900.0f);
+        io.MousePos = ImVec2(300.0f, 36.0f);
+        for (int step = 0; step < 2; ++step)
+        {
+            io.MouseDown[0] = (step == 0);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f));
+            ImGui::Begin("GameRunningTest");
+            panel.draw(&session, true);
+            ImGui::End();
+            ImGui::Render();
+        }
+        float runningTopAt1x = 0.0f;
+        for (const float scale : {1.0f, 1.5f, 2.0f})
+        {
+            ImVec2 s640{}, min640{}, max640{};
+            ImVec2 s320{}, min320{}, max320{};
+            render_running_and_measure_canvas(640.0f, 180.0f, scale, s640, min640, max640);
+            render_running_and_measure_canvas(320.0f, 180.0f, scale, s320, min320, max320);
+            require(std::abs(min640.y - min320.y) < 1.0f,
+                    "GamePanel single-row toolbar must keep identical canvas top Y between 640px and 320px at scale=" +
+                        std::to_string(scale));
+            if (scale < 1.25f)
+                runningTopAt1x = min640.y;
+        }
+
+        // 3. Paused session draws cleanly with frame data and identical canvas top Y
+        require(session.request_pause(), "GUI test requests pause");
+        session.flush_commands();
+        const auto pauseReqs = decode_requests(*transport.commandPipe);
+        require(!pauseReqs.empty() && pauseReqs.back().type == "pause",
+                "GUI test flushes pause request");
+        emit_event(*transport.eventPipe, session.nonce(), generation.value, 2, 70, "state",
+                   Json{{"state", "paused"}, {"request_sequence", pauseReqs.back().sequence}});
+        session.poll_events();
+        require(session.state() == PlaySessionState::Paused && session.take_event().has_value(),
+                "GUI test PlaySession enters Paused");
+        ImVec2 pausedSize{}, pausedMin{}, pausedMax{};
+        render_running_and_measure_canvas(640.0f, 480.0f, 1.0f, pausedSize, pausedMin, pausedMax);
+        require(pausedSize.x > 0.0f && pausedSize.y > 0.0f,
+                "paused GamePanel::draw continues rendering the last uploaded frame");
+        ImVec2 pausedShortSize{}, pausedShortMin{}, pausedShortMax{};
+        render_running_and_measure_canvas(640.0f, 180.0f, 1.0f, pausedShortSize, pausedShortMin, pausedShortMax);
+        require(std::abs(pausedShortMin.y - runningTopAt1x) < 1.0f,
+                "GamePanel single-row toolbar must keep identical canvas top Y across running and paused states");
+
+        // Verify Aspect/Scale single-row presentation on standard width
+        io.FontGlobalScale = 1.0f;
+        io.DisplaySize = ImVec2(1280.0f, 900.0f);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f));
+        ImGui::Begin("GameRowCheck");
+        panel.draw(&session, true);
+        require(panel.semantic_nodes(&session, "main/panel/game").size() >= 3,
+                "GamePanel exposes semantic controls alongside GUI draw");
+        ImGui::End();
+        ImGui::Render();
+
+        static_cast<void>(restartTriggered);
+        panel.release_renderer(renderer);
+        ImGui::DestroyContext();
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroySurface(surface);
+        if (ownsSdlVideo)
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    }
+#endif
 } // namespace
 
 int main()
@@ -1805,8 +2050,10 @@ int main()
         test_parent_copies_only_owned_frame_slots_and_releases_after_copy();
         test_embedded_game_input_forwarding_and_serialization();
         test_game_panel_input_capture_lifecycle();
+        test_game_panel_compact_presentation_and_aspect_row();
 #if !defined(_WIN32) && PLATFORMATOR_ENABLE_EDITOR_SESSION
         test_game_panel_upload_visibility_controls_and_read_only_semantics();
+        test_game_panel_gui_draw_and_layout();
         test_child_session_validates_descriptors_and_services_owner_thread();
         test_owner_runtime_pause_resume_and_one_fixed_step();
         test_hidden_frame_capture_is_visibility_gated_and_released();

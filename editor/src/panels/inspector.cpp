@@ -6,6 +6,7 @@
 #include "../componentoperations.h"
 #include "../documentio.h"
 #include "../discovery.h"
+#include "../style.h"
 
 #include <algorithm>
 #include <array>
@@ -76,6 +77,76 @@ const Json *address_value(const DocumentSession &document, int objectId,
                           const std::vector<FieldPathSegment> &path)
 {
     const Json *value = address_owner(document, objectId, componentId);
+    for (const auto &segment : path)
+    {
+        if (value == nullptr)
+            return nullptr;
+        if (const auto *key = std::get_if<std::string>(&segment))
+        {
+            if (!value->is_object())
+                return nullptr;
+            const auto found = value->find(*key);
+            value = found == value->end() ? nullptr : &*found;
+        }
+        else
+        {
+            const auto index = std::get<std::size_t>(segment);
+            if (!value->is_array() || index >= value->size())
+                return nullptr;
+            value = &(*value)[index];
+        }
+    }
+    return value;
+}
+
+Json *resolve_mutable_object(Json &root, const ObjectLocation &location)
+{
+    if (!root.is_array() || location.childIndices.empty())
+        return nullptr;
+    Json *object = nullptr;
+    Json *siblings = &root;
+    for (std::size_t depth = 0; depth < location.childIndices.size(); ++depth)
+    {
+        if (depth > 0)
+        {
+            if (object == nullptr)
+                return nullptr;
+            const auto children = object->find("children");
+            if (children == object->end())
+                return nullptr;
+            siblings = &*children;
+        }
+        const auto index = location.childIndices[depth];
+        if (!siblings->is_array() || index >= siblings->size())
+            return nullptr;
+        object = &(*siblings)[index];
+    }
+    return object;
+}
+
+Json *mutable_address_value(DocumentSession &document, int objectId,
+                            std::optional<int> componentId,
+                            const std::vector<FieldPathSegment> &path)
+{
+    const auto location = document.indexes.objectsById.find(objectId);
+    if (location == document.indexes.objectsById.end())
+        return nullptr;
+    Json *object = resolve_mutable_object(document.root, location->second);
+    if (object == nullptr)
+        return nullptr;
+    Json *value = object;
+    if (componentId)
+    {
+        const auto componentLocation = document.indexes.componentsById.find(*componentId);
+        if (componentLocation == document.indexes.componentsById.end() ||
+            componentLocation->second.ownerObjectId != objectId)
+            return nullptr;
+        const auto components = object->find("components");
+        if (components == object->end() || !components->is_array() ||
+            componentLocation->second.componentIndex >= components->size())
+            return nullptr;
+        value = &(*components)[componentLocation->second.componentIndex];
+    }
     for (const auto &segment : path)
     {
         if (value == nullptr)
@@ -611,6 +682,9 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
         append_action(componentNodeId + "/reset-settings", "Reset component settings",
             componentNodeId, objectId, componentId, SemanticOperation::ResetSettings,
             catalog != nullptr);
+        append_action(componentNodeId + "/remove-component", "Remove component",
+            componentNodeId, objectId, componentId, SemanticOperation::RemoveComponent,
+            true);
 
         const auto add = [&](std::string_view key, std::string label,
                              std::string_view fallback = "Not set",
@@ -948,6 +1022,23 @@ bool InspectorPanel::dispatch_semantic_action(DocumentSession &document,
         }
         break;
     }
+    case SemanticOperation::RemoveComponent:
+        if (commands == nullptr || !semanticTarget.componentId)
+            return false;
+        {
+            const Selection current = selection.current();
+            const auto removed = commands->remove_component(document, semanticTarget.objectId,
+                                                            *semanticTarget.componentId);
+            if (removed.status == CommandStatus::Changed)
+            {
+                selection.repair(document);
+                commands->set_last_selection_state({current, selection.current()});
+                feedback_.clear();
+            }
+            else if (removed.status == CommandStatus::Rejected)
+                feedback_ = removed.message;
+        }
+        break;
     case SemanticOperation::SaveTemplate:
         if (catalog == nullptr)
             return false;
@@ -1248,6 +1339,563 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
     return changed;
 }
 
+bool InspectorPanel::draw_compact_vector2(
+    DocumentSession &document, EditCommandService &commands, int objectId,
+    std::optional<int> componentId, std::vector<FieldPathSegment> basePath, const char *label,
+    float defaultX, float defaultY, std::optional<float> minimum, std::optional<float> maximum,
+    float baseStep, float snapIncrement)
+{
+    if (!field_matches_search(document, objectId, componentId, basePath, label))
+        return false;
+
+    auto pathX = basePath;
+    pathX.emplace_back(std::string("x"));
+    auto pathY = basePath;
+    pathY.emplace_back(std::string("y"));
+
+    const Json *storedX = address_value(document, objectId, componentId, pathX);
+    const Json *storedY = address_value(document, objectId, componentId, pathY);
+    float valX = json_float(storedX, defaultX);
+    float valY = json_float(storedY, defaultY);
+
+    const float labelWidth = 64.0f;
+    const float axisTagWidth = 14.0f;
+    const float totalAvail = ImGui::GetContentRegionAvail().x;
+    const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
+    const float fieldsWidth = std::max(60.0f, totalAvail - labelWidth - itemSpacingX);
+    const float subColWidth = (fieldsWidth - itemSpacingX) * 0.5f;
+    const float inputWidth = std::max(20.0f, subColWidth - axisTagWidth - 2.0f);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", label);
+    ImGui::SameLine(labelWidth + itemSpacingX);
+
+    bool anyCommitted = false;
+
+    auto draw_axis = [&](const char *axisName, const char *btnId, const ImVec4 &axisColor,
+                         float &axisVal, const std::vector<FieldPathSegment> &path, float defVal) {
+        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        const float frameHeight = ImGui::GetFrameHeight();
+
+        ImGui::InvisibleButton(btnId, ImVec2(axisTagWidth, frameHeight));
+        const bool hovered = ImGui::IsItemHovered();
+        const bool activated = ImGui::IsItemActivated();
+        const bool active = ImGui::IsItemActive();
+        const bool deactivated = ImGui::IsItemDeactivated();
+
+        if (hovered || active)
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(ImVec2(cursorPos.x + 2.0f, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
+                          ImGui::GetColorU32(axisColor), axisName);
+
+        if (activated)
+        {
+            scrubState_.active = true;
+            scrubState_.startValue = axisVal;
+            scrubState_.currentValue = axisVal;
+            scrubState_.objectId = objectId;
+            scrubState_.componentId = componentId;
+            scrubState_.path = path;
+            scrubState_.baseStep = baseStep;
+            scrubState_.snapIncrement = snapIncrement;
+            scrubState_.minimum = minimum;
+            scrubState_.maximum = maximum;
+        }
+        else if (active && scrubState_.active)
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            {
+                Json *mut = mutable_address_value(document, objectId, componentId, path);
+                if (mut)
+                {
+                    *mut = scrubState_.startValue;
+                    ++document.valueRevision;
+                }
+                scrubState_.active = false;
+            }
+            else
+            {
+                const ImGuiIO &io = ImGui::GetIO();
+                const float deltaX = io.MouseDelta.x;
+                if (deltaX != 0.0f)
+                {
+                    float mult = io.KeyShift ? 10.0f : (io.KeyAlt ? 0.1f : 1.0f);
+                    scrubState_.currentValue += deltaX * baseStep * mult;
+                    if (io.KeyCtrl && snapIncrement > 0.0f)
+                        scrubState_.currentValue = std::round(scrubState_.currentValue / snapIncrement) * snapIncrement;
+                    if (minimum && scrubState_.currentValue < *minimum)
+                        scrubState_.currentValue = *minimum;
+                    if (maximum && scrubState_.currentValue > *maximum)
+                        scrubState_.currentValue = *maximum;
+
+                    axisVal = scrubState_.currentValue;
+                    Json *mut = mutable_address_value(document, objectId, componentId, path);
+                    if (mut)
+                    {
+                        *mut = scrubState_.currentValue;
+                        ++document.valueRevision;
+                    }
+                }
+            }
+        }
+        else if (deactivated && scrubState_.active)
+        {
+            Json *mut = mutable_address_value(document, objectId, componentId, path);
+            if (mut)
+                *mut = scrubState_.startValue;
+            if (scrubState_.currentValue != scrubState_.startValue)
+            {
+                set(document, commands, objectId, componentId, path, scrubState_.currentValue);
+                anyCommitted = true;
+            }
+            scrubState_.active = false;
+        }
+
+        ImGui::SameLine(0.0f, 2.0f);
+        ImGui::PushID(stable_field_id(path).c_str());
+        ImGui::SetNextItemWidth(inputWidth);
+        const bool reveal = consume_reveal_target(objectId, componentId, path);
+        if (reveal)
+            ImGui::SetKeyboardFocusHere();
+        const bool changed = ImGui::InputFloat("##value", &axisVal, 0.0f, 0.0f, "%.2f",
+                                               ImGuiInputTextFlags_EnterReturnsTrue);
+        if (reveal)
+            ImGui::SetScrollHereY(0.5f);
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        ImGui::PopID();
+
+        if (commit)
+        {
+            if (!std::isfinite(axisVal) || (minimum && axisVal < *minimum) || (maximum && axisVal > *maximum))
+            {
+                feedback_ = std::string(label) + " " + axisName + " is outside the supported range.";
+            }
+            else
+            {
+                set(document, commands, objectId, componentId, path, axisVal);
+                anyCommitted = true;
+            }
+        }
+    };
+
+    draw_axis("X", "##scrub_x", ImVec4(0.9f, 0.35f, 0.35f, 1.0f), valX, pathX, defaultX);
+    ImGui::SameLine(0.0f, itemSpacingX);
+    draw_axis("Y", "##scrub_y", ImVec4(0.4f, 0.85f, 0.4f, 1.0f), valY, pathY, defaultY);
+
+    return anyCommitted;
+}
+
+bool InspectorPanel::draw_compact_rotation(
+    DocumentSession &document, EditCommandService &commands, int objectId,
+    std::optional<int> componentId, std::vector<FieldPathSegment> path, const char *label,
+    float defaultValue, float baseStep, float snapIncrement)
+{
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
+
+    const Json *stored = address_value(document, objectId, componentId, path);
+    float val = json_float(stored, defaultValue);
+
+    const float labelWidth = 64.0f;
+    const float totalAvail = ImGui::GetContentRegionAvail().x;
+    const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
+    const float inputWidth = std::max(60.0f, totalAvail - labelWidth - itemSpacingX);
+
+    ImGui::AlignTextToFramePadding();
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const float frameHeight = ImGui::GetFrameHeight();
+    ImGui::InvisibleButton("##scrub_rot", ImVec2(labelWidth, frameHeight));
+    const bool hovered = ImGui::IsItemHovered();
+    const bool activated = ImGui::IsItemActivated();
+    const bool active = ImGui::IsItemActive();
+    const bool deactivated = ImGui::IsItemDeactivated();
+
+    if (hovered || active)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    drawList->AddText(ImVec2(cursorPos.x, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
+                      ImGui::GetColorU32(ImGuiCol_TextDisabled), label);
+
+    if (activated)
+    {
+        scrubState_.active = true;
+        scrubState_.startValue = val;
+        scrubState_.currentValue = val;
+        scrubState_.objectId = objectId;
+        scrubState_.componentId = componentId;
+        scrubState_.path = path;
+        scrubState_.baseStep = baseStep;
+        scrubState_.snapIncrement = snapIncrement;
+        scrubState_.minimum = std::nullopt;
+        scrubState_.maximum = std::nullopt;
+    }
+    else if (active && scrubState_.active)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            Json *mut = mutable_address_value(document, objectId, componentId, path);
+            if (mut)
+            {
+                *mut = scrubState_.startValue;
+                ++document.valueRevision;
+            }
+            scrubState_.active = false;
+        }
+        else
+        {
+            const ImGuiIO &io = ImGui::GetIO();
+            const float deltaX = io.MouseDelta.x;
+            if (deltaX != 0.0f)
+            {
+                float mult = io.KeyShift ? 10.0f : (io.KeyAlt ? 0.1f : 1.0f);
+                scrubState_.currentValue += deltaX * baseStep * mult;
+                if (io.KeyCtrl && snapIncrement > 0.0f)
+                    scrubState_.currentValue = std::round(scrubState_.currentValue / snapIncrement) * snapIncrement;
+                val = scrubState_.currentValue;
+                Json *mut = mutable_address_value(document, objectId, componentId, path);
+                if (mut)
+                {
+                    *mut = scrubState_.currentValue;
+                    ++document.valueRevision;
+                }
+            }
+        }
+    }
+    else if (deactivated && scrubState_.active)
+    {
+        Json *mut = mutable_address_value(document, objectId, componentId, path);
+        if (mut)
+            *mut = scrubState_.startValue;
+        if (scrubState_.currentValue != scrubState_.startValue)
+        {
+            set(document, commands, objectId, componentId, path, scrubState_.currentValue);
+        }
+        scrubState_.active = false;
+        return true;
+    }
+
+    ImGui::SameLine(labelWidth + itemSpacingX);
+    ImGui::PushID(stable_field_id(path).c_str());
+    ImGui::SetNextItemWidth(inputWidth);
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
+    const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, "%.2f deg",
+                                           ImGuiInputTextFlags_EnterReturnsTrue);
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
+    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+    const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+    ImGui::PopID();
+
+    if (commit)
+    {
+        if (!std::isfinite(val))
+        {
+            feedback_ = std::string(label) + " is outside the supported range.";
+            return false;
+        }
+        return set(document, commands, objectId, componentId, path, val);
+    }
+    return false;
+}
+
+void InspectorPanel::draw_common_compact_transform(
+    DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
+    const std::vector<int> &objectIds)
+{
+    const auto common_values = [&](const std::vector<FieldPathSegment> &path)
+        -> std::optional<std::vector<float>> {
+        std::vector<float> values;
+        values.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+        {
+            const Json *value = address_value(document, objectId, std::nullopt, path);
+            if (value == nullptr || !value->is_number() || !std::isfinite(value->get<double>()))
+                return std::nullopt;
+            values.push_back(json_float(value, 0.0f));
+        }
+        return values;
+    };
+
+    const auto commit_common = [&](const std::vector<FieldPathSegment> &path, float value) {
+        std::vector<BatchPropertyEdit> edits;
+        edits.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+            edits.push_back({address_for_document(document, objectId, std::nullopt, std::nullopt, path),
+                             PropertyValue::of(Json(value))});
+        const Selection current = selection.current();
+        const auto result = commands.apply_batch(document, edits, {current, current});
+        if (result.status == CommandStatus::Rejected || result.status == CommandStatus::StaleAddress)
+            feedback_ = result.message;
+        else
+            feedback_.clear();
+    };
+
+    if (!ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth))
+        return;
+
+    const float labelWidth = 64.0f;
+    const float axisTagWidth = 14.0f;
+    const float totalAvail = ImGui::GetContentRegionAvail().x;
+    const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
+    const float fieldsWidth = std::max(60.0f, totalAvail - labelWidth - itemSpacingX);
+    const float subColWidth = (fieldsWidth - itemSpacingX) * 0.5f;
+    const float inputWidth = std::max(20.0f, subColWidth - axisTagWidth - 2.0f);
+
+    auto draw_common_vec2 = [&](const char *label, const std::string &baseProp,
+                                float defX, float defY, std::optional<float> minimum,
+                                float baseStep, float snapIncrement) {
+        std::vector<FieldPathSegment> pathX = {baseProp, std::string("x")};
+        std::vector<FieldPathSegment> pathY = {baseProp, std::string("y")};
+        auto valsX = common_values(pathX);
+        auto valsY = common_values(pathY);
+        if (!valsX || !valsY)
+            return;
+
+        const bool mixedX = std::any_of(valsX->begin() + 1, valsX->end(), [&](float v) {
+            return std::abs(v - valsX->front()) > 1e-5f;
+        });
+        const bool mixedY = std::any_of(valsY->begin() + 1, valsY->end(), [&](float v) {
+            return std::abs(v - valsY->front()) > 1e-5f;
+        });
+
+        float valX = valsX->front();
+        float valY = valsY->front();
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", label);
+        ImGui::SameLine(labelWidth + itemSpacingX);
+
+        auto draw_common_axis = [&](const char *axisName, const char *btnId, const ImVec4 &axisColor,
+                                    float &val, bool mixed,
+                                    const std::vector<float> &allVals,
+                                    const std::vector<FieldPathSegment> &path) {
+            const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+            const float frameHeight = ImGui::GetFrameHeight();
+            ImGui::InvisibleButton(btnId, ImVec2(axisTagWidth, frameHeight));
+            if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+            ImDrawList *drawList = ImGui::GetWindowDrawList();
+            drawList->AddText(ImVec2(cursorPos.x + 2.0f, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
+                              ImGui::GetColorU32(axisColor), axisName);
+
+            if (ImGui::IsItemActivated())
+            {
+                scrubState_.active = true;
+                scrubState_.startValue = val;
+                scrubState_.currentValue = val;
+                scrubState_.targetObjectIds = objectIds;
+                scrubState_.multiStartValues = allVals;
+                scrubState_.path = path;
+                scrubState_.baseStep = baseStep;
+                scrubState_.snapIncrement = snapIncrement;
+                scrubState_.minimum = minimum;
+            }
+            else if (ImGui::IsItemActive() && scrubState_.active)
+            {
+                if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                {
+                    for (std::size_t i = 0; i < objectIds.size(); ++i)
+                    {
+                        Json *mut = mutable_address_value(document, objectIds[i], std::nullopt, path);
+                        if (mut)
+                            *mut = scrubState_.multiStartValues[i];
+                    }
+                    ++document.valueRevision;
+                    scrubState_.active = false;
+                }
+                else
+                {
+                    const ImGuiIO &io = ImGui::GetIO();
+                    const float deltaX = io.MouseDelta.x;
+                    if (deltaX != 0.0f)
+                    {
+                        float mult = io.KeyShift ? 10.0f : (io.KeyAlt ? 0.1f : 1.0f);
+                        scrubState_.currentValue += deltaX * baseStep * mult;
+                        if (io.KeyCtrl && snapIncrement > 0.0f)
+                            scrubState_.currentValue = std::round(scrubState_.currentValue / snapIncrement) * snapIncrement;
+                        if (minimum && scrubState_.currentValue < *minimum)
+                            scrubState_.currentValue = *minimum;
+                        val = scrubState_.currentValue;
+                        for (std::size_t i = 0; i < objectIds.size(); ++i)
+                        {
+                            Json *mut = mutable_address_value(document, objectIds[i], std::nullopt, path);
+                            if (mut)
+                                *mut = scrubState_.multiStartValues[i] + (scrubState_.currentValue - scrubState_.startValue);
+                        }
+                        ++document.valueRevision;
+                    }
+                }
+            }
+            else if (ImGui::IsItemDeactivated() && scrubState_.active)
+            {
+                for (std::size_t i = 0; i < objectIds.size(); ++i)
+                {
+                    Json *mut = mutable_address_value(document, objectIds[i], std::nullopt, path);
+                    if (mut)
+                        *mut = scrubState_.multiStartValues[i];
+                }
+                const float totalDelta = scrubState_.currentValue - scrubState_.startValue;
+                if (std::abs(totalDelta) > 1e-5f)
+                {
+                    std::vector<BatchPropertyEdit> edits;
+                    edits.reserve(objectIds.size());
+                    for (std::size_t i = 0; i < objectIds.size(); ++i)
+                    {
+                        float finalVal = scrubState_.multiStartValues[i] + totalDelta;
+                        if (minimum && finalVal < *minimum)
+                            finalVal = *minimum;
+                        edits.push_back({address_for_document(document, objectIds[i], std::nullopt, std::nullopt, path),
+                                         PropertyValue::of(Json(finalVal))});
+                    }
+                    const Selection current = selection.current();
+                    commands.apply_batch(document, edits, {current, current});
+                }
+                scrubState_.active = false;
+            }
+
+            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::PushID(stable_field_id(path).c_str());
+            ImGui::SetNextItemWidth(inputWidth);
+            ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+            const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, mixed ? " — " : "%.2f",
+                                                   ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::PopItemFlag();
+            const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+            const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+            ImGui::PopID();
+
+            if (commit)
+            {
+                if (!std::isfinite(val) || (minimum && val < *minimum))
+                    feedback_ = std::string(label) + " " + axisName + " is outside the supported range.";
+                else
+                    commit_common(path, val);
+            }
+        };
+
+        draw_common_axis("X", "##common_scrub_x", ImVec4(0.9f, 0.35f, 0.35f, 1.0f), valX, mixedX, *valsX, pathX);
+        ImGui::SameLine(0.0f, itemSpacingX);
+        draw_common_axis("Y", "##common_scrub_y", ImVec4(0.4f, 0.85f, 0.4f, 1.0f), valY, mixedY, *valsY, pathY);
+    };
+
+    draw_common_vec2("Position", "position", 0.0f, 0.0f, std::nullopt, 0.1f, 0.5f);
+
+    std::vector<FieldPathSegment> rotPath = {std::string("rotation")};
+    auto valsRot = common_values(rotPath);
+    if (valsRot)
+    {
+        const bool mixedRot = std::any_of(valsRot->begin() + 1, valsRot->end(), [&](float v) {
+            return std::abs(v - valsRot->front()) > 1e-5f;
+        });
+        float valRot = valsRot->front();
+        ImGui::AlignTextToFramePadding();
+        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        const float frameHeight = ImGui::GetFrameHeight();
+        ImGui::InvisibleButton("##scrub_rot", ImVec2(labelWidth, frameHeight));
+        if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(ImVec2(cursorPos.x, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
+                          ImGui::GetColorU32(ImGuiCol_TextDisabled), "Rotation");
+
+        if (ImGui::IsItemActivated())
+        {
+            scrubState_.active = true;
+            scrubState_.startValue = valRot;
+            scrubState_.currentValue = valRot;
+            scrubState_.targetObjectIds = objectIds;
+            scrubState_.multiStartValues = *valsRot;
+            scrubState_.path = rotPath;
+            scrubState_.baseStep = 1.0f;
+            scrubState_.snapIncrement = 15.0f;
+        }
+        else if (ImGui::IsItemActive() && scrubState_.active)
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            {
+                for (std::size_t i = 0; i < objectIds.size(); ++i)
+                {
+                    Json *mut = mutable_address_value(document, objectIds[i], std::nullopt, rotPath);
+                    if (mut)
+                        *mut = scrubState_.multiStartValues[i];
+                }
+                ++document.valueRevision;
+                scrubState_.active = false;
+            }
+            else
+            {
+                const ImGuiIO &io = ImGui::GetIO();
+                const float deltaX = io.MouseDelta.x;
+                if (deltaX != 0.0f)
+                {
+                    float mult = io.KeyShift ? 10.0f : (io.KeyAlt ? 0.1f : 1.0f);
+                    scrubState_.currentValue += deltaX * 1.0f * mult;
+                    if (io.KeyCtrl)
+                        scrubState_.currentValue = std::round(scrubState_.currentValue / 15.0f) * 15.0f;
+                    valRot = scrubState_.currentValue;
+                    for (std::size_t i = 0; i < objectIds.size(); ++i)
+                    {
+                        Json *mut = mutable_address_value(document, objectIds[i], std::nullopt, rotPath);
+                        if (mut)
+                            *mut = scrubState_.multiStartValues[i] + (scrubState_.currentValue - scrubState_.startValue);
+                    }
+                    ++document.valueRevision;
+                }
+            }
+        }
+        else if (ImGui::IsItemDeactivated() && scrubState_.active)
+        {
+            for (std::size_t i = 0; i < objectIds.size(); ++i)
+            {
+                Json *mut = mutable_address_value(document, objectIds[i], std::nullopt, rotPath);
+                if (mut)
+                    *mut = scrubState_.multiStartValues[i];
+            }
+            const float totalDelta = scrubState_.currentValue - scrubState_.startValue;
+            if (std::abs(totalDelta) > 1e-5f)
+            {
+                std::vector<BatchPropertyEdit> edits;
+                edits.reserve(objectIds.size());
+                for (std::size_t i = 0; i < objectIds.size(); ++i)
+                {
+                    edits.push_back({address_for_document(document, objectIds[i], std::nullopt, std::nullopt, rotPath),
+                                     PropertyValue::of(Json(scrubState_.multiStartValues[i] + totalDelta))});
+                }
+                const Selection current = selection.current();
+                commands.apply_batch(document, edits, {current, current});
+            }
+            scrubState_.active = false;
+        }
+
+        ImGui::SameLine(labelWidth + itemSpacingX);
+        ImGui::PushID(stable_field_id(rotPath).c_str());
+        ImGui::SetNextItemWidth(std::max(60.0f, totalAvail - labelWidth - itemSpacingX));
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixedRot);
+        const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, mixedRot ? " — " : "%.2f deg",
+                                               ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::PopItemFlag();
+        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        ImGui::PopID();
+        if (commit)
+        {
+            if (!std::isfinite(valRot))
+                feedback_ = "Rotation is outside the supported range.";
+            else
+                commit_common(rotPath, valRot);
+        }
+    }
+
+    draw_common_vec2("Scale", "scale", 1.0f, 1.0f, 0.0001f, 0.05f, 0.1f);
+}
+
 void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
                           const BehaviorCatalog &catalog, const AssetBrowseCallback &browse,
                           ResourceIndex *resourceIndex)
@@ -1415,34 +2063,92 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         if (ImGui::IsItemHovered() && !canSaveTemplate)
             ImGui::SetTooltip("A template name and project asset root are required.");
     }
-    if (revealObjectId_ && *revealObjectId_ == objectId && !revealComponentId_)
-        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-    const bool gameObjectExpanded = ImGui::CollapsingHeader(
-        "GameObject", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-    ImGui::SetItemTooltip("Drop a behavior header anywhere in the Inspector to add it to this GameObject.");
     const auto refreshedObjectLocation = document.indexes.objectsById.find(objectId);
     object = refreshedObjectLocation == document.indexes.objectsById.end()
         ? nullptr : resolve_object(document.root, refreshedObjectLocation->second);
     if (object == nullptr)
         return;
-    if (gameObjectExpanded)
+
+    // Top GameObject Header
+    // Row 1: [☑ Active] [Icon] [Name InputText]
+    const bool revealName = consume_reveal_target(objectId, std::nullopt, {std::string("name")});
+    const bool revealTag = consume_reveal_target(objectId, std::nullopt, {std::string("tag")});
+    const bool revealActive = consume_reveal_target(objectId, std::nullopt, {std::string("active")});
+
+    bool activeValue = object->value("active", true);
+    ImGui::PushID(stable_field_id({std::string("active")}).c_str());
+    if (revealActive)
+        ImGui::SetKeyboardFocusHere();
+    if (ImGui::Checkbox("##value", &activeValue))
     {
-        draw_string(document, commands, objectId, std::nullopt, {std::string("name")}, "Name");
-        draw_string(document, commands, objectId, std::nullopt, {std::string("tag")}, "Tag");
-        draw_boolean(document, commands, objectId, std::nullopt, {std::string("active")}, "Active", true);
-        ImGui::SeparatorText("Position");
-        draw_number(document, commands, objectId, std::nullopt,
-                    {std::string("position"), std::string("x")}, "X");
-        draw_number(document, commands, objectId, std::nullopt,
-                    {std::string("position"), std::string("y")}, "Y");
-        draw_number(document, commands, objectId, std::nullopt,
-                    {std::string("scale"), std::string("x")}, "Scale X", 1.0f,
-                    std::numeric_limits<float>::min());
-        draw_number(document, commands, objectId, std::nullopt,
-                    {std::string("scale"), std::string("y")}, "Scale Y", 1.0f,
-                    std::numeric_limits<float>::min());
-        draw_number(document, commands, objectId, std::nullopt,
-                    {std::string("rotation")}, "Rotation");
+        set(document, commands, objectId, std::nullopt, {std::string("active")}, activeValue);
+    }
+    ImGui::PopID();
+    if (revealActive)
+        ImGui::SetScrollHereY(0.5f);
+
+    ImGui::SameLine();
+    const float iconSize = 14.0f;
+    const ImVec2 iconPos = ImGui::GetCursorScreenPos();
+    const float frameHeight = ImGui::GetFrameHeight();
+    draw_editor_icon(EditorIcon::GameObject, ImGui::GetWindowDrawList(),
+                     {iconPos.x, iconPos.y + (frameHeight - iconSize) * 0.5f}, iconSize,
+                     ImGui::GetColorU32(ImGuiCol_Text));
+    ImGui::Dummy(ImVec2(iconSize + 2.0f, frameHeight));
+    ImGui::SameLine();
+
+    std::string nameValue = object->value("name", std::string("GameObject"));
+    std::array<char, 256> nameBuffer{};
+    std::memcpy(nameBuffer.data(), nameValue.data(), std::min(nameValue.size(), nameBuffer.size() - 1));
+    ImGui::PushID(stable_field_id({std::string("name")}).c_str());
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (revealName)
+        ImGui::SetKeyboardFocusHere();
+    const bool nameChanged = ImGui::InputText("##value", nameBuffer.data(), nameBuffer.size(),
+                                             ImGuiInputTextFlags_EnterReturnsTrue);
+    if (revealName)
+        ImGui::SetScrollHereY(0.5f);
+    if (nameChanged || ImGui::IsItemDeactivatedAfterEdit())
+    {
+        set(document, commands, objectId, std::nullopt, {std::string("name")}, std::string(nameBuffer.data()));
+    }
+    ImGui::PopID();
+
+    // Row 2: Tag: [Tag InputText]
+    std::string tagValue = object->value("tag", std::string{});
+    std::array<char, 256> tagBuffer{};
+    std::memcpy(tagBuffer.data(), tagValue.data(), std::min(tagValue.size(), tagBuffer.size() - 1));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Tag");
+    ImGui::SameLine(64.0f + ImGui::GetStyle().ItemSpacing.x);
+    ImGui::PushID(stable_field_id({std::string("tag")}).c_str());
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (revealTag)
+        ImGui::SetKeyboardFocusHere();
+    const bool tagChanged = ImGui::InputText("##value", tagBuffer.data(), tagBuffer.size(),
+                                            ImGuiInputTextFlags_EnterReturnsTrue);
+    if (revealTag)
+        ImGui::SetScrollHereY(0.5f);
+    if (tagChanged || ImGui::IsItemDeactivatedAfterEdit())
+    {
+        set(document, commands, objectId, std::nullopt, {std::string("tag")}, std::string(tagBuffer.data()));
+    }
+    ImGui::PopID();
+
+    ImGui::Spacing();
+    if (revealObjectId_ && *revealObjectId_ == objectId && !revealComponentId_)
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    const bool transformExpanded = ImGui::CollapsingHeader(
+        "Transform", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+    ImGui::SetItemTooltip("Drop a behavior header anywhere in the Inspector to add it to this GameObject.");
+    if (transformExpanded)
+    {
+        draw_compact_vector2(document, commands, objectId, std::nullopt, {std::string("position")}, "Position",
+                             0.0f, 0.0f, std::nullopt, std::nullopt, 0.1f, 0.5f);
+        draw_compact_rotation(document, commands, objectId, std::nullopt, {std::string("rotation")}, "Rotation",
+                              0.0f, 1.0f, 15.0f);
+        draw_compact_vector2(document, commands, objectId, std::nullopt, {std::string("scale")}, "Scale",
+                             1.0f, 1.0f, 0.0001f, std::nullopt, 0.05f, 0.1f);
     }
 
     const auto objectComponents = object->find("components");
@@ -1491,48 +2197,77 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         if (revealObjectId_ && *revealObjectId_ == objectId &&
             revealComponentId_ == componentId)
             ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-        if (!ImGui::CollapsingHeader(componentHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+        const float headerFrameHeight = ImGui::GetFrameHeight();
+        const float buttonWidth = 24.0f;
+        const bool headerOpen = ImGui::CollapsingHeader(componentHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+        const ImVec2 headerMin = ImGui::GetItemRectMin();
+        const ImVec2 headerMax = ImGui::GetItemRectMax();
+
+        ImGui::SetCursorScreenPos({headerMax.x - buttonWidth - 4.0f, headerMin.y + (headerFrameHeight - 18.0f) * 0.5f});
+        if (ImGui::SmallButton("⋮##menu"))
+            ImGui::OpenPopup("ComponentHeaderContextMenu");
+
+        bool componentRemoved = false;
+        if (ImGui::BeginPopupContextItem("ComponentHeaderContextMenu"))
+        {
+            if (ImGui::MenuItem("Reset"))
+            {
+                const Selection current = selection.current();
+                const auto reset = reset_component_settings(document, commands, objectId, visibleComponentId,
+                    catalog, SelectionState{current, current});
+                if (reset.status == CommandStatus::Rejected || reset.status == CommandStatus::StaleAddress)
+                    feedback_ = reset.message;
+                else
+                    feedback_.clear();
+            }
+            if (ImGui::MenuItem("Copy Settings"))
+            {
+                std::string error;
+                auto copied = copy_component_settings(*component, catalog, error);
+                if (copied)
+                {
+                    componentSettingsClipboard_ = std::move(*copied);
+                    feedback_.clear();
+                }
+                else
+                    feedback_ = std::move(error);
+            }
+            const bool clipboardMatches = componentSettingsClipboard_ &&
+                componentSettingsClipboard_->value("componentType", -1) == type;
+            if (ImGui::MenuItem("Paste Settings", nullptr, false, clipboardMatches))
+            {
+                const Selection current = selection.current();
+                const auto pasted = paste_component_settings(document, commands, objectId, visibleComponentId,
+                    *componentSettingsClipboard_, catalog, SelectionState{current, current});
+                if (pasted.status == CommandStatus::Rejected || pasted.status == CommandStatus::StaleAddress)
+                    feedback_ = pasted.message;
+                else
+                    feedback_.clear();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Remove Component"))
+            {
+                const Selection current = selection.current();
+                const auto removed = commands.remove_component(document, objectId, *componentId);
+                if (removed.status == CommandStatus::Changed)
+                {
+                    selection.repair(document);
+                    commands.set_last_selection_state({current, selection.current()});
+                    feedback_.clear();
+                    componentRemoved = true;
+                }
+                else if (removed.status == CommandStatus::Rejected)
+                {
+                    feedback_ = removed.message;
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        if (!headerOpen || componentRemoved)
             component = nullptr;
         if (component != nullptr)
         {
-        if (ImGui::SmallButton("Copy Settings"))
-        {
-            std::string error;
-            auto copied = copy_component_settings(*component, catalog, error);
-            if (copied)
-            {
-                componentSettingsClipboard_ = std::move(*copied);
-                feedback_.clear();
-            }
-            else
-                feedback_ = std::move(error);
-        }
-        ImGui::SameLine();
-        const bool clipboardMatches = componentSettingsClipboard_ &&
-            componentSettingsClipboard_->value("componentType", -1) == type;
-        ImGui::BeginDisabled(!clipboardMatches);
-        if (ImGui::SmallButton("Paste Settings"))
-        {
-            const Selection current = selection.current();
-            const auto pasted = paste_component_settings(document, commands, objectId, visibleComponentId,
-                *componentSettingsClipboard_, catalog, SelectionState{current, current});
-            if (pasted.status == CommandStatus::Rejected || pasted.status == CommandStatus::StaleAddress)
-                feedback_ = pasted.message;
-            else
-                feedback_.clear();
-        }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Reset Settings"))
-        {
-            const Selection current = selection.current();
-            const auto reset = reset_component_settings(document, commands, objectId, visibleComponentId,
-                catalog, SelectionState{current, current});
-            if (reset.status == CommandStatus::Rejected || reset.status == CommandStatus::StaleAddress)
-                feedback_ = reset.message;
-            else
-                feedback_.clear();
-        }
         if (type == 2)
         {
             ImGui::SeparatorText("Camera");
@@ -1886,14 +2621,7 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
     };
 
     draw_common_boolean({std::string("active")}, "Active");
-    ImGui::SeparatorText("Position");
-    draw_common_number({std::string("position"), std::string("x")}, "X");
-    draw_common_number({std::string("position"), std::string("y")}, "Y");
-    draw_common_number({std::string("scale"), std::string("x")}, "Scale X",
-                       std::numeric_limits<float>::min());
-    draw_common_number({std::string("scale"), std::string("y")}, "Scale Y",
-                       std::numeric_limits<float>::min());
-    draw_common_number({std::string("rotation")}, "Rotation");
+    draw_common_compact_transform(document, selection, commands, objectIds);
 
     const auto component_at_occurrence = [&](int objectId, int type, std::size_t occurrence)
         -> std::optional<std::pair<int, const Json *>> {

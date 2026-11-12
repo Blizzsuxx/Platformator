@@ -18,16 +18,13 @@ namespace platformator_editor
 {
 enum class HierarchyRowKind
 {
-    Object,
-    ComponentsNode,
-    Component
+    Object
 };
 
 struct HierarchyRow
 {
     HierarchyRowKind kind = HierarchyRowKind::Object;
     int id = 0;
-    int ownerObjectId = 0;
     std::size_t depth = 0;
     std::string label;
     bool hasChildren = false;
@@ -78,7 +75,6 @@ class HierarchyPanel
     bool cacheValid_ = false;
     std::unordered_set<int> expandedObjects_;
     std::unordered_set<int> knownObjectIds_;
-    std::unordered_set<int> collapsedComponentGroups_;
     std::unordered_map<int, std::size_t> objectRowIndexes_;
     std::vector<int> displayedObjectOrder_;
     std::vector<char> renameBuffer_;

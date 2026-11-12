@@ -130,6 +130,7 @@ enum class SceneGestureKind
 
 enum class SceneTool
 {
+    Hand,
     Move,
     Rotate,
     Scale,

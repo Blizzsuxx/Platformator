@@ -57,6 +57,21 @@ class InspectorPanel
                    std::optional<int> componentId, std::vector<FieldPathSegment> path,
                    const char *label, int defaultValue,
                    const std::vector<std::pair<int, const char *>> &values);
+    bool draw_compact_vector2(DocumentSession &document, EditCommandService &commands,
+                              int objectId, std::optional<int> componentId,
+                              std::vector<FieldPathSegment> basePath, const char *label,
+                              float defaultX = 0.0f, float defaultY = 0.0f,
+                              std::optional<float> minimum = std::nullopt,
+                              std::optional<float> maximum = std::nullopt,
+                              float baseStep = 0.1f, float snapIncrement = 0.5f);
+    bool draw_compact_rotation(DocumentSession &document, EditCommandService &commands,
+                               int objectId, std::optional<int> componentId,
+                               std::vector<FieldPathSegment> path, const char *label,
+                               float defaultValue = 0.0f,
+                               float baseStep = 1.0f, float snapIncrement = 15.0f);
+    void draw_common_compact_transform(DocumentSession &document, SelectionModel &selection,
+                                       EditCommandService &commands,
+                                       const std::vector<int> &objectIds);
     bool set(DocumentSession &document, EditCommandService &commands, int objectId,
              std::optional<int> componentId, std::vector<FieldPathSegment> path, Json value);
     bool field_matches_search(const DocumentSession &document, int objectId,
@@ -90,6 +105,22 @@ class InspectorPanel
         bool wasActive = false;
     };
     std::unordered_map<std::uint32_t, IntegerDraft> integerDrafts_;
+    struct NumericScrubState
+    {
+        bool active = false;
+        float startValue = 0.0f;
+        float currentValue = 0.0f;
+        std::vector<FieldPathSegment> path;
+        int objectId = 0;
+        std::optional<int> componentId;
+        std::vector<int> targetObjectIds;
+        std::vector<float> multiStartValues;
+        float baseStep = 0.1f;
+        float snapIncrement = 0.5f;
+        std::optional<float> minimum;
+        std::optional<float> maximum;
+    };
+    NumericScrubState scrubState_;
     BehaviorFieldsPanel behaviorFields_;
     ResourceIndex *resourceIndex_ = nullptr;
     enum class SemanticOperation
@@ -100,6 +131,7 @@ class InspectorPanel
         CopySettings,
         PasteSettings,
         ResetSettings,
+        RemoveComponent,
         SaveTemplate
     };
     struct SemanticTarget

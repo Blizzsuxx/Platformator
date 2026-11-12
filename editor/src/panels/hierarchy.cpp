@@ -18,6 +18,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace platformator_editor
 {
@@ -302,12 +303,6 @@ std::vector<SemanticNode> HierarchyPanel::semantic_nodes(
     const auto objectNodeId = [&](int id) {
         return std::string(scope) + "/object/" + std::to_string(id);
     };
-    const auto componentsNodeId = [&](int id) {
-        return std::string(scope) + "/components/" + std::to_string(id);
-    };
-    const auto componentNodeId = [&](int id) {
-        return std::string(scope) + "/component/" + std::to_string(id);
-    };
     std::unordered_set<int> visibleRows;
     visibleRows.reserve(semanticVisibleRows_.size());
     for (const auto &visible : semanticVisibleRows_)
@@ -318,12 +313,7 @@ std::vector<SemanticNode> HierarchyPanel::semantic_nodes(
         if (visible.rowIndex < 0 || static_cast<std::size_t>(visible.rowIndex) >= rows_.size())
             continue;
         const auto &row = rows_[static_cast<std::size_t>(visible.rowIndex)];
-        if ((row.kind == HierarchyRowKind::Object &&
-             !document.indexes.objectsById.contains(row.id)) ||
-            (row.kind == HierarchyRowKind::ComponentsNode &&
-             !document.indexes.objectsById.contains(row.ownerObjectId)) ||
-            (row.kind == HierarchyRowKind::Component &&
-             !document.indexes.componentsById.contains(row.id)))
+        if (!document.indexes.objectsById.contains(row.id))
             continue;
         SemanticNode node;
         node.role = SemanticRole::ListItem;
@@ -334,62 +324,23 @@ std::vector<SemanticNode> HierarchyPanel::semantic_nodes(
         node.bounds = visible.bounds;
         node.actions = {"activate"};
 
-        if (row.kind == HierarchyRowKind::Object)
+        node.id = objectNodeId(row.id);
+        node.parentId = rootId;
+        if (row.parentRowIndex >= 0 && visibleRows.contains(row.parentRowIndex))
         {
-            node.id = objectNodeId(row.id);
-            node.parentId = rootId;
-            if (row.parentRowIndex >= 0 && visibleRows.contains(row.parentRowIndex))
-            {
-                const auto &parent = rows_[static_cast<std::size_t>(row.parentRowIndex)];
-                if (parent.kind == HierarchyRowKind::Object)
-                    node.parentId = objectNodeId(parent.id);
-            }
-            node.selected = !selection.componentId &&
-                (selection.objectId == row.id ||
-                 std::find(selection.selectedObjectIds.begin(),
-                           selection.selectedObjectIds.end(), row.id) !=
-                     selection.selectedObjectIds.end());
-            node.focused = node.selected && selection.focusedPanel == FocusedPanel::Hierarchy;
-            node.expanded = expandedObjects_.contains(row.id);
-            node.help = "GameObject, ID " + std::to_string(row.id);
-            node.actions.push_back("reveal");
+            const auto &parent = rows_[static_cast<std::size_t>(row.parentRowIndex)];
+            if (parent.kind == HierarchyRowKind::Object)
+                node.parentId = objectNodeId(parent.id);
         }
-        else if (row.kind == HierarchyRowKind::ComponentsNode)
-        {
-            node.id = componentsNodeId(row.ownerObjectId);
-            node.parentId = objectNodeId(row.ownerObjectId);
-            if (row.parentRowIndex >= 0 && visibleRows.contains(row.parentRowIndex))
-            {
-                const auto &parent = rows_[static_cast<std::size_t>(row.parentRowIndex)];
-                node.parentId = parent.kind == HierarchyRowKind::Object
-                    ? objectNodeId(parent.id) : rootId;
-            }
-            else
-                node.parentId = rootId;
-            node.expanded = !collapsedComponentGroups_.contains(row.ownerObjectId);
-            node.selected = selection.objectId == row.ownerObjectId;
-            node.focused = node.selected && selection.focusedPanel == FocusedPanel::Hierarchy;
-            node.help = "Components for GameObject " + std::to_string(row.ownerObjectId);
-        }
-        else
-        {
-            node.id = componentNodeId(row.id);
-            node.parentId = componentsNodeId(row.ownerObjectId);
-            if (row.parentRowIndex < 0 || !visibleRows.contains(row.parentRowIndex))
-                node.parentId = rootId;
-            else
-            {
-                const auto &parent = rows_[static_cast<std::size_t>(row.parentRowIndex)];
-                if (parent.kind != HierarchyRowKind::ComponentsNode ||
-                    parent.ownerObjectId != row.ownerObjectId)
-                    node.parentId = rootId;
-            }
-            node.selected = selection.componentId == row.id &&
-                            selection.objectId == row.ownerObjectId;
-            node.focused = node.selected && selection.focusedPanel == FocusedPanel::Hierarchy;
-            node.help = "Component " + std::to_string(row.id) + " on GameObject " +
-                        std::to_string(row.ownerObjectId);
-        }
+        node.selected = !selection.componentId &&
+            (selection.objectId == row.id ||
+             std::find(selection.selectedObjectIds.begin(),
+                       selection.selectedObjectIds.end(), row.id) !=
+                 selection.selectedObjectIds.end());
+        node.focused = node.selected && selection.focusedPanel == FocusedPanel::Hierarchy;
+        node.expanded = expandedObjects_.contains(row.id);
+        node.help = "GameObject, ID " + std::to_string(row.id);
+        node.actions.push_back("reveal");
         result.push_back(std::move(node));
     }
     return result;
@@ -401,8 +352,6 @@ bool HierarchyPanel::dispatch_semantic_action(
 {
     const std::string base(scope);
     const std::string objectPrefix = base + "/object/";
-    const std::string componentsPrefix = base + "/components/";
-    const std::string componentPrefix = base + "/component/";
     const auto parse_id = [](std::string_view text) -> std::optional<int> {
         int value = 0;
         const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
@@ -426,28 +375,6 @@ bool HierarchyPanel::dispatch_semantic_action(
             reveal_object(document, *objectId);
         return action.action == "activate" || action.action == "reveal";
     }
-    if (action.nodeId.starts_with(componentsPrefix))
-    {
-        const auto objectId = parse_id(
-            std::string_view(action.nodeId).substr(componentsPrefix.size()));
-        if (objectId && document.indexes.objectsById.contains(*objectId) &&
-            action.action == "activate")
-            select_object(*objectId);
-        return action.action == "activate";
-    }
-    if (action.nodeId.starts_with(componentPrefix))
-    {
-        const auto componentId = parse_id(
-            std::string_view(action.nodeId).substr(componentPrefix.size()));
-        if (componentId && action.action == "activate")
-        {
-            const auto component = document.indexes.componentsById.find(*componentId);
-            if (component != document.indexes.componentsById.end())
-                selection.set(document, Selection{component->second.ownerObjectId, *componentId,
-                    std::nullopt, FocusedPanel::Hierarchy, hostGeneration});
-        }
-        return action.action == "activate";
-    }
     return false;
 }
 
@@ -465,7 +392,6 @@ void HierarchyPanel::restore_expanded_object_ids(const DocumentSession &document
         (void)location;
         knownObjectIds_.insert(id);
     }
-    collapsedComponentGroups_.clear();
     cachedGeneration_ = document.documentGeneration;
     initializedExpansion_ = true;
     cacheValid_ = false;
@@ -477,7 +403,6 @@ void HierarchyPanel::reset_expansion_for_document() noexcept
 {
     expandedObjects_.clear();
     knownObjectIds_.clear();
-    collapsedComponentGroups_.clear();
     initializedExpansion_ = false;
     cachedGeneration_ = 0;
     cacheValid_ = false;
@@ -551,9 +476,7 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
     objectRowIndexes_.clear();
     displayedObjectOrder_.clear();
     const std::size_t objectCount = document.indexes.objectsById.size();
-    const std::size_t componentCount = document.indexes.componentsById.size();
-    if (objectCount <= (std::numeric_limits<std::size_t>::max() - componentCount) / 2)
-        rows_.reserve(objectCount * 2 + componentCount);
+    rows_.reserve(objectCount);
     objectRowIndexes_.reserve(objectCount);
     displayedObjectOrder_.reserve(objectCount);
     const bool newDocument = !initializedExpansion_ || cachedGeneration_ != document.documentGeneration;
@@ -561,7 +484,6 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
     {
         expandedObjects_.clear();
         knownObjectIds_.clear();
-        collapsedComponentGroups_.clear();
     }
 
     for (const int id : document.indexes.orderedObjectIds)
@@ -575,11 +497,21 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
         if (!isNewObject)
             continue;
         const auto children = object->find("children");
-        const auto components = object->find("components");
         const bool hasChildren = children != object->end() && children->is_array() && !children->empty();
-        const bool hasComponents = components != object->end() && components->is_array() && !components->empty();
-        if (hasChildren || hasComponents)
+        if (hasChildren && newDocument)
             expandedObjects_.insert(id);
+        if (!newDocument)
+        {
+            int currentId = id;
+            while (true)
+            {
+                const auto parent = document.indexes.parentById.find(currentId);
+                if (parent == document.indexes.parentById.end() || !parent->second)
+                    break;
+                expandedObjects_.insert(*parent->second);
+                currentId = *parent->second;
+            }
+        }
     }
     knownObjectIds_.clear();
     knownObjectIds_.reserve(document.indexes.objectsById.size());
@@ -591,19 +523,6 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
 
     if (newDocument)
     {
-        for (const auto &[componentId, location] : document.indexes.componentsById)
-        {
-            (void)componentId;
-            int ownerObjectId = location.ownerObjectId;
-            while (true)
-            {
-                expandedObjects_.insert(ownerObjectId);
-                const auto parent = document.indexes.parentById.find(ownerObjectId);
-                if (parent == document.indexes.parentById.end() || !parent->second)
-                    break;
-                ownerObjectId = *parent->second;
-            }
-        }
         initializedExpansion_ = true;
     }
 
@@ -628,35 +547,16 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
             ++it;
     }
 
-    for (auto it = collapsedComponentGroups_.begin(); it != collapsedComponentGroups_.end();)
-    {
-        const auto location = document.indexes.objectsById.find(*it);
-        const Json *object = location == document.indexes.objectsById.end()
-            ? nullptr : resolve_object(document.root, location->second);
-        if (object == nullptr)
-        {
-            it = collapsedComponentGroups_.erase(it);
-            continue;
-        }
-        const auto components = object->find("components");
-        if (components == object->end() || !components->is_array() || components->empty())
-            it = collapsedComponentGroups_.erase(it);
-        else
-            ++it;
-    }
-
     struct Pending
     {
         const Json *value = nullptr;
-        int ownerObjectId = 0;
         std::size_t depth = 0;
-        HierarchyRowKind kind = HierarchyRowKind::Object;
         int parentRowIndex = -1;
     };
     std::vector<Pending> pending;
-    pending.reserve(document.indexes.objectsById.size() + document.indexes.componentsById.size());
+    pending.reserve(document.indexes.objectsById.size());
     for (std::size_t index = document.root.size(); index > 0; --index)
-        pending.push_back({&document.root[index - 1], 0, 0, HierarchyRowKind::Object, -1});
+        pending.push_back({&document.root[index - 1], 0, -1});
 
     while (!pending.empty())
     {
@@ -664,40 +564,13 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
         pending.pop_back();
         if (current.value == nullptr || !current.value->is_object())
             continue;
-        if (current.kind == HierarchyRowKind::ComponentsNode)
-        {
-            const int groupIndex = static_cast<int>(rows_.size());
-            rows_.push_back(HierarchyRow{HierarchyRowKind::ComponentsNode, current.ownerObjectId,
-                                         current.ownerObjectId, current.depth, "Components", true,
-                                         current.parentRowIndex});
-            const auto components = current.value->find("components");
-            if (!collapsedComponentGroups_.contains(current.ownerObjectId) &&
-                components != current.value->end() && components->is_array())
-            {
-                for (std::size_t index = components->size(); index > 0; --index)
-                    pending.push_back({&(*components)[index - 1], current.ownerObjectId,
-                                       current.depth + 1, HierarchyRowKind::Component, groupIndex});
-            }
-            continue;
-        }
-        if (current.kind == HierarchyRowKind::Component)
-        {
-            const int componentId = current.value->value("id", 0);
-            rows_.push_back(HierarchyRow{HierarchyRowKind::Component, componentId,
-                                         current.ownerObjectId, current.depth,
-                                         component_name(*current.value), false,
-                                         current.parentRowIndex});
-            continue;
-        }
 
         const int objectId = current.value->value("id", 0);
         const auto name = current.value->value("name", std::string("GameObject"));
         const auto children = current.value->find("children");
-        const auto components = current.value->find("components");
-        const bool hasChildren = (children != current.value->end() && children->is_array() && !children->empty()) ||
-                                 (components != current.value->end() && components->is_array() && !components->empty());
+        const bool hasChildren = children != current.value->end() && children->is_array() && !children->empty();
         const int objectRowIndex = static_cast<int>(rows_.size());
-        rows_.push_back(HierarchyRow{HierarchyRowKind::Object, objectId, objectId,
+        rows_.push_back(HierarchyRow{HierarchyRowKind::Object, objectId,
                                      current.depth, object_hierarchy_label(name, objectId), hasChildren,
                                      current.parentRowIndex});
         objectRowIndexes_.insert_or_assign(objectId, static_cast<std::size_t>(objectRowIndex));
@@ -708,13 +581,7 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
         if (children != current.value->end() && children->is_array())
         {
             for (std::size_t index = children->size(); index > 0; --index)
-                pending.push_back({&(*children)[index - 1], objectId, current.depth + 1,
-                                   HierarchyRowKind::Object, objectRowIndex});
-        }
-        if (components != current.value->end() && components->is_array() && !components->empty())
-        {
-            pending.push_back({current.value, objectId, current.depth + 1,
-                               HierarchyRowKind::ComponentsNode, objectRowIndex});
+                pending.push_back({&(*children)[index - 1], current.depth + 1, objectRowIndex});
         }
     }
     firstChildRows_.assign(rows_.size(), -1);
@@ -743,31 +610,15 @@ void HierarchyPanel::refresh_labels(const DocumentSession &document)
     work::record(work::Counter::HierarchyLabelRows, rows_.size());
     for (auto &row : rows_)
     {
-        if (row.kind == HierarchyRowKind::ComponentsNode)
+        const auto location = document.indexes.objectsById.find(row.id);
+        if (location == document.indexes.objectsById.end())
             continue;
-        if (row.kind == HierarchyRowKind::Object)
+        const Json *object = resolve_object(document.root, location->second);
+        if (object != nullptr && object->is_object())
         {
-            const auto location = document.indexes.objectsById.find(row.id);
-            if (location == document.indexes.objectsById.end())
-                continue;
-            const Json *object = resolve_object(document.root, location->second);
-            if (object != nullptr && object->is_object())
-            {
-                row.label = object_hierarchy_label(
-                    object->value("name", std::string("GameObject")), row.id);
-            }
-            continue;
+            row.label = object_hierarchy_label(
+                object->value("name", std::string("GameObject")), row.id);
         }
-        const auto location = document.indexes.componentsById.find(row.id);
-        if (location == document.indexes.componentsById.end())
-            continue;
-        const Json *owner = resolve_object(document.root, document.indexes.objectsById.at(location->second.ownerObjectId));
-        if (owner == nullptr)
-            continue;
-        const auto components = owner->find("components");
-        if (components != owner->end() && components->is_array() &&
-            location->second.componentIndex < components->size())
-            row.label = component_name((*components)[location->second.componentIndex]);
     }
     cachedValueRevision_ = document.valueRevision;
 }
@@ -907,16 +758,10 @@ void HierarchyPanel::update_search_visibility(const DocumentSession &document,
     for (std::size_t rowIndex = 0; rowIndex < rows_.size(); ++rowIndex)
     {
         const auto &row = rows_[rowIndex];
-        bool visible = false;
-        if (row.kind == HierarchyRowKind::Object)
-            visible = searchMatchedObjectIds_.contains(row.id) ||
-                      searchContextObjectIds_.contains(row.id) ||
-                      selectedObjectId == row.id;
-        else if (row.kind == HierarchyRowKind::Component)
-            visible = searchMatchedComponentIds_.contains(row.id);
-        else if (row.kind == HierarchyRowKind::ComponentsNode)
-            visible = (componentsQuery && document.indexes.objectsById.contains(row.ownerObjectId)) ||
-                      searchComponentOwnerIds_.contains(row.ownerObjectId);
+        const bool visible = searchMatchedObjectIds_.contains(row.id) ||
+                             searchContextObjectIds_.contains(row.id) ||
+                             searchComponentOwnerIds_.contains(row.id) ||
+                             selectedObjectId == row.id;
         if (visible)
             mark_ancestors(static_cast<int>(rowIndex));
     }
@@ -1092,7 +937,6 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         {
             const int componentId = result.command->payload.value("id", 0);
             expandedObjects_.insert(objectId);
-            collapsedComponentGroups_.erase(objectId);
             selection.set(document, Selection{objectId, componentId, std::nullopt,
                                               FocusedPanel::Hierarchy});
             commands.set_last_selection_state({before, selection.current()});
@@ -1222,8 +1066,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         if (parentIndex < 0)
             continue;
         const auto &parent = rows[static_cast<std::size_t>(parentIndex)];
-        const auto rowX = treeBaseX + static_cast<float>(row.depth) * hierarchyIndent +
-                          (row.kind == HierarchyRowKind::Component ? 2.0f : 8.0f);
+        const auto rowX = treeBaseX + static_cast<float>(row.depth) * hierarchyIndent + 8.0f;
         const float parentX = treeBaseX + static_cast<float>(parent.depth) * hierarchyIndent + 8.0f;
         const float rowCenterY = firstRowPosition.y + static_cast<float>(rowIndex) * rowStride + rowHeight * 0.5f;
         drawList->AddLine({parentX, rowCenterY}, {rowX, rowCenterY}, lineColor, lineThickness);
@@ -1464,68 +1307,6 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     }
                 }
             }
-            else if (row.kind == HierarchyRowKind::ComponentsNode)
-            {
-                const bool wasExpanded = !collapsedComponentGroups_.contains(row.ownerObjectId);
-                ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth |
-                                           ImGuiTreeNodeFlags_OpenOnArrow |
-                                           ImGuiTreeNodeFlags_NoTreePushOnOpen;
-                ImGui::SetNextItemOpen(wasExpanded, ImGuiCond_Always);
-                const bool open = ImGui::TreeNodeEx(row.label.c_str(), flags);
-                const ImVec2 rowMinimum = ImGui::GetItemRectMin();
-                const ImVec2 rowMaximum = ImGui::GetItemRectMax();
-                semanticBounds = {rowMinimum.x, rowMinimum.y,
-                                  rowMaximum.x - rowMinimum.x,
-                                  rowMaximum.y - rowMinimum.y};
-                hasSemanticBounds = true;
-                if (open != wasExpanded)
-                {
-                    if (open)
-                        collapsedComponentGroups_.erase(row.ownerObjectId);
-                    else
-                        collapsedComponentGroups_.insert(row.ownerObjectId);
-                    invalidate();
-                }
-                if (ImGui::IsItemClicked())
-                {
-                    selection.set(document, selected_object(row.ownerObjectId));
-                    lastRevealedObjectId_ = row.ownerObjectId;
-                }
-                else if (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter))
-                {
-                    selection.set(document, selected_object(row.ownerObjectId));
-                    lastRevealedObjectId_ = row.ownerObjectId;
-                }
-            }
-            else
-            {
-                const bool selected = selection.current().componentId == row.id;
-                if (ImGui::Selectable(row.label.c_str(), selected))
-                {
-                    selection.set(document, Selection{row.ownerObjectId, row.id, std::nullopt,
-                                                      FocusedPanel::Hierarchy});
-                    lastRevealedObjectId_ = row.ownerObjectId;
-                }
-                const ImVec2 rowMinimum = ImGui::GetItemRectMin();
-                const ImVec2 rowMaximum = ImGui::GetItemRectMax();
-                semanticBounds = {rowMinimum.x, rowMinimum.y,
-                                  rowMaximum.x - rowMinimum.x,
-                                  rowMaximum.y - rowMinimum.y};
-                hasSemanticBounds = true;
-                if (ImGui::BeginPopupContextItem("Component actions"))
-                {
-                    if (ImGui::MenuItem("Remove Component"))
-                    {
-                        const Selection before = selection.current();
-                        const auto removed = commands.remove_component(document, row.ownerObjectId, row.id);
-                        selection.repair(document);
-                        if (removed.status == CommandStatus::Changed)
-                            commands.set_last_selection_state({before, selection.current()});
-                        invalidate();
-                    }
-                    ImGui::EndPopup();
-                }
-            }
             if (hasSemanticBounds)
                 semanticVisibleRows_.push_back({rowIndex, semanticBounds});
             ImGui::Unindent(static_cast<float>(row.depth) * hierarchyIndent);
@@ -1536,6 +1317,37 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         }
         if (structureChanged)
             break;
+    }
+    const ImVec2 windowPosition = ImGui::GetWindowPos();
+    const ImVec2 contentMinimum = ImGui::GetCursorScreenPos();
+    const ImVec2 windowSize = ImGui::GetWindowSize();
+    const ImVec2 padding = ImGui::GetStyle().WindowPadding;
+    const ImRect dropBounds(contentMinimum,
+                            ImVec2(windowPosition.x + windowSize.x - padding.x,
+                                   windowPosition.y + windowSize.y - padding.y));
+    if (dropBounds.Max.y > dropBounds.Min.y && dropBounds.Max.x > dropBounds.Min.x)
+    {
+        if (ImGui::BeginDragDropTargetCustom(dropBounds, ImGui::GetID("##hierarchy-background-drop")))
+        {
+            const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT");
+            if (payload != nullptr && payload->Data != nullptr && payload->DataSize == sizeof(int))
+            {
+                int draggedObjectId = 0;
+                std::memcpy(&draggedObjectId, payload->Data, sizeof(draggedObjectId));
+                const auto &current = selection.current();
+                std::vector<int> moveIds = current.selectedObjectIds;
+                if (std::find(moveIds.begin(), moveIds.end(), draggedObjectId) == moveIds.end())
+                    moveIds = {draggedObjectId};
+                const auto moved = commands.move_objects(document, moveIds, std::nullopt,
+                    document.root.size(), {current, current});
+                if (moved.status == CommandStatus::Changed)
+                {
+                    invalidate();
+                    structureChanged = true;
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
     }
     if (ImGui::BeginPopupContextWindow("Hierarchy empty-space actions",
                                         ImGuiPopupFlags_MouseButtonRight |

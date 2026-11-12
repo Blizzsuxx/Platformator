@@ -28,19 +28,19 @@ using namespace platformator_editor_test;
 
 namespace
 {
-Json workspace_scene(std::string name)
-{
-    auto root = object(0, std::move(name));
-    root["unfamiliar"] = Json{{"kept", true}};
-    return Json::array({root});
-}
+    Json workspace_scene(std::string name)
+    {
+        auto root = object(0, std::move(name));
+        root["unfamiliar"] = Json{{"kept", true}};
+        return Json::array({root});
+    }
 
-void write_scene(const std::filesystem::path &path, const Json &sceneData)
-{
-    std::ofstream stream(path, std::ios::binary);
-    stream.exceptions(std::ios::badbit | std::ios::failbit);
-    stream << sceneData.dump(2);
-}
+    void write_scene(const std::filesystem::path &path, const Json &sceneData)
+    {
+        std::ofstream stream(path, std::ios::binary);
+        stream.exceptions(std::ios::badbit | std::ios::failbit);
+        stream << sceneData.dump(2);
+    }
 } // namespace
 
 void run_workspace_lifecycle_cases()
@@ -131,7 +131,8 @@ void run_workspace_lifecycle_cases()
     require(invalidValidation.structurallyValid && invalidValidation.blocksRun &&
                 workspace.document().root == invalidKnownValue && workspace.dirty() &&
                 std::any_of(invalidValidation.issues.begin(), invalidValidation.issues.end(),
-                            [](const ValidationIssue &issue) {
+                            [](const ValidationIssue &issue)
+                            {
                                 return issue.fieldPath == "scale.x" && issue.blocksRun;
                             }),
             "Validate must report known invalid values by field, block Run and preserve editable dirty data");
@@ -202,8 +203,7 @@ void run_workspace_root_replacement_cases()
     DocumentWorkspace workspace(firstProject, firstAssets);
     EditCommandService history;
     workspace.bind_history(history);
-    const PropertyAddress nameAddress{workspace.document().documentGeneration, 0, std::nullopt,
-                                      std::nullopt, {std::string("name")}};
+    const PropertyAddress nameAddress{workspace.document().documentGeneration, 0, std::nullopt, std::nullopt, {std::string("name")}};
     require(static_cast<bool>(history.set_property(workspace.document_for_edit(), nameAddress,
                                                    "Edited before root switch")),
             "root-switch fixture must contain a real dirty history command");
@@ -342,8 +342,8 @@ void run_preference_cases()
     require(migrate_scene_window_identity(migratedSceneLayout) == migratedSceneLayout,
             "Scene identity migration must be idempotent");
     const std::string staleBehaviorLayout = layoutSeed +
-        "[Window][panel.behaviors]\nPos=20,20\nSize=300,200\n"
-        "[Window][panel.settings]\nPos=30,30\nSize=300,200\n";
+                                            "[Window][panel.behaviors]\nPos=20,20\nSize=300,200\n"
+                                            "[Window][panel.settings]\nPos=30,30\nSize=300,200\n";
     const auto migratedPanelLayout = migrate_scene_window_identity(staleBehaviorLayout);
     require(migratedPanelLayout.find("[Window][panel.behaviors]") == std::string::npos &&
                 migratedPanelLayout.find("[Window][panel.settings]") == std::string::npos &&
@@ -351,7 +351,8 @@ void run_preference_cases()
                 migrate_scene_window_identity(migratedPanelLayout) == migratedPanelLayout,
             "saved docking layouts must discard the retired Behaviors panel while retaining other panels");
     require(layout_needs_recovery("[Docking][Data]\nDockSpace ID=0x1 Pos=0,0 Size=1280,800\n"
-                                  "[Window][Scene]\nPos=20,20\nSize=600,400\n", 1280, 800) == false &&
+                                  "[Window][Scene]\nPos=20,20\nSize=600,400\n",
+                                  1280, 800) == false &&
                 layout_needs_recovery("[Docking][Data]\nnot a valid docking node\n", 1280, 800) &&
                 layout_needs_recovery("[Docking][Data]\n[Window][Floating]\nPos=5000,5000\nSize=200,100\n",
                                       1280, 800),
@@ -395,7 +396,7 @@ void run_preference_cases()
     const auto blockedParent = temporary.path() / "not-a-directory";
     std::ofstream(blockedParent) << "occupied";
     const ProjectPreferencePaths brokenPaths{blockedParent / "settings.json", blockedParent / "layout.ini",
-                                               paths.projectKey};
+                                             paths.projectKey};
     const auto failedSave = save_workspace_preferences(brokenPaths, loaded.preferences, loaded.layout);
     require(!failedSave.succeeded() && !failedSave.message.empty(),
             "deferred preference flushes must preserve durability failures for user-visible reporting");
@@ -420,7 +421,8 @@ void run_preference_cases()
                 roundTrip.preferences.resourceLimits.at("decodeWorkingBytes") == 268435456,
             "v2 project settings, host layouts, per-tab state and authoring preferences must round-trip");
 
-    const auto read_text = [](const std::filesystem::path &path) {
+    const auto read_text = [](const std::filesystem::path &path)
+    {
         std::ifstream stream(path, std::ios::binary);
         return std::string{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
     };
@@ -430,7 +432,7 @@ void run_preference_cases()
     settingsOnlyPreferences.userScale = 1.75f;
     work::reset();
     const auto settingsOnly = save_workspace_preferences(paths, settingsOnlyPreferences,
-                                                          loaded.layout, true, false);
+                                                         loaded.layout, true, false);
     require(settingsOnly.succeeded() && read_text(paths.layoutPath) == layoutBeforeSettingsOnly &&
                 read_text(paths.settingsPath) != settingsBeforeSettingsOnly,
             "a settings-only commit must preserve the layout file and report its own write outcome");
@@ -443,7 +445,7 @@ void run_preference_cases()
     const auto settingsAfterSettingsOnly = read_text(paths.settingsPath);
     const auto layoutOnlyValue = std::string("[Window][Workspace]\nPos=32,48\n");
     const auto layoutOnly = save_workspace_preferences(paths, loaded.preferences,
-                                                        layoutOnlyValue, false, true);
+                                                       layoutOnlyValue, false, true);
     require(layoutOnly.succeeded() && read_text(paths.settingsPath) == settingsAfterSettingsOnly &&
                 read_text(paths.layoutPath) == layoutOnlyValue,
             "a layout-only commit must preserve settings bytes and report its own write outcome");
@@ -460,7 +462,8 @@ void run_preference_cases()
     DeferredPreferenceSave interactionSave;
     std::size_t interactionSettingsWrites = 0;
     std::size_t interactionLayoutWrites = 0;
-    const auto interactionWriter = [&](bool writeSettings, bool writeLayout) {
+    const auto interactionWriter = [&](bool writeSettings, bool writeLayout)
+    {
         interactionSettingsWrites += writeSettings ? 1U : 0U;
         interactionLayoutWrites += writeLayout ? 1U : 0U;
         return save_workspace_preferences(paths, livePreferences, liveLayout, writeSettings, writeLayout);
@@ -470,7 +473,8 @@ void run_preference_cases()
             "an unchanged preference frame must not invoke settings, layout or durability writes");
 
     auto burstOrigin = firstEdit + std::chrono::seconds(10);
-    const auto run_interaction_burst = [&](auto update, int frames, std::string_view interaction) {
+    const auto run_interaction_burst = [&](auto update, int frames, std::string_view interaction)
+    {
         const auto settingsBefore = interactionSettingsWrites;
         const auto layoutBefore = interactionLayoutWrites;
         auto lastFrame = burstOrigin;
@@ -492,51 +496,43 @@ void run_preference_cases()
         burstOrigin = flushAt + std::chrono::seconds(1);
     };
 
-    run_interaction_burst([&](int frame) {
-        livePreferences.snap.position = 1.0f + static_cast<float>(frame) * 0.01f;
-    }, 30, "snap DragFloat");
+    run_interaction_burst([&](int frame)
+                          { livePreferences.snap.position = 1.0f + static_cast<float>(frame) * 0.01f; }, 30, "snap DragFloat");
     livePreferences.openTabs.push_back(SavedTabPreferences{firstScene});
-    run_interaction_burst([&](int frame) {
-        livePreferences.openTabs.front().viewZoom = 1.0f + static_cast<float>(frame) * 0.005f;
-    }, 30, "viewport wheel zoom");
-    run_interaction_burst([&](int) {
-        livePreferences.run.target.push_back('x');
-    }, 24, "Run Settings typing");
-    run_interaction_burst([&](int frame) {
-        livePreferences.openTabs.front().viewCenterX = static_cast<float>(frame) * 0.5f;
-    }, 120, "continuous viewport updates");
+    run_interaction_burst([&](int frame)
+                          { livePreferences.openTabs.front().viewZoom = 1.0f + static_cast<float>(frame) * 0.005f; }, 30, "viewport wheel zoom");
+    run_interaction_burst([&](int)
+                          { livePreferences.run.target.push_back('x'); }, 24, "Run Settings typing");
+    run_interaction_burst([&](int frame)
+                          { livePreferences.openTabs.front().viewCenterX = static_cast<float>(frame) * 0.5f; }, 120, "continuous viewport updates");
 
     WorkspacePreferencePersistence retryPersistence(livePreferences, liveLayout);
     auto retryPreferences = livePreferences;
     retryPreferences.snap.rotationDegrees = 30.0f;
     std::size_t failedWriterCalls = 0;
     const auto failedFlush = retryPersistence.flush(retryPreferences, liveLayout,
-        [&](bool writeSettings, bool writeLayout) {
-            ++failedWriterCalls;
-            return save_workspace_preferences(brokenPaths, retryPreferences, liveLayout,
-                                              writeSettings, writeLayout);
-        });
+                                                    [&](bool writeSettings, bool writeLayout)
+                                                    {
+                                                        ++failedWriterCalls;
+                                                        return save_workspace_preferences(brokenPaths, retryPreferences, liveLayout,
+                                                                                          writeSettings, writeLayout);
+                                                    });
     require(!failedFlush.succeeded() && !failedFlush.settingsSaved && failedFlush.layoutSaved &&
                 failedWriterCalls == 1,
             "an injected settings failure must be reported while leaving that section dirty for retry");
     const auto retriedFlush = retryPersistence.flush(retryPreferences, liveLayout,
-        [&](bool writeSettings, bool writeLayout) {
-            ++failedWriterCalls;
-            return save_workspace_preferences(paths, retryPreferences, liveLayout,
-                                              writeSettings, writeLayout);
-        });
+                                                     [&](bool writeSettings, bool writeLayout)
+                                                     {
+                                                         ++failedWriterCalls;
+                                                         return save_workspace_preferences(paths, retryPreferences, liveLayout,
+                                                                                           writeSettings, writeLayout);
+                                                     });
     require(retriedFlush.succeeded() && failedWriterCalls == 2 &&
                 retryPersistence.flush(retryPreferences, liveLayout, {}).succeeded() && failedWriterCalls == 2,
             "a failed preference flush must be retryable and successful sections must not be rewritten");
 
     write_json(paths.settingsPath,
-               Json{{"version", 1}, {"projectKey", paths.projectKey},
-                    {"recentScene", firstScene.string()},
-                    {"panelVisibility", {{"panel.scene", false}}},
-                    {"userScale", 1.5}, {"navigationZoom", 2.0},
-                    {"editorWindow", {{"width", 1440}, {"height", 900}, {"maximized", true}}},
-                    {"run", {{"target", "legacy-game"}, {"buildPreset", "release"},
-                             {"production", true}, {"catalogProtocol", "common-runner-v1"}}}});
+               Json{{"version", 1}, {"projectKey", paths.projectKey}, {"recentScene", firstScene.string()}, {"panelVisibility", {{"panel.scene", false}}}, {"userScale", 1.5}, {"navigationZoom", 2.0}, {"editorWindow", {{"width", 1440}, {"height", 900}, {"maximized", true}}}, {"run", {{"target", "legacy-game"}, {"buildPreset", "release"}, {"production", true}, {"catalogProtocol", "common-runner-v1"}}}});
     const std::string legacyLayout = "[Window][Scene]\nPos=10,20\nSize=500,400\n";
     {
         std::ofstream legacyLayoutStream(paths.layoutPath, std::ios::binary | std::ios::trunc);
@@ -568,8 +564,7 @@ void run_preference_cases()
             "unsupported or corrupt preference versions must reset preferences without affecting scene state");
 
     write_json(paths.settingsPath,
-               Json{{"version", 1}, {"projectKey", paths.projectKey},
-                    {"run", {{"catalogProtocol", "arbitrary-v1"}}}});
+               Json{{"version", 1}, {"projectKey", paths.projectKey}, {"run", {{"catalogProtocol", "arbitrary-v1"}}}});
     auto invalidProtocol = load_workspace_preferences(paths.settingsPath, paths.layoutPath, projectRoot);
     require(invalidProtocol.recovered && invalidProtocol.preferences.run.catalogProtocol == "unavailable",
             "catalog preferences must accept only common-runner-v1 or unavailable");
@@ -635,11 +630,14 @@ void run_editor_wait_schedule_cases()
     require(!hoverProbe.should_inject_hover_input(),
             "input workload events must not contaminate the warmup frames");
     for (int frame = 0; frame < 2; ++frame)
-        require(hoverProbe.tick([] { return true; }, [] {}),
+        require(hoverProbe.tick([]
+                                { return true; }, [] {}),
                 "the GUI probe must continue through its configured warmup");
     require(hoverProbe.should_inject_hover_input(),
             "the selected hover workload must begin with its first measured frame");
-    require(hoverProbe.tick([] { return true; }, [] {}) && !hoverProbe.should_inject_hover_input(),
+    require(hoverProbe.tick([]
+                            { return true; }, [] {}) &&
+                !hoverProbe.should_inject_hover_input(),
             "the hover workload must inject one scene-window event every ten measured frames");
 
     std::ostringstream captured;
@@ -648,7 +646,8 @@ void run_editor_wait_schedule_cases()
     const auto started = EditorWaitClock::now();
     metricsProbe.note_input_event(started);
     metricsProbe.note_present(started + std::chrono::milliseconds(3), started - std::chrono::milliseconds(10));
-    metricsProbe.tick([] { return true; }, [] {});
+    metricsProbe.tick([]
+                      { return true; }, [] {});
     std::cout.rdbuf(previous);
     const auto output = captured.str();
     require(output.find("GUI_COLD_PREP_US,13000") != std::string::npos &&
@@ -665,18 +664,20 @@ void run_editor_action_and_style_cases()
     require(!defaultWindowSettings.highPixelDensity,
             "the new high-density window option must preserve the runtime default");
     const auto actions = editor_action_descriptors();
-    require(actions.size() == 20, "all workspace commands must have discoverable action descriptors");
+    require(actions.size() == 21, "all workspace commands must have discoverable action descriptors");
     for (const auto &action : actions)
         require(!action.label.empty() && !action.shortcut.empty(),
                 "each available workspace action must expose its label and shortcut");
-    const auto binding = [&](EditorAction action) -> std::string_view {
+    const auto binding = [&](EditorAction action) -> std::string_view
+    {
         for (const auto &descriptor : actions)
             if (descriptor.action == action)
                 return descriptor.shortcut;
         return {};
     };
-    require(binding(EditorAction::FrameAll) == "F" &&
-                binding(EditorAction::FrameSelected) == "Shift+F" &&
+    require(binding(EditorAction::FrameAll) == "Shift+F" &&
+                binding(EditorAction::FrameSelected) == "F" &&
+                binding(EditorAction::SelectHandTool) == "Q" &&
                 binding(EditorAction::SelectMoveTool) == "W" &&
                 binding(EditorAction::SelectRotateTool) == "E" &&
                 binding(EditorAction::SelectScaleTool) == "R" &&
@@ -687,17 +688,19 @@ void run_editor_action_and_style_cases()
     EditorInputCapture clearCapture{true, false, false, false, true};
     require(editor_action_allowed(EditorAction::Save, clearCapture) &&
                 editor_action_allowed(EditorAction::Preferences, clearCapture) &&
-                editor_action_allowed(EditorAction::FrameSelected, clearCapture),
+                editor_action_allowed(EditorAction::FrameSelected, clearCapture) &&
+                editor_action_allowed(EditorAction::SelectHandTool, clearCapture),
             "global actions and focused Scene actions must be available when input is uncaptured");
     require(dispatch_editor_key(EditorKey::F5, true, false, clearCapture) == EditorAction::Stop &&
-                dispatch_editor_key(EditorKey::F, true, false, clearCapture) == EditorAction::FrameSelected &&
-                dispatch_editor_key(EditorKey::F, false, false, clearCapture) == EditorAction::FrameAll &&
+                dispatch_editor_key(EditorKey::F, true, false, clearCapture) == EditorAction::FrameAll &&
+                dispatch_editor_key(EditorKey::F, false, false, clearCapture) == EditorAction::FrameSelected &&
+                dispatch_editor_key(EditorKey::Q, false, false, clearCapture) == EditorAction::SelectHandTool &&
                 dispatch_editor_key(EditorKey::Comma, false, true, clearCapture) == EditorAction::Preferences,
             "production key routing must map active-run Stop and Scene framing commands");
     for (const auto blockedCapture : {EditorInputCapture{false, false, false, false, true},
-                                       EditorInputCapture{true, true, false, false, true},
-                                       EditorInputCapture{true, false, true, false, true},
-                                       EditorInputCapture{true, false, false, true, true}})
+                                      EditorInputCapture{true, true, false, false, true},
+                                      EditorInputCapture{true, false, true, false, true},
+                                      EditorInputCapture{true, false, false, true, true}})
         require(!dispatch_editor_key(EditorKey::F5, true, false, blockedCapture) &&
                     !dispatch_editor_key(EditorKey::F, false, false, blockedCapture) &&
                     !dispatch_editor_key(EditorKey::Comma, false, true, blockedCapture),
@@ -778,33 +781,28 @@ void run_known_validation_cases()
     const auto cameraIssues = validate_document(cameraDocument);
     require(cameraIssues.blocksRun &&
                 std::any_of(cameraIssues.issues.begin(), cameraIssues.issues.end(),
-                            [](const ValidationIssue &issue) { return issue.fieldPath == "width"; }),
+                            [](const ValidationIssue &issue)
+                            { return issue.fieldPath == "width"; }),
             "conflicting legacy and canonical camera dimensions must be reported without choosing one");
 
     auto bodyDocument = make_default_document(projectRoot, assetRoot, 32);
     bodyDocument.root[0]["components"].push_back(
-        component(2, 4, Json{{"bodyType", 0}, {"gravity", true}, {"velocity", {{"x", 0.0}, {"y", 1.0}}},
-                             {"force", {{"x", 0.0}, {"y", 0.0}}}, {"mass", 0.0},
-                             {"angularVelocity", 0.0}, {"torque", 0.0}, {"friction", -1.0},
-                             {"restitution", 1.5}}));
+        component(2, 4, Json{{"bodyType", 0}, {"gravity", true}, {"velocity", {{"x", 0.0}, {"y", 1.0}}}, {"force", {{"x", 0.0}, {"y", 0.0}}}, {"mass", 0.0}, {"angularVelocity", 0.0}, {"torque", 0.0}, {"friction", -1.0}, {"restitution", 1.5}}));
     ++bodyDocument.structureRevision;
     const auto bodyIssues = validate_document(bodyDocument);
-    auto has_field = [](const ValidationResult &validation, std::string_view field) {
-        return std::any_of(validation.issues.begin(), validation.issues.end(), [&](const ValidationIssue &issue) {
-            return issue.fieldPath == field && issue.blocksRun;
-        });
+    auto has_field = [](const ValidationResult &validation, std::string_view field)
+    {
+        return std::any_of(validation.issues.begin(), validation.issues.end(), [&](const ValidationIssue &issue)
+                           { return issue.fieldPath == field && issue.blocksRun; });
     };
 
     auto optionalAssetDocument = make_default_document(projectRoot, assetRoot, 35);
     optionalAssetDocument.root[0]["components"].push_back(
-        component(2, 0, Json{{"currentFrameIndex", 0}, {"playbackSpeed", 1.0},
-                             {"playing", false}, {"animationClipFilePath", ""}}));
+        component(2, 0, Json{{"currentFrameIndex", 0}, {"playbackSpeed", 1.0}, {"playing", false}, {"animationClipFilePath", ""}}));
     optionalAssetDocument.root[0]["components"].push_back(
-        component(3, 1, Json{{"filePath", ""}, {"gain", 1.0},
-                             {"loopCount", 0}, {"autoPlay", false}}));
+        component(3, 1, Json{{"filePath", ""}, {"gain", 1.0}, {"loopCount", 0}, {"autoPlay", false}}));
     optionalAssetDocument.root[0]["components"].push_back(
-        component(4, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 32.0},
-                             {"height", 32.0}, {"sourceRectEnabled", false}}));
+        component(4, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 32.0}, {"height", 32.0}, {"sourceRectEnabled", false}}));
     ++optionalAssetDocument.structureRevision;
     const auto optionalAssets = validate_document(optionalAssetDocument);
     require(!optionalAssets.blocksRun && !has_field(optionalAssets, "animationClipFilePath") &&
@@ -821,8 +819,7 @@ void run_known_validation_cases()
 
     auto missingAssetFieldDocument = make_default_document(projectRoot, assetRoot, 36);
     missingAssetFieldDocument.root[0]["components"].push_back(
-        component(2, 0, Json{{"currentFrameIndex", 0}, {"playbackSpeed", 1.0},
-                             {"playing", false}, {"animationClipFilePath", ""}}));
+        component(2, 0, Json{{"currentFrameIndex", 0}, {"playbackSpeed", 1.0}, {"playing", false}, {"animationClipFilePath", ""}}));
     ++missingAssetFieldDocument.structureRevision;
     missingAssetFieldDocument.root[0]["components"][1].erase("animationClipFilePath");
     require(has_field(validate_document(missingAssetFieldDocument), "animationClipFilePath"),
@@ -847,9 +844,7 @@ void run_known_validation_cases()
 
     auto colliderDocument = make_default_document(projectRoot, assetRoot, 33);
     colliderDocument.root[0]["components"].push_back(
-        component(2, 3, Json{{"colliderType", 1}, {"width", 0.0}, {"height", 10.0},
-                             {"offset", {{"x", 0.0}, {"y", std::numeric_limits<double>::infinity()}}},
-                             {"trigger", false}, {"collisionGroup", -1}, {"collisionMask", 0}}));
+        component(2, 3, Json{{"colliderType", 1}, {"width", 0.0}, {"height", 10.0}, {"offset", {{"x", 0.0}, {"y", std::numeric_limits<double>::infinity()}}}, {"trigger", false}, {"collisionGroup", -1}, {"collisionMask", 0}}));
     ++colliderDocument.structureRevision;
     const auto colliderIssues = validate_document(colliderDocument);
     require(has_field(colliderIssues, "width") && has_field(colliderIssues, "offset.y") &&
@@ -874,11 +869,10 @@ void run_hierarchy_label_cache_cases()
             "hierarchy topology builds with the current object labels");
 
     EditCommandService commands;
-    commands.subscribe([&](const DocumentChange &change, const std::vector<int> &) {
-        hierarchy.apply_change(document, change);
-    });
+    commands.subscribe([&](const DocumentChange &change, const std::vector<int> &)
+                       { hierarchy.apply_change(document, change); });
     const auto address = address_for_document(document, 0, std::nullopt, std::nullopt,
-                                               {std::string("name")});
+                                              {std::string("name")});
     require(commands.set_property(document, address, "Renamed Camera").status == CommandStatus::Changed,
             "a committed label edit advances the document value revision");
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
@@ -899,7 +893,7 @@ void run_hierarchy_label_cache_cases()
                 afterRename[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)],
             "unchanged hierarchy frames must not revisit object and component labels");
     const auto positionAddress = address_for_document(document, 0, std::nullopt, std::nullopt,
-                                                       {std::string("position"), std::string("x")});
+                                                      {std::string("position"), std::string("x")});
     require(commands.set_property(document, positionAddress, 12.0).status == CommandStatus::Changed,
             "a pose edit must produce a typed non-label document delta");
     hierarchy.visible_rows(document);
@@ -931,10 +925,7 @@ void run_large_hierarchy_cache_cases()
     work::reset();
     flat.root[5000]["name"] = "Renamed middle object";
     ++flat.valueRevision;
-    const DocumentChange rename{flat.documentGeneration, flat.structureRevision, flat.valueRevision,
-        false, {ProjectGeneration{flat.projectGeneration}, flat.tabId,
-                DocumentGeneration{flat.documentGeneration}},
-        {5000}, {"name"}, {DocumentChangeCategory::Label}};
+    const DocumentChange rename{flat.documentGeneration, flat.structureRevision, flat.valueRevision, false, {ProjectGeneration{flat.projectGeneration}, flat.tabId, DocumentGeneration{flat.documentGeneration}}, {5000}, {"name"}, {DocumentChangeCategory::Label}};
     flatPanel.apply_change(flat, rename);
     const auto &renamedFlatRows = flatPanel.visible_rows(flat);
     require(renamedFlatRows[5000].label == "Renamed middle object (#5000)",
@@ -950,8 +941,8 @@ void run_large_hierarchy_cache_cases()
     rebuild_document_indexes(deep);
     HierarchyPanel deepPanel;
     const auto &deepRows = deepPanel.visible_rows(deep);
-    require(deepRows.size() == 384,
-            "depth-128 sprite chains must retain each object, component group and component row");
+    require(deepRows.size() == 128,
+            "depth-128 sprite chains must retain each object in the hierarchy tree");
 }
 
 void run_hierarchy_visible_connector_work_cases()
@@ -984,11 +975,11 @@ void run_hierarchy_visible_connector_work_cases()
     const auto counts = work::snapshot();
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     require(counts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] > 0 &&
-                counts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] < 384,
+                counts[static_cast<std::size_t>(work::Counter::HierarchyVisibleRows)] < 128,
             "hierarchy drawing must visit only the clipped depth-128 row range");
-    require(counts[static_cast<std::size_t>(work::Counter::HierarchyConnectorCandidates)] < 384,
+    require(counts[static_cast<std::size_t>(work::Counter::HierarchyConnectorCandidates)] < 128,
             "a clipped depth-128 hierarchy must draw connectors only for visible rows and their ancestors");
-    require(counts[static_cast<std::size_t>(work::Counter::HierarchyConnectorParentVisits)] < 384 * 128,
+    require(counts[static_cast<std::size_t>(work::Counter::HierarchyConnectorParentVisits)] < 128 * 128,
             "connector ancestry checks must remain bounded by visible rows times hierarchy depth");
     require(counts[static_cast<std::size_t>(work::Counter::HierarchyScratchCapacityGrowths)] == 0,
             "cached hierarchy drawing must not grow its connector scratch buffer per frame");
@@ -1001,7 +992,8 @@ void run_hierarchy_visible_connector_work_cases()
     HierarchyPanel flatPanel;
     SelectionModel flatSelection;
     EditCommandService flatCommands;
-    const auto drawFlat = [&](bool scrollToMiddle) {
+    const auto drawFlat = [&](bool scrollToMiddle)
+    {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
         ImGui::SetNextWindowSize({600.0f, 420.0f}, ImGuiCond_Always);

@@ -3564,6 +3564,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (action == EditorAction::Preferences)
                     showPreferences = true;
             }
+            if (ImGui::IsKeyPressed(ImGuiKey_Q))
+            {
+                const auto action = dispatch_editor_key(EditorKey::Q, inputIo.KeyShift,
+                                                        inputIo.KeyCtrl, shortcutCapture);
+                if (action == EditorAction::SelectHandTool)
+                    scenePanel.set_tool(SceneTool::Hand);
+            }
             const auto f5Action = ImGui::IsKeyPressed(ImGuiKey_F5)
                 ? dispatch_editor_key(EditorKey::F5, inputIo.KeyShift, inputIo.KeyCtrl, shortcutCapture)
                 : std::nullopt;
@@ -3782,8 +3789,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     ImGui::Separator();
                     if (ImGui::MenuItem("Zoom In", "Ctrl++")) scenePanel.adjust_zoom(1.1f);
                     if (ImGui::MenuItem("Zoom Out", "Ctrl+-")) scenePanel.adjust_zoom(1.0f / 1.1f);
-                    if (ImGui::MenuItem("Frame All", "F")) scenePanel.request_frame_all();
-                    if (ImGui::MenuItem("Frame Selected", "Shift+F")) scenePanel.request_frame_selected();
+                    if (ImGui::MenuItem("Frame Selected", "F")) scenePanel.request_frame_selected();
+                    if (ImGui::MenuItem("Frame All", "Shift+F")) scenePanel.request_frame_all();
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("Run"))
@@ -4556,6 +4563,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             scenePanel.request_frame_all();
                         else if (command == "view/frame-selected")
                             scenePanel.request_frame_selected();
+                        else if (command == "tool/hand" || command == "view/tool-hand")
+                            scenePanel.set_tool(SceneTool::Hand);
+                        else if (command == "tool/move" || command == "view/tool-move")
+                            scenePanel.set_tool(SceneTool::Move);
+                        else if (command == "tool/rotate" || command == "view/tool-rotate")
+                            scenePanel.set_tool(SceneTool::Rotate);
+                        else if (command == "tool/scale" || command == "view/tool-scale")
+                            scenePanel.set_tool(SceneTool::Scale);
                         else if (command == "run/build")
                         {
                             if (projectOpened && !projectLocked)

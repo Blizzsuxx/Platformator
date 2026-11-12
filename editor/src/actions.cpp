@@ -18,8 +18,9 @@ constexpr std::array kActions{
     EditorActionDescriptor{EditorAction::Build, "Build", "Ctrl+B", false},
     EditorActionDescriptor{EditorAction::BuildAndRun, "Build and Run", "F5", false},
     EditorActionDescriptor{EditorAction::Stop, "Stop", "Shift+F5", false},
-    EditorActionDescriptor{EditorAction::FrameAll, "Frame All", "F", true},
-    EditorActionDescriptor{EditorAction::FrameSelected, "Frame Selected", "Shift+F", true},
+    EditorActionDescriptor{EditorAction::SelectHandTool, "Hand Tool", "Q", true},
+    EditorActionDescriptor{EditorAction::FrameSelected, "Frame Selected", "F", true},
+    EditorActionDescriptor{EditorAction::FrameAll, "Frame All", "Shift+F", true},
     EditorActionDescriptor{EditorAction::SelectMoveTool, "Move Tool", "W", true},
     EditorActionDescriptor{EditorAction::SelectRotateTool, "Rotate Tool", "E", true},
     EditorActionDescriptor{EditorAction::SelectScaleTool, "Scale Tool", "R", true},
@@ -55,10 +56,14 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
         return std::nullopt;
     switch (key)
     {
+    case EditorKey::Q:
+        if (!capture.sceneFocused || shift || control)
+            return std::nullopt;
+        return EditorAction::SelectHandTool;
     case EditorKey::F:
         if (!capture.sceneFocused || control)
             return std::nullopt;
-        return shift ? EditorAction::FrameSelected : EditorAction::FrameAll;
+        return shift ? EditorAction::FrameAll : EditorAction::FrameSelected;
     case EditorKey::F5:
         if (control)
             return std::nullopt;

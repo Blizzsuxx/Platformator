@@ -228,12 +228,15 @@ ImVec2 find_common_position_input(InspectorPanel &panel, DocumentSession &docume
                                   SelectionModel &selection, EditCommandService &commands,
                                   BehaviorCatalog &catalog, ImGuiID &target)
 {
-    for (float y = 30.0f; y < 880.0f; y += 6.0f)
+    for (float x : {200.0f, 500.0f})
     {
-        frame(panel, document, selection, commands, catalog, {500.0f, y}, false,
-              nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width", &target);
-        if (ImGui::GetHoveredID() == target)
-            return {500.0f, y};
+        for (float y = 30.0f; y < 880.0f; y += 6.0f)
+        {
+            frame(panel, document, selection, commands, catalog, {x, y}, false,
+                  nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width", &target);
+            if (ImGui::GetHoveredID() == target)
+                return {x, y};
+        }
     }
     throw std::runtime_error("could not locate the common multi-object position field");
 }
@@ -1111,6 +1114,86 @@ void run_inspector_semantics_select_and_reveal_current_fields()
                                             &semanticCatalog),
             "a semantic action for a removed component is rejected against the current document");
 }
+
+void run_compact_transform_and_header_menu_tests()
+{
+    auto document = make_default_document();
+    document.root = Json::array({
+        Json{{"id", 1}, {"name", "Hero"}, {"tag", "PlayerTag"}, {"active", true},
+             {"position", {{"x", 10.0}, {"y", 20.0}}},
+             {"scale", {{"x", 1.0}, {"y", 1.0}}}, {"rotation", 45.0},
+             {"children", Json::array()},
+             {"components", Json::array({
+                 Json{{"id", 101}, {"type", 2}, {"width", 640.0}, {"height", 480.0}}
+             })}}
+    });
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    selection.set(document, Selection{1, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    EditCommandService commands;
+    InspectorPanel panel;
+    BehaviorCatalog catalog;
+
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 600.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    const auto render_frame = [&]() {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({600.0f, 500.0f}, ImGuiCond_Always);
+        ImGui::Begin("Inspector###panel.inspector", nullptr);
+        panel.draw(document, selection, commands, catalog);
+        ImGui::End();
+        ImGui::Render();
+    };
+
+    render_frame();
+
+    require(document.root[0]["name"] == "Hero" && document.root[0]["tag"] == "PlayerTag" &&
+            document.root[0]["active"] == true, "top header bindings must match initial document");
+    require(document.root[0]["position"]["x"] == 10.0 && document.root[0]["rotation"] == 45.0,
+            "transform properties must match initial document");
+
+    const std::string scope = "test/tab/1/document/1";
+    auto nodes = panel.semantic_nodes(document, selection.current(), scope, &catalog);
+    const std::string removeActionId = scope + "/component/1/101/remove-component";
+    const auto removeAction = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
+        return node.id == removeActionId;
+    });
+    require(removeAction != nodes.end() && removeAction->enabled,
+            "remove component must be exposed as an enabled action");
+
+    const auto historyBeforeRemove = commands.history_status();
+    require(panel.dispatch_semantic_action(document, selection,
+                SemanticAction{.nodeId = removeActionId, .action = "activate"}, scope,
+                &catalog, &commands), "remove component action must dispatch successfully");
+    require(document.root[0]["components"].empty(), "component must be removed from document");
+    require(commands.history_status().undoCommands == historyBeforeRemove.undoCommands + 1,
+            "remove component must record exactly one undo command");
+
+    require(commands.undo(document, selection).status == CommandStatus::Changed, "undo must succeed");
+    require(!document.root[0]["components"].empty() && document.root[0]["components"][0]["id"] == 101,
+            "undo must restore the removed component");
+
+    const auto posXAddress = address_for_document(document, 1, std::nullopt, std::nullopt,
+                                                  {std::string("position"), std::string("x")});
+    const auto historyBeforeScrub = commands.history_status();
+    commands.set_property(document, posXAddress, 15.5);
+    require(document.root[0]["position"]["x"] == 15.5, "position x must update to 15.5");
+    require(commands.history_status().undoCommands == historyBeforeScrub.undoCommands + 1,
+            "one scrub release must generate exactly one undo transaction");
+    commands.undo(document, selection);
+    require(document.root[0]["position"]["x"] == 10.0, "undo must restore original position");
+
+    ImGui::DestroyContext();
+}
 } // namespace
 
 int main()
@@ -1123,6 +1206,7 @@ int main()
         run_float_edit_retains_round_trip_precision();
         run_visible_audio_reference_registers_fallback_demand();
         run_inspector_semantics_select_and_reveal_current_fields();
+        run_compact_transform_and_header_menu_tests();
         std::cout << "Inspector interaction tests passed\n";
         return 0;
     }

@@ -21,6 +21,7 @@ enum class EditorAction
     Stop,
     FrameSelected,
     FrameAll,
+    SelectHandTool,
     SelectMoveTool,
     SelectRotateTool,
     SelectScaleTool,
@@ -54,6 +55,7 @@ enum class EditorKey
 {
     F,
     F5,
+    Q,
     W,
     E,
     R,

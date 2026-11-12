@@ -56,27 +56,11 @@ std::vector<HierarchyRow> expected_hierarchy_rows(const Json &roots)
         const int objectId = object.value("id", 0);
         const int objectRowIndex = static_cast<int>(result.size());
         const auto children = object.find("children");
-        const auto components = object.find("components");
         const bool hasChildren = children != object.end() && children->is_array() && !children->empty();
-        const bool hasComponents = components != object.end() && components->is_array() && !components->empty();
-        result.push_back(HierarchyRow{HierarchyRowKind::Object, objectId, objectId, depth,
+        result.push_back(HierarchyRow{HierarchyRowKind::Object, objectId, depth,
                                       object.value("name", std::string("GameObject")) +
                                           " (#" + std::to_string(objectId) + ")",
-                                      hasChildren || hasComponents, parentRowIndex});
-        if (hasComponents)
-        {
-            const int groupRowIndex = static_cast<int>(result.size());
-            result.push_back(HierarchyRow{HierarchyRowKind::ComponentsNode, objectId, objectId,
-                                          depth + 1, "Components", true, objectRowIndex});
-            for (const auto &component : *components)
-            {
-                const int type = component.is_object() ? component.value("type", -1) : -1;
-                const char *label = component_label(type);
-                result.push_back(HierarchyRow{HierarchyRowKind::Component,
-                    component.is_object() ? component.value("id", 0) : 0, objectId, depth + 2,
-                    label == nullptr ? "Component" : label, false, groupRowIndex});
-            }
-        }
+                                      hasChildren, parentRowIndex});
         if (hasChildren)
             for (const auto &child : *children)
                 append_object(child, depth + 1, objectRowIndex);
@@ -90,7 +74,7 @@ std::vector<HierarchyRow> expected_hierarchy_rows(const Json &roots)
 bool same_hierarchy_row(const HierarchyRow &actual, const HierarchyRow &expected)
 {
     return actual.kind == expected.kind && actual.id == expected.id &&
-           actual.ownerObjectId == expected.ownerObjectId && actual.depth == expected.depth &&
+           actual.depth == expected.depth &&
            actual.label == expected.label && actual.hasChildren == expected.hasChildren &&
            actual.parentRowIndex == expected.parentRowIndex;
 }

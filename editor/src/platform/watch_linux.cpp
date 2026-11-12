@@ -17,6 +17,18 @@
 
 namespace platformator_editor
 {
+bool should_skip_watched_directory(std::string_view name) noexcept
+{
+    if (name.empty() || name == "." || name == "..")
+        return false;
+    if (name.starts_with('.'))
+        return true;
+    return name == "bin" || name == "build" || name == "dist" ||
+           name == "vendored" || name == "vendor" || name == "node_modules" ||
+           name == "specs" || name == "benchmark" || name == "diplomski" ||
+           name == "paper" || name == "docs";
+}
+
 namespace
 {
 class LinuxProjectWatchService final : public ProjectWatchService
@@ -175,16 +187,18 @@ class LinuxProjectWatchService final : public ProjectWatchService
         for (std::size_t index = 1; index < roots_.size(); ++index)
             if (contains_path(roots_[index].path, path))
                 return false;
-        if (!sourceInputsOnly_)
-            return false;
         for (const auto &included : includedSubtrees_)
             if (contains_path(included, path))
                 return false;
         const auto relative = path.lexically_relative(root_);
         for (const auto &part : relative)
-            if (part == ".git" || part == "bin" || part == "build" || part == "dist" ||
-                part == "vendored" || part == "vendor" || part == "node_modules" || part == "assets")
+        {
+            const auto name = part.string();
+            if (should_skip_watched_directory(name))
                 return true;
+            if (sourceInputsOnly_ && name == "assets")
+                return true;
+        }
         return false;
     }
 

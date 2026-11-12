@@ -4,6 +4,9 @@
 
 #include "camerainterpretation.h"
 #include "actions.h"
+#include "assetformats.h"
+#include "style.h"
+#include "templates.h"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +20,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace platformator_editor
 {
@@ -829,6 +833,41 @@ namespace platformator_editor
         return true;
     }
 
+    bool object_intersects_screen_rect(const ViewportTransform &transform, const PreviewObjectInfo &info,
+                                       float minX, float maxX, float minY, float maxY)
+    {
+        float halfW = 8.0f;
+        float halfH = 8.0f;
+        if (info.hasSprite)
+        {
+            halfW = std::max(halfW, std::abs(info.width) * 0.5f);
+            halfH = std::max(halfH, std::abs(info.height) * 0.5f);
+        }
+        if (info.colliderShape != PreviewColliderShape::None)
+        {
+            const float cW = info.colliderShape == PreviewColliderShape::Circle ? info.colliderRadius * 2.0f : info.colliderWidth;
+            const float cH = info.colliderShape == PreviewColliderShape::Circle ? info.colliderRadius * 2.0f : info.colliderHeight;
+            halfW = std::max(halfW, cW * 0.5f);
+            halfH = std::max(halfH, cH * 0.5f);
+        }
+        if (info.hasCamera)
+        {
+            halfW = std::max(halfW, info.cameraWidth * 0.5f);
+            halfH = std::max(halfH, info.cameraHeight * 0.5f);
+        }
+        const auto pCenter = transform.world_to_screen({info.worldX, info.worldY});
+        const float scaleX = transform.world_width() > 0.0f ? transform.content_rect().width / transform.world_width() : 1.0f;
+        const float scaleY = transform.world_height() > 0.0f ? transform.content_rect().height / transform.world_height() : 1.0f;
+        const float screenHalfW = halfW * scaleX;
+        const float screenHalfH = halfH * scaleY;
+        const float objMinX = pCenter.x - screenHalfW;
+        const float objMaxX = pCenter.x + screenHalfW;
+        const float objMinY = pCenter.y - screenHalfH;
+        const float objMaxY = pCenter.y + screenHalfH;
+
+        return !(objMaxX < minX || objMinX > maxX || objMaxY < minY || objMinY > maxY);
+    }
+
     std::vector<int> viewport_pick_candidates(const ViewportTransform &transform,
                                               const std::vector<int> &orderedDocumentIds,
                                               const EditorPreview &preview, ViewportPoint screenPoint,
@@ -993,10 +1032,12 @@ namespace platformator_editor
         groupRectangleGesture_ = false;
         pendingDrag_ = false;
         panning_ = false;
+        marquee_.active = false;
     }
 
     void SceneViewportPanel::commit_gesture()
     {
+        marquee_.active = false;
         if (gesture_)
         {
             gesture_->commit();
@@ -1077,7 +1118,7 @@ namespace platformator_editor
 
     bool SceneViewportPanel::has_active_input() const noexcept
     {
-        return gesture_active() || pendingDrag_ || panning_;
+        return gesture_active() || pendingDrag_ || panning_ || marquee_.active;
     }
 
     void SceneViewportPanel::draw(DocumentSession &document, EditorPreview &preview, SelectionModel &selection,
@@ -1115,30 +1156,6 @@ namespace platformator_editor
         const CameraDefaults camera = document_camera(document);
         const ImVec2 available = ImGui::GetContentRegionAvail();
         const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
-        const float controlWidth = std::max(1.0f, available.x);
-        const float controlStartX = ImGui::GetCursorPosX();
-        float controlRowY = ImGui::GetCursorPosY();
-        float controlUsedWidth = 0.0f;
-        const float controlRowAdvance = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
-        const auto textWidth = [](const char *label)
-        { return ImGui::CalcTextSize(label).x; };
-        const auto placeControl = [&](float width)
-        {
-            const float spacing = ImGui::GetStyle().ItemSpacing.x;
-            if (controlUsedWidth > 0.0f && controlUsedWidth + spacing + width > controlWidth)
-            {
-                controlRowY += controlRowAdvance;
-                ImGui::SetCursorPos(ImVec2(controlStartX, controlRowY));
-                controlUsedWidth = 0.0f;
-            }
-            if (controlUsedWidth > 0.0f)
-                ImGui::SameLine();
-            controlUsedWidth += (controlUsedWidth > 0.0f ? spacing : 0.0f) + width;
-        };
-        const auto buttonWidth = [&](const char *label)
-        {
-            return textWidth(label) + ImGui::GetStyle().FramePadding.x * 2.0f;
-        };
         if (!view_matches_document(document))
             reset_view_state(document);
         if (!hasView_)
@@ -1153,40 +1170,47 @@ namespace platformator_editor
             viewZoom_ = std::clamp(viewZoom_ * pendingZoomFactor_, 0.05f, 64.0f);
             pendingZoomFactor_ = 1.0f;
         }
+
+        const float toolbarHeight = ImGui::GetFrameHeight();
+        const ImVec2 toolBtnSize(toolbarHeight, toolbarHeight);
+
         ImGui::BeginDisabled(has_active_input());
-        placeControl(buttonWidth("Hand (Q)"));
-        if (ImGui::Selectable("Hand (Q)", tool_ == SceneTool::Hand, ImGuiSelectableFlags_None,
-                              ImVec2(buttonWidth("Hand (Q)"), 0.0f)))
+        if (icon_button(EditorIcon::HandTool, "##tool-hand", tool_ == SceneTool::Hand,
+                        "Hand Tool (Q) - Pan the scene view with left-click drag", toolBtnSize))
             tool_ = SceneTool::Hand;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Pan the scene view with left-click drag (Q)");
-        placeControl(buttonWidth("Move (W)"));
-        if (ImGui::Selectable("Move (W)", tool_ == SceneTool::Move, ImGuiSelectableFlags_None,
-                              ImVec2(buttonWidth("Move (W)"), 0.0f)))
+        ImGui::SameLine(0.0f, 2.0f);
+        if (icon_button(EditorIcon::MoveTool, "##tool-move", tool_ == SceneTool::Move,
+                        "Move Tool (W) - Select and drag objects", toolBtnSize))
             tool_ = SceneTool::Move;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Select and drag objects (W)");
-        placeControl(buttonWidth("Rotate (E)"));
-        if (ImGui::Selectable("Rotate (E)", tool_ == SceneTool::Rotate, ImGuiSelectableFlags_None,
-                              ImVec2(buttonWidth("Rotate (E)"), 0.0f)))
+        ImGui::SameLine(0.0f, 2.0f);
+        if (icon_button(EditorIcon::RotateTool, "##tool-rotate", tool_ == SceneTool::Rotate,
+                        "Rotate Tool (E) - Rotate the selected object", toolBtnSize))
             tool_ = SceneTool::Rotate;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Rotate the selected object (E); the angle is shown in the viewport and Inspector");
-        placeControl(buttonWidth("Scale (R)"));
-        if (ImGui::Selectable("Scale (R)", tool_ == SceneTool::Scale, ImGuiSelectableFlags_None,
-                              ImVec2(buttonWidth("Scale (R)"), 0.0f)))
+        ImGui::SameLine(0.0f, 2.0f);
+        if (icon_button(EditorIcon::ScaleTool, "##tool-scale", tool_ == SceneTool::Scale,
+                        "Scale Tool (R) - Scale the selected object", toolBtnSize))
             tool_ = SceneTool::Scale;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Scale the selected object (R)");
-        placeControl(buttonWidth("Rectangle"));
-        if (ImGui::Selectable("Rectangle", tool_ == SceneTool::Rectangle, ImGuiSelectableFlags_None,
-                              ImVec2(buttonWidth("Rectangle"), 0.0f)))
+        ImGui::SameLine(0.0f, 2.0f);
+        if (icon_button(EditorIcon::RectTool, "##tool-rect", tool_ == SceneTool::Rectangle,
+                        "Rectangle Tool - Resize sprite and collider bounds", toolBtnSize))
             tool_ = SceneTool::Rectangle;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Resize sprite and collider bounds with the orange handles");
         ImGui::EndDisabled();
-        placeControl(buttonWidth("Snap Settings"));
-        if (ImGui::Button("Snap Settings"))
+
+        const float rightControlsWidth = 270.0f;
+        const float currentX = ImGui::GetCursorPosX();
+        const float availWidth = ImGui::GetContentRegionAvail().x + currentX;
+        if (availWidth > currentX + rightControlsWidth + 10.0f)
+            ImGui::SameLine(availWidth - rightControlsWidth);
+        else
+            ImGui::SameLine();
+
+        if (ImGui::SmallButton(showGrid_ ? "Grid" : "Grid (off)"))
+            showGrid_ = !showGrid_;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Toggle background grid display");
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Snap"))
             ImGui::OpenPopup("##scene-snap-settings");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Configure position, rotation, and scale increments; hold Ctrl while dragging to snap");
@@ -1202,10 +1226,32 @@ namespace platformator_editor
             ImGui::TextDisabled("Hold Ctrl while dragging to apply the configured increments.");
             ImGui::EndPopup();
         }
-        placeControl(buttonWidth("Frame All"));
-        bool frameAll = ImGui::Button("Frame All") || frameAllRequested_;
-        placeControl(buttonWidth("Frame Selected"));
-        bool frameSelected = ImGui::Button("Frame Selected") || frameSelectedRequested_;
+
+        ImGui::SameLine();
+        char stepBuf[32];
+        std::snprintf(stepBuf, sizeof(stepBuf), "Step: %.2g", snapPreferences.position);
+        if (ImGui::SmallButton(stepBuf))
+            ImGui::OpenPopup("##scene-snap-settings");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Position snap step. Click to configure snap settings.");
+
+        ImGui::SameLine();
+        char zoomBuf[32];
+        std::snprintf(zoomBuf, sizeof(zoomBuf), "%d%%", static_cast<int>(std::round(viewZoom_ * 100.0f)));
+        if (ImGui::SmallButton(zoomBuf))
+            viewZoom_ = 1.0f;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Viewport zoom level. Click to reset to 100%%.");
+
+        ImGui::SameLine();
+        const bool frameSelected = ImGui::SmallButton("Frame") || frameSelectedRequested_;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Frame selected object (F)");
+        ImGui::SameLine();
+        const bool frameAll = ImGui::SmallButton("All") || frameAllRequested_;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Frame entire scene (Shift+F)");
+
         frameAllRequested_ = false;
         frameSelectedRequested_ = false;
         if (!document.sourcePath)
@@ -1285,11 +1331,41 @@ namespace platformator_editor
             ImGui::SetCursorScreenPos({content.x, content.y});
             ImGui::InvisibleButton("##scene-viewport-input", {content.width, content.height});
             imageHovered = ImGui::IsItemHovered();
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+                {
+                    std::string assetPath;
+                    EditorAssetKind kind = EditorAssetKind::Other;
+                    if (payload->DataSize == sizeof(AssetDragPayload))
+                    {
+                        const auto *data = static_cast<const AssetDragPayload *>(payload->Data);
+                        assetPath = data->relativeAssetPath;
+                        kind = data->kind;
+                    }
+                    else if (payload->Data != nullptr && payload->DataSize > 0)
+                    {
+                        assetPath = std::string(static_cast<const char *>(payload->Data), payload->DataSize);
+                        while (!assetPath.empty() && assetPath.back() == '\0')
+                            assetPath.pop_back();
+                        kind = editor_asset_format(assetPath).kind;
+                    }
+                    if (!assetPath.empty())
+                    {
+                        const auto mousePos = ImGui::GetMousePos();
+                        const auto worldPos = transform_.screen_to_world({mousePos.x, mousePos.y});
+                        const float targetX = worldPos ? worldPos->x : 0.0f;
+                        const float targetY = worldPos ? worldPos->y : 0.0f;
+                        instantiate_asset_drop(document, commands, selection, assetPath, kind, targetX, targetY, std::nullopt);
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
         }
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         drawList->PushClipRect({content.x, content.y}, {content.x + content.width, content.y + content.height}, true);
 
-        if (transformReady)
+        if (transformReady && showGrid_)
         {
             constexpr float gridSpacing = 100.0f;
             const float firstX = std::floor(transform_.camera_left() / gridSpacing) * gridSpacing;
@@ -1441,6 +1517,15 @@ namespace platformator_editor
                 }
             }
         }
+        if (marquee_.active)
+        {
+            const float minX = std::min(marquee_.startScreen.x, marquee_.currentScreen.x);
+            const float maxX = std::max(marquee_.startScreen.x, marquee_.currentScreen.x);
+            const float minY = std::min(marquee_.startScreen.y, marquee_.currentScreen.y);
+            const float maxY = std::max(marquee_.startScreen.y, marquee_.currentScreen.y);
+            drawList->AddRectFilled({minX, minY}, {maxX, maxY}, IM_COL32(50, 130, 220, 50));
+            drawList->AddRect({minX, minY}, {maxX, maxY}, IM_COL32(70, 160, 255, 220), 0.0f, 0, 1.0f);
+        }
         drawList->PopClipRect();
 
         ImGuiIO &io = ImGui::GetIO();
@@ -1451,7 +1536,10 @@ namespace platformator_editor
                              (io.WantTextInput && !pressedOnScene);
         const bool escape = ImGui::IsKeyPressed(ImGuiKey_Escape);
         const bool appHasFocus = window == nullptr || (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
-        const EditorInputCapture sceneCapture{appHasFocus, capture, false, has_active_input(), focused};
+        const bool sceneFocused = focused || selection.current().focusedPanel == FocusedPanel::Scene;
+        const bool hierarchyFocused = selection.current().focusedPanel == FocusedPanel::Hierarchy;
+        const EditorInputCapture sceneCapture{appHasFocus, capture, false, has_active_input(),
+                                              sceneFocused, hierarchyFocused, appHasFocus};
         if (ImGui::IsKeyPressed(ImGuiKey_F))
         {
             const auto frameAction = dispatch_editor_key(EditorKey::F, io.KeyShift, io.KeyCtrl, sceneCapture);
@@ -1491,6 +1579,69 @@ namespace platformator_editor
                                   *selection.current().objectId != gestureAddress_.objectId || escape || (groupTransformGesture_ && gesture_roots(selection.current()) != gestureObjectIds_) || (groupRectangleGesture_ && gesture_roots(selection.current()) != gestureObjectIds_))) ||
             (pendingDrag_ && (capture || !appHasFocus || escape || !selection.current().objectId || *selection.current().objectId != pendingDragObjectId_)))
             cancel_gesture(commands, document);
+
+        if (capture || !appHasFocus || escape || !editingEnabled)
+            marquee_.active = false;
+
+        if (marquee_.active)
+        {
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            {
+                const float minX = std::min(marquee_.startScreen.x, marquee_.currentScreen.x);
+                const float maxX = std::max(marquee_.startScreen.x, marquee_.currentScreen.x);
+                const float minY = std::min(marquee_.startScreen.y, marquee_.currentScreen.y);
+                const float maxY = std::max(marquee_.startScreen.y, marquee_.currentScreen.y);
+                const float dragDistSq = (maxX - minX) * (maxX - minX) + (maxY - minY) * (maxY - minY);
+                if (dragDistSq >= 16.0f)
+                {
+                    static const std::vector<int> noVisibilityOverrides;
+                    const auto &hiddenList = hiddenObjectIds == nullptr ? noVisibilityOverrides : *hiddenObjectIds;
+                    const auto &lockedList = lockedObjectIds == nullptr ? noVisibilityOverrides : *lockedObjectIds;
+                    const auto pickableIds = viewport_pickable_ids(preview.ordered_authoring_ids(), hiddenList, lockedList);
+
+                    std::vector<int> enclosedIds;
+                    for (const int id : pickableIds)
+                    {
+                        const PreviewObjectInfo *info = preview.object_info(id);
+                        if (info != nullptr && object_intersects_screen_rect(transform_, *info, minX, maxX, minY, maxY))
+                            enclosedIds.push_back(id);
+                    }
+
+                    Selection sel = selection.current();
+                    sel.focusedPanel = FocusedPanel::Scene;
+                    if (marquee_.additive)
+                    {
+                        for (const int id : enclosedIds)
+                        {
+                            if (std::find(sel.selectedObjectIds.begin(), sel.selectedObjectIds.end(), id) == sel.selectedObjectIds.end())
+                                sel.selectedObjectIds.push_back(id);
+                        }
+                    }
+                    else
+                    {
+                        sel.selectedObjectIds = enclosedIds;
+                    }
+                    if (!sel.selectedObjectIds.empty())
+                    {
+                        sel.objectId = sel.selectedObjectIds.front();
+                        sel.rangeAnchorObjectId = sel.selectedObjectIds.front();
+                    }
+                    else if (!marquee_.additive)
+                    {
+                        sel.objectId.reset();
+                        sel.rangeAnchorObjectId.reset();
+                    }
+                    sel.componentId.reset();
+                    sel.behaviorOrdinal.reset();
+                    selection.set(document, sel);
+                }
+                marquee_.active = false;
+            }
+            else
+            {
+                marquee_.currentScreen = mouse;
+            }
+        }
 
         const auto world_at_screen = [&](ViewportPoint point)
         {
@@ -2087,12 +2238,8 @@ namespace platformator_editor
 
         const bool panButtonHeld = ImGui::IsMouseDown(ImGuiMouseButton_Middle) ||
                                    ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-                                   (tool_ == SceneTool::Hand && ImGui::IsMouseDown(ImGuiMouseButton_Left));
-        if (tool_ == SceneTool::Hand)
-        {
-            printf("Hand tool pan check: panning=%d panButtonHeld=%d imageHovered=%d capture=%d\n",
-                   panning_, panButtonHeld, imageHovered, capture);
-        }
+                                   (tool_ == SceneTool::Hand && ImGui::IsMouseDown(ImGuiMouseButton_Left)) ||
+                                   (io.KeyAlt && ImGui::IsMouseDown(ImGuiMouseButton_Left));
         if (panning_ && panButtonHeld)
         {
             const float deltaX = mouse.x - panStart_.x;
@@ -2105,19 +2252,33 @@ namespace platformator_editor
         else if (panning_)
             panning_ = false;
 
+        if (panning_ || (imageHovered && (tool_ == SceneTool::Hand || io.KeyAlt)))
+        {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        }
+
         if (imageHovered && !capture && !gesture_active())
         {
             const float wheelStep = std::clamp(io.MouseWheel, -1.0f, 1.0f);
-            if (wheelStep != 0.0f && transform_.zoom(std::pow(1.1f, wheelStep)))
+            if (wheelStep != 0.0f && transform_.zoom_at(mouse, std::pow(1.1f, wheelStep)))
+            {
                 viewZoom_ = transform_.zoom();
+                viewCenter_ = {transform_.camera_left() + transform_.world_width() * 0.5f,
+                               transform_.camera_top() + transform_.world_height() * 0.5f};
+            }
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
-                (tool_ == SceneTool::Hand && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
+                (tool_ == SceneTool::Hand && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ||
+                (io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
             {
                 panning_ = true;
                 panStart_ = mouse;
+                ImGui::SetWindowFocus();
+                Selection selected = selection.current();
+                selected.focusedPanel = FocusedPanel::Scene;
+                selection.set(document, std::move(selected));
             }
 
-            if (tool_ != SceneTool::Hand && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            if (tool_ != SceneTool::Hand && !io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 Selection selected = selection.current();
                 selected.focusedPanel = FocusedPanel::Scene;
@@ -2194,12 +2355,23 @@ namespace platformator_editor
                                                                   8.0f * uiScale);
                     if (candidates.empty())
                     {
-                        selected.objectId.reset();
-                        selected.componentId.reset();
-                        selected.behaviorOrdinal.reset();
-                        selected.selectedObjectIds.clear();
-                        selected.rangeAnchorObjectId.reset();
+                        const bool additive = io.KeyShift || io.KeyCtrl;
+                        if (!additive)
+                        {
+                            selected.objectId.reset();
+                            selected.componentId.reset();
+                            selected.behaviorOrdinal.reset();
+                            selected.selectedObjectIds.clear();
+                            selected.rangeAnchorObjectId.reset();
+                        }
                         pickCycle_.reset();
+                        if (tool_ != SceneTool::Hand)
+                        {
+                            marquee_.active = true;
+                            marquee_.additive = additive;
+                            marquee_.startScreen = mouse;
+                            marquee_.currentScreen = mouse;
+                        }
                     }
                     else
                     {
@@ -2257,7 +2429,7 @@ namespace platformator_editor
         if (!panButtonHeld)
             panning_ = false;
 
-        if (!focused || capture)
+        if (capture)
             panning_ = false;
         ImGui::End();
     }

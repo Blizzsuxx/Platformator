@@ -26,6 +26,27 @@ enum class Direction
     Event
 };
 
+enum class EmbeddedInputKind
+{
+    KeyDown,
+    KeyUp,
+    MouseMove,
+    MouseButtonDown,
+    MouseButtonUp,
+    ReleaseAll
+};
+
+struct EmbeddedInputEvent
+{
+    EmbeddedInputKind kind = EmbeddedInputKind::ReleaseAll;
+    int scancode = 0;                 // SDL_Scancode for KeyDown / KeyUp
+    int keycode = 0;                  // SDL_Keycode for KeyDown / KeyUp
+    std::uint16_t modifiers = 0;      // SDL_Keymod bitmask
+    int mouseButton = 0;              // SDL mouse button index (1=Left, 2=Middle, 3=Right)
+    float logicalX = 0.0f;            // X in runtime logical coordinates [0, width)
+    float logicalY = 0.0f;            // Y in runtime logical coordinates [0, height)
+};
+
 struct Message
 {
     std::uint32_t protocolVersion = ProtocolVersion;

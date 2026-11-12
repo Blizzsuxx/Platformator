@@ -34,6 +34,7 @@
 #include "viewport.h"
 #include "workspace.h"
 #include "windowhost.h"
+#include "componenttypes.h"
 
 #include <algorithm>
 #include <array>
@@ -63,6 +64,7 @@
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include "backends/imgui_impl_sdl3_editor.h"
 #include <backends/imgui_impl_sdlrenderer3.h>
 
@@ -261,6 +263,7 @@ class ImGuiSdlSession
         if (!contextCreated_)
             throw std::runtime_error("Dear ImGui context creation failed");
         ImGui::SetCurrentContext(context_);
+        setup_editor_fonts(ImGui::GetIO());
         if (!ImGui_ImplSDL3_InitForSDLRenderer(window, renderer_))
         {
             cleanup();
@@ -829,16 +832,20 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         if (projectWakeEventType == static_cast<Uint32>(-1))
             throw std::runtime_error("Could not register the project-monitor wake event.");
         auto wakeGate = std::make_shared<CoalescedWakeGate>();
-        const auto wake_editor = [projectWakeEventType, wakeGate] {
-            if (!wakeGate->try_queue())
-                return;
-            SDL_Event wake{};
-            wake.type = projectWakeEventType;
-            if (!SDL_PushEvent(&wake))
-                wakeGate->queue_failed();
+        auto make_wake = [&](const char *source) {
+            (void)source;
+            return [projectWakeEventType, wakeGate] {
+                if (!wakeGate->try_queue())
+                    return;
+                SDL_Event wake{};
+                wake.type = projectWakeEventType;
+                if (!SDL_PushEvent(&wake))
+                    wakeGate->queue_failed();
+            };
         };
+        const auto wake_editor = make_wake("generic");
         ProjectSession projectSession(options.projectRoot, options.assetRoot);
-        projectSession.set_wake_callback(wake_editor);
+        projectSession.set_wake_callback(make_wake("projectSession"));
         ProjectContext &projectContext = projectSession.project_context();
         DocumentManager &documentManager = projectSession.documents();
         DocumentTab *activeDocumentTab = documentManager.active_tab();
@@ -846,7 +853,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::filesystem::path activeProjectRoot = options.projectRoot;
         std::filesystem::path activeAssetRoot = options.assetRoot;
         ProjectScanService sourceScans(2);
-        sourceScans.set_wake_callback(wake_editor);
+        sourceScans.set_wake_callback(make_wake("sourceScans"));
         ProjectScanToken sourceScan;
         std::uint64_t sourceScanRequest = 0;
         std::uint64_t sourceScanRevision = 0;
@@ -875,12 +882,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         };
         auto nextSourceScan = std::chrono::steady_clock::now() + source_scan_interval();
         ProjectScanService assetScans(2, 2);
-        assetScans.set_wake_callback(wake_editor);
+        assetScans.set_wake_callback(make_wake("assetScans"));
         std::map<HostLayoutId, std::unique_ptr<SdlWindowHost>> detachedHosts;
         ProjectPanel projectPanel(projectContext, projectSession.project_changes(), assetScans, renderer);
-        projectPanel.set_wake_callback(wake_editor);
+        projectPanel.set_wake_callback(make_wake("projectPanel"));
         ProjectScanService assetWatchScans(1, 1);
-        assetWatchScans.set_wake_callback(wake_editor);
+        assetWatchScans.set_wake_callback(make_wake("assetWatchScans"));
         ProjectScanToken assetWatchScan;
         ProjectSnapshotToken assetWatchSnapshot;
         RecoveryRetrySchedule assetWatchSchedule;
@@ -936,10 +943,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         auto scenePreview = std::make_unique<EditorPreview>(*runtime);
         SceneTextureReplicas sceneTextures;
         scenePreview->set_resource_index(&projectSession.resource_index());
-        scenePreview->set_wake_callback(wake_editor);
+        scenePreview->set_wake_callback(make_wake("scenePreview"));
         scenePreview->reconcile(workspace->document(), true);
         SceneViewportPanel scenePanel;
         HierarchyPanel hierarchyPanel;
+        hierarchyPanel.set_on_frame_selected([&scenePanel]() {
+            scenePanel.request_frame_selected();
+        });
         std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::string>>
             visibilityDocumentIncarnations;
         bool sceneViewPreferencesDirty = false;
@@ -951,7 +961,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         bool previewStructureChanged = false;
         bool previewInheritedTranslationChanged = false;
         ValidationService validationService;
-        validationService.set_wake_callback(wake_editor);
+        validationService.set_wake_callback(make_wake("validationService"));
         std::unordered_set<std::uint64_t> subscribedTabIds;
         auto subscribe_document_tab = [&](DocumentTab &tab) {
             if (!subscribedTabIds.insert(tab.id().value).second)
@@ -1066,7 +1076,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 #endif
                 scenePreview = std::make_unique<EditorPreview>(*runtime);
                 scenePreview->set_resource_index(&projectSession.resource_index());
-                scenePreview->set_wake_callback(wake_editor);
+                scenePreview->set_wake_callback(make_wake("scenePreview_restart"));
                 scenePreview->reconcile(workspace->document(), true);
                 imgui = std::make_unique<ImGuiSdlSession>(window, renderer);
                 initialize_imgui_context();
@@ -1122,7 +1132,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::string statusMessage = startupMessage;
         PendingRunValidation pendingRunValidation;
         AccessibilitySnapshots accessibilitySnapshots;
-        accessibilitySnapshots.set_wake_callback(wake_editor);
+        accessibilitySnapshots.set_wake_callback(make_wake("accessibilitySnapshots"));
         WindowHostRegistry windowHosts;
         const WindowHostRecord mainHost = *windowHosts.find(windowHosts.main_host());
         const HostLayoutId mainAccessibilityHost = mainHost.layoutId;
@@ -1466,6 +1476,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         auto persist_preferences = [&] {
             deferredPreferenceSave.clear();
             capture_detached_host_state();
+            if (ImGui::GetCurrentContext() != nullptr)
+            {
+                std::size_t layoutSize = 0;
+                if (const char *layout = ImGui::SaveIniSettingsToMemory(&layoutSize))
+                    savedLayout.assign(layout, layoutSize);
+                ImGui::GetIO().WantSaveIniSettings = false;
+            }
             if (window != nullptr)
             {
                 const auto flags = SDL_GetWindowFlags(window);
@@ -2697,6 +2714,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             bind_active_document();
         }
 
+        std::optional<SDL_Event> pendingWakeEvent;
+        int inputSettleFrames = 0;
         EditorAppTickDriver tickDriver(std::move(probeOptions));
         while (tickDriver.tick([&]() {
             if (!running)
@@ -3054,18 +3073,43 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const auto selectedExecutable = executable.empty()
                     ? std::filesystem::path{}
                     : (executable.is_absolute() ? executable : activeProjectRoot / executable);
-                catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
-                catalogIdentity.profile = preferences.run.buildPreset.empty()
+                const std::string activeBuildPreset = preferences.run.buildPreset.empty()
                     ? (preferences.run.production ? "production" : "debug")
                     : preferences.run.buildPreset;
-                catalogIdentity.target = preferences.run.target;
-                catalogIdentity.executablePath = selectedExecutable.lexically_normal().string();
-                catalogIdentity.binaryIdentity = executable_identity(selectedExecutable);
-                catalogIdentity.sourceInputIdentity = sourceInputIdentity;
-                behaviorCatalog.configure(preferences.run.catalogProtocol == "common-runner-v1"
-                                              ? CatalogProtocol::CommonRunnerV1
-                                              : CatalogProtocol::Unavailable,
-                                          catalogIdentity);
+
+                static std::filesystem::path s_lastConfiguredExecutable;
+                static std::string s_lastSourceInputIdentity;
+                static std::string s_lastBuildPreset;
+                static std::string s_lastTarget;
+                static std::string s_lastBinaryIdentity;
+                static std::chrono::steady_clock::time_point s_nextCatalogThrottle;
+
+                const bool inputsChanged = (selectedExecutable != s_lastConfiguredExecutable) ||
+                                           (sourceInputIdentity != s_lastSourceInputIdentity) ||
+                                           (activeBuildPreset != s_lastBuildPreset) ||
+                                           (preferences.run.target != s_lastTarget);
+                const bool throttleExpired = (now >= s_nextCatalogThrottle);
+
+                if (inputsChanged || throttleExpired || s_lastBinaryIdentity.empty())
+                {
+                    s_lastConfiguredExecutable = selectedExecutable;
+                    s_lastSourceInputIdentity = sourceInputIdentity;
+                    s_lastBuildPreset = activeBuildPreset;
+                    s_lastTarget = preferences.run.target;
+                    s_lastBinaryIdentity = executable_identity(selectedExecutable);
+                    s_nextCatalogThrottle = now + std::chrono::seconds(1);
+
+                    catalogIdentity.canonicalProjectPath = activeProjectRoot.string();
+                    catalogIdentity.profile = activeBuildPreset;
+                    catalogIdentity.target = preferences.run.target;
+                    catalogIdentity.executablePath = selectedExecutable.lexically_normal().string();
+                    catalogIdentity.binaryIdentity = s_lastBinaryIdentity;
+                    catalogIdentity.sourceInputIdentity = sourceInputIdentity;
+                    behaviorCatalog.configure(preferences.run.catalogProtocol == "common-runner-v1"
+                                                  ? CatalogProtocol::CommonRunnerV1
+                                                  : CatalogProtocol::Unavailable,
+                                              catalogIdentity);
+                }
             }
             if (tickDriver.should_inject_hover_input())
             {
@@ -3080,18 +3124,48 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 injected.motion.y = static_cast<float>(height) * 0.5f;
                 SDL_PushEvent(&injected);
             }
+            auto poll_next_event = [&](SDL_Event *outEvent) -> bool {
+                if (pendingWakeEvent.has_value())
+                {
+                    *outEvent = *pendingWakeEvent;
+                    pendingWakeEvent.reset();
+                    return true;
+                }
+                return SDL_PollEvent(outEvent) != 0;
+            };
+
             SDL_Event event;
             std::vector<HostLayoutId> closeDetachedAfterEvent;
-            while (SDL_PollEvent(&event))
+            while (poll_next_event(&event))
             {
                 if (event.type == projectWakeEventType)
                     wakeGate->event_consumed();
+                if ((event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST) ||
+                    event.type == SDL_EVENT_MOUSE_MOTION ||
+                    event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                    event.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                    event.type == SDL_EVENT_MOUSE_WHEEL ||
+                    event.type == SDL_EVENT_KEY_DOWN ||
+                    event.type == SDL_EVENT_KEY_UP ||
+                    event.type == SDL_EVENT_TEXT_INPUT ||
+                    event.type == SDL_EVENT_TEXT_EDITING)
+                {
+                    inputSettleFrames = 2;
+                }
                 if (event.type == SDL_EVENT_MOUSE_MOTION ||
                     event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
                     event.type == SDL_EVENT_MOUSE_WHEEL ||
                     event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_TEXT_INPUT)
                     tickDriver.note_input_event(std::chrono::steady_clock::now());
-                if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+                if (gamePanel.is_input_captured())
+                {
+                    if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
+                    {
+                        auto *playSession = gamePipeline.play_session();
+                        gamePanel.handle_sdl_event(playSession, event);
+                    }
+                }
+                if (!gamePanel.is_input_captured() && event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
                     event.key.scancode == SDL_SCANCODE_DELETE &&
                     event.key.windowID == SDL_GetWindowID(window))
                     deleteKeyPressedThisFrame = true;
@@ -3553,7 +3627,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 scenePanel.has_active_input(),
                 selection->current().focusedPanel == FocusedPanel::Scene,
                 selection->current().focusedPanel == FocusedPanel::Hierarchy,
-                appFocused};
+                appFocused,
+                gamePanel.is_input_captured()};
             const bool shortcutAllowed = editor_action_allowed(EditorAction::NewScene, shortcutCapture);
             if (shortcutAllowed && ImGui::IsKeyPressed(ImGuiKey_F6))
                 request_validation();
@@ -3570,6 +3645,36 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                                         inputIo.KeyCtrl, shortcutCapture);
                 if (action == EditorAction::SelectHandTool)
                     scenePanel.set_tool(SceneTool::Hand);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_W))
+            {
+                const auto action = dispatch_editor_key(EditorKey::W, inputIo.KeyShift,
+                                                        inputIo.KeyCtrl, shortcutCapture);
+                if (action == EditorAction::SelectMoveTool)
+                    scenePanel.set_tool(SceneTool::Move);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_E))
+            {
+                const auto action = dispatch_editor_key(EditorKey::E, inputIo.KeyShift,
+                                                        inputIo.KeyCtrl, shortcutCapture);
+                if (action == EditorAction::SelectRotateTool)
+                    scenePanel.set_tool(SceneTool::Rotate);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_R))
+            {
+                const auto action = dispatch_editor_key(EditorKey::R, inputIo.KeyShift,
+                                                        inputIo.KeyCtrl, shortcutCapture);
+                if (action == EditorAction::SelectScaleTool)
+                    scenePanel.set_tool(SceneTool::Scale);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_F))
+            {
+                const auto action = dispatch_editor_key(EditorKey::F, inputIo.KeyShift,
+                                                        inputIo.KeyCtrl, shortcutCapture);
+                if (action == EditorAction::FrameSelected)
+                    scenePanel.request_frame_selected();
+                else if (action == EditorAction::FrameAll)
+                    scenePanel.request_frame_all();
             }
             const auto f5Action = ImGui::IsKeyPressed(ImGuiKey_F5)
                 ? dispatch_editor_key(EditorKey::F5, inputIo.KeyShift, inputIo.KeyCtrl, shortcutCapture)
@@ -3680,9 +3785,134 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         ImGui::EndMenu();
                     }
                     if (ImGui::MenuItem("Validate Scene", "F6")) request_validation();
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Preferences...", "Ctrl+,"))
+                        showPreferences = true;
                     ImGui::EndMenu();
                 }
-                if (ImGui::BeginMenu("View"))
+                if (ImGui::BeginMenu("Assets"))
+                {
+                    if (ImGui::BeginMenu("Create"))
+                    {
+                        const auto targetDir = projectPanel.selected_directory();
+                        if (ImGui::MenuItem("Folder"))
+                            projectPanel.execute_context_create("Folder", targetDir);
+                        if (ImGui::MenuItem("Behavior Script"))
+                            projectPanel.execute_context_create("Behavior Script", targetDir);
+                        if (ImGui::MenuItem("Scene"))
+                            projectPanel.execute_context_create("Scene", targetDir);
+                        if (ImGui::MenuItem("Object Template"))
+                            projectPanel.execute_context_create("Object Template", targetDir);
+                        ImGui::EndMenu();
+                    }
+                    ImGui::Separator();
+                    const auto selectedEntry = projectPanel.selected_entry();
+                    const bool hasSelectedAsset = selectedEntry.has_value();
+                    if (ImGui::MenuItem("Delete Asset", "Delete", false, hasSelectedAsset))
+                    {
+                        projectPanel.execute_context_delete(*selectedEntry);
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Refresh"))
+                    {
+                        projectPanel.refresh();
+                    }
+                    ImGui::EndMenu();
+                }
+                if (ImGui::BeginMenu("GameObject"))
+                {
+                    const auto selectedObjId = (selection != nullptr && selection->current().objectId)
+                        ? selection->current().objectId : std::nullopt;
+                    if (ImGui::MenuItem("Create Empty", "Ctrl+Shift+N", false, !projectLocked))
+                    {
+                        auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "GameObject");
+                        if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                        {
+                            int newId = res.command->payload.value("id", 0);
+                            selection->set(workspace->document(), Selection{newId, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                        }
+                    }
+                    if (ImGui::MenuItem("Create Empty Child", "Alt+Shift+N", false, !projectLocked && selectedObjId.has_value()))
+                    {
+                        auto res = editCommands->create_object(workspace->document_for_edit(), *selectedObjId, "GameObject");
+                        if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                        {
+                            int newId = res.command->payload.value("id", 0);
+                            selection->set(workspace->document(), Selection{newId, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                        }
+                    }
+                    if (ImGui::BeginMenu("2D Object"))
+                    {
+                        if (ImGui::MenuItem("Sprite", nullptr, false, !projectLocked))
+                        {
+                            auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "Sprite",
+                                                                   std::numeric_limits<std::size_t>::max(), {},
+                                                                   Json::array({default_component_record(6)}));
+                            if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                            {
+                                int newId = res.command->payload.value("id", 0);
+                                selection->set(workspace->document(), Selection{newId, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                            }
+                        }
+                        ImGui::EndMenu();
+                    }
+                    if (ImGui::MenuItem("Camera", nullptr, false, !projectLocked))
+                    {
+                        auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "Camera",
+                                                               std::numeric_limits<std::size_t>::max(), {},
+                                                               Json::array({default_component_record(2)}));
+                        if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                        {
+                            int newId = res.command->payload.value("id", 0);
+                            selection->set(workspace->document(), Selection{newId, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                        }
+                    }
+                    if (ImGui::MenuItem("Audio Object", nullptr, false, !projectLocked))
+                    {
+                        auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "Audio",
+                                                               std::numeric_limits<std::size_t>::max(), {},
+                                                               Json::array({default_component_record(1)}));
+                        if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                        {
+                            int newId = res.command->payload.value("id", 0);
+                            selection->set(workspace->document(), Selection{newId, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                        }
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Frame Selected", "F", false, selectedObjId.has_value()))
+                        scenePanel.request_frame_selected();
+                    ImGui::EndMenu();
+                }
+                if (ImGui::BeginMenu("Component"))
+                {
+                    const auto selectedObjId = (selection != nullptr && selection->current().objectId)
+                        ? selection->current().objectId : std::nullopt;
+                    const bool canAdd = !projectLocked && selectedObjId.has_value();
+                    if (ImGui::MenuItem("Audio Source", nullptr, false, canAdd))
+                        editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(1));
+                    if (ImGui::MenuItem("Camera", nullptr, false, canAdd))
+                        editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(2));
+                    if (ImGui::MenuItem("Script", nullptr, false, canAdd))
+                        editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(5));
+                    if (ImGui::MenuItem("Sprite Renderer", nullptr, false, canAdd))
+                        editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(6));
+                    if (ImGui::BeginMenu("Physics", canAdd))
+                    {
+                        if (ImGui::MenuItem("Box Collider"))
+                            editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(3));
+                        if (ImGui::MenuItem("Rigidbody"))
+                            editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(4));
+                        ImGui::EndMenu();
+                    }
+                    if (ImGui::BeginMenu("Animation", canAdd))
+                    {
+                        if (ImGui::MenuItem("Animator"))
+                            editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(0));
+                        ImGui::EndMenu();
+                    }
+                    ImGui::EndMenu();
+                }
+                if (ImGui::BeginMenu("Window"))
                 {
                     auto panel_item = [&](const char *label, const char *id,
                                           const char *shortcut = nullptr) {
@@ -3690,19 +3920,23 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         if (ImGui::MenuItem(label, shortcut, &visible))
                             preferences.panelVisibility[id] = visible;
                     };
-                    panel_item("Hierarchy", "panel.hierarchy");
-                    panel_item("Scene", "panel.scene");
-                    panel_item("Inspector", "panel.inspector");
-                    panel_item("Project and Assets", "panel.project");
+                    if (ImGui::BeginMenu("Panels"))
+                    {
+                        panel_item("Hierarchy", "panel.hierarchy");
+                        panel_item("Scene", "panel.scene");
+                        panel_item("Inspector", "panel.inspector");
+                        panel_item("Project and Assets", "panel.project");
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
-                    panel_item("Game", "panel.game");
+                        panel_item("Game", "panel.game");
 #endif
-                    bool showAnimationEditor = showAnimationEditorWindow;
-                    if (ImGui::MenuItem("Animation Assets", nullptr, &showAnimationEditor))
-                        showAnimationEditorWindow = showAnimationEditor;
-                    panel_item("Console", "panel.console");
-                    panel_item("Build and Run Settings", "panel.run");
-                    panel_item("Validation", "panel.validation");
+                        bool showAnimationEditor = showAnimationEditorWindow;
+                        if (ImGui::MenuItem("Animation Assets", nullptr, &showAnimationEditor))
+                            showAnimationEditorWindow = showAnimationEditor;
+                        panel_item("Console", "panel.console");
+                        panel_item("Build and Run Settings", "panel.run");
+                        panel_item("Validation", "panel.validation");
+                        ImGui::EndMenu();
+                    }
                     if (ImGui::BeginMenu("Panel Windows"))
                     {
                         std::vector<std::pair<const char *, const char *>> hostPanels{
@@ -3758,25 +3992,35 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         }
                         ImGui::EndMenu();
                     }
-                    ImGui::Separator();
-                    if (ImGui::MenuItem("Reset Layout"))
+                    if (ImGui::BeginMenu("Layouts"))
                     {
-                        std::vector<HostLayoutId> hostIds;
-                        for (const auto &[hostId, host] : detachedHosts)
+                        if (ImGui::MenuItem("Reset Layout"))
                         {
-                            (void)host;
-                            hostIds.push_back(hostId);
+                            std::vector<HostLayoutId> hostIds;
+                            for (const auto &[hostId, host] : detachedHosts)
+                            {
+                                (void)host;
+                                hostIds.push_back(hostId);
+                            }
+                            for (const HostLayoutId hostId : hostIds)
+                                close_detached_host(hostId);
+                            reset_workspace_layout(preferences);
+                            savedLayout = defaultLayout;
+                            if (!savedLayout.empty())
+                                ImGui::LoadIniSettingsFromMemory(savedLayout.data(), savedLayout.size());
+                            activeScale = options.uiScaleProvided ? options.uiScale : 1.0f;
+                            lastAppliedScale = -1.0f;
+                            statusMessage = "Workspace layout and panel visibility were reset.";
                         }
-                        for (const HostLayoutId hostId : hostIds)
-                            close_detached_host(hostId);
-                        reset_workspace_layout(preferences);
-                        savedLayout = defaultLayout;
-                        if (!savedLayout.empty())
-                            ImGui::LoadIniSettingsFromMemory(savedLayout.data(), savedLayout.size());
-                        activeScale = options.uiScaleProvided ? options.uiScale : 1.0f;
-                        lastAppliedScale = -1.0f;
-                        statusMessage = "Workspace layout and panel visibility were reset.";
+                        ImGui::EndMenu();
                     }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Build", "Ctrl+B", false, projectOpened && !projectLocked)) queue_pipeline(true);
+                    if (ImGui::MenuItem("Build and Run", "F5", false, projectOpened && !projectLocked)) request_build_and_run();
+                    if (ImGui::MenuItem("Stop", "Shift+F5", false,
+                                        gamePipeline.busy() || catalogQuery.running() ||
+                                            pendingPipelineBuildOnly || pendingRunValidation.active()))
+                        stop_owned_operation();
                     ImGui::Separator();
                     bool editorFullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
                     if (ImGui::MenuItem("Fullscreen", nullptr, &editorFullscreen))
@@ -3793,24 +4037,15 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::MenuItem("Frame All", "Shift+F")) scenePanel.request_frame_all();
                     ImGui::EndMenu();
                 }
-                if (ImGui::BeginMenu("Run"))
-                {
-                    if (ImGui::MenuItem("Build", "Ctrl+B", false, projectOpened && !projectLocked)) queue_pipeline(true);
-                    if (ImGui::MenuItem("Build and Run", "F5", false, projectOpened && !projectLocked)) request_build_and_run();
-                    if (ImGui::MenuItem("Stop", "Shift+F5", false,
-                                        gamePipeline.busy() || catalogQuery.running() ||
-                                            pendingPipelineBuildOnly || pendingRunValidation.active()))
-                        stop_owned_operation();
-                    if (ImGui::MenuItem("Build and Run Settings"))
-                        preferences.panelVisibility["panel.run"] = true;
-                    ImGui::EndMenu();
-                }
                 if (ImGui::BeginMenu("Help"))
                 {
                     if (ImGui::MenuItem("Keyboard Shortcuts"))
                         showShortcutReference = true;
                     if (ImGui::MenuItem("Editor Preferences...", "Ctrl+,"))
                         showPreferences = true;
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("About Platformator"))
+                        statusMessage = "Platformator Editor v0.14";
                     ImGui::EndMenu();
                 }
 
@@ -3965,11 +4200,23 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             toolbarState.status = workspace->dirty() ? "Modified" : "Saved";
             if (!operationLabel.empty())
                 toolbarState.status += " | " + operationLabel;
+            const auto *activePlaySession = gamePipeline.play_session();
+            const bool playSessionActive = activePlaySession != nullptr &&
+                (activePlaySession->state() == PlaySessionState::Running ||
+                 activePlaySession->state() == PlaySessionState::Paused);
+            toolbarState.isRunning = activePlaySession != nullptr && activePlaySession->state() == PlaySessionState::Running;
+            toolbarState.isPaused = activePlaySession != nullptr && activePlaySession->state() == PlaySessionState::Paused;
+            toolbarState.pauseResumeEnabled = playSessionActive && activePlaySession->capabilities().playControl;
+            toolbarState.stepEnabled = toolbarState.isPaused && activePlaySession->capabilities().playControl;
+
             EditorToolbarActions toolbarActions;
             toolbarActions.openScene = request_open_scene;
             toolbarActions.save = save_current;
             toolbarActions.build = [&] { queue_pipeline(true); };
             toolbarActions.buildAndRun = request_build_and_run;
+            toolbarActions.pause = [&] { if (auto *s = gamePipeline.play_session()) s->request_pause(); };
+            toolbarActions.resume = [&] { if (auto *s = gamePipeline.play_session()) s->request_resume(); };
+            toolbarActions.step = [&] { if (auto *s = gamePipeline.play_session()) s->request_step(); };
             toolbarActions.stop = stop_owned_operation;
             const auto toolbarFrame = draw_editor_toolbar(toolbarState, toolbarActions);
             constexpr float sceneTabBarHeight = 32.0f;
@@ -4277,8 +4524,35 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const auto lockedBeforeHierarchy = lockedObjectIds;
                 const auto previousDuplicatePolicy = preferences.duplicationReferencePolicy;
                 const auto duplicateCatalog = behaviorCatalog.snapshot();
-                const auto authorReferenceBindings = inspectorPanel.template_author_bindings(visibilityDocument);
-                const auto authorSchemaDeclarations = inspectorPanel.template_author_schemas(visibilityDocument);
+                struct TemplateAuthorCacheKey
+                {
+                    std::uint64_t projectGeneration = 0;
+                    TabId tabId{};
+                    std::uint64_t documentGeneration = 0;
+                    std::uint64_t catalogRevision = 0;
+
+                    bool operator==(const TemplateAuthorCacheKey &) const = default;
+                };
+
+                static TemplateAuthorCacheKey s_lastAuthorCacheKey;
+                static std::vector<Json> s_cachedAuthorBindings;
+                static std::vector<TemplateAuthorSchemaDeclaration> s_cachedAuthorSchemas;
+
+                const TemplateAuthorCacheKey authorKey{
+                    projectSession.generation().value,
+                    workspace->document().tabId,
+                    workspace->document().documentGeneration,
+                    behaviorCatalog.revision()
+                };
+
+                if (authorKey != s_lastAuthorCacheKey)
+                {
+                    s_cachedAuthorBindings = inspectorPanel.template_author_bindings(visibilityDocument);
+                    s_cachedAuthorSchemas = inspectorPanel.template_author_schemas(visibilityDocument);
+                    s_lastAuthorCacheKey = authorKey;
+                }
+                const auto &authorReferenceBindings = s_cachedAuthorBindings;
+                const auto &authorSchemaDeclarations = s_cachedAuthorSchemas;
                 ImGui::BeginDisabled(documentEditingLocked);
                 hierarchyPanel.draw(visibilityDocument, *selection, *editCommands,
                                     !documentEditingLocked,
@@ -4507,35 +4781,140 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         }
                         else if (command == "edit/validate")
                             request_validation();
-                        else if (command == "view/hierarchy")
+                        else if (command == "edit/preferences")
+                            showPreferences = true;
+                        else if (command == "assets/create-folder")
+                            projectPanel.execute_context_create("Folder", projectPanel.selected_directory());
+                        else if (command == "assets/create-script")
+                            projectPanel.execute_context_create("Behavior Script", projectPanel.selected_directory());
+                        else if (command == "assets/create-scene")
+                            projectPanel.execute_context_create("Scene", projectPanel.selected_directory());
+                        else if (command == "assets/create-template")
+                            projectPanel.execute_context_create("Object Template", projectPanel.selected_directory());
+                        else if (command == "assets/delete")
+                        {
+                            if (const auto entry = projectPanel.selected_entry())
+                                projectPanel.execute_context_delete(*entry);
+                        }
+                        else if (command == "assets/refresh")
+                            projectPanel.refresh();
+                        else if (command == "gameobject/create-empty")
+                        {
+                            if (!projectLocked)
+                            {
+                                auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "GameObject");
+                                if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                                    selection->set(workspace->document(), Selection{res.command->payload.value("id", 0), std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                            }
+                        }
+                        else if (command == "gameobject/create-empty-child")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                            {
+                                auto res = editCommands->create_object(workspace->document_for_edit(), *selection->current().objectId, "GameObject");
+                                if (res.status == CommandStatus::Changed && res.command)
+                                    selection->set(workspace->document(), Selection{res.command->payload.value("id", 0), std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                            }
+                        }
+                        else if (command == "gameobject/create-sprite")
+                        {
+                            if (!projectLocked)
+                            {
+                                auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "Sprite",
+                                                                       std::numeric_limits<std::size_t>::max(), {},
+                                                                       Json::array({default_component_record(6)}));
+                                if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                                    selection->set(workspace->document(), Selection{res.command->payload.value("id", 0), std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                            }
+                        }
+                        else if (command == "gameobject/create-camera")
+                        {
+                            if (!projectLocked)
+                            {
+                                auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "Camera",
+                                                                       std::numeric_limits<std::size_t>::max(), {},
+                                                                       Json::array({default_component_record(2)}));
+                                if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                                    selection->set(workspace->document(), Selection{res.command->payload.value("id", 0), std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                            }
+                        }
+                        else if (command == "gameobject/create-audio")
+                        {
+                            if (!projectLocked)
+                            {
+                                auto res = editCommands->create_object(workspace->document_for_edit(), std::nullopt, "Audio",
+                                                                       std::numeric_limits<std::size_t>::max(), {},
+                                                                       Json::array({default_component_record(1)}));
+                                if (res.status == CommandStatus::Changed && res.command && selection != nullptr)
+                                    selection->set(workspace->document(), Selection{res.command->payload.value("id", 0), std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+                            }
+                        }
+                        else if (command == "gameobject/frame-selected")
+                            scenePanel.request_frame_selected();
+                        else if (command == "component/audio-source")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(1));
+                        }
+                        else if (command == "component/camera")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(2));
+                        }
+                        else if (command == "component/script")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(5));
+                        }
+                        else if (command == "component/sprite-renderer")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(6));
+                        }
+                        else if (command == "component/box-collider")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(3));
+                        }
+                        else if (command == "component/rigidbody")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(4));
+                        }
+                        else if (command == "component/animator")
+                        {
+                            if (!projectLocked && selection != nullptr && selection->current().objectId)
+                                editCommands->add_component(workspace->document_for_edit(), *selection->current().objectId, default_component_record(0));
+                        }
+                        else if (command == "window/hierarchy" || command == "view/hierarchy")
                             preferences.panelVisibility["panel.hierarchy"] =
                                 !preferences.panelVisibility["panel.hierarchy"];
-                        else if (command == "view/scene")
+                        else if (command == "window/scene" || command == "view/scene")
                             preferences.panelVisibility["panel.scene"] =
                                 !preferences.panelVisibility["panel.scene"];
-                        else if (command == "view/inspector")
+                        else if (command == "window/inspector" || command == "view/inspector")
                             preferences.panelVisibility["panel.inspector"] =
                                 !preferences.panelVisibility["panel.inspector"];
-                        else if (command == "view/project")
+                        else if (command == "window/project" || command == "view/project")
                             preferences.panelVisibility["panel.project"] =
                                 !preferences.panelVisibility["panel.project"];
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
-                        else if (command == "view/game")
+                        else if (command == "window/game" || command == "view/game")
                             preferences.panelVisibility["panel.game"] =
                                 !preferences.panelVisibility["panel.game"];
 #endif
-                        else if (command == "view/animation")
+                        else if (command == "window/animation" || command == "view/animation")
                             showAnimationEditorWindow = !showAnimationEditorWindow;
-                        else if (command == "view/console")
+                        else if (command == "window/console" || command == "view/console")
                             preferences.panelVisibility["panel.console"] =
                                 !preferences.panelVisibility["panel.console"];
-                        else if (command == "view/run-settings")
+                        else if (command == "window/run-settings" || command == "view/run-settings")
                             preferences.panelVisibility["panel.run"] =
                                 !preferences.panelVisibility["panel.run"];
-                        else if (command == "view/validation")
+                        else if (command == "window/validation" || command == "view/validation")
                             preferences.panelVisibility["panel.validation"] =
                                 !preferences.panelVisibility["panel.validation"];
-                        else if (command == "view/reset-layout")
+                        else if (command == "window/reset-layout" || command == "view/reset-layout")
                         {
                             reset_workspace_layout(preferences);
                             savedLayout = defaultLayout;
@@ -4545,7 +4924,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             lastAppliedScale = -1.0f;
                             statusMessage = "Workspace layout and panel visibility were reset.";
                         }
-                        else if (command == "view/fullscreen")
+                        else if (command == "window/fullscreen" || command == "view/fullscreen")
                         {
                             const bool fullscreen =
                                 (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) == 0;
@@ -4555,13 +4934,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             else
                                 persist_preferences();
                         }
-                        else if (command == "view/zoom-in")
+                        else if (command == "window/zoom-in" || command == "view/zoom-in")
                             scenePanel.adjust_zoom(1.1f);
-                        else if (command == "view/zoom-out")
+                        else if (command == "window/zoom-out" || command == "view/zoom-out")
                             scenePanel.adjust_zoom(1.0f / 1.1f);
-                        else if (command == "view/frame-all")
+                        else if (command == "window/frame-all" || command == "view/frame-all")
                             scenePanel.request_frame_all();
-                        else if (command == "view/frame-selected")
+                        else if (command == "window/frame-selected" || command == "view/frame-selected")
                             scenePanel.request_frame_selected();
                         else if (command == "tool/hand" || command == "view/tool-hand")
                             scenePanel.set_tool(SceneTool::Hand);
@@ -4571,17 +4950,17 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             scenePanel.set_tool(SceneTool::Rotate);
                         else if (command == "tool/scale" || command == "view/tool-scale")
                             scenePanel.set_tool(SceneTool::Scale);
-                        else if (command == "run/build")
+                        else if (command == "window/build" || command == "run/build")
                         {
                             if (projectOpened && !projectLocked)
                                 queue_pipeline(true);
                         }
-                        else if (command == "run/build-and-run")
+                        else if (command == "window/build-and-run" || command == "run/build-and-run")
                         {
                             if (projectOpened && !projectLocked)
                                 request_build_and_run();
                         }
-                        else if (command == "run/stop")
+                        else if (command == "window/stop" || command == "run/stop")
                             stop_owned_operation();
                         else if (command == "run/settings")
                             preferences.panelVisibility["panel.run"] = true;
@@ -4880,22 +5259,52 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 return value;
             };
-            SemanticSnapshot animationSnapshot;
-            animationSnapshot.hostLayoutId = mainAccessibilityHost;
-            animationSnapshot.hostGeneration = mainAccessibilityGeneration;
-            if (accessibilitySnapshotRevision != std::numeric_limits<std::uint64_t>::max())
-                ++accessibilitySnapshotRevision;
-            animationSnapshot.revision = accessibilitySnapshotRevision;
+
             const std::string animationRootId = "animation/window";
             const bool animationSemanticsVisible = showAnimationEditorWindow &&
                 animationContentsVisible && documentManager.animation_tab_count() != 0;
             animationWindowPlaybackVisible = animationSemanticsVisible;
-            SemanticNode animationRoot;
-            animationRoot.id = animationRootId;
-            animationRoot.role = SemanticRole::Window;
-            animationRoot.name = "Animation Assets";
-            animationRoot.visible = animationSemanticsVisible;
-            animationSnapshot.nodes.push_back(std::move(animationRoot));
+
+            struct SemanticSnapshotCacheKey
+            {
+                std::uint64_t projectGeneration = 0;
+                std::uint64_t documentGeneration = 0;
+                Selection selection;
+                std::uint64_t consoleRevision = 0;
+                bool operationActive = false;
+
+                bool operator==(const SemanticSnapshotCacheKey &) const = default;
+            };
+
+            static SemanticSnapshotCacheKey s_lastSemanticKey;
+            static bool s_hasPublishedSemanticSnapshot = false;
+
+            const SemanticSnapshotCacheKey currentSemanticKey{
+                projectSession.generation().value,
+                workspace->document().documentGeneration,
+                selection->current(),
+                gamePipeline.console().revision(),
+                !operationLabel.empty()
+            };
+
+            const bool needSemanticRebuild = !s_hasPublishedSemanticSnapshot ||
+                                             (accessibilitySnapshots.pending_actions() > 0) ||
+                                             (currentSemanticKey != s_lastSemanticKey);
+
+            SemanticSnapshot animationSnapshot;
+            if (needSemanticRebuild)
+            {
+                animationSnapshot.hostLayoutId = mainAccessibilityHost;
+                animationSnapshot.hostGeneration = mainAccessibilityGeneration;
+                if (accessibilitySnapshotRevision != std::numeric_limits<std::uint64_t>::max())
+                    ++accessibilitySnapshotRevision;
+                animationSnapshot.revision = accessibilitySnapshotRevision;
+                SemanticNode animationRoot;
+                animationRoot.id = animationRootId;
+                animationRoot.role = SemanticRole::Window;
+                animationRoot.name = "Animation Assets";
+                animationRoot.visible = animationSemanticsVisible;
+                animationSnapshot.nodes.push_back(std::move(animationRoot));
 
             SemanticNode menuBarRoot;
             menuBarRoot.id = "main/menu-bar";
@@ -4938,9 +5347,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             };
             addMenuGroup("file", "File");
             addMenuGroup("edit", "Edit");
-            addMenuGroup("view", "View and Tools");
-            addMenuGroup("run", "Run");
+            addMenuGroup("assets", "Assets");
+            addMenuGroup("gameobject", "GameObject");
+            addMenuGroup("component", "Component");
+            addMenuGroup("window", "Window");
             addMenuGroup("help", "Help");
+
+            // File
             addMenuCommand("file/new-scene-tab", "file", "New Scene Tab",
                            !projectLocked && !tabActionsLocked);
             addMenuCommand("file/open-scene", "file", "Open Scene", !projectLocked);
@@ -4953,45 +5366,82 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                            hasDirtySceneTab ? "modified documents available" : "all saved");
             addMenuCommand("file/save-as", "file", "Save Scene As", !projectLocked);
             addMenuCommand("file/exit", "file", "Exit Editor", true);
+
+            // Edit
             const auto currentHistory = editCommands->history_status();
             addMenuCommand("edit/undo", "edit", "Undo", !projectLocked && currentHistory.canUndo);
             addMenuCommand("edit/redo", "edit", "Redo", !projectLocked && currentHistory.canRedo);
             addMenuCommand("edit/validate", "edit", "Validate Scene", true);
+            addMenuCommand("edit/preferences", "edit", "Preferences", true);
+
+            // Assets
+            const auto targetDir = projectPanel.selected_directory();
+            const auto selectedEntry = projectPanel.selected_entry();
+            const bool hasSelectedAsset = selectedEntry.has_value();
+            addMenuCommand("assets/create-folder", "assets", "Create Folder", !projectLocked);
+            addMenuCommand("assets/create-script", "assets", "Create Behavior Script", !projectLocked);
+            addMenuCommand("assets/create-scene", "assets", "Create Scene", !projectLocked);
+            addMenuCommand("assets/create-template", "assets", "Create Object Template", !projectLocked);
+            addMenuCommand("assets/delete", "assets", "Delete Asset", hasSelectedAsset && !projectLocked);
+            addMenuCommand("assets/refresh", "assets", "Refresh", true);
+
+            // GameObject
+            const auto selectedObjId = (selection != nullptr && selection->current().objectId)
+                ? selection->current().objectId : std::nullopt;
+            addMenuCommand("gameobject/create-empty", "gameobject", "Create Empty", !projectLocked);
+            addMenuCommand("gameobject/create-empty-child", "gameobject", "Create Empty Child", !projectLocked && selectedObjId.has_value());
+            addMenuCommand("gameobject/create-sprite", "gameobject", "2D Sprite", !projectLocked);
+            addMenuCommand("gameobject/create-camera", "gameobject", "Camera", !projectLocked);
+            addMenuCommand("gameobject/create-audio", "gameobject", "Audio Object", !projectLocked);
+            addMenuCommand("gameobject/frame-selected", "gameobject", "Frame Selected", selectedObjId.has_value());
+
+            // Component
+            const bool canAddComponent = !projectLocked && selectedObjId.has_value();
+            addMenuCommand("component/audio-source", "component", "Audio Source", canAddComponent);
+            addMenuCommand("component/camera", "component", "Camera", canAddComponent);
+            addMenuCommand("component/script", "component", "Script", canAddComponent);
+            addMenuCommand("component/sprite-renderer", "component", "Sprite Renderer", canAddComponent);
+            addMenuCommand("component/box-collider", "component", "Box Collider", canAddComponent);
+            addMenuCommand("component/rigidbody", "component", "Rigidbody", canAddComponent);
+            addMenuCommand("component/animator", "component", "Animator", canAddComponent);
+
+            // Window
             for (const auto &[id, label] : std::array{
                      std::pair{"hierarchy", "Hierarchy"}, std::pair{"scene", "Scene"},
                      std::pair{"inspector", "Inspector"}, std::pair{"project", "Project and Assets"},
                      std::pair{"console", "Console"}, std::pair{"validation", "Validation"}})
             {
                 const std::string panelId = "panel." + std::string(id);
-                addMenuCommand("view/" + std::string(id), "view", label, true,
+                addMenuCommand("window/" + std::string(id), "window", label, true,
                     preferences.panelVisibility[panelId] ? "shown" : "hidden",
                     preferences.panelVisibility[panelId], SemanticRole::CheckBox);
             }
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
-            addMenuCommand("view/game", "view", "Game", true,
+            addMenuCommand("window/game", "window", "Game", true,
                            preferences.panelVisibility["panel.game"] ? "shown" : "hidden",
                            preferences.panelVisibility["panel.game"], SemanticRole::CheckBox);
 #endif
-            addMenuCommand("view/animation", "view", "Animation Assets", true,
+            addMenuCommand("window/animation", "window", "Animation Assets", true,
                            showAnimationEditorWindow ? "shown" : "hidden",
                            showAnimationEditorWindow, SemanticRole::CheckBox);
-            addMenuCommand("view/run-settings", "view", "Build and Run Settings", true,
+            addMenuCommand("window/run-settings", "window", "Build and Run Settings", true,
                            preferences.panelVisibility["panel.run"] ? "shown" : "hidden",
                            preferences.panelVisibility["panel.run"], SemanticRole::CheckBox);
-            addMenuCommand("view/reset-layout", "view", "Reset Layout", true);
+            addMenuCommand("window/reset-layout", "window", "Reset Layout", true);
             const bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
-            addMenuCommand("view/fullscreen", "view", "Fullscreen", true,
+            addMenuCommand("window/fullscreen", "window", "Fullscreen", true,
                            fullscreen ? "enabled" : "disabled", fullscreen,
                            SemanticRole::CheckBox);
-            addMenuCommand("view/zoom-in", "view", "Zoom In", true);
-            addMenuCommand("view/zoom-out", "view", "Zoom Out", true);
-            addMenuCommand("view/frame-all", "view", "Frame All", true);
-            addMenuCommand("view/frame-selected", "view", "Frame Selected", true);
-            addMenuCommand("run/build", "run", "Build Project", projectOpened && !projectLocked);
-            addMenuCommand("run/build-and-run", "run", "Build and Run", projectOpened && !projectLocked);
-            addMenuCommand("run/stop", "run", "Stop Owned Operation",
+            addMenuCommand("window/zoom-in", "window", "Zoom In", true);
+            addMenuCommand("window/zoom-out", "window", "Zoom Out", true);
+            addMenuCommand("window/frame-all", "window", "Frame All", true);
+            addMenuCommand("window/frame-selected", "window", "Frame Selected", true);
+            addMenuCommand("window/build", "window", "Build Project", projectOpened && !projectLocked);
+            addMenuCommand("window/build-and-run", "window", "Build and Run", projectOpened && !projectLocked);
+            addMenuCommand("window/stop", "window", "Stop Owned Operation",
                 gamePipeline.busy() || catalogQuery.running() || pendingPipelineBuildOnly.has_value());
-            addMenuCommand("run/settings", "run", "Build and Run Settings", true);
+
+            // Help
             addMenuCommand("help/shortcuts", "help", "Keyboard Shortcuts", true);
             addMenuCommand("help/preferences", "help", "Editor Preferences", true);
 
@@ -5116,57 +5566,66 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     animationSnapshot.focusedRevealPath = {"main/welcome", openProjectNode.id};
                 animationSnapshot.nodes.push_back(std::move(openProjectNode));
             }
+            }
 
             if (hierarchyContentsVisible)
             {
-                const std::string hierarchyScope =
-                    "main/tab/" + std::to_string(activeDocumentTab->id().value) +
-                    "/document/" + std::to_string(workspace->document().documentGeneration) +
-                    "/hierarchy";
-                auto hierarchyNodes = hierarchyPanel.semantic_nodes(
-                    workspace->document(), selection->current(), "main/tab/" +
-                    std::to_string(activeDocumentTab->id().value) + "/document/" +
-                    std::to_string(workspace->document().documentGeneration));
-                for (auto &node : hierarchyNodes)
+                if (needSemanticRebuild)
                 {
-                    if (node.focused)
-                        animationSnapshot.focusedRevealPath = {hierarchyScope, node.id};
-                    animationSnapshot.nodes.push_back(std::move(node));
+                    const std::string hierarchyScope =
+                        "main/tab/" + std::to_string(activeDocumentTab->id().value) +
+                        "/document/" + std::to_string(workspace->document().documentGeneration) +
+                        "/hierarchy";
+                    auto hierarchyNodes = hierarchyPanel.semantic_nodes(
+                        workspace->document(), selection->current(), "main/tab/" +
+                        std::to_string(activeDocumentTab->id().value) + "/document/" +
+                        std::to_string(workspace->document().documentGeneration));
+                    for (auto &node : hierarchyNodes)
+                    {
+                        if (node.focused)
+                            animationSnapshot.focusedRevealPath = {hierarchyScope, node.id};
+                        animationSnapshot.nodes.push_back(std::move(node));
+                    }
                 }
             }
             if (projectContentsVisible)
             {
-                SemanticNode projectRoot;
-                projectRoot.id = "main/panel/project";
-                projectRoot.role = SemanticRole::Window;
-                projectRoot.name = "Project";
-                projectRoot.visible = true;
-                projectRoot.expanded = true;
-                animationSnapshot.nodes.push_back(std::move(projectRoot));
-
-                SemanticNode assetRoot;
-                assetRoot.id = "main/panel/project/asset-root";
-                assetRoot.parentId = "main/panel/project";
-                assetRoot.role = SemanticRole::Text;
-                assetRoot.name = "Project asset folder";
-                assetRoot.value = projectContext.snapshot().assetRoot.generic_string();
-                assetRoot.visible = true;
-                animationSnapshot.nodes.push_back(std::move(assetRoot));
-
-                auto projectNodes = projectPanel.semantic_nodes(
-                    workspace->document(), selection->current(), "main/panel/project");
-                for (auto &node : projectNodes)
+                if (needSemanticRebuild)
                 {
-                    if (node.id.starts_with("main/panel/project/assign/"))
-                        node.enabled = !projectLocked && !documentEditingLocked;
-                    if (node.focused)
-                        animationSnapshot.focusedRevealPath = {
-                            "main/panel/project", node.id};
-                    animationSnapshot.nodes.push_back(std::move(node));
+                    SemanticNode projectRoot;
+                    projectRoot.id = "main/panel/project";
+                    projectRoot.role = SemanticRole::Window;
+                    projectRoot.name = "Project";
+                    projectRoot.visible = true;
+                    projectRoot.expanded = true;
+                    animationSnapshot.nodes.push_back(std::move(projectRoot));
+
+                    SemanticNode assetRoot;
+                    assetRoot.id = "main/panel/project/asset-root";
+                    assetRoot.parentId = "main/panel/project";
+                    assetRoot.role = SemanticRole::Text;
+                    assetRoot.name = "Project asset folder";
+                    assetRoot.value = projectContext.snapshot().assetRoot.generic_string();
+                    assetRoot.visible = true;
+                    animationSnapshot.nodes.push_back(std::move(assetRoot));
+
+                    auto projectNodes = projectPanel.semantic_nodes(
+                        workspace->document(), selection->current(), "main/panel/project");
+                    for (auto &node : projectNodes)
+                    {
+                        if (node.id.starts_with("main/panel/project/assign/"))
+                            node.enabled = !projectLocked && !documentEditingLocked;
+                        if (node.focused)
+                            animationSnapshot.focusedRevealPath = {
+                                "main/panel/project", node.id};
+                        animationSnapshot.nodes.push_back(std::move(node));
+                    }
                 }
             }
             if (animationSemanticsVisible)
             {
+                if (needSemanticRebuild)
+                {
                 for (const TabId id : documentManager.animation_tab_ids())
                 {
                     const auto *tab = documentManager.find_animation_tab(id);
@@ -5222,6 +5681,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         node.enabled = node.enabled && !projectLocked;
                         animationSnapshot.nodes.push_back(std::move(node));
                     }
+                }
                 }
             }
             if (closeAnimationPromptTab)
@@ -5466,11 +5926,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             if (consoleFrame.contentsVisible)
             {
                 consolePanel.draw(gamePipeline.status(), gamePipeline.console());
-                auto consoleNodes = consolePanel.semantic_nodes(
-                    gamePipeline.status(), gamePipeline.console(), "main/panel/console");
-                animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
-                    std::make_move_iterator(consoleNodes.begin()),
-                    std::make_move_iterator(consoleNodes.end()));
+                if (needSemanticRebuild)
+                {
+                    auto consoleNodes = consolePanel.semantic_nodes(
+                        gamePipeline.status(), gamePipeline.console(), "main/panel/console");
+                    animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
+                        std::make_move_iterator(consoleNodes.begin()),
+                        std::make_move_iterator(consoleNodes.end()));
+                }
             }
             end_panel_window(consoleFrame);
             restore_panel_context(previousConsoleContext);
@@ -5487,21 +5950,33 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     gameFrameRenderer = host->second->renderer();
             gamePanel.set_renderer(gameFrameRenderer);
             auto *playSession = gamePipeline.play_session();
+            ImGuiID sceneDockId = 0x00003000;
+            if (const ImGuiWindow *sceneWindow = ImGui::FindWindowByName("Scene###panel.scene"))
+            {
+                if (sceneWindow->DockNode != nullptr)
+                    sceneDockId = sceneWindow->DockNode->ID;
+                else if (sceneWindow->DockId != 0)
+                    sceneDockId = sceneWindow->DockId;
+            }
+            ImGui::SetNextWindowDockID(sceneDockId, ImGuiCond_FirstUseEver);
             const auto gameFrame = begin_panel_window(showGame,
                 "Game###panel.game", &showGame);
             if (gameFrame.contentsVisible)
             {
                 gamePanel.draw(playSession, true);
-                SemanticNode root;
-                root.id = "main/panel/game";
-                root.role = SemanticRole::Window;
-                root.name = "Game";
-                root.visible = true;
-                root.expanded = true;
-                animationSnapshot.nodes.push_back(std::move(root));
-                auto nodes = gamePanel.semantic_nodes(playSession, "main/panel/game");
-                for (auto &node : nodes)
-                    animationSnapshot.nodes.push_back(std::move(node));
+                if (needSemanticRebuild)
+                {
+                    SemanticNode root;
+                    root.id = "main/panel/game";
+                    root.role = SemanticRole::Window;
+                    root.name = "Game";
+                    root.visible = true;
+                    root.expanded = true;
+                    animationSnapshot.nodes.push_back(std::move(root));
+                    auto nodes = gamePanel.semantic_nodes(playSession, "main/panel/game");
+                    for (auto &node : nodes)
+                        animationSnapshot.nodes.push_back(std::move(node));
+                }
             }
             else
                 gamePanel.set_visible(playSession, false);
@@ -5523,41 +5998,44 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (!inspectorPanel.feedback().empty())
                     ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", inspectorPanel.feedback().c_str());
 
-                SemanticNode root;
-                root.id = "main/panel/inspector";
-                root.role = SemanticRole::Window;
-                root.name = "Inspector";
-                root.visible = true;
-                root.expanded = true;
-                animationSnapshot.nodes.push_back(std::move(root));
-
-                const auto &currentSelection = selection->current();
-                SemanticNode selected;
-                selected.id = "main/panel/inspector/selection";
-                selected.parentId = "main/panel/inspector";
-                selected.role = SemanticRole::Group;
-                selected.name = currentSelection.objectId
-                    ? "Selected GameObject " + std::to_string(*currentSelection.objectId)
-                    : "No GameObject selected";
-                selected.value = currentSelection.selectedObjectIds.size() > 1
-                    ? std::to_string(currentSelection.selectedObjectIds.size()) + " objects selected"
-                    : (currentSelection.componentId
-                        ? "Component " + std::to_string(*currentSelection.componentId)
-                        : "GameObject");
-                selected.visible = true;
-                selected.selected = currentSelection.objectId.has_value();
-                selected.focused = currentSelection.focusedPanel == FocusedPanel::Inspector;
-                animationSnapshot.nodes.push_back(std::move(selected));
-                auto inspectorNodes = inspectorPanel.semantic_nodes(
-                    workspace->document(), currentSelection, "main/panel/inspector",
-                    &behaviorCatalog);
-                for (auto &node : inspectorNodes)
+                if (needSemanticRebuild)
                 {
-                    node.enabled = node.enabled && !documentEditingLocked;
-                    if (node.focused && animationSnapshot.focusedRevealPath.empty())
-                        animationSnapshot.focusedRevealPath = {
-                            "main/panel/inspector", node.id};
-                    animationSnapshot.nodes.push_back(std::move(node));
+                    SemanticNode root;
+                    root.id = "main/panel/inspector";
+                    root.role = SemanticRole::Window;
+                    root.name = "Inspector";
+                    root.visible = true;
+                    root.expanded = true;
+                    animationSnapshot.nodes.push_back(std::move(root));
+
+                    const auto &currentSelection = selection->current();
+                    SemanticNode selected;
+                    selected.id = "main/panel/inspector/selection";
+                    selected.parentId = "main/panel/inspector";
+                    selected.role = SemanticRole::Group;
+                    selected.name = currentSelection.objectId
+                        ? "Selected GameObject " + std::to_string(*currentSelection.objectId)
+                        : "No GameObject selected";
+                    selected.value = currentSelection.selectedObjectIds.size() > 1
+                        ? std::to_string(currentSelection.selectedObjectIds.size()) + " objects selected"
+                        : (currentSelection.componentId
+                            ? "Component " + std::to_string(*currentSelection.componentId)
+                            : "GameObject");
+                    selected.visible = true;
+                    selected.selected = currentSelection.objectId.has_value();
+                    selected.focused = currentSelection.focusedPanel == FocusedPanel::Inspector;
+                    animationSnapshot.nodes.push_back(std::move(selected));
+                    auto inspectorNodes = inspectorPanel.semantic_nodes(
+                        workspace->document(), currentSelection, "main/panel/inspector",
+                        &behaviorCatalog);
+                    for (auto &node : inspectorNodes)
+                    {
+                        node.enabled = node.enabled && !documentEditingLocked;
+                        if (node.focused && animationSnapshot.focusedRevealPath.empty())
+                            animationSnapshot.focusedRevealPath = {
+                                "main/panel/inspector", node.id};
+                        animationSnapshot.nodes.push_back(std::move(node));
+                    }
                 }
             }
             end_panel_window(inspectorFrame);
@@ -5575,54 +6053,57 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const auto previousRunPreferences = preferences.run;
                 const auto action = runSettingsPanel.draw(preferences.run, gamePipeline.status(),
                     projectLocked || catalogQuery.running(), workspace->dirty());
-                SemanticNode root;
-                root.id = "main/panel/run";
-                root.role = SemanticRole::Window;
-                root.name = "Build and Run";
-                root.visible = true;
-                root.expanded = true;
-                animationSnapshot.nodes.push_back(std::move(root));
+                if (needSemanticRebuild)
+                {
+                    SemanticNode root;
+                    root.id = "main/panel/run";
+                    root.role = SemanticRole::Window;
+                    root.name = "Build and Run";
+                    root.visible = true;
+                    root.expanded = true;
+                    animationSnapshot.nodes.push_back(std::move(root));
 
-                SemanticNode status;
-                status.id = "main/panel/run/status";
-                status.parentId = "main/panel/run";
-                status.role = SemanticRole::Text;
-                status.name = "Build and Run status";
-                status.value = std::string(pipelineStageName(gamePipeline.status().stage));
-                if (!gamePipeline.status().message.empty())
-                    status.value += ": " + accessibleText(gamePipeline.status().message);
-                status.visible = true;
-                animationSnapshot.nodes.push_back(std::move(status));
+                    SemanticNode status;
+                    status.id = "main/panel/run/status";
+                    status.parentId = "main/panel/run";
+                    status.role = SemanticRole::Text;
+                    status.name = "Build and Run status";
+                    status.value = std::string(pipelineStageName(gamePipeline.status().stage));
+                    if (!gamePipeline.status().message.empty())
+                        status.value += ": " + accessibleText(gamePipeline.status().message);
+                    status.visible = true;
+                    animationSnapshot.nodes.push_back(std::move(status));
 
-                const auto addRunButton = [&](std::string id, std::string name, bool enabled) {
-                    SemanticNode node;
-                    node.id = "main/panel/run/" + id;
-                    node.parentId = "main/panel/run";
-                    node.role = SemanticRole::Button;
-                    node.name = std::move(name);
-                    node.visible = true;
-                    node.enabled = enabled;
-                    node.focused = runSettingsPanel.focused_control() == id;
-                    node.actions = {"activate"};
-                    if (node.focused && animationSnapshot.focusedRevealPath.empty())
-                        animationSnapshot.focusedRevealPath = {"main/panel/run", node.id};
-                    animationSnapshot.nodes.push_back(std::move(node));
-                };
-                const bool runBusy = projectLocked || catalogQuery.running();
-                addRunButton("build", "Build project", projectOpened && !runBusy);
-                addRunButton("build-and-run", "Build and Run", projectOpened && !runBusy);
-                addRunButton("stop", "Stop owned operation", gamePipeline.busy() ||
-                    catalogQuery.running() || pendingPipelineBuildOnly || pendingRunValidation.active());
-                addRunButton("refresh-discovery", "Rediscover Build Targets",
-                    projectOpened && !runBusy);
-                addRunButton("browse-executable", "Browse for game executable",
-                    projectOpened && !runBusy);
-                addRunButton("refresh-sources", "Recheck Sources", projectOpened && !runBusy);
-                auto runOptionNodes = runSettingsPanel.semantic_nodes(
-                    preferences.run, "main/panel/run", runBusy);
-                animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
-                    std::make_move_iterator(runOptionNodes.begin()),
-                    std::make_move_iterator(runOptionNodes.end()));
+                    const auto addRunButton = [&](std::string id, std::string name, bool enabled) {
+                        SemanticNode node;
+                        node.id = "main/panel/run/" + id;
+                        node.parentId = "main/panel/run";
+                        node.role = SemanticRole::Button;
+                        node.name = std::move(name);
+                        node.visible = true;
+                        node.enabled = enabled;
+                        node.focused = runSettingsPanel.focused_control() == id;
+                        node.actions = {"activate"};
+                        if (node.focused && animationSnapshot.focusedRevealPath.empty())
+                            animationSnapshot.focusedRevealPath = {"main/panel/run", node.id};
+                        animationSnapshot.nodes.push_back(std::move(node));
+                    };
+                    const bool runBusy = projectLocked || catalogQuery.running();
+                    addRunButton("build", "Build project", projectOpened && !runBusy);
+                    addRunButton("build-and-run", "Build and Run", projectOpened && !runBusy);
+                    addRunButton("stop", "Stop owned operation", gamePipeline.busy() ||
+                        catalogQuery.running() || pendingPipelineBuildOnly || pendingRunValidation.active());
+                    addRunButton("refresh-discovery", "Rediscover Build Targets",
+                        projectOpened && !runBusy);
+                    addRunButton("browse-executable", "Browse for game executable",
+                        projectOpened && !runBusy);
+                    addRunButton("refresh-sources", "Recheck Sources", projectOpened && !runBusy);
+                    auto runOptionNodes = runSettingsPanel.semantic_nodes(
+                        preferences.run, "main/panel/run", runBusy);
+                    animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
+                        std::make_move_iterator(runOptionNodes.begin()),
+                        std::make_move_iterator(runOptionNodes.end()));
+                }
                 if (preferences.run != previousRunPreferences)
                     deferredPreferenceSave.schedule(std::chrono::steady_clock::now());
                 if (sourceInputIdentity.empty())
@@ -5738,91 +6219,94 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 if (!statusMessage.empty()) ImGui::TextWrapped("%s", statusMessage.c_str());
 
-                SemanticNode root;
-                root.id = "main/panel/validation";
-                root.role = SemanticRole::Window;
-                root.name = "Validation";
-                root.visible = true;
-                root.expanded = true;
-                animationSnapshot.nodes.push_back(std::move(root));
-
-                SemanticNode refresh;
-                refresh.id = "main/panel/validation/refresh";
-                refresh.parentId = "main/panel/validation";
-                refresh.role = SemanticRole::Button;
-                refresh.name = "Validate Scene";
-                refresh.help = "Runs validation for the current document revision.";
-                refresh.visible = true;
-                refresh.enabled = !projectLocked;
-                refresh.focused = validationRefreshFocused;
-                refresh.actions = {"activate"};
-                if (refresh.focused && animationSnapshot.focusedRevealPath.empty())
-                    animationSnapshot.focusedRevealPath = {"main/panel/validation", refresh.id};
-                animationSnapshot.nodes.push_back(std::move(refresh));
-
-                SemanticNode validationStatus;
-                validationStatus.id = "main/panel/validation/status";
-                validationStatus.parentId = "main/panel/validation";
-                validationStatus.role = SemanticRole::Text;
-                validationStatus.name = "Validation status";
-                validationStatus.value = validationCurrent ?
-                    (validation.blocksRun ? "Current; Run blocked" : "Current; Run allowed") : "Pending";
-                validationStatus.error = validationCurrent && validation.blocksRun;
-                validationStatus.visible = true;
-                animationSnapshot.nodes.push_back(std::move(validationStatus));
-
-                SemanticNode counts;
-                counts.id = "main/panel/validation/counts";
-                counts.parentId = "main/panel/validation";
-                counts.role = SemanticRole::Text;
-                counts.name = "Scene object and component counts";
-                counts.value = std::to_string(workspace->document().indexes.objectsById.size()) +
-                    " objects, " + std::to_string(workspace->document().indexes.componentsById.size()) +
-                    " components";
-                counts.visible = true;
-                animationSnapshot.nodes.push_back(std::move(counts));
-
-                if (validationCurrent)
+                if (needSemanticRebuild)
                 {
-                    const auto &validationSelection = selection->current();
-                    const std::size_t visibleIssueCount = std::min<std::size_t>(64, validation.issues.size());
-                    for (std::size_t index = 0; index < visibleIssueCount; ++index)
+                    SemanticNode root;
+                    root.id = "main/panel/validation";
+                    root.role = SemanticRole::Window;
+                    root.name = "Validation";
+                    root.visible = true;
+                    root.expanded = true;
+                    animationSnapshot.nodes.push_back(std::move(root));
+
+                    SemanticNode refresh;
+                    refresh.id = "main/panel/validation/refresh";
+                    refresh.parentId = "main/panel/validation";
+                    refresh.role = SemanticRole::Button;
+                    refresh.name = "Validate Scene";
+                    refresh.help = "Runs validation for the current document revision.";
+                    refresh.visible = true;
+                    refresh.enabled = !projectLocked;
+                    refresh.focused = validationRefreshFocused;
+                    refresh.actions = {"activate"};
+                    if (refresh.focused && animationSnapshot.focusedRevealPath.empty())
+                        animationSnapshot.focusedRevealPath = {"main/panel/validation", refresh.id};
+                    animationSnapshot.nodes.push_back(std::move(refresh));
+
+                    SemanticNode validationStatus;
+                    validationStatus.id = "main/panel/validation/status";
+                    validationStatus.parentId = "main/panel/validation";
+                    validationStatus.role = SemanticRole::Text;
+                    validationStatus.name = "Validation status";
+                    validationStatus.value = validationCurrent ?
+                        (validation.blocksRun ? "Current; Run blocked" : "Current; Run allowed") : "Pending";
+                    validationStatus.error = validationCurrent && validation.blocksRun;
+                    validationStatus.visible = true;
+                    animationSnapshot.nodes.push_back(std::move(validationStatus));
+
+                    SemanticNode counts;
+                    counts.id = "main/panel/validation/counts";
+                    counts.parentId = "main/panel/validation";
+                    counts.role = SemanticRole::Text;
+                    counts.name = "Scene object and component counts";
+                    counts.value = std::to_string(workspace->document().indexes.objectsById.size()) +
+                        " objects, " + std::to_string(workspace->document().indexes.componentsById.size()) +
+                        " components";
+                    counts.visible = true;
+                    animationSnapshot.nodes.push_back(std::move(counts));
+
+                    if (validationCurrent)
                     {
-                        const auto &issue = validation.issues[index];
-                        SemanticNode issueNode;
-                        issueNode.id = "main/tab/" + std::to_string(activeDocumentTab->id().value) +
-                            "/document/" + std::to_string(workspace->document().documentGeneration) +
-                            "/validation/issue/" + std::to_string(index);
-                        issueNode.parentId = "main/panel/validation";
-                        issueNode.role = SemanticRole::ListItem;
-                        issueNode.name = accessibleText(
-                            (issue.blocksRun ? "Run blocked: " : "Warning: ") +
-                            issue.fieldPath + ": " + issue.message, 512);
-                        issueNode.value = issue.blocksRun ? "error" : "warning";
-                        issueNode.help = accessibleText(issue.message, 512);
-                        issueNode.visible = true;
-                        issueNode.error = issue.blocksRun;
-                        issueNode.selected = issue.objectId &&
-                            validationSelection.objectId == issue.objectId &&
-                            validationSelection.componentId == issue.componentId;
-                        issueNode.focused = issueNode.selected &&
-                            validationSelection.focusedPanel == FocusedPanel::Inspector;
-                        if (issue.objectId &&
-                            workspace->document().indexes.objectsById.contains(*issue.objectId))
-                            issueNode.actions = {"activate"};
-                        animationSnapshot.nodes.push_back(std::move(issueNode));
-                    }
-                    if (validation.issues.size() > visibleIssueCount)
-                    {
-                        SemanticNode more;
-                        more.id = "main/panel/validation/more-issues";
-                        more.parentId = "main/panel/validation";
-                        more.role = SemanticRole::Text;
-                        more.name = "Additional validation issues";
-                        more.value = std::to_string(validation.issues.size() - visibleIssueCount) +
-                            " more issues are not in the current semantic page";
-                        more.visible = true;
-                        animationSnapshot.nodes.push_back(std::move(more));
+                        const auto &validationSelection = selection->current();
+                        const std::size_t visibleIssueCount = std::min<std::size_t>(64, validation.issues.size());
+                        for (std::size_t index = 0; index < visibleIssueCount; ++index)
+                        {
+                            const auto &issue = validation.issues[index];
+                            SemanticNode issueNode;
+                            issueNode.id = "main/tab/" + std::to_string(activeDocumentTab->id().value) +
+                                "/document/" + std::to_string(workspace->document().documentGeneration) +
+                                "/validation/issue/" + std::to_string(index);
+                            issueNode.parentId = "main/panel/validation";
+                            issueNode.role = SemanticRole::ListItem;
+                            issueNode.name = accessibleText(
+                                (issue.blocksRun ? "Run blocked: " : "Warning: ") +
+                                issue.fieldPath + ": " + issue.message, 512);
+                            issueNode.value = issue.blocksRun ? "error" : "warning";
+                            issueNode.help = accessibleText(issue.message, 512);
+                            issueNode.visible = true;
+                            issueNode.error = issue.blocksRun;
+                            issueNode.selected = issue.objectId &&
+                                validationSelection.objectId == issue.objectId &&
+                                validationSelection.componentId == issue.componentId;
+                            issueNode.focused = issueNode.selected &&
+                                validationSelection.focusedPanel == FocusedPanel::Inspector;
+                            if (issue.objectId &&
+                                workspace->document().indexes.objectsById.contains(*issue.objectId))
+                                issueNode.actions = {"activate"};
+                            animationSnapshot.nodes.push_back(std::move(issueNode));
+                        }
+                        if (validation.issues.size() > visibleIssueCount)
+                        {
+                            SemanticNode more;
+                            more.id = "main/panel/validation/more-issues";
+                            more.parentId = "main/panel/validation";
+                            more.role = SemanticRole::Text;
+                            more.name = "Additional validation issues";
+                            more.value = std::to_string(validation.issues.size() - visibleIssueCount) +
+                                " more issues are not in the current semantic page";
+                            more.visible = true;
+                            animationSnapshot.nodes.push_back(std::move(more));
+                        }
                     }
                 }
             }
@@ -5880,11 +6364,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                                 scenePreview->render_revision(), sceneRenderer,
                                                 width, height);
                                         }});
-                auto sceneNodes = scenePanel.semantic_nodes(
-                    sceneDocument, selection->current(), preferences.snap, "main/panel/scene");
-                animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
-                    std::make_move_iterator(sceneNodes.begin()),
-                    std::make_move_iterator(sceneNodes.end()));
+                if (needSemanticRebuild)
+                {
+                    auto sceneNodes = scenePanel.semantic_nodes(
+                        sceneDocument, selection->current(), preferences.snap, "main/panel/scene");
+                    animationSnapshot.nodes.insert(animationSnapshot.nodes.end(),
+                        std::make_move_iterator(sceneNodes.begin()),
+                        std::make_move_iterator(sceneNodes.end()));
+                }
                 if (preferences.snap != oldSnapPreferences)
                     schedule_preference_save();
                 if (hiddenObjectIds != hiddenBeforeScene || lockedObjectIds != lockedBeforeScene)
@@ -6139,7 +6626,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 lastWindowTitle = windowTitle;
             }
             std::string semanticError;
-            if (accessibilitySnapshotRevision != 0)
+            if (needSemanticRebuild && accessibilitySnapshotRevision != 0)
             {
                 std::vector<SemanticHostIdentity> detachedSemanticHosts;
                 detachedSemanticHosts.reserve(detachedHosts.size());
@@ -6170,6 +6657,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                 statusMessage = "Editor accessibility snapshot could not be published: " + semanticError;
                             break;
                         }
+                s_lastSemanticKey = currentSemanticKey;
+                s_hasPublishedSemanticSnapshot = true;
             }
             projectSession.resource_index().end_visible_reference_frame();
             std::vector<HostLayoutId> failedDetachedHosts;
@@ -6205,6 +6694,28 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 else
                     request_build_and_run();
             }
+            bool wantSaveIni = false;
+            if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantSaveIniSettings)
+            {
+                wantSaveIni = true;
+                std::size_t layoutSize = 0;
+                if (const char *layout = ImGui::SaveIniSettingsToMemory(&layoutSize))
+                    savedLayout.assign(layout, layoutSize);
+                ImGui::GetIO().WantSaveIniSettings = false;
+            }
+            for (auto &[hostId, host] : detachedHosts)
+            {
+                if (host && host->context() && host->context()->IO.WantSaveIniSettings)
+                {
+                    wantSaveIni = true;
+                    host->context()->IO.WantSaveIniSettings = false;
+                }
+            }
+            if (wantSaveIni)
+            {
+                capture_detached_host_state();
+                schedule_preference_save();
+            }
             imgui->present(renderer);
             tickDriver.note_present(std::chrono::steady_clock::now(), applicationStart);
             projectPanel.end_frame();
@@ -6221,9 +6732,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     deadlines[deadlineCount++] = deadline;
             };
             include_deadline(nextExternalFileCheck);
-            include_deadline(nextReferenceFallbackCheck);
+            if (projectSession.project_changes().coverage() != ProjectCoverageState::Current && !assetWatchScan)
+                include_deadline(nextReferenceFallbackCheck);
             include_deadline(nextSourceScan);
-            include_deadline(assetWatchSchedule.deadline());
+            if (!assetWatchScan && assetWatchSchedule.pending())
+                include_deadline(assetWatchSchedule.deadline());
             include_deadline(deferredPreferenceSave.deadline());
             if (const auto deadline = projectSession.project_changes().next_batch_deadline())
                 include_deadline(*deadline);
@@ -6239,11 +6752,16 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
             }
 
+            if (inputSettleFrames > 0)
+            {
+                --inputSettleFrames;
+                return;
+            }
+
             // SDL input and coalesced worker-completion events wake this wait.
             // With no deadline, static panels do not need a periodic redraw.
-            // SDL accepts a signed millisecond timeout, so cap the event wait at
-            // its largest representable value and let maintenance deadlines win.
-            const auto maximumWait = std::chrono::milliseconds(std::numeric_limits<int>::max());
+            // Cap the idle wait at 250ms heartbeat so periodic maintenance runs.
+            const auto maximumWait = std::chrono::milliseconds(250);
             const std::optional<EditorWaitClock::duration> pollingInterval =
                 (gamePipeline.busy() || catalogQuery.running())
                     ? std::optional<EditorWaitClock::duration>(std::chrono::milliseconds(8))
@@ -6255,7 +6773,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return;
             SDL_Event event{};
             if (SDL_WaitEventTimeout(&event, static_cast<int>(timeout.count())))
-                SDL_PushEvent(&event);
+            {
+                pendingWakeEvent = event;
+            }
         }))
         {
         }

@@ -672,11 +672,20 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
     {
         if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
         {
-            if (payload->Data != nullptr && payload->DataSize > 0 && payload->DataSize <= 2048)
+            if (payload->Data != nullptr && payload->DataSize > 0)
             {
-                const auto *bytes = static_cast<const char *>(payload->Data);
-                std::string dropped(bytes, bytes + payload->DataSize);
-                if (!dropped.empty() && dropped.back() == '\0')
+                std::string dropped;
+                if (payload->DataSize == sizeof(AssetDragPayload))
+                {
+                    const auto *drag = static_cast<const AssetDragPayload *>(payload->Data);
+                    dropped = drag->relativeAssetPath;
+                }
+                else
+                {
+                    const auto *bytes = static_cast<const char *>(payload->Data);
+                    dropped = bytes;
+                }
+                while (!dropped.empty() && dropped.back() == '\0')
                     dropped.pop_back();
                 std::string error;
                 if (validate_asset_reference_assignment(document, dropped, expectedAssetType, nullable, error))

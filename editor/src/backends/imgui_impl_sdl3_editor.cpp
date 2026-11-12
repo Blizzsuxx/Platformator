@@ -508,7 +508,16 @@ bool ImGui_ImplSDL3_ProcessEvent(const SDL_Event* event)
             if (event->button.button == SDL_BUTTON_X2) { mouse_button = 4; }
             if (mouse_button == -1)
                 break;
+            ImVec2 mouse_pos((float)event->button.x, (float)event->button.y);
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+            {
+                int window_x, window_y;
+                SDL_GetWindowPosition(SDL_GetWindowFromID(event->button.windowID), &window_x, &window_y);
+                mouse_pos.x += window_x;
+                mouse_pos.y += window_y;
+            }
             io.AddMouseSourceEvent(event->button.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            io.AddMousePosEvent(mouse_pos.x, mouse_pos.y);
             io.AddMouseButtonEvent(mouse_button, (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN));
             bd->MouseButtonsDown = (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) ? (bd->MouseButtonsDown | (1 << mouse_button)) : (bd->MouseButtonsDown & ~(1 << mouse_button));
             return true;

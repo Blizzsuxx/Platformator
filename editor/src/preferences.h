@@ -102,6 +102,7 @@ struct WorkspacePreferences
     std::optional<std::filesystem::path> recentScene;
     std::map<std::string, bool> panelVisibility;
     std::map<std::string, HostLayoutId> panelHostAssignments{
+        {"panel.game", main_host_layout_id},
         {"panel.hierarchy", main_host_layout_id}, {"panel.scene", main_host_layout_id},
         {"panel.inspector", main_host_layout_id}, {"panel.project", main_host_layout_id},
         {"panel.console", main_host_layout_id}, {"panel.run", main_host_layout_id},

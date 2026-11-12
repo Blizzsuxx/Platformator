@@ -1119,12 +1119,16 @@ void run_compact_transform_and_header_menu_tests()
 {
     auto document = make_default_document();
     document.root = Json::array({
-        Json{{"id", 1}, {"name", "Hero"}, {"tag", "PlayerTag"}, {"active", true},
+        Json{{"id", 1}, {"name", "Hero"}, {"tag", "PlayerTag"}, {"layer", "Default"}, {"active", true},
              {"position", {{"x", 10.0}, {"y", 20.0}}},
              {"scale", {{"x", 1.0}, {"y", 1.0}}}, {"rotation", 45.0},
              {"children", Json::array()},
              {"components", Json::array({
-                 Json{{"id", 101}, {"type", 2}, {"width", 640.0}, {"height", 480.0}}
+                 Json{{"id", 101}, {"type", 2}, {"width", 640.0}, {"height", 480.0}},
+                 Json{{"id", 102}, {"type", 3}, {"colliderType", 1}, {"width", 16.0}, {"height", 16.0},
+                      {"offset", {{"x", 2.0}, {"y", 3.0}}}, {"trigger", false}, {"collisionGroup", 1}, {"collisionMask", 1}},
+                 Json{{"id", 103}, {"type", 4}, {"velocity", {{"x", 4.0}, {"y", 5.0}}},
+                      {"force", {{"x", 6.0}, {"y", 7.0}}}, {"mass", 1.0}, {"bodyType", 0}, {"gravity", true}}
              })}}
     });
     ++document.structureRevision;
@@ -1157,12 +1161,73 @@ void run_compact_transform_and_header_menu_tests()
     render_frame();
 
     require(document.root[0]["name"] == "Hero" && document.root[0]["tag"] == "PlayerTag" &&
+            document.root[0]["layer"] == "Default" &&
             document.root[0]["active"] == true, "top header bindings must match initial document");
     require(document.root[0]["position"]["x"] == 10.0 && document.root[0]["rotation"] == 45.0,
             "transform properties must match initial document");
+    require(document.root[0]["components"][1]["offset"]["x"] == 2.0 &&
+            document.root[0]["components"][1]["offset"]["y"] == 3.0,
+            "collider compact vector2 offset must match initial document");
+    require(document.root[0]["components"][2]["velocity"]["x"] == 4.0 &&
+            document.root[0]["components"][2]["force"]["y"] == 7.0,
+            "rigidbody compact vector2 velocity and force must match initial document");
 
+    // Test Layer property edits
+    const auto layerAddress = address_for_document(document, 1, std::nullopt, std::nullopt,
+                                                   {std::string("layer")});
+    commands.set_property(document, layerAddress, "Enemies");
+    require(document.root[0]["layer"] == "Enemies", "layer property must update to Enemies");
+    commands.undo(document, selection);
+    require(document.root[0]["layer"] == "Default", "undo must restore layer Default");
+
+    // Test component enabled property edit & undo
+    const auto cameraEnabled = address_for_document(document, 1, 101, std::nullopt,
+                                                    {std::string("enabled")});
+    commands.set_property(document, cameraEnabled, false);
+    require(document.root[0]["components"][0]["enabled"] == false, "camera enabled must update to false");
+    commands.undo(document, selection);
+    require(document.root[0]["components"][0].value("enabled", true) == true, "undo must restore camera enabled");
+
+    // Test compact Vector2 property edits
+    const auto colliderOffsetX = address_for_document(document, 1, 102, std::nullopt,
+                                                      {std::string("offset"), std::string("x")});
+    const auto historyBeforeOffset = commands.history_status();
+    commands.set_property(document, colliderOffsetX, 12.5);
+    require(document.root[0]["components"][1]["offset"]["x"] == 12.5, "collider offset x must update");
+    require(commands.history_status().undoCommands == historyBeforeOffset.undoCommands + 1,
+            "collider offset edit must record undo");
+    commands.undo(document, selection);
+    require(document.root[0]["components"][1]["offset"]["x"] == 2.0, "undo must restore original offset");
+
+    const auto rbForceY = address_for_document(document, 1, 103, std::nullopt,
+                                               {std::string("force"), std::string("y")});
+    commands.set_property(document, rbForceY, -15.0);
+    require(document.root[0]["components"][2]["force"]["y"] == -15.0, "rigidbody force y must update");
+    commands.undo(document, selection);
+    require(document.root[0]["components"][2]["force"]["y"] == 7.0, "undo must restore force y");
+
+    selection.set(document, Selection{1, std::nullopt, std::nullopt, FocusedPanel::Inspector});
     const std::string scope = "test/tab/1/document/1";
     auto nodes = panel.semantic_nodes(document, selection.current(), scope, &catalog);
+
+    const auto layerNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
+        return node.name == "Layer";
+    });
+    require(layerNode != nodes.end() && layerNode->value == "Default",
+            "Layer field must be present in semantic nodes with Default value");
+
+    const auto cameraEnabledNode = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
+        return node.parentId == scope + "/component/1/101" && node.name == "Enabled";
+    });
+    require(cameraEnabledNode != nodes.end() && cameraEnabledNode->name == "Enabled",
+            "Enabled field must be present in semantic nodes for Camera component");
+
+    const auto rbEnabledNode = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
+        return node.parentId == scope + "/component/1/103" && node.name == "Enabled";
+    });
+    require(rbEnabledNode == nodes.end(),
+            "Enabled field must NOT be present in semantic nodes for Rigidbody component");
+
     const std::string removeActionId = scope + "/component/1/101/remove-component";
     const auto removeAction = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
         return node.id == removeActionId;
@@ -1174,12 +1239,12 @@ void run_compact_transform_and_header_menu_tests()
     require(panel.dispatch_semantic_action(document, selection,
                 SemanticAction{.nodeId = removeActionId, .action = "activate"}, scope,
                 &catalog, &commands), "remove component action must dispatch successfully");
-    require(document.root[0]["components"].empty(), "component must be removed from document");
+    require(document.root[0]["components"].size() == 2, "component 101 must be removed from document");
     require(commands.history_status().undoCommands == historyBeforeRemove.undoCommands + 1,
             "remove component must record exactly one undo command");
 
     require(commands.undo(document, selection).status == CommandStatus::Changed, "undo must succeed");
-    require(!document.root[0]["components"].empty() && document.root[0]["components"][0]["id"] == 101,
+    require(document.root[0]["components"].size() == 3 && document.root[0]["components"][0]["id"] == 101,
             "undo must restore the removed component");
 
     const auto posXAddress = address_for_document(document, 1, std::nullopt, std::nullopt,
@@ -1191,6 +1256,31 @@ void run_compact_transform_and_header_menu_tests()
             "one scrub release must generate exactly one undo transaction");
     commands.undo(document, selection);
     require(document.root[0]["position"]["x"] == 10.0, "undo must restore original position");
+
+    // Test component header menu button click does not collapse the header
+    // The menu button is at the right edge of the header row (x ~ 580)
+    // Find the header position by scanning y coordinates for component 101
+    render_frame();
+    for (float scanY = 100.0f; scanY < 400.0f; scanY += 10.0f)
+    {
+        io.AddMousePosEvent(580.0f, scanY);
+        render_frame();
+        if (ImGui::GetHoveredID() != 0)
+        {
+            // Click menu button
+            io.AddMouseButtonEvent(0, true);
+            render_frame();
+            io.AddMouseButtonEvent(0, false);
+            render_frame();
+            if (ImGui::IsPopupOpen("ComponentHeaderContextMenu"))
+            {
+                // Verify popup opened without collapsing the component
+                ImGui::CloseCurrentPopup();
+                render_frame();
+                break;
+            }
+        }
+    }
 
     ImGui::DestroyContext();
 }

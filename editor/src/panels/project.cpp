@@ -1688,7 +1688,10 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         {
             const auto relativeAsset = path.lexically_relative(assetRoot).generic_string();
             const std::string reference = "assets/" + relativeAsset;
-            ImGui::SetDragDropPayload("PLATFORMATOR_ASSET_PATH", reference.c_str(), reference.size() + 1);
+            AssetDragPayload payload{};
+            std::snprintf(payload.relativeAssetPath, sizeof(payload.relativeAssetPath), "%s", reference.c_str());
+            payload.kind = editor_asset_format(path).kind;
+            ImGui::SetDragDropPayload("PLATFORMATOR_ASSET_PATH", &payload, sizeof(payload));
             ImGui::TextUnformatted(path.filename().string().c_str());
         }
         ImGui::EndDragDropSource();
@@ -1928,7 +1931,346 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         target.behaviorRoot = behaviorRoot;
         pendingTileTargets_.emplace(nodeId, std::move(target));
     }
+    if (ImGui::BeginPopupContextItem("##asset-item-context"))
+    {
+        viewState_.contextTargetPath = path;
+        selectedEntry_ = path;
+        if (ImGui::MenuItem("Open"))
+        {
+            if (isDirectory)
+            {
+                selectedDirectory_ = path;
+                selectedEntry_.reset();
+            }
+            else if (openAnimationCallback_ && editor_asset_format(path).kind == EditorAssetKind::Animation)
+                openAnimationCallback_(path);
+            else
+                assetDoubleClickPending_ = true;
+        }
+        if (ImGui::MenuItem("Reveal in File Manager"))
+        {
+            reveal_in_file_manager(path);
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Rename", "F2"))
+        {
+            viewState_.renaming = true;
+            viewState_.renamingPath = path;
+            std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
+                          path.filename().string().c_str());
+        }
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+        {
+            execute_context_duplicate(path);
+        }
+        if (ImGui::MenuItem("Delete", "Delete"))
+        {
+            execute_context_delete(path);
+        }
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Create"))
+        {
+            const auto targetDir = isDirectory ? path : path.parent_path();
+            if (ImGui::MenuItem("Folder"))
+                execute_context_create("Folder", targetDir);
+            if (ImGui::MenuItem("Behavior Script"))
+                execute_context_create("Behavior Script", targetDir);
+            if (ImGui::MenuItem("Scene"))
+                execute_context_create("Scene", targetDir);
+            if (ImGui::MenuItem("Object Template"))
+                execute_context_create("Object Template", targetDir);
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
+    }
     ImGui::PopID();
+}
+
+void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
+                                       const std::filesystem::path &assetRoot,
+                                       bool isDirectory, bool behaviorRoot,
+                                       float rowHeight)
+{
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const std::string entryKey = path.string();
+    const std::string label = path.filename().string();
+    const bool selected = selectedEntry_ && *selectedEntry_ == path;
+    const float availableWidth = ImGui::GetContentRegionAvail().x;
+    ImGui::PushID(entryKey.c_str());
+
+    const bool clicked = ImGui::Selectable("##asset-row", selected, ImGuiSelectableFlags_None,
+                                          ImVec2(availableWidth, rowHeight));
+    const ImVec2 minimum = ImGui::GetItemRectMin();
+    const ImVec2 maximum = ImGui::GetItemRectMax();
+    const bool hovered = ImGui::IsItemHovered();
+
+    const bool behaviorSource = behaviorRoot && editor_asset_format(path).behaviorHeader;
+    if (!isDirectory && (!behaviorRoot || behaviorSource) && ImGui::BeginDragDropSource())
+    {
+        if (behaviorSource)
+        {
+            const auto behaviorType = behavior_type_from_source(path);
+            if (behaviorType)
+            {
+                ImGui::SetDragDropPayload("PLATFORMATOR_BEHAVIOR_TYPE", behaviorType->c_str(),
+                                          behaviorType->size() + 1);
+                ImGui::Text("Add %s", behaviorType->c_str());
+            }
+            else
+                ImGui::TextUnformatted("Could not find a registered behavior class in this source file.");
+        }
+        else
+        {
+            const auto relativeAsset = path.lexically_relative(assetRoot).generic_string();
+            const std::string reference = "assets/" + relativeAsset;
+            AssetDragPayload payload{};
+            std::snprintf(payload.relativeAssetPath, sizeof(payload.relativeAssetPath), "%s", reference.c_str());
+            payload.kind = editor_asset_format(path).kind;
+            ImGui::SetDragDropPayload("PLATFORMATOR_ASSET_PATH", &payload, sizeof(payload));
+            ImGui::TextUnformatted(path.filename().string().c_str());
+        }
+        ImGui::EndDragDropSource();
+    }
+
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    const float iconSize = 14.0f * uiScale;
+    const float iconY = minimum.y + (rowHeight - iconSize) * 0.5f;
+    const auto icon = isDirectory ? EditorIcon::Folder : asset_icon(path);
+    draw_editor_icon(icon, drawList, {minimum.x + 4.0f * uiScale, iconY}, iconSize,
+                     ImGui::GetColorU32(ImGuiCol_Text));
+
+    const float textY = minimum.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f;
+    drawList->AddText({minimum.x + 22.0f * uiScale, textY},
+                      ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+
+    const std::string typeText = isDirectory ? "Folder" : asset_search_type(path, false);
+    const float typeWidth = ImGui::CalcTextSize(typeText.c_str()).x;
+    drawList->AddText({maximum.x - typeWidth - 8.0f * uiScale, textY},
+                      ImGui::GetColorU32(ImGuiCol_TextDisabled), typeText.c_str());
+
+    if (clicked)
+    {
+        if (!selectedEntry_ || *selectedEntry_ != path)
+        {
+            assignmentFeedback_.clear();
+            selectedAssignmentTarget_.clear();
+        }
+        selectedEntry_ = path;
+    }
+    const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+    if (doubleClicked)
+    {
+        if (isDirectory)
+        {
+            selectedDirectory_ = path;
+            selectedEntry_.reset();
+            auto parent = path;
+            while (path_is_within(assetRoot, parent))
+            {
+                expandedDirectories_.insert(parent.string());
+                if (parent == assetRoot || parent == parent.parent_path())
+                    break;
+                parent = parent.parent_path();
+            }
+        }
+        else
+        {
+            if (editor_asset_format(path).kind == EditorAssetKind::Animation && openAnimationCallback_)
+            {
+                assetDoubleClickPending_ = false;
+                openAnimationCallback_(path);
+            }
+            else
+                assetDoubleClickPending_ = true;
+        }
+    }
+
+    if (ImGui::BeginPopupContextItem("##asset-item-context"))
+    {
+        viewState_.contextTargetPath = path;
+        selectedEntry_ = path;
+        if (ImGui::MenuItem("Open"))
+        {
+            if (isDirectory)
+            {
+                selectedDirectory_ = path;
+                selectedEntry_.reset();
+            }
+            else if (openAnimationCallback_ && editor_asset_format(path).kind == EditorAssetKind::Animation)
+                openAnimationCallback_(path);
+            else
+                assetDoubleClickPending_ = true;
+        }
+        if (ImGui::MenuItem("Reveal in File Manager"))
+        {
+            reveal_in_file_manager(path);
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Rename", "F2"))
+        {
+            viewState_.renaming = true;
+            viewState_.renamingPath = path;
+            std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
+                          path.filename().string().c_str());
+        }
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+        {
+            execute_context_duplicate(path);
+        }
+        if (ImGui::MenuItem("Delete", "Delete"))
+        {
+            execute_context_delete(path);
+        }
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Create"))
+        {
+            const auto targetDir = isDirectory ? path : path.parent_path();
+            if (ImGui::MenuItem("Folder"))
+                execute_context_create("Folder", targetDir);
+            if (ImGui::MenuItem("Behavior Script"))
+                execute_context_create("Behavior Script", targetDir);
+            if (ImGui::MenuItem("Scene"))
+                execute_context_create("Scene", targetDir);
+            if (ImGui::MenuItem("Object Template"))
+                execute_context_create("Object Template", targetDir);
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::PopID();
+}
+
+bool ProjectPanel::execute_context_create(std::string_view itemType, const std::filesystem::path &targetDir)
+{
+    std::error_code ec;
+    if (itemType == "Folder")
+    {
+        std::filesystem::path candidate = targetDir / "New Folder";
+        int counter = 1;
+        while (std::filesystem::exists(candidate, ec))
+        {
+            candidate = targetDir / ("New Folder (" + std::to_string(counter++) + ")");
+        }
+        std::filesystem::create_directories(candidate, ec);
+        refresh();
+        return !ec;
+    }
+    if (itemType == "Behavior Script")
+    {
+        std::filesystem::path candidate = targetDir / "NewBehavior.cpp";
+        int counter = 1;
+        while (std::filesystem::exists(candidate, ec))
+        {
+            candidate = targetDir / ("NewBehavior" + std::to_string(counter++) + ".cpp");
+        }
+        const std::string stem = candidate.stem().string();
+        std::string content = "#include <platformator/behavior.h>\n\nclass " + stem + " : public platformator::Behavior\n{\npublic:\n    void update(float deltaTime) override {}\n};\n";
+        std::ofstream out(candidate, std::ios::binary);
+        if (out.is_open())
+        {
+            out << content;
+            out.close();
+            refresh();
+            return true;
+        }
+        return false;
+    }
+    if (itemType == "Scene")
+    {
+        std::filesystem::path candidate = targetDir / "New Scene.scene";
+        int counter = 1;
+        while (std::filesystem::exists(candidate, ec))
+        {
+            candidate = targetDir / ("New Scene (" + std::to_string(counter++) + ").scene");
+        }
+        std::ofstream out(candidate, std::ios::binary);
+        if (out.is_open())
+        {
+            out << "{\n    \"schema\": 1,\n    \"root\": []\n}\n";
+            out.close();
+            refresh();
+            return true;
+        }
+        return false;
+    }
+    if (itemType == "Object Template")
+    {
+        std::filesystem::path candidate = targetDir / "New Template.pttemplate";
+        int counter = 1;
+        while (std::filesystem::exists(candidate, ec))
+        {
+            candidate = targetDir / ("New Template (" + std::to_string(counter++) + ").pttemplate");
+        }
+        std::ofstream out(candidate, std::ios::binary);
+        if (out.is_open())
+        {
+            out << "{\n    \"schema\": \"platformator/template/v1\",\n    \"root\": {\n        \"id\": 1,\n        \"name\": \"New Template\",\n        \"components\": []\n    },\n    \"reference_bindings\": []\n}\n";
+            out.close();
+            refresh();
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+bool ProjectPanel::execute_context_delete(const std::filesystem::path &targetPath)
+{
+    std::error_code ec;
+    const bool removed = std::filesystem::remove_all(targetPath, ec) > 0;
+    if (selectedEntry_ && *selectedEntry_ == targetPath)
+        selectedEntry_.reset();
+    refresh();
+    return removed && !ec;
+}
+
+bool ProjectPanel::execute_context_duplicate(const std::filesystem::path &targetPath)
+{
+    std::error_code ec;
+    if (!std::filesystem::exists(targetPath, ec))
+        return false;
+    const auto parent = targetPath.parent_path();
+    const auto stem = targetPath.stem().string();
+    const auto ext = targetPath.extension().string();
+    std::filesystem::path candidate = parent / (stem + " Copy" + ext);
+    int counter = 1;
+    while (std::filesystem::exists(candidate, ec))
+    {
+        candidate = parent / (stem + " Copy (" + std::to_string(counter++) + ")" + ext);
+    }
+    std::filesystem::copy(targetPath, candidate, std::filesystem::copy_options::recursive, ec);
+    refresh();
+    return !ec;
+}
+
+bool ProjectPanel::execute_context_rename(const std::filesystem::path &targetPath, const std::string &newName)
+{
+    if (newName.empty() || newName == targetPath.filename().string())
+        return false;
+    std::error_code ec;
+    const auto dest = targetPath.parent_path() / newName;
+    std::filesystem::rename(targetPath, dest, ec);
+    if (!ec && selectedEntry_ && *selectedEntry_ == targetPath)
+        selectedEntry_ = dest;
+    refresh();
+    return !ec;
+}
+
+bool ProjectPanel::reveal_in_file_manager(const std::filesystem::path &targetPath)
+{
+    std::error_code ec;
+    std::filesystem::path dir = targetPath;
+    if (dir.empty())
+        dir = selectedDirectory_.empty() ? assetRoot_ : selectedDirectory_;
+    if (!std::filesystem::is_directory(dir, ec))
+        dir = dir.parent_path();
+    if (dir.empty())
+        dir = ".";
+    std::filesystem::path absoluteDir = std::filesystem::absolute(dir, ec);
+    std::string url = "file://" + absoluteDir.generic_string();
+    lastRevealedUrl_ = url;
+    return SDL_OpenURL(url.c_str());
 }
 
 void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::string &rootLabel,
@@ -1937,11 +2279,34 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     request_scan(selectedDirectory_);
     auto &state = directories_[selectedDirectory_.string()];
     const auto relative = selectedDirectory_.lexically_relative(root);
-    const std::string locationLabel = relative.empty() || relative == "."
-        ? rootLabel : rootLabel + " / " + relative.generic_string();
-    ImGui::TextDisabled("%s", locationLabel.c_str());
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    if (ImGui::SmallButton(rootLabel.c_str()))
+    {
+        selectedDirectory_ = root;
+        selectedEntry_.reset();
+    }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", selectedDirectory_.string().c_str());
+        ImGui::SetTooltip("%s", root.string().c_str());
+
+    if (!relative.empty() && relative != ".")
+    {
+        std::filesystem::path currentPath = root;
+        for (const auto &part : relative)
+        {
+            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::TextDisabled("/");
+            ImGui::SameLine(0.0f, 2.0f);
+            currentPath /= part;
+            if (ImGui::SmallButton(part.string().c_str()))
+            {
+                selectedDirectory_ = currentPath;
+                selectedEntry_.reset();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", currentPath.string().c_str());
+        }
+    }
+    ImGui::PopStyleColor();
     ImGui::Separator();
 
     if (!state.error.empty())
@@ -1997,59 +2362,157 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         }
     }
     const auto &filteredIndexes = state.filteredEntryIndexes;
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const float footerHeight = ImGui::GetFrameHeightWithSpacing() + 6.0f;
+    ImGui::BeginChild("##contents-scroll", ImVec2(0.0f, -footerHeight), ImGuiChildFlags_None);
+
     if (entries.empty())
     {
         ImGui::TextDisabled("This folder is empty.");
-        return;
     }
-    if (filteredIndexes.empty())
+    else if (filteredIndexes.empty())
     {
         ImGui::TextDisabled("No assets match this search.");
-        return;
     }
-
-    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
-    const float preferredTileWidth = 116.0f * uiScale;
-    const float tileHeight = 104.0f * uiScale;
-    const float spacingX = ImGui::GetStyle().ItemSpacing.x;
-    const float spacingY = ImGui::GetStyle().ItemSpacing.y;
-    const float availableWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-    const int columns = std::max(1, static_cast<int>((availableWidth + spacingX) /
-                                                     (preferredTileWidth + spacingX)));
-    const float tileWidth = std::max(72.0f * uiScale,
-        (availableWidth - spacingX * static_cast<float>(columns - 1)) / static_cast<float>(columns));
-    const int rowCount = static_cast<int>((filteredIndexes.size() + static_cast<std::size_t>(columns) - 1) /
-                                          static_cast<std::size_t>(columns));
-    const float startX = ImGui::GetCursorPosX();
-    const float startY = ImGui::GetCursorPosY();
-    const float rowStride = tileHeight + spacingY;
-    const float scrollY = std::max(0.0f, ImGui::GetScrollY() - startY);
-    const float visibleHeight = ImGui::GetWindowSize().y;
-    const int firstVisibleRow = std::max(0, static_cast<int>(std::floor(scrollY / rowStride)) - 1);
-    const int lastVisibleRow = std::min(rowCount, static_cast<int>(std::ceil(
-        (scrollY + visibleHeight) / rowStride)) + 1);
-    for (int row = firstVisibleRow; row < lastVisibleRow; ++row)
+    else if (viewState_.thumbnailScale <= 0.0f)
     {
-        for (int column = 0; column < columns; ++column)
+        const float rowHeight = ImGui::GetFrameHeight();
+        for (const std::size_t index : filteredIndexes)
         {
-            const std::size_t entryIndex = static_cast<std::size_t>(row) *
-                                           static_cast<std::size_t>(columns) +
-                                           static_cast<std::size_t>(column);
-            if (entryIndex >= filteredIndexes.size())
-                break;
-            ImGui::SetCursorPos({startX + static_cast<float>(column) * (tileWidth + spacingX),
-                                 startY + static_cast<float>(row) * rowStride});
-            const auto &entry = entries[filteredIndexes[entryIndex]];
-            draw_asset_tile(entry.path, root, entry.isDirectory, behaviorRoot,
-                            tileWidth, tileHeight);
+            const auto &entry = entries[index];
+            draw_asset_list_row(entry.path, root, entry.isDirectory, behaviorRoot, rowHeight);
             work::record(work::Counter::ProjectTiles);
         }
     }
-    // Keep the full grid height in the child content even though only visible rows are submitted.
-    ImGui::SetCursorPos({startX, startY + static_cast<float>(rowCount) * rowStride});
-    ImGui::Dummy({1.0f, 1.0f});
+    else
+    {
+        const float preferredTileWidth = (64.0f + viewState_.thumbnailScale * 128.0f) * uiScale;
+        const float tileHeight = (56.0f + viewState_.thumbnailScale * 112.0f) * uiScale;
+        const float spacingX = ImGui::GetStyle().ItemSpacing.x;
+        const float spacingY = ImGui::GetStyle().ItemSpacing.y;
+        const float availableWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+        const int columns = std::max(1, static_cast<int>((availableWidth + spacingX) /
+                                                         (preferredTileWidth + spacingX)));
+        const float tileWidth = std::max(56.0f * uiScale,
+            (availableWidth - spacingX * static_cast<float>(columns - 1)) / static_cast<float>(columns));
+        const int rowCount = static_cast<int>((filteredIndexes.size() + static_cast<std::size_t>(columns) - 1) /
+                                              static_cast<std::size_t>(columns));
+        const float startX = ImGui::GetCursorPosX();
+        const float startY = ImGui::GetCursorPosY();
+        const float rowStride = tileHeight + spacingY;
+        const float scrollY = std::max(0.0f, ImGui::GetScrollY() - startY);
+        const float visibleHeight = ImGui::GetWindowSize().y;
+        const int firstVisibleRow = std::max(0, static_cast<int>(std::floor(scrollY / rowStride)) - 1);
+        const int lastVisibleRow = std::min(rowCount, static_cast<int>(std::ceil(
+            (scrollY + visibleHeight) / rowStride)) + 1);
+        for (int row = firstVisibleRow; row < lastVisibleRow; ++row)
+        {
+            for (int column = 0; column < columns; ++column)
+            {
+                const std::size_t entryIndex = static_cast<std::size_t>(row) *
+                                               static_cast<std::size_t>(columns) +
+                                               static_cast<std::size_t>(column);
+                if (entryIndex >= filteredIndexes.size())
+                    break;
+                ImGui::SetCursorPos({startX + static_cast<float>(column) * (tileWidth + spacingX),
+                                     startY + static_cast<float>(row) * rowStride});
+                const auto &entry = entries[filteredIndexes[entryIndex]];
+                draw_asset_tile(entry.path, root, entry.isDirectory, behaviorRoot,
+                                tileWidth, tileHeight);
+                work::record(work::Counter::ProjectTiles);
+            }
+        }
+        ImGui::SetCursorPos({startX, startY + static_cast<float>(rowCount) * rowStride});
+        ImGui::Dummy({1.0f, 1.0f});
+    }
+
     if (state.truncated)
         ImGui::TextDisabled("Folder listing reached its scan limit.");
+
+    if (ImGui::BeginPopupContextWindow("##folder-empty-context-menu",
+                                       ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+    {
+        viewState_.contextTargetPath = selectedDirectory_;
+        if (ImGui::BeginMenu("Create"))
+        {
+            if (ImGui::MenuItem("Folder"))
+                execute_context_create("Folder", selectedDirectory_);
+            if (ImGui::MenuItem("Behavior Script"))
+                execute_context_create("Behavior Script", selectedDirectory_);
+            if (ImGui::MenuItem("Scene"))
+                execute_context_create("Scene", selectedDirectory_);
+            if (ImGui::MenuItem("Object Template"))
+                execute_context_create("Object Template", selectedDirectory_);
+            ImGui::EndMenu();
+        }
+        if (ImGui::MenuItem("Reveal in File Manager"))
+        {
+            reveal_in_file_manager(selectedDirectory_);
+        }
+        ImGui::EndPopup();
+    }
+
+    if (selectedEntry_ && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_F2))
+        {
+            viewState_.renaming = true;
+            viewState_.renamingPath = *selectedEntry_;
+            std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
+                          selectedEntry_->filename().string().c_str());
+        }
+        else if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D))
+        {
+            execute_context_duplicate(*selectedEntry_);
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_Delete))
+        {
+            execute_context_delete(*selectedEntry_);
+        }
+    }
+
+    ImGui::EndChild();
+
+    ImGui::Separator();
+    ImGui::TextDisabled("%zu items", filteredIndexes.size());
+    ImGui::SameLine();
+    const float sliderWidth = 140.0f * uiScale;
+    const float avail = ImGui::GetContentRegionAvail().x;
+    if (avail > sliderWidth)
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - sliderWidth);
+    ImGui::SetNextItemWidth(sliderWidth);
+    ImGui::SliderFloat("##thumbnail-scale", &viewState_.thumbnailScale, 0.0f, 1.0f,
+                       viewState_.thumbnailScale <= 0.0f ? "List" : "Grid");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Thumbnail scale (0 = compact list, >0 = scalable grid)");
+
+    if (viewState_.renaming)
+    {
+        ImGui::OpenPopup("Rename Asset##modal");
+    }
+    if (ImGui::BeginPopupModal("Rename Asset##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Rename: %s", viewState_.renamingPath.filename().string().c_str());
+        ImGui::SetNextItemWidth(250.0f * uiScale);
+        if (ImGui::IsWindowAppearing())
+            ImGui::SetKeyboardFocusHere();
+        const bool enter = ImGui::InputText("##rename-input", viewState_.renameBuffer,
+                                            sizeof(viewState_.renameBuffer),
+                                            ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::Button("OK") || enter)
+        {
+            execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
+            viewState_.renaming = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            viewState_.renaming = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 std::vector<ProjectPanel::AssetAssignmentTarget> ProjectPanel::asset_assignment_targets(
@@ -2750,9 +3213,9 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
 
     const ImVec2 available = ImGui::GetContentRegionAvail();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
-    const float leftWidth = std::min(available.x * 0.42f,
-        std::min(240.0f * uiScale, std::max(90.0f * uiScale, available.x * 0.28f)));
-    ImGui::BeginChild("Asset folders", ImVec2(leftWidth, 0.0f), ImGuiChildFlags_Borders);
+    const float leftWidth = std::clamp(viewState_.folderTreeWidth, 90.0f * uiScale, std::max(120.0f * uiScale, available.x - 120.0f * uiScale));
+    ImGui::BeginChild("Asset folders", ImVec2(leftWidth, 0.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX);
+    viewState_.folderTreeWidth = ImGui::GetWindowWidth();
     draw_folder_tree(assetRoot, assetRoot, "Assets", 0);
     ImGui::EndChild();
     ImGui::SameLine();

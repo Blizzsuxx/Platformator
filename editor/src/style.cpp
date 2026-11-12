@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace platformator_editor
 {
@@ -21,47 +22,54 @@ ImGuiStyle make_base_style()
     style.WindowBorderSize = 1.0f;
     style.ChildBorderSize = 1.0f;
     style.PopupBorderSize = 1.0f;
-    style.FrameBorderSize = 0.0f;
-    style.WindowRounding = 5.0f;
-    style.ChildRounding = 4.0f;
+    style.FrameBorderSize = 1.0f;
+    style.WindowRounding = 4.0f;
+    style.ChildRounding = 3.0f;
     style.FrameRounding = 3.0f;
     style.PopupRounding = 4.0f;
-    style.ScrollbarRounding = 7.0f;
+    style.ScrollbarRounding = 6.0f;
     style.GrabRounding = 3.0f;
     style.TabRounding = 4.0f;
-    style.Colors[ImGuiCol_Text] = ImVec4(0.87f, 0.89f, 0.92f, 1.00f);
-    style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.49f, 0.53f, 0.59f, 1.00f);
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.105f, 0.115f, 0.135f, 1.00f);
-    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.115f, 0.125f, 0.145f, 1.00f);
-    style.Colors[ImGuiCol_PopupBg] = ImVec4(0.13f, 0.145f, 0.17f, 0.98f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.24f, 0.27f, 0.32f, 0.78f);
-    style.Colors[ImGuiCol_FrameBg] = ImVec4(0.16f, 0.18f, 0.21f, 1.00f);
-    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.20f, 0.24f, 0.29f, 1.00f);
-    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.28f, 0.35f, 1.00f);
-    style.Colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.13f, 0.15f, 1.00f);
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.15f, 0.17f, 0.20f, 1.00f);
-    style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.13f, 0.145f, 0.17f, 1.00f);
-    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.105f, 0.12f, 0.145f, 1.00f);
-    style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.09f, 0.10f, 0.12f, 0.75f);
-    style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.29f, 0.32f, 0.37f, 1.00f);
-    style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.36f, 0.41f, 0.47f, 1.00f);
-    style.Colors[ImGuiCol_CheckMark] = ImVec4(0.36f, 0.63f, 0.94f, 1.00f);
-    style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.55f, 0.84f, 1.00f);
-    style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.39f, 0.67f, 0.96f, 1.00f);
-    style.Colors[ImGuiCol_Button] = ImVec4(0.19f, 0.24f, 0.30f, 1.00f);
-    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.34f, 0.44f, 1.00f);
-    style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.20f, 0.43f, 0.70f, 1.00f);
-    style.Colors[ImGuiCol_Header] = ImVec4(0.18f, 0.25f, 0.33f, 1.00f);
-    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.22f, 0.32f, 0.43f, 1.00f);
-    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.22f, 0.39f, 0.57f, 1.00f);
-    style.Colors[ImGuiCol_Separator] = ImVec4(0.27f, 0.30f, 0.35f, 0.75f);
-    style.Colors[ImGuiCol_SeparatorHovered] = ImVec4(0.31f, 0.51f, 0.73f, 0.85f);
-    style.Colors[ImGuiCol_SeparatorActive] = ImVec4(0.30f, 0.55f, 0.84f, 1.00f);
-    style.Colors[ImGuiCol_Tab] = ImVec4(0.15f, 0.18f, 0.22f, 1.00f);
-    style.Colors[ImGuiCol_TabHovered] = ImVec4(0.24f, 0.35f, 0.47f, 1.00f);
-    style.Colors[ImGuiCol_TabSelected] = ImVec4(0.20f, 0.29f, 0.39f, 1.00f);
-    style.Colors[ImGuiCol_DockingPreview] = ImVec4(0.27f, 0.55f, 0.82f, 0.55f);
-    style.Colors[ImGuiCol_NavHighlight] = ImVec4(0.34f, 0.62f, 0.93f, 1.00f);
+
+    // Neutral dark charcoal palette
+    style.Colors[ImGuiCol_Text] = ImVec4(0.88f, 0.88f, 0.88f, 1.00f);
+    style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.157f, 0.157f, 0.157f, 1.00f);       // #282828
+    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.133f, 0.133f, 0.133f, 1.00f);        // #222222
+    style.Colors[ImGuiCol_PopupBg] = ImVec4(0.145f, 0.145f, 0.145f, 0.98f);
+    style.Colors[ImGuiCol_Border] = ImVec4(0.20f, 0.20f, 0.20f, 0.90f);
+    style.Colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    style.Colors[ImGuiCol_FrameBg] = ImVec4(0.102f, 0.102f, 0.102f, 1.00f);        // #1A1A1A
+    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);
+    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.24f, 0.24f, 0.24f, 1.00f);
+    style.Colors[ImGuiCol_TitleBg] = ImVec4(0.118f, 0.118f, 0.118f, 1.00f);        // #1E1E1E
+    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.145f, 0.145f, 0.145f, 1.00f);
+    style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.118f, 0.118f, 0.118f, 0.75f);
+    style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.125f, 0.125f, 0.125f, 1.00f);
+    style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.10f, 0.10f, 0.10f, 0.75f);
+    style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
+    style.Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.38f, 0.38f, 0.38f, 1.00f);
+    style.Colors[ImGuiCol_CheckMark] = ImVec4(0.35f, 0.60f, 0.90f, 1.00f);
+    style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.55f, 0.85f, 1.00f);
+    style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.68f, 0.98f, 1.00f);
+    style.Colors[ImGuiCol_Button] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.27f, 0.27f, 0.27f, 1.00f);
+    style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.33f, 0.33f, 0.33f, 1.00f);
+    style.Colors[ImGuiCol_Header] = ImVec4(0.220f, 0.220f, 0.220f, 1.00f);        // #383838
+    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.28f, 0.28f, 0.28f, 1.00f);
+    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.34f, 0.34f, 0.34f, 1.00f);
+    style.Colors[ImGuiCol_Separator] = ImVec4(0.20f, 0.20f, 0.20f, 0.90f);
+    style.Colors[ImGuiCol_SeparatorHovered] = ImVec4(0.30f, 0.50f, 0.75f, 0.85f);
+    style.Colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.60f, 0.90f, 1.00f);
+    style.Colors[ImGuiCol_ResizeGrip] = ImVec4(0.25f, 0.25f, 0.25f, 0.50f);
+    style.Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.35f, 0.35f, 0.35f, 0.70f);
+    style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.45f, 0.45f, 0.45f, 0.90f);
+    style.Colors[ImGuiCol_Tab] = ImVec4(0.145f, 0.145f, 0.145f, 1.00f);
+    style.Colors[ImGuiCol_TabHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.00f);
+    style.Colors[ImGuiCol_TabSelected] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    style.Colors[ImGuiCol_DockingPreview] = ImVec4(0.30f, 0.55f, 0.85f, 0.55f);
+    style.Colors[ImGuiCol_NavHighlight] = ImVec4(0.35f, 0.60f, 0.90f, 1.00f);
     return style;
 }
 
@@ -190,6 +198,89 @@ void draw_icon(ImDrawList *draw, EditorIcon icon, ImVec2 origin, float size, ImU
         draw->AddRectFilled({x + s * 0.10f, y + s * 0.25f}, {x + s * 0.90f, y + s * 0.82f}, color, 2.0f);
         draw->AddRectFilled({x + s * 0.16f, y + s * 0.12f}, {x + s * 0.52f, y + s * 0.32f}, color, 2.0f);
         break;
+    case EditorIcon::MoreVertical:
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.22f}, s * 0.08f, color, 8);
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.50f}, s * 0.08f, color, 8);
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.78f}, s * 0.08f, color, 8);
+        break;
+    case EditorIcon::EyeOpen:
+        draw->AddBezierQuadratic({x + s * 0.15f, y + s * 0.50f}, {x + s * 0.50f, y + s * 0.18f}, {x + s * 0.85f, y + s * 0.50f}, color, t);
+        draw->AddBezierQuadratic({x + s * 0.15f, y + s * 0.50f}, {x + s * 0.50f, y + s * 0.82f}, {x + s * 0.85f, y + s * 0.50f}, color, t);
+        draw->AddCircleFilled({x + s * 0.50f, y + s * 0.50f}, s * 0.13f, color, 8);
+        break;
+    case EditorIcon::EyeClosed:
+        draw->AddBezierQuadratic({x + s * 0.15f, y + s * 0.50f}, {x + s * 0.50f, y + s * 0.22f}, {x + s * 0.85f, y + s * 0.50f}, color, t);
+        draw->AddBezierQuadratic({x + s * 0.15f, y + s * 0.50f}, {x + s * 0.50f, y + s * 0.78f}, {x + s * 0.85f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.22f, y + s * 0.78f}, {x + s * 0.78f, y + s * 0.22f}, color, t);
+        break;
+    case EditorIcon::LockClosed:
+        draw->AddRectFilled({x + s * 0.25f, y + s * 0.44f}, {x + s * 0.75f, y + s * 0.85f}, color, 1.5f);
+        draw->PathArcTo({x + s * 0.50f, y + s * 0.38f}, s * 0.18f, 3.14159f, 6.28318f, 10);
+        draw->PathLineTo({x + s * 0.68f, y + s * 0.44f});
+        draw->PathStroke(color, 0, t);
+        draw->PathClear();
+        draw->AddLine({x + s * 0.32f, y + s * 0.38f}, {x + s * 0.32f, y + s * 0.44f}, color, t);
+        break;
+    case EditorIcon::LockOpen:
+        draw->AddRectFilled({x + s * 0.25f, y + s * 0.44f}, {x + s * 0.75f, y + s * 0.85f}, color, 1.5f);
+        draw->PathArcTo({x + s * 0.50f, y + s * 0.28f}, s * 0.18f, 3.14159f, 6.28318f, 10);
+        draw->PathLineTo({x + s * 0.68f, y + s * 0.34f});
+        draw->PathStroke(color, 0, t);
+        draw->PathClear();
+        draw->AddLine({x + s * 0.32f, y + s * 0.28f}, {x + s * 0.32f, y + s * 0.44f}, color, t);
+        break;
+    case EditorIcon::HandTool:
+        draw->AddRect({x + s * 0.28f, y + s * 0.44f}, {x + s * 0.72f, y + s * 0.86f}, color, 2.0f, 0, t);
+        draw->AddLine({x + s * 0.36f, y + s * 0.44f}, {x + s * 0.36f, y + s * 0.18f}, color, t);
+        draw->AddLine({x + s * 0.46f, y + s * 0.44f}, {x + s * 0.46f, y + s * 0.12f}, color, t);
+        draw->AddLine({x + s * 0.56f, y + s * 0.44f}, {x + s * 0.56f, y + s * 0.14f}, color, t);
+        draw->AddLine({x + s * 0.66f, y + s * 0.44f}, {x + s * 0.66f, y + s * 0.24f}, color, t);
+        draw->AddLine({x + s * 0.28f, y + s * 0.62f}, {x + s * 0.16f, y + s * 0.46f}, color, t);
+        break;
+    case EditorIcon::MoveTool:
+        draw->AddLine({x + s * 0.18f, y + s * 0.50f}, {x + s * 0.82f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.18f}, {x + s * 0.50f, y + s * 0.82f}, color, t);
+        draw->AddLine({x + s * 0.28f, y + s * 0.40f}, {x + s * 0.18f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.28f, y + s * 0.60f}, {x + s * 0.18f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.72f, y + s * 0.40f}, {x + s * 0.82f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.72f, y + s * 0.60f}, {x + s * 0.82f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.40f, y + s * 0.28f}, {x + s * 0.50f, y + s * 0.18f}, color, t);
+        draw->AddLine({x + s * 0.60f, y + s * 0.28f}, {x + s * 0.50f, y + s * 0.18f}, color, t);
+        draw->AddLine({x + s * 0.40f, y + s * 0.72f}, {x + s * 0.50f, y + s * 0.82f}, color, t);
+        draw->AddLine({x + s * 0.60f, y + s * 0.72f}, {x + s * 0.50f, y + s * 0.82f}, color, t);
+        break;
+    case EditorIcon::RotateTool:
+        draw->PathArcTo({x + s * 0.50f, y + s * 0.50f}, s * 0.30f, 0.6f, 5.8f, 16);
+        draw->PathStroke(color, 0, t);
+        draw->PathClear();
+        draw->AddLine({x + s * 0.75f, y + s * 0.55f}, {x + s * 0.82f, y + s * 0.42f}, color, t);
+        draw->AddLine({x + s * 0.68f, y + s * 0.42f}, {x + s * 0.82f, y + s * 0.42f}, color, t);
+        break;
+    case EditorIcon::ScaleTool:
+        draw->AddLine({x + s * 0.25f, y + s * 0.75f}, {x + s * 0.75f, y + s * 0.25f}, color, t);
+        draw->AddRectFilled({x + s * 0.65f, y + s * 0.15f}, {x + s * 0.85f, y + s * 0.35f}, color, 1.0f);
+        draw->AddRectFilled({x + s * 0.15f, y + s * 0.65f}, {x + s * 0.35f, y + s * 0.85f}, color, 1.0f);
+        break;
+    case EditorIcon::RectTool:
+        draw->AddRect({x + s * 0.20f, y + s * 0.20f}, {x + s * 0.80f, y + s * 0.80f}, color, 0.0f, 0, t);
+        draw->AddRectFilled({x + s * 0.14f, y + s * 0.14f}, {x + s * 0.26f, y + s * 0.26f}, color);
+        draw->AddRectFilled({x + s * 0.74f, y + s * 0.14f}, {x + s * 0.86f, y + s * 0.26f}, color);
+        draw->AddRectFilled({x + s * 0.14f, y + s * 0.74f}, {x + s * 0.26f, y + s * 0.86f}, color);
+        draw->AddRectFilled({x + s * 0.74f, y + s * 0.74f}, {x + s * 0.86f, y + s * 0.86f}, color);
+        break;
+    case EditorIcon::Pause:
+        draw->AddRectFilled({x + s * 0.25f, y + s * 0.20f}, {x + s * 0.43f, y + s * 0.80f}, color, 1.0f);
+        draw->AddRectFilled({x + s * 0.57f, y + s * 0.20f}, {x + s * 0.75f, y + s * 0.80f}, color, 1.0f);
+        break;
+    case EditorIcon::StepForward:
+        draw->AddTriangleFilled({x + s * 0.20f, y + s * 0.20f}, {x + s * 0.58f, y + s * 0.50f},
+                                {x + s * 0.20f, y + s * 0.80f}, color);
+        draw->AddRectFilled({x + s * 0.66f, y + s * 0.20f}, {x + s * 0.80f, y + s * 0.80f}, color, 1.0f);
+        break;
+    case EditorIcon::Plus:
+        draw->AddLine({x + s * 0.20f, y + s * 0.50f}, {x + s * 0.80f, y + s * 0.50f}, color, t);
+        draw->AddLine({x + s * 0.50f, y + s * 0.20f}, {x + s * 0.50f, y + s * 0.80f}, color, t);
+        break;
     }
 }
 } // namespace
@@ -201,6 +292,36 @@ void apply_editor_style(float scale)
     ImGui::GetStyle() = make_base_style();
     ImGui::GetStyle().ScaleAllSizes(scale);
     ImGui::GetIO().FontGlobalScale = scale;
+}
+
+void setup_editor_fonts(ImGuiIO &io, float baseFontSize)
+{
+    static const char *fontCandidates[] = {
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "assets/fonts/Inter-Regular.ttf",
+        "assets/fonts/Roboto-Regular.ttf",
+        "C:\\Windows\\Fonts\\segoeui.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf",
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/Helvetica.ttc"
+    };
+
+    std::error_code ec;
+    for (const char *path : fontCandidates)
+    {
+        if (std::filesystem::exists(path, ec) && std::filesystem::is_regular_file(path, ec))
+        {
+            ImFontConfig config;
+            config.OversampleH = 2;
+            config.OversampleV = 2;
+            config.PixelSnapH = true;
+            if (io.Fonts->AddFontFromFileTTF(path, baseFontSize, &config))
+                return;
+        }
+    }
+    io.Fonts->AddFontDefault();
 }
 
 float resolve_editor_ui_scale(float userScale, int logicalWidth, int logicalHeight,
@@ -215,10 +336,19 @@ float resolve_editor_ui_scale(float userScale, int logicalWidth, int logicalHeig
     return std::clamp(userScale * dpiScale, 0.5f, 6.0f);
 }
 
-void push_editor_toolbar_style()
+void push_editor_toolbar_style(bool playMode)
 {
     const ImGuiStyle &style = ImGui::GetStyle();
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.13f, 0.145f, 0.17f, 1.0f));
+    if (playMode)
+    {
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.20f, 0.17f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.65f, 0.40f, 0.85f));
+    }
+    else
+    {
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.13f, 0.145f, 0.17f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Border, style.Colors[ImGuiCol_Border]);
+    }
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                         ImVec2(style.WindowPadding.x, style.WindowPadding.y * 0.55f));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -228,7 +358,7 @@ void push_editor_toolbar_style()
 void pop_editor_toolbar_style()
 {
     ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
+    ImGui::PopStyleColor(2);
 }
 
 bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip)
@@ -259,6 +389,39 @@ bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip)
         ImGui::EndTooltip();
     }
     (void)id;
+    return pressed;
+}
+
+bool icon_button(EditorIcon icon, const char *str_id, bool active, const char *tooltip, ImVec2 buttonSize)
+{
+    const float frameHeight = ImGui::GetFrameHeight();
+    const ImVec2 size = (buttonSize.x > 0.0f && buttonSize.y > 0.0f) ? buttonSize : ImVec2(frameHeight, frameHeight);
+    const ImVec2 position = ImGui::GetCursorScreenPos();
+    const bool pressed = ImGui::InvisibleButton(str_id, size);
+    const bool hovered = ImGui::IsItemHovered();
+    const bool held = ImGui::IsItemActive();
+    ImDrawList *draw = ImGui::GetWindowDrawList();
+    if (active || hovered || held)
+    {
+        const ImU32 background = ImGui::GetColorU32(
+            held ? ImGuiCol_ButtonActive
+            : active ? ImGuiCol_HeaderActive
+            : ImGuiCol_ButtonHovered);
+        draw->AddRectFilled(position, {position.x + size.x, position.y + size.y}, background,
+                            ImGui::GetStyle().FrameRounding);
+    }
+    const float iconSize = std::min(size.x, size.y) * 0.70f;
+    const ImVec2 iconPos(position.x + (size.x - iconSize) * 0.5f,
+                         position.y + (size.y - iconSize) * 0.5f);
+    const ImU32 iconColor = active ? ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f))
+                                   : ImGui::GetColorU32(ImGuiCol_Text);
+    draw_icon(draw, icon, iconPos, iconSize, iconColor);
+    if (hovered && tooltip != nullptr && *tooltip != '\0')
+    {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted(tooltip);
+        ImGui::EndTooltip();
+    }
     return pressed;
 }
 

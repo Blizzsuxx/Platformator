@@ -209,6 +209,15 @@ void ConsoleProjection::set_search(std::string search)
 void ConsoleProjection::set_severity_filter(std::optional<DiagnosticSeverity> severity) noexcept
 {
     severityFilter_ = severity;
+    useSeverityMask_ = false;
+}
+
+void ConsoleProjection::set_severity_mask(bool showInfo, bool showWarnings, bool showErrors) noexcept
+{
+    showInfo_ = showInfo;
+    showWarnings_ = showWarnings;
+    showErrors_ = showErrors;
+    useSeverityMask_ = true;
 }
 
 void ConsoleProjection::set_collapse_repeats(bool enabled)
@@ -247,8 +256,19 @@ std::vector<std::size_t> ConsoleProjection::visible_rows(std::string_view rawTex
         const auto &row = rows_[index];
         if (row.byteOffset > rawText.size() || row.byteLength > rawText.size() - row.byteOffset)
             continue;
-        if (severityFilter_ && row.severity != *severityFilter_)
+        if (useSeverityMask_)
+        {
+            if (row.severity == DiagnosticSeverity::Info && !showInfo_)
+                continue;
+            if (row.severity == DiagnosticSeverity::Warning && !showWarnings_)
+                continue;
+            if (row.severity == DiagnosticSeverity::Error && !showErrors_)
+                continue;
+        }
+        else if (severityFilter_ && row.severity != *severityFilter_)
+        {
             continue;
+        }
         const auto line = rawText.substr(row.byteOffset, row.byteLength);
         if (!contains_ascii_case_insensitive(line, search_))
             continue;

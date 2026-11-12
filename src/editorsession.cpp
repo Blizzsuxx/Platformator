@@ -42,7 +42,7 @@ constexpr std::size_t FrameWidth = 640;
 constexpr std::size_t FrameHeight = 360;
 constexpr std::size_t FrameStride = FrameWidth * 4;
 constexpr std::size_t ReadChunkBytes = 16U * 1024U;
-constexpr auto MinimumCaptureInterval = std::chrono::microseconds(66'667);
+constexpr auto MinimumCaptureInterval = std::chrono::microseconds(16'667);
 constexpr std::size_t ReservedFrameMessages = 8;
 constexpr std::size_t ReservedFrameBytes = 16U * 1024U;
 constexpr std::size_t MaximumInspectionObjects = 4096;
@@ -912,6 +912,86 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         }
         frameSlotBusy_[slotIndex] = false;
         frameSlotSequences_[slotIndex] = 0;
+        return true;
+    }
+    if (message.type == "key_down")
+    {
+        if (!capabilities_.inputForwarding)
+            return false;
+        const auto scancode = message.body.value("scancode", 0);
+        const auto keycode = message.body.value("keycode", 0);
+        const auto modifiers = message.body.value("modifiers", 0);
+        SDL_Event event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.scancode = static_cast<SDL_Scancode>(scancode);
+        event.key.key = static_cast<SDL_Keycode>(keycode);
+        event.key.mod = static_cast<SDL_Keymod>(modifiers);
+        event.key.down = true;
+        SDL_PushEvent(&event);
+        heldKeys_.push_back({scancode, keycode});
+        return true;
+    }
+    if (message.type == "key_up")
+    {
+        if (!capabilities_.inputForwarding)
+            return false;
+        const auto scancode = message.body.value("scancode", 0);
+        const auto keycode = message.body.value("keycode", 0);
+        const auto modifiers = message.body.value("modifiers", 0);
+        SDL_Event event{};
+        event.type = SDL_EVENT_KEY_UP;
+        event.key.scancode = static_cast<SDL_Scancode>(scancode);
+        event.key.key = static_cast<SDL_Keycode>(keycode);
+        event.key.mod = static_cast<SDL_Keymod>(modifiers);
+        event.key.down = false;
+        SDL_PushEvent(&event);
+        auto it = std::find(heldKeys_.begin(), heldKeys_.end(), std::make_pair(scancode, keycode));
+        if (it != heldKeys_.end())
+            heldKeys_.erase(it);
+        return true;
+    }
+    if (message.type == "mouse_move")
+    {
+        if (!capabilities_.inputForwarding)
+            return false;
+        const auto x = message.body.value("x", 0.0f);
+        const auto y = message.body.value("y", 0.0f);
+        SDL_Event event{};
+        event.type = SDL_EVENT_MOUSE_MOTION;
+        event.motion.x = x;
+        event.motion.y = y;
+        SDL_PushEvent(&event);
+        return true;
+    }
+    if (message.type == "mouse_button")
+    {
+        if (!capabilities_.inputForwarding)
+            return false;
+        const auto button = message.body.value("button", 1);
+        const auto down = message.body.value("down", true);
+        const auto x = message.body.value("x", 0.0f);
+        const auto y = message.body.value("y", 0.0f);
+        SDL_Event event{};
+        event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+        event.button.button = static_cast<Uint8>(button);
+        event.button.down = down;
+        event.button.x = x;
+        event.button.y = y;
+        SDL_PushEvent(&event);
+        return true;
+    }
+    if (message.type == "release_all_inputs")
+    {
+        for (const auto &[scancode, keycode] : heldKeys_)
+        {
+            SDL_Event event{};
+            event.type = SDL_EVENT_KEY_UP;
+            event.key.scancode = static_cast<SDL_Scancode>(scancode);
+            event.key.key = static_cast<SDL_Keycode>(keycode);
+            event.key.down = false;
+            SDL_PushEvent(&event);
+        }
+        heldKeys_.clear();
         return true;
     }
     if (message.type == "list_objects")

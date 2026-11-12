@@ -14,6 +14,34 @@
 
 namespace platformator_editor
 {
+const char *severity_icon(DiagnosticSeverity severity) noexcept
+{
+    switch (severity)
+    {
+    case DiagnosticSeverity::Error:
+        return "[x]";
+    case DiagnosticSeverity::Warning:
+        return "[!]";
+    case DiagnosticSeverity::Info:
+    default:
+        return "[i]";
+    }
+}
+
+ImVec4 severity_color(DiagnosticSeverity severity) noexcept
+{
+    switch (severity)
+    {
+    case DiagnosticSeverity::Error:
+        return ImVec4(0.90f, 0.31f, 0.31f, 1.0f);
+    case DiagnosticSeverity::Warning:
+        return ImVec4(0.90f, 0.75f, 0.27f, 1.0f);
+    case DiagnosticSeverity::Info:
+    default:
+        return ImVec4(0.78f, 0.80f, 0.84f, 1.0f);
+    }
+}
+
 namespace
 {
 const char *severity_name(DiagnosticSeverity severity)
@@ -105,6 +133,21 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
     }
     projection_.set_search(search_.data());
 
+    filterState_.infoCount = 0;
+    filterState_.warningCount = 0;
+    filterState_.errorCount = 0;
+    for (const auto &row : projection_.rows())
+    {
+        const std::size_t count = collapseRepeats_ ? 1 : row.repeatCount;
+        if (row.severity == DiagnosticSeverity::Error)
+            filterState_.errorCount += count;
+        else if (row.severity == DiagnosticSeverity::Warning)
+            filterState_.warningCount += count;
+        else
+            filterState_.infoCount += count;
+    }
+    projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
+
     const ImGuiStyle &style = ImGui::GetStyle();
     bool lineHasItem = false;
     const auto place = [&](float width) {
@@ -165,40 +208,45 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         projection_.set_auto_follow(follow);
     remember_item("follow");
 
-    const float searchWidth = std::clamp(ImGui::GetContentRegionAvail().x - 130.0f,
-                                         120.0f, 240.0f);
+    const float searchWidth = std::clamp(ImGui::GetContentRegionAvail().x - 260.0f,
+                                         90.0f, 200.0f);
     place(searchWidth);
     ImGui::SetNextItemWidth(searchWidth);
     if (ImGui::InputTextWithHint("##console-search", "Search output", search_.data(), search_.size()))
         projection_.set_search(search_.data());
     remember_item("search");
-    place(120.0f);
-    ImGui::SetNextItemWidth(120.0f);
-    constexpr const char *filterNames[] = {"All severities", "Errors", "Warnings", "Info"};
-    const bool severityOpen = ImGui::BeginCombo("##console-severity", filterNames[severityFilter_]);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Filter rows by severity");
-    remember_item("severity");
-    if (severityOpen)
-    {
-        for (int index = 0; index < 4; ++index)
+
+    auto draw_badge = [&](const char *label, const char *id, bool &active, std::size_t count, ImVec4 activeColor) {
+        std::string text = std::string(label) + " " + std::to_string(count) + "###" + id;
+        const float bw = button_width(text.c_str());
+        place(bw);
+        if (active)
         {
-            const bool selected = severityFilter_ == index;
-            if (ImGui::Selectable(filterNames[index], selected))
-            {
-                severityFilter_ = index;
-                projection_.set_severity_filter(
-                    index == 0 ? std::nullopt
-                               : std::optional<DiagnosticSeverity>(
-                                     index == 1 ? DiagnosticSeverity::Error
-                                                : index == 2 ? DiagnosticSeverity::Warning
-                                                             : DiagnosticSeverity::Info));
-            }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
+            ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(activeColor.x * 1.15f, activeColor.y * 1.15f, activeColor.z * 1.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
         }
-        ImGui::EndCombo();
-    }
+        else
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.18f, 0.7f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.25f, 0.8f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+        }
+        if (ImGui::Button(text.c_str()))
+        {
+            active = !active;
+            projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
+        }
+        ImGui::PopStyleColor(3);
+        remember_item(id);
+    };
+
+    draw_badge("Info", "console-badge-info", filterState_.showInfo, filterState_.infoCount,
+               ImVec4(0.20f, 0.40f, 0.60f, 1.0f));
+    draw_badge("Warning", "console-badge-warning", filterState_.showWarnings, filterState_.warningCount,
+               ImVec4(0.65f, 0.48f, 0.12f, 1.0f));
+    draw_badge("Error", "console-badge-error", filterState_.showErrors, filterState_.errorCount,
+               ImVec4(0.70f, 0.20f, 0.20f, 1.0f));
 
     if (console.truncated())
     {
@@ -231,7 +279,12 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
                 const auto &row = projection_.rows()[rowIndex];
                 const auto line = std::string_view(console.text()).substr(row.byteOffset,
                                                                          row.byteLength);
-                std::string label = severity_name(row.severity);
+                const ImVec4 rowColor = severity_color(row.severity);
+                ImGui::PushStyleColor(ImGuiCol_Text, rowColor);
+
+                std::string label = severity_icon(row.severity);
+                label.append(" ");
+                label.append(severity_name(row.severity));
                 label.append("  ");
                 label.append(line);
                 if (row.repeatCount > 1)
@@ -246,10 +299,24 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
                 if (ImGui::Selectable(label.c_str(), selectedRow_ == rowIndex,
                                       ImGuiSelectableFlags_AllowDoubleClick))
                     selectedRow_ = rowIndex;
+                ImGui::PopStyleColor();
                 remember_item("row/" + std::to_string(rowIndex));
                 drawnRows_.push_back(rowIndex);
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                {
                     selectedRow_ = rowIndex;
+                    if (row.source)
+                    {
+                        const auto url = source_file_url(*row.source, status.workingDirectory);
+                        if (url)
+                        {
+                            if (!SDL_OpenURL(url->c_str()))
+                                feedback_ = std::string("Could not open source file: ") + SDL_GetError();
+                            else
+                                feedback_ = "Opened source file with the operating system association.";
+                        }
+                    }
+                }
             }
         }
         if (newOutput && projection_.auto_follow() && wasAtBottom)
@@ -276,8 +343,9 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         const auto &row = projection_.rows()[*selectedRow_];
         const auto line = std::string_view(console.text()).substr(row.byteOffset, row.byteLength);
         ImGui::Separator();
-        ImGui::Text("%s%s", severity_name(row.severity),
-                    row.repeatCount > 1 ? " (repeated)" : "");
+        ImGui::TextColored(severity_color(row.severity), "%s %s%s",
+                           severity_icon(row.severity), severity_name(row.severity),
+                           row.repeatCount > 1 ? " (repeated)" : "");
         if (row.source)
         {
             const std::string path = utf8_path(row.source->path);
@@ -434,6 +502,24 @@ std::vector<SemanticNode> ConsolePanel::semantic_nodes(const PipelineStatus &sta
     severity.actions = {"activate"};
     nodes.push_back(std::move(severity));
 
+    auto infoBadge = make_node("console-badge-info", SemanticRole::Button, "Toggle Info messages");
+    infoBadge.value = filterState_.showInfo ? "Active" : "Inactive";
+    infoBadge.selected = filterState_.showInfo;
+    infoBadge.actions = {"toggle", "activate"};
+    nodes.push_back(std::move(infoBadge));
+
+    auto warningBadge = make_node("console-badge-warning", SemanticRole::Button, "Toggle Warning messages");
+    warningBadge.value = filterState_.showWarnings ? "Active" : "Inactive";
+    warningBadge.selected = filterState_.showWarnings;
+    warningBadge.actions = {"toggle", "activate"};
+    nodes.push_back(std::move(warningBadge));
+
+    auto errorBadge = make_node("console-badge-error", SemanticRole::Button, "Toggle Error messages");
+    errorBadge.value = filterState_.showErrors ? "Active" : "Inactive";
+    errorBadge.selected = filterState_.showErrors;
+    errorBadge.actions = {"toggle", "activate"};
+    nodes.push_back(std::move(errorBadge));
+
     if (!projection_.auto_follow())
         add_button(nodes, "return-to-bottom", "Return to newest Console output", true);
 
@@ -543,9 +629,52 @@ bool ConsolePanel::dispatch_semantic_action(const SemanticAction &action,
     if (action.nodeId == base + "severity" && action.action == "activate")
     {
         severityFilter_ = (severityFilter_ + 1) % 4;
-        projection_.set_severity_filter(severityFilter_ == 0 ? std::nullopt
-            : std::optional<DiagnosticSeverity>(severityFilter_ == 1 ? DiagnosticSeverity::Error
-                : severityFilter_ == 2 ? DiagnosticSeverity::Warning : DiagnosticSeverity::Info));
+        if (severityFilter_ == 0)
+        {
+            filterState_.showInfo = true;
+            filterState_.showWarnings = true;
+            filterState_.showErrors = true;
+        }
+        else if (severityFilter_ == 1)
+        {
+            filterState_.showInfo = false;
+            filterState_.showWarnings = false;
+            filterState_.showErrors = true;
+        }
+        else if (severityFilter_ == 2)
+        {
+            filterState_.showInfo = false;
+            filterState_.showWarnings = true;
+            filterState_.showErrors = false;
+        }
+        else
+        {
+            filterState_.showInfo = true;
+            filterState_.showWarnings = false;
+            filterState_.showErrors = false;
+        }
+        projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
+        return true;
+    }
+    if ((action.nodeId == base + "console-badge-info" || action.nodeId == base + "info-badge") &&
+        (action.action == "toggle" || action.action == "activate"))
+    {
+        filterState_.showInfo = !filterState_.showInfo;
+        projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
+        return true;
+    }
+    if ((action.nodeId == base + "console-badge-warning" || action.nodeId == base + "warning-badge") &&
+        (action.action == "toggle" || action.action == "activate"))
+    {
+        filterState_.showWarnings = !filterState_.showWarnings;
+        projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
+        return true;
+    }
+    if ((action.nodeId == base + "console-badge-error" || action.nodeId == base + "error-badge") &&
+        (action.action == "toggle" || action.action == "activate"))
+    {
+        filterState_.showErrors = !filterState_.showErrors;
+        projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
         return true;
     }
     constexpr std::string_view rowPrefix = "row/";

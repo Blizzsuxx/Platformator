@@ -4,6 +4,8 @@
 #include "../diagnostics.h"
 #include "../process.h"
 
+#include <imgui.h>
+
 #include <array>
 #include <cstdint>
 #include <map>
@@ -13,6 +15,19 @@
 
 namespace platformator_editor
 {
+const char *severity_icon(DiagnosticSeverity severity) noexcept;
+ImVec4 severity_color(DiagnosticSeverity severity) noexcept;
+
+struct ConsoleFilterState
+{
+    bool showInfo = true;
+    bool showWarnings = true;
+    bool showErrors = true;
+    std::size_t infoCount = 0;
+    std::size_t warningCount = 0;
+    std::size_t errorCount = 0;
+};
+
 class ConsolePanel
 {
   public:
@@ -24,9 +39,13 @@ class ConsolePanel
                                   const PipelineStatus &status,
                                   BoundedConsole &console);
 
+    const ConsoleFilterState &filter_state() const noexcept { return filterState_; }
+    ConsoleFilterState &filter_state() noexcept { return filterState_; }
+
   private:
     void remember_item(std::string id);
 
+    ConsoleFilterState filterState_;
     ConsoleProjection projection_;
     std::array<char, 256> search_{};
     std::optional<std::size_t> selectedRow_;

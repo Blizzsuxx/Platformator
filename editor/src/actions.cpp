@@ -39,12 +39,20 @@ std::span<const EditorActionDescriptor> editor_action_descriptors() noexcept
 bool editor_action_allowed(EditorAction action, const EditorInputCapture &capture) noexcept
 {
     if (!capture.appFocused || !capture.focusedHost || capture.textInput ||
-        capture.modalOpen || capture.gestureActive)
+        capture.modalOpen || capture.gestureActive || capture.embeddedGameFocused)
         return false;
     for (const auto &descriptor : kActions)
         if (descriptor.action == action)
+        {
+            if (action == EditorAction::SelectHandTool || action == EditorAction::SelectMoveTool ||
+                action == EditorAction::SelectRotateTool || action == EditorAction::SelectScaleTool ||
+                action == EditorAction::FrameSelected || action == EditorAction::FrameAll)
+            {
+                return capture.sceneFocused || capture.hierarchyFocused;
+            }
             return (!descriptor.sceneOnly || capture.sceneFocused) &&
                    (!descriptor.hierarchyOnly || capture.hierarchyFocused);
+        }
     return false;
 }
 
@@ -52,16 +60,17 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
                                                const EditorInputCapture &capture) noexcept
 {
     if (!capture.appFocused || !capture.focusedHost || capture.textInput ||
-        capture.modalOpen || capture.gestureActive)
+        capture.modalOpen || capture.gestureActive || capture.embeddedGameFocused)
         return std::nullopt;
+    const bool sceneOrHierarchy = capture.sceneFocused || capture.hierarchyFocused;
     switch (key)
     {
     case EditorKey::Q:
-        if (!capture.sceneFocused || shift || control)
+        if (!sceneOrHierarchy || shift || control)
             return std::nullopt;
         return EditorAction::SelectHandTool;
     case EditorKey::F:
-        if (!capture.sceneFocused || control)
+        if (!sceneOrHierarchy || control)
             return std::nullopt;
         return shift ? EditorAction::FrameAll : EditorAction::FrameSelected;
     case EditorKey::F5:
@@ -69,15 +78,15 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
             return std::nullopt;
         return shift ? EditorAction::Stop : EditorAction::BuildAndRun;
     case EditorKey::W:
-        if (!capture.sceneFocused || shift || control)
+        if (!sceneOrHierarchy || shift || control)
             return std::nullopt;
         return EditorAction::SelectMoveTool;
     case EditorKey::E:
-        if (!capture.sceneFocused || shift || control)
+        if (!sceneOrHierarchy || shift || control)
             return std::nullopt;
         return EditorAction::SelectRotateTool;
     case EditorKey::R:
-        if (!capture.sceneFocused || shift || control)
+        if (!sceneOrHierarchy || shift || control)
             return std::nullopt;
         return EditorAction::SelectScaleTool;
     case EditorKey::F2:

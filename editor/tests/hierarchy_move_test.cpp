@@ -2,6 +2,10 @@
 #include "editcommands.h"
 #include "panels/hierarchy.h"
 #include "selection.h"
+#include "templates.h"
+#include "assetformats.h"
+#include "preferences.h"
+#include "componenttypes.h"
 
 #include <imgui.h>
 
@@ -19,6 +23,31 @@ void require(bool condition, const std::string &message)
 {
     if (!condition)
         throw std::runtime_error(message);
+}
+
+const Json *resolve_object(const Json &root, const ObjectLocation &location)
+{
+    if (!root.is_array() || location.childIndices.empty())
+        return nullptr;
+    const Json *object = nullptr;
+    const Json *siblings = &root;
+    for (std::size_t depth = 0; depth < location.childIndices.size(); ++depth)
+    {
+        if (depth > 0)
+        {
+            if (object == nullptr)
+                return nullptr;
+            const auto children = object->find("children");
+            if (children == object->end())
+                return nullptr;
+            siblings = &*children;
+        }
+        const auto index = location.childIndices[depth];
+        if (!siblings->is_array() || index >= siblings->size())
+            return nullptr;
+        object = &(*siblings)[index];
+    }
+    return object;
 }
 
 Json object(int id, double x, double y, Json children = Json::array())
@@ -437,6 +466,125 @@ void selected_block_duplicate_and_delete_are_single_history_steps()
     require(static_cast<bool>(commands.redo(document, selection)) && document.root.size() == 4,
             "Redo of a block delete must remove the same selected roots in one step");
 }
+
+void asset_drop_hierarchy_instantiation_test()
+{
+    auto document = move_fixture();
+    EditCommandService commands;
+    SelectionModel selection;
+
+    // 1. Drop sprite onto object 20 -> creates child with sprite component
+    const bool droppedSprite = instantiate_asset_drop(document, commands, selection, "sprites/player.png",
+                                                     EditorAssetKind::Image, 0.0f, 0.0f, 20);
+    require(droppedSprite, "instantiating sprite asset drop on object 20 must succeed");
+    require(selection.current().objectId.has_value(), "instantiating asset drop must select new child");
+    const int newChildId = *selection.current().objectId;
+    const auto parentFound = document.indexes.parentById.find(newChildId);
+    require(parentFound != document.indexes.parentById.end() && parentFound->second == 20,
+            "instantiated sprite object must be a child of object 20");
+
+    // 2. Drop script behavior onto object 40 -> attaches behavior to object 40
+    const bool droppedScript = instantiate_asset_drop(document, commands, selection, "scripts/Mover.cpp",
+                                                     EditorAssetKind::Script, 0.0f, 0.0f, 40);
+    require(droppedScript, "instantiating script asset drop on object 40 must attach behavior");
+    const auto loc40 = document.indexes.objectsById.find(40);
+    require(loc40 != document.indexes.objectsById.end(), "object 40 must exist");
+
+    // 3. Drop sprite onto background (no parent) -> creates root object
+    const bool droppedRoot = instantiate_asset_drop(document, commands, selection, "sprites/bg.png",
+                                                   EditorAssetKind::Image, 0.0f, 0.0f, std::nullopt);
+    require(droppedRoot, "instantiating sprite asset drop on root must succeed");
+    const int rootNewId = *selection.current().objectId;
+    const auto rootParent = document.indexes.parentById.find(rootNewId);
+    require(rootParent != document.indexes.parentById.end() && !rootParent->second.has_value(),
+            "root dropped object must not have a parent");
+}
+
+void hierarchy_preset_creation_and_visibility_lock_toggling_test()
+{
+    auto document = move_fixture();
+    EditCommandService commands;
+    SelectionModel selection;
+    std::vector<int> hiddenObjects;
+    std::vector<int> lockedObjects;
+    HierarchyPanel panel;
+
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 600.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    const auto render = [&]()
+    {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({300.0f, 600.0f}, ImGuiCond_Always);
+        panel.draw(document, selection, commands, true, &hiddenObjects, &lockedObjects);
+        ImGui::Render();
+    };
+
+    render();
+
+    // 1. Preset creation: Sprite preset (atomic with component)
+    const auto undoBeforeSprite = commands.history_status().undoCommands;
+    auto spriteObj = commands.create_object(document, std::nullopt, "Sprite",
+                                           std::numeric_limits<std::size_t>::max(), {},
+                                           Json::array({default_component_record(6)}));
+    require(spriteObj.status == CommandStatus::Changed && spriteObj.command, "create Sprite preset object must succeed");
+    require(commands.history_status().undoCommands == undoBeforeSprite + 1, "preset creation must take exactly 1 undo step");
+    const int spriteId = spriteObj.command->payload.value("id", 0);
+    require(document.indexes.objectsById.contains(spriteId), "Sprite preset object must exist");
+    const auto locSprite = document.indexes.objectsById.find(spriteId);
+    const Json *spriteJson = locSprite == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locSprite->second);
+    require(spriteJson != nullptr && has_component_type(*spriteJson, 6), "Sprite preset object must have component 6");
+
+    // Single undo removes preset object and component atomically
+    commands.undo(document, selection);
+    require(!document.indexes.objectsById.contains(spriteId), "single undo must remove preset object and its component");
+    commands.redo(document, selection);
+    require(document.indexes.objectsById.contains(spriteId), "single redo must restore preset object and its component");
+
+    // 2. Preset creation: Camera preset (atomic with component)
+    auto camObj = commands.create_object(document, std::nullopt, "Camera",
+                                         std::numeric_limits<std::size_t>::max(), {},
+                                         Json::array({default_component_record(2)}));
+    require(camObj.status == CommandStatus::Changed && camObj.command, "create Camera preset object must succeed");
+    const int camId = camObj.command->payload.value("id", 0);
+    const auto locCam = document.indexes.objectsById.find(camId);
+    const Json *camJson = locCam == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locCam->second);
+    require(camJson != nullptr && has_component_type(*camJson, 2), "Camera preset object must have component 2");
+
+    // 3. Preset creation: Audio preset (atomic with component)
+    auto audioObj = commands.create_object(document, std::nullopt, "Audio",
+                                           std::numeric_limits<std::size_t>::max(), {},
+                                           Json::array({default_component_record(1)}));
+    require(audioObj.status == CommandStatus::Changed && audioObj.command, "create Audio preset object must succeed");
+    const int audioId = audioObj.command->payload.value("id", 0);
+    const auto locAudio = document.indexes.objectsById.find(audioId);
+    const Json *audioJson = locAudio == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locAudio->second);
+    require(audioJson != nullptr && has_component_type(*audioJson, 1), "Audio preset object must have component 1");
+
+    // 4. Visibility toggling via set_editor_object_id_state
+    require(!std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must initially be visible");
+    set_editor_object_id_state(hiddenObjects, 10, true);
+    require(std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must now be hidden");
+    set_editor_object_id_state(hiddenObjects, 10, false);
+    require(!std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must be visible again");
+
+    // 5. Lock toggling via set_editor_object_id_state
+    require(!std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must initially be unlocked");
+    set_editor_object_id_state(lockedObjects, 20, true);
+    require(std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must now be locked");
+    set_editor_object_id_state(lockedObjects, 20, false);
+    require(!std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must be unlocked again");
+
+    render();
+
+    ImGui::DestroyContext();
+}
 } // namespace
 
 int main()
@@ -448,6 +596,8 @@ int main()
         hierarchy_focus_without_delete_key_does_not_delete_selection();
         selected_block_moves_preserve_order_and_are_atomic();
         selected_block_duplicate_and_delete_are_single_history_steps();
+        asset_drop_hierarchy_instantiation_test();
+        hierarchy_preset_creation_and_visibility_lock_toggling_test();
         std::cout << "[PASS] platformator_editor_hierarchy_move_test\n";
         return 0;
     }

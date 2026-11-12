@@ -19,6 +19,9 @@
 
 namespace platformator_editor
 {
+using platformator::editor_session::EmbeddedInputKind;
+using platformator::editor_session::EmbeddedInputEvent;
+
 enum class PlaySessionState
 {
     Idle,
@@ -73,6 +76,8 @@ class PlaySession
     bool copy_frame_slot(std::uint32_t slot, std::uint64_t frameSequence,
                          std::span<std::byte> destination) noexcept;
     bool release_frame(std::uint32_t slot, std::uint64_t frameSequence);
+    bool send_input(const EmbeddedInputEvent &event);
+    bool release_all_inputs();
     bool request_stop();
     bool finish_stop_after_reap();
 

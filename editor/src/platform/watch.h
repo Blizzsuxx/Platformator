@@ -14,6 +14,8 @@ namespace platformator_editor
 {
 inline constexpr std::size_t ProjectWatchDirectoryLimit = 4096;
 
+bool should_skip_watched_directory(std::string_view name) noexcept;
+
 class ProjectWatchBudget
 {
   public:

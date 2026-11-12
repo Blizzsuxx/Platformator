@@ -17,6 +17,8 @@
 
 namespace platformator_editor
 {
+bool should_skip_project_directory(std::string_view name) noexcept;
+
 // Project-scoped editor state. The application owns its authoring Runtime;
 // this aggregate owns the project context, document tabs, resource index and
 // project-scoped change monitoring. GamePipeline owns child play-session state.

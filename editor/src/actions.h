@@ -49,7 +49,10 @@ struct EditorInputCapture
     bool sceneFocused = false;
     bool hierarchyFocused = false;
     bool focusedHost = true;
+    bool embeddedGameFocused = false;
 };
+
+using ShortcutCaptureState = EditorInputCapture;
 
 enum class EditorKey
 {

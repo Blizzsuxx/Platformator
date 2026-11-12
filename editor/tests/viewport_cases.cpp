@@ -3,6 +3,9 @@
 #include "editcommands.h"
 #include "preview.h"
 #include "viewport.h"
+#include "panels/hierarchy.h"
+#include "templates.h"
+#include "assetformats.h"
 
 #include <imgui.h>
 #include <platformator/runtime.h>
@@ -113,6 +116,35 @@ namespace platformator_editor
                      !dispatch_editor_key(EditorKey::W, false, false, textCapture) &&
                      !dispatch_editor_key(EditorKey::E, false, false, unfocusedScene),
                  "Q/W/E/R must select labeled Scene tools only when Scene owns uncaptured input");
+
+    const EditorInputCapture hierarchyCapture{true, false, false, false, false, true, true, false};
+    require_case(dispatch_editor_key(EditorKey::F, false, false, hierarchyCapture) == EditorAction::FrameSelected &&
+                     dispatch_editor_key(EditorKey::F, true, false, hierarchyCapture) == EditorAction::FrameAll &&
+                     dispatch_editor_key(EditorKey::Q, false, false, hierarchyCapture) == EditorAction::SelectHandTool &&
+                     dispatch_editor_key(EditorKey::W, false, false, hierarchyCapture) == EditorAction::SelectMoveTool &&
+                     dispatch_editor_key(EditorKey::E, false, false, hierarchyCapture) == EditorAction::SelectRotateTool &&
+                     dispatch_editor_key(EditorKey::R, false, false, hierarchyCapture) == EditorAction::SelectScaleTool,
+                 "Scene shortcuts (F/Shift+F/Q/W/E/R) must be allowed when Hierarchy is focused");
+    require_case(editor_action_allowed(EditorAction::SelectHandTool, hierarchyCapture) &&
+                     editor_action_allowed(EditorAction::SelectMoveTool, hierarchyCapture) &&
+                     editor_action_allowed(EditorAction::SelectRotateTool, hierarchyCapture) &&
+                     editor_action_allowed(EditorAction::SelectScaleTool, hierarchyCapture) &&
+                     editor_action_allowed(EditorAction::FrameSelected, hierarchyCapture) &&
+                     editor_action_allowed(EditorAction::FrameAll, hierarchyCapture),
+                 "editor actions for Scene navigation and tool selection must be allowed when Hierarchy is focused");
+
+    const EditorInputCapture embeddedCapture{true, false, false, false, true, false, true, true};
+    require_case(!dispatch_editor_key(EditorKey::Q, false, false, embeddedCapture) &&
+                     !dispatch_editor_key(EditorKey::W, false, false, embeddedCapture) &&
+                     !dispatch_editor_key(EditorKey::E, false, false, embeddedCapture) &&
+                     !dispatch_editor_key(EditorKey::R, false, false, embeddedCapture) &&
+                     !dispatch_editor_key(EditorKey::F, false, false, embeddedCapture) &&
+                     !editor_action_allowed(EditorAction::SelectMoveTool, embeddedCapture),
+                 "single-key editor shortcuts must be suppressed when embedded game is focused");
+
+    HierarchyPanel testHierarchy;
+    bool testFrameSelectedFired = false;
+    testHierarchy.set_on_frame_selected([&]() { testFrameSelectedFired = true; });
     SceneViewportPanel toolPanel;
     toolPanel.set_tool(SceneTool::Hand);
     require_case(toolPanel.tool() == SceneTool::Hand,
@@ -461,14 +493,17 @@ namespace platformator_editor
             io.DeltaTime = 1.0f / 60.0f;
             io.Fonts->AddFontDefault();
             io.Fonts->Build();
+            io.ConfigInputTrickleEventQueue = false;
 
+            std::vector<int> hiddenList;
+            std::vector<int> lockedList;
             const auto render_frame = [&]()
             {
                 ImGui::NewFrame();
                 ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
                 ImGui::SetNextWindowSize({800.0f, 600.0f}, ImGuiCond_Always);
                 ImGui::SetNextWindowFocus();
-                panel.draw(document, preview, selection, commands, nullptr, nullptr, snap);
+                panel.draw(document, preview, selection, commands, nullptr, nullptr, snap, false, true, &hiddenList, &lockedList);
                 ImGui::Render();
             };
 
@@ -493,6 +528,44 @@ namespace platformator_editor
             io.AddMouseButtonEvent(0, false);
             render_frame();
             require_case(!panel.has_active_input(), "releasing mouse button must end hand tool panning");
+
+            // 1b. Alt+Left-Mouse camera panning and hand cursor feedback
+            panel.set_tool(SceneTool::Move);
+            panel.restore_view_state(document, 0.0f, 0.0f, 1.0f);
+            io.AddKeyEvent(ImGuiMod_Alt, true);
+            io.AddMousePosEvent(400.0f, 300.0f);
+            render_frame();
+            require_case(ImGui::GetMouseCursor() == ImGuiMouseCursor_Hand,
+                         "holding Alt over canvas must set mouse cursor to Hand");
+
+            io.AddMouseButtonEvent(0, true);
+            render_frame();
+            require_case(panel.has_active_input(), "Alt+Left click must activate panning");
+            require_case(ImGui::GetMouseCursor() == ImGuiMouseCursor_Hand,
+                         "Alt+Left drag must maintain Hand cursor");
+
+            io.AddMousePosEvent(450.0f, 320.0f);
+            render_frame();
+            const auto altPannedCenter = panel.view_state().center;
+            require_case(altPannedCenter.x != 0.0f || altPannedCenter.y != 0.0f,
+                         "Alt+Left drag must pan viewport camera");
+
+            io.AddMouseButtonEvent(0, false);
+            io.AddKeyEvent(ImGuiMod_Alt, false);
+            render_frame();
+            require_case(!panel.has_active_input(), "releasing Alt/mouse must end panning");
+
+            // 1c. Cursor-centered mouse wheel zooming
+            panel.restore_view_state(document, 0.0f, 0.0f, 1.0f);
+            io.AddMousePosEvent(600.0f, 400.0f);
+            render_frame();
+            io.AddMouseWheelEvent(0.0f, 1.0f);
+            render_frame();
+            const auto zoomCentered = panel.view_state().center;
+            require_case(zoomCentered.x != 0.0f || zoomCentered.y != 0.0f,
+                         "cursor-centered zoom must offset camera center towards mouse position");
+            require_case(panel.view_state().zoom > 1.0f,
+                         "positive wheel delta must increase zoom");
 
             // 2. Frame Selected: select Object 1 and request frame selected
             selection.set(document, Selection{1, std::nullopt, std::nullopt, FocusedPanel::Scene});
@@ -520,6 +593,51 @@ namespace platformator_editor
             require_case(std::abs(frameAllCenter.x - 300.0f) < 50.0f &&
                              std::abs(frameAllCenter.y - 300.0f) < 50.0f,
                          "request_frame_all must frame entire scene bounds even with an object selected");
+
+            // 5. Marquee selection: dragging on empty space in Move tool selects intersecting objects
+            panel.set_tool(SceneTool::Move);
+            panel.restore_view_state(document, 300.0f, 300.0f, 1.0f);
+            selection.set(document, Selection{});
+            render_frame();
+
+            io.AddMousePosEvent(400.0f, 240.0f);
+            io.AddMouseButtonEvent(0, true);
+            render_frame();
+            require_case(panel.marquee_state().active, "left click on empty canvas space in Move tool must activate marquee");
+
+            io.AddMousePosEvent(100.0f, 100.0f);
+            render_frame();
+            require_case(panel.marquee_state().active, "marquee must remain active during mouse drag");
+
+            io.AddMouseButtonEvent(0, false);
+            render_frame();
+            require_case(!panel.marquee_state().active, "releasing mouse button must end marquee");
+            const auto selectedAfterMarquee = selection.current().selectedObjectIds;
+            require_case(std::find(selectedAfterMarquee.begin(), selectedAfterMarquee.end(), 1) != selectedAfterMarquee.end() &&
+                             std::find(selectedAfterMarquee.begin(), selectedAfterMarquee.end(), 2) == selectedAfterMarquee.end(),
+                         "marquee must select intersecting object 1 and exclude object 2");
+
+            // 6. Marquee selection excluding hidden objects
+            hiddenList = {1};
+            selection.set(document, Selection{});
+            io.AddMousePosEvent(400.0f, 240.0f);
+            io.AddMouseButtonEvent(0, true);
+            render_frame();
+            io.AddMousePosEvent(100.0f, 100.0f);
+            render_frame();
+            io.AddMouseButtonEvent(0, false);
+            render_frame();
+            require_case(std::find(selection.current().selectedObjectIds.begin(), selection.current().selectedObjectIds.end(), 1) == selection.current().selectedObjectIds.end(),
+                         "marquee selection must exclude hidden objects");
+            hiddenList.clear();
+
+            // 7. Asset drop instantiation on Scene canvas
+            const bool droppedSprite = instantiate_asset_drop(document, commands, selection, "sprites/coin.png",
+                                                             EditorAssetKind::Image, 150.0f, 250.0f, std::nullopt);
+            require_case(droppedSprite, "instantiate_asset_drop on scene canvas must succeed");
+            require_case(selection.current().objectId.has_value(), "asset drop must select instantiated object");
+            const auto newObjLoc = document.indexes.objectsById.find(*selection.current().objectId);
+            require_case(newObjLoc != document.indexes.objectsById.end(), "instantiated object must exist in document indexes");
 
             preview.release();
             ImGui::DestroyContext();

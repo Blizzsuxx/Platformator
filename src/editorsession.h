@@ -20,6 +20,9 @@ struct SDL_Renderer;
 namespace platformator
 {
 
+using editor_session::EmbeddedInputKind;
+using editor_session::EmbeddedInputEvent;
+
 // Child-side owner-thread protocol endpoint. Construction validates and takes
 // ownership of the three inherited descriptors before Runtime is created.
 class EditorSessionService
@@ -84,5 +87,6 @@ class EditorSessionService
     bool stopRequested_ = false;
     bool failed_ = false;
     bool stoppedEventQueued_ = false;
+    std::vector<std::pair<int, int>> heldKeys_;
 };
 } // namespace platformator

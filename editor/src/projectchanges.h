@@ -96,6 +96,7 @@ class RecoveryRetrySchedule
     }
 
     bool due(Clock::time_point now) const noexcept { return now >= nextDue_; }
+    bool pending() const noexcept { return nextDue_ != Clock::time_point{} && nextDue_ != Clock::time_point::max(); }
     Clock::time_point deadline() const noexcept { return nextDue_; }
     std::size_t failures() const noexcept { return failures_; }
 

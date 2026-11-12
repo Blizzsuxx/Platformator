@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <set>
@@ -13,6 +14,8 @@
 
 #include <json.hpp>
 #include <platformator/gameobject.h>
+#include "componenttypes.h"
+#include "selection.h"
 
 namespace platformator_editor
 {
@@ -1103,5 +1106,151 @@ TemplateInsertResult insert_template(
         result.error = std::string("could not prepare template insertion: ") + error.what();
         return result;
     }
+}
+
+bool instantiate_asset_drop(DocumentSession &document, EditCommandService &commands,
+                            SelectionModel &selection, const std::string &assetPath,
+                            EditorAssetKind kind, float targetX, float targetY,
+                            std::optional<int> parentObjectId)
+{
+    std::filesystem::path p(assetPath);
+    std::string stemName = p.stem().string();
+    if (stemName.empty())
+        stemName = "GameObject";
+
+    if (kind == EditorAssetKind::Template || p.extension() == ".pttemplate")
+    {
+        std::filesystem::path fullPath = p;
+        if (!std::filesystem::exists(fullPath) && !document.assetRoot.empty())
+        {
+            auto rel = p;
+            if (p.is_relative() && p.string().starts_with("assets/"))
+                rel = p.string().substr(7);
+            fullPath = document.assetRoot / rel;
+            if (!std::filesystem::exists(fullPath))
+                fullPath = document.assetRoot / p;
+        }
+        std::ifstream file(fullPath);
+        if (file.is_open())
+        {
+            std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            auto loadResult = parse_template_envelope(content);
+            if (loadResult)
+            {
+                auto coverage = template_asset_binding_coverage(*loadResult.asset);
+                const std::string sceneId = template_scene_identity(document);
+                auto insertResult = insert_template(commands, document, *loadResult.asset,
+                                                    sceneId, coverage, parentObjectId);
+                if (insertResult && !insertResult.insertedObjectIds.empty())
+                {
+                    const int rootObjId = insertResult.insertedObjectIds.front();
+                    if (targetX != 0.0f || targetY != 0.0f)
+                    {
+                        commands.set_property(document, address_for_document(document, rootObjId, std::nullopt, std::nullopt, {std::string("position"), std::string("x")}), targetX);
+                        commands.set_property(document, address_for_document(document, rootObjId, std::nullopt, std::nullopt, {std::string("position"), std::string("y")}), targetY);
+                    }
+                    Selection sel;
+                    sel.objectId = rootObjId;
+                    sel.selectedObjectIds = {rootObjId};
+                    sel.focusedPanel = FocusedPanel::Scene;
+                    selection.set(document, sel);
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (kind == EditorAssetKind::Script && parentObjectId)
+    {
+        std::string behaviorType = stemName;
+        std::optional<int> scriptId;
+        const auto loc = document.indexes.objectsById.find(*parentObjectId);
+        if (loc != document.indexes.objectsById.end())
+        {
+            const Json *current = &document.root;
+            for (const std::size_t idx : loc->second.childIndices)
+            {
+                if (current == nullptr || !current->is_array() || idx >= current->size())
+                {
+                    current = nullptr;
+                    break;
+                }
+                current = &(*current)[idx];
+                if (idx != loc->second.childIndices.back())
+                {
+                    const auto children = current->find("children");
+                    if (children == current->end() || !children->is_array())
+                    {
+                        current = nullptr;
+                        break;
+                    }
+                    current = &(*children);
+                }
+            }
+            if (current != nullptr && current->contains("components") && (*current)["components"].is_array())
+            {
+                for (const auto &comp : (*current)["components"])
+                {
+                    if (comp.is_object() && comp.value("type", -1) == 5)
+                    {
+                        scriptId = comp.value("id", -1);
+                        break;
+                    }
+                }
+            }
+        }
+        if (scriptId && *scriptId >= 0)
+        {
+            commands.add_behavior(document, *parentObjectId, *scriptId, Json{{"type", behaviorType}});
+        }
+        else
+        {
+            Json script = default_component_record(5);
+            script["behaviors"].push_back(Json{{"type", behaviorType}});
+            commands.add_component(document, *parentObjectId, std::move(script));
+        }
+        return true;
+    }
+
+    auto createResult = commands.create_object(document, parentObjectId, stemName);
+    if (createResult.status == CommandStatus::Changed && createResult.command)
+    {
+        const int newId = createResult.command->payload.value("id", 0);
+        if (newId != 0)
+        {
+            if (targetX != 0.0f || targetY != 0.0f)
+            {
+                commands.set_property(document, address_for_document(document, newId, std::nullopt, std::nullopt, {std::string("position"), std::string("x")}), targetX);
+                commands.set_property(document, address_for_document(document, newId, std::nullopt, std::nullopt, {std::string("position"), std::string("y")}), targetY);
+            }
+
+            if (kind == EditorAssetKind::Image || editor_asset_format(p).textureReference)
+            {
+                Json sprite = default_component_record(6);
+                sprite["textureFilePath"] = assetPath;
+                commands.add_component(document, newId, std::move(sprite));
+            }
+            else if (kind == EditorAssetKind::Audio || editor_asset_format(p).audioReference)
+            {
+                Json audio = default_component_record(1);
+                audio["filePath"] = assetPath;
+                commands.add_component(document, newId, std::move(audio));
+            }
+            else if (kind == EditorAssetKind::Script)
+            {
+                Json script = default_component_record(5);
+                script["behaviors"].push_back(Json{{"type", stemName}});
+                commands.add_component(document, newId, std::move(script));
+            }
+
+            Selection sel;
+            sel.objectId = newId;
+            sel.selectedObjectIds = {newId};
+            sel.focusedPanel = FocusedPanel::Scene;
+            selection.set(document, sel);
+            return true;
+        }
+    }
+    return false;
 }
 } // namespace platformator_editor

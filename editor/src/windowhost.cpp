@@ -1,5 +1,6 @@
 #include "windowhost.h"
 #include "windowhost_testhooks.h"
+#include "style.h"
 
 #include <algorithm>
 #include <exception>
@@ -276,6 +277,7 @@ struct SdlWindowHost::Impl
             renderer = SDL_CreateRenderer(window, nullptr);
             if (renderer == nullptr)
                 throw std::runtime_error(sdl_error("SDL renderer creation failed"));
+            SDL_SetRenderVSync(renderer, 1);
 
             ImGuiContext *previousContext = ImGui::GetCurrentContext();
             fallbackContext = previousContext;
@@ -286,6 +288,7 @@ struct SdlWindowHost::Impl
             {
                 CurrentContextScope current(context);
                 ImGuiIO &io = ImGui::GetIO();
+                setup_editor_fonts(io);
                 io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NavEnableKeyboard;
                 io.IniFilename = nullptr;
                 if (!ImGui_ImplSDL3_InitForSDLRenderer(window, renderer))

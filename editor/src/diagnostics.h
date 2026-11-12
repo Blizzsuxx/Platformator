@@ -67,6 +67,7 @@ class ConsoleProjection
     void clear() noexcept;
     void set_search(std::string search);
     void set_severity_filter(std::optional<DiagnosticSeverity> severity) noexcept;
+    void set_severity_mask(bool showInfo, bool showWarnings, bool showErrors) noexcept;
     void set_collapse_repeats(bool enabled);
     void set_auto_follow(bool enabled) noexcept;
     void user_scrolled_away() noexcept;
@@ -83,6 +84,10 @@ class ConsoleProjection
     std::vector<ConsoleRow> rows_;
     std::string search_;
     std::optional<DiagnosticSeverity> severityFilter_;
+    bool showInfo_ = true;
+    bool showWarnings_ = true;
+    bool showErrors_ = true;
+    bool useSeverityMask_ = false;
     bool collapseRepeats_ = true;
     bool autoFollow_ = true;
     std::size_t omittedRows_ = 0;

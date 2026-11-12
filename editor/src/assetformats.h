@@ -19,6 +19,12 @@ enum class EditorAssetKind : std::uint8_t
     Script
 };
 
+struct AssetDragPayload
+{
+    char relativeAssetPath[512] = {0};
+    EditorAssetKind kind = EditorAssetKind::Other;
+};
+
 struct EditorAssetFormat
 {
     EditorAssetKind kind = EditorAssetKind::Other;

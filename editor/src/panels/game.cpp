@@ -120,9 +120,20 @@ std::string GamePanel::asset_change_status_message(bool liveAssetReloadAdvertise
 void GamePanel::observe_generation(PlaySession *session)
 {
     const PlayGeneration next = session == nullptr ? PlayGeneration{} : session->generation();
-    if (next == generation_)
+    if (next != generation_)
+    {
+        release_input_capture(session);
+        generation_ = next;
+    }
+    else
+    {
+        if (session == nullptr || session->state() == PlaySessionState::Idle ||
+            session->state() == PlaySessionState::Stopping)
+        {
+            release_input_capture(session);
+        }
         return;
-    generation_ = next;
+    }
     if (next)
     {
         pipelineStatus_.clear();
@@ -305,6 +316,8 @@ void GamePanel::consume_event(PlaySession &session,
 void GamePanel::set_visible(PlaySession *session, bool visible)
 {
     observe_generation(session);
+    if (!visible)
+        release_input_capture(session);
     if (session == nullptr || session->state() == PlaySessionState::Idle ||
         session->state() == PlaySessionState::Stopping ||
         !session->capabilities().frameStream || captureVisible_ == visible)
@@ -313,10 +326,54 @@ void GamePanel::set_visible(PlaySession *session, bool visible)
         captureVisible_ = visible;
 }
 
+void GamePanel::release_input_capture(PlaySession *session)
+{
+    if (capturingInput_)
+    {
+        capturingInput_ = false;
+        if (session != nullptr)
+            session->release_all_inputs();
+    }
+}
+
+void GamePanel::handle_sdl_event(PlaySession *session, const SDL_Event &event)
+{
+    if (!capturingInput_ || session == nullptr)
+        return;
+    if (event.type == SDL_EVENT_KEY_DOWN)
+    {
+        if (event.key.scancode == SDL_SCANCODE_ESCAPE)
+        {
+            release_input_capture(session);
+            return;
+        }
+        EmbeddedInputEvent inputEvent;
+        inputEvent.kind = EmbeddedInputKind::KeyDown;
+        inputEvent.scancode = static_cast<int>(event.key.scancode);
+        inputEvent.keycode = static_cast<int>(event.key.key);
+        inputEvent.modifiers = static_cast<std::uint16_t>(event.key.mod);
+        session->send_input(inputEvent);
+    }
+    else if (event.type == SDL_EVENT_KEY_UP)
+    {
+        EmbeddedInputEvent inputEvent;
+        inputEvent.kind = EmbeddedInputKind::KeyUp;
+        inputEvent.scancode = static_cast<int>(event.key.scancode);
+        inputEvent.keycode = static_cast<int>(event.key.key);
+        inputEvent.modifiers = static_cast<std::uint16_t>(event.key.mod);
+        session->send_input(inputEvent);
+    }
+}
+
 void GamePanel::draw(PlaySession *session, bool visible)
 {
     observe_generation(session);
     set_visible(session, visible);
+    if (!visible || session == nullptr || session->state() == PlaySessionState::Idle ||
+        session->state() == PlaySessionState::Stopping)
+    {
+        release_input_capture(session);
+    }
     if (session == nullptr || session->state() == PlaySessionState::Idle)
     {
         const auto &displayStatus = pipelineStatus_.empty() ? status_ : pipelineStatus_;
@@ -354,23 +411,138 @@ void GamePanel::draw(PlaySession *session, bool visible)
         ImGui::TextDisabled("Pause, Resume, and Step are not advertised by this runner.");
     if (!capabilities.inputForwarding)
         ImGui::TextDisabled("Embedded v1 is read-only. Use the external game window for native gameplay input.");
+    else if (running || paused)
+    {
+        if (capturingInput_)
+            status_ = "Embedded game running · Capturing gameplay input (Esc to release)";
+        else
+            status_ = "Embedded game running · Click Game view to capture input";
+    }
+    else
+        capturingInput_ = false;
+
     ImGui::TextWrapped("%s", status_.c_str());
     if (!pipelineStatus_.empty())
         ImGui::TextWrapped("%s", pipelineStatus_.c_str());
     if (restartAvailable_ && restartCallback_ && ImGui::Button("Build & Restart"))
         restartCallback_();
+
+    const char *aspectNames[] = {"Free Aspect", "16:9", "4:3", "Native 640x360"};
+    int currentAspect = static_cast<int>(aspectPreset_);
+    ImGui::SetNextItemWidth(120.0f);
+    if (ImGui::Combo("##game_aspect", &currentAspect, aspectNames, IM_ARRAYSIZE(aspectNames)))
+        aspectPreset_ = static_cast<GameAspectPreset>(currentAspect);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100.0f);
+    ImGui::SliderFloat("Scale", &zoomScale_, 0.5f, 4.0f, "%.1fx");
+    zoomScale_ = std::clamp(zoomScale_, 0.5f, 4.0f);
+
     if (frameTexture_ != nullptr && hasFramePixels_)
     {
         ImVec2 available = ImGui::GetContentRegionAvail();
-        if (available.x > 0.0f && available.y > 0.0f)
+        float targetWidth = static_cast<float>(FrameWidth);
+        float targetHeight = static_cast<float>(FrameHeight);
+        if (aspectPreset_ == GameAspectPreset::Native640x360)
         {
-            const float scale = std::min(available.x / FrameWidth, available.y / FrameHeight);
-            if (std::isfinite(scale) && scale > 0.0f)
+            targetWidth = static_cast<float>(FrameWidth) * zoomScale_;
+            targetHeight = static_cast<float>(FrameHeight) * zoomScale_;
+        }
+        else if (aspectPreset_ == GameAspectPreset::Aspect16x9)
+        {
+            const float aspect = 16.0f / 9.0f;
+            float w = available.x > 0.0f ? available.x : 640.0f;
+            float h = w / aspect;
+            if (available.y > 0.0f && h > available.y)
             {
-                const ImVec2 size(FrameWidth * scale, FrameHeight * scale);
-                const auto textureId = static_cast<ImTextureID>(
-                    reinterpret_cast<std::uintptr_t>(frameTexture_));
-                ImGui::Image(ImTextureRef(textureId), size);
+                h = available.y;
+                w = h * aspect;
+            }
+            targetWidth = w * zoomScale_;
+            targetHeight = h * zoomScale_;
+        }
+        else if (aspectPreset_ == GameAspectPreset::Aspect4x3)
+        {
+            const float aspect = 4.0f / 3.0f;
+            float w = available.x > 0.0f ? available.x : 640.0f;
+            float h = w / aspect;
+            if (available.y > 0.0f && h > available.y)
+            {
+                h = available.y;
+                w = h * aspect;
+            }
+            targetWidth = w * zoomScale_;
+            targetHeight = h * zoomScale_;
+        }
+        else // FreeAspect
+        {
+            targetWidth = (available.x > 0.0f ? available.x : 640.0f) * zoomScale_;
+            targetHeight = (available.y > 0.0f ? available.y : 360.0f) * zoomScale_;
+        }
+        const ImVec2 size(std::max(1.0f, targetWidth), std::max(1.0f, targetHeight));
+        const auto textureId = static_cast<ImTextureID>(
+            reinterpret_cast<std::uintptr_t>(frameTexture_));
+        ImGui::Image(ImTextureRef(textureId), size);
+
+        const ImVec2 imageMin = ImGui::GetItemRectMin();
+        const ImVec2 imageMax = ImGui::GetItemRectMax();
+        const bool imageHovered = ImGui::IsItemHovered();
+
+        if (imageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            capturingInput_ = true;
+            ImGui::SetWindowFocus();
+        }
+
+        if (capturingInput_)
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+                (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !imageHovered) ||
+                !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+            {
+                release_input_capture(session);
+            }
+            else if (session != nullptr)
+            {
+                const ImVec2 mousePos = ImGui::GetMousePos();
+                if (mousePos.x >= imageMin.x && mousePos.x <= imageMax.x &&
+                    mousePos.y >= imageMin.y && mousePos.y <= imageMax.y)
+                {
+                    const float normX = (mousePos.x - imageMin.x) / std::max(1.0f, imageMax.x - imageMin.x);
+                    const float normY = (mousePos.y - imageMin.y) / std::max(1.0f, imageMax.y - imageMin.y);
+                    const float logicalX = std::clamp(normX * static_cast<float>(FrameWidth), 0.0f, static_cast<float>(FrameWidth));
+                    const float logicalY = std::clamp(normY * static_cast<float>(FrameHeight), 0.0f, static_cast<float>(FrameHeight));
+
+                    if (ImGui::GetIO().MouseDelta.x != 0.0f || ImGui::GetIO().MouseDelta.y != 0.0f)
+                    {
+                        EmbeddedInputEvent moveEvent;
+                        moveEvent.kind = EmbeddedInputKind::MouseMove;
+                        moveEvent.logicalX = logicalX;
+                        moveEvent.logicalY = logicalY;
+                        session->send_input(moveEvent);
+                    }
+                    for (int btn = 0; btn < 3; ++btn)
+                    {
+                        const int sdlBtn = btn == 0 ? 1 : (btn == 1 ? 3 : 2);
+                        if (ImGui::IsMouseClicked(btn))
+                        {
+                            EmbeddedInputEvent btnEvent;
+                            btnEvent.kind = EmbeddedInputKind::MouseButtonDown;
+                            btnEvent.mouseButton = sdlBtn;
+                            btnEvent.logicalX = logicalX;
+                            btnEvent.logicalY = logicalY;
+                            session->send_input(btnEvent);
+                        }
+                        else if (ImGui::IsMouseReleased(btn))
+                        {
+                            EmbeddedInputEvent btnEvent;
+                            btnEvent.kind = EmbeddedInputKind::MouseButtonUp;
+                            btnEvent.mouseButton = sdlBtn;
+                            btnEvent.logicalX = logicalX;
+                            btnEvent.logicalY = logicalY;
+                            session->send_input(btnEvent);
+                        }
+                    }
+                }
             }
         }
     }
@@ -489,9 +661,12 @@ std::vector<SemanticNode> GamePanel::semantic_nodes(PlaySession *session,
     frame.parentId = parentId;
     frame.role = SemanticRole::Group;
     frame.name = "Embedded Game frame";
-    frame.value = frameTexture_ == nullptr || !hasFramePixels_
-        ? "waiting" : "640 by 360 RGBA8; aspect preserved";
-    frame.help = "The embedded session does not forward gameplay input. Use the external game window for native input.";
+    frame.value = capturingInput_
+        ? "capturing input; 640 by 360 RGBA8"
+        : (frameTexture_ == nullptr || !hasFramePixels_ ? "waiting" : "640 by 360 RGBA8; aspect preserved");
+    frame.help = capturingInput_
+        ? "Gameplay input captured. Press Escape or click outside to release."
+        : "Click Game view to capture gameplay keyboard and mouse input.";
     frame.visible = true;
     nodes.push_back(std::move(frame));
     semanticHandles_.clear();

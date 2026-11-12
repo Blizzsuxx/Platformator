@@ -10,6 +10,11 @@
 
 namespace platformator_editor
 {
+bool should_skip_project_directory(std::string_view name) noexcept
+{
+    return should_skip_directory(name);
+}
+
 namespace
 {
 std::size_t event_bytes(const ProjectChangeEvent &event)
@@ -38,8 +43,7 @@ bool relevant_source_path(const std::filesystem::path &root, const std::filesyst
         return false;
     const auto relative = path.lexically_relative(root);
     for (const auto &part : relative)
-        if (part == ".git" || part == "bin" || part == "build" || part == "dist" ||
-            part == "vendored" || part == "vendor" || part == "node_modules")
+        if (should_skip_project_directory(part.string()))
             return false;
     if (directory)
         return true;

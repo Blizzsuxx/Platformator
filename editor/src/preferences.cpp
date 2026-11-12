@@ -698,8 +698,11 @@ bool layout_needs_recovery(std::string_view layout, int displayWidth, int displa
 {
     if (layout.empty() || layout.size() > kMaximumLayoutBytes || displayWidth <= 0 || displayHeight <= 0 ||
         layout.find("[Docking][Data]") == std::string_view::npos ||
-        layout.find("DockSpace ID=0x") == std::string_view::npos ||
         layout.find('\0') != std::string_view::npos)
+        return true;
+
+    const auto dockspacePos = layout.find("DockSpace");
+    if (dockspacePos == std::string_view::npos || layout.find("ID=0x", dockspacePos) == std::string_view::npos)
         return true;
 
     int x = 0;
@@ -708,8 +711,12 @@ bool layout_needs_recovery(std::string_view layout, int displayWidth, int displa
     int height = 0;
     bool hasPosition = false;
     bool hasSize = false;
+    bool isDocked = false;
+    bool inWindowSection = false;
     bool hasDockspaceGeometry = false;
     const auto checkWindow = [&] {
+        if (isDocked)
+            return true;
         if (hasPosition && geometry_is_far_offscreen(x, y, hasSize ? width : displayWidth / 3,
                                                       hasSize ? height : displayHeight / 3,
                                                       displayWidth, displayHeight))
@@ -725,48 +732,83 @@ bool layout_needs_recovery(std::string_view layout, int displayWidth, int displa
         auto line = layout.substr(offset, end == std::string_view::npos ? layout.size() - offset : end - offset);
         if (!line.empty() && line.back() == '\r')
             line.remove_suffix(1);
-        if (line.starts_with("DockSpace ID="))
+        auto trimmed = line;
+        while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t'))
+            trimmed.remove_prefix(1);
+        if (trimmed.starts_with("DockSpace"))
         {
-            const auto position = line.find(" Pos=");
-            const auto size = line.find(" Size=");
-            const auto sizeEnd = line.find(' ', size == std::string_view::npos ? 0 : size + 6);
-            int rootX = 0;
-            int rootY = 0;
-            int rootWidth = 0;
-            int rootHeight = 0;
-            if (position == std::string_view::npos || size == std::string_view::npos ||
-                !parse_pair(line.substr(position + 5, size - (position + 5)), rootX, rootY) ||
-                !parse_pair(line.substr(size + 6,
-                    sizeEnd == std::string_view::npos ? line.size() - (size + 6) : sizeEnd - (size + 6)),
-                    rootWidth, rootHeight) ||
-                rootWidth <= 0 || rootHeight <= 0)
-                return true;
-            hasDockspaceGeometry = true;
+            auto after = trimmed.substr(9);
+            while (!after.empty() && after.front() == ' ')
+                after.remove_prefix(1);
+            if (after.starts_with("ID=0x"))
+            {
+                const auto posIndex = line.find("Pos=");
+                const auto sizeIndex = line.find("Size=");
+                if (posIndex != std::string_view::npos && sizeIndex != std::string_view::npos)
+                {
+                    const auto posVal = line.substr(posIndex + 4);
+                    const auto posEnd = posVal.find(' ');
+                    const auto posStr = posEnd == std::string_view::npos ? posVal : posVal.substr(0, posEnd);
+
+                    const auto sizeVal = line.substr(sizeIndex + 5);
+                    const auto sizeEnd = sizeVal.find(' ');
+                    const auto sizeStr = sizeEnd == std::string_view::npos ? sizeVal : sizeVal.substr(0, sizeEnd);
+
+                    int rootX = 0;
+                    int rootY = 0;
+                    int rootWidth = 0;
+                    int rootHeight = 0;
+                    if (!parse_pair(posStr, rootX, rootY) ||
+                        !parse_pair(sizeStr, rootWidth, rootHeight) ||
+                        rootWidth <= 0 || rootHeight <= 0)
+                        return true;
+                    hasDockspaceGeometry = true;
+                }
+            }
         }
         if (line.starts_with("[Window]["))
         {
-            if (!checkWindow())
+            if (inWindowSection && !checkWindow())
                 return true;
+            inWindowSection = true;
             x = y = width = height = 0;
             hasPosition = hasSize = false;
+            isDocked = false;
         }
-        else if (line.starts_with("Pos="))
+        else if (line.starts_with("["))
         {
-            if (!parse_pair(line.substr(4), x, y))
+            if (inWindowSection && !checkWindow())
                 return true;
-            hasPosition = true;
+            inWindowSection = false;
         }
-        else if (line.starts_with("Size="))
+        else if (inWindowSection)
         {
-            if (!parse_pair(line.substr(5), width, height))
-                return true;
-            hasSize = true;
+            if (line.starts_with("DockId=0x"))
+            {
+                const auto idPart = line.substr(7);
+                if (idPart.find_first_not_of("0,") != std::string_view::npos)
+                    isDocked = true;
+            }
+            else if (line.starts_with("Pos="))
+            {
+                if (!parse_pair(line.substr(4), x, y))
+                    return true;
+                hasPosition = true;
+            }
+            else if (line.starts_with("Size="))
+            {
+                if (!parse_pair(line.substr(5), width, height))
+                    return true;
+                hasSize = true;
+            }
         }
         if (end == std::string_view::npos)
             break;
         offset = end + 1;
     }
-    return !hasDockspaceGeometry || !checkWindow();
+    if (inWindowSection && !checkWindow())
+        return true;
+    return !hasDockspaceGeometry;
 }
 
 std::string migrate_scene_window_identity(std::string_view layout)
@@ -775,15 +817,19 @@ std::string migrate_scene_window_identity(std::string_view layout)
     constexpr std::string_view stableSection = "[Window][panel.scene]";
     constexpr std::string_view retiredBehaviorSection = "[Window][panel.behaviors]";
     constexpr std::string_view retiredSettingsSection = "[Window][panel.settings]";
+    constexpr std::string_view gameSection = "[Window][panel.game]";
+    const bool hasDocking = layout.find("[Docking][Data]") != std::string_view::npos;
     const bool hasLegacy = layout.find(legacySection) != std::string_view::npos;
+    const bool hasStable = layout.find(stableSection) != std::string_view::npos;
     const bool hasRetiredBehavior = layout.find(retiredBehaviorSection) != std::string_view::npos;
     const bool hasRetiredSettings = layout.find(retiredSettingsSection) != std::string_view::npos;
-    if (!hasLegacy && !hasRetiredBehavior && !hasRetiredSettings)
+    const bool hasGame = layout.find(gameSection) != std::string_view::npos;
+    const bool needsGameMigration = hasDocking && (hasLegacy || hasStable) && !hasGame;
+    if (!hasLegacy && !hasRetiredBehavior && !hasRetiredSettings && !needsGameMigration)
         return std::string(layout);
-    const bool hasStable = layout.find(stableSection) != std::string_view::npos;
 
     std::string migrated;
-    migrated.reserve(layout.size());
+    migrated.reserve(layout.size() + (needsGameMigration ? 128 : 0));
     bool skippingLegacy = false;
     std::size_t offset = 0;
     while (offset < layout.size())
@@ -812,6 +858,12 @@ std::string migrate_scene_window_identity(std::string_view layout)
         if (end != std::string_view::npos)
             migrated.push_back('\n');
         offset = end == std::string_view::npos ? layout.size() : end + 1;
+    }
+    if (needsGameMigration)
+    {
+        if (!migrated.empty() && migrated.back() != '\n')
+            migrated.push_back('\n');
+        migrated.append("[Window][panel.game]\nPos=260,0\nSize=720,570\nDockId=0x00003000,1\n");
     }
     return migrated;
 }

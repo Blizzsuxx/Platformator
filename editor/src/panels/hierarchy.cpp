@@ -7,6 +7,7 @@
 #include "../style.h"
 #include "../discovery.h"
 #include "../templates.h"
+#include "../assetformats.h"
 
 #include <algorithm>
 #include <charconv>
@@ -943,10 +944,64 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         }
         invalidate();
     };
+    const auto create_preset = [&](std::string_view preset, std::optional<int> parentId)
+    {
+        const char *name = preset == "Sprite" ? "Sprite"
+                         : preset == "Camera" ? "Camera"
+                         : preset == "Audio" ? "Audio"
+                         : "GameObject";
+        Json initialComponents = Json::array();
+        if (preset == "Sprite")
+            initialComponents.push_back(default_component_record(6));
+        else if (preset == "Camera")
+            initialComponents.push_back(default_component_record(2));
+        else if (preset == "Audio")
+            initialComponents.push_back(default_component_record(1));
+
+        const Selection before = selection.current();
+        const auto result = commands.create_object(document, parentId, name,
+            std::numeric_limits<std::size_t>::max(), {}, std::move(initialComponents));
+        if (result.status == CommandStatus::Changed && result.command)
+        {
+            const int createdId = result.command->payload.value("id", 0);
+            if (parentId)
+                expandedObjects_.insert(*parentId);
+            expandedObjects_.insert(createdId);
+            selection.set(document, selected_object(createdId));
+            commands.set_last_selection_state({before, selection.current()});
+        }
+        invalidate();
+    };
+
+    if (icon_button(EditorIcon::Plus, "##hierarchy-create-button", false, "Create GameObject preset"))
+        ImGui::OpenPopup("##hierarchy-create-popup");
+    ImGui::SameLine(0.0f, 2.0f);
     if (ImGui::Button("+ Object"))
-        create_object(std::nullopt);
+        ImGui::OpenPopup("##hierarchy-create-popup");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Create GameObject preset");
     ImGui::SameLine();
     ImGui::TextDisabled("%zu objects", document.indexes.objectsById.size());
+
+    if (ImGui::BeginPopup("##hierarchy-create-popup"))
+    {
+        if (ImGui::MenuItem("Create Empty"))
+            create_object(std::nullopt);
+
+        const bool hasSelection = selection.current().objectId.has_value();
+        if (ImGui::MenuItem("Create Empty Child", nullptr, false, hasSelection))
+            create_object(selection.current().objectId);
+
+        ImGui::Separator();
+        if (ImGui::MenuItem("2D Sprite"))
+            create_preset("Sprite", selection.current().objectId);
+        if (ImGui::MenuItem("Camera"))
+            create_preset("Camera", selection.current().objectId);
+        if (ImGui::MenuItem("Audio Object"))
+            create_preset("Audio", selection.current().objectId);
+
+        ImGui::EndPopup();
+    }
     if (!duplicatePolicyStatus_.empty())
         ImGui::TextWrapped("%s", duplicatePolicyStatus_.c_str());
     ImGui::Separator();
@@ -1101,6 +1156,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                          currentSelection.selectedObjectIds.end());
                 ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth |
                                            ImGuiTreeNodeFlags_OpenOnArrow |
+                                           ImGuiTreeNodeFlags_FramePadding |
                                            ImGuiTreeNodeFlags_NoTreePushOnOpen;
                 if (selected)
                     flags |= ImGuiTreeNodeFlags_Selected;
@@ -1120,9 +1176,70 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 const float iconX = rowMinimum.x + ImGui::GetTreeNodeToLabelSpacing() + 3.0f * uiScale;
                 const float iconY = rowMinimum.y + (rowMaximum.y - rowMinimum.y - iconSize) * 0.5f;
                 ImDrawList *drawList = ImGui::GetWindowDrawList();
-                draw_editor_icon(EditorIcon::GameObject, drawList,
-                                 {rowMaximum.x - iconSize - 4.0f, iconY}, iconSize,
-                                 ImGui::GetColorU32(ImGuiCol_Text));
+
+                const bool isHidden = hiddenObjectIds != nullptr &&
+                    std::binary_search(hiddenObjectIds->begin(), hiddenObjectIds->end(), row.id);
+                const bool isLocked = lockedObjectIds != nullptr &&
+                    std::binary_search(lockedObjectIds->begin(), lockedObjectIds->end(), row.id);
+                const bool rowHovered = ImGui::IsItemHovered();
+
+                const float gutterBtnWidth = 16.0f * uiScale;
+                const float eyeX = rowMaximum.x - gutterBtnWidth - 2.0f * uiScale;
+                const float lockX = eyeX - gutterBtnWidth - 2.0f * uiScale;
+                const ImVec2 mouse = ImGui::GetMousePos();
+
+                bool lockHovered = false;
+                bool eyeHovered = false;
+
+                if (rowHovered || isLocked || isHidden)
+                {
+                    if (mouse.y >= rowMinimum.y && mouse.y <= rowMaximum.y)
+                    {
+                        if (mouse.x >= lockX && mouse.x < lockX + gutterBtnWidth)
+                            lockHovered = true;
+                        else if (mouse.x >= eyeX && mouse.x <= eyeX + gutterBtnWidth)
+                            eyeHovered = true;
+                    }
+
+                    if (lockHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && lockedObjectIds != nullptr)
+                    {
+                        set_editor_object_id_state(*lockedObjectIds, row.id, !isLocked);
+                    }
+                    if (eyeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hiddenObjectIds != nullptr)
+                    {
+                        set_editor_object_id_state(*hiddenObjectIds, row.id, !isHidden);
+                    }
+
+                    if (rowHovered || isLocked)
+                    {
+                        const auto lockIcon = isLocked ? EditorIcon::LockClosed : EditorIcon::LockOpen;
+                        const ImU32 lockColor = isLocked ? IM_COL32(240, 170, 60, 255)
+                                              : lockHovered ? ImGui::GetColorU32(ImGuiCol_Text)
+                                                            : ImGui::GetColorU32(ImGuiCol_TextDisabled);
+                        draw_editor_icon(lockIcon, drawList, {lockX, iconY}, iconSize, lockColor);
+                    }
+
+                    if (rowHovered || isHidden)
+                    {
+                        const auto eyeIcon = isHidden ? EditorIcon::EyeClosed : EditorIcon::EyeOpen;
+                        const ImU32 eyeColor = isHidden ? IM_COL32(240, 100, 90, 255)
+                                             : eyeHovered ? ImGui::GetColorU32(ImGuiCol_Text)
+                                                          : ImGui::GetColorU32(ImGuiCol_TextDisabled);
+                        draw_editor_icon(eyeIcon, drawList, {eyeX, iconY}, iconSize, eyeColor);
+                    }
+
+                    if (lockHovered)
+                        ImGui::SetTooltip("%s", isLocked ? "Unlock object in Scene view" : "Lock object picking in Scene view");
+                    else if (eyeHovered)
+                        ImGui::SetTooltip("%s", isHidden ? "Show object in Scene view" : "Hide object in Scene view");
+                }
+                else
+                {
+                    draw_editor_icon(EditorIcon::GameObject, drawList,
+                                     {rowMaximum.x - iconSize - 4.0f, iconY}, iconSize,
+                                     ImGui::GetColorU32(ImGuiCol_TextDisabled));
+                }
+
                 if (row.hasChildren)
                 {
                     if (open != wasExpanded)
@@ -1134,7 +1251,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         invalidate();
                     }
                 }
-                if (ImGui::IsItemClicked())
+                if (ImGui::IsItemClicked() && !lockHovered && !eyeHovered)
                 {
                     const ImGuiIO &io = ImGui::GetIO();
                     if (io.KeyShift)
@@ -1152,6 +1269,14 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     selection.set_objects(document, {row.id}, row.id, row.id);
                     lastRevealedObjectId_ = row.id;
                     focus_hierarchy();
+                }
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                {
+                    selection.set_objects(document, {row.id}, row.id, row.id);
+                    lastRevealedObjectId_ = row.id;
+                    focus_hierarchy();
+                    if (onFrameSelected_)
+                        onFrameSelected_();
                 }
                 if (ImGui::BeginDragDropSource())
                 {
@@ -1200,6 +1325,32 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         {
                             invalidate();
                             structureChanged = true;
+                        }
+                    }
+                    if (const ImGuiPayload *assetPayload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+                    {
+                        std::string assetPath;
+                        EditorAssetKind kind = EditorAssetKind::Other;
+                        if (assetPayload->DataSize == sizeof(AssetDragPayload))
+                        {
+                            const auto *data = static_cast<const AssetDragPayload *>(assetPayload->Data);
+                            assetPath = data->relativeAssetPath;
+                            kind = data->kind;
+                        }
+                        else if (assetPayload->Data != nullptr && assetPayload->DataSize > 0)
+                        {
+                            assetPath = std::string(static_cast<const char *>(assetPayload->Data), assetPayload->DataSize);
+                            while (!assetPath.empty() && assetPath.back() == '\0')
+                                assetPath.pop_back();
+                            kind = editor_asset_format(assetPath).kind;
+                        }
+                        if (!assetPath.empty())
+                        {
+                            if (instantiate_asset_drop(document, commands, selection, assetPath, kind, 0.0f, 0.0f, row.id))
+                            {
+                                invalidate();
+                                structureChanged = true;
+                            }
                         }
                     }
                     ImGui::EndDragDropTarget();
@@ -1344,6 +1495,32 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 {
                     invalidate();
                     structureChanged = true;
+                }
+            }
+            if (const ImGuiPayload *assetPayload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+            {
+                std::string assetPath;
+                EditorAssetKind kind = EditorAssetKind::Other;
+                if (assetPayload->DataSize == sizeof(AssetDragPayload))
+                {
+                    const auto *data = static_cast<const AssetDragPayload *>(assetPayload->Data);
+                    assetPath = data->relativeAssetPath;
+                    kind = data->kind;
+                }
+                else if (assetPayload->Data != nullptr && assetPayload->DataSize > 0)
+                {
+                    assetPath = std::string(static_cast<const char *>(assetPayload->Data), assetPayload->DataSize);
+                    while (!assetPath.empty() && assetPath.back() == '\0')
+                        assetPath.pop_back();
+                    kind = editor_asset_format(assetPath).kind;
+                }
+                if (!assetPath.empty())
+                {
+                    if (instantiate_asset_drop(document, commands, selection, assetPath, kind, 0.0f, 0.0f, std::nullopt))
+                    {
+                        invalidate();
+                        structureChanged = true;
+                    }
                 }
             }
             ImGui::EndDragDropTarget();

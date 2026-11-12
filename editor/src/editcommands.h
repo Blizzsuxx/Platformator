@@ -279,7 +279,8 @@ class EditCommandService
     StructuralCommandResult create_object(DocumentSession &document, std::optional<int> parentObjectId,
                                           std::string name,
                                           std::size_t insertionIndex = std::numeric_limits<std::size_t>::max(),
-                                          SelectionState selection = {});
+                                          SelectionState selection = {},
+                                          Json components = Json::array());
     StructuralCommandResult duplicate_object(DocumentSession &document, int objectId,
                                              SelectionState selection = {},
                                              DuplicateReferencePolicy referencePolicy =

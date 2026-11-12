@@ -358,6 +358,51 @@ void run_preference_cases()
                                       1280, 800),
             "layout recovery must keep valid windows and reset corrupt or offscreen state");
 
+    const std::string multiSpaceLayout =
+        "[Docking][Data]\n"
+        "DockSpace       ID=0x6E706EF3 Window=0x12345678 Pos=0,0 Size=1280,800 Split=Y\n"
+        "  DockNode      ID=0x00001000 Parent=0x6E706EF3 SizeRef=1280,500 Split=X\n"
+        "    DockNode    ID=0x00002000 Parent=0x00001000 SizeRef=260,500\n"
+        "    DockNode    ID=0x00003000 Parent=0x00001000 SizeRef=1020,500 CentralNode=1\n"
+        "[Window][panel.scene]\n"
+        "Pos=260,0\n"
+        "Size=720,570\n"
+        "DockId=0x00003000,0\n"
+        "[Window][panel.game]\n"
+        "Pos=-5000,-5000\n"
+        "Size=720,570\n"
+        "DockId=0x00003000,1\n";
+    require(!layout_needs_recovery(multiSpaceLayout, 1280, 800),
+            "layout_needs_recovery must accept multi-space DockSpace layouts emitted by ImGui and docked windows with out-of-bounds positions");
+
+    require(layoutSeed.find("[Window][panel.game]") != std::string::npos &&
+                layoutSeed.find("DockId=0x00003000,1") != std::string::npos,
+            "default-layout.ini must dock [Window][panel.game] alongside [Window][panel.scene] into central node 0x00003000");
+    require(loaded.preferences.panelHostAssignments.at("panel.game") == main_host_layout_id,
+            "default panelHostAssignments must include panel.game mapped to main host");
+
+    const std::string layoutWithoutGame =
+        "[Docking][Data]\n"
+        "DockSpace ID=0x6E706EF3 Pos=0,0 Size=1280,800 Split=Y\n"
+        "  DockNode ID=0x00003000 CentralNode=1\n"
+        "[Window][panel.scene]\n"
+        "Pos=260,0\n"
+        "Size=720,570\n"
+        "DockId=0x00003000,0\n";
+    const auto migratedWithGame = migrate_scene_window_identity(layoutWithoutGame);
+    require(migratedWithGame.find("[Window][panel.game]") != std::string::npos &&
+                migratedWithGame.find("DockId=0x00003000") != std::string::npos,
+            "migrate_scene_window_identity must dock [Window][panel.game] into central node 0x00003000 if missing");
+
+    const auto roundTripPaths = make_project_preference_paths(temporary.path() / "docking-roundtrip", projectRoot);
+    auto dockingPrefs = loaded.preferences;
+    auto saveDocking = save_workspace_preferences(roundTripPaths, dockingPrefs, multiSpaceLayout);
+    require(saveDocking.succeeded(), "saving modified docking layout must succeed");
+    auto loadedDocking = load_workspace_preferences(roundTripPaths.settingsPath, roundTripPaths.layoutPath, projectRoot);
+    require(!layout_needs_recovery(loadedDocking.layout, 1280, 800) &&
+                loadedDocking.layout == multiSpaceLayout,
+            "docking modifications must round-trip across preference save/load without resetting to defaultLayout");
+
     WorkspacePreferences resetPreferences = loaded.preferences;
     resetPreferences.panelVisibility["panel.hierarchy"] = false;
     resetPreferences.userScale = 1.5f;

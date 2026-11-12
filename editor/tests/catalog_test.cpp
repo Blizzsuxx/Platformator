@@ -322,8 +322,8 @@ int main()
         const auto sessionCapabilities = platformator::editor_session::read_session_capabilities(first);
         require(sessionCapabilities.supported && sessionCapabilities.playControl &&
                     sessionCapabilities.runtimeInspection && sessionCapabilities.frameStream &&
-                    !sessionCapabilities.liveAssetReload && !sessionCapabilities.inputForwarding,
-                "the opt-in stock-runner catalog must advertise implemented pause/step, bounded inspection and frame support while withholding unfinished reload/input capabilities");
+                    !sessionCapabilities.liveAssetReload && sessionCapabilities.inputForwarding,
+                "the opt-in stock-runner catalog must advertise implemented pause/step, bounded inspection, frame support, and input forwarding");
 #else
         require(!first.contains("editor_capabilities"),
                 "the default-off stock runner must omit editor session capabilities");

@@ -115,8 +115,17 @@ void test_capability_validation()
             "catalogs without session capabilities must remain supported as external-run targets");
     auto forwarded = catalog;
     forwarded["editor_capabilities"]["input_forwarding"] = true;
-    require(!read_session_capabilities(forwarded).supported,
-            "v1 must reject a claim of arbitrary input forwarding");
+    require(read_session_capabilities(forwarded).supported &&
+                read_session_capabilities(forwarded).inputForwarding,
+            "input forwarding capability must be accepted");
+    auto sixtyHz = catalog;
+    sixtyHz["editor_capabilities"]["rgba_frame_stream"]["max_hz"] = 60;
+    require(read_session_capabilities(sixtyHz).supported,
+            "frame capability max_hz up to 60 must be accepted");
+    auto tooFast = catalog;
+    tooFast["editor_capabilities"]["rgba_frame_stream"]["max_hz"] = 120;
+    require(!read_session_capabilities(tooFast).supported,
+            "frame capability max_hz exceeding 60 must be rejected");
     auto wrongSize = catalog;
     wrongSize["editor_capabilities"]["rgba_frame_stream"]["width"] = 1280;
     require(!read_session_capabilities(wrongSize).supported,

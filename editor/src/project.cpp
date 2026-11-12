@@ -10,12 +10,63 @@
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
+#include <sys/stat.h>
 
 #include <json.hpp>
 
 namespace platformator_editor
 {
+bool should_skip_directory(std::string_view name) noexcept
+{
+    if (name.empty() || name == "." || name == "..")
+        return false;
+    if (name.starts_with('.'))
+        return true;
+    return name == "bin" || name == "build" || name == "dist" ||
+           name == "vendored" || name == "vendor" || name == "node_modules" ||
+           name == "specs" || name == "benchmark" || name == "diplomski" ||
+           name == "paper" || name == "docs";
+}
+
+struct SourceHashCacheKey
+{
+    std::string canonicalPath;
+    std::uintmax_t size = 0;
+    long long lastWriteTime = 0;
+    long long changeTimeSec = 0;
+    long long changeTimeNsec = 0;
+
+    bool operator<(const SourceHashCacheKey &other) const
+    {
+        if (size != other.size)
+            return size < other.size;
+        if (lastWriteTime != other.lastWriteTime)
+            return lastWriteTime < other.lastWriteTime;
+        if (changeTimeSec != other.changeTimeSec)
+            return changeTimeSec < other.changeTimeSec;
+        if (changeTimeNsec != other.changeTimeNsec)
+            return changeTimeNsec < other.changeTimeNsec;
+        return canonicalPath < other.canonicalPath;
+    }
+};
+
+static std::mutex s_sourceHashCacheMutex;
+static std::map<SourceHashCacheKey, std::uint64_t> s_sourceHashCache;
+
+void clear_source_hash_cache() noexcept
+{
+    std::lock_guard lock(s_sourceHashCacheMutex);
+    s_sourceHashCache.clear();
+}
+
+std::size_t source_hash_cache_size() noexcept
+{
+    std::lock_guard lock(s_sourceHashCacheMutex);
+    return s_sourceHashCache.size();
+}
+
 struct ProjectScanTicketState
 {
     std::uint64_t requestId = 0;
@@ -260,6 +311,9 @@ ProjectScanResult perform_scan(const std::filesystem::path &root,
             std::error_code targetTypeError;
             if (std::filesystem::is_directory(target, targetTypeError) && !targetTypeError)
             {
+                const auto name = entry.path().filename().string();
+                if (options.sourceInputsOnly && should_skip_directory(name))
+                    return;
                 if (options.trackFileMetadata)
                 {
                     result.inventoryEntries.emplace_back(display_path(entry.path()),
@@ -291,6 +345,9 @@ ProjectScanResult perform_scan(const std::filesystem::path &root,
         }
         if (directory)
         {
+            const auto name = entry.path().filename().string();
+            if (options.sourceInputsOnly && should_skip_directory(name))
+                return;
             if (options.trackFileMetadata)
             {
                 std::error_code canonicalError;
@@ -305,11 +362,6 @@ ProjectScanResult perform_scan(const std::filesystem::path &root,
                 filesystemIdentityEntries.insert("d:" + display_path(entry.path()).lexically_relative(logicalRoot).generic_string() +
                                                  ":" + canonical.generic_string());
             }
-            const auto name = entry.path().filename().string();
-            if (options.sourceInputsOnly &&
-                (name == ".git" || name == "bin" || name == "build" || name == "dist" ||
-                 name == "vendored" || name == "vendor" || name == "node_modules"))
-                return;
             if (options.includeDirectories)
             {
                 if (result.directories.size() == options.maxDirectories)
@@ -391,34 +443,81 @@ ProjectScanResult perform_scan(const std::filesystem::path &root,
                 result.truncated = true;
                 return;
             }
-            std::ifstream source(entry.path(), std::ios::binary);
-            if (!source)
+
+            std::error_code canonError;
+            const auto canonicalPath = std::filesystem::canonical(entry.path(), canonError);
+            const std::string canonicalKey = canonError ? entry.path().string() : canonicalPath.string();
+
+            struct stat st{};
+            long long ctimeSec = 0;
+            long long ctimeNsec = 0;
+            if (::stat(entry.path().c_str(), &st) == 0)
             {
-                result.error = "could not read source input: " + entry.path().string();
-                return;
+                ctimeSec = static_cast<long long>(st.st_ctime);
+#if defined(__linux__)
+                ctimeNsec = static_cast<long long>(st.st_ctim.tv_nsec);
+#elif defined(__APPLE__)
+                ctimeNsec = static_cast<long long>(st.st_ctimespec.tv_nsec);
+#endif
             }
-            std::uint64_t contentHash = 14695981039346656037ull;
-            std::array<char, 16U * 1024U> buffer{};
-            while (source)
+
+            const SourceHashCacheKey cacheKey{
+                canonicalKey,
+                size,
+                static_cast<long long>(modified.time_since_epoch().count()),
+                ctimeSec,
+                ctimeNsec
+            };
+
+            std::uint64_t contentHash = 0;
+            bool foundInCache = false;
             {
-                if (ticket->cancelled.load(std::memory_order_acquire))
+                std::lock_guard lock(s_sourceHashCacheMutex);
+                auto it = s_sourceHashCache.find(cacheKey);
+                if (it != s_sourceHashCache.end())
                 {
-                    result.cancelled = true;
-                    break;
-                }
-                source.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-                const auto count = source.gcount();
-                for (std::streamsize index = 0; index < count; ++index)
-                {
-                    contentHash ^= static_cast<unsigned char>(buffer[static_cast<std::size_t>(index)]);
-                    contentHash *= 1099511628211ull;
+                    contentHash = it->second;
+                    foundInCache = true;
                 }
             }
-            if (source.bad())
+
+            if (!foundInCache)
             {
-                result.error = "could not finish reading source input: " + entry.path().string();
-                return;
+                std::ifstream source(entry.path(), std::ios::binary);
+                if (!source)
+                {
+                    result.error = "could not read source input: " + entry.path().string();
+                    return;
+                }
+                contentHash = 14695981039346656037ull;
+                std::array<char, 16U * 1024U> buffer{};
+                while (source)
+                {
+                    if (ticket->cancelled.load(std::memory_order_acquire))
+                    {
+                        result.cancelled = true;
+                        break;
+                    }
+                    source.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+                    const auto count = source.gcount();
+                    for (std::streamsize index = 0; index < count; ++index)
+                    {
+                        contentHash ^= static_cast<unsigned char>(buffer[static_cast<std::size_t>(index)]);
+                        contentHash *= 1099511628211ull;
+                    }
+                }
+                if (source.bad())
+                {
+                    result.error = "could not finish reading source input: " + entry.path().string();
+                    return;
+                }
+                if (!result.cancelled)
+                {
+                    std::lock_guard lock(s_sourceHashCacheMutex);
+                    s_sourceHashCache[cacheKey] = contentHash;
+                }
             }
+
             sourceBytesRead += size;
             auto relative = entry.path().lexically_relative(root).generic_string();
             identityEntries.insert(relative + ":" + std::to_string(size) + ":" +
@@ -452,8 +551,7 @@ ProjectScanResult perform_scan(const std::filesystem::path &root,
             if (options.sourceInputsOnly && current->is_directory(error) && !error)
             {
                 const auto name = current->path().filename().string();
-                if (name == ".git" || name == "bin" || name == "build" || name == "dist" ||
-                    name == "vendored" || name == "vendor" || name == "node_modules")
+                if (should_skip_directory(name))
                     current.disable_recursion_pending();
             }
             error.clear();

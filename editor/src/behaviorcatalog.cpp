@@ -136,6 +136,7 @@ void BehaviorCatalog::configure(CatalogProtocol protocol, CatalogIdentity identi
         return;
     protocol_ = protocol;
     identity_ = std::move(identity);
+    ++revision_;
     if (queryActive_)
     {
         queryActive_ = false;
@@ -156,6 +157,7 @@ void BehaviorCatalog::invalidate(std::string message)
     }
     state_ = snapshot_ ? CatalogState::Stale : CatalogState::Unavailable;
     error_ = std::move(message);
+    ++revision_;
 }
 
 CatalogProtocol BehaviorCatalog::protocol() const noexcept
@@ -279,6 +281,7 @@ bool BehaviorCatalog::finish_query(int exitCode, std::chrono::milliseconds elaps
     next->document = std::move(parsed);
     snapshot_ = std::move(next);
     state_ = CatalogState::Current;
+    ++revision_;
     error_.clear();
     stdout_.clear();
     stderr_.clear();

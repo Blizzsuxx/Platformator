@@ -213,6 +213,128 @@ void test_console_semantics_and_owner_actions()
             "the semantic Clear action must clear retained output and its projection");
     ImGui::DestroyContext(context);
 }
+
+void test_independent_console_severity_badge_filtering()
+{
+    BoundedConsole raw;
+    raw.append("info: engine initialized successfully\n"
+               "src/main.cpp:10: warning: unused variable\n"
+               "src/main.cpp:25: error: syntax error\n");
+
+    ConsoleProjection view;
+    view.rebuild(raw);
+    require(view.rows().size() == 3, "projection must produce 3 rows");
+
+    // Direct ConsoleProjection mask test
+    view.set_severity_mask(true, true, true);
+    require(view.visible_rows(raw.text()).size() == 3, "all 3 rows visible with full mask");
+
+    view.set_severity_mask(true, false, false);
+    auto visible = view.visible_rows(raw.text());
+    require(visible.size() == 1 && view.rows()[visible[0]].severity == DiagnosticSeverity::Info,
+            "only Info row visible when Warning and Error disabled");
+
+    view.set_severity_mask(false, true, false);
+    visible = view.visible_rows(raw.text());
+    require(visible.size() == 1 && view.rows()[visible[0]].severity == DiagnosticSeverity::Warning,
+            "only Warning row visible when Info and Error disabled");
+
+    view.set_severity_mask(false, false, true);
+    visible = view.visible_rows(raw.text());
+    require(visible.size() == 1 && view.rows()[visible[0]].severity == DiagnosticSeverity::Error,
+            "only Error row visible when Info and Warning disabled");
+
+    view.set_severity_mask(false, true, true);
+    visible = view.visible_rows(raw.text());
+    require(visible.size() == 2, "Warning and Error visible when Info disabled");
+
+    // ConsolePanel draw and semantic toggling test
+    PipelineStatus status;
+    status.stage = PipelineStage::Idle;
+    ConsolePanel panel;
+
+    ImGuiContext *context = ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(1280.0f, 800.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    require(io.Fonts->Build(), "font atlas required");
+
+    ImGui::NewFrame();
+    ImGui::Begin("Console Badge Test");
+    panel.draw(status, raw);
+    ImGui::End();
+    ImGui::Render();
+
+    const auto &state = panel.filter_state();
+    require(state.infoCount == 1, "info count must be 1");
+    require(state.warningCount == 1, "warning count must be 1");
+    require(state.errorCount == 1, "error count must be 1");
+    require(state.showInfo && state.showWarnings && state.showErrors, "all badges initially active");
+
+    // Toggle info badge off via semantic action
+    require(panel.dispatch_semantic_action({HostLayoutId{1}, WindowHostGeneration{1}, 1,
+                "main/panel/console/console-badge-info", "toggle", {}}, status, raw),
+            "toggling info badge must succeed");
+    require(!panel.filter_state().showInfo, "info badge must be inactive after toggle");
+
+    // Toggle error badge off
+    require(panel.dispatch_semantic_action({HostLayoutId{1}, WindowHostGeneration{1}, 1,
+                "main/panel/console/console-badge-error", "toggle", {}}, status, raw),
+            "toggling error badge must succeed");
+    require(!panel.filter_state().showErrors, "error badge must be inactive after toggle");
+    require(panel.filter_state().showWarnings, "warning badge must still be active");
+
+    // Toggle info badge back on
+    require(panel.dispatch_semantic_action({HostLayoutId{1}, WindowHostGeneration{1}, 1,
+                "main/panel/console/console-badge-info", "toggle", {}}, status, raw),
+            "toggling info badge back on must succeed");
+    require(panel.filter_state().showInfo, "info badge must be active again");
+
+    ImGui::DestroyContext(context);
+}
+
+void test_console_row_severity_icons_and_colors()
+{
+    require(std::string(severity_icon(DiagnosticSeverity::Error)) == "[x]",
+            "error severity icon must be [x]");
+    require(std::string(severity_icon(DiagnosticSeverity::Warning)) == "[!]",
+            "warning severity icon must be [!]");
+    require(std::string(severity_icon(DiagnosticSeverity::Info)) == "[i]",
+            "info severity icon must be [i]");
+
+    const auto errColor = severity_color(DiagnosticSeverity::Error);
+    require(errColor.x > errColor.y && errColor.x > errColor.z,
+            "error color must be predominantly red");
+
+    const auto warnColor = severity_color(DiagnosticSeverity::Warning);
+    require(warnColor.x > warnColor.z && warnColor.y > warnColor.z,
+            "warning color must be amber/yellow (red+green > blue)");
+
+    const auto infoColor = severity_color(DiagnosticSeverity::Info);
+    require(std::abs(infoColor.x - infoColor.y) < 0.1f && std::abs(infoColor.y - infoColor.z) < 0.1f,
+            "info color must be a neutral light tone");
+
+    // Verify row rendering in ConsolePanel
+    BoundedConsole raw;
+    raw.append("info message\nwarning message\nerror message\n");
+    PipelineStatus status;
+    status.stage = PipelineStage::Idle;
+    ConsolePanel panel;
+
+    ImGuiContext *context = ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(1280.0f, 800.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    require(io.Fonts->Build(), "font atlas required");
+
+    ImGui::NewFrame();
+    ImGui::Begin("Console Row Test");
+    panel.draw(status, raw);
+    ImGui::End();
+    ImGui::Render();
+
+    ImGui::DestroyContext(context);
+}
 } // namespace
 
 int main()
@@ -222,5 +344,7 @@ int main()
     test_truncation_clear_and_auto_follow();
     test_console_revision_tracks_visible_mutations();
     test_console_semantics_and_owner_actions();
+    test_independent_console_severity_badge_filtering();
+    test_console_row_severity_icons_and_colors();
     return 0;
 }

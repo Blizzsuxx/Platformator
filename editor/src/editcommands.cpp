@@ -2638,7 +2638,8 @@ StructuralCommandResult EditCommandService::apply(DocumentSession &document, con
 StructuralCommandResult EditCommandService::create_object(DocumentSession &document,
                                                            std::optional<int> parentObjectId,
                                                            std::string name, std::size_t insertionIndex,
-                                                           SelectionState selection)
+                                                           SelectionState selection,
+                                                           Json components)
 {
     rebuild_document_indexes(document);
     if (parentObjectId && !document.indexes.objectsById.contains(*parentObjectId))
@@ -2653,6 +2654,26 @@ StructuralCommandResult EditCommandService::create_object(DocumentSession &docum
     const auto id = first_unused_id(document);
     if (!id)
         return failed_structural(CommandStatus::Rejected, "no file IDs remain for a new object", document);
+
+    if (components.is_array())
+    {
+        int nextId = *id + 1;
+        for (auto &comp : components)
+        {
+            if (comp.is_object() && (!comp.contains("id") || comp["id"].get<int>() <= 0))
+            {
+                while (document.indexes.objectsById.contains(nextId) ||
+                       document.indexes.componentsById.contains(nextId))
+                    ++nextId;
+                comp["id"] = nextId++;
+            }
+        }
+    }
+    else
+    {
+        components = Json::array();
+    }
+
     Json object = {{"id", *id},
                    {"name", std::move(name)},
                    {"tag", ""},
@@ -2661,7 +2682,7 @@ StructuralCommandResult EditCommandService::create_object(DocumentSession &docum
                    {"scale", {{"x", 1.0}, {"y", 1.0}}},
                    {"rotation", 0.0},
                    {"children", Json::array()},
-                   {"components", Json::array()}};
+                   {"components", std::move(components)}};
     StructuralCommand command{document.documentGeneration, StructuralCommandKind::InsertObject,
                               parentObjectId, *id, std::nullopt, insertionIndex, std::move(object),
                               std::move(selection)};

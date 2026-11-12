@@ -14,6 +14,10 @@ struct EditorToolbarState
     bool operationActive = false;
     bool saveEnabled = true;
     bool openScenePending = false;
+    bool isRunning = false;
+    bool isPaused = false;
+    bool pauseResumeEnabled = false;
+    bool stepEnabled = false;
     std::string projectLabel;
     std::string projectPath;
     std::string sceneLabel;
@@ -27,6 +31,9 @@ struct EditorToolbarActions
     std::function<void()> save;
     std::function<void()> build;
     std::function<void()> buildAndRun;
+    std::function<void()> pause;
+    std::function<void()> resume;
+    std::function<void()> step;
     std::function<void()> stop;
 };
 

@@ -147,6 +147,14 @@ ViewportPoint rectangle_offset_after_edge_resize(ViewportPoint initialOffset,
                                                  float resizedDimension,
                                                  float absoluteScale) noexcept;
 
+struct MarqueeSelectionState
+{
+    bool active = false;
+    bool additive = false;
+    ViewportPoint startScreen{};
+    ViewportPoint currentScreen{};
+};
+
 class SceneViewportPanel
 {
   public:
@@ -169,6 +177,7 @@ class SceneViewportPanel
     void request_frame_all() noexcept;
     void set_tool(SceneTool tool) noexcept;
     SceneTool tool() const noexcept;
+    const MarqueeSelectionState &marquee_state() const noexcept { return marquee_; }
     void reset_view_state(const DocumentSession &document) noexcept;
     void restore_view_state(const DocumentSession &document, float centerX, float centerY,
                             float zoom) noexcept;
@@ -247,5 +256,7 @@ class SceneViewportPanel
     bool frameSelectedRequested_ = false;
     bool frameAllRequested_ = false;
     SceneTool tool_ = SceneTool::Move;
+    MarqueeSelectionState marquee_{};
+    bool showGrid_ = true;
 };
 } // namespace platformator_editor

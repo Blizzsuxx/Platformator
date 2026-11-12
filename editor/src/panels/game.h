@@ -15,6 +15,14 @@
 
 namespace platformator_editor
 {
+enum class GameAspectPreset
+{
+    FreeAspect,
+    Aspect16x9,
+    Aspect4x3,
+    Native640x360
+};
+
 class GamePanel
 {
   public:
@@ -42,6 +50,10 @@ class GamePanel
                                   const SemanticAction &action);
     const std::string &status() const noexcept;
     void release_renderer(SDL_Renderer *renderer) noexcept;
+    bool is_input_captured() const noexcept { return capturingInput_; }
+    void capture_input() noexcept { capturingInput_ = true; }
+    void release_input_capture(PlaySession *session = nullptr);
+    void handle_sdl_event(PlaySession *session, const SDL_Event &event);
 
   private:
     void observe_generation(PlaySession *session);
@@ -69,5 +81,8 @@ class GamePanel
     std::optional<std::uint64_t> nextCursor_;
     bool awaitingRuntimePage_ = false;
     std::unordered_map<std::string, Json> semanticHandles_;
+    GameAspectPreset aspectPreset_ = GameAspectPreset::Aspect16x9;
+    float zoomScale_ = 1.0f;
+    bool capturingInput_ = false;
 };
 } // namespace platformator_editor

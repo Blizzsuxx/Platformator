@@ -250,11 +250,6 @@ SessionCapabilities read_session_capabilities(const nlohmann::json &catalog)
         !read_optional_bool(capabilities, "live_asset_reload", result.liveAssetReload, result.error) ||
         !read_optional_bool(capabilities, "input_forwarding", result.inputForwarding, result.error))
         return result;
-    if (result.inputForwarding)
-    {
-        result.error = "editor-session v1 requires input_forwarding=false";
-        return result;
-    }
     if (capabilities.contains("rgba_frame_stream"))
     {
         const auto &frame = capabilities["rgba_frame_stream"];
@@ -262,9 +257,9 @@ SessionCapabilities read_session_capabilities(const nlohmann::json &catalog)
             frame["version"] != 1 || !frame.contains("width") || !frame["width"].is_number_integer() ||
             frame["width"] != 640 || !frame.contains("height") || !frame["height"].is_number_integer() ||
             frame["height"] != 360 || !frame.contains("max_hz") || !frame["max_hz"].is_number_integer() ||
-            frame["max_hz"] <= 0 || frame["max_hz"] > 15)
+            frame["max_hz"] <= 0 || frame["max_hz"] > 60)
         {
-            result.error = "RGBA frame capability must be v1, 640x360, and at most 15 Hz";
+            result.error = "RGBA frame capability must be v1, 640x360, and at most 60 Hz";
             return result;
         }
         result.frameStream = true;

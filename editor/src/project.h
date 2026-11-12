@@ -43,6 +43,9 @@ struct ProjectRunDiscovery
 };
 
 // Project-folder selection accepts only the repository's existing conventions.
+bool should_skip_directory(std::string_view name) noexcept;
+void clear_source_hash_cache() noexcept;
+std::size_t source_hash_cache_size() noexcept;
 ProjectRootCandidate validate_project_folder(const std::filesystem::path &projectRoot);
 // Reads only bounded CMake preset and File API reply data. An explicit refresh
 // may register a bounded codemodel query in an existing in-project build dir;

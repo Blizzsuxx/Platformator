@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <array>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -61,8 +62,10 @@ class HierarchyPanel
     void reset_expansion_for_document() noexcept;
     void apply_change(const DocumentSession &document, const DocumentChange &change);
     void invalidate() noexcept;
+    void set_on_frame_selected(std::function<void()> callback) { onFrameSelected_ = std::move(callback); }
 
   private:
+    std::function<void()> onFrameSelected_;
     void rebuild(const DocumentSession &document);
     void refresh_labels(const DocumentSession &document);
     void update_search_matches(const DocumentSession &document);

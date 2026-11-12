@@ -255,6 +255,43 @@ struct ProjectPanelTestProbe
         return panel.failedAnimationRefreshes_.contains(path.string())
             ? panel.coverageMessage_ : "no cached animation failure";
     }
+
+    static ProjectBrowserViewState &view_state(ProjectPanel &panel)
+    {
+        return panel.viewState_;
+    }
+
+    static const ProjectBrowserViewState &view_state(const ProjectPanel &panel)
+    {
+        return panel.viewState_;
+    }
+
+    static bool execute_context_create(ProjectPanel &panel, std::string_view itemType,
+                                       const std::filesystem::path &inDir)
+    {
+        return panel.execute_context_create(itemType, inDir);
+    }
+
+    static bool execute_context_delete(ProjectPanel &panel, const std::filesystem::path &targetPath)
+    {
+        return panel.execute_context_delete(targetPath);
+    }
+
+    static bool execute_context_duplicate(ProjectPanel &panel, const std::filesystem::path &targetPath)
+    {
+        return panel.execute_context_duplicate(targetPath);
+    }
+
+    static bool execute_context_rename(ProjectPanel &panel, const std::filesystem::path &targetPath,
+                                       const std::string &newName)
+    {
+        return panel.execute_context_rename(targetPath, newName);
+    }
+
+    static bool reveal_in_file_manager(ProjectPanel &panel, const std::filesystem::path &targetPath)
+    {
+        return panel.reveal_in_file_manager(targetPath);
+    }
 };
 } // namespace platformator_editor
 
@@ -1373,6 +1410,94 @@ void test_project_change_owner_commit_budget()
                 counts[static_cast<std::size_t>(work::Counter::OwnerAssetChangePaths)] == totalPaths,
             "the owner path counter must account for every deferred Project and Scene invalidation commit");
 }
+
+void test_project_browser_context_menu_operations_and_two_column_view()
+{
+    TemporaryDirectory temp;
+    const auto projectRoot = temp.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    std::filesystem::create_directories(assetRoot);
+
+    ProjectContext context;
+    context.set_roots(projectRoot, assetRoot);
+    ProjectChanges changes;
+    ProjectScanService scans(1);
+    ProjectPanel panel(context, changes, scans, nullptr);
+
+    auto &viewState = ProjectPanelTestProbe::view_state(panel);
+    require(viewState.folderTreeWidth == 190.0f,
+            "project browser default folder tree width must be 190 px");
+    require(viewState.thumbnailScale == 0.5f,
+            "project browser default thumbnail scale must be 0.5f");
+
+    // Two-column layout adjustments
+    viewState.folderTreeWidth = 220.0f;
+    require(viewState.folderTreeWidth == 220.0f, "folder tree width must update");
+    viewState.thumbnailScale = 0.0f; // List view
+    require(viewState.thumbnailScale == 0.0f, "thumbnail scale 0.0f represents list view");
+    viewState.thumbnailScale = 1.0f; // Large grid view
+    require(viewState.thumbnailScale == 1.0f, "thumbnail scale 1.0f represents large grid view");
+
+    // Context menu create: Folder
+    const bool createdFolder = ProjectPanelTestProbe::execute_context_create(
+        panel, "Folder", assetRoot);
+    require(createdFolder, "context menu folder creation must succeed");
+    const auto folder = assetRoot / "New Folder";
+    require(std::filesystem::is_directory(folder), "created folder must exist on filesystem");
+
+    // Context menu create: Script
+    const bool createdScript = ProjectPanelTestProbe::execute_context_create(
+        panel, "Behavior Script", folder);
+    require(createdScript, "context menu script creation must succeed");
+    const auto script = folder / "NewBehavior.cpp";
+    require(std::filesystem::exists(script), "created script must exist on filesystem");
+
+    // Context menu create: Scene
+    const bool createdScene = ProjectPanelTestProbe::execute_context_create(
+        panel, "Scene", folder);
+    require(createdScene, "context menu scene creation must succeed");
+    const auto scene = folder / "New Scene.scene";
+    require(std::filesystem::exists(scene), "created scene must exist on filesystem");
+
+    // Context menu create: Template
+    const bool createdTemplate = ProjectPanelTestProbe::execute_context_create(
+        panel, "Object Template", folder);
+    require(createdTemplate, "context menu template creation must succeed");
+    const auto templateFile = folder / "New Template.pttemplate";
+    require(std::filesystem::exists(templateFile), "created template must exist on filesystem");
+
+    // Context menu duplicate
+    const bool duplicated = ProjectPanelTestProbe::execute_context_duplicate(panel, script);
+    require(duplicated, "context menu duplicate must succeed");
+    const auto duplicatedScript = folder / "NewBehavior Copy.cpp";
+    require(std::filesystem::exists(duplicatedScript), "duplicated script must exist");
+
+    // Context menu rename
+    const bool renamed = ProjectPanelTestProbe::execute_context_rename(
+        panel, duplicatedScript, "MyCustomScript.cpp");
+    require(renamed, "context menu rename must report success");
+    const auto renamedPath = folder / "MyCustomScript.cpp";
+    require(std::filesystem::exists(renamedPath), "renamed file must exist at new path");
+    require(!std::filesystem::exists(duplicatedScript), "original file must be removed after rename");
+
+    // Context menu delete
+    const bool deleted = ProjectPanelTestProbe::execute_context_delete(panel, renamedPath);
+    require(deleted, "context menu delete must report success");
+    require(!std::filesystem::exists(renamedPath), "deleted file must no longer exist on filesystem");
+
+    // Context menu reveal in file manager
+    ProjectPanelTestProbe::reveal_in_file_manager(panel, script);
+    require(panel.last_revealed_url().rfind("file://", 0) == 0,
+            "reveal in file manager must produce a file:// URL");
+    require(panel.last_revealed_url().find(folder.filename().string()) != std::string::npos,
+            "reveal in file manager must target the containing directory");
+
+    ProjectPanelTestProbe::reveal_in_file_manager(panel, folder);
+    require(panel.last_revealed_url().rfind("file://", 0) == 0,
+            "reveal folder must produce a file:// URL");
+    require(panel.last_revealed_url().find(folder.filename().string()) != std::string::npos,
+            "reveal folder must target the folder directory itself");
+}
 } // namespace
 
 void run_project_cases()
@@ -1669,6 +1794,7 @@ void run_project_cases()
                                    std::istreambuf_iterator<char>());
         require(!sameSizeSource.empty(), "same-metadata source fixture must be nonempty");
         sameSizeSource[0] = sameSizeSource[0] == 'x' ? 'y' : 'x';
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         std::ofstream(mainPath, std::ios::binary | std::ios::trunc) << sameSizeSource;
         std::filesystem::last_write_time(mainPath, originalTime);
         const auto sameMetadataScan = scans.request_scan(first, projectRoot,
@@ -1739,4 +1865,5 @@ void run_project_cases()
     test_project_template_controls_are_semantically_actionable();
     test_project_change_owner_commit_budget();
     test_animation_preview_uploads_without_project_draw();
+    test_project_browser_context_menu_operations_and_two_column_view();
 }

@@ -31,6 +31,16 @@ namespace platformator_editor
 class SelectionModel;
 struct Selection;
 
+struct ProjectBrowserViewState
+{
+    float folderTreeWidth = 190.0f;
+    float thumbnailScale = 0.5f;
+    std::filesystem::path contextTargetPath;
+    char renameBuffer[256] = {0};
+    bool renaming = false;
+    std::filesystem::path renamingPath;
+};
+
 class ProjectPanel
 {
     friend struct ProjectPanelTestProbe;
@@ -75,6 +85,16 @@ class ProjectPanel
     std::optional<std::chrono::steady_clock::time_point> next_animation_deadline() const noexcept;
     bool take_reference_retry_request() noexcept;
     void set_reference_retry_status(std::size_t scheduled);
+    const ProjectBrowserViewState &view_state() const noexcept { return viewState_; }
+    ProjectBrowserViewState &view_state() noexcept { return viewState_; }
+    const std::filesystem::path &selected_directory() const noexcept { return selectedDirectory_; }
+    const std::optional<std::filesystem::path> &selected_entry() const noexcept { return selectedEntry_; }
+    bool execute_context_create(std::string_view itemType, const std::filesystem::path &targetDir);
+    bool execute_context_delete(const std::filesystem::path &targetPath);
+    bool execute_context_duplicate(const std::filesystem::path &targetPath);
+    bool execute_context_rename(const std::filesystem::path &targetPath, const std::string &newName);
+    bool reveal_in_file_manager(const std::filesystem::path &targetPath);
+    const std::string &last_revealed_url() const noexcept { return lastRevealedUrl_; }
 
   private:
     struct ListedEntry
@@ -200,6 +220,8 @@ class ProjectPanel
                                          const std::filesystem::path &assetRoot);
     void draw_asset_tile(const std::filesystem::path &path, const std::filesystem::path &assetRoot,
                          bool isDirectory, bool behaviorRoot, float tileWidth, float tileHeight);
+    void draw_asset_list_row(const std::filesystem::path &path, const std::filesystem::path &assetRoot,
+                             bool isDirectory, bool behaviorRoot, float rowHeight);
     std::vector<AssetAssignmentTarget> asset_assignment_targets(
         const DocumentSession &document, const SelectionModel &selection,
         const std::filesystem::path &assetPath) const;
@@ -287,5 +309,7 @@ class ProjectPanel
     std::map<std::string, SemanticProjectTarget> pendingSemanticTargets_;
     std::map<std::string, SemanticProjectTarget> semanticTargets_;
     std::optional<std::string> semanticFocusNode_;
+    ProjectBrowserViewState viewState_{};
+    std::string lastRevealedUrl_;
 };
 } // namespace platformator_editor

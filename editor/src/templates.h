@@ -8,10 +8,12 @@
 #include <unordered_set>
 #include <vector>
 
+#include "assetformats.h"
 #include "editcommands.h"
 
 namespace platformator_editor
 {
+class SelectionModel;
 // IDs inside the template are local source identities; they never prove a destination match.
 class TemplateAssetV1
 {
@@ -90,4 +92,9 @@ TemplateInsertResult insert_template(
     std::size_t insertionIndex = std::numeric_limits<std::size_t>::max(),
     const std::vector<TemplateExternalAssignment> &externalAssignments = {},
     SelectionState selection = {});
+
+bool instantiate_asset_drop(DocumentSession &document, EditCommandService &commands,
+                            SelectionModel &selection, const std::string &assetPath,
+                            EditorAssetKind kind, float targetX = 0.0f, float targetY = 0.0f,
+                            std::optional<int> parentObjectId = std::nullopt);
 } // namespace platformator_editor

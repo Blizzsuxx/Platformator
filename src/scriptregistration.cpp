@@ -46,9 +46,9 @@ namespace platformator
             {"play_control", true},
             {"runtime_inspection", true},
             {"rgba_frame_stream", { {"version", 1}, {"width", 640},
-                                      {"height", 360}, {"max_hz", 15} }},
+                                      {"height", 360}, {"max_hz", 60} }},
             {"live_asset_reload", false},
-            {"input_forwarding", false}};
+            {"input_forwarding", true}};
 #endif
         return catalog;
     }

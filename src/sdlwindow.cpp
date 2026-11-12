@@ -228,6 +228,7 @@ bool SDLWindow::init()
         printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
         return false;
     }
+    SDL_SetRenderVSync(renderer, 1);
 
     if (windowSettings.fullscreen)
     {

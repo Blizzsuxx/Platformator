@@ -134,7 +134,7 @@ bool PlaySession::begin_starting(SessionCapabilities capabilities,
         lastError_ = "catalog validation must complete before session startup";
         return false;
     }
-    if (!capabilities.supported || capabilities.inputForwarding)
+    if (!capabilities.supported)
     {
         lastError_ = capabilities.error.empty()
             ? "target does not advertise a compatible editor-session protocol"
@@ -437,6 +437,60 @@ bool PlaySession::release_frame(std::uint32_t slot, std::uint64_t frameSequence)
     frameReleasing_[slot] = true;
     frameReleaseRequests_[slot] = *requestSequence;
     return true;
+}
+
+bool PlaySession::send_input(const EmbeddedInputEvent &event)
+{
+    if (state_ != PlaySessionState::Running && state_ != PlaySessionState::Paused)
+        return false;
+    if (!capabilities_.inputForwarding)
+        return false;
+    switch (event.kind)
+    {
+    case EmbeddedInputKind::KeyDown:
+        return queue_command("key_down", Json{
+            {"scancode", event.scancode},
+            {"keycode", event.keycode},
+            {"modifiers", event.modifiers}
+        });
+    case EmbeddedInputKind::KeyUp:
+        return queue_command("key_up", Json{
+            {"scancode", event.scancode},
+            {"keycode", event.keycode},
+            {"modifiers", event.modifiers}
+        });
+    case EmbeddedInputKind::MouseMove:
+        return queue_command("mouse_move", Json{
+            {"x", event.logicalX},
+            {"y", event.logicalY}
+        });
+    case EmbeddedInputKind::MouseButtonDown:
+        return queue_command("mouse_button", Json{
+            {"button", event.mouseButton},
+            {"down", true},
+            {"x", event.logicalX},
+            {"y", event.logicalY}
+        });
+    case EmbeddedInputKind::MouseButtonUp:
+        return queue_command("mouse_button", Json{
+            {"button", event.mouseButton},
+            {"down", false},
+            {"x", event.logicalX},
+            {"y", event.logicalY}
+        });
+    case EmbeddedInputKind::ReleaseAll:
+        return release_all_inputs();
+    }
+    return false;
+}
+
+bool PlaySession::release_all_inputs()
+{
+    if (state_ != PlaySessionState::Running && state_ != PlaySessionState::Paused)
+        return false;
+    if (!capabilities_.inputForwarding)
+        return false;
+    return queue_command("release_all_inputs", Json::object());
 }
 
 bool PlaySession::request_stop()

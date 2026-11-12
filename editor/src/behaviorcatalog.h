@@ -54,6 +54,7 @@ class BehaviorCatalog
     bool can_automatic_run() const noexcept;
     const std::string &last_error() const noexcept;
     std::shared_ptr<const BehaviorCatalogSnapshot> snapshot() const noexcept;
+    std::uint64_t revision() const noexcept { return revision_; }
 
     bool begin_query();
     bool append_stdout(std::string_view bytes);
@@ -71,6 +72,7 @@ class BehaviorCatalog
     std::string stdout_;
     std::string stderr_;
     std::string error_;
+    std::uint64_t revision_ = 0;
     bool queryActive_ = false;
     bool outputExceeded_ = false;
 };

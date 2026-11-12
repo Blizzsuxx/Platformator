@@ -27,6 +27,21 @@ namespace platformator_editor
 {
 namespace
 {
+EditorIcon component_icon(int type) noexcept
+{
+    switch (type)
+    {
+    case 0: return EditorIcon::Animator;
+    case 1: return EditorIcon::Audio;
+    case 2: return EditorIcon::Camera;
+    case 3: return EditorIcon::Collider;
+    case 4: return EditorIcon::Rigidbody;
+    case 5: return EditorIcon::Script;
+    case 6: return EditorIcon::Sprite;
+    default: return EditorIcon::UnknownComponent;
+    }
+}
+
 const Json *resolve_object(const Json &root, const ObjectLocation &location)
 {
     if (!root.is_array() || location.childIndices.empty())
@@ -624,6 +639,7 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
     {
         append_field("Name", {std::string("name")}, std::nullopt, selectionNodeId, "GameObject");
         append_field("Tag", {std::string("tag")}, std::nullopt, selectionNodeId, "");
+        append_field("Layer", {std::string("layer")}, std::nullopt, selectionNodeId, "Default");
         append_field("Active", {std::string("active")}, std::nullopt, selectionNodeId, "true");
         append_point("Position", "position", std::nullopt, selectionNodeId, 0.0, 0.0);
         append_point("Scale", "scale", std::nullopt, selectionNodeId, 1.0, 1.0);
@@ -692,6 +708,8 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
             append_field(std::move(label), {std::string(key)}, componentId, componentNodeId,
                          fallback, expectedAssetType);
         };
+        if (type != 4)
+            add("enabled", "Enabled", "true");
         switch (type)
         {
         case 0: // Animator
@@ -1205,7 +1223,101 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     const Json *stored = address_value(document, objectId, componentId, path);
     float value = json_float(stored, defaultValue);
     const bool reveal = consume_reveal_target(objectId, componentId, path);
-    begin_field(label, path);
+
+    ImGui::AlignTextToFramePadding();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const float labelWidth = std::min(124.0f, available * 0.42f);
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const float frameHeight = ImGui::GetFrameHeight();
+    const std::string scrubId = "##scrub_" + stable_field_id(path);
+    ImGui::InvisibleButton(scrubId.c_str(), ImVec2(labelWidth, frameHeight));
+    const bool labelHovered = ImGui::IsItemHovered();
+    const bool labelActivated = ImGui::IsItemActivated();
+    const bool labelActive = ImGui::IsItemActive();
+    const bool labelDeactivated = ImGui::IsItemDeactivated();
+
+    if (labelHovered || labelActive)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    drawList->AddText(ImVec2(cursorPos.x, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
+                      ImGui::GetColorU32(labelHovered || labelActive ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                      label);
+
+    constexpr float baseStep = 0.1f;
+    constexpr float snapIncrement = 1.0f;
+    bool scrubCommitted = false;
+
+    if (labelActivated)
+    {
+        scrubState_.active = true;
+        scrubState_.startValue = value;
+        scrubState_.currentValue = value;
+        scrubState_.objectId = objectId;
+        scrubState_.componentId = componentId;
+        scrubState_.path = path;
+        scrubState_.baseStep = baseStep;
+        scrubState_.snapIncrement = snapIncrement;
+        scrubState_.minimum = minimum;
+        scrubState_.maximum = maximum;
+    }
+    else if (labelActive && scrubState_.active)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            Json *mut = mutable_address_value(document, objectId, componentId, path);
+            if (mut)
+            {
+                *mut = scrubState_.startValue;
+                ++document.valueRevision;
+            }
+            scrubState_.active = false;
+        }
+        else
+        {
+            const ImGuiIO &io = ImGui::GetIO();
+            const float deltaX = io.MouseDelta.x;
+            if (deltaX != 0.0f)
+            {
+                const float mult = io.KeyShift ? 10.0f : (io.KeyAlt ? 0.1f : 1.0f);
+                scrubState_.currentValue += deltaX * baseStep * mult;
+                if (io.KeyCtrl && snapIncrement > 0.0f)
+                    scrubState_.currentValue = std::round(scrubState_.currentValue / snapIncrement) * snapIncrement;
+                if (minimum && scrubState_.currentValue < *minimum)
+                    scrubState_.currentValue = *minimum;
+                if (maximum && scrubState_.currentValue > *maximum)
+                    scrubState_.currentValue = *maximum;
+
+                value = scrubState_.currentValue;
+                Json *mut = mutable_address_value(document, objectId, componentId, path);
+                if (mut)
+                {
+                    *mut = scrubState_.currentValue;
+                    ++document.valueRevision;
+                }
+            }
+            else
+            {
+                value = scrubState_.currentValue;
+            }
+        }
+    }
+    else if (labelDeactivated && scrubState_.active)
+    {
+        Json *mut = mutable_address_value(document, objectId, componentId, path);
+        if (mut)
+            *mut = scrubState_.startValue;
+        if (scrubState_.currentValue != scrubState_.startValue)
+        {
+            set(document, commands, objectId, componentId, path, scrubState_.currentValue);
+            scrubCommitted = true;
+        }
+        scrubState_.active = false;
+    }
+
+    ImGui::SameLine();
+    ImGui::PushID(stable_field_id(path).c_str());
+    ImGui::SetNextItemWidth(-FLT_MIN);
     if (reveal)
         ImGui::SetKeyboardFocusHere();
     const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, "%.9g",
@@ -1214,7 +1326,10 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
         ImGui::SetScrollHereY(0.5f);
     const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
     const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
-    end_field();
+    ImGui::PopID();
+
+    if (scrubCommitted)
+        return true;
     if (!commit)
         return false;
     if (!std::isfinite(value) || (minimum && value < *minimum) || (maximum && value > *maximum))
@@ -1235,13 +1350,105 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     const Json *stored = address_value(document, objectId, componentId, path);
     const int storedValue = json_integer(stored, defaultValue);
     const bool reveal = consume_reveal_target(objectId, componentId, path);
-    begin_field(label, path);
+
+    ImGui::AlignTextToFramePadding();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const float labelWidth = std::min(124.0f, available * 0.42f);
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const float frameHeight = ImGui::GetFrameHeight();
+    const std::string scrubId = "##scrub_" + stable_field_id(path);
+    ImGui::InvisibleButton(scrubId.c_str(), ImVec2(labelWidth, frameHeight));
+    const bool labelHovered = ImGui::IsItemHovered();
+    const bool labelActivated = ImGui::IsItemActivated();
+    const bool labelActive = ImGui::IsItemActive();
+    const bool labelDeactivated = ImGui::IsItemDeactivated();
+
+    if (labelHovered || labelActive)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    drawList->AddText(ImVec2(cursorPos.x, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
+                      ImGui::GetColorU32(labelHovered || labelActive ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                      label);
+
+    constexpr float baseStep = 1.0f;
+    constexpr float snapIncrement = 1.0f;
+    bool scrubCommitted = false;
+
+    if (labelActivated)
+    {
+        scrubState_.active = true;
+        scrubState_.startValue = static_cast<float>(storedValue);
+        scrubState_.currentValue = static_cast<float>(storedValue);
+        scrubState_.objectId = objectId;
+        scrubState_.componentId = componentId;
+        scrubState_.path = path;
+        scrubState_.baseStep = baseStep;
+        scrubState_.snapIncrement = snapIncrement;
+        scrubState_.minimum = minimum ? std::optional<float>(static_cast<float>(*minimum)) : std::nullopt;
+        scrubState_.maximum = maximum ? std::optional<float>(static_cast<float>(*maximum)) : std::nullopt;
+    }
+    else if (labelActive && scrubState_.active)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            Json *mut = mutable_address_value(document, objectId, componentId, path);
+            if (mut)
+            {
+                *mut = static_cast<int>(std::round(scrubState_.startValue));
+                ++document.valueRevision;
+            }
+            scrubState_.active = false;
+        }
+        else
+        {
+            const ImGuiIO &io = ImGui::GetIO();
+            const float deltaX = io.MouseDelta.x;
+            if (deltaX != 0.0f)
+            {
+                const float mult = io.KeyShift ? 10.0f : (io.KeyAlt ? 0.1f : 1.0f);
+                scrubState_.currentValue += deltaX * baseStep * mult;
+                if (minimum && scrubState_.currentValue < *minimum)
+                    scrubState_.currentValue = static_cast<float>(*minimum);
+                if (maximum && scrubState_.currentValue > *maximum)
+                    scrubState_.currentValue = static_cast<float>(*maximum);
+
+                const int intVal = static_cast<int>(std::round(scrubState_.currentValue));
+                Json *mut = mutable_address_value(document, objectId, componentId, path);
+                if (mut)
+                {
+                    *mut = intVal;
+                    ++document.valueRevision;
+                }
+            }
+        }
+    }
+    else if (labelDeactivated && scrubState_.active)
+    {
+        Json *mut = mutable_address_value(document, objectId, componentId, path);
+        if (mut)
+            *mut = static_cast<int>(std::round(scrubState_.startValue));
+        const int finalVal = static_cast<int>(std::round(scrubState_.currentValue));
+        if (finalVal != static_cast<int>(std::round(scrubState_.startValue)))
+        {
+            set(document, commands, objectId, componentId, path, finalVal);
+            scrubCommitted = true;
+        }
+        scrubState_.active = false;
+    }
+
+    ImGui::SameLine();
+    ImGui::PushID(stable_field_id(path).c_str());
+    ImGui::SetNextItemWidth(-FLT_MIN);
     if (reveal)
         ImGui::SetKeyboardFocusHere();
     const auto widgetId = static_cast<std::uint32_t>(ImGui::GetID("##value"));
     auto [draftIt, inserted] = integerDrafts_.try_emplace(widgetId, IntegerDraft{storedValue, false});
-    if (!inserted && !draftIt->second.wasActive && ImGui::GetActiveID() != widgetId)
+    if (scrubState_.active)
+        draftIt->second.value = static_cast<int>(std::round(scrubState_.currentValue));
+    else if (!inserted && !draftIt->second.wasActive && ImGui::GetActiveID() != widgetId)
         draftIt->second.value = storedValue;
+
     const bool changed = ImGui::InputInt("##value", &draftIt->second.value, 1, 100,
                                          ImGuiInputTextFlags_EnterReturnsTrue);
     if (reveal)
@@ -1258,7 +1465,13 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     {
         integerDrafts_.erase(draftIt);
     }
-    end_field();
+    ImGui::PopID();
+
+    if (scrubCommitted)
+    {
+        integerDrafts_.erase(widgetId);
+        return true;
+    }
     if (!commit)
         return false;
     if ((minimum && value < *minimum) || (maximum && value > *maximum))
@@ -2046,28 +2259,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
 
     draw_search_bar();
     ImGui::Separator();
-    if (ImGui::CollapsingHeader("Object Template"))
-    {
-        std::array<char, 256> templateNameBuffer{};
-        const std::size_t templateNameLength = std::min(templateName_.size(), templateNameBuffer.size() - 1);
-        std::memcpy(templateNameBuffer.data(), templateName_.data(), templateNameLength);
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::InputTextWithHint("##object-template-name", "Template name",
-                                     templateNameBuffer.data(), templateNameBuffer.size()))
-            templateName_ = templateNameBuffer.data();
-        const bool canSaveTemplate = !templateName_.empty() && !document.assetRoot.empty();
-        ImGui::BeginDisabled(!canSaveTemplate);
-        if (ImGui::Button("Save as Template"))
-            save_selected_template(document, objectId, catalog);
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered() && !canSaveTemplate)
-            ImGui::SetTooltip("A template name and project asset root are required.");
-    }
-    const auto refreshedObjectLocation = document.indexes.objectsById.find(objectId);
-    object = refreshedObjectLocation == document.indexes.objectsById.end()
-        ? nullptr : resolve_object(document.root, refreshedObjectLocation->second);
-    if (object == nullptr)
-        return;
 
     // Top GameObject Header
     // Row 1: [☑ Active] [Icon] [Name InputText]
@@ -2114,15 +2305,22 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     }
     ImGui::PopID();
 
-    // Row 2: Tag: [Tag InputText]
+    // Row 2: Tag: [Tag InputText]  Layer: [Layer InputText]
+    const bool revealLayer = consume_reveal_target(objectId, std::nullopt, {std::string("layer")});
+    const float contentWidth = ImGui::GetContentRegionAvail().x;
+    const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float halfWidth = (contentWidth - itemSpacing) * 0.5f;
+    const float tagLabelWidth = 32.0f;
+    const float tagInputWidth = std::max(40.0f, halfWidth - tagLabelWidth - itemSpacing);
+
     std::string tagValue = object->value("tag", std::string{});
     std::array<char, 256> tagBuffer{};
     std::memcpy(tagBuffer.data(), tagValue.data(), std::min(tagValue.size(), tagBuffer.size() - 1));
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Tag");
-    ImGui::SameLine(64.0f + ImGui::GetStyle().ItemSpacing.x);
+    ImGui::SameLine();
     ImGui::PushID(stable_field_id({std::string("tag")}).c_str());
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(tagInputWidth);
     if (revealTag)
         ImGui::SetKeyboardFocusHere();
     const bool tagChanged = ImGui::InputText("##value", tagBuffer.data(), tagBuffer.size(),
@@ -2134,6 +2332,52 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         set(document, commands, objectId, std::nullopt, {std::string("tag")}, std::string(tagBuffer.data()));
     }
     ImGui::PopID();
+
+    ImGui::SameLine();
+    std::string layerValue = object->value("layer", std::string("Default"));
+    std::array<char, 256> layerBuffer{};
+    std::memcpy(layerBuffer.data(), layerValue.data(), std::min(layerValue.size(), layerBuffer.size() - 1));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Layer");
+    ImGui::SameLine();
+    ImGui::PushID(stable_field_id({std::string("layer")}).c_str());
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (revealLayer)
+        ImGui::SetKeyboardFocusHere();
+    const bool layerChanged = ImGui::InputText("##value", layerBuffer.data(), layerBuffer.size(),
+                                              ImGuiInputTextFlags_EnterReturnsTrue);
+    if (revealLayer)
+        ImGui::SetScrollHereY(0.5f);
+    if (layerChanged || ImGui::IsItemDeactivatedAfterEdit())
+    {
+        set(document, commands, objectId, std::nullopt, {std::string("layer")}, std::string(layerBuffer.data()));
+    }
+    ImGui::PopID();
+
+    ImGui::Spacing();
+
+    if (ImGui::CollapsingHeader("Object Template"))
+    {
+        std::array<char, 256> templateNameBuffer{};
+        const std::size_t templateNameLength = std::min(templateName_.size(), templateNameBuffer.size() - 1);
+        std::memcpy(templateNameBuffer.data(), templateName_.data(), templateNameLength);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::InputTextWithHint("##object-template-name", "Template name",
+                                     templateNameBuffer.data(), templateNameBuffer.size()))
+            templateName_ = templateNameBuffer.data();
+        const bool canSaveTemplate = !templateName_.empty() && !document.assetRoot.empty();
+        ImGui::BeginDisabled(!canSaveTemplate);
+        if (ImGui::Button("Save as Template"))
+            save_selected_template(document, objectId, catalog);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered() && !canSaveTemplate)
+            ImGui::SetTooltip("A template name and project asset root are required.");
+    }
+    const auto refreshedObjectLocation = document.indexes.objectsById.find(objectId);
+    object = refreshedObjectLocation == document.indexes.objectsById.end()
+        ? nullptr : resolve_object(document.root, refreshedObjectLocation->second);
+    if (object == nullptr)
+        return;
 
     ImGui::Spacing();
     if (revealObjectId_ && *revealObjectId_ == objectId && !revealComponentId_)
@@ -2192,19 +2436,62 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::Separator();
         const int type = json_integer(component->contains("type") ? &component->at("type") : nullptr, -1);
         ImGui::PushID(*componentId);
-        const std::string componentHeader = std::string(component_label(type)) + "###component." +
-                                            std::to_string(*componentId);
+        const std::string componentHeader = "###component." + std::to_string(*componentId);
         if (revealObjectId_ && *revealObjectId_ == objectId &&
             revealComponentId_ == componentId)
             ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         const float headerFrameHeight = ImGui::GetFrameHeight();
         const float buttonWidth = 24.0f;
-        const bool headerOpen = ImGui::CollapsingHeader(componentHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+        const bool headerOpen = ImGui::CollapsingHeader(
+            componentHeader.c_str(),
+            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
         const ImVec2 headerMin = ImGui::GetItemRectMin();
         const ImVec2 headerMax = ImGui::GetItemRectMax();
 
-        ImGui::SetCursorScreenPos({headerMax.x - buttonWidth - 4.0f, headerMin.y + (headerFrameHeight - 18.0f) * 0.5f});
-        if (ImGui::SmallButton("⋮##menu"))
+        const float arrowSpacing = ImGui::GetTreeNodeToLabelSpacing();
+        ImGui::SetCursorScreenPos(ImVec2(headerMin.x + arrowSpacing, headerMin.y));
+
+        const bool hasEnabled = type != 4;
+        if (hasEnabled)
+        {
+            const bool revealEnabled = consume_reveal_target(objectId, componentId, {std::string("enabled")});
+            bool componentEnabled = component->value("enabled", true);
+            ImGui::PushID(stable_field_id({std::string("enabled")}).c_str());
+            if (revealEnabled)
+                ImGui::SetKeyboardFocusHere();
+            if (ImGui::Checkbox("##value", &componentEnabled))
+            {
+                set(document, commands, objectId, componentId, {std::string("enabled")}, componentEnabled);
+            }
+            ImGui::PopID();
+            ImGui::SameLine();
+        }
+
+        const float compIconSize = 14.0f;
+        const ImVec2 compIconPos = ImGui::GetCursorScreenPos();
+        draw_editor_icon(component_icon(type), ImGui::GetWindowDrawList(),
+                         ImVec2(compIconPos.x, compIconPos.y + (headerFrameHeight - compIconSize) * 0.5f),
+                         compIconSize, ImGui::GetColorU32(ImGuiCol_Text));
+        ImGui::Dummy(ImVec2(compIconSize + 2.0f, headerFrameHeight));
+        ImGui::SameLine();
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(component_label(type));
+
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonWidth);
+        const ImVec2 btnPos = ImGui::GetCursorScreenPos();
+        const bool menuClicked = ImGui::InvisibleButton("##menu", ImVec2(buttonWidth, headerFrameHeight));
+        const bool btnHovered = ImGui::IsItemHovered();
+        const bool btnActive = ImGui::IsItemActive();
+        const ImU32 iconColor = btnActive ? ImGui::GetColorU32(ImGuiCol_HeaderActive)
+                             : (btnHovered ? ImGui::GetColorU32(ImGuiCol_Text)
+                                           : ImGui::GetColorU32(ImGuiCol_TextDisabled));
+        const float iconSize = 12.0f;
+        draw_editor_icon(EditorIcon::MoreVertical, ImGui::GetWindowDrawList(),
+                         ImVec2(btnPos.x + (buttonWidth - iconSize) * 0.5f,
+                                btnPos.y + (headerFrameHeight - iconSize) * 0.5f),
+                         iconSize, iconColor);
+        if (menuClicked)
             ImGui::OpenPopup("ComponentHeaderContextMenu");
 
         bool componentRemoved = false;
@@ -2264,13 +2551,19 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
             ImGui::EndPopup();
         }
 
+        if (!headerOpen)
+        {
+            const float targetY = headerMax.y + ImGui::GetStyle().ItemSpacing.y;
+            if (ImGui::GetCursorScreenPos().y < targetY)
+                ImGui::SetCursorScreenPos(ImVec2(headerMin.x, targetY));
+        }
+
         if (!headerOpen || componentRemoved)
             component = nullptr;
         if (component != nullptr)
         {
         if (type == 2)
         {
-            ImGui::SeparatorText("Camera");
             const auto dimensions = interpret_camera_dimensions(*component);
             if (dimensions.widthConflict || dimensions.heightConflict)
                 ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f),
@@ -2304,7 +2597,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else if (type == 3)
         {
-            ImGui::SeparatorText("Collider");
             draw_enum(document, commands, objectId, componentId, {std::string("colliderType")}, "Shape", 1,
                       {{0, "Circle"}, {1, "Box"}});
             const int shape = json_integer(address_value(document, objectId, componentId,
@@ -2319,10 +2611,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                 draw_number(document, commands, objectId, componentId, {std::string("height")}, "Height", 16.0f,
                             std::numeric_limits<float>::min());
             }
-            draw_number(document, commands, objectId, componentId,
-                        {std::string("offset"), std::string("x")}, "Offset X");
-            draw_number(document, commands, objectId, componentId,
-                        {std::string("offset"), std::string("y")}, "Offset Y");
+            draw_compact_vector2(document, commands, objectId, componentId,
+                                 {std::string("offset")}, "Offset", 0.0f, 0.0f,
+                                 std::nullopt, std::nullopt, 0.1f, 0.5f);
             draw_boolean(document, commands, objectId, componentId, {std::string("trigger")}, "Trigger");
             draw_integer(document, commands, objectId, componentId,
                          {std::string("collisionGroup")}, "Collision Group", 1, 0);
@@ -2331,15 +2622,12 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else if (type == 4)
         {
-            ImGui::SeparatorText("Rigidbody");
-            draw_number(document, commands, objectId, componentId,
-                        {std::string("velocity"), std::string("x")}, "Velocity X");
-            draw_number(document, commands, objectId, componentId,
-                        {std::string("velocity"), std::string("y")}, "Velocity Y");
-            draw_number(document, commands, objectId, componentId,
-                        {std::string("force"), std::string("x")}, "Force X");
-            draw_number(document, commands, objectId, componentId,
-                        {std::string("force"), std::string("y")}, "Force Y");
+            draw_compact_vector2(document, commands, objectId, componentId,
+                                 {std::string("velocity")}, "Velocity", 0.0f, 0.0f,
+                                 std::nullopt, std::nullopt, 0.1f, 0.5f);
+            draw_compact_vector2(document, commands, objectId, componentId,
+                                 {std::string("force")}, "Force", 0.0f, 0.0f,
+                                 std::nullopt, std::nullopt, 0.1f, 0.5f);
             const int bodyType = json_integer(address_value(document, objectId, componentId,
                                                             {std::string("bodyType")}), 0);
             draw_number(document, commands, objectId, componentId, {std::string("mass")}, "Mass", 1.0f,
@@ -2356,7 +2644,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else if (type == 6)
         {
-            ImGui::SeparatorText("Sprite");
             if (field_matches_search(document, objectId, componentId,
                                      {std::string("textureFilePath")}, "Texture"))
                 draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
@@ -2390,7 +2677,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else if (type == 0)
         {
-            ImGui::SeparatorText("Animator");
             draw_integer(document, commands, objectId, componentId,
                          {std::string("currentFrameIndex")}, "Current Frame", 0, 0);
             draw_number(document, commands, objectId, componentId,
@@ -2404,7 +2690,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else if (type == 1)
         {
-            ImGui::SeparatorText("Audio");
             if (field_matches_search(document, objectId, componentId,
                                      {std::string("filePath")}, "Audio File"))
                 draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
@@ -2416,7 +2701,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else if (type == 5)
         {
-            ImGui::SeparatorText("Behavior Fields");
             if (selection.current().componentId == componentId)
                 behaviorFields_.draw(document, selection, commands, catalog, browse, resourceIndex_,
                                      searchQuery_);
@@ -2431,7 +2715,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         }
         else
         {
-            ImGui::SeparatorText("Unsupported Component");
             const std::string raw = component->dump(2);
             ImGui::TextWrapped("%s", raw.c_str());
         }

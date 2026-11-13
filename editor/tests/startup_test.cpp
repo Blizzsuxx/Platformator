@@ -479,7 +479,7 @@ int main()
                 "migrated bottom split layout must be idempotent");
         int openSceneActivations = 0;
         EditorToolbarActions toolbarActions;
-        toolbarActions.openScene = [&] { ++openSceneActivations; };
+        toolbarActions.buildAndRun = [&] { ++openSceneActivations; };
         const auto pushOpenSceneClick = [&](const EditorToolbarItemBounds &item, int width, int height,
                                             float scale) {
             const float x = item.x + item.width * 0.5f;
@@ -538,9 +538,9 @@ int main()
                     return item.name == name;
                 }) != toolbar.items.end();
             };
-            require(hasItem("Open Scene") && hasItem("Save") && hasItem("Build") &&
-                        hasItem("Build and Run") && hasItem("Stop") &&
-                        !hasItem("More") && !hasItem("New"),
+            require(!hasItem("Open Scene") && !hasItem("Save") && !hasItem("Build") &&
+                        hasItem("Build and Run") && hasItem("Pause") && hasItem("Step") && hasItem("Stop") &&
+                        toolbar.items.size() == 4,
                     "toolbar must keep only primary scene/build actions without duplicate overflow commands");
             for (const auto &item : toolbar.items)
             {
@@ -564,20 +564,13 @@ int main()
                 require(prev.x + prev.width <= curr.x + 1.0f,
                         "toolbar items must not overlap horizontally: " + prev.name + " vs " + curr.name);
             }
-            const auto rotateToolItem = std::find_if(toolbar.items.begin(), toolbar.items.end(),
-                [](const auto &item) { return item.name == "Rotate Tool"; });
-            const auto openSceneItem = std::find_if(toolbar.items.begin(), toolbar.items.end(),
-                [](const auto &item) { return item.name == "Open Scene"; });
-            require(rotateToolItem != toolbar.items.end(),
-                    "Rotate Tool toolbar button must exist in the left tool cluster");
-            require(openSceneItem != toolbar.items.end(),
-                    "Open Scene toolbar action must have an actual clickable item");
-            require(rotateToolItem->x + rotateToolItem->width <= openSceneItem->x + 1.0f,
-                    "scene tool cluster must be placed to the left of Open Scene");
-            pushOpenSceneClick(*openSceneItem, width, height, scale);
+            const auto runItem = std::find_if(toolbar.items.begin(), toolbar.items.end(),
+                [](const auto &item) { return item.name == "Build and Run"; });
+            require(runItem != toolbar.items.end(), "playback toolbar must expose Build and Run");
+            pushOpenSceneClick(*runItem, width, height, scale);
         }
         require(openSceneActivations == 5,
-                "clicking Open Scene at each supported toolbar size/scale must invoke its action callback");
+                "clicking Build and Run at each supported toolbar size/scale must invoke its action callback");
         require(preview.target() != nullptr && preview.object_info(10) != nullptr,
                 "Scene panel must compose its preview texture in the editor frame");
         require(document.root[1]["position"]["x"] == 30.0,

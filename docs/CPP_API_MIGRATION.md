@@ -95,3 +95,5 @@ Reference counting (`getReferenceCount()`, `addReference()`, `removeReferenceAnd
 - **Frame application**: `Animator::applyCurrentFrame()` now calls `sprite->setTextureRegion(frame.region)` without overwriting `Sprite` dimensions.
 
 *(Historical notes in earlier audit/walkthrough documents that mention `AnimationClip::framesPerSecond`, `width`/`height`/`name`, or `AudioWrapper`-only reference counting describe the prior design.)*
+
+Runtime input polling now exposes `Runtime::isKeyDown(SDL_Scancode)` and `Runtime::getMouseState(float *, float *)`. Use these from gameplay scripts (`getRuntime()`) for both native and embedded Game view input. SDL's direct polling APIs report native state only; pushing forwarded events does not update that state. Existing SDL event listeners continue receiving forwarded events. Rebuild consumers after updating scripts; no scene or asset migration is required.

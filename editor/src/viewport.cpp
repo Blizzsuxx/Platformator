@@ -266,7 +266,7 @@ namespace platformator_editor
             const ViewportPoint rotatedY = rotate({0.0f, 1.0f}, rotationDegrees);
             const std::array<ViewportPoint, 2> moveAxes{{{1.0f, 0.0f}, {0.0f, 1.0f}}};
             const std::array<ViewportPoint, 2> scaleAxes{{rotatedX, rotatedY}};
-            const std::array<ImU32, 2> axisColors{IM_COL32(235, 85, 75, 255), IM_COL32(95, 205, 125, 255)};
+            const std::array<ImU32, 2> axisColors{ImGui::GetColorU32(kAxisXColor), ImGui::GetColorU32(kAxisYColor)};
 
             if (tool == SceneTool::Rotate)
             {
@@ -287,15 +287,15 @@ namespace platformator_editor
                                               center.y + axis.y * (moveLength + 6.0f * uiScale)};
                     const ViewportPoint end{center.x + axis.x * scaleLength,
                                             center.y + axis.y * scaleLength};
-                    drawList->AddLine({start.x, start.y}, {end.x, end.y}, IM_COL32(95, 165, 245, 255),
+                    drawList->AddLine({start.x, start.y}, {end.x, end.y}, axisColors[index],
                                       3.0f * uiScale);
                     const float handleSize = 6.0f * uiScale;
                     drawList->AddRectFilled({end.x - handleSize, end.y - handleSize},
                                             {end.x + handleSize, end.y + handleSize},
-                                            IM_COL32(125, 190, 255, 255), 1.5f * uiScale);
+                                            axisColors[index], 1.5f * uiScale);
                     const char *axisLabel = index == 0 ? "X local" : "Y local";
                     drawList->AddText({end.x + 8.0f * uiScale, end.y + 2.0f * uiScale},
-                                      IM_COL32(180, 205, 235, 240), axisLabel);
+                                      axisColors[index], axisLabel);
                 }
             }
 
@@ -316,7 +316,7 @@ namespace platformator_editor
                                                  end.y - axis.y * 6.0f * uiScale - perpendicular.y * 5.0f * uiScale},
                                                 axisColors[index]);
                     drawList->AddText({end.x + 7.0f * uiScale, end.y + 2.0f * uiScale},
-                                      IM_COL32(180, 205, 235, 240),
+                                      axisColors[index],
                                       index == 0 ? "X world" : "Y world");
                 }
             }
@@ -1218,9 +1218,9 @@ namespace platformator_editor
             ImGui::SetTooltip("Configure position, rotation, and scale increments; hold Ctrl while dragging to snap");
         if (ImGui::BeginPopup("##scene-snap-settings"))
         {
-            ImGui::DragFloat("Position step", &snapPreferences.position, 0.1f, 0.0001f, 1000000.0f, "%.3g");
-            ImGui::DragFloat("Rotation step (degrees)", &snapPreferences.rotationDegrees, 0.1f, 0.001f, 360.0f, "%.3g");
-            ImGui::DragFloat("Scale step", &snapPreferences.scale, 0.01f, 0.0001f, 10.0f, "%.3g");
+            ImGui::DragFloat("Position step", &snapPreferences.position, 0.1f, 0.0001f, 1000000.0f, "%.2f");
+            ImGui::DragFloat("Rotation step (degrees)", &snapPreferences.rotationDegrees, 0.1f, 0.001f, 360.0f, "%.2f");
+            ImGui::DragFloat("Scale step", &snapPreferences.scale, 0.01f, 0.0001f, 10.0f, "%.2f");
             const char *coordinateModes[] = {"World", "Local"};
             int coordinateMode = snapPreferences.coordinateMode == "local" ? 1 : 0;
             if (ImGui::Combo("Position coordinates", &coordinateMode, coordinateModes, 2))

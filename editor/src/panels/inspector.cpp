@@ -671,7 +671,6 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
     {
         append_field("Name", {std::string("name")}, std::nullopt, selectionNodeId, "GameObject");
         append_field("Tag", {std::string("tag")}, std::nullopt, selectionNodeId, "");
-        append_field("Layer", {std::string("layer")}, std::nullopt, selectionNodeId, "Default");
         append_field("Active", {std::string("active")}, std::nullopt, selectionNodeId, "true");
         append_point("Position", "position", std::nullopt, selectionNodeId, 0.0, 0.0);
         append_point("Scale", "scale", std::nullopt, selectionNodeId, 1.0, 1.0);
@@ -1451,7 +1450,7 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     const ImGuiID valueId = ImGui::GetID("##value");
     const bool valueActive = ImGui::GetActiveID() == valueId;
     const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-    const char *formatStr = useFullPrecision ? "%.9g" : "%.3f";
+    const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
     const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
                                            ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemActivated())
@@ -1729,8 +1728,9 @@ bool InspectorPanel::draw_compact_vector2(
 
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     const float totalAvail = ImGui::GetContentRegionAvail().x;
-    const float labelWidth = std::min(64.0f * uiScale, std::max(1.0f, totalAvail * 0.34f));
+    const float scalarLabelWidth = std::min(124.0f * uiScale, totalAvail * 0.42f);
     const float axisTagWidth = 14.0f * uiScale;
+    const float labelWidth = std::max(1.0f, scalarLabelWidth - axisTagWidth - 2.0f * uiScale);
     const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
     const float fieldsWidth = std::max(1.0f, totalAvail - labelWidth - itemSpacingX);
     const float subColWidth = (fieldsWidth - itemSpacingX) * 0.5f;
@@ -1739,7 +1739,7 @@ bool InspectorPanel::draw_compact_vector2(
     ImGui::AlignTextToFramePadding();
     const ImVec2 rowStart = ImGui::GetCursorScreenPos();
     const float rowFrameH = ImGui::GetFrameHeight();
-    ImGui::InvisibleButton("##transform_row_label", ImVec2(labelWidth, rowFrameH));
+    ImGui::InvisibleButton((std::string("##transform_row_label") + stable_field_id(basePath)).c_str(), ImVec2(labelWidth, rowFrameH));
     draw_clipped_property_label(ImGui::GetWindowDrawList(), rowStart.x, rowStart.y,
                                 labelWidth, rowFrameH, label,
                                 ImGui::GetColorU32(ImGuiCol_TextDisabled),
@@ -1753,7 +1753,7 @@ bool InspectorPanel::draw_compact_vector2(
         const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
         const float frameHeight = ImGui::GetFrameHeight();
 
-        ImGui::InvisibleButton(btnId, ImVec2(axisTagWidth, frameHeight));
+        ImGui::InvisibleButton((std::string(btnId) + stable_field_id(path)).c_str(), ImVec2(axisTagWidth, frameHeight));
         const bool hovered = ImGui::IsItemHovered();
         const bool activated = ImGui::IsItemActivated();
         const bool active = ImGui::IsItemActive();
@@ -1842,7 +1842,7 @@ bool InspectorPanel::draw_compact_vector2(
             }
         }
 
-        ImGui::SameLine(0.0f, 2.0f);
+        ImGui::SameLine(0.0f, 2.0f * uiScale);
         ImGui::PushID(stable_field_id(path).c_str());
         ImGui::SetNextItemWidth(inputWidth);
         const bool reveal = consume_reveal_target(objectId, componentId, path);
@@ -1870,9 +1870,9 @@ bool InspectorPanel::draw_compact_vector2(
         }
     };
 
-    draw_axis("X", "##scrub_x", ImVec4(0.9f, 0.35f, 0.35f, 1.0f), valX, pathX, defaultX);
+    draw_axis("X", "##scrub_x", kAxisXColor, valX, pathX, defaultX);
     ImGui::SameLine(0.0f, itemSpacingX);
-    draw_axis("Y", "##scrub_y", ImVec4(0.4f, 0.85f, 0.4f, 1.0f), valY, pathY, defaultY);
+    draw_axis("Y", "##scrub_y", kAxisYColor, valY, pathY, defaultY);
 
     return anyCommitted;
 }
@@ -1890,7 +1890,7 @@ bool InspectorPanel::draw_compact_rotation(
 
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     const float totalAvail = ImGui::GetContentRegionAvail().x;
-    const float labelWidth = std::min(64.0f * uiScale, std::max(1.0f, totalAvail * 0.34f));
+    const float labelWidth = std::min(124.0f * uiScale, totalAvail * 0.42f);
     const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
     const float inputWidth = std::max(1.0f, totalAvail - labelWidth - itemSpacingX);
 
@@ -1984,7 +1984,7 @@ bool InspectorPanel::draw_compact_rotation(
         return true;
     }
 
-    ImGui::SameLine(labelWidth + itemSpacingX);
+    ImGui::SameLine();
     ImGui::PushID(stable_field_id(path).c_str());
     ImGui::SetNextItemWidth(inputWidth);
     const bool reveal = consume_reveal_target(objectId, componentId, path);
@@ -1994,7 +1994,7 @@ bool InspectorPanel::draw_compact_rotation(
     const ImGuiID valueId = ImGui::GetID("##value");
     const bool valueActive = ImGui::GetActiveID() == valueId;
     const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-    const char *formatStr = useFullPrecision ? "%.9g" : "%.2f deg";
+    const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
     const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, formatStr,
                                            ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemActivated())
@@ -2151,8 +2151,9 @@ void InspectorPanel::draw_common_compact_transform(
     if (!headerOpen)
         return;
     const float totalAvail = ImGui::GetContentRegionAvail().x;
-    const float labelWidth = std::min(64.0f * uiScale, std::max(1.0f, totalAvail * 0.34f));
+    const float scalarLabelWidth = std::min(124.0f * uiScale, totalAvail * 0.42f);
     const float axisTagWidth = 14.0f * uiScale;
+    const float labelWidth = std::max(1.0f, scalarLabelWidth - axisTagWidth - 2.0f * uiScale);
     const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
     const float fieldsWidth = std::max(1.0f, totalAvail - labelWidth - itemSpacingX);
     const float subColWidth = (fieldsWidth - itemSpacingX) * 0.5f;
@@ -2179,8 +2180,12 @@ void InspectorPanel::draw_common_compact_transform(
         float valY = valsY->front();
 
         ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("%s", label);
-        ImGui::SameLine(labelWidth + itemSpacingX);
+        const ImVec2 labelStart = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(labelWidth, ImGui::GetFrameHeight()));
+        draw_clipped_property_label(ImGui::GetWindowDrawList(), labelStart.x, labelStart.y,
+                                    labelWidth, ImGui::GetFrameHeight(), label,
+                                    ImGui::GetColorU32(ImGuiCol_TextDisabled), false);
+        ImGui::SameLine();
 
         auto draw_common_axis = [&](const char *axisName, const char *btnId, const ImVec4 &axisColor,
                                     float &val, bool mixed,
@@ -2188,7 +2193,7 @@ void InspectorPanel::draw_common_compact_transform(
                                     const std::vector<FieldPathSegment> &path) {
             const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
             const float frameHeight = ImGui::GetFrameHeight();
-            ImGui::InvisibleButton(btnId, ImVec2(axisTagWidth, frameHeight));
+            ImGui::InvisibleButton((std::string(btnId) + stable_field_id(path)).c_str(), ImVec2(axisTagWidth, frameHeight));
             if (ImGui::IsItemHovered() || ImGui::IsItemActive())
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 
@@ -2282,7 +2287,7 @@ void InspectorPanel::draw_common_compact_transform(
                 }
             }
 
-            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::SameLine(0.0f, 2.0f * uiScale);
             ImGui::PushID(stable_field_id(path).c_str());
             ImGui::SetNextItemWidth(inputWidth);
             ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
@@ -2302,9 +2307,9 @@ void InspectorPanel::draw_common_compact_transform(
             }
         };
 
-        draw_common_axis("X", "##common_scrub_x", ImVec4(0.9f, 0.35f, 0.35f, 1.0f), valX, mixedX, *valsX, pathX);
+        draw_common_axis("X", "##common_scrub_x", kAxisXColor, valX, mixedX, *valsX, pathX);
         ImGui::SameLine(0.0f, itemSpacingX);
-        draw_common_axis("Y", "##common_scrub_y", ImVec4(0.4f, 0.85f, 0.4f, 1.0f), valY, mixedY, *valsY, pathY);
+        draw_common_axis("Y", "##common_scrub_y", kAxisYColor, valY, mixedY, *valsY, pathY);
     };
 
     draw_common_vec2("Position", "position", 0.0f, 0.0f, std::nullopt, 0.1f, 0.5f);
@@ -2320,7 +2325,7 @@ void InspectorPanel::draw_common_compact_transform(
         ImGui::AlignTextToFramePadding();
         const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
         const float frameHeight = ImGui::GetFrameHeight();
-        ImGui::InvisibleButton("##scrub_rot", ImVec2(labelWidth, frameHeight));
+        ImGui::InvisibleButton("##scrub_rot", ImVec2(scalarLabelWidth, frameHeight));
         if (ImGui::IsItemHovered() || ImGui::IsItemActive())
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         ImDrawList *drawList = ImGui::GetWindowDrawList();
@@ -2408,11 +2413,11 @@ void InspectorPanel::draw_common_compact_transform(
             }
         }
 
-        ImGui::SameLine(labelWidth + itemSpacingX);
+        ImGui::SameLine();
         ImGui::PushID(stable_field_id(rotPath).c_str());
-        ImGui::SetNextItemWidth(std::max(60.0f * uiScale, totalAvail - labelWidth - itemSpacingX));
+        ImGui::SetNextItemWidth(std::max(60.0f * uiScale, totalAvail - scalarLabelWidth - itemSpacingX));
         ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixedRot);
-        const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, mixedRot ? " — " : "%.2f deg",
+        const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, mixedRot ? " — " : "%.2f",
                                                ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemFlag();
         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
@@ -2607,7 +2612,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     ImGui::Separator();
 
     // Top GameObject Header
-    // Row 1: [☑ Active] [Icon] [Name InputText]
+    // [Active] [Icon] [Name InputText] Tag [Tag InputText]
     const bool revealName = consume_reveal_target(objectId, std::nullopt, {std::string("name")});
     const bool revealTag = consume_reveal_target(objectId, std::nullopt, {std::string("tag")});
     const bool revealActive = consume_reveal_target(objectId, std::nullopt, {std::string("active")});
@@ -2635,11 +2640,15 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     ImGui::Dummy(ImVec2(iconSize + 2.0f * uiScale, frameHeight));
     ImGui::SameLine();
 
+    const float headerInputSpace = std::max(2.0f, ImGui::GetContentRegionAvail().x -
+        ImGui::CalcTextSize("Tag").x - ImGui::GetStyle().ItemSpacing.x * 2.0f);
+    const float nameInputWidth = std::max(1.0f, headerInputSpace * 0.6f);
+
     std::string nameValue = object->value("name", std::string("GameObject"));
     std::array<char, 256> nameBuffer{};
     std::memcpy(nameBuffer.data(), nameValue.data(), std::min(nameValue.size(), nameBuffer.size() - 1));
     ImGui::PushID(stable_field_id({std::string("name")}).c_str());
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(nameInputWidth);
     if (revealName)
         ImGui::SetKeyboardFocusHere();
     const bool nameChanged = ImGui::InputText("##value", nameBuffer.data(), nameBuffer.size(),
@@ -2652,19 +2661,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     }
     ImGui::PopID();
 
-    // Row 2: Tag: [Tag InputText]  Layer: [Layer InputText]
-    const bool revealLayer = consume_reveal_target(objectId, std::nullopt, {std::string("layer")});
-    const float contentWidth = ImGui::GetContentRegionAvail().x;
-    const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float tagLabelWidth = ImGui::CalcTextSize("Tag").x;
-    const float layerLabelWidth = ImGui::CalcTextSize("Layer").x;
-    const float minInputWidth = std::max(40.0f * uiScale, ImGui::GetFrameHeight() * 2.0f);
-    const bool twoColumns = contentWidth >= (tagLabelWidth + layerLabelWidth + minInputWidth * 2.0f + itemSpacing * 3.0f);
-    const float halfWidth = (contentWidth - itemSpacing) * 0.5f;
-    const float tagInputWidth = twoColumns
-        ? std::max(minInputWidth, halfWidth - tagLabelWidth - itemSpacing)
-        : -FLT_MIN;
-
+    ImGui::SameLine();
     std::string tagValue = object->value("tag", std::string{});
     std::array<char, 256> tagBuffer{};
     std::memcpy(tagBuffer.data(), tagValue.data(), std::min(tagValue.size(), tagBuffer.size() - 1));
@@ -2672,7 +2669,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     ImGui::TextDisabled("Tag");
     ImGui::SameLine();
     ImGui::PushID(stable_field_id({std::string("tag")}).c_str());
-    ImGui::SetNextItemWidth(tagInputWidth);
+    ImGui::SetNextItemWidth(-FLT_MIN);
     if (revealTag)
         ImGui::SetKeyboardFocusHere();
     const bool tagChanged = ImGui::InputText("##value", tagBuffer.data(), tagBuffer.size(),
@@ -2682,28 +2679,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     if (tagChanged || ImGui::IsItemDeactivatedAfterEdit())
     {
         set(document, commands, objectId, std::nullopt, {std::string("tag")}, std::string(tagBuffer.data()));
-    }
-    ImGui::PopID();
-
-    if (twoColumns)
-        ImGui::SameLine();
-    std::string layerValue = object->value("layer", std::string("Default"));
-    std::array<char, 256> layerBuffer{};
-    std::memcpy(layerBuffer.data(), layerValue.data(), std::min(layerValue.size(), layerBuffer.size() - 1));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("Layer");
-    ImGui::SameLine();
-    ImGui::PushID(stable_field_id({std::string("layer")}).c_str());
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if (revealLayer)
-        ImGui::SetKeyboardFocusHere();
-    const bool layerChanged = ImGui::InputText("##value", layerBuffer.data(), layerBuffer.size(),
-                                              ImGuiInputTextFlags_EnterReturnsTrue);
-    if (revealLayer)
-        ImGui::SetScrollHereY(0.5f);
-    if (layerChanged || ImGui::IsItemDeactivatedAfterEdit())
-    {
-        set(document, commands, objectId, std::nullopt, {std::string("layer")}, std::string(layerBuffer.data()));
     }
     ImGui::PopID();
 
@@ -3072,17 +3047,13 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                             }
                             feedback_.clear();
                             if (committed.status == CommandStatus::Changed)
-                                return {true, "Sprite source region committed as one Undo step."};
-                            return {false, "Sprite source region is unchanged."};
+                                return {true, {}};
+                            return {false, {}};
                         },
                         false);
                 }
             }
-            else if (field_matches_search(document, objectId, componentId,
-                                          {std::string("sourceRect")}, "Initialize Source Rectangle") &&
-                     ImGui::Button("Initialize Source Rectangle", ImVec2(-FLT_MIN, 0.0f)))
-                set(document, commands, objectId, componentId, {std::string("sourceRect")},
-                    Json{{"x", 0.0}, {"y", 0.0}, {"w", 16.0}, {"h", 16.0}});
+
         }
         else if (type == 0)
         {
@@ -3316,7 +3287,7 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
         if (reveal)
             ImGui::SetKeyboardFocusHere();
         ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
-        const char *formatStr = "%.3f";
+        const char *formatStr = "%.2f";
         const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
                                                ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemFlag();
@@ -3695,7 +3666,7 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         const ImGuiID valueId = ImGui::GetID("##value");
                         const bool valueActive = ImGui::GetActiveID() == valueId;
                         const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-                        const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+                        const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
                         const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0,
                                                                 formatStr, ImGuiInputTextFlags_EnterReturnsTrue);
                         if (ImGui::IsItemActivated())

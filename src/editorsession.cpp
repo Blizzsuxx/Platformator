@@ -928,6 +928,7 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         event.key.key = static_cast<SDL_Keycode>(keycode);
         event.key.mod = static_cast<SDL_Keymod>(modifiers);
         event.key.down = true;
+        if (window) window->setEditorKey(event.key.scancode, true);
         SDL_PushEvent(&event);
         heldKeys_.push_back({scancode, keycode});
         return true;
@@ -945,6 +946,7 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         event.key.key = static_cast<SDL_Keycode>(keycode);
         event.key.mod = static_cast<SDL_Keymod>(modifiers);
         event.key.down = false;
+        if (window) window->setEditorKey(event.key.scancode, false);
         SDL_PushEvent(&event);
         auto it = std::find(heldKeys_.begin(), heldKeys_.end(), std::make_pair(scancode, keycode));
         if (it != heldKeys_.end())
@@ -961,6 +963,7 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         event.type = SDL_EVENT_MOUSE_MOTION;
         event.motion.x = x;
         event.motion.y = y;
+        if (window) window->setEditorMouse(x, y);
         SDL_PushEvent(&event);
         return true;
     }
@@ -978,11 +981,13 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         event.button.down = down;
         event.button.x = x;
         event.button.y = y;
+        if (window) window->setEditorMouse(x, y, button, down);
         SDL_PushEvent(&event);
         return true;
     }
     if (message.type == "release_all_inputs")
     {
+        if (window) window->releaseEditorInput();
         for (const auto &[scancode, keycode] : heldKeys_)
         {
             SDL_Event event{};

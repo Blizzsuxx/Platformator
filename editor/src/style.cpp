@@ -356,18 +356,9 @@ float resolve_editor_ui_scale(float userScale, int logicalWidth, int logicalHeig
 void push_editor_toolbar_style(bool playMode)
 {
     const ImGuiStyle &style = ImGui::GetStyle();
-    if (playMode)
-    {
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.20f, 0.17f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.65f, 0.40f, 0.85f));
-    }
-    else
-    {
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.13f, 0.145f, 0.17f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_Border, style.Colors[ImGuiCol_Border]);
-    }
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                        ImVec2(style.WindowPadding.x, style.WindowPadding.y * 0.55f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, style.Colors[ImGuiCol_WindowBg]);
+    ImGui::PushStyleColor(ImGuiCol_Border, style.Colors[ImGuiCol_Border]);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(style.WindowPadding.x, style.WindowBorderSize));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                         ImVec2(style.ItemSpacing.x * 0.85f, style.ItemSpacing.y * 0.7f));
 }

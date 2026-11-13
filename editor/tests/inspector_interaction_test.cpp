@@ -350,13 +350,14 @@ ImVec2 find_behavior_input(InspectorPanel &panel, DocumentSession &document,
                            SelectionModel &selection, EditCommandService &commands,
                            BehaviorCatalog &catalog, ImGuiID &target, const char *field)
 {
-    for (float y = 30.0f; y < 880.0f; y += 6.0f)
-    {
-        frame(panel, document, selection, commands, catalog, {500.0f, y}, false,
-              nullptr, "collisionGroup", nullptr, &target, field);
-        if (ImGui::GetHoveredID() == target)
-            return {500.0f, y};
-    }
+    for (float x : {200.0f, 500.0f})
+        for (float y = 30.0f; y < 880.0f; y += 6.0f)
+        {
+            frame(panel, document, selection, commands, catalog, {x, y}, false,
+                  nullptr, "collisionGroup", nullptr, &target, field);
+            if (ImGui::GetHoveredID() == target)
+                return {x, y};
+        }
     throw std::runtime_error(std::string("could not locate the requested behavior numeric field: ") + field);
 }
 
@@ -636,6 +637,8 @@ void run_behavior_numeric_edit_preserves_unmodeled_data()
     const ImVec2 vectorY = find_behavior_input(panel, document, selection, commands, catalog,
                                                vectorYId, "vector/y");
     type_numeric_text(panel, document, selection, commands, catalog, vectorY, "-3.75");
+    require(std::abs(vectorX.y - vectorY.y) < 1.0f && vectorX.x < vectorY.x,
+            "behavior vector axes must appear side by side on one row");
     const Json &vectorAfterY = document.root[0]["components"][1]["behaviors"][0]["vector"];
     require(vectorAfterY["x"] == 9.125 && vectorAfterY["y"] == -3.75 &&
                 commands.history_status().undoCommands == undoBefore + 5,
@@ -1220,8 +1223,8 @@ void run_compact_transform_and_header_menu_tests()
     const auto layerNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
         return node.name == "Layer";
     });
-    require(layerNode != nodes.end() && layerNode->value == "Default",
-            "Layer field must be present in semantic nodes with Default value");
+    require(layerNode == nodes.end(),
+            "the removed Layer field must not appear in Inspector semantics");
 
     const auto cameraEnabledNode = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
         return node.parentId == scope + "/component/1/101" && node.name == "Enabled";
@@ -1580,6 +1583,81 @@ void run_behavior_and_multi_object_label_scrubbing_tests()
                 document.root[1]["components"][1]["width"] == 20.0,
             "undoing multi-object label scrub must restore mixed values");
 
+    ImGui::DestroyContext();
+}
+
+void run_scene_reference_drag_and_drop_tests()
+{
+    init_test_imgui();
+    DocumentSession document = make_default_document();
+    document.root = Json::array({
+        object(0, "Owner", Json::array({component(1, 0), component(3, 5,
+            Json{{"behaviors", Json::array({Json{{"type", "Links"}, {"camera", nullptr}, {"target", nullptr}}})}})})),
+        object(10, "Main Camera", Json::array({component(11, 2)})),
+        object(20, "Player", Json::array({component(21, 0)})),
+        object(30, "Camera and Animator", Json::array({component(31, 2), component(32, 0)}))
+    });
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    EditCommandService commands;
+    SelectionModel selection;
+    ImVec2 sourcePoint{}, cameraPoint{}, objectPoint{};
+    int draggedObject = 10;
+    std::string expectedCameraTarget = "Camera";
+    auto draw = [&](ImVec2 mouse = ImVec2(-10.0f, -10.0f), bool down = false) {
+        ImGuiIO &io = ImGui::GetIO();
+        io.AddMousePosEvent(mouse.x, mouse.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, down);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({700.0f, 400.0f}, ImGuiCond_Always);
+        ImGui::Begin("reference-drag-test", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImGui::Button("Hierarchy object", {160.0f, 30.0f});
+        sourcePoint = ImGui::GetItemRectMin();
+        sourcePoint.x += 10.0f; sourcePoint.y += 10.0f;
+        if (ImGui::BeginDragDropSource())
+        {
+            ImGui::SetDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT", &draggedObject, sizeof(draggedObject));
+            ImGui::TextUnformatted("Hierarchy object");
+            ImGui::EndDragDropSource();
+        }
+        draw_scene_reference_field(document, commands, 0, 3, 0, {std::string("camera")}, expectedCameraTarget, true, "Camera");
+        cameraPoint = ImGui::GetItemRectMin();
+        cameraPoint.x += 20.0f; cameraPoint.y += 8.0f;
+        draw_scene_reference_field(document, commands, 0, 3, 0, {std::string("target")}, "GameObject", true, "Target");
+        objectPoint = ImGui::GetItemRectMin();
+        objectPoint.x += 20.0f; objectPoint.y += 8.0f;
+        ImGui::End();
+        ImGui::Render();
+    };
+    draw(); draw();
+    const auto drop = [&](int objectId, ImVec2 target) {
+        draggedObject = objectId;
+        draw(sourcePoint, false);
+        draw(sourcePoint, true);
+        draw(target, true);
+        draw(target, true);
+        draw(target, false);
+        draw();
+    };
+    drop(10, cameraPoint);
+    require(document.root[0]["components"][1]["behaviors"][0]["camera"] == 11 &&
+                commands.history_status().undoCommands == 1,
+            "dropping a hierarchy object on a typed reference must infer its matching component and commit once");
+    drop(20, cameraPoint);
+    expectedCameraTarget = "Component";
+    drop(30, cameraPoint);
+    expectedCameraTarget = "Camera";
+    require(document.root[0]["components"][1]["behaviors"][0]["camera"] == 11 &&
+                commands.history_status().undoCommands == 1,
+            "incompatible and ambiguous hierarchy drops must preserve the previous reference and history");
+    drop(20, objectPoint);
+    require(document.root[0]["components"][1]["behaviors"][0]["target"] == 20 &&
+                commands.history_status().undoCommands == 2,
+            "object references must accept the dropped object itself");
+    require(static_cast<bool>(commands.undo(document, selection)) &&
+                document.root[0]["components"][1]["behaviors"][0]["target"].is_null(),
+            "Undo must restore the previous scene reference");
     ImGui::DestroyContext();
 }
 
@@ -2487,12 +2565,44 @@ void run_multi_asset_picker_and_browse_completion_tests()
 
     ImGui::DestroyContext();
 }
+void run_axis_labels_have_unique_ids()
+{
+    init_test_imgui();
+    DocumentSession document = make_default_document();
+    document.root = Json::array({
+        object(100, "First", Json::array({component(101, 3)})),
+        object(200, "Second", Json::array({component(201, 3)}))});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{100, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+    for (bool multiple : {false, true})
+    {
+        if (multiple)
+            selection.set_objects(document, {100, 200}, 100, 100);
+        // Hover actual labels twice so ImGui counts every use of that hovered ID.
+        for (float y = 24.0f; y < 700.0f; y += 12.0f)
+            for (float x = 12.0f; x < 180.0f; x += 12.0f)
+            {
+                frame(panel, document, selection, commands, catalog, {x, y}, false);
+                frame(panel, document, selection, commands, catalog, {x, y}, false);
+                require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
+                        "Inspector property/axis labels must not reuse visible widget IDs");
+            }
+    }
+    ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main()
 {
     try
     {
+        run_axis_labels_have_unique_ids();
         run_integer_fields_keep_independent_drafts();
         run_behavior_numeric_edit_preserves_unmodeled_data();
         run_mixed_multi_selection_edits_are_atomic();
@@ -2503,6 +2613,7 @@ int main()
         run_multi_object_collapsible_headers_and_scaling_tests();
         run_clean_inactive_vs_precision_edit_display_tests();
         run_behavior_and_multi_object_label_scrubbing_tests();
+        run_scene_reference_drag_and_drop_tests();
         run_visual_reference_label_tests();
         run_multi_object_asset_reference_slot_tests();
         run_common_transform_menu_and_undo_tests();

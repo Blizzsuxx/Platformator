@@ -438,7 +438,7 @@ void GamePanel::draw(PlaySession *session, bool visible)
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(scaleWidth);
-    ImGui::SliderFloat("##game_scale", &zoomScale_, 0.5f, 4.0f, "Scale %.1fx");
+    ImGui::SliderFloat("##game_scale", &zoomScale_, 0.5f, 4.0f, "Scale %.2fx");
     zoomScale_ = std::clamp(zoomScale_, 0.5f, 4.0f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Game view zoom scale");

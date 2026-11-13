@@ -5,6 +5,7 @@
 #include <SDL3_mixer/SDL_mixer.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -25,6 +26,33 @@ class SDLWindow
     ~SDLWindow();
 
     void handleSDLEvents(double deltaTime);
+    void setEditorKey(SDL_Scancode key, bool down) noexcept
+    {
+        if (key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT)
+            editorKeys[static_cast<std::size_t>(key)] = down;
+    }
+    void releaseEditorInput() noexcept { editorKeys.fill(false); editorMouseButtons = 0; editorMouseActive = false; }
+    bool isKeyDown(SDL_Scancode key) const noexcept
+    {
+        return key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT &&
+            (editorKeys[static_cast<std::size_t>(key)] || SDL_GetKeyboardState(nullptr)[key]);
+    }
+    void setEditorMouse(float x, float y, int button = 0, bool down = false) noexcept
+    {
+        editorMouseX = x; editorMouseY = y; editorMouseActive = true;
+        if (button > 0 && button <= 5)
+        {
+            if (down) editorMouseButtons |= SDL_BUTTON_MASK(button);
+            else editorMouseButtons &= ~SDL_BUTTON_MASK(button);
+        }
+    }
+    SDL_MouseButtonFlags getMouseState(float *x, float *y) const noexcept
+    {
+        if (!editorMouseActive) return SDL_GetMouseState(x, y);
+        if (x) *x = editorMouseX;
+        if (y) *y = editorMouseY;
+        return editorMouseButtons;
+    }
     void render();
     bool isRunning() const;
 
@@ -67,6 +95,10 @@ class SDLWindow
         AudioWrapper *audioWrapper;
     };
 
+    std::array<bool, SDL_SCANCODE_COUNT> editorKeys{};
+    SDL_MouseButtonFlags editorMouseButtons = 0;
+    float editorMouseX = 0.0f, editorMouseY = 0.0f;
+    bool editorMouseActive = false;
     SDL_Window *window;
     SDL_Renderer *renderer;
     MIX_Mixer *mixer;

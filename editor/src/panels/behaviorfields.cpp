@@ -1,4 +1,5 @@
 #include "behaviorfields.h"
+#include "../style.h"
 
 #include "numericscrub.h"
 #include "referencefields.h"
@@ -451,8 +452,14 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
 {
     bool changed = false;
     Json draft = current != nullptr && current->is_object() ? *current : Json::object();
+    ImGui::TextDisabled("%s", label.c_str());
+    const float pairWidth = std::max(1.0f, (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f);
+    std::size_t axisIndex = 0;
     for (const auto &name : names)
     {
+        if (axisIndex++ % 2 != 0)
+            ImGui::SameLine();
+        ImGui::BeginGroup();
         float value = 0.0f;
         const auto old = draft.find(name);
         if (old != draft.end() && old->is_number())
@@ -470,7 +477,19 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
         const float originalValue = value;
         ImGui::PushID(name.c_str());
         const auto valuePath = child_path(path, name);
-        const auto scrubIx = begin_field(label + " " + name, valuePath, true);
+        const char *axisLabel = name == "x" ? "X" : name == "y" ? "Y" : name == "w" ? "Width" : "Height";
+        const ImVec4 color = name == "x" ? kAxisXColor
+            : name == "y" ? kAxisYColor : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+        const ImVec2 labelPos = ImGui::GetCursorScreenPos();
+        const float axisLabelWidth = ImGui::CalcTextSize(axisLabel).x;
+        ImGui::InvisibleButton(("##scrub_" + stable_field_id(valuePath)).c_str(), ImVec2(axisLabelWidth, ImGui::GetFrameHeight()));
+        const LabelScrubInteraction scrubIx{ImGui::GetItemID(), ImGui::IsItemActivated(), ImGui::IsItemActive(), ImGui::IsItemDeactivated()};
+        ImGui::GetWindowDrawList()->AddText(ImVec2(labelPos.x, labelPos.y + ImGui::GetStyle().FramePadding.y), ImGui::GetColorU32(color), axisLabel);
+        if (ImGui::IsItemHovered() || scrubIx.active)
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        ImGui::SameLine();
+        ImGui::PushID(stable_field_id(valuePath).c_str());
+        ImGui::SetNextItemWidth(std::max(1.0f, pairWidth - axisLabelWidth - ImGui::GetStyle().ItemSpacing.x));
         apply_label_scrub(
             scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
             [&]() {
@@ -508,7 +527,7 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
         const ImGuiID valueId = ImGui::GetID("##value");
         const bool valueActive = ImGui::GetActiveID() == valueId;
         const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.9g" : "%.3f";
+        const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
         const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
                                                      ImGuiInputTextFlags_EnterReturnsTrue);
         if (ImGui::IsItemActivated())
@@ -530,6 +549,7 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
             changed = true;
         }
         ImGui::PopID();
+        ImGui::EndGroup();
     }
     return changed;
 }
@@ -554,83 +574,12 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
             set_value(document, commands, objectId, componentId, ordinal, path, value);
         return true;
     }
-    if (current->is_number_unsigned())
-    {
-        std::uint64_t value = current->get<std::uint64_t>();
-        const std::uint64_t originalValue = value;
-        const auto scrubIx = begin_field(label, path, true);
-        apply_label_scrub(
-            scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
-            [&]() {
-                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
-                    objectId, componentId, ordinal, path, *current, true}};
-            },
-            [&](double delta) {
-                if (scrubCtx.scrub.targets.empty())
-                    return;
-                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
-                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
-                {
-                    *mut = nextJson;
-                    ++document.valueRevision;
-                }
-            },
-            [&](double delta) {
-                if (scrubCtx.scrub.targets.empty())
-                    return;
-                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
-                if (nextJson != scrubCtx.scrub.targets.front().originalJson)
-                    set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
-            });
-        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
-            value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<std::uint64_t>();
-        const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, nullptr, nullptr,
-                                                "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
-        end_field();
-        if (commit)
-            set_value(document, commands, objectId, componentId, ordinal, path, value);
-        return true;
-    }
     if (current->is_number_integer())
     {
-        std::int64_t value = current->get<std::int64_t>();
-        const std::int64_t originalValue = value;
-        const auto scrubIx = begin_field(label, path, true);
-        apply_label_scrub(
-            scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
-            [&]() {
-                return std::vector<BehaviorFieldsPanel::ScrubTarget>{{
-                    objectId, componentId, ordinal, path, *current, true}};
-            },
-            [&](double delta) {
-                if (scrubCtx.scrub.targets.empty())
-                    return;
-                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
-                if (Json *mut = mutable_behavior_path(document, objectId, componentId, ordinal, path))
-                {
-                    *mut = nextJson;
-                    ++document.valueRevision;
-                }
-            },
-            [&](double delta) {
-                if (scrubCtx.scrub.targets.empty())
-                    return;
-                const Json nextJson = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, delta);
-                if (nextJson != scrubCtx.scrub.targets.front().originalJson)
-                    set_value(document, commands, objectId, componentId, ordinal, path, nextJson);
-            });
-        if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
-            value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<std::int64_t>();
-        const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, nullptr, nullptr,
-                                                "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+        begin_field(label, path);
+        ImGui::TextDisabled("Field type unavailable");
         end_field();
-        if (commit)
-            set_value(document, commands, objectId, componentId, ordinal, path, value);
-        return true;
+        return false;
     }
     if (current->is_number_float())
     {
@@ -666,7 +615,7 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         const ImGuiID valueId = ImGui::GetID("##value");
         const bool valueActive = ImGui::GetActiveID() == valueId;
         const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+        const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
         const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
                                                 ImGuiInputTextFlags_EnterReturnsTrue);
         if (ImGui::IsItemActivated())
@@ -902,7 +851,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         const ImGuiID valueId = ImGui::GetID("##value");
         const bool valueActive = ImGui::GetActiveID() == valueId;
         const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+        const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
         const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
                                                 ImGuiInputTextFlags_EnterReturnsTrue);
         if (ImGui::IsItemActivated())
@@ -1183,82 +1132,6 @@ std::string author_declaration_key(const DocumentSession &document, int objectId
         std::to_string(behaviorOrdinal);
 }
 
-std::string escape_pointer_segment(std::string_view segment)
-{
-    std::string escaped;
-    for (const char character : segment)
-    {
-        if (character == '~') escaped += "~0";
-        else if (character == '/') escaped += "~1";
-        else escaped.push_back(character);
-    }
-    return escaped;
-}
-
-const Json *resolve_relative_pointer(const Json &root, std::string_view pointer)
-{
-    if (pointer.empty() || pointer.front() != '/')
-        return nullptr;
-    const Json *value = &root;
-    std::size_t start = 1;
-    while (start <= pointer.size())
-    {
-        const auto end = pointer.find('/', start);
-        const auto encoded = pointer.substr(start,
-            end == std::string_view::npos ? pointer.size() - start : end - start);
-        if (encoded.empty())
-            return nullptr;
-        std::string segment;
-        segment.reserve(encoded.size());
-        for (std::size_t index = 0; index < encoded.size(); ++index)
-        {
-            if (encoded[index] != '~')
-            {
-                segment.push_back(encoded[index]);
-                continue;
-            }
-            if (index + 1 >= encoded.size() ||
-                (encoded[index + 1] != '0' && encoded[index + 1] != '1'))
-                return nullptr;
-            segment.push_back(encoded[++index] == '0' ? '~' : '/');
-        }
-        if (value->is_object())
-        {
-            const auto child = value->find(segment);
-            if (child == value->end())
-                return nullptr;
-            value = &*child;
-        }
-        else if (value->is_array())
-        {
-            if (segment.size() > 1 && segment.front() == '0')
-                return nullptr;
-            std::size_t arrayIndex = 0;
-            const auto parsed = std::from_chars(segment.data(),
-                segment.data() + segment.size(), arrayIndex);
-            if (parsed.ec != std::errc{} || parsed.ptr != segment.data() + segment.size() ||
-                arrayIndex >= value->size())
-                return nullptr;
-            value = &(*value)[arrayIndex];
-        }
-        else
-            return nullptr;
-        if (end == std::string_view::npos)
-            return value;
-        start = end + 1;
-    }
-    return nullptr;
-}
-
-bool is_reference_integer(const Json *value)
-{
-    if (value == nullptr || (!value->is_number_integer() && !value->is_number_unsigned()))
-        return false;
-    if (value->is_number_unsigned())
-        return value->get<std::uint64_t>() <= static_cast<std::uint64_t>(std::numeric_limits<int>::max());
-    const auto number = value->get<std::int64_t>();
-    return number >= 0 && number <= std::numeric_limits<int>::max();
-}
 } // namespace
 
 std::vector<Json> BehaviorFieldsPanel::template_author_bindings(
@@ -1411,7 +1284,7 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     if (schemaUnavailable)
     {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("Registered behavior; field schema is unavailable.");
+        ImGui::TextWrapped("Build the game to load behavior fields.");
         ImGui::PopStyleColor();
     }
 
@@ -1430,9 +1303,9 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
                     field.value("label", fieldName) + " " +
                     field.value("kind", std::string("opaque_json")) + " #" +
                     std::to_string(objectId) + object_search_context(document, objectId);
+                knownFields.insert(fieldName);
                 if (!discovery_query_matches(searchQuery, searchable))
                     continue;
-                knownFields.insert(fieldName);
                 draw_typed_value(document, commands, objectId, componentId, ordinal,
                                  {std::string(fieldName)}, field, fieldName, browse, resourceIndex, scrubCtx);
             }
@@ -1445,121 +1318,21 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
             discovery_query_matches(searchQuery, behaviorName + " " + it.key() +
                 object_search_context(document, objectId)))
             extras.push_back(it.key());
-    AuthorReferenceDeclaration *authorDeclaration = nullptr;
-    if (schemaUnavailable || !extras.empty())
+    // Undeclared fields are preserved. Only typed metadata can distinguish an
+    // integer parameter from a reference; never guess from coincidentally equal IDs.
+    for (const auto &key : extras)
     {
-        const auto key = author_declaration_key(document, objectId, componentId, ordinal);
-        auto &state = authorReferenceDeclarations_[key];
-        state.identity = author_declaration_identity(document);
-        state.ownerId = objectId;
-        state.componentId = componentId;
-        state.behaviorOrdinal = ordinal;
-        state.behaviorType = behaviorName;
-        authorDeclaration = &state;
-    }
-    if (!extras.empty() || schemaUnavailable)
-    {
-        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-        if (draw_clipped_tree_node("###observed_extra_fields", "Observed extra fields (preserved)"))
+        ImGui::PushID(key.c_str());
+        const Json *value = read_path(behavior_owner(document, objectId, componentId, ordinal), {key});
+        if (value != nullptr && (value->is_number_integer() || value->is_object() || value->is_array()))
         {
-            for (const auto &key : extras)
-            {
-                ImGui::PushID(key.c_str());
-                Json value;
-                const auto current = behavior->find(key);
-                if (current != behavior->end())
-                    value = *current;
-                const std::string fieldPointer = "/" + escape_pointer_segment(key);
-                if (is_reference_integer(&value))
-                {
-                    ImGui::TextUnformatted(key.c_str());
-                    ImGui::SameLine();
-                    std::optional<std::string> declaredKind;
-                    if (authorDeclaration != nullptr)
-                        if (const auto declared = authorDeclaration->fieldKinds.find(fieldPointer);
-                            declared != authorDeclaration->fieldKinds.end())
-                            declaredKind = declared->second;
-                    if (draw_template_reference_kind_control(objectId, componentId, ordinal,
-                                                             key, declaredKind) &&
-                        authorDeclaration != nullptr)
-                    {
-                        if (declaredKind)
-                            authorDeclaration->fieldKinds[fieldPointer] = *declaredKind;
-                        else
-                            authorDeclaration->fieldKinds.erase(fieldPointer);
-                    }
-                }
-                else if ((value.is_object() || value.is_array()) && authorDeclaration != nullptr)
-                {
-                    auto &draft = authorDeclaration->nestedPathDrafts[key];
-                    ImGui::TextDisabled("Declare nested reference site under %s", key.c_str());
-                    ImGui::SetNextItemWidth(-1.0f);
-                    ImGui::InputTextWithHint("##nested-reference-pointer", "/target or /items/0/id",
-                                             draft.pointer.data(), draft.pointer.size());
-                    std::optional<std::string> targetKind = draft.targetKind;
-                    draw_template_reference_kind_control(objectId, componentId, ordinal,
-                        "nested-reference-kind", targetKind);
-                    draft.targetKind = targetKind;
-                    const std::string nestedPointer(draft.pointer.data());
-                    const Json *nestedValue = resolve_relative_pointer(value, nestedPointer);
-                    const std::string relativePointer = fieldPointer + nestedPointer;
-                    const bool declarationValid = draft.targetKind &&
-                        is_reference_integer(nestedValue) &&
-                        !make_template_reference_path_declaration(objectId, componentId, ordinal,
-                            relativePointer, *draft.targetKind).empty();
-                    if (!declarationValid && !nestedPointer.empty())
-                        ImGui::TextDisabled("Path must resolve to an integer reference in this field.");
-                    if (ImGui::Button("Add nested reference declaration") && declarationValid)
-                    {
-                        authorDeclaration->fieldKinds[relativePointer] = *draft.targetKind;
-                        draft.pointer.fill('\0');
-                        draft.targetKind.reset();
-                    }
-
-                    std::vector<std::string> declaredPaths;
-                    for (const auto &[path, kind] : authorDeclaration->fieldKinds)
-                    {
-                        (void)kind;
-                        if (path.size() > fieldPointer.size() &&
-                            path.compare(0, fieldPointer.size(), fieldPointer) == 0 &&
-                            path[fieldPointer.size()] == '/')
-                            declaredPaths.push_back(path);
-                    }
-                    for (const auto &path : declaredPaths)
-                    {
-                        ImGui::PushID(path.c_str());
-                        ImGui::Text("%s", path.c_str());
-                        ImGui::SameLine();
-                        std::optional<std::string> declaredKind = authorDeclaration->fieldKinds[path];
-                        if (draw_template_reference_kind_control(objectId, componentId, ordinal,
-                                                                 path, declaredKind))
-                        {
-                            if (declaredKind)
-                                authorDeclaration->fieldKinds[path] = *declaredKind;
-                            else
-                                authorDeclaration->fieldKinds.erase(path);
-                        }
-                        ImGui::SameLine();
-                        if (ImGui::SmallButton("Remove"))
-                            authorDeclaration->fieldKinds.erase(path);
-                        ImGui::PopID();
-                    }
-                }
-                draw_raw_value(document, commands, objectId, componentId, ordinal,
-                               {std::string(key)}, key, scrubCtx);
-                ImGui::PopID();
-            }
-            ImGui::TreePop();
+            begin_field(key, {key});
+            ImGui::TextDisabled(schemaUnavailable ? "Build to load field" : "Unavailable");
+            end_field();
         }
-    }
-    if (schemaUnavailable && authorDeclaration != nullptr)
-    {
-        ImGui::TextWrapped("Declare integer references in opaque fields, including nested JSON pointers. Confirm only after reviewing every field that can hold an object or component reference.");
-        bool complete = authorDeclaration->schemaCoverageComplete;
-        if (ImGui::Checkbox("##reference_declarations_cover", &complete))
-            authorDeclaration->schemaCoverageComplete = complete;
-        ImGui::SameLine();
-        ImGui::TextWrapped("Reference declarations cover this behavior");
+        else
+            draw_raw_value(document, commands, objectId, componentId, ordinal, {key}, key, scrubCtx);
+        ImGui::PopID();
     }
     if (scrubState_.active && !scrubState_.seenThisFrame)
         cancel_active_interactions(&document);
@@ -1825,7 +1598,7 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                     const ImGuiID valueId = ImGui::GetID("##value");
                     const bool valueActive = ImGui::GetActiveID() == valueId;
                     const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-                    const char *formatStr = useFullPrecision ? "%.17g" : "%.3f";
+                    const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
                     const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
                                                             ImGuiInputTextFlags_EnterReturnsTrue);
                     if (ImGui::IsItemActivated())

@@ -549,7 +549,7 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
     if (impl.active || impl.process.running())
         return false;
     impl.console.clear();
-    if (request.projectRoot.empty() || request.assetRoot.empty() || request.configureArgv.empty() ||
+    if (request.projectRoot.empty() || request.assetRoot.empty() ||
         request.buildArgv.empty() || request.executablePath.empty())
     {
         impl.status = PipelineStatus{PipelineStage::Idle, PipelineOutcome::Failed, generation,
@@ -617,6 +617,11 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
         impl.mirroredSessionStderr.clear();
     }
 #endif
+    if (impl.request.configureArgv.empty())
+    {
+        impl.enter(PipelineStage::Building);
+        return impl.start_process(impl.request.buildArgv, ProcessOutputMode::Merged);
+    }
     impl.enter(PipelineStage::Configuring);
     return impl.start_process(impl.request.configureArgv, ProcessOutputMode::Merged);
 }

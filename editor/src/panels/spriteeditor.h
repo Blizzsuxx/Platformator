@@ -27,6 +27,8 @@ struct AnimationFrameRegionDestination
     std::size_t frameIndex = 0;
 };
 
+enum class SourceRegionSection { All, Preview, Fields };
+
 class SpriteSourceRegionWidget
 {
   public:
@@ -48,7 +50,8 @@ class SpriteSourceRegionWidget
               const SpriteSourceRegion &currentRegion,
               const std::function<std::string(std::string_view)> &addressForField,
               const std::function<CommitOutcome(const SpriteSourceRegion &)> &onCommit,
-              bool allowSameLineNumericFields = true);
+              bool allowSameLineNumericFields = true,
+              SourceRegionSection section = SourceRegionSection::All);
     const std::string &feedback() const noexcept { return feedback_; }
     ImVec2 last_canvas_min() const noexcept { return lastCanvasMin_; }
     ImVec2 last_canvas_max() const noexcept { return lastCanvasMax_; }
@@ -75,7 +78,8 @@ class AnimationFrameRegionEditor
     bool draw(AssetDocument &document, std::size_t frameIndex,
               const std::filesystem::path &assetRoot,
               std::string_view textureReference, SDL_Texture *preparedThumbnail,
-              int sourceWidth, int sourceHeight);
+              int sourceWidth, int sourceHeight,
+              SourceRegionSection section = SourceRegionSection::All);
 
   private:
     const AssetDocument *document_ = nullptr;

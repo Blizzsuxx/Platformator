@@ -57,6 +57,7 @@
 #include <string>
 #include <string_view>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -469,17 +470,18 @@ std::vector<std::string> development_cmake_options(const std::string &target)
 }
 
 ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoot,
-                                        const RunPreferences &preferences,
-                                        bool forceCleanFirst = false)
+                                        const RunPreferences &preferences)
 {
     if (preferences.target.empty() || preferences.executable.empty())
         return {{}, {}, "choose a target and executable before building"};
     if (preferences.configurePreset.empty() != preferences.buildPreset.empty())
         return {{}, {}, "configure and build presets must both be set or both be cleared"};
+    const std::string parallelJobs = std::to_string(std::max(1u, std::thread::hardware_concurrency()));
     if (!preferences.configurePreset.empty())
     {
         std::vector<std::string> configure{"cmake", "--preset", preferences.configurePreset};
-        std::vector<std::string> build{"cmake", "--build", "--preset", preferences.buildPreset};
+        std::vector<std::string> build{"cmake", "--build", "--preset", preferences.buildPreset,
+                                       "--parallel", parallelJobs};
         if (preferences.production)
         {
             configure.emplace_back("-DCMAKE_BUILD_TYPE=Release");
@@ -490,8 +492,6 @@ ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoo
         }
         else
             configure.emplace_back("-DPLATFORMATOR_ENABLE_EDITOR_SESSION=ON");
-        if (forceCleanFirst)
-            build.emplace_back("--clean-first");
         build.insert(build.end(), {"--target", preferences.target});
         return {std::move(configure), std::move(build), {}};
     }
@@ -516,10 +516,9 @@ ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoo
         const auto options = development_cmake_options(preferences.target);
         configure.insert(configure.end(), options.begin(), options.end());
     }
-    std::vector<std::string> build{"cmake", "--build", buildDirectory.string()};
-    if (forceCleanFirst)
-        build.emplace_back("--clean-first");
-    build.insert(build.end(), {"--target", preferences.target});
+    std::vector<std::string> build{"cmake", "--build", buildDirectory.string(),
+                                   "--parallel", parallelJobs,
+                                   "--target", preferences.target};
     return {std::move(configure), std::move(build), {}};
 }
 
@@ -946,8 +945,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::uint64_t handledSourceRevision = projectSession.source_change_revision();
         std::string sourceInputIdentity;
         bool sourceInputIdentityInitialized = false;
-        bool sourceRebuildRequired = false;
-        bool sourceRebuildInFlight = false;
+        std::vector<std::string> lastConfiguredArgv;
+        std::filesystem::path lastConfiguredProjectRoot;
         auto request_source_scan = [&] {
             const auto requestedRevision = projectSession.source_change_revision();
             sourceScan.cancel();
@@ -1788,8 +1787,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return false;
             }
 #endif
-            const auto forcedCleanFirst = sourceRebuildRequired;
-            const auto buildCommands = make_build_commands(activeProjectRoot, preferences.run, forcedCleanFirst);
+            const auto buildCommands = make_build_commands(activeProjectRoot, preferences.run);
             if (!buildCommands.error.empty())
             {
                 statusMessage = buildCommands.error;
@@ -1841,11 +1839,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             identity.executablePath = executablePath.string();
             identity.sourceInputIdentity = sourceInputIdentity;
 
+            const bool skipConfigure = !buildCommands.configure.empty() &&
+                                       lastConfiguredProjectRoot == activeProjectRoot &&
+                                       lastConfiguredArgv == buildCommands.configure;
             PipelineRequest request;
             request.projectRoot = activeProjectRoot;
             request.assetRoot = activeAssetRoot;
             request.executablePath = executablePath;
-            request.configureArgv = buildCommands.configure;
+            request.configureArgv = skipConfigure ? std::vector<std::string>{} : buildCommands.configure;
             request.buildArgv = buildCommands.build;
             request.runArguments = make_run_arguments(preferences.run,
                                                        preferences.run.embeddedGameView);
@@ -1904,11 +1905,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 #endif
             activePipelineIdentity = std::move(identity);
             hasActivePipelineIdentity = true;
-            sourceRebuildInFlight = forcedCleanFirst;
-            statusMessage = forcedCleanFirst
-                ? (buildOnly ? "Forced clean rebuild started after source freshness changed."
-                             : "Forced clean rebuild and Run started after source freshness changed.")
-                : (buildOnly ? "Build started." : "Build and Run started.");
+            if (!skipConfigure)
+            {
+                lastConfiguredArgv = buildCommands.configure;
+                lastConfiguredProjectRoot = activeProjectRoot;
+            }
+            statusMessage = buildOnly ? "Build started." : "Build and Run started.";
             return true;
         };
         auto queue_pipeline = [&](bool buildOnly) {
@@ -2737,8 +2739,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             behaviorCatalog.invalidate("project context changed");
             sourceInputIdentity.clear();
             sourceInputIdentityInitialized = false;
-            sourceRebuildRequired = false;
-            sourceRebuildInFlight = false;
+            lastConfiguredArgv.clear();
+            lastConfiguredProjectRoot.clear();
             sourceScanRequest = 0;
 
             try
@@ -2918,7 +2920,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             {
                 handledSourceRevision = currentSourceRevision;
                 sourceInputIdentity.clear();
-                sourceRebuildRequired = true;
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
                 if (auto *playSession = gamePipeline.play_session(); playSession != nullptr &&
                     playSession->state() != PlaySessionState::Idle)
@@ -2981,15 +2982,19 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 restart_embedded_game();
             }
             if (!gamePipeline.busy())
-                hasActivePipelineIdentity = false;
-            if (sourceRebuildInFlight && !gamePipeline.busy())
             {
-                if (gamePipeline.status().outcome == PipelineOutcome::Succeeded)
+                hasActivePipelineIdentity = false;
+                const auto &pipelineStatus = gamePipeline.status();
+                const bool reachedBuilding = std::find(pipelineStatus.transitions.begin(),
+                                                       pipelineStatus.transitions.end(),
+                                                       PipelineStage::Building) !=
+                                             pipelineStatus.transitions.end();
+                if (pipelineStatus.outcome == PipelineOutcome::Failed ||
+                    (pipelineStatus.outcome == PipelineOutcome::Cancelled && !reachedBuilding))
                 {
-                    sourceRebuildRequired = false;
-                    statusMessage = "Forced clean rebuild completed.";
+                    lastConfiguredArgv.clear();
+                    lastConfiguredProjectRoot.clear();
                 }
-                sourceRebuildInFlight = false;
             }
 
             for (auto &scanResult : sourceScans.take_ready(projectContext.snapshot().generation))
@@ -3019,11 +3024,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     statusMessage = scanResult.error.empty()
                                         ? "Source identity scan was cancelled, truncated, or found no CMake/source inputs."
                                         : "Source identity scan failed: " + scanResult.error;
-                    if (sourceInputIdentityInitialized)
-                    {
-                        sourceRebuildRequired = true;
-                        statusMessage += " Source freshness is uncertain; the next explicit Build will use --clean-first.";
-                    }
                     sourceInputIdentity.clear();
                     pendingPipelineBuildOnly.reset();
                     if (gamePipeline.busy() && hasActivePipelineIdentity)
@@ -3049,11 +3049,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         gameSessionRestartAvailable = true;
                     }
 #endif
-                    if (sourceInputIdentityInitialized)
-                    {
-                        sourceRebuildRequired = true;
-                        statusMessage = "Configured source inputs changed; the next explicit Build will use --clean-first.";
-                    }
                     sourceInputIdentity = std::move(scanResult.sourceInputIdentity);
                     if (gamePipeline.busy() && hasActivePipelineIdentity)
                     {
@@ -5431,40 +5426,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
                     if (auto *animationTab = documentManager.active_animation_tab())
                     {
-                        if (ImGui::Button("Save"))
-                            save_active_animation_tab();
-                        ImGui::SameLine();
-                        const bool canUndo = animationTab->document().can_undo();
-                        ImGui::BeginDisabled(!canUndo || projectLocked);
-                        if (ImGui::Button("Undo"))
-                        {
-                            animationTab->document().undo();
-                        }
-                        ImGui::EndDisabled();
-                        ImGui::SameLine();
-                        const bool canRedo = animationTab->document().can_redo();
-                        ImGui::BeginDisabled(!canRedo || projectLocked);
-                        if (ImGui::Button("Redo"))
-                        {
-                            animationTab->document().redo();
-                        }
-                        ImGui::EndDisabled();
-                        ImGui::SameLine();
-
-                        std::string displayPath = "Untitled animation";
-                        if (animationTab->document().source_path())
-                        {
-                            const auto &source = *animationTab->document().source_path();
-                            const auto rel = source.lexically_normal().lexically_relative(
-                                activeProjectRoot.lexically_normal());
-                            if (!rel.empty() && rel.string().rfind("..", 0) != 0)
-                                displayPath = rel.generic_string();
-                            else
-                                displayPath = source.filename().generic_string();
-                        }
-                        ImGui::TextDisabled("%s", displayPath.c_str());
-
-                        ImGui::Separator();
                         ImGui::BeginDisabled(projectLocked);
                         animationTab->panel().draw(animationTab->document(),
                             animationTab->asset_root(), [&](const std::filesystem::path &path) {
@@ -6360,9 +6321,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     ImGui::TextDisabled("Scanning configured CMake and source inputs...");
                 if (!projectSession.source_notifications_available())
                     ImGui::TextDisabled("Source notifications are unavailable; bounded identity checks run every 5 seconds.");
-                if (sourceRebuildRequired)
-                    ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.25f, 1.0f),
-                        "Source freshness changed or is uncertain. The next explicit Build uses --clean-first.");
                 if (action == RunPanelAction::RefreshDiscovery)
                 {
                     statusMessage = "Refreshed project presets, built targets, and executable choices.";

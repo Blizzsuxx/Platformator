@@ -129,6 +129,12 @@ struct ProjectPanelTestProbe
                panel.assign_asset_target(document, commands, targets[index], assetPath, error);
     }
 
+    static bool scan_finished(const ProjectPanel &panel, const std::filesystem::path &directory)
+    {
+        const auto found = panel.directories_.find(directory.string());
+        return found != panel.directories_.end() && found->second.loaded && !found->second.request;
+    }
+
     static bool listing_contains(const ProjectPanel &panel, const std::filesystem::path &directory,
                                  const std::filesystem::path &entry)
     {
@@ -514,6 +520,40 @@ void settle_panel(ProjectPanelFrames &frames, ProjectPanel &panel, DocumentSessi
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     (void)frames.draw(panel, document, commands);
+}
+
+void test_folder_scans_recover_from_capacity_pressure()
+{
+    TestEnvironment environment;
+    ProjectPanelFrames frames;
+    TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assets = projectRoot / "assets";
+    std::vector<std::filesystem::path> folders;
+    for (int index = 0; index < 12; ++index)
+    {
+        const auto folder = assets / ("folder-" + std::to_string(index));
+        std::filesystem::create_directories(folder);
+        std::ofstream(folder / "item.scene") << "[]";
+        folders.push_back(folder);
+    }
+    std::ofstream(projectRoot / "CMakeLists.txt") << "project(scan-pressure)\n";
+    ProjectContext context;
+    context.set_roots(projectRoot, assets);
+    const auto project = context.snapshot();
+    ProjectChanges changes;
+    ProjectScanService scans(1, 1);
+    ProjectPanel panel(context, changes, scans, frames.renderer());
+    auto document = make_default_document(projectRoot, assets, project.generation);
+    EditCommandService commands;
+    frames.draw(panel, document, commands);
+    ProjectPanelTestProbe::select_directory(panel, assets, folders.back());
+    settle_panel(frames, panel, document, commands, scans, 20);
+    require(ProjectPanelTestProbe::listing_contains(panel, folders.back(), folders.back() / "item.scene"),
+            "selected folder must load after scan backpressure instead of remaining Scanning");
+    for (const auto &folder : folders)
+        require(ProjectPanelTestProbe::scan_finished(panel, folder),
+                "folder-arrow scans rejected at capacity must retry and eventually complete");
 }
 
 void test_project_panel_alias_presentation_invalidation()
@@ -1867,12 +1907,23 @@ void run_project_cases()
                 "results from a replaced project generation must not reach the UI");
         stale.cancel();
 
+        std::vector<std::uint64_t> acceptedScans;
         for (int i = 0; i < 5; ++i)
-            scans.request_scan(first, assetRoot, ProjectScanOptions{.recursive = true, .maxFiles = 100});
+        {
+            const auto token = scans.request_scan(first, assetRoot,
+                ProjectScanOptions{.recursive = true, .maxFiles = 100});
+            if (token) acceptedScans.push_back(token.request_id());
+            // Finish each worker without draining publications: deterministic saturation.
+            scans.wait_for_idle();
+        }
         scans.wait_for_idle();
         results = scans.take_ready(first.generation);
-        require(results.size() <= 2,
-                "completed scan publications must remain within the configured queue bound");
+        require(results.size() == 2 && acceptedScans.size() == 2,
+                "completed scans must reserve bounded publication slots until consumed");
+        for (const auto id : acceptedScans)
+            require(std::any_of(results.begin(), results.end(), [&](const auto &result) {
+                return result.requestId == id;
+            }), "every accepted scan must publish a result instead of leaving its owner pending");
 
         auto cancelled = scans.request_scan(first, assetRoot, ProjectScanOptions{.recursive = true,
                                                                                  .maxFiles = 100});
@@ -1902,6 +1953,7 @@ void run_project_cases()
     require(context.snapshot().generation == first.generation,
             "unchanged canonical roots must not create a new project generation");
 
+    test_folder_scans_recover_from_capacity_pressure();
     test_project_panel_alias_presentation_invalidation();
     test_directory_alias_file_events_refresh_descendant_previews();
     test_initially_broken_alias_repairs_project_listings_and_previews();

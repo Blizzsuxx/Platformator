@@ -238,6 +238,16 @@ bool Runtime::simulateAndRenderFrameWithCustomCallback(double timeDelta,
     return gameManager->simulateAndRenderFrameWithCustomCallback(preRenderCallback, timeDelta);
 }
 
+bool Runtime::isKeyDown(SDL_Scancode key) const
+{
+    return gameManager->getWindow()->isKeyDown(key);
+}
+
+SDL_MouseButtonFlags Runtime::getMouseState(float *x, float *y) const
+{
+    return gameManager->getWindow()->getMouseState(x, y);
+}
+
 SDL_Window *Runtime::getWindowHandle() const
 {
     return gameManager->getWindow()->getWindow();

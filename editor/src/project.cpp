@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -225,10 +226,11 @@ void publish(const std::shared_ptr<ProjectScanSharedState> &state, ProjectScanRe
              const std::shared_ptr<ProjectScanTicketState> &ticket)
 {
     std::lock_guard lock(state->mutex);
-    if (!state->alive || state->maxPendingPublications == 0)
+    --state->outstandingScans;
+    if (!state->alive)
         return;
-    if (state->ready.size() == state->maxPendingPublications)
-        state->ready.erase(state->ready.begin());
+    // Every accepted scan reserves a publication slot until the owner consumes it.
+    assert(state->ready.size() < state->maxPendingPublications);
     state->ready.push_back(ProjectScanSharedState::QueuedResult{std::move(result), ticket});
 }
 
@@ -1040,7 +1042,8 @@ ProjectScanToken ProjectScanService::request_scan(const ProjectSnapshot &project
     const auto wakeCallback = wakeCallback_;
     {
         std::lock_guard lock(state->mutex);
-        if (!state->alive || state->outstandingScans >= state->maxOutstandingScans)
+        if (!state->alive || state->outstandingScans >= state->maxOutstandingScans ||
+            state->outstandingScans + state->ready.size() >= state->maxPendingPublications)
             return {};
         ++state->outstandingScans;
     }
@@ -1070,10 +1073,6 @@ ProjectScanToken ProjectScanService::request_scan(const ProjectSnapshot &project
                 result.error = "unknown filesystem scan failure";
             }
             publish(state, std::move(result), ticket);
-            {
-                std::lock_guard lock(state->mutex);
-                --state->outstandingScans;
-            }
             if (wakeCallback)
             {
                 try { wakeCallback(); }

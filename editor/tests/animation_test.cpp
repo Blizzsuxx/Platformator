@@ -59,7 +59,8 @@ class AnimationAddFrameGui
     ImGuiID frame(AnimationPanel &panel, AssetDocument &document,
                   const std::filesystem::path &assetRoot,
                   ImVec2 mouse = {-10.0f, -10.0f}, bool leftDown = false,
-                  ImGuiID *addFrameId = nullptr)
+                  ImGuiID *addFrameId = nullptr, const char *buttonLabel = "Add Frame",
+                  bool *frameListDrawn = nullptr)
     {
         ImGuiIO &io = ImGui::GetIO();
         io.AddMousePosEvent(mouse.x, mouse.y);
@@ -71,23 +72,34 @@ class AnimationAddFrameGui
         ImGui::Begin("animation-add-frame-test", nullptr,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::BeginDisabled(false);
         panel.draw(document, assetRoot);
+        ImGui::EndDisabled();
+        if (frameListDrawn != nullptr)
+        {
+            *frameListDrawn = false;
+            for (const ImGuiWindow *window : ImGui::GetCurrentContext()->Windows)
+                if (std::string_view(window->Name).find("##frame-list") != std::string_view::npos &&
+                    window->LastFrameActive == ImGui::GetFrameCount())
+                    *frameListDrawn = true;
+        }
         if (addFrameId != nullptr)
-            *addFrameId = ImGui::GetID("Add Frame");
+            *addFrameId = ImGui::GetID(buttonLabel);
         ImGui::End();
         ImGui::Render();
         return ImGui::GetHoveredID();
     }
 
     ImVec2 find_add_frame(AnimationPanel &panel, AssetDocument &document,
-                          const std::filesystem::path &assetRoot)
+                          const std::filesystem::path &assetRoot, const char *buttonLabel = "Add Frame")
     {
         ImGuiID button = 0;
-        frame(panel, document, assetRoot, {-10.0f, -10.0f}, false, &button);
+        frame(panel, document, assetRoot, {-10.0f, -10.0f}, false, &button, buttonLabel);
         for (float y = 0.0f; y <= 700.0f; y += 2.0f)
-            if (frame(panel, document, assetRoot, {55.0f, y}) == button)
-                return {55.0f, y};
-        throw std::runtime_error("could not locate the Add Frame button in the animation panel");
+            for (const float x : {55.0f, 150.0f, 220.0f, 340.0f})
+                if (frame(panel, document, assetRoot, {x, y}) == button)
+                    return {x, y};
+        throw std::runtime_error(std::string("could not locate animation button: ") + buttonLabel);
     }
 
     void click_add_frame(AnimationPanel &panel, AssetDocument &document,
@@ -98,6 +110,33 @@ class AnimationAddFrameGui
         frame(panel, document, assetRoot, point, false);
     }
 };
+
+void test_animation_toggles_keep_panel_visible()
+{
+    platformator_editor_test::TemporaryDirectory temporary;
+    AnimationAddFrameGui gui;
+    Json clip{{"frames", Json::array({make_default_animation_frame()})},
+              {"loop", true}, {"framesPerSecond", 4.0}, {"width", 16.0}, {"height", 16.0}};
+    AssetDocument document(clip);
+    AnimationPanel panel;
+    const auto toggle = [&](const char *label) {
+        const ImVec2 point = gui.find_add_frame(panel, document, temporary.path(), label);
+        gui.frame(panel, document, temporary.path(), point, true);
+        bool frameListDrawn = false;
+        gui.frame(panel, document, temporary.path(), point, false, nullptr, label, &frameListDrawn);
+        require(frameListDrawn,
+                "animation checkbox commits must still draw the frame list on the click frame");
+    };
+    toggle("Use Source Rectangle");
+    require(document.root()["frames"][0]["hasSourceRect"] == true,
+            "the source rectangle checkbox must enable the selected frame region");
+    toggle("Use Source Rectangle");
+    require(document.root()["frames"][0]["hasSourceRect"] == false,
+            "the source rectangle checkbox must disable the selected frame region");
+    toggle("Loop");
+    require(document.root()["loop"] == false,
+            "Loop must toggle without dropping the rest of the panel");
+}
 
 void write_runtime_texture(const std::filesystem::path &path)
 {
@@ -650,6 +689,21 @@ void test_add_frame_ui_semantics_save_reload_and_runtime_consumption()
     AnimationPanel uiPanel;
     AnimationAddFrameGui gui;
     gui.click_add_frame(uiPanel, uiDocument, assetRoot);
+    // Exercise real GUI removal, including the outer disabled scope used by the host.
+    const ImVec2 removePoint = gui.find_add_frame(uiPanel, uiDocument, assetRoot, "Remove Frame");
+    gui.frame(uiPanel, uiDocument, assetRoot, removePoint, true);
+    gui.frame(uiPanel, uiDocument, assetRoot, removePoint, false);
+    require(uiDocument.root()["frames"].size() == 1 && uiPanel.selected_frame() == 0,
+            "removing an empty frame must leave ImGui scopes balanced and retain the previous frame");
+    gui.click_add_frame(uiPanel, uiDocument, assetRoot);
+    const ImVec2 regionToggle = gui.find_add_frame(uiPanel, uiDocument, assetRoot, "Use Source Rectangle");
+    gui.frame(uiPanel, uiDocument, assetRoot, regionToggle, true);
+    gui.frame(uiPanel, uiDocument, assetRoot, regionToggle, false);
+    require(uiDocument.root()["frames"][1]["hasSourceRect"] == true &&
+                uiDocument.root()["frames"][1]["sourceRect"]["w"].get<double>() > 0.0,
+            "source rectangle toggle must initialize valid bounds");
+    require(uiDocument.undo().changed && uiDocument.root()["frames"][1]["hasSourceRect"] == false,
+            "one Undo must restore the disabled source rectangle and its prior bounds");
     const Json afterUiAdd = uiDocument.root();
     require(afterUiAdd["frames"].size() == 2 && uiPanel.selected_frame() == 1 &&
                 afterUiAdd["frames"][1]["duration"] == 0.1 &&
@@ -1011,6 +1065,7 @@ int main()
 {
     try
     {
+        test_animation_toggles_keep_panel_visible();
         test_shared_frame_duration_rules();
         test_clip_document_validation_and_serialization();
         test_root_schema_save_rejection_preserves_animation_draft();

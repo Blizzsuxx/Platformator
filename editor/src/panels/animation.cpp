@@ -752,22 +752,6 @@ void AnimationPanel::draw(AssetDocument &document,
         ImGui::SetColumnWidth(0, leftColumnWidth);
     }
 
-    const auto loop = clip.find("loop");
-    if (loop != clip.end() && loop->is_boolean())
-    {
-        bool value = loop->get<bool>();
-        if (ImGui::Checkbox("Loop", &value))
-        {
-            const auto result = document.set("/loop", value);
-            if (!result.error.empty()) feedback_ = result.error;
-            if (result.changed)
-            {
-                if (splitColumns) ImGui::Columns(1);
-                return;
-            }
-        }
-    }
-
     if (ImGui::Button("Add Frame"))
     {
         const auto result = add_animation_frame(document, make_default_animation_frame());
@@ -815,6 +799,7 @@ void AnimationPanel::draw(AssetDocument &document,
         const auto result = move_animation_frame(document, selectedFrame_, selectedFrame_ - 1);
         if (result.changed)
         {
+            ImGui::EndDisabled();
             --selectedFrame_;
             textureDraftFrame_ = static_cast<std::size_t>(-1);
             if (splitColumns) ImGui::Columns(1);
@@ -830,6 +815,7 @@ void AnimationPanel::draw(AssetDocument &document,
         const auto result = move_animation_frame(document, selectedFrame_, selectedFrame_ + 1);
         if (result.changed)
         {
+            ImGui::EndDisabled();
             ++selectedFrame_;
             textureDraftFrame_ = static_cast<std::size_t>(-1);
             if (splitColumns) ImGui::Columns(1);
@@ -845,6 +831,7 @@ void AnimationPanel::draw(AssetDocument &document,
         const auto result = remove_animation_frame(document, selectedFrame_);
         if (result.changed)
         {
+            ImGui::EndDisabled();
             selectedFrame_ = selectedFrame_ >= frameCount - 1 && frameCount > 1
                 ? frameCount - 2 : (frameCount == 1 ? 0 : selectedFrame_);
             textureDraftFrame_ = static_cast<std::size_t>(-1);
@@ -889,78 +876,155 @@ void AnimationPanel::draw(AssetDocument &document,
         if (textureDraftFrame_ != selectedFrame_)
             sync_texture_draft(frame);
 
-        ImGui::SetNextItemWidth(std::max(80.0f, leftColumnWidth - 140.0f));
-        const bool textSubmitted = ImGui::InputText("Texture", textureDraftBuffer_.data(),
-                                                    textureDraftBuffer_.size(),
-                                                    ImGuiInputTextFlags_EnterReturnsTrue);
-        if (textSubmitted)
-            textureDraft_ = textureDraftBuffer_.data();
-        else
-            textureDraft_ = textureDraftBuffer_.data();
-
+        const std::string assignedTexture = texture_path_of(frame);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Texture");
+        ImGui::SameLine();
+        const float clearWidth = ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        const std::string textureLabel = assignedTexture.empty() ? "None (Texture)"
+            : std::filesystem::path(assignedTexture).filename().string();
+        const bool chooseTexture = ImGui::Button((textureLabel + "###frame-texture").c_str(),
+            {std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth - ImGui::GetStyle().ItemSpacing.x), 0.0f});
+        ImGui::SetItemTooltip("Full path: %s", assignedTexture.empty() ? "(unset)" : assignedTexture.c_str());
+        std::optional<std::string> chosenTexture;
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
             {
-                if (payload->Data != nullptr && payload->DataSize > 0)
+                if (payload->Data != nullptr && payload->DataSize == sizeof(AssetDragPayload))
                 {
-                    std::string dropped;
-                    bool isImage = true;
-                    if (payload->DataSize == sizeof(AssetDragPayload))
-                    {
-                        const auto *drag = static_cast<const AssetDragPayload *>(payload->Data);
-                        dropped = drag->relativeAssetPath;
-                        isImage = (drag->kind == EditorAssetKind::Image);
-                    }
+                    const auto &drag = *static_cast<const AssetDragPayload *>(payload->Data);
+                    if (drag.kind == EditorAssetKind::Image && animation_texture_is_compatible(assetRoot, drag.relativeAssetPath))
+                        chosenTexture = drag.relativeAssetPath;
                     else
-                    {
-                        dropped = static_cast<const char *>(payload->Data);
-                    }
-                    while (!dropped.empty() && dropped.back() == '\0')
-                        dropped.pop_back();
-                    std::replace(dropped.begin(), dropped.end(), '\\', '/');
-
-                    if (isImage && animation_texture_is_compatible(assetRoot, dropped))
-                    {
-                        textureDraft_ = dropped;
-                        std::snprintf(textureDraftBuffer_.data(), textureDraftBuffer_.size(), "%s", dropped.c_str());
-                        const auto result = document.set("/frames/" + std::to_string(selectedFrame_) +
-                                                         "/textureWrapperFilePath", dropped);
-                        if (!result.error.empty()) feedback_ = result.error;
-                        else feedback_.clear();
-                        if (result.changed)
-                        {
-                            if (splitColumns) ImGui::Columns(1);
-                            return;
-                        }
-                    }
-                    else
-                    {
                         feedback_ = "Dropped asset is not a compatible image texture.";
-                    }
                 }
             }
             ImGui::EndDragDropTarget();
         }
-
-        ImGui::SameLine();
-        const bool compatible = animation_texture_is_compatible(assetRoot, textureDraft_);
-        ImGui::BeginDisabled(!compatible);
-        if (ImGui::Button("Assign Texture") || (textSubmitted && compatible))
+        if (chooseTexture)
         {
-            const auto result = document.set("/frames/" + std::to_string(selectedFrame_) +
-                                             "/textureWrapperFilePath", textureDraft_);
+            texturePickerCandidates_.clear();
+            std::error_code error;
+            std::filesystem::recursive_directory_iterator it(assetRoot,
+                std::filesystem::directory_options::skip_permission_denied, error), end;
+            for (std::size_t visited = 0; !error && it != end && visited < 2048; ++visited, it.increment(error))
+            {
+                if (it->is_regular_file(error) && !error)
+                {
+                    const std::string candidate = "assets/" + it->path().lexically_relative(assetRoot).generic_string();
+                    if (animation_texture_is_compatible(assetRoot, candidate))
+                        texturePickerCandidates_.push_back(candidate);
+                }
+            }
+            std::sort(texturePickerCandidates_.begin(), texturePickerCandidates_.end());
+            ImGui::OpenPopup("FrameTexturePicker");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear##frame-texture"))
+            chosenTexture = std::string{};
+        if (ImGui::BeginPopup("FrameTexturePicker"))
+        {
+            ImGui::TextUnformatted("Select Texture");
+            ImGui::Separator();
+            if (texturePickerCandidates_.empty())
+                ImGui::TextDisabled("No compatible textures found.");
+            ImGui::BeginChild("TextureCandidates", {320.0f, 240.0f});
+            for (const auto &candidate : texturePickerCandidates_)
+            {
+                ImGui::PushID(candidate.c_str());
+                if (ImGui::Selectable(std::filesystem::path(candidate).filename().string().c_str(), candidate == assignedTexture))
+                {
+                    chosenTexture = candidate;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SetItemTooltip("Full path: %s", candidate.c_str());
+                ImGui::PopID();
+            }
+            ImGui::EndChild();
+            ImGui::EndPopup();
+        }
+        if (chosenTexture)
+        {
+            if (chosenTexture->empty() || animation_texture_is_compatible(assetRoot, *chosenTexture))
+            {
+                const auto result = document.set("/frames/" + std::to_string(selectedFrame_) + "/textureWrapperFilePath", *chosenTexture);
+                feedback_ = result.error;
+                textureDraftFrame_ = static_cast<std::size_t>(-1);
+                if (result.changed)
+                {
+                    if (splitColumns) ImGui::Columns(1);
+                    return;
+                }
+            }
+            else
+                feedback_ = "Selected texture is no longer available.";
+        }
+
+    }
+
+    const auto loop = clip.find("loop");
+    if (loop != clip.end() && loop->is_boolean())
+    {
+        bool value = loop->get<bool>();
+        if (ImGui::Checkbox("Loop", &value))
+        {
+            const auto result = document.set("/loop", value);
             if (!result.error.empty()) feedback_ = result.error;
-            else feedback_.clear();
-            if (result.changed)
+        }
+    }
+
+    if (frameCount != 0)
+    {
+        ImGui::SameLine();
+        const auto &frame = (*frames)[selectedFrame_];
+        bool useRegion = frame.value("hasSourceRect", false);
+        if (ImGui::Checkbox("Use Source Rectangle", &useRegion))
+        {
+            if (sourceRegionEditor_) sourceRegionEditor_->cancel_numeric_drafts();
+            Json updated = frame;
+            updated["hasSourceRect"] = useRegion;
+            const auto storedRect = frame.find("sourceRect");
+            if (useRegion && (storedRect == frame.end() || !storedRect->is_object() ||
+                              storedRect->value("w", 0.0) <= 0.0 || storedRect->value("h", 0.0) <= 0.0))
+            {
+                int width = 16, height = 16;
+                const auto reference = texture_path_of(frame);
+                if (preparedTexture && animation_texture_is_compatible(assetRoot, reference))
+                {
+                    const auto prepared = preparedTexture(animation_texture_path(assetRoot, reference));
+                    if (prepared.sourceWidth > 0 && prepared.sourceHeight > 0)
+                    {
+                        width = prepared.sourceWidth;
+                        height = prepared.sourceHeight;
+                    }
+                }
+                updated["sourceRect"] = Json{{"x", 0.0}, {"y", 0.0}, {"w", width}, {"h", height}};
+            }
+            const auto result = document.set("/frames/" + std::to_string(selectedFrame_), updated);
+            feedback_ = result.error;
+            // Reacquire JSON views after replacing the frame and finish drawing
+            // this frame so the rest of the panel never blinks out on a toggle.
+            frames = frames_of(document.root());
+        }
+    }
+
+    if (frameCount != 0 && (*frames)[selectedFrame_].value("hasSourceRect", false))
+    {
+        const auto assignedPath = texture_path_of((*frames)[selectedFrame_]);
+        if (preparedTexture && animation_texture_is_compatible(assetRoot, assignedPath))
+        {
+            const auto prepared = preparedTexture(animation_texture_path(assetRoot, assignedPath));
+            if (!sourceRegionEditor_)
+                sourceRegionEditor_ = std::make_unique<AnimationFrameRegionEditor>();
+            if (sourceRegionEditor_->draw(document, selectedFrame_, assetRoot, assignedPath,
+                                          prepared.texture, prepared.sourceWidth, prepared.sourceHeight,
+                                          SourceRegionSection::Fields))
             {
                 if (splitColumns) ImGui::Columns(1);
                 return;
             }
         }
-        ImGui::EndDisabled();
-        if (!compatible)
-            ImGui::TextDisabled("Choose an existing image inside the asset folder.");
     }
 
     if (splitColumns)
@@ -980,27 +1044,46 @@ void AnimationPanel::draw(AssetDocument &document,
         int scrub = static_cast<int>(std::min<std::size_t>(selectedFrame_,
             static_cast<std::size_t>(sliderMaximum)));
         ImGui::SetNextItemWidth(std::max(100.0f, ImGui::GetContentRegionAvail().x - 60.0f));
-        if (ImGui::SliderInt("Scrub", &scrub, 0, sliderMaximum))
+        if (ImGui::SliderInt("##animation-frame", &scrub, 0, sliderMaximum))
             scrub_to(clip, static_cast<std::size_t>(scrub));
         ImGui::EndDisabled();
 
         const auto &frame = (*frames)[selectedFrame_];
+        const bool useRegion = frame.value("hasSourceRect", false);
         const auto assignedPath = texture_path_of(frame);
         if (preparedTexture && animation_texture_is_compatible(assetRoot, assignedPath))
         {
             const auto prepared = preparedTexture(animation_texture_path(assetRoot, assignedPath));
-            if (!sourceRegionEditor_)
-                sourceRegionEditor_ = std::make_unique<AnimationFrameRegionEditor>();
-            if (sourceRegionEditor_->draw(document, selectedFrame_, assetRoot, assignedPath,
-                                          prepared.texture, prepared.sourceWidth,
-                                          prepared.sourceHeight))
+            if (useRegion)
             {
-                if (splitColumns) ImGui::Columns(1);
-                return;
+                if (!sourceRegionEditor_)
+                    sourceRegionEditor_ = std::make_unique<AnimationFrameRegionEditor>();
+                if (sourceRegionEditor_->draw(document, selectedFrame_, assetRoot, assignedPath,
+                                              prepared.texture, prepared.sourceWidth,
+                                              prepared.sourceHeight, SourceRegionSection::Preview))
+                {
+                    if (splitColumns) ImGui::Columns(1);
+                    return;
+                }
+            }
+            else
+            {
+                if (sourceRegionEditor_) sourceRegionEditor_->cancel_numeric_drafts();
+                float width = 0, height = 0;
+                if (prepared.texture && SDL_GetTextureSize(prepared.texture, &width, &height) && width > 0 && height > 0)
+                {
+                    const float maximumWidth = std::min(std::max(1.0f, ImGui::GetContentRegionAvail().x), 360.0f);
+                    const float scale = std::min(maximumWidth / width,
+                                                 ImGui::GetTextLineHeight() * 12.0f / height);
+                    ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(prepared.texture)),
+                                 {width * scale, height * scale});
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%d × %d pixels", prepared.sourceWidth, prepared.sourceHeight);
+                }
             }
         }
-        else
-            ImGui::TextDisabled("Assign a compatible prepared texture to preview this frame.");
+        else if (useRegion)
+            ImGui::TextDisabled("Assign a texture to edit its source rectangle.");
     }
     else
         ImGui::TextDisabled("Add a frame to begin editing this animation.");

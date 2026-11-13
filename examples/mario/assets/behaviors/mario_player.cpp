@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "platformator/behaviorquery.h"
+#include "platformator/runtime.h"
 
 #include "mario_coin.h"
 #include "mario_constants.h"
@@ -127,7 +128,7 @@ namespace mario
     void MarioPlayer::updateInput(double timeDelta)
     {
         MarioGame &game = MarioGame::getInstance();
-        const bool respawnPressed = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_R];
+        const bool respawnPressed = getRuntime().isKeyDown(SDL_SCANCODE_R);
         if (respawnPressed && !respawnWasPressed)
         {
             respawn();
@@ -139,10 +140,10 @@ namespace mario
             return;
         }
 
-        const bool *keyboardState = SDL_GetKeyboardState(nullptr);
-        const bool moveLeft = keyboardState[SDL_SCANCODE_LEFT] || keyboardState[SDL_SCANCODE_A];
-        const bool moveRight = keyboardState[SDL_SCANCODE_RIGHT] || keyboardState[SDL_SCANCODE_D];
-        const bool jumpPressed = keyboardState[SDL_SCANCODE_SPACE] || keyboardState[SDL_SCANCODE_UP] || keyboardState[SDL_SCANCODE_W];
+
+        const bool moveLeft = getRuntime().isKeyDown(SDL_SCANCODE_LEFT) || getRuntime().isKeyDown(SDL_SCANCODE_A);
+        const bool moveRight = getRuntime().isKeyDown(SDL_SCANCODE_RIGHT) || getRuntime().isKeyDown(SDL_SCANCODE_D);
+        const bool jumpPressed = getRuntime().isKeyDown(SDL_SCANCODE_SPACE) || getRuntime().isKeyDown(SDL_SCANCODE_UP) || getRuntime().isKeyDown(SDL_SCANCODE_W);
 
         float horizontalVelocity = 0.0f;
         if (moveLeft != moveRight)

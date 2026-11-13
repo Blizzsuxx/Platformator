@@ -1459,8 +1459,9 @@ void ProjectPanel::request_scan(const std::filesystem::path &directory)
         {
             changes_.cancel_directory_listing(state.changeRequest);
             state.changeRequest = {};
-            state.error = "Asset scan service reached its outstanding-scan limit.";
-            state.loaded = true;
+            state.error = "Waiting for an available folder scan slot...";
+            // Capacity pressure is temporary: retry after the owner drains results.
+            state.loaded = false;
         }
     }
     catch (const std::exception &error)
@@ -1480,7 +1481,8 @@ void ProjectPanel::draw_folder_tree(const std::filesystem::path &root,
     const auto key = directory.string();
     auto &state = directories_[key];
     const auto label = folder_label(root, directory, rootLabel);
-    const bool leaf = (state.loaded || state.hasCompleteSnapshot) && state.directories.empty();
+    request_scan(directory);
+    const bool leaf = state.directories.empty();
     const bool wasExpanded = expandedDirectories_.contains(key);
 
     ImGui::PushID(key.c_str());
@@ -1494,7 +1496,10 @@ void ProjectPanel::draw_folder_tree(const std::filesystem::path &root,
     if (leaf)
         flags |= ImGuiTreeNodeFlags_Leaf;
     ImGui::SetNextItemOpen(wasExpanded, ImGuiCond_Always);
-    const bool open = ImGui::TreeNodeEx("##asset-folder", flags, "");
+    const bool nodeOpen = ImGui::TreeNodeEx("##asset-folder", flags, "");
+    // ImGui leaf nodes report open even when no expansion was requested.
+    // Preserve the user's expansion state while an unknown listing is loading.
+    const bool open = leaf ? wasExpanded : nodeOpen;
     if (open != wasExpanded)
     {
         if (open)
@@ -3473,6 +3478,8 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
 
     service_template_state(document, commands, selection);
 
+    // Visible contents take priority over speculative folder-arrow checks.
+    request_scan(selectedDirectory_);
     const ImVec2 available = ImGui::GetContentRegionAvail();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     const float leftWidth = std::clamp(viewState_.folderTreeWidth, 90.0f * uiScale, std::max(120.0f * uiScale, available.x - 120.0f * uiScale));

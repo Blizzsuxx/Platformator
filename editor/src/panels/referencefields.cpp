@@ -563,7 +563,7 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
     const auto info = inspect_scene_reference(document, current == nullptr ? defaultNull : *current, expectedTarget);
     if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
         info.state == ReferenceState::Invalid)
-        ImGui::TextWrapped("%s: %s", label, info.label.c_str());
+        ImGui::TextWrapped("%s: reference unavailable. Choose a replacement.", label);
     const std::string targetType = expectedTarget == "GameObject"
         ? "GameObject" : std::string(expectedTarget) + " component";
     const std::string cleanInfoLabel = (info.state == ReferenceState::Resolved && info.fileId.has_value())
@@ -587,27 +587,27 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
                                 ImGui::IsItemHovered());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x));
+    auto assign = [&](Json value) {
+        std::string error;
+        if (!validate_scene_reference_assignment(document, value, expectedTarget, nullable, error))
+        {
+            ImGui::SetTooltip("%s", error.c_str());
+            return;
+        }
+        commands.set_property(document,
+                              address_for_document(document, objectId, componentId,
+                                                   behaviorOrdinal, path),
+                              std::move(value));
+    };
     if (ImGui::BeginCombo("##reference-selector", identity.c_str()))
     {
         auto filterBuffer = load_scene_reference_search_buffer();
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::InputTextWithHint("##reference-selector-search", "Search name, type, or ID",
+        ImGui::InputTextWithHint("##reference-selector-search", "Search name or type",
                                  filterBuffer.data(), filterBuffer.size());
         save_scene_reference_search_buffer(filterBuffer);
         const std::string_view filter(filterBuffer.data());
         ImGui::Separator();
-        auto assign = [&](Json value) {
-            std::string error;
-            if (!validate_scene_reference_assignment(document, value, expectedTarget, nullable, error))
-            {
-                ImGui::SetTooltip("%s", error.c_str());
-                return;
-            }
-            commands.set_property(document,
-                                  address_for_document(document, objectId, componentId,
-                                                       behaviorOrdinal, path),
-                                  std::move(value));
-        };
         if (nullable && discovery_query_matches(filter, "None") &&
             ImGui::Selectable("None", info.state == ReferenceState::Unset))
             assign(nullptr);
@@ -621,10 +621,43 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
             if (!discovery_query_matches(filter, searchText))
                 continue;
             const bool selected = info.fileId && *info.fileId == id && info.state == ReferenceState::Resolved;
-            if (ImGui::Selectable(candidateLabel.c_str(), selected))
+            ImGui::PushID(id);
+            const std::string displayLabel = target_label(document.root, document.indexes, id, expectedTarget, false);
+            if (ImGui::Selectable(displayLabel.c_str(), selected))
                 assign(id);
+            ImGui::PopID();
         }
         ImGui::EndCombo();
+    }
+    if (ImGui::BeginDragDropTarget())
+    {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT"))
+        {
+            if (payload->DataSize == sizeof(int))
+            {
+                const int droppedObject = *static_cast<const int *>(payload->Data);
+                std::optional<int> target;
+                if (expectedTarget == "GameObject")
+                    target = droppedObject;
+                else
+                {
+                    const auto location = document.indexes.objectsById.find(droppedObject);
+                    const Json *object = location == document.indexes.objectsById.end()
+                        ? nullptr : resolve_object(document.root, location->second);
+                    if (object != nullptr && object->contains("components") && (*object)["components"].is_array())
+                        for (const auto &component : (*object)["components"])
+                            if (component_matches(component, expectedTarget) && component.contains("id"))
+                            {
+                                // Ambiguous objects require choosing the component in the picker.
+                                if (target) { target.reset(); break; }
+                                target = json_id(component["id"]);
+                            }
+                }
+                if (target)
+                    assign(*target);
+            }
+        }
+        ImGui::EndDragDropTarget();
     }
     pop_field_id(path);
 }
@@ -682,10 +715,9 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
     const std::string assetType = expectedAssetType == "AnimationClip" ? "Animation clip asset"
         : expectedAssetType.empty() || expectedAssetType == "Asset" ? "Asset"
         : std::string(expectedAssetType) + " asset";
-    const std::string display = info.state == ReferenceState::Resolved
-        ? assetType + ": " + std::filesystem::path(info.path).filename().string()
-        : info.state == ReferenceState::Unset ? "Select " + assetType + "..."
-                                              : "Missing " + assetType;
+    const std::string display = !info.path.empty()
+        ? std::filesystem::path(info.path).filename().string()
+        : "None";
     const std::string rawPath = currentValue.is_string()
         ? currentValue.get<std::string>() : std::string{};
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
@@ -937,11 +969,8 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
         : expectedAssetType.empty() || expectedAssetType == "Asset" ? "Asset"
         : std::string(expectedAssetType) + " asset";
     const std::string display = mixed
-        ? "Multiple " + assetType + "s..."
-        : (info.state == ReferenceState::Resolved
-               ? assetType + ": " + std::filesystem::path(info.path).filename().string()
-               : info.state == ReferenceState::Unset ? "Select " + assetType + "..."
-                                                     : "Missing " + assetType);
+        ? "Multiple values"
+        : (!info.path.empty() ? std::filesystem::path(info.path).filename().string() : "None");
     const std::string rawPath = !mixed && frontValue.is_string()
         ? frontValue.get<std::string>() : std::string{};
 

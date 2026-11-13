@@ -74,6 +74,7 @@ class AnimationPanel
     bool playing_ = false;
     std::size_t textureDraftFrame_ = static_cast<std::size_t>(-1);
     std::string textureDraft_;
+    std::vector<std::string> texturePickerCandidates_;
     std::array<char, 1024> textureDraftBuffer_{};
     std::string feedback_;
     std::unique_ptr<AnimationFrameRegionEditor> sourceRegionEditor_;

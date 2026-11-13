@@ -7,6 +7,9 @@
 
 namespace platformator_editor
 {
+inline const ImVec4 kAxisXColor{0.9f, 0.35f, 0.35f, 1.0f};
+inline const ImVec4 kAxisYColor{0.4f, 0.85f, 0.4f, 1.0f};
+
 enum class EditorIcon
 {
     NewDocument,
@@ -56,5 +59,5 @@ bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip =
 bool icon_button(EditorIcon icon, const char *str_id, bool active = false, const char *tooltip = nullptr, ImVec2 size = {});
 void draw_editor_icon(EditorIcon icon, ImDrawList *draw, ImVec2 origin, float size, ImU32 color);
 std::string_view strip_identity_suffix(std::string_view label) noexcept;
-std::string format_clean_float(double value, int maxDecimals = 3);
+std::string format_clean_float(double value, int maxDecimals = 2);
 } // namespace platformator_editor

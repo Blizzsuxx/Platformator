@@ -76,6 +76,9 @@ class Runtime
     bool simulateAndRenderFrame(double timeDelta);
     bool simulateAndRenderFrameWithCustomCallback(double timeDelta,
                                                   const std::function<void(double)> &preRenderCallback);
+    // Poll native or embedded Game view input. Call on the runtime owner thread.
+    bool isKeyDown(SDL_Scancode key) const;
+    SDL_MouseButtonFlags getMouseState(float *x = nullptr, float *y = nullptr) const;
     SDL_Window *getWindowHandle() const;
     SDL_Renderer *getRenderer() const;
     const std::vector<GameObject *> &getAllGameObjects() const;

@@ -19,6 +19,33 @@
 using namespace platformator_editor;
 using namespace platformator_editor_test;
 
+namespace platformator_editor
+{
+struct AddressNumericDraftTestProbe
+{
+    static void check_steps()
+    {
+        AddressNumericDraft draft;
+        draft.reset_to("precision", 0.1);
+        for (int i = 0; i < 6; ++i)
+            draft.finish_step("precision", 0.1, 0.05, false, false, true, true);
+        if (std::string(draft.buffer_.data()) != "0.40")
+            throw std::runtime_error("step display must omit binary arithmetic tails");
+        const auto committed = draft.finish_step("precision", 0.1, 0.05, false, false, false, false);
+        if (committed.kind != NumericDraftOutcomeKind::Commit || std::abs(committed.value - 0.4) > 1e-14)
+            throw std::runtime_error("stepping must commit the numeric value once on release");
+        draft.finish_step("precision", committed.value, 0.05, true, true, false, false);
+        if (std::string(draft.buffer_.data()) != "0.35")
+            throw std::runtime_error("decrement display must omit binary arithmetic tails");
+        const double precise = 0.12345678901234567;
+        draft.reset_to("precision", precise);
+        draft.format(precise, true);
+        if (draft.finish_text().kind != NumericDraftOutcomeKind::None)
+            throw std::runtime_error("unchanged precise text must not create an edit");
+    }
+};
+}
+
 namespace
 {
 void require(bool condition, const char *message)
@@ -193,7 +220,7 @@ void test_animation_numeric_transactions()
             "typing a valid duration draft must leave authored state and history unchanged");
     ImGuiID textureId = 0;
     gui.frame([&] {
-        textureId = ImGui::GetID("Texture");
+        textureId = ImGui::GetID("Clear##frame-texture");
         draw();
     });
     const ImVec2 texturePoint = gui.find_anywhere(draw, textureId);
@@ -272,8 +299,20 @@ void test_source_region_numeric_transactions_and_selection_scope(SDL_Texture *te
     };
 
     const ImGuiID xId = gui.widget_id(drawZero,
-        region_address(document, 0, assetRoot, reference, "x"), "X");
+        region_address(document, 0, assetRoot, reference, "x"), "##X");
     const ImVec2 xPoint = gui.find_at_x(drawZero, xId, 60.0f);
+    const ImGuiID yId = gui.widget_id(drawZero,
+        region_address(document, 0, assetRoot, reference, "y"), "##Y");
+    const ImVec2 yPoint = gui.find_at_x(drawZero, yId, 250.0f);
+    const ImGuiID widthId = gui.widget_id(drawZero,
+        region_address(document, 0, assetRoot, reference, "width"), "##Width");
+    const ImVec2 widthPoint = gui.find_at_x(drawZero, widthId, 80.0f);
+    const ImGuiID heightId = gui.widget_id(drawZero,
+        region_address(document, 0, assetRoot, reference, "height"), "##Height");
+    const ImVec2 heightPoint = gui.find_at_x(drawZero, heightId, 280.0f);
+    require(std::abs(xPoint.y - yPoint.y) < 1.0f &&
+                std::abs(widthPoint.y - heightPoint.y) < 1.0f && widthPoint.y > xPoint.y,
+            "source-region fields must use an XY row followed by a paired dimensions row");
     gui.click(drawZero, xPoint);
     gui.replace_text(drawZero, xPoint, "5", false);
     require(document.root()["frames"][0]["sourceRect"]["x"] == 0.0 &&
@@ -287,7 +326,7 @@ void test_source_region_numeric_transactions_and_selection_scope(SDL_Texture *te
             "changing frames must discard the old frame's source-region draft");
 
     const ImGuiID currentXId = gui.widget_id(drawZero,
-        region_address(document, 0, assetRoot, reference, "x"), "X");
+        region_address(document, 0, assetRoot, reference, "x"), "##X");
     const ImVec2 currentXPoint = gui.find_at_x(drawZero, currentXId, 60.0f);
     gui.click(drawZero, currentXPoint);
     gui.replace_text(drawZero, currentXPoint, "3", true);
@@ -370,6 +409,7 @@ int main()
 {
     try
     {
+        AddressNumericDraftTestProbe::check_steps();
         const bool ownsSdlVideo = (SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0;
         if (ownsSdlVideo)
             require(SDL_InitSubSystem(SDL_INIT_VIDEO), "SDL video initializes for source region input");

@@ -1094,6 +1094,68 @@ namespace
         ::close(eventPipe[0]);
     }
 
+    void test_forwarded_input_is_pollable()
+    {
+        int commands[2], events[2];
+        require(::pipe(commands) == 0 && ::pipe(events) == 0, "input test channels open");
+        set_nonblocking(commands[0]);
+        set_nonblocking(events[0]);
+        set_nonblocking(events[1]);
+        const int mapping = create_frame_mapping();
+        EditorSessionLaunchOptions launch{static_cast<std::uintptr_t>(commands[0]),
+            static_cast<std::uintptr_t>(events[1]), static_cast<std::uintptr_t>(mapping)};
+        platformator::EditorSessionService service(launch);
+        RuntimeOptions options;
+        options.editorSession = launch;
+        platformator::Runtime runtime(options);
+        Message message;
+        message.nonce = "0123456789abcdef";
+        message.playGeneration = 84;
+        std::uint64_t sequence = 0;
+        const auto send = [&](const char *type, Json body = Json::object()) {
+            message.sequence = ++sequence;
+            message.type = type;
+            message.body = std::move(body);
+            std::string error;
+            write_frame(commands[1], encode_frame(message, Direction::Request, error));
+            require(error.empty(), "input command encodes");
+        };
+        send("hello");
+        const Json key{{"scancode", SDL_SCANCODE_A}, {"keycode", SDLK_A}, {"modifiers", 0}};
+        int calls = 0;
+        runtime.run_with_owner_service([&](SDLWindow &window) {
+            require(service.pump(runtime.getRuntimeSerial(), window), "input service keeps running");
+            if (calls == 0) read_events(events[0]);
+            switch (++calls)
+            {
+            case 1: send("key_down", key); break;
+            case 2:
+                require(runtime.isKeyDown(SDL_SCANCODE_A), "forwarded key down must be pollable by gameplay");
+                send("key_up", key); break;
+            case 3:
+                require(!runtime.isKeyDown(SDL_SCANCODE_A), "forwarded key up clears gameplay state");
+                send("key_down", key);
+                send("mouse_move", Json{{"x", 20.0}, {"y", 30.0}});
+                send("mouse_button", Json{{"button", 1}, {"down", true}, {"x", 20.0}, {"y", 30.0}});
+                break;
+            case 4: {
+                float x = 0, y = 0;
+                require(runtime.isKeyDown(SDL_SCANCODE_A) &&
+                        (runtime.getMouseState(&x, &y) & SDL_BUTTON_LMASK) && x == 20 && y == 30,
+                        "forwarded keyboard and mouse state reach gameplay polling");
+                send("release_all_inputs"); break;
+            }
+            case 5:
+                require(!runtime.isKeyDown(SDL_SCANCODE_A) && !(runtime.getMouseState() & SDL_BUTTON_LMASK),
+                        "releasing capture clears held keyboard and mouse input");
+                return false;
+            }
+            return true;
+        }, [](std::uint64_t) {});
+        ::close(commands[1]);
+        ::close(events[0]);
+    }
+
     void test_owner_thread_hierarchy_pages_and_handle_inspection()
     {
         (void)SessionInspectionBehavior::platformatorRegisteredBehavior;
@@ -2057,6 +2119,7 @@ int main()
         test_child_session_validates_descriptors_and_services_owner_thread();
         test_owner_runtime_pause_resume_and_one_fixed_step();
         test_hidden_frame_capture_is_visibility_gated_and_released();
+        test_forwarded_input_is_pollable();
         test_owner_thread_hierarchy_pages_and_handle_inspection();
         test_child_never_reuses_published_frame_slots();
         test_play_session_owns_process_and_reaps_before_channel_cleanup();

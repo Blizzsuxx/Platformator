@@ -33,9 +33,10 @@ struct NumericDraftOutcome
 // frame, tab, source, or project transition discards an obsolete draft.
 class AddressNumericDraft
 {
+    friend struct AddressNumericDraftTestProbe;
   public:
     NumericDraftOutcome draw(const char *label, std::string_view address,
-                             double committedValue, double step)
+                             double committedValue, double step, bool showStepButtons = true)
     {
         if (active_ && address_ != address)
             cancel();
@@ -44,6 +45,12 @@ class AddressNumericDraft
 
         const std::string scopedAddress(address);
         ImGui::PushID(scopedAddress.c_str());
+        const float scale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+        const float buttonWidth = 22.0f * scale;
+        const float labelWidth = ImGui::CalcTextSize(label, nullptr, true).x;
+        const float reserve = (showStepButtons ? 2.0f * (buttonWidth + ImGui::GetStyle().ItemSpacing.x) : 0.0f) +
+            (labelWidth > 0.0f ? labelWidth + ImGui::GetStyle().ItemInnerSpacing.x : 0.0f);
+        ImGui::SetNextItemWidth(std::max(1.0f, std::min(ImGui::CalcItemWidth(), ImGui::GetContentRegionAvail().x - reserve)));
         const bool entered = ImGui::InputText(label, buffer_.data(), buffer_.size(),
                                               ImGuiInputTextFlags_EnterReturnsTrue);
         widgetId_ = ImGui::GetItemID();
@@ -56,6 +63,12 @@ class AddressNumericDraft
             active_ = true;
             address_ = scopedAddress;
             originalValue_ = committedValue;
+            if (inputActivated)
+            {
+                format(committedValue, true);
+                if (ImGuiInputTextState *state = ImGui::GetInputTextState(widgetId_))
+                    state->ReloadUserBufAndSelectAll();
+            }
         }
 
         NumericDraftOutcome outcome;
@@ -72,18 +85,21 @@ class AddressNumericDraft
         else if (inputDeactivated && !entered && active_ && stepMode_ == StepMode::None)
             reset_to(address, committedValue);
 
-        ImGui::SameLine();
-        ImGui::PushButtonRepeat(true);
-        const bool downPressed = ImGui::Button("-", ImVec2(22.0f, 0.0f));
-        const bool downActive = ImGui::IsItemActive();
-        ImGui::SameLine();
-        const bool upPressed = ImGui::Button("+", ImVec2(22.0f, 0.0f));
-        const bool upActive = ImGui::IsItemActive();
-        ImGui::PopButtonRepeat();
+        if (showStepButtons)
+        {
+            ImGui::SameLine();
+            ImGui::PushButtonRepeat(true);
+            const bool downPressed = ImGui::Button("-", ImVec2(buttonWidth, 0.0f));
+            const bool downActive = ImGui::IsItemActive();
+            ImGui::SameLine();
+            const bool upPressed = ImGui::Button("+", ImVec2(buttonWidth, 0.0f));
+            const bool upActive = ImGui::IsItemActive();
+            ImGui::PopButtonRepeat();
 
-        if (outcome.kind == NumericDraftOutcomeKind::None)
-            outcome = finish_step(address, committedValue, step,
-                                  downPressed, downActive, upPressed, upActive);
+            if (outcome.kind == NumericDraftOutcomeKind::None)
+                outcome = finish_step(address, committedValue, step,
+                                      downPressed, downActive, upPressed, upActive);
+        }
         ImGui::PopID();
         return outcome;
     }
@@ -158,12 +174,13 @@ class AddressNumericDraft
             active_ = true;
             edited_ = false;
             originalValue_ = committedValue;
+            stepValue_ = committedValue;
             format(committedValue);
         }
         stepMode_ = mode;
     }
 
-    void format(double value)
+    void format(double value, bool fullPrecision = false)
     {
         buffer_.fill('\0');
         if (!std::isfinite(value))
@@ -172,10 +189,21 @@ class AddressNumericDraft
             std::copy(text.begin(), text.end(), buffer_.begin());
             return;
         }
-        const auto formatted = std::to_chars(buffer_.data(), buffer_.data() + buffer_.size() - 1,
-                                             value, std::chars_format::general);
+        // Keep authored precision for text editing; hide binary arithmetic tails in
+        // inactive and stepped displays without rounding the stored value.
+        const auto formatted = fullPrecision
+            ? std::to_chars(buffer_.data(), buffer_.data() + buffer_.size() - 1,
+                            value, std::chars_format::general)
+            : std::to_chars(buffer_.data(), buffer_.data() + buffer_.size() - 1,
+                            value, std::chars_format::fixed, 2);
         if (formatted.ec != std::errc{})
-            buffer_[0] = '0';
+        {
+            buffer_.fill('\0');
+            const auto scientific = std::to_chars(buffer_.data(), buffer_.data() + buffer_.size() - 1,
+                                                  value, std::chars_format::scientific, 2);
+            if (scientific.ec != std::errc{})
+                buffer_[0] = '0';
+        }
     }
 
     NumericDraftOutcome finish_text()
@@ -216,19 +244,14 @@ class AddressNumericDraft
         const bool buttonActive = pressingDown ? downActive : upActive;
         if (stepMode_ != StepMode::None && buttonPressed)
         {
-            double current = 0.0;
-            if (!parse(buffer_.data(), current))
+            const double next = stepValue_ + (pressingDown ? -step : step);
+            if (!std::isfinite(next))
                 outcome.kind = NumericDraftOutcomeKind::Invalid;
             else
             {
-                const double next = current + (pressingDown ? -step : step);
-                if (!std::isfinite(next))
-                    outcome.kind = NumericDraftOutcomeKind::Invalid;
-                else
-                {
-                    format(next);
-                    edited_ = true;
-                }
+                stepValue_ = next;
+                format(next);
+                edited_ = true;
             }
         }
         if (outcome.kind == NumericDraftOutcomeKind::Invalid)
@@ -238,11 +261,10 @@ class AddressNumericDraft
         }
         if (stepMode_ != StepMode::None && !buttonActive)
         {
-            double value = 0.0;
-            if (edited_ && parse(buffer_.data(), value) && value != originalValue_)
+            if (edited_ && stepValue_ != originalValue_)
             {
                 outcome.kind = NumericDraftOutcomeKind::Commit;
-                outcome.value = value;
+                outcome.value = stepValue_;
             }
             reset_to(address, outcome.kind == NumericDraftOutcomeKind::Commit
                                    ? outcome.value : committedValue);
@@ -254,6 +276,7 @@ class AddressNumericDraft
     ImGuiID widgetId_ = 0;
     std::array<char, 64> buffer_{};
     double originalValue_ = 0.0;
+    double stepValue_ = 0.0;
     bool active_ = false;
     bool edited_ = false;
     StepMode stepMode_ = StepMode::None;

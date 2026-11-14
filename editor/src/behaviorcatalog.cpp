@@ -1,4 +1,5 @@
 #include "behaviorcatalog.h"
+#include "sourcescanner.h"
 
 #include <algorithm>
 #include <array>
@@ -130,60 +131,30 @@ bool valid_catalog(const Json &document, std::string &error)
 }
 } // namespace
 
-void BehaviorCatalog::configure(CatalogProtocol protocol, CatalogIdentity identity)
+void BehaviorCatalog::configure(CatalogIdentity identity)
 {
-    if (protocol_ == protocol && identity_ == identity)
+    if (identity_ == identity)
         return;
-    protocol_ = protocol;
     identity_ = std::move(identity);
     ++revision_;
-    if (queryActive_)
+    if (snapshot_)
+        state_ = CatalogState::Stale;
+    else
     {
-        queryActive_ = false;
-        stdout_.clear();
-        stderr_.clear();
-        error_ = "catalog query identity changed before completion";
+        state_ = CatalogState::Unavailable;
     }
-    state_ = snapshot_ ? CatalogState::Stale : CatalogState::Unavailable;
 }
 
 void BehaviorCatalog::invalidate(std::string message)
 {
-    if (queryActive_)
-    {
-        queryActive_ = false;
-        stdout_.clear();
-        stderr_.clear();
-    }
     state_ = snapshot_ ? CatalogState::Stale : CatalogState::Unavailable;
     error_ = std::move(message);
     ++revision_;
 }
 
-CatalogProtocol BehaviorCatalog::protocol() const noexcept
-{
-    return protocol_;
-}
-
 CatalogState BehaviorCatalog::state() const noexcept
 {
     return state_;
-}
-
-bool BehaviorCatalog::can_query() const noexcept
-{
-    return protocol_ == CatalogProtocol::CommonRunnerV1;
-}
-
-bool BehaviorCatalog::can_build_only() const noexcept
-{
-    return true;
-}
-
-bool BehaviorCatalog::can_automatic_run() const noexcept
-{
-    return protocol_ == CatalogProtocol::CommonRunnerV1 && state_ == CatalogState::Current &&
-           snapshot_ && snapshot_->identity == identity_;
 }
 
 const std::string &BehaviorCatalog::last_error() const noexcept
@@ -196,172 +167,104 @@ std::shared_ptr<const BehaviorCatalogSnapshot> BehaviorCatalog::snapshot() const
     return snapshot_;
 }
 
-bool BehaviorCatalog::begin_query()
-{
-    if (!can_query())
-    {
-        error_ = "catalog protocol is unavailable for this target";
-        return false;
-    }
-    if (queryActive_)
-    {
-        error_ = "a catalog query is already active";
-        return false;
-    }
-    stdout_.clear();
-    stderr_.clear();
-    error_.clear();
-    outputExceeded_ = false;
-    queryActive_ = true;
-    return true;
-}
-
-bool BehaviorCatalog::append(std::string &stream, std::string_view bytes)
-{
-    if (!queryActive_ || outputExceeded_)
-        return false;
-    const std::size_t current = stdout_.size() + stderr_.size();
-    if (current > kMaximumCatalogBytes || bytes.size() > kMaximumCatalogBytes - current)
-    {
-        outputExceeded_ = true;
-        error_ = "catalog query exceeded the four MiB output limit";
-        return false;
-    }
-    stream.append(bytes.data(), bytes.size());
-    return true;
-}
-
-bool BehaviorCatalog::append_stdout(std::string_view bytes)
-{
-    return append(stdout_, bytes);
-}
-
-bool BehaviorCatalog::append_stderr(std::string_view bytes)
-{
-    return append(stderr_, bytes);
-}
-
 bool BehaviorCatalog::reject(std::string message)
 {
-    queryActive_ = false;
     error_ = std::move(message);
     state_ = snapshot_ ? CatalogState::Stale : CatalogState::Unavailable;
-    stdout_.clear();
-    stderr_.clear();
     return false;
 }
 
-bool BehaviorCatalog::finish_query(int exitCode, std::chrono::milliseconds elapsed, bool timedOut)
+bool BehaviorCatalog::set_source_catalog(Json document, CatalogIdentity identity)
 {
-    if (!queryActive_)
-        return false;
-    if (outputExceeded_)
-        return reject(error_);
-    queryActive_ = false;
-    if (timedOut || elapsed > kMaximumCatalogTime)
-        return reject("catalog query exceeded the ten second time limit");
-    if (exitCode != 0)
-        return reject("catalog executable exited with status " + std::to_string(exitCode));
-
-    Json parsed;
-    try
-    {
-        parsed = Json::parse(stdout_);
-    }
-    catch (const std::exception &error)
-    {
-        return reject(std::string("catalog stdout is not one complete JSON document: ") + error.what());
-    }
     std::string validationError;
-    if (!valid_catalog(parsed, validationError))
+    if (!valid_catalog(document, validationError))
         return reject(std::move(validationError));
 
+    if (identity != CatalogIdentity{})
+        identity_ = std::move(identity);
     auto next = std::make_shared<BehaviorCatalogSnapshot>();
     next->identity = identity_;
-    next->document = std::move(parsed);
+    next->document = std::move(document);
     snapshot_ = std::move(next);
     state_ = CatalogState::Current;
     ++revision_;
     error_.clear();
-    stdout_.clear();
-    stderr_.clear();
     return true;
 }
 
-BehaviorCatalogQuery::~BehaviorCatalogQuery()
+bool BehaviorCatalog::load_from_source_scan(const SourceScanResult &scan, CatalogIdentity identity)
 {
-    if (catalog_ != nullptr)
-        catalog_->finish_query(-1, std::chrono::milliseconds::zero(), true);
-    process_.stop();
-}
+    if (identity == CatalogIdentity{})
+        identity = identity_;
 
-bool BehaviorCatalogQuery::start(BehaviorCatalog &catalog, ProcessRequest request,
-                                 std::uint64_t generation)
-{
-    if (process_.running() || catalog_ != nullptr || !catalog.begin_query())
-        return false;
-    catalog_ = &catalog;
-    generation_ = generation;
-    startedAt_ = std::chrono::steady_clock::now();
-    stopRequested_ = false;
-    timedOut_ = false;
-    request.outputMode = ProcessOutputMode::Separate;
-    const bool started = process_.start(
-        std::move(request), generation,
-        [this](ProcessOutput output) {
-            if (catalog_ == nullptr || output.generation != generation_)
-                return;
-            const bool accepted = output.stream == ProcessStream::Stderr
-                                      ? catalog_->append_stderr(output.bytes)
-                                      : catalog_->append_stdout(output.bytes);
-            if (!accepted)
-                stopRequested_ = true;
-        },
-        [this](ProcessCompletion completion) {
-            if (catalog_ == nullptr || completion.generation != generation_)
-                return;
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - startedAt_);
-            catalog_->finish_query(completion.launched ? completion.exitCode : -1,
-                                   elapsed, timedOut_);
-            catalog_ = nullptr;
-        });
-    if (!started)
+    Json document = scan.to_catalog_json();
+    const bool sameProject = snapshot_ &&
+        snapshot_->identity.canonicalProjectPath == identity.canonicalProjectPath;
+    std::set<std::string> diagnosticTypes;
+    std::set<std::string> diagnosticPaths;
+    for (const auto &diagnostic : scan.diagnostics)
     {
-        catalog.finish_query(-1, std::chrono::duration_cast<std::chrono::milliseconds>(
-                                     std::chrono::steady_clock::now() - startedAt_));
-        catalog_ = nullptr;
-        return false;
+        if (!diagnostic.typeName.empty())
+            diagnosticTypes.insert(diagnostic.typeName);
+        if (!diagnostic.filePath.empty())
+            diagnosticPaths.insert(diagnostic.filePath.lexically_normal().generic_string());
     }
+
+    auto oldBehaviors = [&](const std::string &name) -> const Json * {
+        if (!sameProject)
+            return nullptr;
+        const auto &items = snapshot_->document["behaviors"];
+        for (const auto &item : items)
+            if (item.value("name", std::string{}) == name)
+                return &item;
+        return nullptr;
+    };
+    auto diagnostic_for = [&](const Json &behavior) {
+        if (diagnosticTypes.contains(behavior.value("name", std::string{})))
+            return true;
+        for (const char *pathKey : {"header_path", "source_path"})
+        {
+            const std::string path = behavior.value(pathKey, std::string{});
+            if (!path.empty() && diagnosticPaths.contains(
+                    std::filesystem::path(path).lexically_normal().generic_string()))
+                return true;
+        }
+        return false;
+    };
+
+    std::set<std::string> present;
+    for (auto &behavior : document["behaviors"])
+    {
+        const std::string name = behavior.value("name", std::string{});
+        present.insert(name);
+        if (const Json *previous = oldBehaviors(name); previous != nullptr && diagnostic_for(behavior))
+        {
+            const std::string warning = "Source declaration is temporarily incomplete; showing the last valid schema.";
+            behavior = *previous;
+            behavior["scanner_warning"] = warning;
+        }
+    }
+    if (sameProject)
+    {
+        for (const auto &previous : snapshot_->document["behaviors"])
+        {
+            const std::string name = previous.value("name", std::string{});
+            if (!present.contains(name) && diagnostic_for(previous))
+            {
+                Json retained = previous;
+                retained["scanner_warning"] =
+                    "Source declaration is temporarily incomplete; showing the last valid schema.";
+                document["behaviors"].push_back(std::move(retained));
+                present.insert(name);
+            }
+        }
+    }
+
+    if (!set_source_catalog(std::move(document), std::move(identity)))
+        return false;
+    if (!scan.diagnostics.empty())
+        error_ = std::to_string(scan.diagnostics.size()) +
+                 " source schema warning(s); affected behaviors keep their last valid fields.";
     return true;
-}
-
-void BehaviorCatalogQuery::poll()
-{
-    if (catalog_ != nullptr &&
-        std::chrono::steady_clock::now() - startedAt_ > kMaximumCatalogTime)
-    {
-        timedOut_ = true;
-        stopRequested_ = true;
-    }
-    if (stopRequested_ && process_.running())
-    {
-        process_.stop();
-        stopRequested_ = false;
-    }
-    process_.poll();
-}
-
-void BehaviorCatalogQuery::stop()
-{
-    if (catalog_ == nullptr)
-        return;
-    stopRequested_ = true;
-    process_.stop();
-}
-
-bool BehaviorCatalogQuery::running() const noexcept
-{
-    return catalog_ != nullptr && process_.running();
 }
 } // namespace platformator_editor

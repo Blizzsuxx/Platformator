@@ -1,0 +1,53 @@
+{
+  "build": {
+    "executable": "bin/editor-debug/platformator_editor_audiopreview_test",
+    "executable_sha256": "cb9759ce27184630dec2d67f0e6261592649b96d6d4bba100ba9df7c8fcc8b45",
+    "git_revision": "2211d37f693498169aacc4b0f4f9fdf7751f19f6"
+  },
+  "captured_utc": "2026-11-13T13:40:23.760453+00:00",
+  "command": [
+    "python3",
+    "benchmark/capture_audio_preview.py",
+    "--binary",
+    "bin/editor-debug/platformator_editor_audiopreview_test"
+  ],
+  "diagnostic": "max synchronous play call: 4.78525 ms (limit 250 ms)",
+  "environment": {
+    "SDL_AUDIODRIVER": "dummy",
+    "SDL_VIDEODRIVER": "dummy"
+  },
+  "measurement_command": [
+    "bin/editor-debug/platformator_editor_audiopreview_test",
+    "--timing-capture"
+  ],
+  "process": {
+    "failure": null,
+    "return_code": 0,
+    "wall_budget_seconds": 60,
+    "wall_seconds": 0.442
+  },
+  "schema": "platformator.audio-preview-timing.v1",
+  "status": "PASS",
+  "timing": {
+    "cold": {
+      "count": 5,
+      "max_ms": 4.785,
+      "median_ms": 3.006
+    },
+    "maximum_synchronous_latency_ms": 4.785,
+    "warm": {
+      "count": 5,
+      "max_ms": 0.043,
+      "median_ms": 0.042
+    }
+  },
+  "workload": {
+    "audio_backend": "SDL dummy playback device",
+    "cold_samples": 5,
+    "identity": "2-second mono PCM WAV; fresh service cold samples and one warmed service",
+    "maximum_allowed_synchronous_latency_ms": 250.0,
+    "responsiveness_measurement": "synchronous toggle_or_play call latency, a direct editor-thread stall proxy",
+    "warm_samples": 5,
+    "warmup_samples": 3
+  }
+}

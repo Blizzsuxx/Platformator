@@ -432,7 +432,6 @@ Json game_pipeline_observation(const std::filesystem::path &repositoryRoot,
         : std::vector<std::string>{"cmake", "-E", "true"};
     request.runArguments = {"--headless", "--smoke-steps", "1000000"};
     request.scene = std::move(scene);
-    request.catalogProtocol = "common-runner-v1";
     request.identity.canonicalProjectPath = projectRoot.string();
     request.identity.profile = "debug";
     request.identity.target = "main";
@@ -476,7 +475,7 @@ Json game_pipeline_observation(const std::filesystem::path &repositoryRoot,
                                  "\n" + pipeline.console().text());
     }
     const auto runReachedAt = Clock::now();
-    const auto catalogCurrent = catalog.can_automatic_run();
+    const bool catalogCurrent = catalog.state() == platformator_editor::CatalogState::Current;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     pipeline.poll();
     if (captureInterrupted != 0)

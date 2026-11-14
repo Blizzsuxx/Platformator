@@ -45,7 +45,8 @@ class ProjectSession
     void set_wake_callback(std::function<void()> callback);
 
     WorkspaceActionResult set_project_roots(const std::filesystem::path &projectRoot,
-                                            const std::filesystem::path &assetRoot);
+                                            const std::filesystem::path &assetRoot,
+                                            bool discardDirtyDocuments = false);
 
   private:
     friend struct ProjectSessionTestProbe;

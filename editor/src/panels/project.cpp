@@ -2,6 +2,7 @@
 #include "imagepreflight.h"
 
 #include "../assetformats.h"
+#include "../audiopreview.h"
 #include "../editorwork.h"
 #include "../componenttypes.h"
 #include "../style.h"
@@ -9,6 +10,7 @@
 #include "referencefields.h"
 #include "selection.h"
 #include "spriteeditor.h"
+#include "../templates.h"
 
 #include <algorithm>
 #include <array>
@@ -27,6 +29,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <platformator/gameobject.h>
 
 namespace platformator_editor
@@ -312,6 +315,11 @@ std::optional<std::string> behavior_type_from_source(const std::filesystem::path
 }
 } // namespace
 
+bool ProjectPanel::project_shortcuts_allowed(bool wantTextInput, bool renaming) noexcept
+{
+    return !wantTextInput && !renaming;
+}
+
 ProjectPanel::ProjectPanel(ProjectContext &context, ProjectChanges &changes,
                            ProjectScanService &scans, SDL_Renderer *renderer)
     : context_(context), changes_(changes), scans_(scans), renderer_(renderer),
@@ -332,6 +340,22 @@ void ProjectPanel::set_renderer(SDL_Renderer *renderer) noexcept
     release_preview_resources();
     renderer_ = renderer;
     frameRenderer_ = renderer;
+}
+
+bool ProjectPanel::select_asset(const std::filesystem::path &path)
+{
+    if (assetRoot_.empty() || path.empty())
+        return false;
+    std::error_code error;
+    const auto canonical = std::filesystem::weakly_canonical(path, error);
+    if (error || !path_is_within(assetRoot_, canonical) ||
+        !std::filesystem::is_regular_file(canonical, error) || error)
+        return false;
+    selectedRoot_ = assetRoot_;
+    selectedRootLabel_ = "Assets";
+    selectedDirectory_ = canonical.parent_path();
+    selectedEntry_ = canonical;
+    return true;
 }
 
 void ProjectPanel::set_frame_renderer(SDL_Renderer *renderer) noexcept
@@ -405,7 +429,7 @@ std::vector<SemanticNode> ProjectPanel::semantic_nodes(const DocumentSession &do
     refresh.parentId = prefix;
     refresh.role = SemanticRole::Button;
     refresh.name = "Refresh project assets";
-    refresh.value = bounded_semantic_text(coverageMessage_);
+    refresh.value = bounded_semantic_text(!coverageMessage_.empty() ? coverageMessage_ : thumbnailMessage_);
     refresh.help = "Refresh the selected folder and recheck referenced resources.";
     refresh.visible = true;
     refresh.actions = {"activate"};
@@ -438,116 +462,9 @@ std::vector<SemanticNode> ProjectPanel::semantic_nodes(const DocumentSession &do
     for (const auto &[id, target] : pendingTileTargets_)
         pendingSemanticTargets_.emplace(id, target);
 
-    const DocumentIdentity currentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                           DocumentGeneration{document.documentGeneration}};
     std::error_code selectedEntryError;
     const bool selectedEntryIsDirectory = selectedEntry_ &&
         std::filesystem::is_directory(*selectedEntry_, selectedEntryError);
-    if (selectedEntry_ && !selectedEntryError && !selectedEntryIsDirectory &&
-        path_is_within(semanticAssetRoot, *selectedEntry_) &&
-        editor_asset_is(*selectedEntry_, EditorAssetKind::Template))
-    {
-        const auto add_template_action = [&](std::string suffix, std::string name,
-                                             bool enabled,
-                                             SemanticProjectTarget::Operation operation) {
-            const std::string id = prefix + "/template/" + suffix;
-            SemanticNode node;
-            node.id = id;
-            node.parentId = prefix;
-            node.role = SemanticRole::Button;
-            node.name = std::move(name);
-            node.value = selectedEntry_->filename().string();
-            node.visible = true;
-            node.enabled = enabled;
-            node.focused = semanticFocusNode_ && *semanticFocusNode_ == id;
-            node.actions = {"activate"};
-            nodes.push_back(std::move(node));
-            SemanticProjectTarget target;
-            target.path = *selectedEntry_;
-            target.root = semanticAssetRoot;
-            target.projectGeneration = ProjectGeneration{document.projectGeneration};
-            target.documentIdentity = currentIdentity;
-            target.structureRevision = document.structureRevision;
-            target.valueRevision = document.valueRevision;
-            target.operation = operation;
-            pendingSemanticTargets_.emplace(id, std::move(target));
-        };
-
-        add_template_action("load", "Load selected object template", true,
-                            SemanticProjectTarget::Operation::LoadTemplate);
-        if (selectedTemplate_ && selectedTemplatePath_ == *selectedEntry_)
-        {
-            add_template_action("instantiate", "Instantiate selected object template",
-                                templateCanInstantiate_,
-                                SemanticProjectTarget::Operation::InstantiateTemplate);
-            if (templateTargetsStructureRevision_ == document.structureRevision &&
-                templateTargetsValueRevision_ == document.valueRevision)
-            {
-                const Json bindings = selectedTemplate_->reference_bindings();
-                const std::string destinationIdentity = template_scene_identity(document);
-                std::size_t exposedCandidates = 0;
-                if (bindings.is_array())
-                {
-                    for (const auto &binding : bindings)
-                    {
-                        if (!binding.is_object() || binding.value("scope", std::string{}) != "external" ||
-                            nodes.size() >= 256 || exposedCandidates >= 64)
-                            continue;
-                        const std::string kind = binding.value("target_kind", std::string{});
-                        const int originalId = binding.value("original_target_id", -1);
-                        const std::string key = std::to_string(binding.value("owner_id", -1)) + ":" +
-                            std::to_string(binding.value("component_id", -1)) + ":" +
-                            binding.value("path", std::string{});
-                        const auto candidates = templateTargetCandidates_.find(kind);
-                        const bool originalStillValid = candidates != templateTargetCandidates_.end() &&
-                            std::any_of(candidates->second.begin(), candidates->second.end(),
-                                [originalId](const auto &candidate) {
-                                    return candidate.first == originalId;
-                                });
-                        if (binding.value("source_scene_identity", std::string{}) == destinationIdentity &&
-                            originalStillValid)
-                            continue;
-                        if (candidates == templateTargetCandidates_.end())
-                            continue;
-                        const auto selectedTarget = externalTemplateTargets_.find(key);
-                        for (const auto &[targetId, label] : candidates->second)
-                        {
-                            if (nodes.size() >= 256 || exposedCandidates >= 64)
-                                break;
-                            const std::string id = prefix + "/template/assign/" +
-                                semantic_text_token(key) + "/" + std::to_string(targetId);
-                            SemanticNode node;
-                            node.id = id;
-                            node.parentId = prefix;
-                            node.role = SemanticRole::Button;
-                            node.name = bounded_semantic_text(
-                                "Assign external " + kind + " reference to " + label);
-                            node.visible = true;
-                            node.selected = selectedTarget != externalTemplateTargets_.end() &&
-                                selectedTarget->second == targetId;
-                            node.focused = semanticFocusNode_ && *semanticFocusNode_ == id;
-                            node.actions = {"activate"};
-                            nodes.push_back(std::move(node));
-                            SemanticProjectTarget target;
-                            target.path = *selectedEntry_;
-                            target.root = semanticAssetRoot;
-                            target.projectGeneration = ProjectGeneration{document.projectGeneration};
-                            target.documentIdentity = currentIdentity;
-                            target.structureRevision = document.structureRevision;
-                            target.valueRevision = document.valueRevision;
-                            target.operation = SemanticProjectTarget::Operation::AssignTemplateTarget;
-                            target.externalAssignmentKey = key;
-                            target.externalTargetKind = kind;
-                            target.externalTargetId = targetId;
-                            pendingSemanticTargets_.emplace(id, std::move(target));
-                            ++exposedCandidates;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     if (selectedEntry_ && !selectedEntryError && selection.objectId &&
         path_is_within(semanticAssetRoot, *selectedEntry_) && !selectedEntryIsDirectory)
     {
@@ -624,59 +541,6 @@ bool ProjectPanel::dispatch_semantic_action(DocumentSession &document,
     if (target.projectGeneration &&
         target.projectGeneration != ProjectGeneration{context_.snapshot().generation})
         return false;
-    const DocumentIdentity currentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                           DocumentGeneration{document.documentGeneration}};
-    if (target.operation != SemanticProjectTarget::Operation::Tile &&
-        (target.documentIdentity != currentIdentity ||
-         target.structureRevision != document.structureRevision ||
-         target.valueRevision != document.valueRevision))
-        return false;
-    if (target.operation == SemanticProjectTarget::Operation::LoadTemplate)
-    {
-        if (!allowEdits || !selectedEntry_ || *selectedEntry_ != target.path ||
-            target.root != document.assetRoot || target.projectGeneration !=
-                ProjectGeneration{document.projectGeneration} ||
-            !editor_asset_is(target.path, EditorAssetKind::Template))
-            return false;
-        load_selected_template(document);
-        semanticFocusNode_ = action.nodeId;
-        Selection focused = selection.current();
-        focused.focusedPanel = FocusedPanel::Project;
-        focused.focusedHost = hostGeneration;
-        selection.set(document, std::move(focused));
-        return true;
-    }
-    if (target.operation == SemanticProjectTarget::Operation::AssignTemplateTarget)
-    {
-        if (!allowEdits || !selectedEntry_ || *selectedEntry_ != target.path ||
-            target.root != document.assetRoot || !selectedTemplate_ ||
-            selectedTemplatePath_ != target.path || target.externalAssignmentKey.empty() ||
-            target.externalTargetKind.empty() || target.externalTargetId < 0)
-            return false;
-        const auto candidates = templateTargetCandidates_.find(target.externalTargetKind);
-        if (candidates == templateTargetCandidates_.end() ||
-            std::none_of(candidates->second.begin(), candidates->second.end(),
-                [&](const auto &candidate) { return candidate.first == target.externalTargetId; }))
-            return false;
-        externalTemplateTargets_[target.externalAssignmentKey] = target.externalTargetId;
-        templateFeedback_ = "External template reference assigned to the selected destination.";
-        semanticFocusNode_ = action.nodeId;
-        Selection focused = selection.current();
-        focused.focusedPanel = FocusedPanel::Project;
-        focused.focusedHost = hostGeneration;
-        selection.set(document, std::move(focused));
-        return true;
-    }
-    if (target.operation == SemanticProjectTarget::Operation::InstantiateTemplate)
-    {
-        if (!allowEdits || !selectedEntry_ || *selectedEntry_ != target.path ||
-            target.root != document.assetRoot || !selectedTemplate_ ||
-            selectedTemplatePath_ != target.path || !templateCanInstantiate_)
-            return false;
-        pendingTemplateInstantiate_ = true;
-        semanticFocusNode_ = action.nodeId;
-        return true;
-    }
     if (target.assignment)
     {
         if (!allowEdits || !selectedEntry_ || *selectedEntry_ != target.path ||
@@ -696,11 +560,7 @@ bool ProjectPanel::dispatch_semantic_action(DocumentSession &document,
             return false;
         std::string error;
         if (!assign_asset_target(document, commands, *current, target.path, error))
-        {
-            assignmentFeedback_ = std::move(error);
             return false;
-        }
-        assignmentFeedback_ = "Assigned " + target.path.filename().string() + " to " + current->label + ".";
         semanticFocusNode_ = action.nodeId;
         Selection focused = selection.current();
         focused.focusedPanel = FocusedPanel::Project;
@@ -769,6 +629,7 @@ void ProjectPanel::set_animation_draft_preview(const std::filesystem::path &asse
         animations_.erase(oldKey);
         staleAnimations_.insert(oldKey);
         failedAnimationRefreshes_.erase(oldKey);
+        failedAnimationMessages_.erase(oldKey);
         auto &oldRevision = animationRevisions_[oldKey];
         if (oldRevision != std::numeric_limits<std::uint64_t>::max())
             ++oldRevision;
@@ -781,12 +642,13 @@ void ProjectPanel::set_animation_draft_preview(const std::filesystem::path &asse
         ++revision;
     staleAnimations_.erase(key);
     failedAnimationRefreshes_.erase(key);
+    failedAnimationMessages_.erase(key);
 
     const auto prepared = prepare_animation_preview(document, assetRoot);
     if (!prepared.valid)
     {
         failedAnimationRefreshes_.insert(key);
-        coverageMessage_ = prepared.error;
+        failedAnimationMessages_[key] = prepared.error;
         return;
     }
     animations_[key] = convert_animation_preview(prepared);
@@ -832,6 +694,7 @@ void ProjectPanel::clear_animation_draft_preview()
     animations_.erase(key);
     staleAnimations_.insert(key);
     failedAnimationRefreshes_.erase(key);
+    failedAnimationMessages_.erase(key);
     auto &revision = animationRevisions_[key];
     if (revision != std::numeric_limits<std::uint64_t>::max())
         ++revision;
@@ -857,6 +720,7 @@ void ProjectPanel::release_preview_resources() noexcept
     animations_.clear();
     staleAnimations_.clear();
     failedAnimationRefreshes_.clear();
+    failedAnimationMessages_.clear();
     animationRevisions_.clear();
     animationDraftKey_.reset();
     animationDraftHistoryToken_ = 0;
@@ -888,19 +752,11 @@ void ProjectPanel::refresh()
     }
     requestPaths_.clear();
     release_preview_resources();
-    coverageMessage_ = "Asset folder refresh requested.";
 }
 
 bool ProjectPanel::take_reference_retry_request() noexcept
 {
     return std::exchange(referenceRetryRequested_, false);
-}
-
-void ProjectPanel::set_reference_retry_status(std::size_t scheduled)
-{
-    referenceRetryMessage_ = scheduled == 0
-        ? "No failed referenced Scene assets needed retry."
-        : "Retrying " + std::to_string(scheduled) + " failed referenced Scene asset(s).";
 }
 
 std::size_t ProjectPanel::apply_changes(const ProjectChangeBatch &batch,
@@ -1018,6 +874,7 @@ std::size_t ProjectPanel::apply_changes(const ProjectChangeBatch &batch,
             {
                 staleAnimations_.insert(key);
                 failedAnimationRefreshes_.erase(key);
+                failedAnimationMessages_.erase(key);
                 auto &revision = animationRevisions_[key];
                 ++revision;
                 if (revision == 0)
@@ -1421,6 +1278,7 @@ void ProjectPanel::apply_animation_results()
             animations_[result.key] = std::move(result.preview);
             staleAnimations_.erase(result.key);
             failedAnimationRefreshes_.erase(result.key);
+            failedAnimationMessages_.erase(result.key);
         }
         else
         {
@@ -1430,8 +1288,8 @@ void ProjectPanel::apply_animation_results()
                 entry->second.loaded = true;
             failedAnimationRefreshes_.insert(result.key);
             staleAnimations_.erase(result.key);
-            coverageMessage_ = result.error.empty()
-                ? "An animation preview is unavailable; click Refresh Assets to retry."
+            failedAnimationMessages_[result.key] = result.error.empty()
+                ? "Animation preview is unavailable; refresh the asset to retry."
                 : result.error;
         }
     }
@@ -1522,7 +1380,28 @@ void ProjectPanel::draw_folder_tree(const std::filesystem::path &root,
     drawList->AddText({textX, rowMinimum.y + (rowMaximum.y - rowMinimum.y - textSize.y) * 0.5f},
                       ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
     drawList->PopClipRect();
-    if (ImGui::IsItemClicked())
+    const bool folderClicked = ImGui::IsItemClicked();
+    if (hierarchyObjectTemplateDropCallback_ &&
+        ImGui::BeginDragDropTargetCustom(ImRect(rowMinimum, rowMaximum),
+                                         ImGui::GetID("##hierarchy-template-drop")))
+    {
+        if (const ImGuiPayload *payload =
+                ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT"))
+        {
+            if (payload->Data != nullptr && payload->DataSize == sizeof(int))
+            {
+                int objectId = 0;
+                std::memcpy(&objectId, payload->Data, sizeof(objectId));
+                selectedDirectory_ = directory;
+                selectedRoot_ = root;
+                selectedRootLabel_ = rootLabel;
+                selectedEntry_.reset();
+                hierarchyObjectTemplateDropCallback_(objectId, directory);
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (folderClicked)
     {
         selectedDirectory_ = directory;
         selectedRoot_ = root;
@@ -1557,11 +1436,20 @@ SDL_Texture *ProjectPanel::thumbnail_for(const std::filesystem::path &path)
         return nullptr;
     remember_presentation_dependency(path, context_.snapshot().assetRoot);
     SDL_Texture *texture = thumbnails_.request(path, renderer);
+    const std::string thumbnailKey = path.lexically_normal().string();
     if (texture == nullptr)
     {
         const std::string failure = thumbnails_.failure_message(path);
         if (!failure.empty())
-            coverageMessage_ = failure;
+        {
+            thumbnailMessage_ = failure;
+            thumbnailMessagePath_ = thumbnailKey;
+        }
+    }
+    else if (thumbnailMessagePath_ == thumbnailKey)
+    {
+        thumbnailMessage_.clear();
+        thumbnailMessagePath_.clear();
     }
     return texture;
 }
@@ -1721,7 +1609,10 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         else if (failedAnimationRefreshes_.contains(animationKey))
         {
             previewState = "Preview unavailable";
-            previewDetail = coverageMessage_;
+            const auto failure = failedAnimationMessages_.find(animationKey);
+            previewDetail = failure == failedAnimationMessages_.end()
+                ? "Animation preview is unavailable; refresh the asset to retry."
+                : failure->second;
         }
         else if (!animation.loaded)
             previewState = "Preparing preview";
@@ -1849,6 +1740,22 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
                           previewState.c_str());
     }
 
+    if (!isDirectory && audioPreview_ != nullptr &&
+        editor_asset_format(path).kind == EditorAssetKind::Audio && audioPreview_->is_playing(path))
+    {
+        constexpr char badge[] = "Playing";
+        const ImVec2 badgeSize = ImGui::CalcTextSize(badge);
+        const ImVec2 badgeMinimum{maximum.x - badgeSize.x - 14.0f * uiScale,
+                                  minimum.y + 4.0f * uiScale};
+        const ImVec2 badgeMaximum{maximum.x - 4.0f * uiScale,
+                                  badgeMinimum.y + badgeSize.y + 4.0f * uiScale};
+        drawList->AddRectFilled(badgeMinimum, badgeMaximum,
+                                ImGui::GetColorU32(ImGuiCol_ButtonActive), 3.0f * uiScale);
+        drawList->AddText({badgeMinimum.x + 5.0f * uiScale,
+                           badgeMinimum.y + 2.0f * uiScale},
+                          ImGui::GetColorU32(ImGuiCol_Text), badge);
+    }
+
     const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
     const float textX = minimum.x + 5.0f * uiScale;
     const float textY = maximum.y - textSize.y - 6.0f * uiScale;
@@ -1909,11 +1816,6 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
     if (clicked || doubleClicked)
     {
-        if (!selectedEntry_ || *selectedEntry_ != path)
-        {
-            assignmentFeedback_.clear();
-            selectedAssignmentTarget_.clear();
-        }
         selectedEntry_ = path;
     }
     if (doubleClicked)
@@ -1933,14 +1835,7 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         }
         else
         {
-            if (editor_asset_format(path).kind == EditorAssetKind::Animation &&
-                openAnimationCallback_)
-            {
-                assetDoubleClickPending_ = false;
-                openAnimationCallback_(path);
-            }
-            else
-                assetDoubleClickPending_ = true;
+            (void)open_asset(path);
         }
     }
 
@@ -1982,10 +1877,8 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
                 selectedDirectory_ = path;
                 selectedEntry_.reset();
             }
-            else if (openAnimationCallback_ && editor_asset_format(path).kind == EditorAssetKind::Animation)
-                openAnimationCallback_(path);
             else
-                assetDoubleClickPending_ = true;
+                (void)open_asset(path);
         }
         if (ImGui::MenuItem("Reveal in File Manager"))
         {
@@ -2117,18 +2010,16 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
                           ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
     }
 
-    const std::string typeText = isDirectory ? "Folder" : asset_search_type(path, false);
+    const bool audioPlaying = !isDirectory && audioPreview_ != nullptr &&
+        editor_asset_format(path).kind == EditorAssetKind::Audio && audioPreview_->is_playing(path);
+    const std::string typeText = audioPlaying ? "Playing · Audio"
+        : isDirectory ? "Folder" : asset_search_type(path, false);
     const float typeWidth = ImGui::CalcTextSize(typeText.c_str()).x;
     drawList->AddText({maximum.x - typeWidth - 8.0f * uiScale, textY},
                       ImGui::GetColorU32(ImGuiCol_TextDisabled), typeText.c_str());
 
     if (clicked)
     {
-        if (!selectedEntry_ || *selectedEntry_ != path)
-        {
-            assignmentFeedback_.clear();
-            selectedAssignmentTarget_.clear();
-        }
         selectedEntry_ = path;
     }
     const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
@@ -2149,13 +2040,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         }
         else
         {
-            if (editor_asset_format(path).kind == EditorAssetKind::Animation && openAnimationCallback_)
-            {
-                assetDoubleClickPending_ = false;
-                openAnimationCallback_(path);
-            }
-            else
-                assetDoubleClickPending_ = true;
+            (void)open_asset(path);
         }
     }
 
@@ -2170,10 +2055,8 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
                 selectedDirectory_ = path;
                 selectedEntry_.reset();
             }
-            else if (openAnimationCallback_ && editor_asset_format(path).kind == EditorAssetKind::Animation)
-                openAnimationCallback_(path);
             else
-                assetDoubleClickPending_ = true;
+                (void)open_asset(path);
         }
         if (ImGui::MenuItem("Reveal in File Manager"))
         {
@@ -2216,6 +2099,34 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         ImGui::EndPopup();
     }
 
+    if (pendingSemanticNodes_.size() < 128 && path_is_within(assetRoot, path))
+    {
+        const auto relative = path.lexically_relative(assetRoot);
+        const std::string nodeId = "main/panel/project/asset/" + semantic_path_token(relative);
+        SemanticNode node;
+        node.id = nodeId;
+        node.parentId = "main/panel/project/contents";
+        node.role = SemanticRole::ListItem;
+        node.name = bounded_semantic_text(label);
+        node.value = audioPlaying ? "Playing · Audio"
+            : isDirectory ? "Folder" : asset_search_type(path, false);
+        node.help = bounded_semantic_text(path.generic_string());
+        node.visible = true;
+        node.selected = selectedEntry_ && *selectedEntry_ == path;
+        node.bounds = SemanticBounds{minimum.x, minimum.y,
+                                     maximum.x - minimum.x, maximum.y - minimum.y};
+        node.actions = {"activate"};
+        pendingSemanticNodes_.push_back(std::move(node));
+        SemanticProjectTarget target;
+        target.path = path;
+        target.root = assetRoot;
+        target.rootLabel = selectedRootLabel_;
+        target.projectGeneration = ProjectGeneration{context_.snapshot().generation};
+        target.directory = isDirectory;
+        target.behaviorRoot = behaviorRoot;
+        pendingTileTargets_.emplace(nodeId, std::move(target));
+    }
+
     ImGui::PopID();
 }
 
@@ -2244,11 +2155,9 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
         }
         const std::string stem = candidate.stem().string();
         std::string content = "#include <platformator/behavior.h>\n\nclass " + stem + " : public platformator::Behavior\n{\npublic:\n    void update(float deltaTime) override {}\n};\n";
-        std::ofstream out(candidate, std::ios::binary);
-        if (out.is_open())
+        const auto written = write_file_atomically(candidate, content, false);
+        if (written.succeeded())
         {
-            out << content;
-            out.close();
             refresh();
             return true;
         }
@@ -2262,11 +2171,9 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
         {
             candidate = targetDir / ("New Scene (" + std::to_string(counter++) + ").scene");
         }
-        std::ofstream out(candidate, std::ios::binary);
-        if (out.is_open())
+        const auto written = write_file_atomically(candidate, "{\n    \"schema\": 1,\n    \"root\": []\n}\n", false);
+        if (written.succeeded())
         {
-            out << "{\n    \"schema\": 1,\n    \"root\": []\n}\n";
-            out.close();
             refresh();
             return true;
         }
@@ -2280,11 +2187,11 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
         {
             candidate = targetDir / ("New Template (" + std::to_string(counter++) + ").pttemplate");
         }
-        std::ofstream out(candidate, std::ios::binary);
-        if (out.is_open())
+        const auto written = write_file_atomically(candidate,
+            make_template_envelope("New Template", Json{{"id", 1}, {"name", "New Template"},
+                {"components", Json::array()}, {"children", Json::array()}}).dump(2) + "\n", false);
+        if (written.succeeded())
         {
-            out << "{\n    \"schema\": \"platformator/template/v1\",\n    \"root\": {\n        \"id\": 1,\n        \"name\": \"New Template\",\n        \"components\": []\n    },\n    \"reference_bindings\": []\n}\n";
-            out.close();
             refresh();
             return true;
         }
@@ -2303,11 +2210,9 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
             {"loop", true},
             {"filePath", candidate.string()}
         };
-        std::ofstream out(candidate, std::ios::binary);
-        if (out.is_open())
+        const auto written = write_file_atomically(candidate, clipJson.dump(4) + "\n", false);
+        if (written.succeeded())
         {
-            out << clipJson.dump(4) << "\n";
-            out.close();
             refresh();
             if (openAnimationCallback_)
                 openAnimationCallback_(candidate);
@@ -2353,9 +2258,23 @@ bool ProjectPanel::execute_context_rename(const std::filesystem::path &targetPat
         return false;
     std::error_code ec;
     const auto dest = targetPath.parent_path() / newName;
+    std::error_code typeError;
+    const bool directory = std::filesystem::is_directory(targetPath, typeError) && !typeError;
     std::filesystem::rename(targetPath, dest, ec);
-    if (!ec && selectedEntry_ && *selectedEntry_ == targetPath)
-        selectedEntry_ = dest;
+    if (!ec)
+    {
+        if (audioPreview_ != nullptr && audioPreview_->active_path())
+        {
+            const auto activePath = audioPreview_->active_path()->lexically_normal();
+            const auto renamedPath = targetPath.lexically_normal();
+            if (activePath == renamedPath || (directory && path_is_within(renamedPath, activePath)))
+                audioPreview_->stop();
+        }
+        if (selectedEntry_ && *selectedEntry_ == targetPath)
+            selectedEntry_ = dest;
+        if (assetRenameCallback_ && (directory || targetPath.extension() == ".pttemplate"))
+            assetRenameCallback_(targetPath, dest, directory);
+    }
     refresh();
     return !ec;
 }
@@ -2477,6 +2396,33 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     }
     const auto &filteredIndexes = state.filteredEntryIndexes;
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const auto acceptHierarchyDrop = [&](const ImVec2 &minimum, const ImVec2 &size,
+                                         const std::filesystem::path &directory) {
+        if (!hierarchyObjectTemplateDropCallback_)
+            return;
+        ImGui::PushID(directory.string().c_str());
+        if (ImGui::BeginDragDropTargetCustom(
+                ImRect(minimum, ImVec2(minimum.x + size.x, minimum.y + size.y)),
+                ImGui::GetID("##hierarchy-template-drop")))
+        {
+            if (const ImGuiPayload *payload =
+                    ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT"))
+            {
+                if (payload->Data != nullptr && payload->DataSize == sizeof(int))
+                {
+                    int objectId = 0;
+                    std::memcpy(&objectId, payload->Data, sizeof(objectId));
+                    selectedDirectory_ = directory;
+                    selectedRoot_ = root;
+                    selectedRootLabel_ = rootLabel;
+                    selectedEntry_.reset();
+                    hierarchyObjectTemplateDropCallback_(objectId, directory);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::PopID();
+    };
     const float footerHeight = ImGui::GetFrameHeightWithSpacing() + 6.0f;
     ImGui::BeginChild("##contents-scroll", ImVec2(0.0f, -footerHeight), ImGuiChildFlags_None);
 
@@ -2494,7 +2440,11 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         for (const std::size_t index : filteredIndexes)
         {
             const auto &entry = entries[index];
+            const ImVec2 minimum = ImGui::GetCursorScreenPos();
+            const float width = ImGui::GetContentRegionAvail().x;
             draw_asset_list_row(entry.path, root, entry.isDirectory, behaviorRoot, rowHeight);
+            if (entry.isDirectory)
+                acceptHierarchyDrop(minimum, ImVec2(width, rowHeight), entry.path);
             work::record(work::Counter::ProjectTiles);
         }
     }
@@ -2531,8 +2481,11 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
                 ImGui::SetCursorPos({startX + static_cast<float>(column) * (tileWidth + spacingX),
                                      startY + static_cast<float>(row) * rowStride});
                 const auto &entry = entries[filteredIndexes[entryIndex]];
+                const ImVec2 minimum = ImGui::GetCursorScreenPos();
                 draw_asset_tile(entry.path, root, entry.isDirectory, behaviorRoot,
                                 tileWidth, tileHeight);
+                if (entry.isDirectory)
+                    acceptHierarchyDrop(minimum, ImVec2(tileWidth, tileHeight), entry.path);
                 work::record(work::Counter::ProjectTiles);
             }
         }
@@ -2547,6 +2500,12 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
                                        ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
     {
         viewState_.contextTargetPath = selectedDirectory_;
+        if (ImGui::MenuItem("Refresh"))
+        {
+            refresh();
+            referenceRetryRequested_ = true;
+        }
+        ImGui::Separator();
         if (ImGui::BeginMenu("Create"))
         {
             if (ImGui::MenuItem("Folder"))
@@ -2570,7 +2529,10 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
 
     if (selectedEntry_ && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
     {
-        if (ImGui::IsKeyPressed(ImGuiKey_F2))
+        const ImGuiIO &projectIo = ImGui::GetIO();
+        const bool acceptsProjectShortcuts = project_shortcuts_allowed(
+            projectIo.WantTextInput, viewState_.renaming);
+        if (acceptsProjectShortcuts && ImGui::IsKeyPressed(ImGuiKey_F2))
         {
             viewState_.renaming = true;
             viewState_.renamingPath = *selectedEntry_;
@@ -2578,11 +2540,11 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
             std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
                           selectedEntry_->filename().string().c_str());
         }
-        else if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D))
+        else if (acceptsProjectShortcuts && projectIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D))
         {
             execute_context_duplicate(*selectedEntry_);
         }
-        else if (ImGui::IsKeyPressed(ImGuiKey_Delete))
+        else if (acceptsProjectShortcuts && ImGui::IsKeyPressed(ImGuiKey_Delete))
         {
             viewState_.confirmDeletePending = true;
             viewState_.pendingDeletePath = *selectedEntry_;
@@ -2731,695 +2693,51 @@ bool ProjectPanel::assign_asset_target(DocumentSession &document, EditCommandSer
     return false;
 }
 
-void ProjectPanel::service_template_state(DocumentSession &document, EditCommandService &commands,
-                                          SelectionModel *selection)
+bool ProjectPanel::open_asset(const std::filesystem::path &path)
 {
-    if (!selectedEntry_)
+    if (lowercase_asset_extension(path) == ".scene")
     {
-        assetDoubleClickPending_ = false;
-        return;
+        if (openSceneCallback_)
+        {
+            openSceneCallback_(path);
+            return true;
+        }
+        return false;
     }
-    if (editor_asset_is(*selectedEntry_, EditorAssetKind::Template))
+    switch (editor_asset_format(path).kind)
     {
-        if (assetDoubleClickPending_)
+    case EditorAssetKind::Script:
+        if (openScriptCallback_)
         {
-            assetDoubleClickPending_ = false;
-            load_selected_template(document);
+            openScriptCallback_(path);
+            return true;
         }
-        if (selectedTemplate_ && selectedTemplatePath_ != *selectedEntry_)
+        return false;
+    case EditorAssetKind::Animation:
+        if (openAnimationCallback_)
         {
-            selectedTemplate_.reset();
-            selectedTemplatePath_.clear();
-            externalTemplateTargets_.clear();
-            pendingTemplateInstantiate_ = false;
+            openAnimationCallback_(path);
+            return true;
         }
-        const DocumentIdentity currentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                               DocumentGeneration{document.documentGeneration}};
-        if (selectedTemplate_ && templateAssignmentIdentity_ != currentIdentity)
+        return false;
+    case EditorAssetKind::Template:
+        if (openTemplateCallback_)
         {
-            externalTemplateTargets_.clear();
-            templateAssignmentIdentity_ = currentIdentity;
+            openTemplateCallback_(path);
+            return true;
         }
-        if (selectedTemplate_)
-        {
-            if (templateTargetsStructureRevision_ != document.structureRevision ||
-                templateTargetsValueRevision_ != document.valueRevision)
-            {
-                templateTargetCandidates_.clear();
-                for (const int objectId : document.indexes.orderedObjectIds)
-                {
-                    const auto objectLocation = document.indexes.objectsById.find(objectId);
-                    const Json *object = objectLocation == document.indexes.objectsById.end()
-                        ? nullptr : resolve_object(document.root, objectLocation->second);
-                    if (object == nullptr)
-                        continue;
-                    const std::string objectLabel = object->value("name", std::string("GameObject")) +
-                        " (#" + std::to_string(objectId) + ")";
-                    templateTargetCandidates_["GameObject"].emplace_back(objectId, objectLabel);
-                    templateTargetCandidates_["Object"].emplace_back(objectId, objectLabel);
-                    const auto components = object->find("components");
-                    if (components == object->end() || !components->is_array())
-                        continue;
-                    for (const auto &component : *components)
-                    {
-                        if (!component.is_object())
-                            continue;
-                        const int componentId = component.value("id", -1);
-                        if (componentId < 0)
-                            continue;
-                        const int type = component.value("type", -1);
-                        const std::string label = objectLabel + " / " + component_label(type) +
-                            " (#" + std::to_string(componentId) + ")";
-                        templateTargetCandidates_["Component"].emplace_back(componentId, label);
-                    }
-                }
-                templateTargetsStructureRevision_ = document.structureRevision;
-                templateTargetsValueRevision_ = document.valueRevision;
-            }
-
-            const Json bindings = selectedTemplate_->reference_bindings();
-            const std::string destinationIdentity = template_scene_identity(document);
-            std::vector<TemplateExternalAssignment> assignments;
-            bool allExternalTargetsReady = true;
-            if (bindings.is_array())
-            {
-                for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
-                {
-                    const auto &binding = bindings[bindingIndex];
-                    if (!binding.is_object() || binding.value("scope", std::string{}) != "external")
-                        continue;
-                    const std::string kind = binding.value("target_kind", std::string{});
-                    const int originalId = binding.value("original_target_id", -1);
-                    const std::string key = std::to_string(binding.value("owner_id", -1)) + ":" +
-                        std::to_string(binding.value("component_id", -1)) + ":" +
-                        binding.value("path", std::string{});
-                    const auto candidates = templateTargetCandidates_.find(kind);
-                    const bool originalStillValid = candidates != templateTargetCandidates_.end() &&
-                        std::any_of(candidates->second.begin(), candidates->second.end(),
-                            [originalId](const auto &candidate) { return candidate.first == originalId; });
-                    const bool sameSceneAndValid =
-                        binding.value("source_scene_identity", std::string{}) == destinationIdentity &&
-                        originalStillValid;
-                    if (sameSceneAndValid)
-                        continue;
-
-                    const auto assigned = externalTemplateTargets_.find(key);
-                    const bool assignedValid = assigned != externalTemplateTargets_.end() &&
-                        candidates != templateTargetCandidates_.end() &&
-                        std::any_of(candidates->second.begin(), candidates->second.end(),
-                            [&](const auto &candidate) { return candidate.first == assigned->second; });
-                    if (!assignedValid)
-                        allExternalTargetsReady = false;
-                    else
-                        assignments.push_back({binding.value("owner_id", -1),
-                            binding.contains("component_id")
-                                ? std::optional<int>(binding.value("component_id", -1)) : std::nullopt,
-                            binding.value("path", std::string{}), assigned->second});
-                }
-            }
-            const bool canInstantiate = selection != nullptr && allExternalTargetsReady;
-            templateCanInstantiate_ = canInstantiate;
-            const bool semanticInstantiate = std::exchange(pendingTemplateInstantiate_, false);
-            if (semanticInstantiate && canInstantiate)
-            {
-                const Selection before = selection->current();
-                std::optional<int> parentId;
-                std::size_t insertionIndex = std::numeric_limits<std::size_t>::max();
-                if (before.objectId)
-                {
-                    const auto parent = document.indexes.parentById.find(*before.objectId);
-                    if (parent != document.indexes.parentById.end())
-                        parentId = parent->second;
-                    const auto location = document.indexes.objectsById.find(*before.objectId);
-                    if (location != document.indexes.objectsById.end() &&
-                        !location->second.childIndices.empty())
-                        insertionIndex = location->second.childIndices.back() + 1;
-                }
-                const auto coverage = template_asset_binding_coverage(*selectedTemplate_);
-                const auto inserted = insert_template(commands, document, *selectedTemplate_,
-                    destinationIdentity, coverage, parentId, insertionIndex, assignments,
-                    SelectionState{before, before});
-                if (!inserted)
-                    templateFeedback_ = inserted.error.empty()
-                        ? "Template could not be instantiated." : inserted.error;
-                else if (!inserted.insertedObjectIds.empty())
-                {
-                    const Selection after{inserted.insertedObjectIds.front(), std::nullopt,
-                                          std::nullopt, FocusedPanel::Hierarchy};
-                    selection->set(document, after);
-                    commands.set_last_selection_state({before, after});
-                    templateFeedback_ = "Template instantiated as one undoable operation.";
-                }
-            }
-        }
-        return;
-    }
-    if (editor_asset_format(*selectedEntry_).kind == EditorAssetKind::Animation && assetDoubleClickPending_ &&
-        openAnimationCallback_)
-    {
-        assetDoubleClickPending_ = false;
-        openAnimationCallback_(*selectedEntry_);
-        return;
+        return false;
+    case EditorAssetKind::Audio:
+        if (audioPreview_ != nullptr)
+            return audioPreview_->toggle_or_play(path);
+        return false;
+    default:
+        return false;
     }
 }
 
-void ProjectPanel::draw_template_controls(DocumentSession &document, EditCommandService &commands,
-                                          SelectionModel *selection)
-{
-    templateCanInstantiate_ = false;
-    if (!selectedEntry_)
-        return;
-    ImGui::SeparatorText("Object Template");
-    ImGui::TextWrapped("%s", selectedEntry_->filename().string().c_str());
-    if (ImGui::Button("Load Template"))
-        load_selected_template(document);
-    if (selectedTemplate_ && selectedTemplatePath_ != *selectedEntry_)
-    {
-        selectedTemplate_.reset();
-        selectedTemplatePath_.clear();
-        externalTemplateTargets_.clear();
-        pendingTemplateInstantiate_ = false;
-    }
-    const DocumentIdentity currentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                           DocumentGeneration{document.documentGeneration}};
-    if (selectedTemplate_ && templateAssignmentIdentity_ != currentIdentity)
-    {
-        externalTemplateTargets_.clear();
-        templateAssignmentIdentity_ = currentIdentity;
-    }
-
-    if (selectedTemplate_)
-    {
-        if (templateTargetsStructureRevision_ != document.structureRevision ||
-            templateTargetsValueRevision_ != document.valueRevision)
-        {
-            templateTargetCandidates_.clear();
-            for (const int objectId : document.indexes.orderedObjectIds)
-            {
-                const auto objectLocation = document.indexes.objectsById.find(objectId);
-                const Json *object = objectLocation == document.indexes.objectsById.end()
-                    ? nullptr : resolve_object(document.root, objectLocation->second);
-                if (object == nullptr)
-                    continue;
-                const std::string objectLabel = object->value("name", std::string("GameObject")) +
-                    " (#" + std::to_string(objectId) + ")";
-                templateTargetCandidates_["GameObject"].emplace_back(objectId, objectLabel);
-                templateTargetCandidates_["Object"].emplace_back(objectId, objectLabel);
-                const auto components = object->find("components");
-                if (components == object->end() || !components->is_array())
-                    continue;
-                for (const auto &component : *components)
-                {
-                    if (!component.is_object())
-                        continue;
-                    const int componentId = component.value("id", -1);
-                    if (componentId < 0)
-                        continue;
-                    const int type = component.value("type", -1);
-                    const std::string label = objectLabel + " / " + component_label(type) +
-                        " (#" + std::to_string(componentId) + ")";
-                    templateTargetCandidates_["Component"].emplace_back(componentId, label);
-                }
-            }
-            templateTargetsStructureRevision_ = document.structureRevision;
-            templateTargetsValueRevision_ = document.valueRevision;
-        }
-
-        const Json bindings = selectedTemplate_->reference_bindings();
-        const std::string destinationIdentity = template_scene_identity(document);
-        std::vector<TemplateExternalAssignment> assignments;
-        bool allExternalTargetsReady = true;
-        if (bindings.is_array())
-        {
-            for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
-            {
-                const auto &binding = bindings[bindingIndex];
-                if (!binding.is_object() || binding.value("scope", std::string{}) != "external")
-                    continue;
-                const std::string kind = binding.value("target_kind", std::string{});
-                const int originalId = binding.value("original_target_id", -1);
-                const std::string key = std::to_string(binding.value("owner_id", -1)) + ":" +
-                    std::to_string(binding.value("component_id", -1)) + ":" +
-                    binding.value("path", std::string{});
-                const auto candidates = templateTargetCandidates_.find(kind);
-                const bool originalStillValid = candidates != templateTargetCandidates_.end() &&
-                    std::any_of(candidates->second.begin(), candidates->second.end(),
-                        [originalId](const auto &candidate) { return candidate.first == originalId; });
-                const bool sameSceneAndValid =
-                    binding.value("source_scene_identity", std::string{}) == destinationIdentity &&
-                    originalStillValid;
-                if (sameSceneAndValid)
-                {
-                    ImGui::TextDisabled("External reference %zu keeps its original target in this scene.",
-                                        bindingIndex + 1);
-                    continue;
-                }
-
-                ImGui::PushID(static_cast<int>(bindingIndex));
-                ImGui::Text("External %s reference", kind.c_str());
-                std::string preview = "Choose a destination target...";
-                const auto selectedTarget = externalTemplateTargets_.find(key);
-                if (selectedTarget != externalTemplateTargets_.end() && candidates != templateTargetCandidates_.end())
-                {
-                    const auto chosen = std::find_if(candidates->second.begin(), candidates->second.end(),
-                        [&](const auto &candidate) { return candidate.first == selectedTarget->second; });
-                    if (chosen != candidates->second.end())
-                        preview = chosen->second;
-                }
-                if (ImGui::BeginCombo("##external-template-target", preview.c_str()))
-                {
-                    if (candidates != templateTargetCandidates_.end())
-                        for (const auto &[targetId, label] : candidates->second)
-                            if (ImGui::Selectable(label.c_str(),
-                                selectedTarget != externalTemplateTargets_.end() &&
-                                selectedTarget->second == targetId))
-                                externalTemplateTargets_[key] = targetId;
-                    ImGui::EndCombo();
-                }
-                const auto assigned = externalTemplateTargets_.find(key);
-                const bool assignedValid = assigned != externalTemplateTargets_.end() &&
-                    candidates != templateTargetCandidates_.end() &&
-                    std::any_of(candidates->second.begin(), candidates->second.end(),
-                        [&](const auto &candidate) { return candidate.first == assigned->second; });
-                if (!assignedValid)
-                    allExternalTargetsReady = false;
-                else
-                    assignments.push_back({binding.value("owner_id", -1),
-                        binding.contains("component_id")
-                            ? std::optional<int>(binding.value("component_id", -1)) : std::nullopt,
-                        binding.value("path", std::string{}), assigned->second});
-                ImGui::PopID();
-            }
-        }
-
-        if (selection == nullptr)
-            ImGui::TextDisabled("Select a Hierarchy destination before instantiating.");
-        const bool canInstantiate = selection != nullptr && allExternalTargetsReady;
-        templateCanInstantiate_ = canInstantiate;
-        ImGui::BeginDisabled(!canInstantiate);
-        const bool instantiateClicked = ImGui::Button("Instantiate Template");
-        const bool semanticInstantiate = std::exchange(pendingTemplateInstantiate_, false);
-        if (instantiateClicked || (semanticInstantiate && canInstantiate))
-        {
-            const Selection before = selection->current();
-            std::optional<int> parentId;
-            std::size_t insertionIndex = std::numeric_limits<std::size_t>::max();
-            if (before.objectId)
-            {
-                const auto parent = document.indexes.parentById.find(*before.objectId);
-                if (parent != document.indexes.parentById.end())
-                    parentId = parent->second;
-                const auto location = document.indexes.objectsById.find(*before.objectId);
-                if (location != document.indexes.objectsById.end() &&
-                    !location->second.childIndices.empty())
-                    insertionIndex = location->second.childIndices.back() + 1;
-            }
-            const auto coverage = template_asset_binding_coverage(*selectedTemplate_);
-            const auto inserted = insert_template(commands, document, *selectedTemplate_,
-                destinationIdentity, coverage, parentId, insertionIndex, assignments,
-                SelectionState{before, before});
-            if (!inserted)
-                templateFeedback_ = inserted.error.empty()
-                    ? "Template could not be instantiated." : inserted.error;
-            else if (!inserted.insertedObjectIds.empty())
-            {
-                const Selection after{inserted.insertedObjectIds.front(), std::nullopt,
-                                      std::nullopt, FocusedPanel::Hierarchy};
-                selection->set(document, after);
-                commands.set_last_selection_state({before, after});
-                templateFeedback_ = "Template instantiated as one undoable operation.";
-            }
-        }
-        ImGui::EndDisabled();
-    }
-    if (!templateFeedback_.empty())
-        ImGui::TextWrapped("%s", templateFeedback_.c_str());
-}
-
-void ProjectPanel::load_selected_template(const DocumentSession &document)
-{
-    selectedTemplate_.reset();
-    selectedTemplatePath_.clear();
-    externalTemplateTargets_.clear();
-    templateCanInstantiate_ = false;
-    pendingTemplateInstantiate_ = false;
-    templateFeedback_.clear();
-    if (!selectedEntry_)
-    {
-        templateFeedback_ = "Select a template asset first.";
-        return;
-    }
-    std::error_code pathError;
-    const auto canonicalRoot = std::filesystem::canonical(document.assetRoot, pathError);
-    if (pathError)
-        templateFeedback_ = "Project asset root is unavailable.";
-    const auto canonicalFile = pathError ? std::filesystem::path{}
-                                         : std::filesystem::canonical(*selectedEntry_, pathError);
-    if (templateFeedback_.empty() && pathError)
-        templateFeedback_ = "Selected template file is unavailable: " + pathError.message();
-    if (templateFeedback_.empty() &&
-        (!path_is_within(canonicalRoot, canonicalFile) ||
-         !std::filesystem::is_regular_file(canonicalFile, pathError) || pathError))
-        templateFeedback_ = "Templates must be regular files contained inside the project asset root.";
-    if (templateFeedback_.empty())
-    {
-        const auto size = std::filesystem::file_size(canonicalFile, pathError);
-        if (pathError || size > 16U * 1024U * 1024U)
-            templateFeedback_ = "Template could not be read or exceeds the 16 MiB editor limit.";
-        else
-        {
-            std::ifstream input(canonicalFile, std::ios::binary);
-            const std::string contents((std::istreambuf_iterator<char>(input)),
-                                       std::istreambuf_iterator<char>());
-            if (!input.eof() && input.fail())
-                templateFeedback_ = "Template could not be read completely.";
-            else
-            {
-                auto loaded = parse_template_envelope(contents);
-                if (!loaded)
-                    templateFeedback_ = loaded.error;
-                else
-                {
-                    selectedTemplate_ = std::move(*loaded.asset);
-                    selectedTemplatePath_ = *selectedEntry_;
-                    templateAssignmentIdentity_ = {
-                        ProjectGeneration{document.projectGeneration}, document.tabId,
-                        DocumentGeneration{document.documentGeneration}};
-                    templateFeedback_ = "Template validated. Search and select destination references below when needed.";
-                }
-            }
-        }
-    }
-}
-
-void ProjectPanel::draw_sprite_region_editor(DocumentSession &document,
-                                             EditCommandService &commands,
-                                             const AssetAssignmentTarget &target,
-                                             const std::filesystem::path &assetPath)
-{
-    if (target.expectedAssetType != "Texture" || !target.address.componentId ||
-        asset_icon(assetPath) != EditorIcon::Sprite)
-    {
-        sourceRegionDragging_ = false;
-        return;
-    }
-    const DocumentIdentity identity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                    DocumentGeneration{document.documentGeneration}};
-    if (sourceRegionDragging_ &&
-        (sourceRegionDragIdentity_ != identity || sourceRegionDragAsset_ != assetPath))
-        sourceRegionDragging_ = false;
-
-    std::error_code rootError;
-    const auto canonicalRoot = std::filesystem::canonical(document.assetRoot, rootError);
-    std::error_code assetError;
-    const auto canonicalAsset = rootError ? std::filesystem::path{}
-                                          : std::filesystem::canonical(assetPath, assetError);
-    if (rootError || assetError || !path_is_within(canonicalRoot, canonicalAsset) ||
-        !std::filesystem::is_regular_file(canonicalAsset, assetError) || assetError)
-    {
-        ImGui::TextDisabled("Source-region editing requires an image inside the current asset root.");
-        sourceRegionDragging_ = false;
-        return;
-    }
-    const std::string textureReference =
-        "assets/" + canonicalAsset.lexically_relative(canonicalRoot).generic_string();
-    SDL_Texture *texture = thumbnail_for(canonicalAsset);
-    if (texture == nullptr)
-    {
-        const auto failure = thumbnails_.failure_message(canonicalAsset);
-        ImGui::TextDisabled("Preparing the source image preview...");
-        if (!failure.empty())
-            ImGui::TextWrapped("%s", failure.c_str());
-        return;
-    }
-    float thumbnailWidth = 0.0f;
-    float thumbnailHeight = 0.0f;
-    SDL_GetTextureSize(texture, &thumbnailWidth, &thumbnailHeight);
-    const auto [sourceWidth, sourceHeight] = thumbnails_.source_dimensions(canonicalAsset);
-    if (thumbnailWidth <= 0.0f || thumbnailHeight <= 0.0f || sourceWidth <= 0 || sourceHeight <= 0)
-    {
-        ImGui::TextDisabled("Original source image dimensions are unavailable.");
-        sourceRegionDragging_ = false;
-        return;
-    }
-
-    ImGui::SeparatorText("Sprite Source Region");
-    ImGui::Text("Original image: %d × %d pixels", sourceWidth, sourceHeight);
-    ImGui::TextDisabled("Drag over the image and release to commit one Undo step.");
-    const float maximumWidth = std::min(std::max(1.0f, ImGui::GetContentRegionAvail().x), 360.0f);
-    const float maximumHeight = ImGui::GetTextLineHeight() * 14.0f;
-    const float scale = std::min(maximumWidth / thumbnailWidth, maximumHeight / thumbnailHeight);
-    const ImVec2 displaySize{std::max(1.0f, thumbnailWidth * scale),
-                             std::max(1.0f, thumbnailHeight * scale)};
-    ImGui::InvisibleButton("##sprite-source-region-canvas", displaySize);
-    const ImVec2 canvasMinimum = ImGui::GetItemRectMin();
-    const ImVec2 canvasMaximum = ImGui::GetItemRectMax();
-    const bool hovered = ImGui::IsItemHovered();
-    ImDrawList *drawList = ImGui::GetWindowDrawList();
-    const auto textureId = static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(texture));
-    drawList->AddImage(textureId, canvasMinimum, canvasMaximum);
-    drawList->AddRect(canvasMinimum, canvasMaximum, ImGui::GetColorU32(ImGuiCol_Border));
-
-    SpriteSourceRegion visibleRegion{0.0, 0.0, static_cast<double>(sourceWidth),
-                                     static_cast<double>(sourceHeight)};
-    const auto componentLocation = document.indexes.componentsById.find(*target.address.componentId);
-    if (componentLocation != document.indexes.componentsById.end() &&
-        componentLocation->second.ownerObjectId == target.address.objectId)
-    {
-        const auto objectLocation = document.indexes.objectsById.find(target.address.objectId);
-        const Json *object = objectLocation == document.indexes.objectsById.end()
-            ? nullptr : resolve_object(document.root, objectLocation->second);
-        if (object != nullptr)
-        {
-            const auto components = object->find("components");
-            if (components != object->end() && components->is_array() &&
-                componentLocation->second.componentIndex < components->size())
-            {
-                const auto &component = (*components)[componentLocation->second.componentIndex];
-                if (component.is_object())
-                {
-                    const auto textureField = component.find("textureFilePath");
-                    const auto enabledField = component.find("sourceRectEnabled");
-                    const auto rect = component.find("sourceRect");
-                    const bool sameTexture = textureField != component.end() && textureField->is_string() &&
-                        textureField->get<std::string>() == textureReference;
-                    const bool enabled = enabledField != component.end() && enabledField->is_boolean() &&
-                        enabledField->get<bool>();
-                    if (sameTexture && enabled && rect != component.end() && rect->is_object())
-                    {
-                        const auto read_number = [&](const char *key, double &value) {
-                            const auto found = rect->find(key);
-                            if (found == rect->end() || !found->is_number())
-                                return false;
-                            value = found->get<double>();
-                            return std::isfinite(value);
-                        };
-                        SpriteSourceRegion current;
-                        std::string ignored;
-                        if (read_number("x", current.x) && read_number("y", current.y) &&
-                            read_number("w", current.width) && read_number("h", current.height) &&
-                            validate_sprite_source_region(current, sourceWidth, sourceHeight, ignored))
-                            visibleRegion = current;
-                    }
-                }
-            }
-        }
-    }
-
-    const auto point_to_source = [&](ImVec2 point) {
-        const float localX = std::clamp(point.x - canvasMinimum.x, 0.0f, displaySize.x);
-        const float localY = std::clamp(point.y - canvasMinimum.y, 0.0f, displaySize.y);
-        return std::pair<double, double>{
-            std::floor(static_cast<double>(localX / displaySize.x) * sourceWidth),
-            std::floor(static_cast<double>(localY / displaySize.y) * sourceHeight)};
-    };
-    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-    {
-        const auto [x, y] = point_to_source(ImGui::GetIO().MousePos);
-        sourceRegionDragging_ = true;
-        sourceRegionDragStartX_ = static_cast<float>(x);
-        sourceRegionDragStartY_ = static_cast<float>(y);
-        sourceRegionDragIdentity_ = identity;
-        sourceRegionDragAsset_ = assetPath;
-    }
-    if (sourceRegionDragging_)
-    {
-        const auto [currentX, currentY] = point_to_source(ImGui::GetIO().MousePos);
-        const SpriteSourceRegion dragged{std::min<double>(sourceRegionDragStartX_, currentX),
-            std::min<double>(sourceRegionDragStartY_, currentY),
-            std::abs(currentX - sourceRegionDragStartX_),
-            std::abs(currentY - sourceRegionDragStartY_)};
-        if (dragged.width > 0.0 && dragged.height > 0.0)
-        {
-            visibleRegion = dragged;
-            const ImVec2 minimum{canvasMinimum.x + static_cast<float>(dragged.x) * displaySize.x / sourceWidth,
-                                 canvasMinimum.y + static_cast<float>(dragged.y) * displaySize.y / sourceHeight};
-            const ImVec2 maximum{minimum.x + static_cast<float>(dragged.width) * displaySize.x / sourceWidth,
-                                 minimum.y + static_cast<float>(dragged.height) * displaySize.y / sourceHeight};
-            drawList->AddRect(minimum, maximum, ImGui::GetColorU32(ImGuiCol_NavHighlight), 0.0f, 0, 2.0f);
-        }
-        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-        {
-            sourceRegionDragging_ = false;
-            std::string validationError;
-            if (!validate_sprite_source_region(dragged, sourceWidth, sourceHeight, validationError))
-                assignmentFeedback_ = std::move(validationError);
-            else
-            {
-                const auto committed = commit_sprite_source_region(commands, document,
-                    target.address.objectId, *target.address.componentId, textureReference,
-                    dragged, sourceWidth, sourceHeight);
-                assignmentFeedback_ = committed.status == CommandStatus::Changed
-                    ? "Sprite texture and source region committed as one Undo step."
-                    : committed.status == CommandStatus::NoChange
-                        ? "Sprite source region is unchanged." : committed.message;
-            }
-        }
-        else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
-            sourceRegionDragging_ = false;
-    }
-    if (!sourceRegionDragging_ || ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-    {
-        const ImVec2 minimum{canvasMinimum.x + static_cast<float>(visibleRegion.x) * displaySize.x / sourceWidth,
-                             canvasMinimum.y + static_cast<float>(visibleRegion.y) * displaySize.y / sourceHeight};
-        const ImVec2 maximum{minimum.x + static_cast<float>(visibleRegion.width) * displaySize.x / sourceWidth,
-                             minimum.y + static_cast<float>(visibleRegion.height) * displaySize.y / sourceHeight};
-        drawList->AddRect(minimum, maximum, ImGui::GetColorU32(ImGuiCol_NavHighlight), 0.0f, 0, 2.0f);
-    }
-
-    bool submitNumericRegion = false;
-    ImGui::SetNextItemWidth(90.0f);
-    submitNumericRegion |= ImGui::InputDouble("X (px)", &visibleRegion.x, 1.0, 8.0, "%.0f",
-        ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(90.0f);
-    submitNumericRegion |= ImGui::InputDouble("Y (px)", &visibleRegion.y, 1.0, 8.0, "%.0f",
-        ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::SetNextItemWidth(90.0f);
-    submitNumericRegion |= ImGui::InputDouble("Width", &visibleRegion.width, 1.0, 8.0, "%.0f",
-        ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(90.0f);
-    submitNumericRegion |= ImGui::InputDouble("Height", &visibleRegion.height, 1.0, 8.0, "%.0f",
-        ImGuiInputTextFlags_EnterReturnsTrue);
-    if (submitNumericRegion)
-    {
-        std::string error;
-        if (!validate_sprite_source_region(visibleRegion, sourceWidth, sourceHeight, error))
-            assignmentFeedback_ = std::move(error);
-        else
-        {
-            const auto committed = commit_sprite_source_region(commands, document,
-                target.address.objectId, *target.address.componentId, textureReference,
-                visibleRegion, sourceWidth, sourceHeight);
-            assignmentFeedback_ = committed.status == CommandStatus::Changed
-                ? "Sprite texture and source region committed as one Undo step."
-                : committed.status == CommandStatus::NoChange
-                    ? "Sprite source region is unchanged." : committed.message;
-        }
-    }
-}
-
-void ProjectPanel::draw_assignment_controls(DocumentSession &document,
-                                            EditCommandService &commands,
-                                            SelectionModel *selection)
-{
-    if (!selectedEntry_)
-    {
-        assetDoubleClickPending_ = false;
-        return;
-    }
-    std::error_code selectedEntryError;
-    if (std::filesystem::is_directory(*selectedEntry_, selectedEntryError) || selectedEntryError)
-    {
-        assetDoubleClickPending_ = false;
-        return;
-    }
-    if (editor_asset_is(*selectedEntry_, EditorAssetKind::Template))
-    {
-        draw_template_controls(document, commands, selection);
-        return;
-    }
-    if (editor_asset_format(*selectedEntry_).kind == EditorAssetKind::Animation && assetDoubleClickPending_ &&
-        openAnimationCallback_)
-    {
-        assetDoubleClickPending_ = false;
-        openAnimationCallback_(*selectedEntry_);
-        return;
-    }
-    ImGui::SeparatorText("Assign Selected Asset");
-    if (selection == nullptr)
-    {
-        ImGui::TextDisabled("Select a compatible asset field in the Inspector first.");
-        assetDoubleClickPending_ = false;
-        return;
-    }
-    const auto targets = asset_assignment_targets(document, *selection, *selectedEntry_);
-    if (targets.empty())
-    {
-        ImGui::TextDisabled("No selected asset field accepts this file type and project path.");
-        if (assetDoubleClickPending_)
-            assignmentFeedback_ = "Select a compatible texture, animation, or audio reference field.";
-        assetDoubleClickPending_ = false;
-    }
-    std::optional<std::size_t> selectedIndex;
-    if (targets.size() == 1)
-        selectedIndex = 0;
-    else if (!selectedAssignmentTarget_.empty())
-    {
-        for (std::size_t index = 0; index < targets.size(); ++index)
-            if (targets[index].label == selectedAssignmentTarget_)
-            {
-                selectedIndex = index;
-                break;
-            }
-    }
-    if (targets.size() > 1)
-    {
-        const char *preview = selectedIndex ? targets[*selectedIndex].label.c_str()
-                                            : "Choose a target field...";
-        if (ImGui::BeginCombo("##asset-assignment-target", preview))
-        {
-            for (std::size_t index = 0; index < targets.size(); ++index)
-            {
-                const bool selected = selectedIndex == index;
-                if (ImGui::Selectable(targets[index].label.c_str(), selected))
-                {
-                    selectedAssignmentTarget_ = targets[index].label;
-                    selectedIndex = index;
-                    assignmentFeedback_.clear();
-                }
-            }
-            ImGui::EndCombo();
-        }
-        if (assetDoubleClickPending_)
-            assignmentFeedback_ = "This asset has multiple compatible targets. Choose one, then click Assign.";
-    }
-    const bool canAssign = selectedIndex.has_value() && !targets.empty();
-    ImGui::BeginDisabled(!canAssign);
-    const bool assignClicked = ImGui::Button("Assign");
-    ImGui::EndDisabled();
-    const bool singleTargetDoubleClick = assetDoubleClickPending_ && targets.size() == 1;
-    assetDoubleClickPending_ = false;
-    if (assignClicked || singleTargetDoubleClick)
-    {
-        const auto &target = targets[*selectedIndex];
-        std::string error;
-        assignmentFeedback_ = assign_asset_target(document, commands, target,
-                                                  *selectedEntry_, error)
-            ? "Asset reference assigned to " + target.label + "."
-            : error;
-    }
-    if (selectedIndex && *selectedIndex < targets.size())
-        draw_sprite_region_editor(document, commands, targets[*selectedIndex], *selectedEntry_);
-    else
-        sourceRegionDragging_ = false;
-    if (!assignmentFeedback_.empty())
-        ImGui::TextWrapped("%s", assignmentFeedback_.c_str());
-}
-
-void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
-                        SelectionModel *selection)
+void ProjectPanel::draw(DocumentSession &document, EditCommandService &,
+                        SelectionModel *)
 {
     pendingSemanticNodes_.clear();
     pendingTileTargets_.clear();
@@ -3434,18 +2752,41 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
         return;
     }
 
-    if (ImGui::Button("Refresh Assets"))
+    if (audioPreview_ != nullptr)
     {
-        refresh();
-        referenceRetryRequested_ = true;
+        if (audioPreview_->active_path())
+        {
+            ImGui::TextDisabled("Audio Preview");
+            ImGui::SameLine();
+            ImGui::TextUnformatted(audioPreview_->active_path()->filename().string().c_str());
+            ImGui::SameLine();
+            if (audioPreview_->state() == AudioPlaybackState::Loading)
+            {
+                ImGui::TextDisabled("Loading");
+                ImGui::SameLine();
+            }
+            else if (audioPreview_->state() == AudioPlaybackState::Playing)
+            {
+                ImGui::TextDisabled("Playing");
+                ImGui::SameLine();
+            }
+            else if (audioPreview_->state() == AudioPlaybackState::Paused)
+            {
+                ImGui::TextDisabled("Paused");
+                ImGui::SameLine();
+            }
+            if (ImGui::SmallButton("Stop"))
+                audioPreview_->stop();
+        }
+        if (!audioPreview_->last_error().empty())
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.4f, 1.0f));
+            ImGui::TextWrapped("%s", audioPreview_->last_error().c_str());
+            ImGui::PopStyleColor();
+        }
+        if (audioPreview_->active_path() || !audioPreview_->last_error().empty())
+            ImGui::Separator();
     }
-    if (!coverageMessage_.empty())
-    {
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", coverageMessage_.c_str());
-    }
-    if (!referenceRetryMessage_.empty())
-        ImGui::TextDisabled("%s", referenceRetryMessage_.c_str());
 
     const auto behaviorRoot = assetRoot / "behaviors";
     std::error_code filesystemError;
@@ -3465,20 +2806,17 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
             expandedDirectories_.insert(behaviorRoot.string());
     }
     const bool selectedIsAsset = path_is_within(assetRoot, selectedDirectory_);
-    bool selectedIsBehavior = hasBehaviorRoot && path_is_within(behaviorRoot, selectedDirectory_);
-    if (!selectedIsAsset && !selectedIsBehavior)
+    if (!selectedIsAsset && !(hasBehaviorRoot && path_is_within(behaviorRoot, selectedDirectory_)))
     {
         selectedDirectory_ = assetRoot;
         selectedRoot_ = assetRoot;
         selectedRootLabel_ = "Assets";
         selectedEntry_.reset();
         expandedDirectories_.insert(assetRoot.string());
-        selectedIsBehavior = false;
     }
 
-    service_template_state(document, commands, selection);
-
     // Visible contents take priority over speculative folder-arrow checks.
+    const auto previousSelectedDirectory = selectedDirectory_;
     request_scan(selectedDirectory_);
     const ImVec2 available = ImGui::GetContentRegionAvail();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
@@ -3488,8 +2826,31 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &commands,
     draw_folder_tree(assetRoot, assetRoot, "Assets", 0);
     ImGui::EndChild();
     ImGui::SameLine();
+    if (selectedDirectory_ != previousSelectedDirectory)
+        request_scan(selectedDirectory_);
+    const bool selectedIsBehavior = hasBehaviorRoot && path_is_within(behaviorRoot, selectedDirectory_);
     ImGui::BeginChild("Asset contents", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
     draw_contents(selectedRoot_, selectedRootLabel_, selectedIsBehavior);
     ImGui::EndChild();
+
+    const ImVec2 panelMinimum = ImGui::GetWindowPos();
+    const ImVec2 panelMaximum(panelMinimum.x + ImGui::GetWindowSize().x,
+                              panelMinimum.y + ImGui::GetWindowSize().y);
+    if (hierarchyObjectTemplateDropCallback_ &&
+        ImGui::BeginDragDropTargetCustom(ImRect(panelMinimum, panelMaximum),
+                                         ImGui::GetID("##project_hierarchy_template_drop")))
+    {
+        if (const ImGuiPayload *payload =
+                ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT"))
+        {
+            if (payload->Data != nullptr && payload->DataSize == sizeof(int))
+            {
+                int objectId = 0;
+                std::memcpy(&objectId, payload->Data, sizeof(objectId));
+                hierarchyObjectTemplateDropCallback_(objectId, selectedDirectory_);
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
 }
 } // namespace platformator_editor

@@ -27,7 +27,6 @@ enum class PlaySessionState
     Idle,
     Configuring,
     Building,
-    CatalogCheck,
     Starting,
     Running,
     Paused,
@@ -58,12 +57,9 @@ class PlaySession
     bool begin_configuring(PlaySessionLaunchIdentity identity, std::string nonce = {});
     bool begin_building();
     bool finalize_pipeline_identity(PipelineIdentity identity);
-    bool begin_catalog_check();
-    bool begin_starting(platformator::editor_session::SessionCapabilities capabilities,
-                       std::unique_ptr<SessionChannelPair> channels);
-    bool start_process(ProcessRequest request,
-                       platformator::editor_session::SessionCapabilities capabilities,
-                       std::unique_ptr<SessionChannelPair> channels);
+    bool begin_starting(std::unique_ptr<SessionChannelPair> channels,
+                        platformator::editor_session::SessionCapabilities initialCapabilities = {});
+    bool start_process(ProcessRequest request, std::unique_ptr<SessionChannelPair> channels);
     void poll_process();
     bool mark_running(RuntimeSerial runtimeSerial);
     bool request_pause();
@@ -128,6 +124,7 @@ class PlaySession
     bool processStarted_ = false;
     bool childReaped_ = false;
     bool processStopRequested_ = false;
+    bool childCapabilitiesValidated_ = false;
     std::chrono::steady_clock::time_point stopDeadline_{};
     std::deque<ProtocolMessage> pendingDecodedEvents_;
     std::size_t pendingDecodedEventBytes_ = 0;

@@ -769,7 +769,7 @@ void EditorPreview::refresh_asset(const DocumentSession &document,
         resourceIndex_->set_preparation_state(token, ResourcePreparationState::Preparing);
         if (!enqueue_asset_reload(*assetReloadState_, std::move(request)))
         {
-            const std::string error = "Asset preparation queue is full; use Refresh Assets to retry.";
+            const std::string error = "Asset preparation queue is full; retry from the asset's Refresh action.";
             resourceIndex_->set_preparation_state(token, ResourcePreparationState::Failed, error);
             for (const auto &consumer : pathConsumers)
             {

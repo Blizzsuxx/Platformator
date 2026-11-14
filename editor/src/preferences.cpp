@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <charconv>
+#include <cctype>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
@@ -52,6 +53,28 @@ constexpr int kPreferencesVersion = 2;
 constexpr int kLegacyPreferencesVersion = 1;
 constexpr std::size_t kMaximumLayoutBytes = 1024 * 1024;
 
+std::string_view saved_document_kind_name(SavedDocumentKind kind)
+{
+    switch (kind)
+    {
+    case SavedDocumentKind::Template: return "template";
+    case SavedDocumentKind::Animation: return "animation";
+    case SavedDocumentKind::Scene: return "scene";
+    }
+    return "scene";
+}
+
+std::optional<SavedDocumentKind> parse_saved_document_kind(const Json &value)
+{
+    if (!value.is_string())
+        return std::nullopt;
+    const std::string kind = value.get<std::string>();
+    if (kind == "scene") return SavedDocumentKind::Scene;
+    if (kind == "template") return SavedDocumentKind::Template;
+    if (kind == "animation") return SavedDocumentKind::Animation;
+    return std::nullopt;
+}
+
 bool parse_pair(std::string_view text, int &first, int &second)
 {
     const auto separator = text.find(',');
@@ -73,10 +96,15 @@ bool geometry_is_far_offscreen(int x, int y, int width, int height, int displayW
 std::string canonical_project_key(const std::filesystem::path &projectRoot)
 {
     std::error_code error;
-    const auto canonical = std::filesystem::canonical(projectRoot, error);
-    if (error || !std::filesystem::is_directory(canonical))
-        throw std::invalid_argument("cannot resolve project root for preferences: " + projectRoot.string());
-    return canonical.string();
+    auto canonical = std::filesystem::weakly_canonical(projectRoot, error);
+    if (error)
+    {
+        error.clear();
+        canonical = std::filesystem::absolute(projectRoot, error);
+    }
+    if (error || canonical.empty())
+        return projectRoot.lexically_normal().string();
+    return canonical.lexically_normal().string();
 }
 
 std::string project_suffix(std::string_view projectKey)
@@ -165,13 +193,7 @@ void load_run_preferences(const Json &source, RunPreferences &run,
     read_string(*found, "buildPreset", run.buildPreset, result);
     read_string(*found, "target", run.target, result);
     read_string(*found, "executable", run.executable, result);
-    read_string(*found, "catalogProtocol", run.catalogProtocol, result);
     read_bool(*found, "embeddedGameView", run.embeddedGameView, result);
-    if (run.catalogProtocol != "common-runner-v1" && run.catalogProtocol != "unavailable")
-    {
-        run.catalogProtocol = "unavailable";
-        set_recovered(result, "invalid catalog protocol was reset to unavailable");
-    }
     read_bool(*found, "production", run.production, result);
     read_bool(*found, "fullscreen", run.fullscreen, result);
     read_bool(*found, "maximized", run.maximized, result);
@@ -422,7 +444,15 @@ void load_v2_preferences(const Json &source, WorkspacePreferences &preferences,
                     continue;
                 }
                 SavedTabPreferences tab;
-                tab.scenePath = entry["path"].get<std::string>();
+                tab.documentPath = entry["path"].get<std::string>();
+                if (const auto kind = entry.find("kind"); kind != entry.end())
+                {
+                    const auto parsedKind = parse_saved_document_kind(*kind);
+                    if (parsedKind)
+                        tab.kind = *parsedKind;
+                    else
+                        set_recovered(result, "invalid saved document kind was reset to Scene");
+                }
                 const auto view = entry.find("view");
                 if (view != entry.end() && view->is_object())
                 {
@@ -451,6 +481,14 @@ void load_v2_preferences(const Json &source, WorkspacePreferences &preferences,
             preferences.activeTabPath = activeTab->get<std::string>();
         else
             set_recovered(result, "invalid active tab path was cleared");
+    }
+    if (const auto activeKind = source.find("activeTabKind"); activeKind != source.end())
+    {
+        const auto parsedKind = parse_saved_document_kind(*activeKind);
+        if (parsedKind)
+            preferences.activeDocumentKind = *parsedKind;
+        else
+            set_recovered(result, "invalid active document kind was reset to Scene");
     }
     load_scene_id_map(source, "hiddenObjectIdsByScene", preferences.hiddenObjectIdsByScene, result);
     load_scene_id_map(source, "lockedObjectIdsByScene", preferences.lockedObjectIdsByScene, result);
@@ -541,7 +579,8 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
     Json tabs = Json::array();
     for (const auto &tab : preferences.openTabs)
     {
-        tabs.push_back(Json{{"path", tab.scenePath.string()},
+        tabs.push_back(Json{{"path", tab.documentPath.string()},
+                            {"kind", saved_document_kind_name(tab.kind)},
                             {"view", {{"centerX", tab.viewCenterX}, {"centerY", tab.viewCenterY},
                                        {"zoom", tab.viewZoom}}},
                             {"expandedHierarchyIds", tab.expandedHierarchyIds},
@@ -560,7 +599,6 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
                 {"buildPreset", preferences.run.buildPreset},
                 {"target", preferences.run.target},
                 {"executable", preferences.run.executable},
-                {"catalogProtocol", preferences.run.catalogProtocol},
                 {"embeddedGameView", preferences.run.embeddedGameView},
                 {"production", preferences.run.production},
                 {"width", preferences.run.width},
@@ -597,6 +635,7 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
         result["recentScene"] = preferences.recentScene->string();
     if (preferences.activeTabPath)
         result["activeTabPath"] = preferences.activeTabPath->string();
+    result["activeTabKind"] = saved_document_kind_name(preferences.activeDocumentKind);
     return result;
 }
 
@@ -637,7 +676,7 @@ std::map<std::string, bool> default_panel_visibility()
 {
     return {{"panel.hierarchy", true}, {"panel.scene", true}, {"panel.inspector", true},
             {"panel.project", true}, {"panel.console", true}, {"panel.game", false},
-            {"panel.run", false}, {"panel.validation", false}};
+            {"panel.project_settings", false}, {"panel.validation", false}};
 }
 
 bool is_panel_visible(const WorkspacePreferences &preferences, std::string_view stableId)
@@ -903,7 +942,7 @@ std::string migrate_scene_window_identity(std::string_view layout)
                     migrated.append("DockId=0x00001001,1");
                 else if (currentWindow == "animation-editor")
                     migrated.append("DockId=0x00001001,2");
-                else if (currentWindow == "panel.run")
+                else if (currentWindow == "panel.run" || currentWindow == "panel.project_settings")
                     migrated.append("DockId=0x00001001,3");
                 else if (currentWindow == "panel.validation")
                     migrated.append("DockId=0x00001001,4");
@@ -1073,7 +1112,6 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
             preferences.run.configurePreset = preferences.run.buildPreset;
         if (preferences.run.executable.empty())
             preferences.run.executable = "bin/" + preferences.run.buildPreset + "/main";
-        preferences.run.catalogProtocol = "common-runner-v1";
         return;
     }
 
@@ -1089,7 +1127,69 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
         preferences.run.buildPreset.clear();
         if (preferences.run.executable.empty())
             preferences.run.executable = "bin/editor-game/mario_example";
-        preferences.run.catalogProtocol = "common-runner-v1";
+    }
+}
+
+void apply_generated_project_run_defaults(WorkspacePreferences &preferences,
+                                          const std::filesystem::path &projectRoot)
+{
+    std::string generatedTarget = projectRoot.filename().string();
+    std::string sanitizedTarget;
+    for (const char character : generatedTarget)
+    {
+        const unsigned char value = static_cast<unsigned char>(character);
+        if (std::isalnum(value) != 0 || character == '_')
+            sanitizedTarget.push_back(character);
+        else if (character == '-' || character == ' ')
+            sanitizedTarget.push_back('_');
+    }
+    generatedTarget = std::move(sanitizedTarget);
+    if (generatedTarget.empty() ||
+        std::isdigit(static_cast<unsigned char>(generatedTarget.front())) != 0)
+        generatedTarget.insert(generatedTarget.begin(), 'p');
+    if (preferences.run.target.empty())
+        preferences.run.target = generatedTarget;
+    if (preferences.run.executable.empty())
+    {
+        const std::string executableTarget = preferences.run.target.empty()
+            ? generatedTarget : preferences.run.target;
+        std::filesystem::path executable =
+            std::filesystem::path("bin") / "debug" / executableTarget;
+#if defined(_WIN32)
+        executable += ".exe";
+#endif
+        preferences.run.executable = executable.generic_string();
+    }
+
+    if (!preferences.recentScene)
+    {
+        const auto scenesDirectory = projectRoot / "assets" / "scenes";
+        const auto mainScene = scenesDirectory / "main.scene";
+        std::error_code error;
+        if (std::filesystem::is_regular_file(mainScene, error) && !error)
+            preferences.recentScene = mainScene;
+        else
+        {
+            error.clear();
+            std::vector<std::filesystem::path> scenes;
+            for (std::filesystem::directory_iterator it(scenesDirectory, error), end;
+                 !error && it != end; it.increment(error))
+            {
+                std::error_code entryError;
+                if (it->path().extension() == ".scene" && it->is_regular_file(entryError) && !entryError)
+                    scenes.push_back(it->path());
+            }
+            if (!error && !scenes.empty())
+            {
+                std::sort(scenes.begin(), scenes.end());
+                preferences.recentScene = scenes.front();
+            }
+        }
+    }
+    if (!preferences.activeTabPath && preferences.recentScene)
+    {
+        preferences.activeTabPath = preferences.recentScene;
+        preferences.activeDocumentKind = SavedDocumentKind::Scene;
     }
 }
 
@@ -1123,9 +1223,6 @@ WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferenc
             !std::isfinite(preferences.snap.scale) || preferences.snap.scale <= 0.0f ||
             preferences.snap.scale > 10.0f || preferences.openTabs.size() > 128)
             return validation_failure("preferences contain out-of-range values");
-        if (preferences.run.catalogProtocol != "common-runner-v1" &&
-            preferences.run.catalogProtocol != "unavailable")
-            return validation_failure("catalog protocol must be common-runner-v1 or unavailable");
         if ((preferences.snap.coordinateMode != "world" && preferences.snap.coordinateMode != "local") ||
             (preferences.duplicationReferencePolicy != "preserve-existing-targets" &&
              preferences.duplicationReferencePolicy != "remap-internal-targets"))
@@ -1144,7 +1241,7 @@ WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferenc
                 return validation_failure("host layout settings exceed their size or identity limit");
         for (const auto &tab : preferences.openTabs)
         {
-            if (tab.scenePath.empty() || !std::isfinite(tab.viewCenterX) || !std::isfinite(tab.viewCenterY) ||
+            if (tab.documentPath.empty() || !std::isfinite(tab.viewCenterX) || !std::isfinite(tab.viewCenterY) ||
                 !std::isfinite(tab.viewZoom) || tab.viewZoom < 0.01f || tab.viewZoom > 100.0f ||
                 std::any_of(tab.expandedHierarchyIds.begin(), tab.expandedHierarchyIds.end(),
                             [](int id) { return id < 0; }))
@@ -1298,6 +1395,145 @@ bool save_last_workspace(const std::filesystem::path &path,
         error = std::string("cannot save last workspace: ") + exception.what();
         return false;
     }
+}
+
+GlobalPreferencesLoadResult load_global_preferences(const std::filesystem::path &path)
+{
+    GlobalPreferencesLoadResult result;
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec == std::errc::no_such_file_or_directory)
+        return result;
+    if (ec)
+    {
+        result.message = "Global preferences could not be inspected: " + ec.message();
+        return result;
+    }
+    if (size > 256U * 1024U)
+    {
+        result.message = "Global preferences exceed size limit and were ignored.";
+        return result;
+    }
+    try
+    {
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream)
+            throw std::runtime_error("cannot open global preferences");
+        const Json doc = Json::parse(stream);
+        if (!doc.is_object())
+            return result;
+        if (const auto lastIt = doc.find("lastProjectRoot");
+            lastIt != doc.end() && lastIt->is_string() && !lastIt->get<std::string>().empty())
+            result.preferences.lastProjectRoot = std::filesystem::path(lastIt->get<std::string>());
+        if (const auto rootIt = doc.find("rememberedPlatformatorRoot");
+            rootIt != doc.end() && rootIt->is_string() && !rootIt->get<std::string>().empty())
+            result.preferences.rememberedPlatformatorRoot = std::filesystem::path(rootIt->get<std::string>());
+        if (const auto recentIt = doc.find("recentProjects"); recentIt != doc.end() && recentIt->is_array())
+        {
+            for (const auto &entry : *recentIt)
+            {
+                if (!entry.is_object())
+                    continue;
+                const auto p = entry.find("rootPath");
+                if (p == entry.end() || !p->is_string() || p->get<std::string>().empty())
+                    continue;
+                RecentProjectEntry item;
+                item.rootPath = std::filesystem::path(p->get<std::string>());
+                item.name = entry.value("name", item.rootPath.filename().string());
+                item.lastOpenedUtc = entry.value("lastOpenedUtc", std::int64_t{0});
+                result.preferences.recentProjects.push_back(std::move(item));
+            }
+        }
+    }
+    catch (const std::exception &ex)
+    {
+        result.preferences = GlobalPreferences{};
+        result.message = std::string("Global preferences could not be read: ") + ex.what();
+    }
+    return result;
+}
+
+bool save_global_preferences(const std::filesystem::path &path,
+                             const GlobalPreferences &preferences, std::string &error)
+{
+    try
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(path.parent_path(), ec);
+        if (ec)
+        {
+            error = "cannot create global preference directory: " + ec.message();
+            return false;
+        }
+        Json recentJson = Json::array();
+        for (const auto &entry : preferences.recentProjects)
+        {
+            recentJson.push_back({{"name", entry.name},
+                                  {"rootPath", canonical_project_key(entry.rootPath)},
+                                  {"lastOpenedUtc", entry.lastOpenedUtc}});
+        }
+        Json doc = {{"version", 1}, {"recentProjects", std::move(recentJson)}};
+        if (preferences.lastProjectRoot && !preferences.lastProjectRoot->empty())
+            doc["lastProjectRoot"] = canonical_project_key(*preferences.lastProjectRoot);
+        if (preferences.rememberedPlatformatorRoot && !preferences.rememberedPlatformatorRoot->empty())
+            doc["rememberedPlatformatorRoot"] = canonical_project_key(*preferences.rememberedPlatformatorRoot);
+
+        const auto result = write_file_atomically(path, doc.dump(2) + "\n", true);
+        if (!result.succeeded())
+        {
+            error = "cannot save global preferences: " + result.message;
+            return false;
+        }
+        error.clear();
+        return true;
+    }
+    catch (const std::exception &ex)
+    {
+        error = std::string("cannot save global preferences: ") + ex.what();
+        return false;
+    }
+}
+
+void record_recent_project(GlobalPreferences &preferences,
+                           const std::filesystem::path &projectRoot,
+                           std::string_view displayName,
+                           std::int64_t timestampUtc)
+{
+    if (projectRoot.empty())
+        return;
+    const std::string key = canonical_project_key(projectRoot);
+    const std::filesystem::path canonicalPath(key);
+    std::string resolvedName(displayName);
+    if (resolvedName.empty())
+        resolvedName = canonicalPath.filename().string();
+    if (resolvedName.empty())
+        resolvedName = key;
+
+    std::int64_t ts = timestampUtc;
+    if (ts <= 0)
+        ts = std::chrono::duration_cast<std::chrono::seconds>(
+                 std::chrono::system_clock::now().time_since_epoch())
+                 .count();
+
+    preferences.lastProjectRoot = canonicalPath;
+    std::erase_if(preferences.recentProjects, [&](const RecentProjectEntry &item) {
+        return canonical_project_key(item.rootPath) == key;
+    });
+    preferences.recentProjects.insert(preferences.recentProjects.begin(),
+                                      RecentProjectEntry{std::move(resolvedName), canonicalPath, ts});
+    constexpr std::size_t MaxRecentProjects = 10;
+    if (preferences.recentProjects.size() > MaxRecentProjects)
+        preferences.recentProjects.resize(MaxRecentProjects);
+}
+
+void remove_recent_project(GlobalPreferences &preferences, const std::filesystem::path &projectRoot)
+{
+    const std::string key = canonical_project_key(projectRoot);
+    std::erase_if(preferences.recentProjects, [&](const RecentProjectEntry &item) {
+        return canonical_project_key(item.rootPath) == key;
+    });
+    if (preferences.lastProjectRoot && canonical_project_key(*preferences.lastProjectRoot) == key)
+        preferences.lastProjectRoot.reset();
 }
 
 void record_adopted_scene(WorkspacePreferences &preferences, const std::filesystem::path &scenePath)

@@ -39,8 +39,9 @@ ImGuiID collider_integer_id(const DocumentSession &document, const char *field, 
     ImGui::PushID(project.c_str());
     ImGui::PushID(tab.c_str());
     ImGui::PushID(generation.c_str());
+    const int targetComponentId = std::string_view(field) == "loopCount" ? 3 : kColliderId;
     ImGui::PushID(object.c_str());
-    ImGui::PushID(kColliderId);
+    ImGui::PushID(targetComponentId);
     ImGui::PushID(path.c_str());
     ImGuiID id = 0;
     if (plusButton)
@@ -73,8 +74,9 @@ ImGuiID collider_field_id(const DocumentSession &document, const char *field)
     ImGui::PushID(project.c_str());
     ImGui::PushID(tab.c_str());
     ImGui::PushID(generation.c_str());
+    const int targetComponentId = std::string_view(field) == "loopCount" ? 3 : kColliderId;
     ImGui::PushID(object.c_str());
-    ImGui::PushID(kColliderId);
+    ImGui::PushID(targetComponentId);
     ImGui::PushID(path.c_str());
     const ImGuiID id = ImGui::GetID("##value");
     for (int index = 0; index < 7; ++index)
@@ -114,12 +116,19 @@ ImGuiID behavior_path_id(const DocumentSession &document, const std::string &fie
     const auto separator = fieldPath.rfind('/');
     const bool vectorComponent = separator != std::string::npos && separator + 1 < fieldPath.size();
     if (vectorComponent)
+    {
+        const std::string parentPath = "/" + fieldPath.substr(0, separator);
+        ImGui::PushID(parentPath.c_str());
         ImGui::PushID(fieldPath.c_str() + separator + 1);
+    }
     ImGui::PushID(path.c_str());
     const ImGuiID id = ImGui::GetID("##value");
     ImGui::PopID();
     if (vectorComponent)
+    {
         ImGui::PopID();
+        ImGui::PopID();
+    }
     for (int index = 0; index < 12; ++index)
         ImGui::PopID();
     return id;
@@ -180,11 +189,20 @@ void frame(InspectorPanel &panel, DocumentSession &document, SelectionModel &sel
            ImGuiID *captureCommonComponentId = nullptr,
            int commonComponentType = 3,
            std::size_t commonComponentOccurrence = 0,
-           const char *commonComponentField = "width")
+           const char *commonComponentField = "width",
+           bool rightDown = false,
+           ImGuiID *captureCommonColliderLayerId = nullptr,
+           ImGuiID *captureTransformInputId = nullptr,
+           const char *captureTransformInputPath = nullptr,
+           ImGuiID *captureTransformVectorLabelId = nullptr,
+           const char *captureTransformVectorProperty = nullptr,
+           ImGuiID *captureTransformRotationLabelId = nullptr,
+           ImGuiID *captureCommonRotationId = nullptr)
 {
     ImGuiIO &io = ImGui::GetIO();
     io.AddMousePosEvent(mouse.x, mouse.y);
     io.AddMouseButtonEvent(0, leftDown);
+    io.AddMouseButtonEvent(ImGuiMouseButton_Right, rightDown);
     ImGui::NewFrame();
     ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
     ImGui::SetNextWindowSize({760.0f, 880.0f}, ImGuiCond_Always);
@@ -194,7 +212,7 @@ void frame(InspectorPanel &panel, DocumentSession &document, SelectionModel &sel
     if (captureGroupId != nullptr)
         *captureGroupId = collider_integer_id(document, captureField);
     if (capturePlusId != nullptr)
-        *capturePlusId = collider_integer_id(document, "collisionMask", true);
+        *capturePlusId = collider_integer_id(document, "loopCount", true);
     if (captureBehaviorId != nullptr)
         *captureBehaviorId = behavior_number_id(document, captureBehaviorField);
     if (captureColliderFieldId != nullptr)
@@ -220,6 +238,64 @@ void frame(InspectorPanel &panel, DocumentSession &document, SelectionModel &sel
         *captureCommonComponentId = multi_component_number_id(
             selection.current().selectedObjectIds, commonComponentType,
             commonComponentOccurrence, commonComponentField);
+    if (captureCommonColliderLayerId != nullptr &&
+        selection.current().selectedObjectIds.size() > 1)
+    {
+        std::string scope("multi");
+        for (const int objectId : selection.current().selectedObjectIds)
+        {
+            scope.push_back(':');
+            scope += std::to_string(objectId);
+        }
+        ImGui::PushID(scope.c_str());
+        ImGui::PushID("component:3:0");
+        ImGui::PushID("/collisionGroup");
+        *captureCommonColliderLayerId = ImGui::GetID("##common_collider_layer");
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::PopID();
+    }
+    if ((captureTransformInputId != nullptr || captureTransformVectorLabelId != nullptr ||
+         captureTransformRotationLabelId != nullptr) && selection.current().objectId)
+    {
+        const std::string project = std::to_string(document.projectGeneration);
+        const std::string tab = std::to_string(document.tabId.value);
+        const std::string generation = std::to_string(document.documentGeneration);
+        const std::string object = std::to_string(*selection.current().objectId);
+        ImGui::PushID("0");
+        ImGui::PushID(project.c_str());
+        ImGui::PushID(tab.c_str());
+        ImGui::PushID(generation.c_str());
+        ImGui::PushID(object.c_str());
+        if (captureTransformInputId != nullptr && captureTransformInputPath != nullptr)
+        {
+            ImGui::PushID(captureTransformInputPath);
+            *captureTransformInputId = ImGui::GetID("##value");
+            ImGui::PopID();
+        }
+        if (captureTransformVectorLabelId != nullptr && captureTransformVectorProperty != nullptr)
+            *captureTransformVectorLabelId = ImGui::GetID(
+                (std::string("##transform_row_label/") + captureTransformVectorProperty).c_str());
+        if (captureTransformRotationLabelId != nullptr)
+            *captureTransformRotationLabelId = ImGui::GetID("##scrub_rot");
+        for (int index = 0; index < 5; ++index)
+            ImGui::PopID();
+    }
+    if (captureCommonRotationId != nullptr &&
+        selection.current().selectedObjectIds.size() > 1)
+    {
+        std::string scope("multi");
+        for (const int objectId : selection.current().selectedObjectIds)
+        {
+            scope.push_back(':');
+            scope += std::to_string(objectId);
+        }
+        ImGui::PushID(scope.c_str());
+        ImGui::PushID("/rotation");
+        *captureCommonRotationId = ImGui::GetID("##value");
+        ImGui::PopID();
+        ImGui::PopID();
+    }
     panel.draw(document, selection, commands, catalog);
     ImGui::End();
     ImGui::Render();
@@ -271,7 +347,24 @@ ImVec2 find_common_component_input(InspectorPanel &panel, DocumentSession &docum
         if (ImGui::GetHoveredID() == target)
             return {500.0f, y};
     }
-    throw std::runtime_error("could not locate the common multi-object component field");
+    throw std::runtime_error(std::string("could not locate the common multi-object component field: ") + field);
+}
+
+ImVec2 find_common_transform_rotation_input(InspectorPanel &panel, DocumentSession &document,
+                                            SelectionModel &selection,
+                                            EditCommandService &commands,
+                                            BehaviorCatalog &catalog, ImGuiID &target)
+{
+    for (float y = 30.0f; y < 880.0f; y += 6.0f)
+    {
+        frame(panel, document, selection, commands, catalog, {500.0f, y}, false,
+              nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+              nullptr, nullptr, "value", nullptr, 3, 0, "width", false,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &target);
+        if (ImGui::GetHoveredID() == target)
+            return {500.0f, y};
+    }
+    throw std::runtime_error("could not locate the common multi-object Rotation input");
 }
 
 ImVec2 find_input(InspectorPanel &panel, DocumentSession &document, SelectionModel &selection,
@@ -432,29 +525,29 @@ void run_integer_fields_keep_independent_drafts()
 
     auto document = make_default_document();
     document.root[0]["components"].push_back(component(
-        kColliderId, 3, Json{{"colliderType", 1}, {"width", 16.0}, {"height", 16.0},
-                             {"offset", {{"x", 0.0}, {"y", 0.0}}}, {"trigger", false},
-                             {"collisionGroup", 1}, {"collisionMask", 2}}));
+        kColliderId, 0, Json{{"currentFrameIndex", 1}, {"playbackSpeed", 1.0}, {"playing", false},
+                             {"animationClipFilePath", ""}}));
+    document.root[0]["components"].push_back(component(
+        3, 1, Json{{"filePath", ""}, {"gain", 1.0}, {"loopCount", 2}, {"autoPlay", false}}));
     document.root.push_back(object(10, "Other",
-        Json::array({component(20, 3, Json{{"colliderType", 1}, {"width", 16.0},
-            {"height", 16.0}, {"offset", {{"x", 0.0}, {"y", 0.0}}},
-            {"trigger", false}, {"collisionGroup", 3}, {"collisionMask", 4}})})));
+        Json::array({component(20, 0, Json{{"currentFrameIndex", 3}, {"playbackSpeed", 1.0},
+            {"playing", false}, {"animationClipFilePath", ""}})})));
     ++document.structureRevision;
     rebuild_document_indexes(document);
 
     SelectionModel selection;
-    selection.set(document, Selection{kObjectId, kColliderId, std::nullopt, FocusedPanel::Inspector});
+    selection.set(document, Selection{kObjectId, std::nullopt, std::nullopt, FocusedPanel::Inspector});
     EditCommandService commands;
     BehaviorCatalog catalog;
     InspectorPanel panel;
 
     ImGuiID groupId = 0;
-    const ImVec2 group = find_input(panel, document, selection, commands, catalog, groupId);
+    const ImVec2 group = find_input(panel, document, selection, commands, catalog, groupId, "currentFrameIndex");
     type_integer(panel, document, selection, commands, catalog, group, "7");
 
-    require(document.root[0]["components"][1]["collisionGroup"] == 7,
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 7,
             "editing the first integer field must preserve its draft while the second field is drawn");
-    require(document.root[0]["components"][1]["collisionMask"] == 2,
+    require(document.root[0]["components"][2]["loopCount"] == 2,
             "editing one integer field must not change a neighboring integer field");
     require(commands.history_status().undoCommands == 1,
             "one completed integer edit must create exactly one Undo command");
@@ -467,7 +560,7 @@ void run_integer_fields_keep_independent_drafts()
         for (float x = 130.0f; x < 755.0f && !foundPlus; x += 8.0f)
         {
         frame(panel, document, selection, commands, catalog, {x, y}, false, nullptr,
-              "collisionGroup", &plusId);
+              "currentFrameIndex", &plusId);
             if (ImGui::GetHoveredID() == plusId)
             {
                 plusPoint = {x, y};
@@ -481,42 +574,42 @@ void run_integer_fields_keep_independent_drafts()
     for (int repeatFrame = 0; repeatFrame < 30; ++repeatFrame)
         frame(panel, document, selection, commands, catalog, plusPoint, true);
     frame(panel, document, selection, commands, catalog, plusPoint, false);
-    require(document.root[0]["components"][1]["collisionMask"].get<int>() > 2,
+    require(document.root[0]["components"][2]["loopCount"].get<int>() > 2,
             "holding an integer step button must accumulate increments in its own draft");
     require(commands.history_status().undoCommands == undoBeforeStep + 1,
             "a held integer step gesture must commit once when released");
 
     ImGuiID maskId = 0;
     const ImVec2 maskPoint = find_input(panel, document, selection, commands, catalog,
-                                        maskId, "collisionMask");
-    const int maskBeforeCancel = document.root[0]["components"][1]["collisionMask"].get<int>();
+                                        maskId, "loopCount");
+    const int maskBeforeCancel = document.root[0]["components"][2]["loopCount"].get<int>();
     const std::size_t undoBeforeCancel = commands.history_status().undoCommands;
     type_integer(panel, document, selection, commands, catalog, maskPoint,
                  std::to_string(maskBeforeCancel).c_str());
     require(commands.history_status().undoCommands == undoBeforeCancel,
             "committing an unchanged integer value must not create an Undo command");
     cancel_integer(panel, document, selection, commands, catalog, maskPoint, '9');
-    require(document.root[0]["components"][1]["collisionMask"] == maskBeforeCancel,
+    require(document.root[0]["components"][2]["loopCount"] == maskBeforeCancel,
             "Escape must discard the current integer draft");
     require(commands.history_status().undoCommands == undoBeforeCancel,
             "cancelled integer editing must not create an Undo command");
 
     start_integer_draft(panel, document, selection, commands, catalog, group, "-");
     frame(panel, document, selection, commands, catalog, {20.0f, 850.0f}, false);
-    require(document.root[0]["components"][1]["collisionGroup"] == 7 &&
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
                 commands.history_status().undoCommands == undoBeforeCancel,
             "an invalid intermediate integer must not overwrite its authored value or create history");
 
     start_integer_draft(panel, document, selection, commands, catalog, group, "9");
     selection.set(document, Selection{10, 20, std::nullopt, FocusedPanel::Inspector});
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    selection.set(document, Selection{kObjectId, kColliderId, std::nullopt, FocusedPanel::Inspector});
+    selection.set(document, Selection{kObjectId, std::nullopt, std::nullopt, FocusedPanel::Inspector});
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
     io.AddKeyEvent(ImGuiKey_Enter, true);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
     io.AddKeyEvent(ImGuiKey_Enter, false);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(document.root[0]["components"][1]["collisionGroup"] == 7 &&
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
                 commands.history_status().undoCommands == undoBeforeCancel,
             "changing selection must discard the old field draft");
 
@@ -527,7 +620,7 @@ void run_integer_fields_keep_independent_drafts()
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
     io.AddKeyEvent(ImGuiKey_Enter, false);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(document.root[0]["components"][1]["collisionGroup"] == 7 &&
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
                 commands.history_status().undoCommands == undoBeforeCancel,
             "changing tab identity must discard drafts associated with the previous tab");
 
@@ -540,7 +633,7 @@ void run_integer_fields_keep_independent_drafts()
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
     io.AddKeyEvent(ImGuiKey_Enter, false);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(document.root[0]["components"][1]["collisionGroup"] == 7 &&
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
                 commands.history_status().undoCommands == undoBeforeCancel,
             "changing host generation must discard an integer draft from the prior host");
     ImGui::DestroyContext();
@@ -570,7 +663,7 @@ void run_behavior_numeric_edit_preserves_unmodeled_data()
     rebuild_document_indexes(document);
 
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
     const Json schema{{"schema_version", 1},
                       {"behaviors", Json::array({Json{{"name", "FloatBehavior"},
                                                        {"field_schema_available", true},
@@ -583,8 +676,7 @@ void run_behavior_numeric_edit_preserves_unmodeled_data()
                                                                 {"element", Json{{"name", "element"},
                                                                                   {"kind", "number"}}}},
                                                            Json{{"name", "missing"}, {"kind", "number"}}})}}})}};
-    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
-                catalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(catalog.set_source_catalog(schema),
             "the behavior field fixture schema must become current");
 
     SelectionModel selection;
@@ -747,14 +839,12 @@ void run_mixed_multi_selection_edits_are_atomic()
     commands.reset_history(document.documentGeneration);
     commands.mark_saved();
     BehaviorCatalog multiCatalog;
-    multiCatalog.configure(CatalogProtocol::CommonRunnerV1,
-                           CatalogIdentity{"project", "debug", "game", "app"});
+    multiCatalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
     const Json multiSchema{{"schema_version", 1},
         {"behaviors", Json::array({Json{{"name", "FloatBehavior"},
             {"field_schema_available", true},
             {"fields", Json::array({Json{{"name", "value"}, {"kind", "number"}}})}}})}};
-    require(multiCatalog.begin_query() && multiCatalog.append_stdout(multiSchema.dump()) &&
-                multiCatalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(multiCatalog.set_source_catalog(multiSchema),
             "the common behavior field fixture schema must become current");
     ImGuiID commonBehaviorId = 0;
     const ImVec2 commonBehaviorPoint = find_common_behavior_input(
@@ -806,6 +896,614 @@ void run_mixed_multi_selection_edits_are_atomic()
     require(document.root == incompatibleBefore && !document.root[1]["scale"].contains("x") &&
                 document.root[1]["active"] == 1 && commands.history_status().undoCommands == 0,
             "missing or incompatible mixed fields must stay absent and must not create edit history during display");
+    ImGui::DestroyContext();
+}
+
+ImGuiID right_click_common_behavior_field(
+    InspectorPanel &panel, DocumentSession &document, SelectionModel &selection,
+    EditCommandService &commands, BehaviorCatalog &catalog, ImVec2 fieldPoint)
+{
+    frame(panel, document, selection, commands, catalog, fieldPoint,
+          false, nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+          nullptr, nullptr, "value", nullptr, 3, 0, "width", true);
+    frame(panel, document, selection, commands, catalog, fieldPoint);
+    return ImGui::GetCurrentContext()->OpenPopupStack.Size > 0
+        ? ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId : 0;
+}
+
+ImGuiID right_click_revert_item(InspectorPanel &panel, DocumentSession &document,
+                                SelectionModel &selection, EditCommandService &commands,
+                                BehaviorCatalog &catalog, ImVec2 itemPoint)
+{
+    frame(panel, document, selection, commands, catalog, itemPoint, false,
+          nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+          nullptr, nullptr, "value", nullptr, 3, 0, "width", true);
+    frame(panel, document, selection, commands, catalog, itemPoint);
+    return ImGui::GetCurrentContext()->OpenPopupStack.Size > 0
+        ? ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId : 0;
+}
+
+void click_revert_property_popup(InspectorPanel &panel, DocumentSession &document,
+                                 SelectionModel &selection, EditCommandService &commands,
+                                 BehaviorCatalog &catalog, ImGuiID popupId)
+{
+    ImGuiContext *context = ImGui::GetCurrentContext();
+    require(context != nullptr && context->OpenPopupStack.Size > 0 &&
+                context->OpenPopupStack.back().PopupId == popupId,
+            "the expected Revert Property popup must be active before clicking its menu item");
+    ImGuiWindow *popupWindow = context->OpenPopupStack.back().Window;
+    if (popupWindow == nullptr)
+    {
+        for (ImGuiWindow *candidate : context->Windows)
+            if (candidate != nullptr && candidate->Active &&
+                (candidate->Flags & ImGuiWindowFlags_Popup) != 0)
+            {
+                popupWindow = candidate;
+                break;
+            }
+    }
+    require(popupWindow != nullptr, "the Revert Property popup window must be active");
+    const ImVec2 popupTopLeft = popupWindow->Pos;
+    frame(panel, document, selection, commands, catalog,
+          {popupTopLeft.x + 8.0f, popupTopLeft.y + 8.0f});
+    context = ImGui::GetCurrentContext();
+    require(context->OpenPopupStack.Size > 0 && context->OpenPopupStack.back().PopupId == popupId,
+            "the Revert Property popup must stay open while its menu row is measured");
+    popupWindow = context->OpenPopupStack.back().Window;
+    require(popupWindow != nullptr, "the Revert Property popup window must remain active");
+    const std::size_t undoBefore = commands.history_status().undoCommands;
+    const ImVec2 menuItemCenter(popupWindow->Pos.x + popupWindow->Size.x * 0.5f,
+                                popupWindow->Pos.y + popupWindow->Size.y * 0.5f);
+    frame(panel, document, selection, commands, catalog, menuItemCenter, true);
+    frame(panel, document, selection, commands, catalog, menuItemCenter);
+    require(commands.history_status().undoCommands == undoBefore + 1,
+            "clicking Revert Property in the rendered popup must commit one undoable edit");
+}
+
+void frame_capture_transform_id(InspectorPanel &panel, DocumentSession &document,
+                                SelectionModel &selection, EditCommandService &commands,
+                                BehaviorCatalog &catalog, ImVec2 mouse, ImGuiID &target,
+                                const char *inputPath, const char *vectorProperty,
+                                bool rotationLabel)
+{
+    frame(panel, document, selection, commands, catalog, mouse, false,
+          nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+          nullptr, nullptr, "value", nullptr, 3, 0, "width", false, nullptr,
+          inputPath != nullptr ? &target : nullptr, inputPath,
+          vectorProperty != nullptr ? &target : nullptr, vectorProperty,
+          rotationLabel ? &target : nullptr);
+}
+
+ImVec2 find_single_object_widget(InspectorPanel &panel, DocumentSession &document,
+                                 SelectionModel &selection, EditCommandService &commands,
+                                 BehaviorCatalog &catalog, float x, const char *inputPath = nullptr,
+                                 const char *vectorProperty = nullptr, bool rotationLabel = false)
+{
+    for (float y = 30.0f; y < 880.0f; y += 6.0f)
+    {
+        ImGuiID target = 0;
+        frame_capture_transform_id(panel, document, selection, commands, catalog, {x, y}, target,
+                                   inputPath, vectorProperty, rotationLabel);
+        if (ImGui::GetHoveredID() == target)
+            return {x, y};
+    }
+    throw std::runtime_error("could not locate the requested compact Transform widget");
+}
+
+void run_multi_behavior_template_overrides_revert_all_targets()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    TemporaryDirectory temporary;
+    const auto assetRoot = temporary.path() / "assets";
+    const auto templatePath = assetRoot / "templates" / "BehaviorOverrides.pttemplate";
+    std::filesystem::create_directories(templatePath.parent_path());
+    const Json behavior{{"type", "FloatBehavior"}, {"value", 1.25}, {"other", 2.0}};
+    const Json sourceRoot = object(1, "Template source",
+        Json::array({component(2, 5, Json{{"behaviors", Json::array({behavior})}})}));
+    write_json(templatePath, make_template_envelope("BehaviorOverrides", sourceRoot));
+
+    const auto make_instance = [&](int objectId, int componentId, bool overridden) {
+        Json instance = sourceRoot;
+        instance["id"] = objectId;
+        instance["template"] = "templates/BehaviorOverrides.pttemplate";
+        instance["templateNodeId"] = 1;
+        instance["templateSourceKeys"] = Json::array({
+            "active", "name", "position", "rotation", "scale", "tag"});
+        instance["templateSourcePaths"] = Json::array({
+            "component[id=2].behaviors[0].value",
+            "component[id=2].behaviors[0].other"});
+        instance["components"][0]["id"] = componentId;
+        instance["components"][0]["templateComponentId"] = 2;
+        instance["components"][0]["templateSourceFields"] = Json::array({"behaviors", "type"});
+        instance["components"][0]["behaviors"][0]["value"] = overridden ? 9.0 : 1.25;
+        instance["components"][0]["behaviors"][0]["other"] = overridden ? 8.0 : 2.0;
+        instance["overrides"] = overridden
+            ? Json::array({"component[id=2].behaviors[0].value",
+                           "component[id=2].behaviors[0].other"})
+            : Json::array();
+        return instance;
+    };
+
+    auto parsed = parse_document(scene({make_instance(10, 11, false),
+                                        make_instance(20, 21, true)}));
+    require(static_cast<bool>(parsed), "multi behavior template fixture must parse: " + parsed.error);
+    DocumentSession &document = *parsed.document;
+    document.projectRoot = temporary.path();
+    document.assetRoot = assetRoot;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{10, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    selection.set_objects(document, {10, 20}, 20, 10);
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
+    const Json schema{{"schema_version", 1},
+        {"behaviors", Json::array({Json{{"name", "FloatBehavior"},
+            {"field_schema_available", true},
+            {"fields", Json::array({
+                Json{{"name", "value"}, {"kind", "number"}},
+                Json{{"name", "other"}, {"kind", "number"}}})}}})}};
+    require(catalog.set_source_catalog(schema), "behavior schema must load for multi override UI test");
+    InspectorPanel panel;
+
+    ImGuiID valueWidgetId = 0;
+    const ImVec2 valuePoint = find_common_behavior_input(
+        panel, document, selection, commands, catalog, valueWidgetId, "value");
+    const ImGuiID valuePopupId = right_click_common_behavior_field(
+        panel, document, selection, commands, catalog, valuePoint);
+    require(valuePopupId != 0,
+            "a common behavior field overridden on a non-primary selected object must expose Revert Property");
+    click_revert_property_popup(panel, document, selection, commands, catalog, valuePopupId);
+    const auto behaviorAfterRevert = document.root;
+    require(document.root[0]["components"][0]["behaviors"][0]["value"] == 1.25 &&
+                document.root[1]["components"][0]["behaviors"][0]["value"] == 1.25 &&
+                document.root[0]["overrides"].empty() &&
+                document.root[1]["overrides"] ==
+                    Json::array({"component[id=2].behaviors[0].other"}),
+            "clicking Revert Property must batch every overridden behavior participant and retain unrelated overrides: " +
+                behaviorAfterRevert.dump() + " undo=" +
+                std::to_string(commands.history_status().undoCommands));
+
+    ImGui::DestroyContext();
+    ImGui::CreateContext();
+    ImGuiIO &secondIo = ImGui::GetIO();
+    secondIo.IniFilename = nullptr;
+    secondIo.DisplaySize = {800.0f, 900.0f};
+    secondIo.DeltaTime = 1.0f / 60.0f;
+    secondIo.Fonts->AddFontDefault();
+    secondIo.Fonts->Build();
+    ImGuiID otherWidgetId = 0;
+    const ImVec2 otherPoint = find_common_behavior_input(
+        panel, document, selection, commands, catalog, otherWidgetId, "other");
+    const ImGuiID otherPopupId = right_click_common_behavior_field(
+        panel, document, selection, commands, catalog, otherPoint);
+    require(otherPopupId != 0 && otherPopupId != valuePopupId,
+            "separate behavior fields must use distinct Revert Property popup IDs");
+    click_revert_property_popup(panel, document, selection, commands, catalog, otherPopupId);
+    ImGui::DestroyContext();
+    require(document.root[1]["components"][0]["behaviors"][0]["other"] == 2.0 &&
+                document.root[1]["overrides"].empty(),
+            "the second field's Revert Property menu must clear only that field's remaining override");
+}
+
+void run_multi_collider_layer_revert_contexts_are_unique()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    TemporaryDirectory temporary;
+    const auto assetRoot = temporary.path() / "assets";
+    const auto templatePath = assetRoot / "templates" / "ColliderOverrides.pttemplate";
+    std::filesystem::create_directories(templatePath.parent_path());
+    const Json sourceRoot = object(1, "Collider source", Json::array({component(2, 3,
+        Json{{"collisionGroup", 1ULL}, {"collisionMask", 1ULL},
+             {"width", 100.0}, {"height", 80.0}})}));
+    write_json(templatePath, make_template_envelope("ColliderOverrides", sourceRoot));
+    const auto make_instance = [&](int objectId, int componentId, bool overridden) {
+        Json instance = sourceRoot;
+        instance["id"] = objectId;
+        instance["template"] = "templates/ColliderOverrides.pttemplate";
+        instance["templateNodeId"] = 1;
+        instance["templateSourceKeys"] = Json::array({
+            "active", "name", "position", "rotation", "scale", "tag"});
+        instance["templateSourcePaths"] = Json::array({
+            "component[id=2].collisionGroup", "component[id=2].collisionMask",
+            "component[id=2].width", "component[id=2].height"});
+        instance["components"][0]["id"] = componentId;
+        instance["components"][0]["templateComponentId"] = 2;
+        instance["components"][0]["templateSourceFields"] = Json::array({
+            "collisionGroup", "collisionMask", "width", "height", "type"});
+        if (overridden)
+        {
+            instance["components"][0]["collisionGroup"] = 2ULL;
+            instance["components"][0]["collisionMask"] = 3ULL;
+            instance["components"][0]["width"] = 160.0;
+            instance["components"][0]["height"] = 90.0;
+            instance["overrides"] = Json::array({
+                "component[id=2].collisionGroup", "component[id=2].collisionMask",
+                "component[id=2].width", "component[id=2].height"});
+        }
+        else
+            instance["overrides"] = Json::array();
+        return instance;
+    };
+    auto parsed = parse_document(scene({make_instance(100, 201, false),
+                                        make_instance(200, 202, true)}));
+    require(static_cast<bool>(parsed), "multi Collider Layer template fixture must parse: " + parsed.error);
+    DocumentSession &document = *parsed.document;
+    document.projectRoot = temporary.path();
+    document.assetRoot = assetRoot;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{100, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    selection.set_objects(document, {100, 200}, 200, 100);
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    ImGuiID layerWidgetId = 0;
+    ImVec2 layerPoint{};
+    bool foundLayer = false;
+    for (float y = 30.0f; y < 880.0f && !foundLayer; y += 6.0f)
+    {
+        frame(panel, document, selection, commands, catalog, {500.0f, y}, false,
+              nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+              nullptr, nullptr, "value", nullptr, 3, 0, "width", false,
+              &layerWidgetId);
+        if (ImGui::GetHoveredID() == layerWidgetId)
+        {
+            layerPoint = {500.0f, y};
+            foundLayer = true;
+        }
+    }
+    require(foundLayer, "the common Collider Layer dropdown must be reachable for right-click Revert");
+    frame(panel, document, selection, commands, catalog, layerPoint, false, nullptr,
+          "collisionGroup", nullptr, nullptr, "value", nullptr, "width", nullptr, nullptr,
+          "value", nullptr, 3, 0, "width", true);
+    frame(panel, document, selection, commands, catalog, layerPoint);
+    require(ImGui::GetCurrentContext()->OpenPopupStack.Size > 0,
+            "right-clicking a common Collider Layer override must open Revert Property");
+    const ImGuiID layerPopupId = ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId;
+    click_revert_property_popup(panel, document, selection, commands, catalog, layerPopupId);
+    require(document.root[0]["components"][0]["collisionGroup"] == 1 &&
+                document.root[1]["components"][0]["collisionGroup"] == 1 &&
+                document.root[1]["components"][0]["collisionMask"] == 1 &&
+                document.root[1]["overrides"] == Json::array({
+                    "component[id=2].width", "component[id=2].height"}),
+            "multi Collider Layer Revert must restore both layer fields and keep field overrides");
+
+    ImGui::DestroyContext();
+    ImGui::CreateContext();
+    ImGuiIO &secondIo = ImGui::GetIO();
+    secondIo.IniFilename = nullptr;
+    secondIo.DisplaySize = {800.0f, 900.0f};
+    secondIo.DeltaTime = 1.0f / 60.0f;
+    secondIo.Fonts->AddFontDefault();
+    secondIo.Fonts->Build();
+    ImGuiID widthInputId = 0;
+    const ImVec2 widthInputPoint = find_common_component_input(
+        panel, document, selection, commands, catalog, widthInputId, 3, "width");
+    const ImGuiID widthLabelPopupId = right_click_revert_item(
+        panel, document, selection, commands, catalog, {30.0f, widthInputPoint.y});
+    require(widthLabelPopupId != 0,
+            "right-clicking a common Collider width label must open Revert Property");
+    click_revert_property_popup(panel, document, selection, commands, catalog, widthLabelPopupId);
+    require(document.root[1]["components"][0]["width"] == 100.0 &&
+                document.root[1]["overrides"] == Json::array({"component[id=2].height"}),
+            "reverting from the Collider width label must leave its sibling override intact");
+    ImGuiID heightInputId = 0;
+    const ImVec2 heightInputPoint = find_common_component_input(
+        panel, document, selection, commands, catalog, heightInputId, 3, "height");
+    const ImGuiID heightLabelPopupId = right_click_revert_item(
+        panel, document, selection, commands, catalog, {30.0f, heightInputPoint.y});
+    require(heightLabelPopupId != 0 && heightLabelPopupId != widthLabelPopupId,
+            "sibling Inspector begin_field labels must have distinct Revert Property popup IDs");
+    click_revert_property_popup(panel, document, selection, commands, catalog, heightLabelPopupId);
+    require(document.root[1]["components"][0]["height"] == 80.0 &&
+                document.root[1]["overrides"].empty(),
+            "reverting from the Collider height label must restore only that field");
+    document.root[1]["components"][0]["width"] = 160.0;
+    document.root[1]["overrides"] = Json::array({"component[id=2].width"});
+    ++document.valueRevision;
+    ImGuiID widthWidgetId = 0;
+    const ImVec2 widthPoint = find_common_component_input(
+        panel, document, selection, commands, catalog, widthWidgetId, 3, "width");
+    frame(panel, document, selection, commands, catalog, widthPoint, false, nullptr,
+          "collisionGroup", nullptr, nullptr, "value", nullptr, "width", nullptr, nullptr,
+          "value", nullptr, 3, 0, "width", true);
+    frame(panel, document, selection, commands, catalog, widthPoint);
+    require(ImGui::GetCurrentContext()->OpenPopupStack.Size > 0 &&
+                ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId != layerPopupId,
+            "the Collider width field must use a unique Revert Property context popup ID");
+    const ImGuiID widthPopupId = ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId;
+    click_revert_property_popup(panel, document, selection, commands, catalog, widthPopupId);
+    ImGui::DestroyContext();
+    require(document.root[1]["components"][0]["width"] == 100.0 &&
+                document.root[1]["overrides"].empty(),
+            "the Collider width Revert menu must target its own property override");
+}
+
+void run_behavior_field_label_reverts_and_vector_axis_revert()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    const auto templatePath = assetRoot / "templates" / "BehaviorLabels.pttemplate";
+    std::filesystem::create_directories(templatePath.parent_path());
+    const Json behavior{{"type", "OverrideFields"}, {"first", 1.25}, {"second", 2.5},
+                        {"offset", Json{{"x", 3.0}, {"y", 4.0}}}};
+    const Json sourceRoot = object(1, "Behavior label source",
+        Json::array({component(2, 5, Json{{"behaviors", Json::array({behavior})}})}));
+    write_json(templatePath, make_template_envelope("BehaviorLabels", sourceRoot));
+
+    Json instance = sourceRoot;
+    instance["id"] = kObjectId;
+    instance["template"] = "templates/BehaviorLabels.pttemplate";
+    instance["templateNodeId"] = 1;
+    instance["templateSourceKeys"] = Json::array(
+        {"active", "name", "position", "rotation", "scale", "tag"});
+    instance["templateSourcePaths"] = Json::array({
+        "component[id=2].behaviors[0].first",
+        "component[id=2].behaviors[0].second",
+        "component[id=2].behaviors[0].offset.x",
+        "component[id=2].behaviors[0].offset.y"});
+    instance["components"][0]["id"] = kScriptId;
+    instance["components"][0]["templateComponentId"] = 2;
+    instance["components"][0]["templateSourceFields"] = Json::array({"behaviors", "type"});
+    instance["components"][0]["behaviors"][0]["first"] = 9.0;
+    instance["components"][0]["behaviors"][0]["second"] = 8.0;
+    instance["components"][0]["behaviors"][0]["offset"]["x"] = 7.0;
+    instance["components"][0]["behaviors"][0]["offset"]["y"] = 6.0;
+    instance["overrides"] = Json::array({
+        "component[id=2].behaviors[0].first",
+        "component[id=2].behaviors[0].second",
+        "component[id=2].behaviors[0].offset.x",
+        "component[id=2].behaviors[0].offset.y"});
+    auto parsed = parse_document(scene({instance}));
+    require(static_cast<bool>(parsed), "behavior label template fixture must parse: " + parsed.error);
+    DocumentSession &document = *parsed.document;
+    document.projectRoot = projectRoot;
+    document.assetRoot = assetRoot;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{kObjectId, kScriptId, 0, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
+    const Json schema{{"schema_version", 1},
+        {"behaviors", Json::array({Json{{"name", "OverrideFields"},
+            {"field_schema_available", true},
+            {"fields", Json::array({
+                Json{{"name", "first"}, {"kind", "number"}},
+                Json{{"name", "second"}, {"kind", "number"}},
+                Json{{"name", "offset"}, {"kind", "vector2"}}})}}})}};
+    require(catalog.set_source_catalog(schema), "behavior label test schema must load");
+    InspectorPanel panel;
+
+    ImGuiID firstInputId = 0;
+    const ImVec2 firstInput = find_behavior_input(
+        panel, document, selection, commands, catalog, firstInputId, "first");
+    const ImVec2 firstLabel{30.0f, firstInput.y};
+    const ImGuiID firstPopup = right_click_revert_item(
+        panel, document, selection, commands, catalog, firstLabel);
+    require(firstPopup != 0, "right-clicking a BehaviorFields label must open Revert Property");
+    click_revert_property_popup(panel, document, selection, commands, catalog, firstPopup);
+    require(document.root[0]["components"][0]["behaviors"][0]["first"] == 1.25 &&
+                document.root[0]["overrides"] == Json::array({
+                    "component[id=2].behaviors[0].second",
+                    "component[id=2].behaviors[0].offset.x",
+                    "component[id=2].behaviors[0].offset.y"}),
+            "reverting from a BehaviorFields label must restore its own field");
+
+    ImGuiID secondInputId = 0;
+    const ImVec2 secondInput = find_behavior_input(
+        panel, document, selection, commands, catalog, secondInputId, "second");
+    const ImGuiID secondPopup = right_click_revert_item(
+        panel, document, selection, commands, catalog, {30.0f, secondInput.y});
+    require(secondPopup != 0 && secondPopup != firstPopup,
+            "sibling BehaviorFields begin_field labels must have distinct Revert Property popup IDs");
+    click_revert_property_popup(panel, document, selection, commands, catalog, secondPopup);
+    require(document.root[0]["components"][0]["behaviors"][0]["second"] == 2.5 &&
+                document.root[0]["overrides"] == Json::array({
+                    "component[id=2].behaviors[0].offset.x",
+                    "component[id=2].behaviors[0].offset.y"}),
+            "the second BehaviorFields label menu must only revert its own override");
+
+    ImGuiID vectorXInputId = 0;
+    const ImVec2 vectorXInput = find_behavior_input(
+        panel, document, selection, commands, catalog, vectorXInputId, "offset/x");
+    const ImGuiID vectorXPopup = right_click_revert_item(
+        panel, document, selection, commands, catalog, {142.0f, vectorXInput.y});
+    require(vectorXPopup != 0,
+            "right-clicking a BehaviorFields vector axis label must open Revert Property");
+    click_revert_property_popup(panel, document, selection, commands, catalog, vectorXPopup);
+    require(document.root[0]["components"][0]["behaviors"][0]["offset"]["x"] == 3.0 &&
+                document.root[0]["components"][0]["behaviors"][0]["offset"]["y"] == 6.0 &&
+                document.root[0]["overrides"] == Json::array({
+                    "component[id=2].behaviors[0].offset.y"}),
+            "reverting a vector axis label must restore only that axis");
+
+    ImGui::DestroyContext();
+}
+
+void run_multi_transform_rotation_input_precision()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    const auto templatePath = assetRoot / "templates" / "MultiRotation.pttemplate";
+    std::filesystem::create_directories(templatePath.parent_path());
+    Json sourceRoot = object(1, "Rotation source");
+    sourceRoot["rotation"] = 3.765432;
+    write_json(templatePath, make_template_envelope("MultiRotation", sourceRoot));
+    const auto make_instance = [&](int objectId) {
+        Json instance = sourceRoot;
+        instance["id"] = objectId;
+        instance["template"] = "templates/MultiRotation.pttemplate";
+        instance["templateNodeId"] = 1;
+        instance["templateSourceKeys"] = Json::array(
+            {"active", "name", "position", "rotation", "scale", "tag"});
+        instance["templateSourcePaths"] = Json::array({"rotation"});
+        instance["overrides"] = Json::array({"rotation"});
+        return instance;
+    };
+    auto parsed = parse_document(scene({make_instance(10), make_instance(20)}));
+    require(static_cast<bool>(parsed), "multi Rotation fixture must parse: " + parsed.error);
+    DocumentSession &document = *parsed.document;
+    document.projectRoot = projectRoot;
+    document.assetRoot = assetRoot;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{10, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    selection.set_objects(document, {10, 20}, 10, 10);
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    ImGuiID rotationInputId = 0;
+    const ImVec2 rotationInput = find_common_transform_rotation_input(
+        panel, document, selection, commands, catalog, rotationInputId);
+    frame(panel, document, selection, commands, catalog, rotationInput, true);
+    frame(panel, document, selection, commands, catalog, rotationInput);
+    const ImGuiInputTextState *inputState = ImGui::GetInputTextState(rotationInputId);
+    require(inputState != nullptr && inputState->TextA.Data != nullptr &&
+                std::string(inputState->TextA.Data).find("3.76543") == 0,
+            "multi-object Rotation must show full precision while its input is active");
+    io.AddKeyEvent(ImGuiKey_LeftCtrl, true);
+    io.AddKeyEvent(ImGuiKey_A, true);
+    frame(panel, document, selection, commands, catalog, rotationInput);
+    io.AddKeyEvent(ImGuiKey_A, false);
+    io.AddKeyEvent(ImGuiKey_LeftCtrl, false);
+    for (const char character : std::string("9.876543"))
+        io.AddInputCharacter(static_cast<unsigned int>(character));
+    frame(panel, document, selection, commands, catalog, rotationInput);
+    io.AddKeyEvent(ImGuiKey_Enter, true);
+    frame(panel, document, selection, commands, catalog, rotationInput);
+    io.AddKeyEvent(ImGuiKey_Enter, false);
+    frame(panel, document, selection, commands, catalog, rotationInput);
+    require(std::abs(document.root[0]["rotation"].get<float>() - 9.876543f) < 1e-6f &&
+                std::abs(document.root[1]["rotation"].get<float>() - 9.876543f) < 1e-6f &&
+                commands.history_status().undoCommands == 1,
+            "multi-object Rotation input must retain entered precision in one batch edit (values=" +
+                document.root[0]["rotation"].dump() + "," + document.root[1]["rotation"].dump() +
+                ", undo=" + std::to_string(commands.history_status().undoCommands) + ")");
+
+    ImGui::DestroyContext();
+}
+
+void run_compact_transform_input_precision_and_label_reverts()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    const auto templatePath = assetRoot / "templates" / "TransformOverrides.pttemplate";
+    std::filesystem::create_directories(templatePath.parent_path());
+    Json sourceRoot = object(1, "Transform source");
+    sourceRoot["position"] = Json{{"x", 1.25}, {"y", 2.5}};
+    sourceRoot["rotation"] = 3.75;
+    write_json(templatePath, make_template_envelope("TransformOverrides", sourceRoot));
+
+    Json instance = sourceRoot;
+    instance["id"] = 10;
+    instance["template"] = "templates/TransformOverrides.pttemplate";
+    instance["templateNodeId"] = 1;
+    instance["templateSourceKeys"] = Json::array(
+        {"active", "name", "position", "rotation", "scale", "tag"});
+    instance["templateSourcePaths"] = Json::array(
+        {"position", "position.x", "position.y", "rotation"});
+    instance["position"]["x"] = 9.0;
+    instance["position"]["y"] = 8.0;
+    instance["rotation"] = 7.0;
+    instance["overrides"] = Json::array({"position.x", "position.y", "rotation"});
+    auto parsed = parse_document(scene({instance}));
+    require(static_cast<bool>(parsed), "compact Transform template fixture must parse: " + parsed.error);
+    DocumentSession &document = *parsed.document;
+    document.projectRoot = projectRoot;
+    document.assetRoot = assetRoot;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{10, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    const ImVec2 positionLabelPoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 80.0f, nullptr, "position");
+    frame(panel, document, selection, commands, catalog, positionLabelPoint, false,
+          nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+          nullptr, nullptr, "value", nullptr, 3, 0, "width", true);
+    frame(panel, document, selection, commands, catalog, positionLabelPoint);
+    require(ImGui::GetCurrentContext()->OpenPopupStack.Size > 0,
+            "right-clicking the compact Vector2 label must open Revert Property");
+    const ImGuiID positionPopupId = ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId;
+    click_revert_property_popup(panel, document, selection, commands, catalog, positionPopupId);
+    require(document.root[0]["position"]["x"] == 1.25 &&
+                document.root[0]["position"]["y"] == 2.5 &&
+                document.root[0]["overrides"] == Json::array({"rotation"}),
+            "the Vector2 label Revert Property action must restore both overridden axes only");
+
+    const ImVec2 positionXPoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 300.0f, "/position/x");
+    type_numeric_text(panel, document, selection, commands, catalog, positionXPoint, "9.876543");
+    require(std::abs(document.root[0]["position"]["x"].get<float>() - 9.876543f) < 1e-6f,
+            "compact Vector2 input must preserve active-edit precision");
+
+    const ImVec2 rotationLabelPoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 80.0f, nullptr, nullptr, true);
+    frame(panel, document, selection, commands, catalog, rotationLabelPoint, false,
+          nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+          nullptr, nullptr, "value", nullptr, 3, 0, "width", true);
+    frame(panel, document, selection, commands, catalog, rotationLabelPoint);
+    require(ImGui::GetCurrentContext()->OpenPopupStack.Size > 0,
+            "right-clicking the compact Rotation label must open Revert Property");
+    const ImGuiID rotationPopupId = ImGui::GetCurrentContext()->OpenPopupStack.back().PopupId;
+    click_revert_property_popup(panel, document, selection, commands, catalog, rotationPopupId);
+    require(document.root[0]["rotation"] == 3.75 &&
+                document.root[0]["overrides"] == Json::array({"position.x"}),
+            "the Rotation label Revert Property action must restore its value and retain other overrides");
+
+    const ImVec2 rotationInputPoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 400.0f, "/rotation");
+    type_numeric_text(panel, document, selection, commands, catalog, rotationInputPoint, "8.765432");
+    require(std::abs(document.root[0]["rotation"].get<float>() - 8.765432f) < 1e-6f,
+            "compact Rotation input must preserve active-edit precision");
+
     ImGui::DestroyContext();
 }
 
@@ -953,8 +1651,7 @@ void run_inspector_semantics_select_and_reveal_current_fields()
     ++document.structureRevision;
     rebuild_document_indexes(document);
     BehaviorCatalog semanticCatalog;
-    semanticCatalog.configure(CatalogProtocol::CommonRunnerV1,
-                              CatalogIdentity{"project", "debug", "game", "app"});
+    semanticCatalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
     const Json semanticSchema{{"schema_version", 1},
         {"behaviors", Json::array({Json{{"name", "AccessibleLinks"},
             {"field_schema_available", true},
@@ -963,9 +1660,7 @@ void run_inspector_semantics_select_and_reveal_current_fields()
                      {"kind", "asset_reference"}, {"target", "Texture"}},
                 Json{{"name", "target"}, {"label", "Object Target"},
                      {"kind", "object_reference"}, {"target", "GameObject"}}})}}})}};
-    require(semanticCatalog.begin_query() &&
-                semanticCatalog.append_stdout(semanticSchema.dump()) &&
-                semanticCatalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(semanticCatalog.set_source_catalog(semanticSchema),
             "the accessible reference behavior schema must become current");
     SelectionModel selection;
     selection.set(document, Selection{0, std::nullopt, std::nullopt, FocusedPanel::Inspector});
@@ -1123,7 +1818,7 @@ void run_compact_transform_and_header_menu_tests()
 {
     auto document = make_default_document();
     document.root = Json::array({
-        Json{{"id", 1}, {"name", "Hero"}, {"tag", "PlayerTag"}, {"layer", "Default"}, {"active", true},
+        Json{{"id", 1}, {"name", "Hero"}, {"tag", "PlayerTag"}, {"active", true},
              {"position", {{"x", 10.0}, {"y", 20.0}}},
              {"scale", {{"x", 1.0}, {"y", 1.0}}}, {"rotation", 45.0},
              {"children", Json::array()},
@@ -1171,7 +1866,6 @@ void run_compact_transform_and_header_menu_tests()
     render_frame();
 
     require(document.root[0]["name"] == "Hero" && document.root[0]["tag"] == "PlayerTag" &&
-            document.root[0]["layer"] == "Default" &&
             document.root[0]["active"] == true, "top header bindings must match initial document");
     require(document.root[0]["position"]["x"] == 10.0 && document.root[0]["rotation"] == 45.0,
             "transform properties must match initial document");
@@ -1182,13 +1876,22 @@ void run_compact_transform_and_header_menu_tests()
             document.root[0]["components"][2]["force"]["y"] == 7.0,
             "rigidbody compact vector2 velocity and force must match initial document");
 
-    // Test Layer property edits
-    const auto layerAddress = address_for_document(document, 1, std::nullopt, std::nullopt,
-                                                   {std::string("layer")});
-    commands.set_property(document, layerAddress, "Enemies");
-    require(document.root[0]["layer"] == "Enemies", "layer property must update to Enemies");
+    // Test Collider Layer property edits (collisionGroup + collisionMask)
+    const auto groupAddress = address_for_document(document, 1, 102, std::nullopt,
+                                                   {std::string("collisionGroup")});
+    const auto maskAddress = address_for_document(document, 1, 102, std::nullopt,
+                                                  {std::string("collisionMask")});
+    commands.apply_batch(document, {
+        BatchPropertyEdit{groupAddress, PropertyValue::of(2ULL)},
+        BatchPropertyEdit{maskAddress, PropertyValue::of(5ULL)},
+    });
+    require(document.root[0]["components"][1]["collisionGroup"] == 2 &&
+                document.root[0]["components"][1]["collisionMask"] == 5,
+            "collider layer group and mask must update atomically");
     commands.undo(document, selection);
-    require(document.root[0]["layer"] == "Default", "undo must restore layer Default");
+    require(document.root[0]["components"][1]["collisionGroup"] == 1 &&
+                document.root[0]["components"][1]["collisionMask"] == 1,
+            "undo must restore initial collider group and mask");
 
     // Test component enabled property edit & undo
     const auto cameraEnabled = address_for_document(document, 1, 101, std::nullopt,
@@ -1220,11 +1923,16 @@ void run_compact_transform_and_header_menu_tests()
     const std::string scope = "test/tab/1/document/1";
     auto nodes = panel.semantic_nodes(document, selection.current(), scope, &catalog);
 
-    const auto layerNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
-        return node.name == "Layer";
+    const auto gameObjectLayerNode = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
+        return node.parentId == scope + "/object/1" && node.name == "Layer";
     });
-    require(layerNode == nodes.end(),
-            "the removed Layer field must not appear in Inspector semantics");
+    require(gameObjectLayerNode == nodes.end(),
+            "GameObject must not expose a Layer field");
+    const auto colliderLayerNode = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
+        return node.parentId == scope + "/component/1/102" && node.name == "Layer";
+    });
+    require(colliderLayerNode != nodes.end() && colliderLayerNode->value == "0: Default",
+            "Layer field must appear under Collider in Inspector semantics");
 
     const auto cameraEnabledNode = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
         return node.parentId == scope + "/component/1/101" && node.name == "Enabled";
@@ -1455,13 +2163,12 @@ void run_clean_inactive_vs_precision_edit_display_tests()
     selection.set(document, Selection{kObjectId, kScriptId, 0, FocusedPanel::Inspector});
     EditCommandService commands;
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
     const Json schema{{"schema_version", 1},
                       {"behaviors", Json::array({Json{{"name", "PrecisionBehavior"},
                                                        {"field_schema_available", true},
                                                        {"fields", Json::array({Json{{"name", "value"}, {"kind", "number"}}})}}})}};
-    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
-                catalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(catalog.set_source_catalog(schema),
             "precision behavior fixture schema must become current");
 
     InspectorPanel panel;
@@ -1512,13 +2219,12 @@ void run_behavior_and_multi_object_label_scrubbing_tests()
     selection.set(document, Selection{0, 3, 0, FocusedPanel::Inspector});
     EditCommandService commands;
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
     const Json schema{{"schema_version", 1},
                       {"behaviors", Json::array({Json{{"name", "ScrubBehavior"},
                                                        {"field_schema_available", true},
                                                        {"fields", Json::array({Json{{"name", "speed"}, {"kind", "number"}}})}}})}};
-    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
-                catalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(catalog.set_source_catalog(schema),
             "scrub behavior fixture schema must become current");
 
     InspectorPanel panel;
@@ -1960,7 +2666,6 @@ void run_proportional_layout_scaling_tests()
 {
     Json obj0 = object(100, "ScaledObject", Json::array());
     obj0["tag"] = "Player";
-    obj0["layer"] = "Default";
     obj0["position"] = Json{{"x", 10.0}, {"y", 20.0}};
     obj0["rotation"] = 45.0;
     obj0["scale"] = Json{{"x", 1.0}, {"y", 1.0}};
@@ -2083,7 +2788,7 @@ void run_lossless_scrub_and_context_binding_tests()
     selA.set(docA, Selection{.objectId = kObjectId, .componentId = kScriptId, .selectedObjectIds = {kObjectId}});
     EditCommandService cmds;
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1, CatalogIdentity{"project", "debug", "game", "app"});
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "app"});
     const Json schema{{"schema_version", 1},
                       {"behaviors", Json::array({Json{{"name", "Custom"},
                                                        {"field_schema_available", true},
@@ -2092,8 +2797,7 @@ void run_lossless_scrub_and_context_binding_tests()
                                                            Json{{"name", "bigS"}, {"kind", "signed_integer"}},
                                                            Json{{"name", "bigU"}, {"kind", "unsigned_integer"}},
                                                        })}}})}};
-    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
-                catalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(catalog.set_source_catalog(schema),
             "Custom behavior fixture schema must become current");
 
     InspectorPanel panel;
@@ -2596,16 +3300,57 @@ void run_axis_labels_have_unique_ids()
     ImGui::DestroyContext();
 }
 
+void run_multi_collider_layer_targets_keep_object_component_pairs()
+{
+    DocumentSession document = make_default_document();
+    document.root = Json::array({
+        object(10, "First collider owner", Json::array({component(100, 3,
+            Json{{"collisionGroup", 1ULL}, {"collisionMask", 1ULL}})})),
+        object(20, "Second collider owner", Json::array({component(200, 3,
+            Json{{"collisionGroup", 1ULL}, {"collisionMask", 1ULL}})}))});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    const auto targets = paired_collider_layer_targets({10, 20}, {100, 200});
+    require(targets == std::vector<std::pair<int, int>>{{10, 100}, {20, 200}},
+            "multi-object Collider Layer must retain each object ID beside its component ID");
+
+    std::vector<BatchPropertyEdit> edits;
+    for (const auto &[objectId, componentId] : targets)
+    {
+        edits.push_back({address_for_document(document, objectId, componentId, std::nullopt,
+                                               {std::string("collisionGroup")}),
+                         PropertyValue::of(2ULL)});
+        edits.push_back({address_for_document(document, objectId, componentId, std::nullopt,
+                                               {std::string("collisionMask")}),
+                         PropertyValue::of(3ULL)});
+    }
+    EditCommandService commands;
+    SelectionModel selection;
+    require(commands.apply_batch(document, edits).status == CommandStatus::Changed &&
+                document.root[0]["components"][0]["collisionGroup"] == 2 &&
+                document.root[1]["components"][0]["collisionGroup"] == 2 &&
+                commands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[0]["components"][0]["collisionGroup"] == 1 &&
+                document.root[1]["components"][0]["collisionGroup"] == 1,
+            "multi-object Layer edits must target both owning objects and remain one undo step");
+}
+
 } // namespace
 
 int main()
 {
     try
     {
+        run_multi_collider_layer_targets_keep_object_component_pairs();
         run_axis_labels_have_unique_ids();
         run_integer_fields_keep_independent_drafts();
         run_behavior_numeric_edit_preserves_unmodeled_data();
         run_mixed_multi_selection_edits_are_atomic();
+        run_multi_behavior_template_overrides_revert_all_targets();
+        run_multi_collider_layer_revert_contexts_are_unique();
+        run_behavior_field_label_reverts_and_vector_axis_revert();
+        run_multi_transform_rotation_input_precision();
+        run_compact_transform_input_precision_and_label_reverts();
         run_float_edit_retains_round_trip_precision();
         run_visible_audio_reference_registers_fallback_demand();
         run_inspector_semantics_select_and_reveal_current_fields();

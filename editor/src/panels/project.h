@@ -28,6 +28,7 @@
 
 namespace platformator_editor
 {
+class AudioPreviewService;
 class SelectionModel;
 struct Selection;
 
@@ -54,6 +55,10 @@ class ProjectPanel
     static constexpr std::chrono::milliseconds MaxOwnerChangeCommitTime{2};
     using ResourceChangeHandler = std::function<void(const ProjectChangeEvent &,
                                                      const std::filesystem::path &)>;
+    using HierarchyObjectTemplateDropCallback =
+        std::function<void(int, const std::filesystem::path &)>;
+    using AssetRenameCallback = std::function<void(const std::filesystem::path &,
+                                                   const std::filesystem::path &, bool)>;
 
     ProjectPanel(ProjectContext &context, ProjectChanges &changes,
                  ProjectScanService &scans, SDL_Renderer *renderer);
@@ -78,6 +83,30 @@ class ProjectPanel
     void service_owner_work(SDL_Renderer *renderer);
     void set_wake_callback(std::function<void()> callback);
     void set_open_animation_callback(std::function<void(const std::filesystem::path &)> callback);
+    void set_open_scene_callback(std::function<void(const std::filesystem::path &)> callback)
+    {
+        openSceneCallback_ = std::move(callback);
+    }
+    void set_open_script_callback(std::function<void(const std::filesystem::path &)> callback)
+    {
+        openScriptCallback_ = std::move(callback);
+    }
+    void set_open_template_callback(std::function<void(const std::filesystem::path &)> callback)
+    {
+        openTemplateCallback_ = std::move(callback);
+    }
+    void set_hierarchy_object_template_drop_callback(HierarchyObjectTemplateDropCallback callback)
+    {
+        hierarchyObjectTemplateDropCallback_ = std::move(callback);
+    }
+    void set_asset_rename_callback(AssetRenameCallback callback)
+    {
+        assetRenameCallback_ = std::move(callback);
+    }
+    void set_audio_preview_service(AudioPreviewService *service) noexcept
+    {
+        audioPreview_ = service;
+    }
     AnimationPanel::PreparedTextureInfo prepared_animation_texture(
         const std::filesystem::path &path);
     void set_animation_draft_preview(const std::filesystem::path &assetPath,
@@ -88,11 +117,11 @@ class ProjectPanel
     void end_frame() noexcept;
     std::optional<std::chrono::steady_clock::time_point> next_animation_deadline() const noexcept;
     bool take_reference_retry_request() noexcept;
-    void set_reference_retry_status(std::size_t scheduled);
     const ProjectBrowserViewState &view_state() const noexcept { return viewState_; }
     ProjectBrowserViewState &view_state() noexcept { return viewState_; }
     const std::filesystem::path &selected_directory() const noexcept { return selectedDirectory_; }
     const std::optional<std::filesystem::path> &selected_entry() const noexcept { return selectedEntry_; }
+    bool select_asset(const std::filesystem::path &path);
     bool execute_context_create(std::string_view itemType, const std::filesystem::path &targetDir);
     bool execute_context_delete(const std::filesystem::path &targetPath);
     bool execute_context_duplicate(const std::filesystem::path &targetPath);
@@ -101,6 +130,8 @@ class ProjectPanel
     const std::string &last_revealed_url() const noexcept { return lastRevealedUrl_; }
 
   private:
+    static bool project_shortcuts_allowed(bool wantTextInput, bool renaming) noexcept;
+
     struct ListedEntry
     {
         std::filesystem::path path;
@@ -116,28 +147,13 @@ class ProjectPanel
 
     struct SemanticProjectTarget
     {
-        enum class Operation
-        {
-            Tile,
-            LoadTemplate,
-            InstantiateTemplate,
-            AssignTemplateTarget
-        };
-
         std::filesystem::path path;
         std::filesystem::path root;
         std::string rootLabel;
         ProjectGeneration projectGeneration;
-        DocumentIdentity documentIdentity;
-        std::uint64_t structureRevision = 0;
-        std::uint64_t valueRevision = 0;
         bool directory = false;
         bool behaviorRoot = false;
         std::optional<AssetAssignmentTarget> assignment;
-        Operation operation = Operation::Tile;
-        std::string externalAssignmentKey;
-        std::string externalTargetKind;
-        int externalTargetId = -1;
     };
 
     struct DirectoryState
@@ -231,16 +247,7 @@ class ProjectPanel
     bool assign_asset_target(DocumentSession &document, EditCommandService &commands,
                              const AssetAssignmentTarget &target,
                              const std::filesystem::path &assetPath, std::string &error);
-    void draw_template_controls(DocumentSession &document, EditCommandService &commands,
-                                SelectionModel *selection);
-    void load_selected_template(const DocumentSession &document);
-    void draw_sprite_region_editor(DocumentSession &document, EditCommandService &commands,
-                                   const AssetAssignmentTarget &target,
-                                   const std::filesystem::path &assetPath);
-    void service_template_state(DocumentSession &document, EditCommandService &commands,
-                                 SelectionModel *selection);
-    void draw_assignment_controls(DocumentSession &document, EditCommandService &commands,
-                                  SelectionModel *selection);
+    bool open_asset(const std::filesystem::path &path);
     SDL_Texture *thumbnail_for(const std::filesystem::path &path);
     AnimationPreview convert_animation_preview(const AnimationPreviewDocument &source) const;
     const AnimationPreview &animation_for(const std::filesystem::path &path,
@@ -259,6 +266,7 @@ class ProjectPanel
     std::map<std::string, AnimationPreview> animations_;
     std::set<std::string> staleAnimations_;
     std::set<std::string> failedAnimationRefreshes_;
+    std::map<std::string, std::string> failedAnimationMessages_;
     std::map<std::string, std::uint64_t> animationRevisions_;
     std::set<std::string> animationsInFlight_;
     std::deque<PreparedAnimation> preparedAnimations_;
@@ -271,6 +279,8 @@ class ProjectPanel
     std::optional<std::chrono::steady_clock::time_point> nextAnimationDeadline_;
     bool ownerUploadPollDoneThisFrame_ = false;
     std::function<void()> wakeCallback_;
+    HierarchyObjectTemplateDropCallback hierarchyObjectTemplateDropCallback_;
+    AssetRenameCallback assetRenameCallback_;
     std::map<std::string, PresentationDependency> presentationDependencies_;
     bool presentationDependenciesSaturated_ = false;
     std::map<std::string, DirectoryState> directories_;
@@ -287,28 +297,15 @@ class ProjectPanel
     std::size_t pendingChangePathCount_ = 0;
     bool rootRecoveryActive_ = false;
     bool referenceRetryRequested_ = false;
-    std::string coverageMessage_ = "Monitoring asset changes.";
-    std::string referenceRetryMessage_;
+    std::string coverageMessage_;
+    std::string thumbnailMessage_;
+    std::string thumbnailMessagePath_;
     std::string searchQuery_;
-    std::string selectedAssignmentTarget_;
-    std::string assignmentFeedback_;
-    bool sourceRegionDragging_ = false;
-    float sourceRegionDragStartX_ = 0.0f;
-    float sourceRegionDragStartY_ = 0.0f;
-    DocumentIdentity sourceRegionDragIdentity_;
-    std::filesystem::path sourceRegionDragAsset_;
-    std::optional<TemplateAssetV1> selectedTemplate_;
-    std::filesystem::path selectedTemplatePath_;
-    std::string templateFeedback_;
-    std::map<std::string, int> externalTemplateTargets_;
-    std::map<std::string, std::vector<std::pair<int, std::string>>> templateTargetCandidates_;
-    std::uint64_t templateTargetsStructureRevision_ = 0;
-    std::uint64_t templateTargetsValueRevision_ = 0;
-    bool templateCanInstantiate_ = false;
-    bool pendingTemplateInstantiate_ = false;
-    DocumentIdentity templateAssignmentIdentity_;
-    bool assetDoubleClickPending_ = false;
     std::function<void(const std::filesystem::path &)> openAnimationCallback_;
+    std::function<void(const std::filesystem::path &)> openTemplateCallback_;
+    std::function<void(const std::filesystem::path &)> openSceneCallback_;
+    std::function<void(const std::filesystem::path &)> openScriptCallback_;
+    AudioPreviewService *audioPreview_ = nullptr;
     std::vector<SemanticNode> pendingSemanticNodes_;
     std::map<std::string, SemanticProjectTarget> pendingTileTargets_;
     std::map<std::string, SemanticProjectTarget> pendingSemanticTargets_;

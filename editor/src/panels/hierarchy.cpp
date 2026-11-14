@@ -8,12 +8,14 @@
 #include "../discovery.h"
 #include "../templates.h"
 #include "../assetformats.h"
+#include "../documentio.h"
 
 #include <algorithm>
 #include <charconv>
 #include <cctype>
 #include <cfloat>
 #include <cstring>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <utility>
@@ -66,6 +68,15 @@ Selection selected_object(int objectId)
 std::string object_hierarchy_label(const std::string &name, int objectId)
 {
     return name + " (#" + std::to_string(objectId) + ")";
+}
+
+std::string hierarchy_row_label(const Json &object, int objectId)
+{
+    std::string label = object_hierarchy_label(
+        object.value("name", std::string("GameObject")), objectId);
+    if (is_template_instance_root(object))
+        label = "[Template] " + label;
+    return label;
 }
 
 void collect_duplicate_identity_set(const Json &root, std::unordered_set<int> &objectIds,
@@ -445,16 +456,17 @@ void HierarchyPanel::apply_change(const DocumentSession &document, const Documen
         return;
     }
 
-    const bool labelChanged = std::find(change.categories.begin(), change.categories.end(),
-                                         DocumentChangeCategory::Label) != change.categories.end();
-    if (!labelChanged)
-    {
-        cachedValueRevision_ = document.valueRevision;
-        return;
-    }
     if (change.affectedObjectIds.empty())
     {
         cachedValueRevision_ = std::numeric_limits<std::uint64_t>::max();
+        return;
+    }
+
+    const bool labelChanged = std::find(change.categories.begin(), change.categories.end(),
+                                        DocumentChangeCategory::Label) != change.categories.end();
+    if (!labelChanged)
+    {
+        cachedValueRevision_ = document.valueRevision;
         return;
     }
 
@@ -470,8 +482,9 @@ void HierarchyPanel::apply_change(const DocumentSession &document, const Documen
         const Json *object = resolve_object(document.root, location->second);
         if (object == nullptr || !object->is_object())
             continue;
-        std::string label = object_hierarchy_label(
-            object->value("name", std::string("GameObject")), objectId);
+        if (renameTargetObjectId_ && *renameTargetObjectId_ == objectId)
+            continue;
+        std::string label = hierarchy_row_label(*object, objectId);
         auto &cachedLabel = rows_[row->second].label;
         if (label.capacity() > cachedLabel.capacity())
             work::record(work::Counter::HierarchyLabelStringGrowths);
@@ -578,12 +591,11 @@ void HierarchyPanel::rebuild(const DocumentSession &document)
             continue;
 
         const int objectId = current.value->value("id", 0);
-        const auto name = current.value->value("name", std::string("GameObject"));
         const auto children = current.value->find("children");
         const bool hasChildren = children != current.value->end() && children->is_array() && !children->empty();
         const int objectRowIndex = static_cast<int>(rows_.size());
         rows_.push_back(HierarchyRow{HierarchyRowKind::Object, objectId,
-                                     current.depth, object_hierarchy_label(name, objectId), hasChildren,
+                                     current.depth, hierarchy_row_label(*current.value, objectId), hasChildren,
                                      current.parentRowIndex});
         objectRowIndexes_.insert_or_assign(objectId, static_cast<std::size_t>(objectRowIndex));
         displayedObjectOrder_.push_back(objectId);
@@ -626,10 +638,10 @@ void HierarchyPanel::refresh_labels(const DocumentSession &document)
         if (location == document.indexes.objectsById.end())
             continue;
         const Json *object = resolve_object(document.root, location->second);
-        if (object != nullptr && object->is_object())
+        if (object != nullptr && object->is_object() &&
+            (!renameTargetObjectId_ || *renameTargetObjectId_ != row.id))
         {
-            row.label = object_hierarchy_label(
-                object->value("name", std::string("GameObject")), row.id);
+            row.label = hierarchy_row_label(*object, row.id);
         }
     }
     cachedValueRevision_ = document.valueRevision;
@@ -804,11 +816,20 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         focused.focusedPanel = FocusedPanel::Hierarchy;
         selection.set(document, std::move(focused));
     };
-    if (renameTargetObjectId_ != 0 &&
-        (!document.indexes.objectsById.contains(renameTargetObjectId_) ||
+    const auto set_duplicate_policy_status = [&](std::string message) {
+        duplicatePolicyStatus_ = std::move(message);
+        duplicatePolicyStatusUntil_ = duplicatePolicyStatus_.empty()
+            ? std::chrono::steady_clock::time_point{}
+            : std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    };
+    if (!duplicatePolicyStatus_.empty() &&
+        std::chrono::steady_clock::now() >= duplicatePolicyStatusUntil_)
+        set_duplicate_policy_status({});
+    if (renameTargetObjectId_ &&
+        (!document.indexes.objectsById.contains(*renameTargetObjectId_) ||
          selection.current().objectId != renameTargetObjectId_))
     {
-        renameTargetObjectId_ = 0;
+        renameTargetObjectId_.reset();
         renameBuffer_.clear();
         renameFocusPending_ = false;
     }
@@ -893,8 +914,8 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             remapReferences ? DuplicateReferencePolicy::RemapInternalTargets
                             : DuplicateReferencePolicy::PreserveExistingTargets,
             bindingCoverage.bindings, !remapReferences || bindingCoverage.assured);
-        duplicatePolicyStatus_ = duplicated.status == CommandStatus::Changed
-            ? std::string{} : (!bindingCoverage.error.empty() ? bindingCoverage.error : duplicated.message);
+        set_duplicate_policy_status(duplicated.status == CommandStatus::Changed
+            ? std::string{} : (!bindingCoverage.error.empty() ? bindingCoverage.error : duplicated.message));
         if (duplicated.status == CommandStatus::Changed && !duplicated.affectedObjectIds.empty())
         {
             selection.set_objects(document, duplicated.affectedObjectIds,
@@ -905,19 +926,19 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         }
     }
     const auto commit_rename = [&]() {
-        if (renameTargetObjectId_ == 0 || renameBuffer_.empty())
+        if (!renameTargetObjectId_ || renameBuffer_.empty())
             return;
         const std::string name(renameBuffer_.data());
         const Selection before = selection.current();
         const auto result = commands.set_property(document,
-            address_for_document(document, renameTargetObjectId_, std::nullopt, std::nullopt,
+            address_for_document(document, *renameTargetObjectId_, std::nullopt, std::nullopt,
                                  {std::string("name")}), Json(name), {before, before});
         if (result.status == CommandStatus::Changed)
         {
             commands.set_last_selection_state({before, before});
             invalidate();
         }
-        renameTargetObjectId_ = 0;
+        renameTargetObjectId_.reset();
         renameBuffer_.clear();
         renameFocusPending_ = false;
     };
@@ -1437,15 +1458,88 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                             remapReferences ? DuplicateReferencePolicy::RemapInternalTargets
                                             : DuplicateReferencePolicy::PreserveExistingTargets,
                             bindingCoverage.bindings, !remapReferences || bindingCoverage.assured);
-                        duplicatePolicyStatus_ = duplicated.status == CommandStatus::Changed
+                        set_duplicate_policy_status(duplicated.status == CommandStatus::Changed
                             ? std::string{} : (!bindingCoverage.error.empty()
-                                ? bindingCoverage.error : duplicated.message);
+                                ? bindingCoverage.error : duplicated.message));
                         if (duplicated.status == CommandStatus::Changed && duplicated.command)
                         {
                             selection.set(document, selected_object(duplicated.command->payload.value("id", 0)));
                             commands.set_last_selection_state({before, selection.current()});
                         }
                         invalidate();
+                    }
+                    if (!document.assetRoot.empty() && ImGui::MenuItem("Save as Template..."))
+                    {
+                        const auto loc = document.indexes.objectsById.find(row.id);
+                        const Json *obj = loc == document.indexes.objectsById.end()
+                            ? nullptr : resolve_object(document.root, loc->second);
+                        if (obj != nullptr)
+                        {
+                            std::string rawName = obj->value("name", std::string("Template"));
+                            std::string safeName;
+                            for (unsigned char c : rawName)
+                            {
+                                if (std::isalnum(c) || c == '_' || c == '-')
+                                    safeName.push_back(static_cast<char>(c));
+                                else if (c == ' ')
+                                    safeName.push_back('_');
+                            }
+                            if (safeName.empty())
+                                safeName = "Template";
+                            const auto tmplDir = document.assetRoot / "templates";
+                            std::error_code pathError;
+                            std::filesystem::create_directories(tmplDir, pathError);
+                            auto tmplPath = tmplDir / (safeName + ".pttemplate");
+                            int suffix = 1;
+                            while (!pathError && std::filesystem::exists(tmplPath, pathError) && !pathError)
+                                tmplPath = tmplDir / (safeName + "_" + std::to_string(suffix++) + ".pttemplate");
+                            std::string sceneIdentity = template_scene_identity(document);
+                            if (sceneIdentity.empty())
+                                sceneIdentity = "unsaved-document:" + std::to_string(document.tabId.value) + ":" +
+                                                std::to_string(document.documentGeneration);
+                            std::unordered_set<int> subtreeObjects;
+                            std::unordered_set<int> subtreeComponents;
+                            collect_duplicate_identity_set(*obj, subtreeObjects, subtreeComponents);
+                            std::vector<Json> localAuthorBindings;
+                            for (const auto &binding : authorReferenceBindings)
+                                if (binding.is_object() && binding.contains("owner_id") &&
+                                    binding["owner_id"].is_number_integer() &&
+                                    subtreeObjects.contains(binding["owner_id"].get<int>()))
+                                    localAuthorBindings.push_back(binding);
+                            std::vector<TemplateAuthorSchemaDeclaration> localAuthorSchemas;
+                            for (const auto &declaration : authorSchemaDeclarations)
+                                if (subtreeObjects.contains(declaration.ownerId) &&
+                                    subtreeComponents.contains(declaration.componentId))
+                                    localAuthorSchemas.push_back(declaration);
+                            static const Json emptyCatalog{{"behaviors", Json::array()}};
+                            const Json &catalog = behaviorCatalog != nullptr ? *behaviorCatalog : emptyCatalog;
+                            const auto coverage = collect_template_bindings(
+                                document, *obj, sceneIdentity, catalog,
+                                localAuthorBindings, localAuthorSchemas);
+                            if (!coverage || !coverage.assured)
+                            {
+                                std::string notice = coverage.error.empty()
+                                    ? "Template has behavior fields whose reference schema is unavailable."
+                                    : coverage.error;
+                                if (!coverage.unresolvedBehaviors.empty())
+                                    notice += " (" + coverage.unresolvedBehaviors.front() + ")";
+                                set_duplicate_policy_status(std::move(notice));
+                            }
+                            else
+                            {
+                                const Json envelope = make_template_envelope(
+                                    rawName, *obj, coverage.bindings);
+                                std::error_code directoryError;
+                                std::filesystem::create_directories(tmplDir, directoryError);
+                                const auto written = pathError || directoryError
+                                    ? AtomicWriteResult{AtomicWriteStatus::Failed,
+                                                        (pathError ? pathError : directoryError).message(), false}
+                                    : write_file_atomically(tmplPath, envelope.dump(2) + "\n", false);
+                                set_duplicate_policy_status(written.succeeded()
+                                    ? "Saved template: " + tmplPath.filename().string()
+                                    : "Template save failed: " + written.message);
+                            }
+                        }
                     }
                     if (ImGui::MenuItem("Delete"))
                     {
@@ -1458,7 +1552,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     }
                     ImGui::EndPopup();
                 }
-                if (row.id == renameTargetObjectId_ && !renameBuffer_.empty())
+                if (renameTargetObjectId_ && row.id == *renameTargetObjectId_ && !renameBuffer_.empty())
                 {
                     ImGui::SetCursorScreenPos({iconX + iconSize + 5.0f * uiScale,
                         rowMinimum.y + (rowMaximum.y - rowMinimum.y - ImGui::GetFrameHeight()) * 0.5f});
@@ -1477,7 +1571,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         commit_rename();
                     else if (ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape))
                     {
-                        renameTargetObjectId_ = 0;
+                        renameTargetObjectId_.reset();
                         renameBuffer_.clear();
                         renameFocusPending_ = false;
                     }

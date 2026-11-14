@@ -118,27 +118,12 @@ bool PlaySession::finalize_pipeline_identity(PipelineIdentity identity)
     return true;
 }
 
-bool PlaySession::begin_catalog_check()
+bool PlaySession::begin_starting(std::unique_ptr<SessionChannelPair> channels,
+                                 SessionCapabilities initialCapabilities)
 {
-    if (state_ != PlaySessionState::Building)
-        return false;
-    state_ = PlaySessionState::CatalogCheck;
-    return true;
-}
-
-bool PlaySession::begin_starting(SessionCapabilities capabilities,
-                                 std::unique_ptr<SessionChannelPair> channels)
-{
-    if (state_ != PlaySessionState::CatalogCheck)
+    if (state_ != PlaySessionState::Building && state_ != PlaySessionState::Configuring)
     {
-        lastError_ = "catalog validation must complete before session startup";
-        return false;
-    }
-    if (!capabilities.supported)
-    {
-        lastError_ = capabilities.error.empty()
-            ? "target does not advertise a compatible editor-session protocol"
-            : capabilities.error;
+        lastError_ = "build must complete before session startup";
         return false;
     }
     if (!channels || !channels->commands || !channels->events)
@@ -146,24 +131,24 @@ bool PlaySession::begin_starting(SessionCapabilities capabilities,
         lastError_ = "session startup requires separate command and event channels";
         return false;
     }
-    if (capabilities.frameStream &&
-        (!channels->frameMapping || channels->frameMapping->size() != session_frame_mapping_limit))
+    if (channels->frameMapping && channels->frameMapping->size() != session_frame_mapping_limit)
     {
-        lastError_ = "frame-stream capability requires the fixed two-slot mapping size";
+        lastError_ = "embedded session requires the fixed two-slot frame mapping size";
         return false;
     }
-    capabilities_ = std::move(capabilities);
+    capabilities_ = initialCapabilities;
+    childCapabilitiesValidated_ = false;
     channels_ = std::move(channels);
     state_ = PlaySessionState::Starting;
     return true;
 }
 
-bool PlaySession::start_process(ProcessRequest request, SessionCapabilities capabilities,
+bool PlaySession::start_process(ProcessRequest request,
                                 std::unique_ptr<SessionChannelPair> channels)
 {
-    if (state_ != PlaySessionState::CatalogCheck)
+    if (state_ != PlaySessionState::Building && state_ != PlaySessionState::Configuring)
     {
-        lastError_ = "catalog validation must complete before session startup";
+        lastError_ = "build must complete before session startup";
         return false;
     }
     if (!channels || channels->childEndpoints.size() != 3)
@@ -210,7 +195,7 @@ bool PlaySession::start_process(ProcessRequest request, SessionCapabilities capa
         return false;
     }
 
-    if (!begin_starting(std::move(capabilities), std::move(channels)))
+    if (!begin_starting(std::move(channels)))
     {
         state_ = PlaySessionState::Stopping;
         childReaped_ = true;
@@ -717,6 +702,11 @@ bool PlaySession::handle_event(ProtocolMessage message)
 
     if (message.type == "ready")
     {
+        if (state_ != PlaySessionState::Starting || !childCapabilitiesValidated_)
+        {
+            fail("ready event arrived before a valid child capabilities handshake");
+            return false;
+        }
         if (startupRuntimeSerial_ != 0 && startupRuntimeSerial_ != message.runtimeSerial)
         {
             fail("ready event belongs to a different runtime than the capability handshake");
@@ -800,6 +790,11 @@ bool PlaySession::handle_event(ProtocolMessage message)
     }
     else if (message.type == "capabilities")
     {
+        if (state_ != PlaySessionState::Starting || childCapabilitiesValidated_ || runtimeSerial_)
+        {
+            fail("capability event was duplicated or arrived after session startup");
+            return false;
+        }
         if (message.runtimeSerial == 0 ||
             (runtimeSerial_ && message.runtimeSerial != runtimeSerial_.value))
         {
@@ -809,21 +804,17 @@ bool PlaySession::handle_event(ProtocolMessage message)
         const Json catalogEnvelope{{"schema_version", 1}, {"behaviors", Json::array()},
                                    {"editor_capabilities", message.body}};
         auto childCapabilities = read_session_capabilities(catalogEnvelope);
-        if (!childCapabilities.supported ||
-            childCapabilities.playControl != capabilities_.playControl ||
-            childCapabilities.runtimeInspection != capabilities_.runtimeInspection ||
-            childCapabilities.frameStream != capabilities_.frameStream ||
-            childCapabilities.liveAssetReload != capabilities_.liveAssetReload ||
-            childCapabilities.inputForwarding != capabilities_.inputForwarding)
+        if (!childCapabilities.supported || !childCapabilities.frameStream)
         {
             fail(childCapabilities.error.empty()
-                     ? "child capabilities do not match the validated catalog"
-                     : "child capability handshake failed: " + childCapabilities.error);
+                     ? "the built target does not advertise a compatible embedded Game view; choose an external window"
+                     : childCapabilities.error + "; choose an external game window");
             return false;
         }
         capabilities_ = std::move(childCapabilities);
         if (!runtimeSerial_)
             startupRuntimeSerial_ = message.runtimeSerial;
+        childCapabilitiesValidated_ = true;
     }
     else if (message.type == "frame_ready" && !capabilities_.frameStream)
     {
@@ -949,6 +940,7 @@ void PlaySession::fail(std::string error) noexcept
 
 void PlaySession::reset_protocol_state() noexcept
 {
+    childCapabilitiesValidated_ = false;
     eventSequences_.reset();
     outgoing_ = platformator::editor_session::BoundedQueue(
         platformator::editor_session::Direction::Request);

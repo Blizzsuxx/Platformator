@@ -1,0 +1,164 @@
+{
+  "build": {
+    "executable": "bin/editor-debug/platformator_editor_audiopreview_test",
+    "executable_sha256": "cb9759ce27184630dec2d67f0e6261592649b96d6d4bba100ba9df7c8fcc8b45",
+    "git_revision": "2211d37f693498169aacc4b0f4f9fdf7751f19f6"
+  },
+  "captured_utc": "2026-11-13T14:47:21.706764+00:00",
+  "command": [
+    "python3",
+    "benchmark/capture_audio_preview.py",
+    "--binary",
+    "bin/editor-debug/platformator_editor_audiopreview_test"
+  ],
+  "diagnostic": "usage: platformator_editor_audiopreview_test [--timing-capture]",
+  "environment": {
+    "SDL_AUDIODRIVER": "dummy",
+    "SDL_VIDEODRIVER": "dummy"
+  },
+  "fixture_commands": [
+    [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=2",
+      "-ac",
+      "1",
+      "-ar",
+      "22050",
+      "-c:a",
+      "pcm_s16le",
+      "$TEMP_FIXTURE_DIR/wav.wav"
+    ],
+    [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=2",
+      "-ac",
+      "1",
+      "-ar",
+      "22050",
+      "-c:a",
+      "libvorbis",
+      "$TEMP_FIXTURE_DIR/ogg.ogg"
+    ],
+    [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=2",
+      "-ac",
+      "1",
+      "-ar",
+      "22050",
+      "-c:a",
+      "libmp3lame",
+      "$TEMP_FIXTURE_DIR/mp3.mp3"
+    ],
+    [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=2",
+      "-ac",
+      "1",
+      "-ar",
+      "22050",
+      "-c:a",
+      "flac",
+      "$TEMP_FIXTURE_DIR/flac.flac"
+    ]
+  ],
+  "measurement_command": [
+    "bin/editor-debug/platformator_editor_audiopreview_test",
+    "--timing-capture",
+    "$TEMP_FIXTURE_DIR"
+  ],
+  "process": {
+    "failure": null,
+    "output_budget_bytes": 65536,
+    "return_code": 2,
+    "wall_budget_seconds": 60,
+    "wall_seconds": 0.467
+  },
+  "schema": "platformator.audio-preview-timing.v2",
+  "status": "FAIL_OR_PARTIAL",
+  "timing": {
+    "cold_first_mixer_output": {
+      "count": 0,
+      "max_ms": 0.0,
+      "median_ms": 0.0
+    },
+    "cold_submission": {
+      "count": 0,
+      "max_ms": 0.0,
+      "median_ms": 0.0
+    },
+    "maximum_first_mixer_output_ms": 0.0,
+    "maximum_submission_ms": 0.0,
+    "warm_first_mixer_output": {
+      "count": 0,
+      "max_ms": 0.0,
+      "median_ms": 0.0
+    },
+    "warm_submission": {
+      "count": 0,
+      "max_ms": 0.0,
+      "median_ms": 0.0
+    }
+  },
+  "workload": {
+    "audio_backend": "SDL dummy playback device",
+    "cold_samples_per_format": 5,
+    "duration_seconds": 2,
+    "formats": {
+      "flac": {
+        "bytes": 29395,
+        "codec": "flac",
+        "sha256": "5a4f96e1952a8d7ea43dc37ce3a65a6bb1d6e52239c18e8a7a6962a525a20bca"
+      },
+      "mp3": {
+        "bytes": 8481,
+        "codec": "libmp3lame",
+        "sha256": "7e0ac41d77ea21e25d70253490b5097fe569529fbfb63dd26256f3d69351d30e"
+      },
+      "ogg": {
+        "bytes": 5946,
+        "codec": "libvorbis",
+        "sha256": "ed81bc82e86e179dd6e31d02e51c4ee9b2eb7621097e554c85eb8fcced8d7e3f"
+      },
+      "wav": {
+        "bytes": 88278,
+        "codec": "pcm_s16le",
+        "sha256": "faf7daaa8f28c8341a95395cbf8a177228137bd70d99654a48f473de30510a1c"
+      }
+    },
+    "maximum_allowed_submission_and_mixer_output_ms": 250.0,
+    "mixer_output_measurement": "elapsed time until MIX_GetTrackPlaybackPosition reports a decoded frame",
+    "physical_audible_output": "UNVERIFIED; a dummy device does not establish sound delivery to a listener",
+    "synchronous_measurement": "toggle_or_play submission call duration",
+    "warm_samples_per_format": 5,
+    "warmup_samples_per_format": 3
+  }
+}

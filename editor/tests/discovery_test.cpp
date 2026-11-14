@@ -3,7 +3,7 @@
 #include "actions.h"
 #include "editcommands.h"
 #include "panels/hierarchy.h"
-#include "panels/runsettings.h"
+#include "panels/projectsettings.h"
 #include "panels/referencefields.h"
 #include "selection.h"
 #include "test_support.h"
@@ -251,15 +251,15 @@ void run_settings_semantics_cases()
     std::filesystem::create_directories(build);
     std::ofstream(build / "game") << "executable fixture";
 
-    RunSettingsPanel panel;
+    ProjectSettingsPanel panel;
     panel.set_project_root(temporary.path());
     const auto queryFile = build / ".cmake" / "api" / "v1" / "query" /
         "client-platformator" / "codemodel-v2";
     require(!std::filesystem::exists(queryFile),
-            "opening Run Settings must not write into the project build directory");
+            "opening Project Settings must not write into the project build directory");
     panel.refresh_discovery(true);
     require(std::filesystem::is_regular_file(queryFile),
-            "the explicit Run Settings refresh must register its File API target query");
+            "the explicit Project Settings refresh must register its File API target query");
     RunPreferences preferences;
     preferences.configurePreset = "debug";
     preferences.buildPreset = "debug-build";
@@ -271,100 +271,81 @@ void run_settings_semantics_cases()
     preferences.startPaused = true;
     preferences.overlays = {"colliders"};
 
-    auto nodes = panel.semantic_nodes(preferences, "main/panel/run");
+    auto nodes = panel.semantic_nodes(preferences, "main/panel/project_settings");
     const auto find = [&](std::string_view id) -> const SemanticNode * {
         const auto node = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &candidate) {
             return candidate.id == id;
         });
         return node == nodes.end() ? nullptr : &*node;
     };
-    const auto *discovery = find("main/panel/run/options/discovery");
-    const auto *embedded = find("main/panel/run/options/embedded-game");
-    const auto *catalog = find("main/panel/run/options/catalog");
-    const auto *paused = find("main/panel/run/options/start-paused");
-    const auto *overlay = find("main/panel/run/options/overlay/colliders");
-    const auto *windowWidth = find("main/panel/run/options/window-width");
-    const auto *windowHeight = find("main/panel/run/options/window-height");
-    const auto choice = [&](std::string_view group, std::string_view name) -> const SemanticNode * {
-        const auto node = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &candidate) {
-            return candidate.parentId == group && candidate.name == name;
-        });
-        return node == nodes.end() ? nullptr : &*node;
-    };
-    const auto *releasePreset = choice("main/panel/run/options/choices/configure-presets", "release");
-    const auto *gameTarget = choice("main/panel/run/options/choices/executable-targets", "game");
-    require(discovery != nullptr &&
-                discovery->value.find("queued for the next configure") != std::string::npos &&
-                embedded != nullptr && embedded->selected &&
-                catalog != nullptr && catalog->error &&
-                catalog->help.find("common-runner-v1") != std::string::npos &&
-                paused != nullptr && !paused->selected &&
-                overlay != nullptr && !overlay->selected &&
-                windowWidth != nullptr && windowWidth->role == SemanticRole::TextField &&
-                windowWidth->minimum == 1.0 && windowWidth->maximum == 16384.0 &&
-                windowWidth->actions == std::vector<std::string>{"set_value"} &&
-                windowHeight != nullptr && windowHeight->value == "360" &&
-                releasePreset != nullptr && releasePreset->actions == std::vector<std::string>{"activate"} &&
-                gameTarget != nullptr && gameTarget->value == (build / "game").string() &&
-                gameTarget->actions == std::vector<std::string>{"activate"},
-            "Run Settings semantics must expose current values and actionable bounded preset and executable choices");
+    const auto *launchMode = find("main/panel/project_settings/launch_mode");
+    const auto *target = find("main/panel/project_settings/target");
+    require(launchMode != nullptr && launchMode->value == "Embedded Game View" &&
+                target != nullptr && target->role == SemanticRole::TextField && target->value == "game" &&
+                target->actions == std::vector<std::string>{"set_value"} &&
+                find("main/panel/project_settings/build") == nullptr &&
+                find("main/panel/project_settings/browse_executable") == nullptr,
+            "Project Settings semantics must expose real launch controls without actionless nodes");
 
     require(panel.dispatch_semantic_action(preferences,
-                {HostLayoutId{1}, WindowHostGeneration{1}, 1, releasePreset->id, "activate", {}}) &&
-                preferences.configurePreset == "release",
-            "an accessible configure-preset choice must update the same preference as the visible combo");
-    require(panel.dispatch_semantic_action(preferences,
-                {HostLayoutId{1}, WindowHostGeneration{1}, 1, gameTarget->id, "activate", {}}) &&
-                preferences.target == "game" && preferences.executable == (build / "game").string(),
-            "an accessible built-target choice must update both target and executable identity");
-    require(panel.dispatch_semantic_action(preferences,
-                {HostLayoutId{1}, WindowHostGeneration{1}, 1, windowWidth->id, "set_value", "1280"}) &&
-                preferences.width == 1280 &&
-                !panel.dispatch_semantic_action(preferences,
-                    {HostLayoutId{1}, WindowHostGeneration{1}, 1, windowHeight->id,
-                     "set_value", "99999"}),
-            "accessible Game dimensions update through the same bounded numeric preference path");
-    require(panel.dispatch_semantic_action(preferences,
-                {HostLayoutId{1}, WindowHostGeneration{1}, 1,
-                 "main/panel/run/options/production", "toggle", {}}) && !preferences.production,
-            "the Production profile checkbox must expose a validated owner-thread toggle action");
-    auto enabledNodes = panel.semantic_nodes(preferences, "main/panel/run");
-    const auto enabledOverlay = std::find_if(enabledNodes.begin(), enabledNodes.end(), [](const SemanticNode &node) {
-        return node.id == "main/panel/run/options/overlay/colliders";
-    });
-    require(enabledOverlay != enabledNodes.end() && enabledOverlay->selected &&
-                enabledOverlay->actions == std::vector<std::string>{"toggle"},
-            "overlay controls become actionable again when Production is disabled");
-    require(panel.dispatch_semantic_action(preferences,
-                {HostLayoutId{1}, WindowHostGeneration{1}, 2, enabledOverlay->id, "toggle", {}}) &&
-                std::find(preferences.overlays.begin(), preferences.overlays.end(), "colliders") ==
-                    preferences.overlays.end(),
-            "an accessible overlay toggle must preserve the visible panel's default-all semantics");
+                {HostLayoutId{1}, WindowHostGeneration{1}, 1, target->id, "set_value", "custom_game"}) &&
+                preferences.target == "custom_game",
+            "Project Settings target action must update preferences.target");
 
-    const std::string staleChoice = releasePreset->id;
-    const auto secondProject = temporary.path() / "second-project";
-    std::filesystem::create_directories(secondProject);
-    panel.set_project_root(secondProject);
-    require(!panel.dispatch_semantic_action(preferences,
-                {HostLayoutId{1}, WindowHostGeneration{1}, 1, staleChoice, "activate", {}}),
-            "project replacement must retire preset and target actions from the prior discovery snapshot");
-
-    auto busyNodes = panel.semantic_nodes(preferences, "main/panel/run", true);
+    auto busyNodes = panel.semantic_nodes(preferences, "main/panel/project_settings", true);
     require(std::none_of(busyNodes.begin(), busyNodes.end(), [](const SemanticNode &node) {
-                return node.id == "main/panel/run/options/production" && node.enabled;
+                return node.id == "main/panel/project_settings/build" ||
+                    node.id == "main/panel/project_settings/browse_executable";
             }),
-            "Run Settings actions are disabled while their visible panel is busy");
+            "Project Settings semantics must omit unavailable actionless nodes while busy");
+
+    auto missingCmakeNodes = panel.semantic_nodes(preferences, "main/panel/project_settings", false, true);
+    const auto generate = std::find_if(missingCmakeNodes.begin(), missingCmakeNodes.end(),
+        [](const SemanticNode &node) {
+            return node.id == "main/panel/project_settings/generate_cmake";
+        });
+    require(generate != missingCmakeNodes.end() && generate->enabled &&
+                generate->name == "Generate CMakeLists.txt" &&
+                generate->actions == std::vector<std::string>{"activate"},
+            "a project without CMakeLists.txt must expose the guarded generation action semantically");
+    require(panel.dispatch_semantic_action(preferences,
+                {HostLayoutId{1}, WindowHostGeneration{1}, 2, generate->id, "activate", {}}),
+            "the semantic missing-CMake action must route through Project Settings dispatch");
+    const auto busyMissingCmakeNodes = panel.semantic_nodes(
+        preferences, "main/panel/project_settings", true, true);
+    const auto busyGenerate = std::find_if(busyMissingCmakeNodes.begin(), busyMissingCmakeNodes.end(),
+        [](const SemanticNode &node) {
+            return node.id == "main/panel/project_settings/generate_cmake";
+        });
+    require(busyGenerate != busyMissingCmakeNodes.end() && !busyGenerate->enabled,
+            "the semantic missing-CMake action must be disabled while project work is active");
+
+    const auto engineSource = temporary.path() / "engine-source";
+    std::filesystem::create_directories(engineSource / "include" / "platformator");
+    std::ofstream(engineSource / "CMakeLists.txt") << "project(platformator)\n";
+    std::ofstream(engineSource / "include" / "platformator" / "runner.h") << "// fixture\n";
+    const auto generated = generate_project_cmakelists(temporary.path(), "SemanticProject", engineSource);
+    std::ifstream generatedInput(temporary.path() / "CMakeLists.txt", std::ios::binary);
+    const std::string generatedContents{std::istreambuf_iterator<char>(generatedInput),
+                                        std::istreambuf_iterator<char>()};
+    const auto refusedOverwrite = generate_project_cmakelists(temporary.path(), "SemanticProject", engineSource);
+    std::ifstream unchangedInput(temporary.path() / "CMakeLists.txt", std::ios::binary);
+    const std::string unchangedContents{std::istreambuf_iterator<char>(unchangedInput),
+                                        std::istreambuf_iterator<char>()};
+    require(generated.succeeded && !refusedOverwrite.succeeded &&
+                unchangedContents == generatedContents,
+            "guarded CMake generation must succeed once and refuse later overwrites without changing the file");
 
     SemanticNode root;
-    root.id = "main/panel/run";
+    root.id = "main/panel/project_settings";
     root.role = SemanticRole::Window;
-    root.name = "Build and Run";
+    root.name = "Project Settings";
     root.visible = true;
     busyNodes.insert(busyNodes.begin(), std::move(root));
     AccessibilitySnapshots snapshots;
     require(snapshots.publish(SemanticSnapshot{HostLayoutId{1}, WindowHostGeneration{1},
                                                 1, std::move(busyNodes), {}}),
-            "Run Settings semantic nodes must satisfy shared snapshot identity and parent checks");
+            "Project Settings semantic nodes must satisfy shared snapshot identity and parent checks");
 }
 } // namespace
 

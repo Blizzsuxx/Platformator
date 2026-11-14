@@ -216,6 +216,7 @@ class PropertyGesture
     DocumentSession *document_ = nullptr;
     std::uint64_t startingValueRevision_ = 0;
     PropertyCommand command_;
+    std::optional<PropertyCommand> overrideCommand_;
     bool active_ = false;
     bool dirtyCounted_ = false;
 };
@@ -244,6 +245,7 @@ class BatchPropertyGesture
     DocumentSession *document_ = nullptr;
     std::uint64_t startingValueRevision_ = 0;
     BatchCommand command_;
+    std::size_t editOperationCount_ = 0;
     bool active_ = false;
     bool dirtyCounted_ = false;
 };

@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
+if(TARGET Platformator::platformator)
+    return()
+endif()
+
 project(Platformator VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,7 +19,6 @@ option(PLATFORMATOR_ENABLE_DEBUG_TOOLS "Enable debug-only logging, overlays, and
 option(PLATFORMATOR_ENABLE_BENCHMARKS "Enable compile-time benchmark instrumentation and runtime summaries." OFF)
 option(PLATFORMATOR_ENABLE_WORK_PROBES "Enable test-only affected-work counters (never for performance runs)." OFF)
 option(PLATFORMATOR_BUILD_RUNNER "Build the stock Platformator desktop runner." ${PLATFORMATOR_IS_TOP_LEVEL})
-option(PLATFORMATOR_BUILD_EXAMPLES "Build standalone Platformator example projects." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_TESTS "Build Platformator test executables." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_INSTALL "Install Platformator library headers, assets, and package files." ${PLATFORMATOR_IS_TOP_LEVEL})
 option(PLATFORMATOR_BUILD_EDITOR "Build the optional Dear ImGui desktop editor." OFF)
@@ -257,10 +260,6 @@ foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-sha
     endif()
 endforeach()
 
-if(PLATFORMATOR_BUILD_EXAMPLES)
-    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/examples/mario")
-endif()
-
 # Source runners and core-only tests have deliberate engine resources.
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets/" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/assets" PATTERN "test_runtime" EXCLUDE)
 if(PLATFORMATOR_BUILD_TESTS)
@@ -285,6 +284,7 @@ if(PLATFORMATOR_BUILD_TESTS)
     platformator_add_test(platformator_scene_io_contract_test tests/scene_io_contract_test.cpp LABELS scene reference)
     platformator_add_test(platformator_transform_hierarchy_test tests/transform_hierarchy_test.cpp LABELS physics transform)
     platformator_add_test(platformator_physics_support_test tests/physics_support_test.cpp LABELS physics determinism)
+    platformator_add_test(platformator_physics_layer_test tests/physics_layer_test.cpp INTERNAL LABELS physics determinism)
     platformator_add_test(platformator_contact_events_test tests/contact_events_test.cpp INTERNAL LABELS physics determinism)
     platformator_add_test(platformator_physics_bookkeeping_test tests/physics_bookkeeping_test.cpp INTERNAL LABELS physics determinism)
     platformator_add_test(platformator_membership_exception_test tests/membership_exception_test.cpp INTERNAL LABELS physics)

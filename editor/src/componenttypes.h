@@ -58,7 +58,7 @@ inline Json default_component_record(int type)
     case 3:
         return Json{{"type", 3}, {"colliderType", 1}, {"width", 16.0}, {"height", 16.0},
                     {"offset", {{"x", 0.0}, {"y", 0.0}}}, {"trigger", false},
-                    {"collisionGroup", 1}, {"collisionMask", 1}};
+                    {"collisionGroup", 1}, {"collisionMask", 0xFFFFFFFFu}};
     case 4:
         return Json{{"type", 4}, {"velocity", {{"x", 0.0}, {"y", 0.0}}},
                     {"force", {{"x", 0.0}, {"y", 0.0}}}, {"mass", 1.0},

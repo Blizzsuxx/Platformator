@@ -108,7 +108,6 @@ struct PipelineRequest
     std::uint64_t sceneSavedHistoryToken = 0;
     std::string sceneSavedFileIdentity;
     PipelineIdentity identity;
-    std::string catalogProtocol = "unavailable";
     bool embeddedGameView = false;
     bool buildOnly = false;
 };
@@ -118,7 +117,6 @@ enum class PipelineStage
     Idle,
     Configuring,
     Building,
-    QueryingCatalog,
     Launching,
     Running
 };

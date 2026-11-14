@@ -602,10 +602,13 @@ void test_animation_tabs_migrate_roots_without_adopting_another_project()
     std::ofstream(secondAssets / "sprite.png", std::ios::binary) << "second texture";
     const auto firstAnimation = firstAssets / "walk.animset";
     write_json(firstAnimation, Json{{"frames", Json::array({{{"duration", 0.25},
-        {"textureWrapperFilePath", "assets/sprite.png"}}})},
-        {"framesPerSecond", 4.0}, {"loop", true}, {"owner", "first project"}});
+        {"textureWrapperFilePath", "assets/sprite.png"}, {"hasSourceRect", false},
+        {"sourceRect", Json{{"x", 0.0}, {"y", 0.0}, {"w", 0.0}, {"h", 0.0}}}}})},
+        {"framesPerSecond", 4.0}, {"loop", true}, {"width", 16.0}, {"height", 16.0},
+        {"filePath", firstAnimation.string()}, {"owner", "first project"}});
     write_json(secondAssets / "walk.animset", Json{{"frames", Json::array()},
-        {"framesPerSecond", 12.0}, {"loop", false}, {"owner", "second project"}});
+        {"framesPerSecond", 12.0}, {"loop", false}, {"width", 16.0}, {"height", 16.0},
+        {"filePath", (secondAssets / "walk.animset").string()}, {"owner", "second project"}});
 
     DocumentManager documents(firstProject, firstAssets, ProjectGeneration{5});
     const auto animationId = documents.open_animation(firstAnimation);
@@ -619,28 +622,36 @@ void test_animation_tabs_migrate_roots_without_adopting_another_project()
     const auto editedHistoryToken = tab->document().history_token();
     const Json firstDraft = tab->document().root();
 
-    const auto replaced = documents.set_project_roots(
+    const auto refused = documents.set_project_roots(
         secondProject, secondAssets, ProjectGeneration{6});
-    require(static_cast<bool>(replaced) && tab->project_root() == secondProject &&
-                tab->asset_root() == secondAssets && tab->document().root() == firstDraft &&
+    require(refused.status == WorkspaceActionStatus::Failed &&
+                documents.find_animation_tab(*animationId) == tab && tab->project_root() == firstProject &&
+                tab->asset_root() == firstAssets && tab->document().root() == firstDraft &&
                 tab->document().dirty() && tab->document().history_token() == editedHistoryToken &&
                 tab->document().source_path() == savedSourcePath &&
                 tab->document().source_identity() == savedSourceIdentity &&
                 tab->document().root().value("owner", std::string{}) == "first project",
-            "project replacement must update asset resolution roots while preserving the open dirty source and its identity");
-    require(tab->document().undo().changed && tab->document().root()["loop"] == true &&
-                tab->document().redo().changed && tab->document().root()["loop"] == false,
-            "animation history must remain usable across a successful project-root transition");
+            "project replacement must refuse a dirty animation without changing its source or history");
+
+    const auto saved = documents.save_animation_tab(*animationId);
+    require(static_cast<bool>(saved) && !tab->document().dirty() &&
+                read_json(firstAnimation).value("loop", true) == false,
+            "explicitly saving the animation must make project replacement safe: " + saved.message);
+    const TabId oldSceneTab = documents.active_tab_id();
+    const auto replaced = documents.set_project_roots(
+        secondProject, secondAssets, ProjectGeneration{6});
+    require(static_cast<bool>(replaced) && documents.find_animation_tab(*animationId) == nullptr &&
+                documents.animation_tab_count() == 0 && documents.tab_count() == 1 &&
+                documents.active_tab_id() != oldSceneTab &&
+                documents.active_tab()->workspace().document().projectRoot == std::filesystem::canonical(secondProject),
+            "successful replacement must retire outgoing animation and scene identities and open a clean incoming scene");
 
     const auto failed = documents.set_project_roots(
         temporary.path() / "missing-project", secondAssets, ProjectGeneration{7});
     require(failed.status == WorkspaceActionStatus::Failed &&
-                tab->project_root() == secondProject && tab->asset_root() == secondAssets &&
-                tab->document().source_path() == savedSourcePath &&
-                tab->document().source_identity() == savedSourceIdentity &&
-                tab->document().dirty() && tab->document().root()["owner"] == "first project" &&
-                tab->document().undo().changed && tab->document().root()["loop"] == true,
-            "failed replacement must preserve animation roots, dirty work, source identity and Undo");
+                documents.find_animation_tab(*animationId) == nullptr &&
+                documents.active_tab()->workspace().document().projectRoot == std::filesystem::canonical(secondProject),
+            "failed later replacement must preserve the current project without reviving retired animation history");
 }
 
 void test_save_as_rejects_open_canonical_sources_without_rebasing_drafts()
@@ -748,7 +759,7 @@ void test_save_as_rejects_open_canonical_sources_without_rebasing_drafts()
         animationATab->identity(), animationAlias,
         AssetOverwriteObservation{native_file_identity(animationB, ownerError)});
     require(animationOverwrite.status == WorkspaceActionStatus::Failed &&
-                animationOverwrite.message.find("animation tab") != std::string::npos &&
+                animationOverwrite.message.find("Animation tab") != std::string::npos &&
                 animationATab->document().root() == animationADraft &&
                 animationATab->document().history_token() == animationAHistory &&
                 animationBTab->document().root() == animationBDraft &&

@@ -73,7 +73,6 @@
                 "PLATFORMATOR_ENABLE_BENCHMARKS": "OFF",
                 "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
                 "PLATFORMATOR_BUILD_TESTS": "OFF",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "PLATFORMATOR_BUILD_EDITOR": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/production"
             }
@@ -95,7 +94,6 @@
             "binaryDir": "${sourceDir}/bin/cleanup-debug",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "none",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-debug"
             }
         },
@@ -105,7 +103,6 @@
             "binaryDir": "${sourceDir}/bin/cleanup-asan",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "address-undefined",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-asan"
             }
         },
@@ -115,7 +112,6 @@
             "binaryDir": "${sourceDir}/bin/cleanup-tsan",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "thread",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-tsan"
             }
         },
@@ -136,7 +132,6 @@
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "none",
                 "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "PLATFORMATOR_INSTALL": "OFF",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-benchmark"
             }
@@ -151,7 +146,6 @@
                 "PLATFORMATOR_BUILD_EDITOR": "ON",
                 "PLATFORMATOR_BUILD_TESTS": "ON",
                 "PLATFORMATOR_BUILD_RUNNER": "OFF",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "PLATFORMATOR_INSTALL": "OFF",
                 "PLATFORMATOR_SANITIZER": "none",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
@@ -169,7 +163,6 @@
                 "PLATFORMATOR_BUILD_EDITOR": "ON",
                 "PLATFORMATOR_BUILD_TESTS": "OFF",
                 "PLATFORMATOR_BUILD_RUNNER": "OFF",
-                "PLATFORMATOR_BUILD_EXAMPLES": "OFF",
                 "PLATFORMATOR_INSTALL": "OFF",
                 "PLATFORMATOR_SANITIZER": "none",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",

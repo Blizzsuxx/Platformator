@@ -22,7 +22,6 @@ namespace platformator_editor
 {
 namespace
 {
-constexpr std::chrono::milliseconds kPipelineCatalogTimeout{10000};
 constexpr std::string_view kConsoleTruncationMarker = "\n[console truncated at 1 MiB]\n";
 
 std::string path_to_utf8(const std::filesystem::path &path)
@@ -31,26 +30,12 @@ std::string path_to_utf8(const std::filesystem::path &path)
     return std::string(reinterpret_cast<const char *>(encoded.data()), encoded.size());
 }
 
-CatalogIdentity catalog_identity(const PipelineIdentity &identity)
-{
-    return CatalogIdentity{identity.canonicalProjectPath, identity.profile, identity.target,
-                           identity.executablePath, identity.binaryIdentity,
-                           identity.sourceInputIdentity};
-}
-
-CatalogProtocol catalog_protocol(std::string_view protocol)
-{
-    return protocol == "common-runner-v1" ? CatalogProtocol::CommonRunnerV1
-                                           : CatalogProtocol::Unavailable;
-}
-
 std::string pipeline_stage_name(PipelineStage stage)
 {
     switch (stage)
     {
     case PipelineStage::Configuring: return "Configure";
     case PipelineStage::Building: return "Build";
-    case PipelineStage::QueryingCatalog: return "Catalog";
     case PipelineStage::Launching: return "Launch";
     case PipelineStage::Running: return "Game";
     case PipelineStage::Idle: return "Idle";
@@ -179,12 +164,9 @@ struct GamePipeline::Impl
     BoundedConsole console;
     BehaviorCatalog *catalog = nullptr;
     PipelineIdentity currentIdentity;
-    std::chrono::steady_clock::time_point catalogStartedAt{};
     bool active = false;
     bool stopRequested = false;
     bool identityInvalidated = false;
-    bool catalogQueryActive = false;
-    bool catalogTimedOut = false;
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
     PlaySession playSession;
     std::string mirroredSessionStdout;
@@ -203,7 +185,7 @@ struct GamePipeline::Impl
         }
     }
 
-    void finish(PipelineOutcome outcome, std::string message)
+    void finish(PipelineOutcome outcome, std::string message, bool preserveCatalog = false)
     {
         if (!active)
             return;
@@ -217,14 +199,9 @@ struct GamePipeline::Impl
                 playSession.finish_stop_after_reap();
         }
 #endif
-        if (catalogQueryActive && catalog != nullptr)
-        {
-            catalog->invalidate(message.empty() ? "catalog query was cancelled" : message);
-            catalogQueryActive = false;
-        }
-        if (outcome != PipelineOutcome::Succeeded && catalog != nullptr &&
+        if (!preserveCatalog && outcome != PipelineOutcome::Succeeded && catalog != nullptr &&
             (status.stage == PipelineStage::Configuring || status.stage == PipelineStage::Building ||
-             status.stage == PipelineStage::QueryingCatalog || identityInvalidated))
+             identityInvalidated))
             catalog->invalidate(message.empty() ? "pipeline did not verify the current build" : message);
         status.outcome = outcome;
         status.message = std::move(message);
@@ -254,29 +231,15 @@ struct GamePipeline::Impl
     {
         if (!active || output.generation != status.generation)
             return;
-        if (status.stage == PipelineStage::QueryingCatalog && catalog != nullptr)
-        {
-            const bool accepted = output.stream == ProcessStream::Stderr
-                                      ? catalog->append_stderr(output.bytes)
-                                      : catalog->append_stdout(output.bytes);
-            if (!accepted && process.running())
-                process.stop();
-            if (output.stream == ProcessStream::Stderr)
-            {
-                console.append("[Catalog] ");
-                console.append(output.bytes);
-            }
-            return;
-        }
         console.append(output.bytes);
     }
 
-    void fail(std::string message)
+    void fail(std::string message, bool preserveCatalog = false)
     {
         console.append("\n[Error] ");
         console.append(message);
         console.append("\n");
-        finish(PipelineOutcome::Failed, std::move(message));
+        finish(PipelineOutcome::Failed, std::move(message), preserveCatalog);
     }
 
     void start_build()
@@ -285,7 +248,7 @@ struct GamePipeline::Impl
         start_process(request.buildArgv, ProcessOutputMode::Merged);
     }
 
-    void start_catalog_query()
+    void prepare_launch_and_start()
     {
         std::error_code identityError;
         const auto canonicalExecutable = std::filesystem::canonical(request.executablePath, identityError);
@@ -312,35 +275,19 @@ struct GamePipeline::Impl
             std::to_string(binaryModified.time_since_epoch().count());
         currentIdentity = request.identity;
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
-        if (request.embeddedGameView &&
-            (!playSession.finalize_pipeline_identity(request.identity) ||
-             !playSession.begin_catalog_check()))
+        if (request.embeddedGameView && !playSession.finalize_pipeline_identity(request.identity))
         {
             fail("play session could not validate the built target: " + playSession.last_error());
             return;
         }
 #endif
-        if (catalog != nullptr)
-            catalog->configure(catalog_protocol(request.catalogProtocol), catalog_identity(request.identity));
-        if (catalog == nullptr || !catalog->begin_query())
-        {
-            fail(catalog == nullptr ? "behavior catalog is unavailable" : catalog->last_error());
-            return;
-        }
-        catalogQueryActive = true;
-        catalogTimedOut = false;
-        catalogStartedAt = std::chrono::steady_clock::now();
-        enter(PipelineStage::QueryingCatalog);
-        start_process({path_to_utf8(request.executablePath), "--editor-catalog"}, ProcessOutputMode::Separate);
+        start_launch();
     }
 
     bool scene_behaviors_are_registered(std::string &error) const
     {
         if (catalog == nullptr || !catalog->snapshot())
-        {
-            error = "the built executable has no current behavior catalog";
-            return false;
-        }
+            return true;
         const auto allowed = catalog_behavior_names(catalog->snapshot()->document);
         std::set<std::string> used;
         collect_behavior_names(request.scene, used);
@@ -348,7 +295,7 @@ struct GamePipeline::Impl
         {
             if (!allowed.contains(name))
             {
-                error = "scene behavior '" + name + "' is not registered by the built target";
+                error = "scene behavior '" + name + "' is not defined in scanned project sources";
                 return false;
             }
         }
@@ -357,10 +304,15 @@ struct GamePipeline::Impl
 
     void start_launch()
     {
+        if (catalog == nullptr || catalog->state() != CatalogState::Current || !catalog->snapshot())
+        {
+            fail("behavior catalog is not current; refresh project schemas before Run");
+            return;
+        }
         std::string error;
         if (!scene_behaviors_are_registered(error))
         {
-            fail(std::move(error));
+            fail(std::move(error), true);
             return;
         }
         enter(PipelineStage::Launching);
@@ -378,20 +330,6 @@ struct GamePipeline::Impl
             if (!request.sceneDocumentIdentity || request.sceneSavedFileIdentity.empty())
             {
                 fail("embedded Game view requires a complete immutable saved-scene identity");
-                return;
-            }
-            if (catalog == nullptr || !catalog->snapshot())
-            {
-                fail("embedded Game view requires the validated capability catalog");
-                return;
-            }
-            auto capabilities = platformator::editor_session::read_session_capabilities(
-                catalog->snapshot()->document);
-            if (!capabilities.supported || !capabilities.frameStream)
-            {
-                fail(capabilities.error.empty()
-                    ? "the built target does not advertise a compatible embedded Game view; choose an external window"
-                    : capabilities.error + "; choose an external game window");
                 return;
             }
 #if defined(_WIN32)
@@ -415,7 +353,7 @@ struct GamePipeline::Impl
                 *request.sceneDocumentIdentity, request.sceneSavedHistoryToken,
                 request.sceneSavedFileIdentity, request.identity};
             if (!playSession.matches(launchIdentity) ||
-                playSession.state() != PlaySessionState::CatalogCheck)
+                playSession.state() != PlaySessionState::Building)
             {
                 fail("play session launch identity changed before process startup");
                 return;
@@ -425,8 +363,7 @@ struct GamePipeline::Impl
             sessionRequest.workingDirectory = request.projectRoot;
             sessionRequest.outputMode = ProcessOutputMode::Separate;
             status.command = display_command(sessionRequest.argv);
-            if (!playSession.start_process(std::move(sessionRequest), std::move(capabilities),
-                                           std::move(channels)))
+            if (!playSession.start_process(std::move(sessionRequest), std::move(channels)))
             {
                 const auto message = playSession.last_error().empty()
                     ? "embedded Game process could not be started"
@@ -472,22 +409,6 @@ struct GamePipeline::Impl
             finish(PipelineOutcome::Cancelled, "operation stopped");
             return;
         }
-        if (status.stage == PipelineStage::QueryingCatalog)
-        {
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - catalogStartedAt);
-            const bool current = catalog != nullptr &&
-                catalog->finish_query(completion.launched ? completion.exitCode : -1,
-                                      elapsed, catalogTimedOut);
-            catalogQueryActive = false;
-            if (!current)
-            {
-                fail(catalog == nullptr ? "behavior catalog is unavailable" : catalog->last_error());
-                return;
-            }
-            start_launch();
-            return;
-        }
         if (!completion.launched || completion.exitCode != 0)
         {
             std::string message = completion.error;
@@ -505,15 +426,9 @@ struct GamePipeline::Impl
             break;
         case PipelineStage::Building:
             if (request.buildOnly)
-            {
-                if (catalog != nullptr)
-                    catalog->invalidate("build-only completed; run must query the resulting executable again");
                 finish(PipelineOutcome::Succeeded, "build completed");
-            }
             else
-                start_catalog_query();
-            break;
-        case PipelineStage::QueryingCatalog:
+                prepare_launch_and_start();
             break;
         case PipelineStage::Launching:
         case PipelineStage::Running:
@@ -533,8 +448,6 @@ GamePipeline::~GamePipeline()
 {
     if (impl_ && impl_->active)
     {
-        if (impl_->catalogQueryActive && impl_->catalog != nullptr)
-            impl_->catalog->invalidate("application closed while catalog verification was active");
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (impl_->request.embeddedGameView && impl_->playSession.state() != PlaySessionState::Idle)
             impl_->playSession.request_stop();
@@ -556,11 +469,10 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
                                      "pipeline request is missing a root or command", {}};
         return false;
     }
-    if (!request.buildOnly && (request.catalogProtocol != "common-runner-v1" ||
-                               request.savedScenePath.empty()))
+    if (!request.buildOnly && request.savedScenePath.empty())
     {
         impl.status = PipelineStatus{PipelineStage::Idle, PipelineOutcome::Failed, generation,
-                                     "automatic Run requires a saved scene and common-runner-v1 catalog support", {}};
+                                     "automatic Run requires a saved scene", {}};
         return false;
     }
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
@@ -589,16 +501,12 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
     impl.request = std::move(request);
     impl.catalog = &catalog;
     impl.currentIdentity = impl.request.identity;
-    catalog.configure(catalog_protocol(impl.request.catalogProtocol),
-                      catalog_identity(impl.request.identity));
     impl.status = PipelineStatus{};
     impl.status.generation = generation;
     impl.status.workingDirectory = impl.request.projectRoot;
     impl.active = true;
     impl.stopRequested = false;
     impl.identityInvalidated = false;
-    impl.catalogQueryActive = false;
-    impl.catalogTimedOut = false;
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
     if (impl.request.embeddedGameView)
     {
@@ -670,13 +578,6 @@ void GamePipeline::poll()
         return;
     }
 #endif
-    if (impl.status.stage == PipelineStage::QueryingCatalog &&
-        std::chrono::steady_clock::now() - impl.catalogStartedAt > kPipelineCatalogTimeout)
-    {
-        impl.catalogTimedOut = true;
-        if (impl.process.running())
-            impl.process.stop();
-    }
     if (impl.identityInvalidated && !impl.process.running())
     {
         impl.fail("project, source, target, or executable identity changed during the operation; run again to verify it");
@@ -709,11 +610,6 @@ void GamePipeline::update_identity(PipelineIdentity identity)
 {
     auto &impl = *impl_;
     impl.currentIdentity = std::move(identity);
-    if (impl.catalog != nullptr)
-    {
-        impl.catalog->configure(catalog_protocol(impl.request.catalogProtocol),
-                               catalog_identity(impl.currentIdentity));
-    }
     if (impl.active && impl.currentIdentity != impl.request.identity)
     {
         impl.identityInvalidated = true;

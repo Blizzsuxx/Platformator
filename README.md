@@ -22,7 +22,7 @@ printf '[]\n' > /tmp/platformator-empty.scene
 bin/cleanup-debug/main --headless --scene /tmp/platformator-empty.scene --smoke-steps 10 --asset-root assets
 ```
 
-Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. The core assets include example placeholder files; nonempty asset requests must resolve successfully and do not automatically fall back. Build the example with `-DPLATFORMATOR_BUILD_EXAMPLES=ON`; see [Mario](examples/mario/CMakeLists.txt). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
+Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. The core assets include example placeholder files; nonempty asset requests must resolve successfully and do not automatically fall back. Examples are configured and built separately as standalone projects; see [Mario](examples/mario/CMakeLists.txt) (e.g. `cmake -S examples/mario -B bin/mario && cmake --build bin/mario`). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
 
 ## Embed or install
 

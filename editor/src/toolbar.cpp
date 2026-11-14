@@ -56,7 +56,7 @@ namespace platformator_editor
 
         result.compact = iconOnly;
 
-        const char *runLabel = iconOnly ? "##Run" : (result.compact ? "Run" : "Build and Run");
+        const char *runLabel = iconOnly ? "##Run" : "Build and Run";
         const char *pauseResumeLabel = iconOnly
             ? (state.isPaused ? "##Resume" : "##Pause")
             : (state.isPaused ? "Resume" : "Pause");
@@ -128,8 +128,7 @@ namespace platformator_editor
         return result;
     }
 
-    std::vector<SemanticNode> editor_toolbar_semantic_nodes(const EditorToolbarState &state,
-                                                            const EditorToolbarFrame &frame)
+    std::vector<SemanticNode> editor_toolbar_semantic_nodes(const EditorToolbarFrame &frame)
     {
         std::vector<SemanticNode> nodes;
         SemanticNode root;
@@ -139,54 +138,6 @@ namespace platformator_editor
         root.visible = true;
         nodes.push_back(std::move(root));
 
-        const auto bounds_for = [&](std::string_view name) -> std::optional<SemanticBounds>
-        {
-            const auto found = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto &item)
-                                            { return item.name == name; });
-            if (found == frame.items.end())
-                return std::nullopt;
-            return SemanticBounds{found->x, found->y, found->width, found->height};
-        };
-        const auto bounded_text = [](std::string text)
-        {
-            constexpr std::size_t maximum = 512;
-            if (text.size() > maximum)
-            {
-                text.resize(maximum - 3);
-                text += "...";
-            }
-            return text;
-        };
-
-        {
-            SemanticNode identity;
-            identity.id = "main/toolbar/identity";
-            identity.parentId = "main/toolbar";
-            identity.role = SemanticRole::Text;
-            identity.name = "Current project and scene";
-            identity.value = bounded_text(
-                (state.projectLabel.empty() ? std::string("No Project") : state.projectLabel) +
-                " / " + (state.sceneLabel.empty() ? std::string("Untitled Scene") : state.sceneLabel));
-            identity.help = bounded_text("Project path: " + state.projectPath +
-                                         "\nScene path: " + state.scenePath);
-            const auto bounds = bounds_for("Project and Scene");
-            identity.bounds = bounds ? bounds : SemanticBounds{0.0f, 0.0f, 0.0f, frame.height};
-            identity.visible = true;
-            nodes.push_back(std::move(identity));
-        }
-        {
-            SemanticNode status;
-            status.id = "main/toolbar/status";
-            status.parentId = "main/toolbar";
-            status.role = SemanticRole::Text;
-            status.name = "Document and operation status";
-            status.value = bounded_text(state.status);
-            status.error = state.status.find("Failed") != std::string::npos;
-            const auto bounds = bounds_for("Document Status");
-            status.bounds = bounds ? bounds : SemanticBounds{0.0f, 0.0f, 0.0f, frame.height};
-            status.visible = true;
-            nodes.push_back(std::move(status));
-        }
         return nodes;
     }
 } // namespace platformator_editor

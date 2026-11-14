@@ -170,4 +170,80 @@ void run_editcommand_cases()
     require(typedEdit(12, std::nullopt, {std::string("width")}, 641.0).change.categories ==
                 std::vector<DocumentChangeCategory>{DocumentChangeCategory::Camera},
             "camera edits must carry the Camera category");
+
+    DocumentSession templateDocument;
+    templateDocument.documentGeneration = 47;
+    Json linkedObject = object(30, "Default", Json::array(), Json::array());
+    linkedObject["tag"] = "DefaultTag";
+    linkedObject["config"] = Json{{"nested", Json{{"value", 1}, {"other", 2}}}};
+    linkedObject["template"] = "templates/Fixture.pttemplate";
+    linkedObject["templateNodeId"] = 1;
+    linkedObject["overrides"] = Json::array();
+    linkedObject["templateSourceKeys"] = Json::array({"name", "tag", "config"});
+    templateDocument.root = scene({linkedObject});
+    rebuild_document_indexes(templateDocument);
+    EditCommandService templateCommands;
+    SelectionModel templateSelection;
+    const auto templateName = address_for_document(
+        templateDocument, 30, std::nullopt, std::nullopt, {std::string("name")});
+    auto templateGesture = templateCommands.begin_gesture(templateDocument, templateName);
+    require(templateGesture && templateGesture->update(templateCommands, templateDocument, "Preview") &&
+                templateDocument.root[0]["overrides"] == Json::array({"name"}),
+            "template property gestures must capture their generated override metadata");
+    require(templateGesture->cancel(templateCommands, templateDocument).status == CommandStatus::Changed &&
+                templateDocument.root[0]["name"] == "Default" &&
+                templateDocument.root[0]["overrides"].empty(),
+            "cancelling a template property gesture must restore the value and override list");
+
+    templateGesture = templateCommands.begin_gesture(templateDocument, templateName);
+    require(templateGesture &&
+                templateGesture->update(templateCommands, templateDocument, "Committed") &&
+                templateGesture->commit().has_value() &&
+                templateDocument.root[0]["overrides"] == Json::array({"name"}),
+            "committing a template property gesture must retain both the value and metadata");
+    require(templateCommands.undo(templateDocument, templateSelection).status == CommandStatus::Changed &&
+                templateDocument.root[0]["name"] == "Default" &&
+                templateDocument.root[0]["overrides"].empty(),
+            "one Undo must restore both sides of a committed template property gesture");
+
+    const auto templateTag = address_for_document(
+        templateDocument, 30, std::nullopt, std::nullopt, {std::string("tag")});
+    auto templateBatch = templateCommands.begin_batch_gesture(
+        templateDocument, {templateName, templateTag});
+    require(templateBatch && templateBatch->update(
+                templateCommands, templateDocument, {"PreviewName", "PreviewTag"}) &&
+                templateDocument.root[0]["overrides"] == Json::array({"name", "tag"}),
+            "batch template gestures must capture every generated override path");
+    require(templateBatch->cancel(templateCommands, templateDocument).status == CommandStatus::Changed &&
+                templateDocument.root[0]["name"] == "Default" &&
+                templateDocument.root[0]["tag"] == "DefaultTag" &&
+                templateDocument.root[0]["overrides"].empty(),
+            "cancelling a batch template gesture must restore all values and override metadata");
+
+    templateBatch = templateCommands.begin_batch_gesture(templateDocument, {templateName, templateTag});
+    require(templateBatch && templateBatch->update(
+                templateCommands, templateDocument, {"FinalName", "FinalTag"}) &&
+                templateBatch->commit() &&
+                templateDocument.root[0]["overrides"] == Json::array({"name", "tag"}),
+            "a committed batch template gesture must retain its complete override metadata");
+    require(templateCommands.undo(templateDocument, templateSelection).status == CommandStatus::Changed &&
+                templateDocument.root[0]["name"] == "Default" &&
+                templateDocument.root[0]["tag"] == "DefaultTag" &&
+                templateDocument.root[0]["overrides"].empty(),
+            "one Undo must restore all batch template values and their override paths");
+
+    templateDocument.root[0]["overrides"] = Json::array({
+        "config.nested", "config.nested.value", "config.other"});
+    const auto eraseNested = address_for_document(
+        templateDocument, 30, std::nullopt, std::nullopt,
+        {std::string("config"), std::string("nested")});
+    require(templateCommands.erase_property(templateDocument, eraseNested).status == CommandStatus::Changed &&
+                !templateDocument.root[0]["config"].contains("nested") &&
+                templateDocument.root[0]["overrides"] == Json::array({"config.other"}),
+            "removing a raw map entry must also clear its descendant template override paths");
+    require(templateCommands.undo(templateDocument, templateSelection).status == CommandStatus::Changed &&
+                templateDocument.root[0]["config"]["nested"]["value"] == 1 &&
+                templateDocument.root[0]["overrides"] ==
+                    Json::array({"config.nested", "config.nested.value", "config.other"}),
+            "Undo of a raw map entry removal must restore its value and exact override metadata");
 }

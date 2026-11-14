@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <array>
+#include <chrono>
 #include <functional>
 #include <optional>
 #include <string>
@@ -81,7 +82,7 @@ class HierarchyPanel
     std::unordered_map<int, std::size_t> objectRowIndexes_;
     std::vector<int> displayedObjectOrder_;
     std::vector<char> renameBuffer_;
-    int renameTargetObjectId_ = 0;
+    std::optional<int> renameTargetObjectId_;
     bool renameFocusPending_ = false;
     int lastMouseInteractionFrame_ = -2;
     std::optional<int> lastRevealedObjectId_;
@@ -116,5 +117,6 @@ class HierarchyPanel
     std::unordered_set<int> searchExpansionBackup_;
     bool hasSearchExpansionBackup_ = false;
     std::string duplicatePolicyStatus_;
+    std::chrono::steady_clock::time_point duplicatePolicyStatusUntil_{};
 };
 } // namespace platformator_editor

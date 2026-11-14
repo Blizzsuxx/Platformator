@@ -5,6 +5,7 @@
 #include "editorwork.h"
 #include "panels/hierarchy.h"
 #include "preferences.h"
+#include "project.h"
 #include "style.h"
 #include "test_support.h"
 #include "validation.h"
@@ -314,7 +315,7 @@ void run_preference_cases()
                 is_panel_visible(loaded.preferences, "panel.project") &&
                 is_panel_visible(loaded.preferences, "panel.console") &&
                 !is_panel_visible(loaded.preferences, "panel.game") &&
-                !is_panel_visible(loaded.preferences, "panel.run") &&
+                !is_panel_visible(loaded.preferences, "panel.project_settings") &&
                 !is_panel_visible(loaded.preferences, "panel.validation") &&
                 !defaults.contains("panel.settings"),
             "stable panel IDs must provide the documented visible workspace and optional tool panels");
@@ -425,7 +426,14 @@ void run_preference_cases()
     loaded.preferences.hostLayoutSettings[HostLayoutId{2}] = "[Docking][Data]\nsecondary-layout\n";
     loaded.preferences.openTabs.push_back(
         SavedTabPreferences{firstScene, 12.5f, -7.0f, 1.75f, {1, 4}, true});
-    loaded.preferences.activeTabPath = firstScene;
+    const auto templatePath = projectRoot / "assets" / "templates" / "crate.pttemplate";
+    const auto animationPath = projectRoot / "assets" / "walk.animset";
+    loaded.preferences.openTabs.push_back(SavedTabPreferences{
+        templatePath, -2.0f, 3.0f, 1.25f, {}, false, SavedDocumentKind::Template});
+    loaded.preferences.openTabs.push_back(SavedTabPreferences{
+        animationPath, 4.0f, 5.0f, 0.8f, {}, false, SavedDocumentKind::Animation});
+    loaded.preferences.activeTabPath = animationPath;
+    loaded.preferences.activeDocumentKind = SavedDocumentKind::Animation;
     loaded.preferences.hiddenObjectIdsByScene[firstScene.string()] = {4};
     loaded.preferences.lockedObjectIdsByScene[firstScene.string()] = {8, 9};
     loaded.preferences.snap = SnapPreferences{0.5f, 45.0f, 0.25f, "local"};
@@ -455,16 +463,37 @@ void run_preference_cases()
                     HostGeometryPreferences{220, 120, 960, 640, true} &&
                 roundTrip.preferences.hostLayoutSettings.at(HostLayoutId{2}) ==
                     "[Docking][Data]\nsecondary-layout\n" &&
-                roundTrip.preferences.openTabs.size() == 1 &&
+                roundTrip.preferences.openTabs.size() == 3 &&
                 roundTrip.preferences.openTabs[0] ==
                     SavedTabPreferences{firstScene, 12.5f, -7.0f, 1.75f, {1, 4}, true} &&
-                roundTrip.preferences.activeTabPath == firstScene &&
+                roundTrip.preferences.openTabs[1].kind == SavedDocumentKind::Template &&
+                roundTrip.preferences.openTabs[1].documentPath == templatePath &&
+                roundTrip.preferences.openTabs[2].kind == SavedDocumentKind::Animation &&
+                roundTrip.preferences.openTabs[2].documentPath == animationPath &&
+                roundTrip.preferences.activeTabPath == animationPath &&
+                roundTrip.preferences.activeDocumentKind == SavedDocumentKind::Animation &&
                 roundTrip.preferences.hiddenObjectIdsByScene.at(firstScene.string()) == std::vector<int>{4} &&
                 roundTrip.preferences.lockedObjectIdsByScene.at(firstScene.string()) == std::vector<int>{8, 9} &&
                 roundTrip.preferences.snap == SnapPreferences{0.5f, 45.0f, 0.25f, "local"} &&
                 roundTrip.preferences.duplicationReferencePolicy == "remap-internal-targets" &&
                 roundTrip.preferences.resourceLimits.at("decodeWorkingBytes") == 268435456,
             "v2 project settings, host layouts, per-tab state and authoring preferences must round-trip");
+
+    {
+        std::ifstream input(paths.settingsPath, std::ios::binary);
+        Json legacy = Json::parse(std::string{std::istreambuf_iterator<char>(input),
+                                              std::istreambuf_iterator<char>()});
+        legacy.erase("activeTabKind");
+        for (auto &tab : legacy["openTabs"])
+            tab.erase("kind");
+        std::ofstream output(paths.settingsPath, std::ios::binary | std::ios::trunc);
+        output << legacy.dump(2) << '\n';
+    }
+    const auto legacyKinds = load_workspace_preferences(paths.settingsPath, paths.layoutPath, projectRoot);
+    require(legacyKinds.preferences.activeDocumentKind == SavedDocumentKind::Scene &&
+                std::all_of(legacyKinds.preferences.openTabs.begin(), legacyKinds.preferences.openTabs.end(),
+                    [](const SavedTabPreferences &tab) { return tab.kind == SavedDocumentKind::Scene; }),
+            "older saved tabs without document kinds must continue to restore as Scenes");
 
     const auto read_text = [](const std::filesystem::path &path)
     {
@@ -608,25 +637,98 @@ void run_preference_cases()
                 corrupt.preferences.userScale == 1.0f && corrupt.preferences.projectKey == paths.projectKey,
             "unsupported or corrupt preference versions must reset preferences without affecting scene state");
 
-    write_json(paths.settingsPath,
-               Json{{"version", 1}, {"projectKey", paths.projectKey}, {"run", {{"catalogProtocol", "arbitrary-v1"}}}});
-    auto invalidProtocol = load_workspace_preferences(paths.settingsPath, paths.layoutPath, projectRoot);
-    require(invalidProtocol.recovered && invalidProtocol.preferences.run.catalogProtocol == "unavailable",
-            "catalog preferences must accept only common-runner-v1 or unavailable");
-
     WorkspacePreferences bundledDefaults;
     const auto sourceRoot = std::filesystem::canonical(
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path());
     apply_known_bundled_run_defaults(bundledDefaults, sourceRoot);
     require(bundledDefaults.run.target == "main" &&
-                bundledDefaults.run.executable == "bin/debug/main" &&
-                bundledDefaults.run.catalogProtocol == "common-runner-v1",
-            "only the recognized shared-runner repository entry should default to catalog compatible");
+                bundledDefaults.run.executable == "bin/debug/main",
+            "bundled defaults should configure main target and executable");
 
-    WorkspacePreferences customDefaults;
-    apply_known_bundled_run_defaults(customDefaults, projectRoot);
-    require(customDefaults.run.catalogProtocol == "unavailable",
-            "custom project entries must remain unavailable until explicitly declared compatible");
+    // GlobalPreferences recent projects & create_new_project / generate_project_cmakelists
+    GlobalPreferences gp;
+    record_recent_project(gp, projectRoot, "TestProject", 100);
+    require(gp.recentProjects.size() == 1 && gp.recentProjects[0].name == "TestProject",
+            "record_recent_project must store project entry");
+    const auto gpFile = temporary.path() / "global.json";
+    std::string gpError;
+    require(save_global_preferences(gpFile, gp, gpError), "save_global_preferences must succeed");
+    const auto gpLoaded = load_global_preferences(gpFile);
+    require(gpLoaded.preferences.recentProjects.size() == 1 &&
+                gpLoaded.preferences.recentProjects[0].name == "TestProject",
+            "load_global_preferences must roundtrip recent projects");
+
+    ProjectScaffoldRequest scaffoldReq;
+    scaffoldReq.parentDirectory = temporary.path();
+    scaffoldReq.projectName = "SampleGame";
+    scaffoldReq.platformatorSourceRoot = sourceRoot;
+    const auto scaffoldRes = create_new_project(scaffoldReq);
+    require(scaffoldRes.succeeded &&
+                std::filesystem::is_regular_file(scaffoldRes.projectRoot / "CMakeLists.txt") &&
+                std::filesystem::is_directory(scaffoldRes.projectRoot / "assets" / "scenes") &&
+                std::filesystem::is_directory(scaffoldRes.projectRoot / "assets" / "behaviors") &&
+                std::filesystem::is_regular_file(scaffoldRes.projectRoot / "assets" / "scenes" / "main.scene"),
+            "create_new_project must scaffold project CMakeLists.txt and asset directories");
+    WorkspacePreferences generatedDefaults;
+    apply_generated_project_run_defaults(generatedDefaults, scaffoldRes.projectRoot);
+    require(generatedDefaults.run.target == "SampleGame" &&
+                generatedDefaults.run.executable == "bin/debug/SampleGame" &&
+                generatedDefaults.run.configurePreset.empty() && generatedDefaults.run.buildPreset.empty() &&
+                generatedDefaults.recentScene == scaffoldRes.projectRoot / "assets" / "scenes" / "main.scene" &&
+                generatedDefaults.activeTabPath == generatedDefaults.recentScene,
+            "generated project defaults must initialize target, executable, and startup scene choices");
+    const auto generatedPreferences = make_project_preference_paths(
+        temporary.path() / "generated-prefs", scaffoldRes.projectRoot);
+    generatedDefaults.projectKey = generatedPreferences.projectKey;
+    const auto generatedSaved = save_workspace_preferences(generatedPreferences, generatedDefaults, "", true, false);
+    const auto generatedLoaded = load_workspace_preferences(generatedPreferences.settingsPath,
+                                                             generatedPreferences.layoutPath,
+                                                             scaffoldRes.projectRoot);
+    require(generatedSaved.succeeded() && generatedLoaded.settingsPresent &&
+                generatedLoaded.preferences.run == generatedDefaults.run,
+            "generated target and executable defaults must persist in project preferences");
+    auto existingPreferences = generatedLoaded.preferences;
+    existingPreferences.run.target = "authored-target";
+    existingPreferences.run.executable = "custom/bin/game";
+    existingPreferences.run.buildPreset = "custom-preset";
+    existingPreferences.recentScene = scaffoldRes.projectRoot / "assets" / "scenes" / "main.scene";
+    existingPreferences.activeTabPath = existingPreferences.recentScene;
+    apply_generated_project_run_defaults(existingPreferences, scaffoldRes.projectRoot);
+    apply_known_bundled_run_defaults(existingPreferences, scaffoldRes.projectRoot);
+    require(existingPreferences.run.target == "authored-target" &&
+                existingPreferences.run.executable == "custom/bin/game" &&
+                existingPreferences.run.buildPreset == "custom-preset" &&
+                existingPreferences.recentScene == scaffoldRes.projectRoot / "assets" / "scenes" / "main.scene" &&
+                existingPreferences.activeTabPath == existingPreferences.recentScene,
+            "generated defaults must preserve authored run and scene preferences");
+
+    const auto assetOnlyDir = temporary.path() / "AssetOnlyProject";
+    std::filesystem::create_directories(assetOnlyDir / "assets" / "scenes");
+    const auto authoredScene = assetOnlyDir / "assets" / "scenes" / "intro.scene";
+    {
+        std::ofstream sceneFile(authoredScene, std::ios::binary);
+        sceneFile << "[]\n";
+    }
+    const auto candidate = validate_project_folder(assetOnlyDir);
+    require(candidate.missingCmake, "validate_project_folder must mark missing CMakeLists.txt");
+    const auto genCmake = generate_project_cmakelists(assetOnlyDir, "AssetOnlyProject", sourceRoot);
+    std::ifstream generatedMain(assetOnlyDir / "main.cpp", std::ios::binary);
+    const std::string generatedMainText((std::istreambuf_iterator<char>(generatedMain)),
+                                        std::istreambuf_iterator<char>());
+    std::ifstream preservedScene(authoredScene, std::ios::binary);
+    std::string preservedSceneText;
+    std::getline(preservedScene, preservedSceneText);
+    WorkspacePreferences assetOnlyDefaults;
+    apply_generated_project_run_defaults(assetOnlyDefaults, assetOnlyDir);
+    require(genCmake.succeeded && std::filesystem::is_regular_file(assetOnlyDir / "CMakeLists.txt") &&
+                std::filesystem::is_regular_file(assetOnlyDir / "main.cpp") &&
+                generatedMainText.find("assets/scenes/intro.scene") != std::string::npos &&
+                preservedSceneText == "[]" && !std::filesystem::exists(assetOnlyDir / "assets" / "scenes" / "main.scene") &&
+                assetOnlyDefaults.run.target == "AssetOnlyProject" &&
+                assetOnlyDefaults.run.executable == "bin/debug/AssetOnlyProject" &&
+                assetOnlyDefaults.recentScene == authoredScene &&
+                assetOnlyDefaults.activeTabPath == authoredScene,
+            "asset-only generation must add a runnable entry point, select an authored scene, and preserve it");
 }
 
 void test_editor_wait_uses_earliest_deadline_and_bounded_polling()
@@ -709,7 +811,7 @@ void run_editor_action_and_style_cases()
     require(!defaultWindowSettings.highPixelDensity,
             "the new high-density window option must preserve the runtime default");
     const auto actions = editor_action_descriptors();
-    require(actions.size() == 21, "all workspace commands must have discoverable action descriptors");
+    require(actions.size() == 22, "all workspace commands must have discoverable action descriptors");
     for (const auto &action : actions)
         require(!action.label.empty() && !action.shortcut.empty(),
                 "each available workspace action must expose its label and shortcut");
@@ -726,6 +828,7 @@ void run_editor_action_and_style_cases()
                 binding(EditorAction::SelectMoveTool) == "W" &&
                 binding(EditorAction::SelectRotateTool) == "E" &&
                 binding(EditorAction::SelectScaleTool) == "R" &&
+                binding(EditorAction::SelectRectangleTool) == "T" &&
                 binding(EditorAction::Build) == "Ctrl+B" &&
                 binding(EditorAction::Preferences) == "Ctrl+,",
             "discoverable action bindings must include framing, transform tools and workspace commands");
@@ -926,7 +1029,8 @@ void run_hierarchy_label_cache_cases()
 #endif
     const auto &renamedRows = hierarchy.visible_rows(document);
     require(renamedRows.front().label == "Renamed Camera (#0)",
-            "cached hierarchy labels refresh after a value revision without rebuilding topology");
+            "cached hierarchy labels refresh after a value revision without rebuilding topology: " +
+                renamedRows.front().label);
     const auto afterRename = work::snapshot();
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     require(afterRename[static_cast<std::size_t>(work::Counter::HierarchyLabelRows)] == 1,

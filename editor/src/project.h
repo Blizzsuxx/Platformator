@@ -25,6 +25,21 @@ struct ProjectRootCandidate
 {
     std::filesystem::path projectRoot;
     std::filesystem::path assetRoot;
+    bool missingCmake = false;
+};
+
+struct ProjectScaffoldRequest
+{
+    std::filesystem::path parentDirectory;
+    std::string projectName;
+    std::filesystem::path platformatorSourceRoot;
+};
+
+struct ProjectScaffoldResult
+{
+    bool succeeded = false;
+    std::filesystem::path projectRoot;
+    std::string message;
 };
 
 struct ProjectExecutableTarget
@@ -42,11 +57,34 @@ struct ProjectRunDiscovery
     bool truncated = false;
 };
 
+struct ProjectEnginePathStatus
+{
+    bool cmakeExists = false;
+    bool hasSourceDirectoryDirective = false;
+    bool sourceDirectoryAvailable = false;
+    bool sourceDirectoryEditable = false;
+    std::filesystem::path configuredSourceDirectory;
+    std::filesystem::path detectedSourceDirectory;
+    std::string message;
+};
+
 // Project-folder selection accepts only the repository's existing conventions.
 bool should_skip_directory(std::string_view name) noexcept;
 void clear_source_hash_cache() noexcept;
 std::size_t source_hash_cache_size() noexcept;
 ProjectRootCandidate validate_project_folder(const std::filesystem::path &projectRoot);
+std::filesystem::path detect_platformator_source_root(
+    const std::filesystem::path &hint = {});
+ProjectEnginePathStatus inspect_project_engine_path(const std::filesystem::path &projectRoot);
+ProjectScaffoldResult repair_project_engine_path(
+    const std::filesystem::path &projectRoot,
+    const std::filesystem::path &platformatorSourceRoot);
+ProjectScaffoldResult create_new_project(const ProjectScaffoldRequest &request);
+ProjectScaffoldResult generate_project_cmakelists(
+    const std::filesystem::path &projectRoot,
+    std::string_view projectName = {},
+    const std::filesystem::path &platformatorSourceRoot = {},
+    bool overwrite = false);
 // Reads only bounded CMake preset and File API reply data. An explicit refresh
 // may register a bounded codemodel query in an existing in-project build dir;
 // it never runs CMake or creates a build directory.

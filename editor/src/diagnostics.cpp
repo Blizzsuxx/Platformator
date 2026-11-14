@@ -206,12 +206,6 @@ void ConsoleProjection::set_search(std::string search)
     search_ = std::move(search);
 }
 
-void ConsoleProjection::set_severity_filter(std::optional<DiagnosticSeverity> severity) noexcept
-{
-    severityFilter_ = severity;
-    useSeverityMask_ = false;
-}
-
 void ConsoleProjection::set_severity_mask(bool showInfo, bool showWarnings, bool showErrors) noexcept
 {
     showInfo_ = showInfo;
@@ -264,10 +258,6 @@ std::vector<std::size_t> ConsoleProjection::visible_rows(std::string_view rawTex
                 continue;
             if (row.severity == DiagnosticSeverity::Error && !showErrors_)
                 continue;
-        }
-        else if (severityFilter_ && row.severity != *severityFilter_)
-        {
-            continue;
         }
         const auto line = rawText.substr(row.byteOffset, row.byteLength);
         if (!contains_ascii_case_insensitive(line, search_))

@@ -7,7 +7,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -15,6 +14,9 @@
 
 namespace platformator_editor
 {
+float runtime_inspection_list_height(float availableHeight, bool showDetails,
+                                     float frameHeightWithSpacing, float itemSpacingY) noexcept;
+
 enum class GameAspectPreset
 {
     FreeAspect,
@@ -40,8 +42,7 @@ class GamePanel
     static std::string asset_change_status_message(bool liveAssetReloadAdvertised);
     void consume_event(PlaySession &session,
                        const platformator::editor_session::Message &message);
-    void set_pipeline_status(std::string message, bool restartAvailable = false);
-    void set_restart_callback(std::function<void()> callback);
+    void set_pipeline_status(std::string message);
     void set_visible(PlaySession *session, bool visible);
     void draw(PlaySession *session, bool visible);
     std::vector<SemanticNode> semantic_nodes(PlaySession *session,
@@ -72,8 +73,6 @@ class GamePanel
     bool captureVisible_ = false;
     std::string status_ = "No embedded game session is active.";
     std::string pipelineStatus_;
-    bool restartAvailable_ = false;
-    std::function<void()> restartCallback_;
     std::vector<Json> runtimeObjects_;
     std::optional<Json> selectedHandle_;
     Json selectedSnapshot_ = Json::object();

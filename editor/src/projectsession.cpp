@@ -215,7 +215,8 @@ void ProjectSession::set_wake_callback(std::function<void()> callback)
 }
 
 WorkspaceActionResult ProjectSession::set_project_roots(
-    const std::filesystem::path &projectRoot, const std::filesystem::path &assetRoot)
+    const std::filesystem::path &projectRoot, const std::filesystem::path &assetRoot,
+    bool discardDirtyDocuments)
 {
     try
     {
@@ -226,7 +227,8 @@ WorkspaceActionResult ProjectSession::set_project_roots(
         const ProjectSnapshot previous = projectContext_.snapshot();
         stop_monitoring();
         const auto changed = documents_.set_project_roots(candidate.projectRoot, candidate.assetRoot,
-                                                           ProjectGeneration{candidate.generation});
+                                                           ProjectGeneration{candidate.generation},
+                                                           discardDirtyDocuments);
         if (!changed)
         {
             start_monitoring(previous);

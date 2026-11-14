@@ -395,13 +395,16 @@ void test_tab_and_project_transition_cancellation()
 
     gui.click(draw, durationPoint);
     gui.replace_text(draw, durationPoint, "12", false);
+    const auto retiredIdentity = tab->identity();
     const auto rootChange = manager.set_project_roots(projectB, assetB, ProjectGeneration{32});
-    require(static_cast<bool>(rootChange),
+    require(static_cast<bool>(rootChange) &&
+                manager.active_tab() != nullptr &&
+                manager.active_tab()->identity().projectGeneration.value == 32 &&
+                manager.animation_tab_count() == 0 && manager.find_animation_tab(*first) == nullptr &&
+                manager.active_tab()->identity() != retiredIdentity,
             "project-root transition commits for an animation tab");
-    gui.frame([&] { tab->panel().draw(tab->document(), tab->asset_root()); });
-    require(tab->document().root()["frames"][0]["duration"] == 0.25 &&
-                !tab->document().can_undo(),
-            "changing project roots must cancel all animation numeric drafts");
+    require(manager.has_unsaved_changes() == false,
+            "project-root transition retires the animation draft instead of preserving stale history");
 }
 } // namespace
 

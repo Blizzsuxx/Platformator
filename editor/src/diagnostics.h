@@ -66,7 +66,6 @@ class ConsoleProjection
     void rebuild(const BoundedConsole &console);
     void clear() noexcept;
     void set_search(std::string search);
-    void set_severity_filter(std::optional<DiagnosticSeverity> severity) noexcept;
     void set_severity_mask(bool showInfo, bool showWarnings, bool showErrors) noexcept;
     void set_collapse_repeats(bool enabled);
     void set_auto_follow(bool enabled) noexcept;
@@ -83,7 +82,6 @@ class ConsoleProjection
   private:
     std::vector<ConsoleRow> rows_;
     std::string search_;
-    std::optional<DiagnosticSeverity> severityFilter_;
     bool showInfo_ = true;
     bool showWarnings_ = true;
     bool showErrors_ = true;

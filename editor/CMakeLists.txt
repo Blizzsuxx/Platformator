@@ -18,6 +18,8 @@ set(PLATFORMATOR_IMGUI_DIR "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
 
 set(PLATFORMATOR_EDITOR_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${PLATFORMATOR_EDITOR_GENERATED_DIR}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/default-layout.ini")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/default-layout.ini"
     PLATFORMATOR_DEFAULT_LAYOUT_CONTENT)
 set(PLATFORMATOR_DEFAULT_LAYOUT_DELIMITER ")PADL01\"")
@@ -88,6 +90,9 @@ add_library(platformator_editor_core STATIC
     src/projectchanges.cpp
     src/projectsession.cpp
     src/resourceindex.cpp
+    src/layersettings.cpp
+    src/sourcescanner.cpp
+    src/audiopreview.cpp
     src/templates.cpp
     ${PLATFORMATOR_PROJECT_WATCH_SOURCE}
     src/behaviorcatalog.cpp
@@ -105,7 +110,7 @@ add_library(platformator_editor_core STATIC
     src/panels/inspector.cpp
     src/panels/project.cpp
     src/panels/referencefields.cpp
-    src/panels/runsettings.cpp
+    src/panels/projectsettings.cpp
     src/panels/spriteeditor.cpp
     src/selection.cpp
     src/validation.cpp

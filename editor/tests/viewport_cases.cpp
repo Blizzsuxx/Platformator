@@ -123,12 +123,14 @@ namespace platformator_editor
                      dispatch_editor_key(EditorKey::Q, false, false, hierarchyCapture) == EditorAction::SelectHandTool &&
                      dispatch_editor_key(EditorKey::W, false, false, hierarchyCapture) == EditorAction::SelectMoveTool &&
                      dispatch_editor_key(EditorKey::E, false, false, hierarchyCapture) == EditorAction::SelectRotateTool &&
-                     dispatch_editor_key(EditorKey::R, false, false, hierarchyCapture) == EditorAction::SelectScaleTool,
-                 "Scene shortcuts (F/Shift+F/Q/W/E/R) must be allowed when Hierarchy is focused");
+                     dispatch_editor_key(EditorKey::R, false, false, hierarchyCapture) == EditorAction::SelectScaleTool &&
+                     dispatch_editor_key(EditorKey::T, false, false, hierarchyCapture) == EditorAction::SelectRectangleTool,
+                 "Scene shortcuts (F/Shift+F/Q/W/E/R/T) must be allowed when Hierarchy is focused");
     require_case(editor_action_allowed(EditorAction::SelectHandTool, hierarchyCapture) &&
                      editor_action_allowed(EditorAction::SelectMoveTool, hierarchyCapture) &&
                      editor_action_allowed(EditorAction::SelectRotateTool, hierarchyCapture) &&
                      editor_action_allowed(EditorAction::SelectScaleTool, hierarchyCapture) &&
+                     editor_action_allowed(EditorAction::SelectRectangleTool, hierarchyCapture) &&
                      editor_action_allowed(EditorAction::FrameSelected, hierarchyCapture) &&
                      editor_action_allowed(EditorAction::FrameAll, hierarchyCapture),
                  "editor actions for Scene navigation and tool selection must be allowed when Hierarchy is focused");

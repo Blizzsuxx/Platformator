@@ -1,6 +1,7 @@
 #include "editcommands.h"
 
 #include "editorwork.h"
+#include "templates.h"
 
 #include <algorithm>
 #include <cassert>
@@ -42,6 +43,40 @@ bool address_matches_document(const DocumentSession &document, const PropertyAdd
     return address.identity.projectGeneration == ProjectGeneration{document.projectGeneration} &&
            !address.identity.tabId &&
            address.identity.documentGeneration == DocumentGeneration{document.documentGeneration};
+}
+
+bool is_template_metadata_address(const PropertyAddress &address)
+{
+    if (address.fieldPath.empty())
+        return true;
+    if (address.behaviorOrdinal)
+        return false;
+    const auto *key = std::get_if<std::string>(&address.fieldPath.front());
+    if (key == nullptr)
+        return false;
+    if (!address.componentId)
+        return address.fieldPath.size() == 1 &&
+               (*key == "id" || *key == "children" || *key == "components" ||
+                *key == "overrides" || *key == "template" || *key == "templateNodeId" ||
+                *key == "templateSourceKeys" || *key == "templateSourcePaths" ||
+                *key == "_editorTemplateReferenceBindings");
+    return address.fieldPath.size() == 1 &&
+           (*key == "id" || *key == "templateComponentId" || *key == "templateSourceFields" ||
+            *key == "templateSourcePaths");
+}
+
+PropertyValue template_overrides_snapshot(const DocumentSession &document, int objectId)
+{
+    const Json *object = find_document_object_by_id(document, objectId);
+    if (object == nullptr)
+        return PropertyValue::missing();
+    const auto overrides = object->find("overrides");
+    return overrides == object->end() ? PropertyValue::missing() : PropertyValue::of(*overrides);
+}
+
+bool property_values_equal(const PropertyValue &left, const PropertyValue &right) noexcept
+{
+    return left == right;
 }
 
 template <typename Value>
@@ -1705,8 +1740,12 @@ void EditCommandService::rollback_gesture(PropertyGesture &gesture) noexcept
         }
         return;
     }
-    const bool restored = restore_gesture_property(*gesture.document_, gesture.command_.address,
-                                                   gesture.command_.before);
+    bool restored = restore_gesture_property(*gesture.document_, gesture.command_.address,
+                                             gesture.command_.before);
+    if (gesture.overrideCommand_ &&
+        !property_values_equal(gesture.overrideCommand_->before, gesture.overrideCommand_->after))
+        restored = restore_gesture_property(*gesture.document_, gesture.overrideCommand_->address,
+                                            gesture.overrideCommand_->before) && restored;
     gesture.document_->valueRevision = gesture.startingValueRevision_;
     if (!restored)
     {
@@ -1748,7 +1787,10 @@ bool EditCommandService::finish_gesture(PropertyGesture &gesture, bool commit) n
     if (!gesture.active_)
         return false;
     bool retained = true;
-    const bool changed = !values_equal(gesture.command_.before, gesture.command_.after);
+    const bool propertyChanged = !values_equal(gesture.command_.before, gesture.command_.after);
+    const bool overrideChanged = gesture.overrideCommand_ &&
+        !property_values_equal(gesture.overrideCommand_->before, gesture.overrideCommand_->after);
+    const bool changed = propertyChanged || overrideChanged;
     if (commit && changed)
     {
         if (gesture.document_ == nullptr ||
@@ -1768,7 +1810,16 @@ bool EditCommandService::finish_gesture(PropertyGesture &gesture, bool commit) n
         {
             try
             {
-                auto prepared = prepare_history(gesture.command_);
+                BatchCommand batch;
+                batch.identity = document_identity(*gesture.document_);
+                batch.selection = gesture.command_.selection;
+                if (propertyChanged)
+                    batch.operations.emplace_back(gesture.command_);
+                if (overrideChanged)
+                    batch.operations.emplace_back(*gesture.overrideCommand_);
+                auto prepared = batch.operations.size() == 1 && propertyChanged
+                    ? prepare_history(gesture.command_)
+                    : prepare_history(batch);
                 commit_history(std::move(prepared));
             }
             catch (...)
@@ -1949,6 +2000,43 @@ CommandResult EditCommandService::set_property(DocumentSession &document, const 
                                        document.valueRevision, false};
         return result;
     }
+    if (!address.componentId && !address.behaviorOrdinal &&
+        is_template_metadata_address(address) && address.fieldPath.size() == 1 &&
+        std::get_if<std::string>(&address.fieldPath.front()) != nullptr &&
+        *std::get_if<std::string>(&address.fieldPath.front()) == "overrides")
+        return apply(document, command, CommandDirection::Forward);
+
+    const Json *object = find_document_object_by_id(document, address.objectId);
+    if (object != nullptr && is_template_node(*object) && !is_template_metadata_address(address))
+    {
+        const std::string overridePath = template_override_path_for_address(document, address);
+        if (!overridePath.empty())
+        {
+            Json overrides = object->value("overrides", Json::array());
+            if (!overrides.is_array()) overrides = Json::array();
+            const bool exists = std::any_of(overrides.begin(), overrides.end(), [&](const Json &entry) {
+                return entry.is_string() && entry.get<std::string>() == overridePath;
+            });
+            if (!exists)
+            {
+                overrides.push_back(overridePath);
+                PropertyAddress overrideAddress = address_for_document(
+                    document, address.objectId, std::nullopt, std::nullopt,
+                    {std::string("overrides")});
+                const auto previous = object->find("overrides");
+                PropertyCommand overrideCommand{
+                    std::move(overrideAddress),
+                    previous == object->end() ? PropertyValue::missing() : PropertyValue::of(*previous),
+                    PropertyValue::of(std::move(overrides)), command.selection};
+                std::vector<BatchOperation> operations;
+                operations.reserve(2);
+                const SelectionState batchSelection = command.selection;
+                operations.emplace_back(std::move(command));
+                operations.emplace_back(std::move(overrideCommand));
+                return apply_batch(document, operations, batchSelection);
+            }
+        }
+    }
     return apply(document, command, CommandDirection::Forward);
 }
 
@@ -1971,6 +2059,43 @@ CommandResult EditCommandService::erase_property(DocumentSession &document, cons
         result.change = DocumentChange{document.documentGeneration, document.structureRevision,
                                        document.valueRevision, false};
         return result;
+    }
+    const Json *object = find_document_object_by_id(document, address.objectId);
+    if (object != nullptr && is_template_node(*object) && !is_template_metadata_address(address))
+    {
+        const std::string overridePath = template_override_path_for_address(document, address);
+        const auto currentOverrides = object->find("overrides");
+        if (!overridePath.empty() && currentOverrides != object->end() && currentOverrides->is_array())
+        {
+            Json nextOverrides = Json::array();
+            bool removedOverride = false;
+            for (const auto &entry : *currentOverrides)
+            {
+                const bool matches = entry.is_string() && [&] {
+                    const std::string value = entry.get<std::string>();
+                    return value == overridePath ||
+                        (value.size() > overridePath.size() &&
+                         value.compare(0, overridePath.size(), overridePath) == 0 &&
+                         (value[overridePath.size()] == '.' || value[overridePath.size()] == '['));
+                }();
+                if (matches)
+                    removedOverride = true;
+                else
+                    nextOverrides.push_back(entry);
+            }
+            if (removedOverride)
+            {
+                PropertyCommand overridesCommand{
+                    address_for_document(document, address.objectId, std::nullopt,
+                                         std::nullopt, {std::string("overrides")}),
+                    PropertyValue::of(*currentOverrides), PropertyValue::of(std::move(nextOverrides)),
+                    command.selection};
+                const SelectionState batchSelection = command.selection;
+                const std::vector<BatchOperation> operations{
+                    BatchOperation{std::move(command)}, BatchOperation{std::move(overridesCommand)}};
+                return apply_batch(document, operations, batchSelection);
+            }
+        }
     }
     return apply(document, command, CommandDirection::Forward);
 }
@@ -2356,10 +2481,47 @@ CommandResult EditCommandService::apply_batch(DocumentSession &document,
     try
     {
         BatchCommand batch;
-        batch.operations.reserve(edits.size());
+        std::vector<BatchPropertyEdit> expanded = edits;
+        std::unordered_map<int, Json> overridesByObject;
+        for (const auto &edit : edits)
+        {
+            if (edit.address.objectId <= 0 || edit.address.fieldPath.empty())
+                continue;
+            if (is_template_metadata_address(edit.address))
+                continue;
+            const Json *object = find_document_object_by_id(document, edit.address.objectId);
+            if (object == nullptr || !is_template_node(*object))
+                continue;
+            const std::string key = template_override_path_for_address(document, edit.address);
+            if (key.empty())
+                continue;
+            Json &overrides = overridesByObject.try_emplace(
+                edit.address.objectId, object->value("overrides", Json::array())).first->second;
+            if (!overrides.is_array()) overrides = Json::array();
+            const bool exists = std::any_of(overrides.begin(), overrides.end(), [&](const Json &entry) {
+                return entry.is_string() && entry.get<std::string>() == key;
+            });
+            if (!exists)
+                overrides.push_back(key);
+        }
+        for (auto &[objectId, overrides] : overridesByObject)
+        {
+            const Json *object = find_document_object_by_id(document, objectId);
+            if (object == nullptr)
+                continue;
+            const auto previous = object->find("overrides");
+            if (previous != object->end() && *previous == overrides)
+                continue;
+            expanded.push_back(BatchPropertyEdit{
+                address_for_document(document, objectId, std::nullopt, std::nullopt,
+                                     {std::string("overrides")}),
+                PropertyValue::of(std::move(overrides))});
+        }
+
+        batch.operations.reserve(expanded.size());
         batch.identity = document_identity(document);
         batch.selection = std::move(selection);
-        for (const auto &edit : edits)
+        for (const auto &edit : expanded)
             batch.operations.emplace_back(PropertyCommand{edit.address, PropertyValue::missing(), edit.value,
                                                            batch.selection});
         return apply_property_batch(document, std::move(batch), CommandDirection::Forward, true, true);
@@ -3377,7 +3539,7 @@ StructuralCommandResult EditCommandService::add_component(DocumentSession &docum
     auto components = owner->find("components");
     if (components == owner->end() || !components->is_array())
         return failed_structural(CommandStatus::Rejected, "component collection is malformed", document);
-    if (std::any_of(components->begin(), components->end(), [&](const Json &existing) {
+    if (*type != SCRIPT && std::any_of(components->begin(), components->end(), [&](const Json &existing) {
             return component_type(existing) == type;
         }))
         return failed_structural(CommandStatus::Rejected, "the object already has this component slot", document);
@@ -3527,11 +3689,34 @@ PropertyGesture::PropertyGesture(EditCommandService &service, DocumentSession &d
     : service_(&service), document_(&document), startingValueRevision_(document.valueRevision),
       command_(std::move(command)), active_(true)
 {
+    if (!is_template_metadata_address(command_.address))
+    {
+        const Json *object = find_document_object_by_id(document, command_.address.objectId);
+        const std::string overridePath = template_override_path_for_address(document, command_.address);
+        if (object != nullptr && is_template_node(*object) && !overridePath.empty())
+        {
+            bool alreadyMarked = false;
+            const auto overrides = object->find("overrides");
+            if (overrides != object->end() && overrides->is_array())
+                alreadyMarked = std::any_of(overrides->begin(), overrides->end(), [&](const Json &entry) {
+                    return entry.is_string() && entry.get<std::string>() == overridePath;
+                });
+            if (!alreadyMarked)
+            {
+                const auto before = template_overrides_snapshot(document, command_.address.objectId);
+                overrideCommand_ = PropertyCommand{
+                    address_for_document(document, command_.address.objectId, std::nullopt,
+                                         std::nullopt, {std::string("overrides")}),
+                    before, before, command_.selection};
+            }
+        }
+    }
 }
 
 PropertyGesture::PropertyGesture(PropertyGesture &&other) noexcept
     : service_(std::exchange(other.service_, nullptr)), document_(std::exchange(other.document_, nullptr)),
       startingValueRevision_(other.startingValueRevision_), command_(std::move(other.command_)),
+      overrideCommand_(std::move(other.overrideCommand_)),
       active_(std::exchange(other.active_, false)), dirtyCounted_(std::exchange(other.dirtyCounted_, false))
 {
 }
@@ -3546,6 +3731,7 @@ PropertyGesture &PropertyGesture::operator=(PropertyGesture &&other) noexcept
     document_ = std::exchange(other.document_, nullptr);
     startingValueRevision_ = other.startingValueRevision_;
     command_ = std::move(other.command_);
+    overrideCommand_ = std::move(other.overrideCommand_);
     active_ = std::exchange(other.active_, false);
     dirtyCounted_ = std::exchange(other.dirtyCounted_, false);
     return *this;
@@ -3573,7 +3759,12 @@ CommandResult PropertyGesture::update(EditCommandService &service, DocumentSessi
     if (result.status == CommandStatus::Changed || result.status == CommandStatus::NoChange)
     {
         command_.after = PropertyValue::of(std::move(retainedValue));
-        service.update_gesture_dirty(*this, !values_equal(command_.before, command_.after));
+        if (overrideCommand_)
+            overrideCommand_->after = template_overrides_snapshot(document, command_.address.objectId);
+        const bool valueChanged = !values_equal(command_.before, command_.after);
+        const bool overridesChanged = overrideCommand_ &&
+            !property_values_equal(overrideCommand_->before, overrideCommand_->after);
+        service.update_gesture_dirty(*this, valueChanged || overridesChanged);
     }
     return result;
 }
@@ -3582,7 +3773,10 @@ std::optional<PropertyCommand> PropertyGesture::commit()
 {
     if (!active_)
         return std::nullopt;
-    if (values_equal(command_.before, command_.after))
+    const bool propertyChanged = !values_equal(command_.before, command_.after);
+    const bool overrideChanged = overrideCommand_ &&
+        !property_values_equal(overrideCommand_->before, overrideCommand_->after);
+    if (!propertyChanged && !overrideChanged)
     {
         if (service_ != nullptr)
             service_->finish_gesture(*this, false);
@@ -3620,7 +3814,10 @@ CommandResult PropertyGesture::cancel(EditCommandService &service, DocumentSessi
 {
     if (!active_)
         return failed(CommandStatus::Rejected, "property gesture is no longer active", document);
-    if (values_equal(command_.before, command_.after))
+    const bool propertyChanged = !values_equal(command_.before, command_.after);
+    const bool overrideChanged = overrideCommand_ &&
+        !property_values_equal(overrideCommand_->before, overrideCommand_->after);
+    if (!propertyChanged && !overrideChanged)
     {
         service.finish_gesture(*this, false);
         CommandResult result;
@@ -3629,7 +3826,19 @@ CommandResult PropertyGesture::cancel(EditCommandService &service, DocumentSessi
                                        document.valueRevision, false};
         return result;
     }
-    auto result = service.apply(document, command_, CommandDirection::Reverse);
+    CommandResult result;
+    if (overrideChanged)
+    {
+        BatchCommand batch;
+        batch.identity = document_identity(document);
+        batch.selection = command_.selection;
+        if (propertyChanged)
+            batch.operations.emplace_back(command_);
+        batch.operations.emplace_back(*overrideCommand_);
+        result = service.apply_batch_entry(document, batch, CommandDirection::Reverse);
+    }
+    else
+        result = service.apply(document, command_, CommandDirection::Reverse);
     service.finish_gesture(*this, false);
     return result;
 }
@@ -3637,13 +3846,14 @@ CommandResult PropertyGesture::cancel(EditCommandService &service, DocumentSessi
 BatchPropertyGesture::BatchPropertyGesture(EditCommandService &service, DocumentSession &document,
                                            BatchCommand command)
     : service_(&service), document_(&document), startingValueRevision_(document.valueRevision),
-      command_(std::move(command)), active_(true)
+      command_(std::move(command)), editOperationCount_(command_.operations.size()), active_(true)
 {
 }
 
 BatchPropertyGesture::BatchPropertyGesture(BatchPropertyGesture &&other) noexcept
     : service_(std::exchange(other.service_, nullptr)), document_(std::exchange(other.document_, nullptr)),
       startingValueRevision_(other.startingValueRevision_), command_(std::move(other.command_)),
+      editOperationCount_(other.editOperationCount_),
       active_(std::exchange(other.active_, false)), dirtyCounted_(std::exchange(other.dirtyCounted_, false))
 {
 }
@@ -3658,6 +3868,7 @@ BatchPropertyGesture &BatchPropertyGesture::operator=(BatchPropertyGesture &&oth
     document_ = std::exchange(other.document_, nullptr);
     startingValueRevision_ = other.startingValueRevision_;
     command_ = std::move(other.command_);
+    editOperationCount_ = other.editOperationCount_;
     active_ = std::exchange(other.active_, false);
     dirtyCounted_ = std::exchange(other.dirtyCounted_, false);
     return *this;
@@ -3677,10 +3888,11 @@ bool BatchPropertyGesture::active() const noexcept
 CommandResult BatchPropertyGesture::update(EditCommandService &service, DocumentSession &document,
                                            const std::vector<Json> &values)
 {
-    if (!active_ || service_ != &service || values.size() != command_.operations.size())
+    if (!active_ || service_ != &service || values.size() != editOperationCount_)
         return failed(CommandStatus::Rejected, "batch property gesture is no longer valid", document);
     std::vector<BatchPropertyEdit> edits;
     std::vector<PropertyValue> retainedValues;
+    std::unordered_map<int, PropertyValue> beforeOverrides;
     edits.reserve(values.size());
     retainedValues.reserve(values.size());
     for (std::size_t index = 0; index < values.size(); ++index)
@@ -3690,6 +3902,14 @@ CommandResult BatchPropertyGesture::update(EditCommandService &service, Document
             return failed(CommandStatus::Rejected, "batch property gesture contains a structural edit", document);
         edits.push_back({property->address, PropertyValue::of(values[index])});
         retainedValues.push_back(PropertyValue::of(values[index]));
+        if (!is_template_metadata_address(property->address))
+        {
+            const Json *object = find_document_object_by_id(document, property->address.objectId);
+            const std::string overridePath = template_override_path_for_address(document, property->address);
+            if (object != nullptr && is_template_node(*object) && !overridePath.empty())
+                beforeOverrides.try_emplace(property->address.objectId,
+                    template_overrides_snapshot(document, property->address.objectId));
+        }
     }
     ++service.suppressHistory_;
     CommandResult result = service.apply_batch(document, edits, command_.selection);
@@ -3697,11 +3917,37 @@ CommandResult BatchPropertyGesture::update(EditCommandService &service, Document
     if (!result)
         return result;
     bool changed = false;
-    for (std::size_t index = 0; index < values.size(); ++index)
+    for (std::size_t index = 0; index < editOperationCount_; ++index)
     {
         auto &property = std::get<PropertyCommand>(command_.operations[index]);
         property.after = std::move(retainedValues[index]);
         changed = changed || !(property.before == property.after);
+    }
+    for (const auto &[objectId, before] : beforeOverrides)
+    {
+        const PropertyValue after = template_overrides_snapshot(document, objectId);
+        if (property_values_equal(before, after))
+            continue;
+        PropertyCommand *metadataCommand = nullptr;
+        for (std::size_t index = editOperationCount_; index < command_.operations.size(); ++index)
+        {
+            auto *property = std::get_if<PropertyCommand>(&command_.operations[index]);
+            if (property != nullptr && property->address.objectId == objectId &&
+                !property->address.componentId && !property->address.behaviorOrdinal &&
+                property->address.fieldPath == std::vector<FieldPathSegment>{std::string("overrides")})
+            {
+                metadataCommand = property;
+                break;
+            }
+        }
+        if (metadataCommand != nullptr)
+            metadataCommand->after = after;
+        else
+            command_.operations.emplace_back(PropertyCommand{
+                address_for_document(document, objectId, std::nullopt, std::nullopt,
+                                     {std::string("overrides")}),
+                before, after, command_.selection});
+        changed = changed || !(before == after);
     }
     service.update_batch_gesture_dirty(*this, changed);
     return result;

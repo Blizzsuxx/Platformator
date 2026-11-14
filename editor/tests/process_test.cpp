@@ -1,4 +1,5 @@
 #include "process.h"
+#include "sourcescanner.h"
 #include "behaviorcatalog.h"
 #include "platform/nativeprocess.h"
 #include "test_support.h"
@@ -298,8 +299,20 @@ PipelineRequest pipeline_request(const std::filesystem::path &project,
     request.runArguments = {"args", "launch-snapshot"};
     request.scene = Json::array();
     request.identity = pipeline_identity(project, executable);
-    request.catalogProtocol = "common-runner-v1";
     return request;
+}
+
+void install_empty_current_catalog(BehaviorCatalog &catalog, const PipelineRequest &request)
+{
+    const CatalogIdentity identity{request.identity.canonicalProjectPath,
+                                   request.identity.profile,
+                                   request.identity.target,
+                                   request.identity.executablePath,
+                                   request.identity.binaryIdentity,
+                                   request.identity.sourceInputIdentity};
+    require(catalog.set_source_catalog(Json{{"schema_version", 1},
+        {"behaviors", Json::array()}}, identity),
+        "pipeline fixture needs a current catalog for a behavior-free scene");
 }
 
 void test_pipeline_run_snapshot_and_stages()
@@ -313,6 +326,7 @@ void test_pipeline_run_snapshot_and_stages()
     const auto expectedAssets = request.assetRoot.string();
     GamePipeline pipeline;
     BehaviorCatalog catalog;
+    install_empty_current_catalog(catalog, request);
     require(pipeline.start(request, catalog, 101), "a declared compatible target should start the pipeline");
     request.runArguments.push_back("changed-after-start");
     request.scene = Json::array({Json{{"name", "changed-after-start"}}});
@@ -321,13 +335,12 @@ void test_pipeline_run_snapshot_and_stages()
 
     const auto &status = pipeline.status();
     require(status.outcome == PipelineOutcome::Succeeded && status.generation == 101,
-            "configure/build/catalog/launch should finish with the original operation generation");
+            "configure/build/launch should finish with the original operation generation");
     const std::vector<PipelineStage> expectedStages{
-        PipelineStage::Configuring, PipelineStage::Building, PipelineStage::QueryingCatalog,
+        PipelineStage::Configuring, PipelineStage::Building,
         PipelineStage::Launching, PipelineStage::Running, PipelineStage::Idle};
     require(status.transitions == expectedStages,
-            "the run path must follow configure, build, query, launch, running, and idle in order");
-    require(catalog.can_automatic_run(), "a current catalog from the built fixture must certify availability");
+            "the run path must follow configure, build, launch, running, and idle in order");
     const auto &console = pipeline.console().text();
     require(console.find("arg:configure-snapshot") != std::string::npos &&
                 console.find("arg:build-snapshot") != std::string::npos &&
@@ -356,14 +369,13 @@ void test_pipeline_build_only_failures_and_stop_recovery()
 
     auto buildOnly = pipeline_request(project, executable);
     buildOnly.buildOnly = true;
-    buildOnly.catalogProtocol = "unavailable";
     require(pipeline.start(buildOnly, catalog, 201),
-            "build-only must remain available when catalog protocol is unavailable");
+            "build-only must remain available");
     pump_until(pipeline);
     require(pipeline.status().outcome == PipelineOutcome::Succeeded &&
                 pipeline.status().transitions == std::vector<PipelineStage>{
                     PipelineStage::Configuring, PipelineStage::Building, PipelineStage::Idle} &&
-                !catalog.can_automatic_run(),
+                catalog.state() == CatalogState::Unavailable,
             "build-only must end after Building without querying or launching");
 
     auto failedBuild = pipeline_request(project, executable, "args", "fail");
@@ -374,6 +386,7 @@ void test_pipeline_build_only_failures_and_stop_recovery()
             "a failed build must not launch a previously built executable");
 
     auto stopped = pipeline_request(project, executable, "grandchild", "args");
+    install_empty_current_catalog(catalog, stopped);
     require(pipeline.start(stopped, catalog, 203), "pipeline should accept an operation after failure");
     const auto readyDeadline = std::chrono::steady_clock::now() + 2s;
     while (pipeline.console().text().find("grandchild:") == std::string::npos &&
@@ -406,16 +419,35 @@ void test_pipeline_behavior_verification_and_identity_invalidation()
     BehaviorCatalog catalog;
 
     auto missingBehavior = pipeline_request(project, executable);
+    require(catalog.set_source_catalog(
+                Json{{"schema_version", 1}, {"behaviors", Json::array({Json{{"name", "Known"}, {"field_schema_available", true}, {"fields", Json::array()}}})}},
+                CatalogIdentity{missingBehavior.identity.canonicalProjectPath,
+                                missingBehavior.identity.profile,
+                                missingBehavior.identity.target,
+                                missingBehavior.identity.executablePath,
+                                missingBehavior.identity.binaryIdentity,
+                                missingBehavior.identity.sourceInputIdentity}),
+            "source catalog fixture must become current");
     missingBehavior.scene = Json::array({Json{{"components", Json::array({
         Json{{"type", 5}, {"behaviors", Json::array({Json{{"type", "Missing"}}})}}})}}});
     require(pipeline.start(missingBehavior, catalog, 301), "verification pipeline should start");
     pump_until(pipeline);
     require(pipeline.status().outcome == PipelineOutcome::Failed &&
                 pipeline.status().transitions.back() == PipelineStage::Idle &&
-                pipeline.console().text().find("arg:--scene") == std::string::npos,
-            "a behavior absent from the newly queried catalog must block launch");
+                pipeline.console().text().find("arg:--scene") == std::string::npos &&
+                catalog.state() == CatalogState::Current,
+            "an unknown scene behavior must block launch without invalidating the current catalog");
 
     auto currentRun = pipeline_request(project, executable);
+    require(catalog.set_source_catalog(
+                Json{{"schema_version", 1}, {"behaviors", Json::array({Json{{"name", "Known"}, {"field_schema_available", true}, {"fields", Json::array()}}})}},
+                CatalogIdentity{currentRun.identity.canonicalProjectPath,
+                                currentRun.identity.profile,
+                                currentRun.identity.target,
+                                currentRun.identity.executablePath,
+                                currentRun.identity.binaryIdentity,
+                                currentRun.identity.sourceInputIdentity}),
+            "source catalog fixture must become current before valid run");
     require(pipeline.start(currentRun, catalog, 302), "a valid behavior-free scene should run");
     pump_until(pipeline);
     require(catalog.state() == CatalogState::Current, "successful verification must establish current identity");
@@ -433,6 +465,34 @@ void test_pipeline_behavior_verification_and_identity_invalidation()
             "source identity changes must invalidate the catalog and stop the frozen operation without retry");
 }
 
+void test_pipeline_rejects_stale_catalog_before_launch()
+{
+    TemporaryDirectory temporary;
+    const auto project = temporary.path() / "project";
+    std::filesystem::create_directories(project);
+    const std::filesystem::path executable(PLATFORMATOR_EDITOR_PROCESS_FIXTURE);
+    auto request = pipeline_request(project, executable);
+    BehaviorCatalog catalog;
+    const CatalogIdentity identity{request.identity.canonicalProjectPath,
+                                   request.identity.profile,
+                                   request.identity.target,
+                                   request.identity.executablePath,
+                                   request.identity.binaryIdentity,
+                                   request.identity.sourceInputIdentity};
+    require(catalog.set_source_catalog(Json{{"schema_version", 1},
+        {"behaviors", Json::array()}}, identity),
+        "pipeline fixture needs a current behavior catalog before Run");
+
+    GamePipeline pipeline;
+    require(pipeline.start(request, catalog, 304), "pipeline should accept a current catalog");
+    catalog.invalidate("source inputs changed during build");
+    pump_until(pipeline);
+    require(pipeline.status().outcome == PipelineOutcome::Failed &&
+                pipeline.status().message.find("catalog is not current") != std::string::npos &&
+                pipeline.console().text().find("arg:--scene") == std::string::npos,
+            "Run must reject a stale catalog before launching the built executable");
+}
+
 void test_custom_entry_boundary_and_false_protocol_declaration()
 {
     TemporaryDirectory temporary;
@@ -445,7 +505,6 @@ void test_custom_entry_boundary_and_false_protocol_declaration()
     BehaviorCatalog catalog;
 
     auto customBuild = pipeline_request(project, std::filesystem::path(PLATFORMATOR_EDITOR_PROCESS_FIXTURE));
-    customBuild.catalogProtocol = "unavailable";
     customBuild.buildOnly = true;
     require(pipeline.start(customBuild, catalog, 401),
             "an undeclared custom entry must remain buildable without catalog support");
@@ -457,23 +516,6 @@ void test_custom_entry_boundary_and_false_protocol_declaration()
                 PipelineStage::Configuring, PipelineStage::Building, PipelineStage::Idle} &&
                 pipeline.console().text().find("arg:--editor-catalog") == std::string::npos,
             "custom-entry Build-only must preserve source and skip catalog query/launch");
-
-    auto falselyDeclared = pipeline_request(project,
-        std::filesystem::path(PLATFORMATOR_EDITOR_INVALID_CATALOG_FIXTURE));
-    require(pipeline.start(falselyDeclared, catalog, 402),
-            "an explicitly declared target may be queried for protocol verification");
-    pump_until(pipeline);
-    require(pipeline.status().outcome == PipelineOutcome::Failed &&
-                pipeline.status().transitions == std::vector<PipelineStage>{
-                    PipelineStage::Configuring, PipelineStage::Building,
-                    PipelineStage::QueryingCatalog, PipelineStage::Idle} &&
-                pipeline.console().text().find("arg:--scene") == std::string::npos,
-            "a false compatibility declaration must fail its catalog query before gameplay launch");
-    std::ifstream stillUnchangedStream(sourcePath);
-    const std::string stillUnchanged((std::istreambuf_iterator<char>(stillUnchangedStream)),
-                                     std::istreambuf_iterator<char>());
-    require(stillUnchanged == source,
-            "catalog compatibility checks must never rewrite a custom game's source");
 }
 
 void test_bounded_console()
@@ -483,30 +525,6 @@ void test_bounded_console()
     require(console.truncated() && console.text().size() <= BoundedConsole::maximumBytes &&
                 console.text().find("[console truncated at 1 MiB]") != std::string::npos,
             "console must cap retained output at one MiB with an explicit truncation marker");
-}
-
-void test_pipeline_catalog_limits()
-{
-    const PipelineIdentity identity{"/project", "debug", "fixture", "/fixture", "binary", "sources"};
-    const std::string validCatalog =
-        R"({"schema_version":1,"behaviors":[{"name":"Allowed","field_schema_available":true,"fields":[]}]})";
-    BehaviorCatalog timeout;
-    timeout.configure(CatalogProtocol::CommonRunnerV1,
-                      CatalogIdentity{identity.canonicalProjectPath, identity.profile, identity.target,
-                                      identity.executablePath, identity.binaryIdentity, identity.sourceInputIdentity});
-    require(timeout.begin_query() && timeout.append_stdout(validCatalog) &&
-                !timeout.finish_query(0, 10001ms) && timeout.state() == CatalogState::Unavailable,
-            "catalog verification must reject queries exceeding ten seconds");
-
-    BehaviorCatalog oversized;
-    oversized.configure(CatalogProtocol::CommonRunnerV1,
-                        CatalogIdentity{identity.canonicalProjectPath, identity.profile, identity.target,
-                                        identity.executablePath, identity.binaryIdentity, identity.sourceInputIdentity});
-    require(oversized.begin_query() &&
-                !oversized.append_stdout(std::string(4U * 1024U * 1024U + 1U, 'x')) &&
-                !oversized.finish_query(0, 100ms) &&
-                oversized.last_error().find("four MiB") != std::string::npos,
-            "catalog stdout/stderr must share a four MiB cap");
 }
 
 void run_live_pipeline(const std::filesystem::path &projectRoot,
@@ -527,12 +545,21 @@ void run_live_pipeline(const std::filesystem::path &projectRoot,
     request.configureArgv = std::move(configureArgv);
     request.buildArgv = std::move(buildArgv);
     request.scene = Json::parse(sceneStream);
-    request.catalogProtocol = "common-runner-v1";
     request.identity = PipelineIdentity{request.projectRoot.string(), profile, target,
                                         request.executablePath.string(), {}, "live-source-scan"};
 
     GamePipeline pipeline;
     BehaviorCatalog catalog;
+    SourceBehaviorScanner scanner;
+    const auto scan = scanner.scan_project(request.projectRoot, request.assetRoot);
+    const CatalogIdentity catalogIdentity{request.identity.canonicalProjectPath,
+                                          request.identity.profile,
+                                          request.identity.target,
+                                          request.identity.executablePath,
+                                          request.identity.binaryIdentity,
+                                          request.identity.sourceInputIdentity};
+    require(catalog.load_from_source_scan(scan, catalogIdentity),
+            "live pipeline must start from a current source catalog");
     require(pipeline.start(std::move(request), catalog, 700),
             "live project pipeline must accept the configured build and scene snapshot");
     const auto runDeadline = std::chrono::steady_clock::now() + 180s;
@@ -543,14 +570,13 @@ void run_live_pipeline(const std::filesystem::path &projectRoot,
         std::this_thread::sleep_for(2ms);
     }
     require(pipeline.status().stage == PipelineStage::Running,
-            "live runner must configure, build, verify its catalog and reach Running; output: " +
+            "live runner must configure, build and reach Running; output: " +
                 pipeline.status().message + "\n" + pipeline.console().text());
-    require(catalog.can_automatic_run(), "live build must publish a current verified catalog");
     pipeline.stop();
     pump_until(pipeline, 5s);
     require(pipeline.status().outcome == PipelineOutcome::Cancelled &&
                 pipeline.status().transitions == std::vector<PipelineStage>{
-                    PipelineStage::Configuring, PipelineStage::Building, PipelineStage::QueryingCatalog,
+                    PipelineStage::Configuring, PipelineStage::Building,
                     PipelineStage::Launching, PipelineStage::Running, PipelineStage::Idle},
             "Stop must terminate the live game's owned process and return the pipeline to Idle");
 }
@@ -597,9 +623,9 @@ int main(int argc, char **argv)
         test_pipeline_run_snapshot_and_stages();
         test_pipeline_build_only_failures_and_stop_recovery();
         test_pipeline_behavior_verification_and_identity_invalidation();
+        test_pipeline_rejects_stale_catalog_before_launch();
         test_custom_entry_boundary_and_false_protocol_declaration();
         test_bounded_console();
-        test_pipeline_catalog_limits();
     }
     catch (const std::exception &error)
     {

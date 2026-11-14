@@ -6,9 +6,8 @@
 #include "selection.h"
 #include "templates.h"
 
-#include <array>
 #include <cstdint>
-#include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,10 +44,9 @@ class BehaviorFieldsPanel
 
     void set_host_generation(std::uint64_t generation, DocumentSession *document = nullptr) noexcept;
     void cancel_active_interactions(DocumentSession *document = nullptr);
+    void reveal_field(int objectId, int componentId, std::size_t behaviorOrdinal,
+                      std::string fieldPath);
 
-    std::vector<Json> template_author_bindings(const DocumentSession &document) const;
-    std::vector<TemplateAuthorSchemaDeclaration> template_author_schemas(
-        const DocumentSession &document) const;
     void draw(DocumentSession &document, SelectionModel &selection,
               EditCommandService &commands, const BehaviorCatalog &catalog,
               const AssetBrowseCallback &browse = {},
@@ -61,25 +59,18 @@ class BehaviorFieldsPanel
                                   std::string_view searchQuery = {});
 
   private:
-    struct AuthorReferenceDeclaration
-    {
-        struct NestedPathDraft
-        {
-            std::array<char, 256> pointer{};
-            std::optional<std::string> targetKind;
-        };
+    bool consume_reveal_target(int objectId, int componentId, std::size_t behaviorOrdinal,
+                               const std::vector<FieldPathSegment> &path);
 
-        DocumentIdentity identity;
-        int ownerId = 0;
-        int componentId = 0;
-        std::size_t behaviorOrdinal = 0;
-        std::string behaviorType;
-        std::map<std::string, std::string> fieldKinds;
-        std::map<std::string, NestedPathDraft> nestedPathDrafts;
-        bool schemaCoverageComplete = false;
-    };
-
-    std::map<std::string, AuthorReferenceDeclaration> authorReferenceDeclarations_;
+    std::optional<int> revealObjectId_;
+    std::optional<int> revealComponentId_;
+    std::optional<std::size_t> revealBehaviorOrdinal_;
+    std::string revealPath_;
+    std::string feedback_;
+    std::optional<DocumentIdentity> feedbackDocument_;
+    Selection feedbackSelection_;
+    std::vector<int> feedbackObjectIds_;
+    std::uint64_t feedbackRevision_ = 0;
     ScrubState scrubState_;
     std::uint64_t hostGeneration_ = 0;
 };

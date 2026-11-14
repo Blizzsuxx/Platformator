@@ -14,6 +14,7 @@
 #include "editorapp.h"
 #include "editorresources.h"
 #include "projectsession.h"
+#include "statustoast.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -99,7 +100,7 @@ class ImGuiSession
         drawPanel("Inspector###panel.inspector");
         drawPanel("Project and Assets###panel.project");
         drawPanel("Console###panel.console");
-        drawPanel("Build and Run###panel.run");
+        drawPanel("Project Settings###panel.project_settings");
         drawPanel("Validation###panel.validation");
         ImGui::Render();
         if (!SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255) || !SDL_RenderClear(renderer_))
@@ -121,11 +122,6 @@ class ImGuiSession
         ImGui::NewFrame();
         EditorToolbarState state;
         state.operationActive = true;
-        state.projectLabel = "long-example-project-name";
-        state.projectPath = "/tmp/example project";
-        state.sceneLabel = "long-example-scene-name.scene";
-        state.scenePath = "/tmp/example project/long-example-scene-name.scene";
-        state.status = width <= 720 ? std::string(400, 'd') : "Saved | Building";
         const auto frame = draw_editor_toolbar(state, actions);
         submit_editor_dockspace(0x6E706EF3, frame.height);
         ImGui::Render();
@@ -189,7 +185,6 @@ void projectless_adoption_cases()
     const auto projectAssets = project / "assets";
     const auto savedProject = temporary.path() / "last-project";
     const auto lastWorkspacePath = temporary.path() / "preferences" / "last-workspace.json";
-    std::filesystem::create_directories(bootstrapAssets);
     std::filesystem::create_directories(projectAssets);
     std::ofstream(project / "CMakeLists.txt") << "project(startup-fixture)\n";
     std::filesystem::create_directories(savedProject / "assets");
@@ -217,11 +212,13 @@ void projectless_adoption_cases()
     require(!invalidRestoration.projectRoot && !invalidRestoration.message.empty(),
             "a corrupt last-workspace preference must be ignored with an actionable message");
     require(!editor_project_root_has_manifest(bootstrap) && editor_project_root_has_manifest(project),
-            "projectless startup must distinguish its temporary workspace from a real project");
+            "projectless startup must distinguish an empty bootstrap root from an asset project");
 
+    std::filesystem::create_directories(bootstrapAssets);
     ProjectSession session(bootstrap, bootstrapAssets);
     auto *tab = session.documents().active_tab();
     require(tab != nullptr, "projectless bootstrap must provide an untitled document for the welcome flow");
+    const TabId outgoingTabId = tab->id();
     auto &workspace = tab->workspace();
     const auto nameAddress = address_for_document(workspace.document(), 0, std::nullopt,
                                                   std::nullopt, {std::string("name")});
@@ -237,12 +234,21 @@ void projectless_adoption_cases()
                 tab->history().history_status().currentToken == historyBefore.currentToken,
             "an invalid project selection must leave the current draft and history usable");
 
-    const auto adopted = session.set_project_roots(project, projectAssets);
-    require(static_cast<bool>(adopted) && workspace.dirty() &&
-                workspace.document().projectRoot == std::filesystem::canonical(project) &&
-                workspace.document().assetRoot == std::filesystem::canonical(projectAssets) &&
+    const auto refusedDirtyAdoption = session.set_project_roots(project, projectAssets);
+    require(!refusedDirtyAdoption && workspace.dirty() &&
+                workspace.document().projectRoot == std::filesystem::canonical(bootstrap) &&
                 tab->history().history_status().currentToken == historyBefore.currentToken,
-            "adopting a real project must preserve the projectless document and its undo history");
+            "adopting a real project must stop while the projectless draft is unsaved");
+
+    const auto adopted = session.set_project_roots(project, projectAssets, true);
+    require(static_cast<bool>(adopted) && session.documents().tab_count() == 1 &&
+                session.documents().find(outgoingTabId) == nullptr,
+            "explicitly discarding the projectless draft must retire its tab and history");
+    const auto *incoming = session.documents().active_tab();
+    require(incoming != nullptr && !incoming->workspace().dirty() &&
+                incoming->workspace().document().projectRoot == std::filesystem::canonical(project) &&
+                incoming->workspace().document().assetRoot == std::filesystem::canonical(projectAssets),
+            "adopting a real project must start a clean document under the incoming project roots");
 }
 
 void executable_relative_resource_cases()
@@ -340,6 +346,32 @@ int main()
 {
     try
     {
+        std::string toastMessage = "startup ready";
+        std::string previousToast;
+        StatusToastClock::time_point toastDeadline{};
+        const StatusToastClock::time_point toastNow{};
+        update_status_toast(toastMessage, previousToast, toastDeadline, toastNow);
+        require(toastMessage == "startup ready" &&
+                    status_toast_visible(toastMessage, toastDeadline, toastNow),
+                "a new toast must remain visible on its first frame when the old deadline is zero");
+        update_status_toast(toastMessage, previousToast, toastDeadline,
+                            toastNow + std::chrono::seconds(5));
+        require(toastMessage.empty() &&
+                    !status_toast_visible(toastMessage, toastDeadline,
+                                          toastNow + std::chrono::seconds(5)),
+                "a toast must clear when its refreshed deadline expires");
+        toastMessage = "next action";
+        update_status_toast(toastMessage, previousToast, toastDeadline,
+                            toastNow + std::chrono::seconds(6));
+        require(toastMessage == "next action" &&
+                    status_toast_visible(toastMessage, toastDeadline,
+                                         toastNow + std::chrono::seconds(6)),
+                "a later status message must receive a fresh visible interval");
+        require(runtime_inspection_list_height(300.0f, true, 20.0f, 4.0f) == 176.0f &&
+                    runtime_inspection_list_height(100.0f, true, 20.0f, 4.0f) == 1.0f &&
+                    runtime_inspection_list_height(300.0f, false, 20.0f, 4.0f) == 300.0f,
+                "runtime inspection must reserve enough list height for selected object details");
+
         pending_run_validation_cases();
         require(resolve_editor_ui_scale(1.0f, 1280, 800, 1280, 800) == 1.0f &&
                     resolve_editor_ui_scale(1.5f, 1280, 800, 1920, 1200) == 2.25f &&
@@ -425,13 +457,13 @@ int main()
         require(!isActive("Hierarchy###panel.hierarchy") && !isActive("Scene###panel.scene") &&
                     !isActive("Inspector###panel.inspector") &&
                     !isActive("Project and Assets###panel.project") && !isActive("Console###panel.console") &&
-                    !isActive("Build and Run###panel.run") && !isActive("Validation###panel.validation"),
+                    !isActive("Project Settings###panel.project_settings") && !isActive("Validation###panel.validation"),
                 "a real hidden-panel frame must not submit the windows to ImGui");
         imgui.draw_one_frame(document, preview, selection, commands, scenePanel, window, true);
         require(isActive("Hierarchy###panel.hierarchy") && isActive("Scene###panel.scene") &&
                     isActive("Inspector###panel.inspector") &&
                     isActive("Project and Assets###panel.project") && isActive("Console###panel.console") &&
-                    isActive("Build and Run###panel.run") && isActive("Validation###panel.validation"),
+                    isActive("Project Settings###panel.project_settings") && isActive("Validation###panel.validation"),
                 "View-style reopening must submit the panel windows again on the next frame");
         auto legacyLayout = seed;
         const auto stableSceneHeader = legacyLayout.find("[Window][panel.scene]");
@@ -515,23 +547,10 @@ int main()
                                                    std::tuple{320, 280, 2.0f}})
         {
             const auto toolbar = imgui.draw_toolbar_frame(window, width, height, scale, toolbarActions);
-            EditorToolbarState semanticState;
-            semanticState.projectLabel = "long-example-project-name";
-            semanticState.projectPath = "/tmp/example project";
-            semanticState.sceneLabel = "long-example-scene-name.scene";
-            semanticState.scenePath = "/tmp/example project/long-example-scene-name.scene";
-            semanticState.status = width <= 720 ? std::string(400, 'd') : "Saved | Building";
-            const auto toolbarSemantics = editor_toolbar_semantic_nodes(semanticState, toolbar);
-            const auto identityNode = std::find_if(toolbarSemantics.begin(), toolbarSemantics.end(),
-                [](const SemanticNode &node) { return node.id == "main/toolbar/identity"; });
-            const auto statusNode = std::find_if(toolbarSemantics.begin(), toolbarSemantics.end(),
-                [](const SemanticNode &node) { return node.id == "main/toolbar/status"; });
-            require(identityNode != toolbarSemantics.end() && statusNode != toolbarSemantics.end() &&
-                        identityNode->value == "long-example-project-name / long-example-scene-name.scene" &&
-                        identityNode->help.find("/tmp/example project/long-example-scene-name.scene") !=
-                            std::string::npos &&
-                        statusNode->value == semanticState.status && identityNode->bounds && statusNode->bounds,
-                    "toolbar semantics must publish project/scene paths and full text status with current bounds");
+            const auto toolbarSemantics = editor_toolbar_semantic_nodes(toolbar);
+            require(toolbarSemantics.size() == 1 &&
+                        toolbarSemantics.front().id == "main/toolbar",
+                    "toolbar semantics must omit the removed identity and status phantom nodes");
             const auto *viewport = ImGui::GetMainViewport();
             const auto hasItem = [&](std::string_view name) {
                 return std::find_if(toolbar.items.begin(), toolbar.items.end(), [&](const auto &item) {

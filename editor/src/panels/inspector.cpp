@@ -1,4 +1,5 @@
 #include "inspector.h"
+#include "../templates.h"
 
 #include "numericscrub.h"
 
@@ -29,6 +30,19 @@
 
 namespace platformator_editor
 {
+std::vector<std::pair<int, int>> paired_collider_layer_targets(
+    const std::vector<int> &objectIds, const std::vector<int> &componentIds)
+{
+    std::vector<std::pair<int, int>> targets;
+    if (objectIds.size() != componentIds.size())
+        return targets;
+    targets.reserve(objectIds.size());
+    for (std::size_t index = 0; index < objectIds.size(); ++index)
+        if (objectIds[index] >= 0 && componentIds[index] >= 0)
+            targets.emplace_back(objectIds[index], componentIds[index]);
+    return targets;
+}
+
 namespace
 {
 EditorIcon component_icon(int type) noexcept
@@ -43,6 +57,43 @@ EditorIcon component_icon(int type) noexcept
     case 5: return EditorIcon::Script;
     case 6: return EditorIcon::Sprite;
     default: return EditorIcon::UnknownComponent;
+    }
+}
+
+void append_collider_targets(const DocumentSession &document, int rootObjectId,
+                             bool includeDescendants,
+                             std::vector<std::pair<int, int>> &targets)
+{
+    const Json *root = find_document_object_by_id(document, rootObjectId);
+    if (root == nullptr)
+        return;
+    std::vector<const Json *> pending{root};
+    while (!pending.empty())
+    {
+        const Json *object = pending.back();
+        pending.pop_back();
+        const int objectId = object->value("id", -1);
+        const auto components = object->find("components");
+        if (objectId >= 0 && components != object->end() && components->is_array())
+        {
+            for (const auto &component : *components)
+            {
+                if (component.is_object() && component.value("type", -1) == 3)
+                {
+                    const int componentId = component.value("id", -1);
+                    if (componentId >= 0)
+                        targets.emplace_back(objectId, componentId);
+                    break;
+                }
+            }
+        }
+        if (includeDescendants)
+        {
+            const auto children = object->find("children");
+            if (children != object->end() && children->is_array())
+                for (const auto &child : *children)
+                    if (child.is_object()) pending.push_back(&child);
+        }
     }
 }
 
@@ -347,7 +398,145 @@ std::string template_file_stem(std::string_view name)
     return stem.empty() ? "object-template" : stem;
 }
 
-void begin_field(const char *label, const std::vector<FieldPathSegment> &path)
+bool template_field_is_overridden(const DocumentSession &document, int objectId,
+                                  std::optional<int> componentId,
+                                  const std::vector<FieldPathSegment> &path)
+{
+    const Json *object = find_document_object_by_id(document, objectId);
+    if (object == nullptr || !is_template_node(*object))
+        return false;
+    const PropertyAddress address = address_for_document(
+        document, objectId, componentId, std::nullopt, path);
+    const std::string key = template_override_path_for_address(document, address);
+    const auto overrides = object->find("overrides");
+    if (key.empty() || overrides == object->end() || !overrides->is_array())
+        return false;
+    for (const auto &entry : *overrides)
+    {
+        if (!entry.is_string())
+            continue;
+        const std::string value = entry.get<std::string>();
+        if (value == key || value.starts_with(key + ".") || value.starts_with(key + "[") ||
+            key.starts_with(value + ".") || key.starts_with(value + "["))
+            return true;
+    }
+    return false;
+}
+
+void draw_template_revert_context(DocumentSession &document, EditCommandService &commands,
+                                  int objectId, std::optional<int> componentId,
+                                  const std::vector<FieldPathSegment> &path,
+                                  std::string &feedback,
+                                  const std::vector<std::vector<FieldPathSegment>> &relatedPaths = {})
+{
+    std::vector<std::vector<FieldPathSegment>> paths{path};
+    paths.insert(paths.end(), relatedPaths.begin(), relatedPaths.end());
+    std::vector<bool> shouldRevert;
+    shouldRevert.reserve(paths.size());
+    bool anyOverridden = false;
+    for (const auto &candidate : paths)
+    {
+        const bool overridden = template_field_is_overridden(document, objectId, componentId, candidate);
+        shouldRevert.push_back(overridden);
+        anyOverridden = anyOverridden || overridden;
+    }
+    if (!anyOverridden || !ImGui::BeginPopupContextItem("##template-field-context"))
+        return;
+    if (ImGui::MenuItem("Revert Property"))
+    {
+        std::vector<TemplatePropertyTarget> targets;
+        for (std::size_t index = 0; index < paths.size(); ++index)
+            if (shouldRevert[index])
+                targets.push_back({objectId, componentId, std::nullopt, paths[index]});
+        std::string error;
+        if (revert_template_properties(document, commands, targets, document.assetRoot, error))
+            feedback.clear();
+        else
+            feedback = std::move(error);
+    }
+    ImGui::EndPopup();
+}
+
+void draw_template_revert_context(DocumentSession &document, EditCommandService &commands,
+                                  const std::vector<std::pair<int, int>> &targets,
+                                  const std::vector<std::vector<FieldPathSegment>> &paths,
+                                  std::string &feedback)
+{
+    struct RevertTarget
+    {
+        int objectId = -1;
+        int componentId = -1;
+        std::vector<FieldPathSegment> path;
+    };
+    std::vector<RevertTarget> revertTargets;
+    for (const auto &[objectId, componentId] : targets)
+        for (const auto &path : paths)
+            if (template_field_is_overridden(document, objectId, componentId, path))
+                revertTargets.push_back({objectId, componentId, path});
+    if (revertTargets.empty() || !ImGui::BeginPopupContextItem("##template-field-context"))
+        return;
+    if (ImGui::MenuItem("Revert Property"))
+    {
+        std::vector<TemplatePropertyTarget> targets;
+        targets.reserve(revertTargets.size());
+        for (const auto &target : revertTargets)
+            targets.push_back({target.objectId, target.componentId, std::nullopt, target.path});
+        std::string error;
+        if (revert_template_properties(document, commands, targets, document.assetRoot, error))
+            feedback.clear();
+        else
+            feedback = std::move(error);
+    }
+    ImGui::EndPopup();
+}
+
+void draw_template_revert_context(DocumentSession &document, EditCommandService &commands,
+                                  const std::vector<TemplatePropertyTarget> &targets,
+                                  std::string &feedback)
+{
+    std::vector<TemplatePropertyTarget> overriddenTargets;
+    overriddenTargets.reserve(targets.size());
+    for (const auto &target : targets)
+        if (template_field_is_overridden(document, target.objectId, target.componentId,
+                                         target.fieldPath))
+            overriddenTargets.push_back(target);
+    if (overriddenTargets.empty() || !ImGui::BeginPopupContextItem("##template-field-context"))
+        return;
+    if (ImGui::MenuItem("Revert Property"))
+    {
+        std::string error;
+        if (revert_template_properties(document, commands, overriddenTargets,
+                                       document.assetRoot, error))
+            feedback.clear();
+        else
+            feedback = std::move(error);
+    }
+    ImGui::EndPopup();
+}
+
+ReferenceFieldOverride make_template_reference_override(
+    DocumentSession &document, EditCommandService &commands, int objectId,
+    std::optional<int> componentId, std::optional<std::size_t> behaviorOrdinal,
+    const std::vector<FieldPathSegment> &path, std::string &feedback)
+{
+    ReferenceFieldOverride result;
+    result.overridden = template_field_is_overridden(document, objectId, componentId, path);
+    if (!result.overridden)
+        return result;
+    result.revert = [&document, &commands, objectId, componentId, behaviorOrdinal, path, &feedback]() {
+        std::string error;
+        if (revert_template_property(document, commands, objectId, componentId,
+                                     behaviorOrdinal, path, document.assetRoot, error))
+            feedback.clear();
+        else
+            feedback = std::move(error);
+    };
+    return result;
+}
+
+template <typename DrawRevertContext>
+void begin_field(const char *label, const std::vector<FieldPathSegment> &path,
+                 bool overridden, bool allowScrub, DrawRevertContext &&drawRevertContext)
 {
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
@@ -358,16 +547,30 @@ void begin_field(const char *label, const std::vector<FieldPathSegment> &path)
     const std::string scrubId = "##scrub_" + stable_field_id(path);
     ImGui::InvisibleButton(scrubId.c_str(), ImVec2(labelWidth, frameHeight));
     const bool labelHovered = ImGui::IsItemHovered();
-    const bool labelActive = ImGui::IsItemActive();
-    if (labelHovered || labelActive)
+    if (allowScrub && (labelHovered || ImGui::IsItemActive()))
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-
     draw_clipped_property_label(
         ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y, labelWidth, frameHeight,
         label,
-        ImGui::GetColorU32(labelHovered || labelActive ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+        labelHovered ? ImGui::GetColorU32(ImGuiCol_Text)
+        : overridden ? ImGui::GetColorU32(ImGuiCol_NavHighlight)
+                     : ImGui::GetColorU32(ImGuiCol_TextDisabled),
         labelHovered);
+    if (overridden && labelHovered)
+        ImGui::SetTooltip("This field overrides its linked template value.");
+    ImGui::PushID(stable_field_id(path).c_str());
+    drawRevertContext();
+    ImGui::PopID();
 
+    const ImVec4 frame = overridden ? ImVec4(0.27f, 0.24f, 0.16f, 1.0f)
+                                    : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+    const ImVec4 hovered = overridden ? ImVec4(0.32f, 0.28f, 0.18f, 1.0f)
+                                      : ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered);
+    const ImVec4 active = overridden ? ImVec4(0.37f, 0.32f, 0.20f, 1.0f)
+                                     : ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, frame);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, hovered);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, active);
     ImGui::SameLine();
     ImGui::PushID(stable_field_id(path).c_str());
     ImGui::SetNextItemWidth(-FLT_MIN);
@@ -375,6 +578,7 @@ void begin_field(const char *label, const std::vector<FieldPathSegment> &path)
 
 void end_field()
 {
+    ImGui::PopStyleColor(3);
     ImGui::PopID();
 }
 
@@ -450,10 +654,8 @@ void InspectorPanel::save_selected_template(DocumentSession &document, int objec
     }
     const auto catalogSnapshot = catalog.snapshot();
     const Json catalogDocument = catalogSnapshot ? catalogSnapshot->document : Json::object();
-    const auto bindings = behaviorFields_.template_author_bindings(document);
-    const auto authorSchemas = behaviorFields_.template_author_schemas(document);
     const auto collected = collect_template_bindings(document, *object,
-        template_scene_identity(document), catalogDocument, bindings, authorSchemas);
+        template_scene_identity(document), catalogDocument);
     if (!collected)
     {
         feedback_ = "Template references could not be validated: " + collected.error;
@@ -486,17 +688,6 @@ void InspectorPanel::save_selected_template(DocumentSession &document, int objec
     {
         feedback_ = std::string("Template could not be saved: ") + error.what();
     }
-}
-
-std::vector<Json> InspectorPanel::template_author_bindings(const DocumentSession &document) const
-{
-    return behaviorFields_.template_author_bindings(document);
-}
-
-std::vector<TemplateAuthorSchemaDeclaration> InspectorPanel::template_author_schemas(
-    const DocumentSession &document) const
-{
-    return behaviorFields_.template_author_schemas(document);
 }
 
 std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &document,
@@ -785,8 +976,26 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
             if (component.contains("offset"))
                 append_point("Offset", "offset", componentId, componentNodeId, 0.0, 0.0);
             add("trigger", "Trigger", "false");
-            add("collisionGroup", "Collision group", "1");
-            add("collisionMask", "Collision mask", "1");
+            {
+                const LayerSettings fallbackLayers = default_layer_settings();
+                const LayerSettings &effectiveLayers = layerSettings_ != nullptr ? *layerSettings_ : fallbackLayers;
+                std::uint64_t group = 1;
+                if (component.contains("collisionGroup") &&
+                    (component["collisionGroup"].is_number_unsigned() ||
+                     (component["collisionGroup"].is_number_integer() &&
+                      component["collisionGroup"].get<std::int64_t>() >= 0)))
+                {
+                    group = component["collisionGroup"].get<std::uint64_t>();
+                }
+                const auto layerIdx = collision_group_to_layer(group);
+                const std::string layerLabel = layerIdx
+                    ? layer_display_label(effectiveLayers, *layerIdx)
+                    : "Custom";
+                const std::size_t beforeCount = nodes.size();
+                append_field("Layer", {std::string("collisionGroup")}, componentId, componentNodeId, layerLabel);
+                if (nodes.size() > beforeCount)
+                    nodes.back().value = layerLabel;
+            }
             break;
         }
         case 4: // Rigidbody
@@ -1126,6 +1335,30 @@ bool InspectorPanel::dispatch_semantic_action(DocumentSession &document,
 void InspectorPanel::reveal_field(int objectId, std::optional<int> componentId,
                                  std::string fieldPath)
 {
+    constexpr std::string_view behaviorPrefix = "behaviors[";
+    if (componentId && fieldPath.starts_with(behaviorPrefix))
+    {
+        const std::size_t close = fieldPath.find(']', behaviorPrefix.size());
+        if (close != std::string::npos && close + 1 < fieldPath.size() && fieldPath[close + 1] == '.')
+        {
+            std::size_t ordinal = 0;
+            const auto ordinalText = std::string_view(fieldPath).substr(
+                behaviorPrefix.size(), close - behaviorPrefix.size());
+            const auto parsed = std::from_chars(ordinalText.data(),
+                                                ordinalText.data() + ordinalText.size(), ordinal);
+            if (parsed.ec == std::errc{} && parsed.ptr == ordinalText.data() + ordinalText.size())
+            {
+                behaviorFields_.reveal_field(objectId, *componentId, ordinal,
+                    "/" + fieldPath.substr(close + 2));
+                revealObjectId_ = objectId;
+                revealComponentId_ = componentId;
+                revealPath_.clear();
+                behaviorRevealPending_ = true;
+                searchQuery_.clear();
+                return;
+            }
+        }
+    }
     revealObjectId_ = objectId;
     revealComponentId_ = componentId;
     revealPath_ = diagnostic_field_id(fieldPath);
@@ -1286,8 +1519,7 @@ bool InspectorPanel::consume_reveal_target(int objectId, std::optional<int> comp
 bool InspectorPanel::set(DocumentSession &document, EditCommandService &commands, int objectId,
                          std::optional<int> componentId, std::vector<FieldPathSegment> path, Json value)
 {
-    PropertyAddress address = address_for_document(document, objectId, componentId,
-                                                   std::nullopt, std::move(path));
+    PropertyAddress address = address_for_document(document, objectId, componentId, std::nullopt, path);
     const auto result = commands.set_property(document, address, std::move(value));
     if (result.status == CommandStatus::Rejected || result.status == CommandStatus::StaleAddress)
     {
@@ -1307,10 +1539,19 @@ bool InspectorPanel::draw_boolean(DocumentSession &document, EditCommandService 
     const Json *stored = address_value(document, objectId, componentId, path);
     bool value = stored != nullptr && stored->is_boolean() ? stored->get<bool>() : defaultValue;
     const bool reveal = consume_reveal_target(objectId, componentId, path);
-    begin_field(label, path);
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
+    begin_field(label, path, overridden, false, [&] {
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    });
     if (reveal)
         ImGui::SetKeyboardFocusHere();
     const bool changed = ImGui::Checkbox("##value", &value);
+    if (template_field_is_overridden(document, objectId, componentId, path))
+    {
+        if (ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    }
     if (reveal)
         ImGui::SetScrollHereY(0.5f);
     end_field();
@@ -1329,6 +1570,7 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     const Json *stored = address_value(document, objectId, componentId, path);
     float value = json_float(stored, defaultValue);
     const bool reveal = consume_reveal_target(objectId, componentId, path);
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
 
     ImGui::AlignTextToFramePadding();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
@@ -1350,8 +1592,18 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     draw_clipped_property_label(
         ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y, labelWidth, frameHeight,
         label,
-        ImGui::GetColorU32(labelHovered || labelActive ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+        labelHovered || labelActive ? ImGui::GetColorU32(ImGuiCol_Text)
+        : overridden ? ImGui::GetColorU32(ImGuiCol_NavHighlight)
+                     : ImGui::GetColorU32(ImGuiCol_TextDisabled),
         labelHovered);
+    if (overridden && labelHovered)
+        ImGui::SetTooltip("This field overrides its linked template value.");
+    if (overridden)
+    {
+        ImGui::PushID(stable_field_id(path).c_str());
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+        ImGui::PopID();
+    }
 
     constexpr float baseStep = 0.1f;
     constexpr float snapIncrement = 1.0f;
@@ -1451,8 +1703,22 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     const bool valueActive = ImGui::GetActiveID() == valueId;
     const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
     const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
+    if (overridden)
+    {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+    }
     const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
                                            ImGuiInputTextFlags_EnterReturnsTrue);
+    if (overridden)
+        ImGui::PopStyleColor(3);
+    if (overridden)
+    {
+        if (ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    }
     if (ImGui::IsItemActivated())
     {
         value = originalValue;
@@ -1487,6 +1753,7 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     const Json *stored = address_value(document, objectId, componentId, path);
     const int storedValue = json_integer(stored, defaultValue);
     const bool reveal = consume_reveal_target(objectId, componentId, path);
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
 
     ImGui::AlignTextToFramePadding();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
@@ -1508,8 +1775,18 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     draw_clipped_property_label(
         ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y, labelWidth, frameHeight,
         label,
-        ImGui::GetColorU32(labelHovered || labelActive ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+        labelHovered || labelActive ? ImGui::GetColorU32(ImGuiCol_Text)
+        : overridden ? ImGui::GetColorU32(ImGuiCol_NavHighlight)
+                     : ImGui::GetColorU32(ImGuiCol_TextDisabled),
         labelHovered);
+    if (overridden && labelHovered)
+        ImGui::SetTooltip("This field overrides its linked template value.");
+    if (overridden)
+    {
+        ImGui::PushID(stable_field_id(path).c_str());
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+        ImGui::PopID();
+    }
 
     constexpr float baseStep = 1.0f;
     constexpr float snapIncrement = 1.0f;
@@ -1604,8 +1881,21 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     else if (!inserted && !draftIt->second.wasActive && ImGui::GetActiveID() != widgetId)
         draftIt->second.value = storedValue;
 
+    if (overridden)
+    {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+    }
     const bool changed = ImGui::InputInt("##value", &draftIt->second.value, 1, 100,
                                          ImGuiInputTextFlags_EnterReturnsTrue);
+    if (overridden)
+    {
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    }
     if (reveal)
         ImGui::SetScrollHereY(0.5f);
     const bool itemActive = ImGui::IsItemActive();
@@ -1655,11 +1945,20 @@ bool InspectorPanel::draw_string(DocumentSession &document, EditCommandService &
     std::array<char, 4096> buffer{};
     std::memcpy(buffer.data(), value.data(), value.size());
     const bool reveal = consume_reveal_target(objectId, componentId, path);
-    begin_field(label, path);
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
+    begin_field(label, path, overridden, false, [&] {
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    });
     if (reveal)
         ImGui::SetKeyboardFocusHere();
     const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
                                           ImGuiInputTextFlags_EnterReturnsTrue);
+    if (overridden)
+    {
+        if (ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    }
     if (reveal)
         ImGui::SetScrollHereY(0.5f);
     const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
@@ -1682,7 +1981,10 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
         if (value == current)
             preview = name;
     const bool reveal = consume_reveal_target(objectId, componentId, path);
-    begin_field(label, path);
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
+    begin_field(label, path, overridden, false, [&] {
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    });
     if (reveal)
         ImGui::SetKeyboardFocusHere();
     bool changed = false;
@@ -1700,6 +2002,12 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
                 ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
+    }
+    if (overridden)
+    {
+        if (ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
     }
     if (reveal)
         ImGui::SetScrollHereY(0.5f);
@@ -1740,31 +2048,52 @@ bool InspectorPanel::draw_compact_vector2(
     const ImVec2 rowStart = ImGui::GetCursorScreenPos();
     const float rowFrameH = ImGui::GetFrameHeight();
     ImGui::InvisibleButton((std::string("##transform_row_label") + stable_field_id(basePath)).c_str(), ImVec2(labelWidth, rowFrameH));
+    const bool baseOverridden = template_field_is_overridden(document, objectId, componentId, basePath);
     draw_clipped_property_label(ImGui::GetWindowDrawList(), rowStart.x, rowStart.y,
                                 labelWidth, rowFrameH, label,
-                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                ImGui::GetColorU32(baseOverridden
+                                    ? ImGuiCol_NavHighlight : ImGuiCol_TextDisabled),
                                 ImGui::IsItemHovered());
+    if (baseOverridden && ImGui::IsItemHovered())
+        ImGui::SetTooltip("This field overrides its linked template value.");
+    ImGui::PushID(stable_field_id(basePath).c_str());
+    draw_template_revert_context(document, commands, objectId, componentId,
+                                 pathX, feedback_, {pathY});
+    ImGui::PopID();
     ImGui::SameLine();
 
     bool anyCommitted = false;
 
     auto draw_axis = [&](const char *axisName, const char *btnId, const ImVec4 &axisColor,
                          float &axisVal, const std::vector<FieldPathSegment> &path, float defVal) {
+        const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
         const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
         const float frameHeight = ImGui::GetFrameHeight();
 
         ImGui::InvisibleButton((std::string(btnId) + stable_field_id(path)).c_str(), ImVec2(axisTagWidth, frameHeight));
+        const ImGuiID axisItemId = ImGui::GetItemID();
         const bool hovered = ImGui::IsItemHovered();
         const bool activated = ImGui::IsItemActivated();
         const bool active = ImGui::IsItemActive();
         const bool deactivated = ImGui::IsItemDeactivated();
+        ImGui::PushID(stable_field_id(path).c_str());
+        draw_template_revert_context(document, commands, objectId, componentId,
+                                     path, feedback_);
+        ImGui::PopID();
 
         if (hovered || active)
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 
         ImDrawList *drawList = ImGui::GetWindowDrawList();
+        const ImVec4 shownAxisColor = overridden
+            ? ImVec4(std::min(1.0f, axisColor.x + 0.25f),
+                     std::min(1.0f, axisColor.y + 0.18f),
+                     std::min(1.0f, axisColor.z + 0.08f), axisColor.w)
+            : axisColor;
         drawList->AddText(ImVec2(cursorPos.x + 2.0f, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
-                          ImGui::GetColorU32(axisColor), axisName);
+                          ImGui::GetColorU32(shownAxisColor), axisName);
+        if (overridden && hovered)
+            ImGui::SetTooltip("This field overrides its linked template value.");
 
         if (activated)
         {
@@ -1772,7 +2101,7 @@ bool InspectorPanel::draw_compact_vector2(
             scrubState_ = {};
             scrubState_.active = true;
             scrubState_.seenThisFrame = true;
-            scrubState_.widgetId = ImGui::GetItemID();
+            scrubState_.widgetId = axisItemId;
             scrubState_.projectGeneration = document.projectGeneration;
             scrubState_.tabId = document.tabId.value;
             scrubState_.documentGeneration = document.documentGeneration;
@@ -1789,7 +2118,7 @@ bool InspectorPanel::draw_compact_vector2(
             scrubState_.minimum = minimum;
             scrubState_.maximum = maximum;
         }
-        else if (active && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+        else if (active && scrubState_.active && scrubState_.widgetId == axisItemId)
         {
             scrubState_.seenThisFrame = true;
             if (ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -1825,7 +2154,7 @@ bool InspectorPanel::draw_compact_vector2(
                 }
             }
         }
-        else if (deactivated && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+        else if (deactivated && scrubState_.active && scrubState_.widgetId == axisItemId)
         {
             scrubState_.seenThisFrame = true;
             const bool moved = scrubState_.moved && scrubState_.accumDelta != 0.0;
@@ -1848,8 +2177,33 @@ bool InspectorPanel::draw_compact_vector2(
         const bool reveal = consume_reveal_target(objectId, componentId, path);
         if (reveal)
             ImGui::SetKeyboardFocusHere();
-        const bool changed = ImGui::InputFloat("##value", &axisVal, 0.0f, 0.0f, "%.2f",
+        if (overridden)
+        {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+        }
+        const float originalValue = axisVal;
+        const ImGuiID valueId = ImGui::GetID("##value");
+        const bool valueActive = ImGui::GetActiveID() == valueId;
+        const bool useFullPrecision = valueActive ||
+            ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+        const char *format = useFullPrecision ? "%.9g" : "%.2f";
+        const bool changed = ImGui::InputFloat("##value", &axisVal, 0.0f, 0.0f, format,
                                                ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::IsItemActivated())
+        {
+            axisVal = originalValue;
+            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->ReloadUserBufAndSelectAll();
+        }
+        if (overridden)
+            ImGui::PopStyleColor(3);
+        if (overridden && ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        if (overridden)
+            draw_template_revert_context(document, commands, objectId, componentId,
+                                         path, feedback_);
         if (reveal)
             ImGui::SetScrollHereY(0.5f);
         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
@@ -1898,17 +2252,24 @@ bool InspectorPanel::draw_compact_rotation(
     const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
     const float frameHeight = ImGui::GetFrameHeight();
     ImGui::InvisibleButton("##scrub_rot", ImVec2(labelWidth, frameHeight));
+    const ImGuiID rotationItemId = ImGui::GetItemID();
     const bool hovered = ImGui::IsItemHovered();
     const bool activated = ImGui::IsItemActivated();
     const bool active = ImGui::IsItemActive();
     const bool deactivated = ImGui::IsItemDeactivated();
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
+    ImGui::PushID(stable_field_id(path).c_str());
+    draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    ImGui::PopID();
 
     if (hovered || active)
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     drawList->AddText(ImVec2(cursorPos.x, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
-                      ImGui::GetColorU32(ImGuiCol_TextDisabled), label);
+                      ImGui::GetColorU32(overridden ? ImGuiCol_NavHighlight : ImGuiCol_TextDisabled), label);
+    if (overridden && hovered)
+        ImGui::SetTooltip("This field overrides its linked template value.");
 
     if (activated)
     {
@@ -1916,7 +2277,7 @@ bool InspectorPanel::draw_compact_rotation(
         scrubState_ = {};
         scrubState_.active = true;
         scrubState_.seenThisFrame = true;
-        scrubState_.widgetId = ImGui::GetItemID();
+        scrubState_.widgetId = rotationItemId;
         scrubState_.projectGeneration = document.projectGeneration;
         scrubState_.tabId = document.tabId.value;
         scrubState_.documentGeneration = document.documentGeneration;
@@ -1931,7 +2292,7 @@ bool InspectorPanel::draw_compact_rotation(
         scrubState_.baseStep = baseStep;
         scrubState_.snapIncrement = snapIncrement;
     }
-    else if (active && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+    else if (active && scrubState_.active && scrubState_.widgetId == rotationItemId)
     {
         scrubState_.seenThisFrame = true;
         if (ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -1967,7 +2328,7 @@ bool InspectorPanel::draw_compact_rotation(
             }
         }
     }
-    else if (deactivated && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+    else if (deactivated && scrubState_.active && scrubState_.widgetId == rotationItemId)
     {
         scrubState_.seenThisFrame = true;
         const bool moved = scrubState_.moved && scrubState_.accumDelta != 0.0;
@@ -1995,8 +2356,20 @@ bool InspectorPanel::draw_compact_rotation(
     const bool valueActive = ImGui::GetActiveID() == valueId;
     const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
     const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
+    if (overridden)
+    {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+    }
     const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, formatStr,
                                            ImGuiInputTextFlags_EnterReturnsTrue);
+    if (overridden)
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    if (overridden)
+        ImGui::PopStyleColor(3);
+    if (overridden && ImGui::IsItemHovered())
+        ImGui::SetItemTooltip("This field overrides its linked template value.");
     if (ImGui::IsItemActivated())
     {
         val = originalVal;
@@ -2051,6 +2424,13 @@ void InspectorPanel::draw_common_compact_transform(
             feedback_ = result.message;
         else
             feedback_.clear();
+    };
+    const auto template_targets = [&](const std::vector<FieldPathSegment> &path) {
+        std::vector<TemplatePropertyTarget> targets;
+        targets.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+            targets.push_back({objectId, std::nullopt, std::nullopt, path});
+        return targets;
     };
 
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
@@ -2181,33 +2561,64 @@ void InspectorPanel::draw_common_compact_transform(
 
         ImGui::AlignTextToFramePadding();
         const ImVec2 labelStart = ImGui::GetCursorScreenPos();
-        ImGui::Dummy(ImVec2(labelWidth, ImGui::GetFrameHeight()));
+        ImGui::InvisibleButton((std::string("##common_transform_vec_label") +
+                               stable_field_id({std::string(baseProp)})).c_str(),
+                              ImVec2(labelWidth, ImGui::GetFrameHeight()));
+        const bool labelHovered = ImGui::IsItemHovered();
         draw_clipped_property_label(ImGui::GetWindowDrawList(), labelStart.x, labelStart.y,
                                     labelWidth, ImGui::GetFrameHeight(), label,
-                                    ImGui::GetColorU32(ImGuiCol_TextDisabled), false);
+                                    ImGui::GetColorU32(labelHovered ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                                    labelHovered);
+        std::vector<TemplatePropertyTarget> vectorRevertTargets = template_targets(pathX);
+        auto yTargets = template_targets(pathY);
+        vectorRevertTargets.insert(vectorRevertTargets.end(), yTargets.begin(), yTargets.end());
+        ImGui::PushID(stable_field_id({std::string(baseProp)}).c_str());
+        draw_template_revert_context(document, commands, vectorRevertTargets, feedback_);
+        ImGui::PopID();
         ImGui::SameLine();
 
         auto draw_common_axis = [&](const char *axisName, const char *btnId, const ImVec4 &axisColor,
                                     float &val, bool mixed,
                                     const std::vector<float> &allVals,
                                     const std::vector<FieldPathSegment> &path) {
+            const auto revertTargets = template_targets(path);
+            const bool overridden = std::any_of(revertTargets.begin(), revertTargets.end(),
+                [&](const TemplatePropertyTarget &target) {
+                    return template_field_is_overridden(document, target.objectId,
+                                                        target.componentId, target.fieldPath);
+                });
             const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
             const float frameHeight = ImGui::GetFrameHeight();
             ImGui::InvisibleButton((std::string(btnId) + stable_field_id(path)).c_str(), ImVec2(axisTagWidth, frameHeight));
-            if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+            const ImGuiID axisItemId = ImGui::GetItemID();
+            const bool axisHovered = ImGui::IsItemHovered();
+            const bool axisActivated = ImGui::IsItemActivated();
+            const bool axisActive = ImGui::IsItemActive();
+            const bool axisDeactivated = ImGui::IsItemDeactivated();
+            ImGui::PushID(stable_field_id(path).c_str());
+            draw_template_revert_context(document, commands, revertTargets, feedback_);
+            ImGui::PopID();
+            if (axisHovered || axisActive)
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 
             ImDrawList *drawList = ImGui::GetWindowDrawList();
+            const ImVec4 shownAxisColor = overridden
+                ? ImVec4(std::min(1.0f, axisColor.x + 0.25f),
+                         std::min(1.0f, axisColor.y + 0.18f),
+                         std::min(1.0f, axisColor.z + 0.08f), axisColor.w)
+                : axisColor;
             drawList->AddText(ImVec2(cursorPos.x + 2.0f, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
-                              ImGui::GetColorU32(axisColor), axisName);
+                              ImGui::GetColorU32(shownAxisColor), axisName);
+            if (overridden && axisHovered)
+                ImGui::SetTooltip("This field overrides its linked template value.");
 
-            if (ImGui::IsItemActivated())
+            if (axisActivated)
             {
                 cancel_active_interactions(&document);
                 scrubState_ = {};
                 scrubState_.active = true;
                 scrubState_.seenThisFrame = true;
-                scrubState_.widgetId = ImGui::GetItemID();
+                scrubState_.widgetId = axisItemId;
                 scrubState_.projectGeneration = document.projectGeneration;
                 scrubState_.tabId = document.tabId.value;
                 scrubState_.documentGeneration = document.documentGeneration;
@@ -2226,7 +2637,7 @@ void InspectorPanel::draw_common_compact_transform(
                 scrubState_.snapIncrement = snapIncrement;
                 scrubState_.minimum = minimum;
             }
-            else if (ImGui::IsItemActive() && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+            else if (axisActive && scrubState_.active && scrubState_.widgetId == axisItemId)
             {
                 scrubState_.seenThisFrame = true;
                 if (ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -2263,7 +2674,7 @@ void InspectorPanel::draw_common_compact_transform(
                     }
                 }
             }
-            else if (ImGui::IsItemDeactivated() && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+            else if (axisDeactivated && scrubState_.active && scrubState_.widgetId == axisItemId)
             {
                 scrubState_.seenThisFrame = true;
                 const bool moved = scrubState_.moved && scrubState_.accumDelta != 0.0;
@@ -2291,8 +2702,32 @@ void InspectorPanel::draw_common_compact_transform(
             ImGui::PushID(stable_field_id(path).c_str());
             ImGui::SetNextItemWidth(inputWidth);
             ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
-            const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, mixed ? " — " : "%.2f",
+            if (overridden)
+            {
+                ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+            }
+            const ImGuiID valueId = ImGui::GetID("##value");
+            const bool valueActive = ImGui::GetActiveID() == valueId;
+            const bool useFullPrecision = valueActive ||
+                ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+            const char *format = useFullPrecision ? "%.9g" : mixed ? " — " : "%.2f";
+            const float originalValue = val;
+            const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, format,
                                                    ImGuiInputTextFlags_EnterReturnsTrue);
+            if (ImGui::IsItemActivated())
+            {
+                val = originalValue;
+                if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                    state->ReloadUserBufAndSelectAll();
+            }
+            if (overridden)
+            {
+                ImGui::PopStyleColor(3);
+                ImGui::SetItemTooltip("This field overrides its linked template value.");
+            }
+            draw_template_revert_context(document, commands, revertTargets, feedback_);
             ImGui::PopItemFlag();
             const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
             const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
@@ -2318,6 +2753,12 @@ void InspectorPanel::draw_common_compact_transform(
     auto valsRot = common_values(rotPath);
     if (valsRot)
     {
+        const auto revertTargets = template_targets(rotPath);
+        const bool overridden = std::any_of(revertTargets.begin(), revertTargets.end(),
+            [&](const TemplatePropertyTarget &target) {
+                return template_field_is_overridden(document, target.objectId,
+                                                    target.componentId, target.fieldPath);
+            });
         const bool mixedRot = std::any_of(valsRot->begin() + 1, valsRot->end(), [&](float v) {
             return std::abs(v - valsRot->front()) > 1e-5f;
         });
@@ -2326,19 +2767,29 @@ void InspectorPanel::draw_common_compact_transform(
         const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
         const float frameHeight = ImGui::GetFrameHeight();
         ImGui::InvisibleButton("##scrub_rot", ImVec2(scalarLabelWidth, frameHeight));
-        if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+        const ImGuiID rotationItemId = ImGui::GetItemID();
+        const bool rotationHovered = ImGui::IsItemHovered();
+        const bool rotationActivated = ImGui::IsItemActivated();
+        const bool rotationActive = ImGui::IsItemActive();
+        const bool rotationDeactivated = ImGui::IsItemDeactivated();
+        ImGui::PushID(stable_field_id(rotPath).c_str());
+        draw_template_revert_context(document, commands, revertTargets, feedback_);
+        ImGui::PopID();
+        if (rotationHovered || rotationActive)
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         drawList->AddText(ImVec2(cursorPos.x, cursorPos.y + (frameHeight - ImGui::GetFontSize()) * 0.5f),
-                          ImGui::GetColorU32(ImGuiCol_TextDisabled), "Rotation");
+                          ImGui::GetColorU32(overridden ? ImGuiCol_NavHighlight : ImGuiCol_TextDisabled), "Rotation");
+        if (overridden && rotationHovered)
+            ImGui::SetTooltip("This field overrides its linked template value.");
 
-        if (ImGui::IsItemActivated())
+        if (rotationActivated)
         {
             cancel_active_interactions(&document);
             scrubState_ = {};
             scrubState_.active = true;
             scrubState_.seenThisFrame = true;
-            scrubState_.widgetId = ImGui::GetItemID();
+            scrubState_.widgetId = rotationItemId;
             scrubState_.projectGeneration = document.projectGeneration;
             scrubState_.tabId = document.tabId.value;
             scrubState_.documentGeneration = document.documentGeneration;
@@ -2356,7 +2807,7 @@ void InspectorPanel::draw_common_compact_transform(
             scrubState_.baseStep = 1.0;
             scrubState_.snapIncrement = 15.0;
         }
-        else if (ImGui::IsItemActive() && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+        else if (rotationActive && scrubState_.active && scrubState_.widgetId == rotationItemId)
         {
             scrubState_.seenThisFrame = true;
             if (ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -2392,7 +2843,7 @@ void InspectorPanel::draw_common_compact_transform(
                 }
             }
         }
-        else if (ImGui::IsItemDeactivated() && scrubState_.active && scrubState_.widgetId == ImGui::GetItemID())
+        else if (rotationDeactivated && scrubState_.active && scrubState_.widgetId == rotationItemId)
         {
             scrubState_.seenThisFrame = true;
             const bool moved = scrubState_.moved && scrubState_.accumDelta != 0.0;
@@ -2417,8 +2868,32 @@ void InspectorPanel::draw_common_compact_transform(
         ImGui::PushID(stable_field_id(rotPath).c_str());
         ImGui::SetNextItemWidth(std::max(60.0f * uiScale, totalAvail - scalarLabelWidth - itemSpacingX));
         ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixedRot);
-        const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, mixedRot ? " — " : "%.2f",
+        if (overridden)
+        {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+        }
+        const ImGuiID valueId = ImGui::GetID("##value");
+        const bool valueActive = ImGui::GetActiveID() == valueId;
+        const bool useFullPrecision = valueActive ||
+            ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+        const char *format = mixedRot ? " — " : useFullPrecision ? "%.9g" : "%.2f";
+        const float originalRotation = valRot;
+        const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, format,
                                                ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::IsItemActivated())
+        {
+            valRot = originalRotation;
+            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->ReloadUserBufAndSelectAll();
+        }
+        if (overridden)
+        {
+            ImGui::PopStyleColor(3);
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        }
+        draw_template_revert_context(document, commands, revertTargets, feedback_);
         ImGui::PopItemFlag();
         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
         const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
@@ -2465,6 +2940,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         if (lastObjectSelectionKey_ != objectSelectionKey)
         {
             lastObjectSelectionKey_ = objectSelectionKey;
+            feedback_.clear();
             ImGui::SetScrollY(0.0f);
         }
         draw_multi_object_fields(document, selection, commands, catalog,
@@ -2483,6 +2959,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         integerDrafts_.clear();
         lastSelectionKey_.clear();
         lastObjectSelectionKey_.clear();
+        feedback_.clear();
         ImGui::TextDisabled("Select an object to edit its properties.");
         return;
     }
@@ -2506,7 +2983,10 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         std::to_string(objectId) + ":" +
         (selection.current().componentId ? std::to_string(*selection.current().componentId) : std::string("-"));
     if (!lastSelectionKey_.empty() && lastSelectionKey_ != selectionKey)
+    {
         integerDrafts_.clear();
+        feedback_.clear();
+    }
     lastSelectionKey_ = selectionKey;
     const auto objectLocation = document.indexes.objectsById.find(objectId);
     if (objectLocation == document.indexes.objectsById.end())
@@ -2517,6 +2997,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     const Json *object = resolve_object(document.root, objectLocation->second);
     if (object == nullptr)
         return;
+
     if (templateNameSelectionKey_ != selectionKey)
     {
         templateNameSelectionKey_ = selectionKey;
@@ -2612,19 +3093,36 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     ImGui::Separator();
 
     // Top GameObject Header
-    // [Active] [Icon] [Name InputText] Tag [Tag InputText]
+    // Row 1: [Active] [Icon] [Name InputText]
+    // Row 2: Tag [Tag InputText]
     const bool revealName = consume_reveal_target(objectId, std::nullopt, {std::string("name")});
     const bool revealTag = consume_reveal_target(objectId, std::nullopt, {std::string("tag")});
     const bool revealActive = consume_reveal_target(objectId, std::nullopt, {std::string("active")});
 
     bool activeValue = object->value("active", true);
+    const std::vector<FieldPathSegment> activePath{std::string("active")};
+    const bool activeOverridden = template_field_is_overridden(
+        document, objectId, std::nullopt, activePath);
     ImGui::PushID(stable_field_id({std::string("active")}).c_str());
     if (revealActive)
         ImGui::SetKeyboardFocusHere();
+    if (activeOverridden)
+    {
+        ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.92f, 0.73f, 0.32f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+    }
     if (ImGui::Checkbox("##value", &activeValue))
     {
-        set(document, commands, objectId, std::nullopt, {std::string("active")}, activeValue);
+        set(document, commands, objectId, std::nullopt, activePath, activeValue);
     }
+    if (activeOverridden)
+        ImGui::PopStyleColor(4);
+    if (activeOverridden && ImGui::IsItemHovered())
+        ImGui::SetItemTooltip("This field overrides its linked template value.");
+    draw_template_revert_context(document, commands, objectId, std::nullopt,
+                                 activePath, feedback_);
     ImGui::PopID();
     if (revealActive)
         ImGui::SetScrollHereY(0.5f);
@@ -2640,15 +3138,20 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     ImGui::Dummy(ImVec2(iconSize + 2.0f * uiScale, frameHeight));
     ImGui::SameLine();
 
-    const float headerInputSpace = std::max(2.0f, ImGui::GetContentRegionAvail().x -
-        ImGui::CalcTextSize("Tag").x - ImGui::GetStyle().ItemSpacing.x * 2.0f);
-    const float nameInputWidth = std::max(1.0f, headerInputSpace * 0.6f);
-
     std::string nameValue = object->value("name", std::string("GameObject"));
     std::array<char, 256> nameBuffer{};
     std::memcpy(nameBuffer.data(), nameValue.data(), std::min(nameValue.size(), nameBuffer.size() - 1));
+    const std::vector<FieldPathSegment> namePath{std::string("name")};
+    const bool nameOverridden = template_field_is_overridden(document, objectId,
+                                                              std::nullopt, namePath);
     ImGui::PushID(stable_field_id({std::string("name")}).c_str());
-    ImGui::SetNextItemWidth(nameInputWidth);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (nameOverridden)
+    {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+    }
     if (revealName)
         ImGui::SetKeyboardFocusHere();
     const bool nameChanged = ImGui::InputText("##value", nameBuffer.data(), nameBuffer.size(),
@@ -2657,19 +3160,36 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::SetScrollHereY(0.5f);
     if (nameChanged || ImGui::IsItemDeactivatedAfterEdit())
     {
-        set(document, commands, objectId, std::nullopt, {std::string("name")}, std::string(nameBuffer.data()));
+        set(document, commands, objectId, std::nullopt, namePath, std::string(nameBuffer.data()));
     }
+    if (nameOverridden && ImGui::IsItemHovered())
+        ImGui::SetItemTooltip("This field overrides its linked template value.");
+    draw_template_revert_context(document, commands, objectId, std::nullopt,
+                                 namePath, feedback_);
+    if (nameOverridden)
+        ImGui::PopStyleColor(3);
     ImGui::PopID();
 
-    ImGui::SameLine();
     std::string tagValue = object->value("tag", std::string{});
     std::array<char, 256> tagBuffer{};
     std::memcpy(tagBuffer.data(), tagValue.data(), std::min(tagValue.size(), tagBuffer.size() - 1));
+    const std::vector<FieldPathSegment> tagPath{std::string("tag")};
+    const bool tagOverridden = template_field_is_overridden(document, objectId,
+                                                             std::nullopt, tagPath);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("Tag");
+    ImGui::TextColored(tagOverridden ? ImVec4(0.65f, 0.77f, 1.0f, 1.0f)
+                                     : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), "Tag");
+    if (tagOverridden && ImGui::IsItemHovered())
+        ImGui::SetItemTooltip("This field overrides its linked template value.");
     ImGui::SameLine();
     ImGui::PushID(stable_field_id({std::string("tag")}).c_str());
     ImGui::SetNextItemWidth(-FLT_MIN);
+    if (tagOverridden)
+    {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+    }
     if (revealTag)
         ImGui::SetKeyboardFocusHere();
     const bool tagChanged = ImGui::InputText("##value", tagBuffer.data(), tagBuffer.size(),
@@ -2678,9 +3198,136 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::SetScrollHereY(0.5f);
     if (tagChanged || ImGui::IsItemDeactivatedAfterEdit())
     {
-        set(document, commands, objectId, std::nullopt, {std::string("tag")}, std::string(tagBuffer.data()));
+        set(document, commands, objectId, std::nullopt, tagPath, std::string(tagBuffer.data()));
     }
+    if (tagOverridden && ImGui::IsItemHovered())
+        ImGui::SetItemTooltip("This field overrides its linked template value.");
+    draw_template_revert_context(document, commands, objectId, std::nullopt,
+                                 tagPath, feedback_);
+    if (tagOverridden)
+        ImGui::PopStyleColor(3);
     ImGui::PopID();
+
+    if (const auto tmplRootId = find_template_instance_root(document, objectId))
+    {
+        const auto rootLoc = document.indexes.objectsById.find(*tmplRootId);
+        const Json *tmplRootObj = rootLoc != document.indexes.objectsById.end()
+            ? resolve_object(document.root, rootLoc->second) : nullptr;
+        if (tmplRootObj != nullptr && is_template_instance_root(*tmplRootObj))
+        {
+            const std::string tmplRef = tmplRootObj->at("template").get<std::string>();
+            const std::filesystem::path tmplFullPath = resolve_template_asset_path(document.assetRoot, tmplRef);
+            std::error_code templatePathError;
+            const bool templateAvailable =
+                std::filesystem::is_regular_file(tmplFullPath, templatePathError) && !templatePathError;
+            ImGui::Spacing();
+            ImGui::AlignTextToFramePadding();
+            if (templateAvailable)
+                ImGui::TextDisabled("Template");
+            else
+                ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.38f, 1.0f), "Missing");
+            if (!templateAvailable && ImGui::IsItemHovered())
+                ImGui::SetItemTooltip("The linked template file is missing.");
+            ImGui::SameLine();
+            const std::string templateFilename = std::filesystem::path(tmplRef).filename().string();
+            const ImVec2 filenamePosition = ImGui::GetCursorScreenPos();
+            const float filenameWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+            const float filenameHeight = ImGui::GetFrameHeight();
+            ImGui::Dummy(ImVec2(filenameWidth, filenameHeight));
+            draw_clipped_property_label(ImGui::GetWindowDrawList(), filenamePosition.x,
+                filenamePosition.y, filenameWidth, filenameHeight, templateFilename.c_str(),
+                ImGui::GetColorU32(ImGuiCol_Text), false);
+            if (ImGui::IsItemHovered())
+                ImGui::SetItemTooltip("%s", tmplRef.c_str());
+            ImGui::NewLine();
+            if (templateAvailable)
+            {
+                ImGui::BeginDisabled(!openTemplateCallback_);
+                if (ImGui::SmallButton("Open") && openTemplateCallback_)
+                    openTemplateCallback_(tmplFullPath);
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!selectTemplateAssetCallback_);
+                if (ImGui::SmallButton("Select") && selectTemplateAssetCallback_)
+                    selectTemplateAssetCallback_(tmplFullPath);
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+                const float minimumOverridesWidth = 92.0f * uiScale;
+                if (ImGui::GetContentRegionAvail().x < minimumOverridesWidth)
+                    ImGui::NewLine();
+                const float overridesWidth = std::max(1.0f,
+                    std::min(128.0f * uiScale, ImGui::GetContentRegionAvail().x));
+                ImGui::SetNextItemWidth(overridesWidth);
+                if (ImGui::BeginCombo("##template-overrides", "Overrides", 0))
+                {
+                    if (ImGui::MenuItem("Apply Overrides"))
+                    {
+                        std::string tmplError;
+                        const auto catalogSnapshot = catalog.snapshot();
+                        const Json catalogDocument = catalogSnapshot
+                            ? catalogSnapshot->document : Json::object();
+                        if (apply_template_instance(document, commands, *tmplRootId,
+                                                    document.assetRoot, tmplError, &catalogDocument))
+                        {
+                            feedback_ = "Applied template overrides to " + tmplFullPath.filename().string();
+                            if (templatePropagatedCallback_)
+                                templatePropagatedCallback_(tmplFullPath);
+                        }
+                        else
+                            feedback_ = tmplError;
+                    }
+                    if (ImGui::MenuItem("Revert to Template"))
+                    {
+                        std::string tmplError;
+                        if (revert_template_instance(document, commands, *tmplRootId,
+                                                     document.assetRoot, tmplError))
+                            feedback_ = "Reverted template instance to asset.";
+                        else
+                            feedback_ = tmplError;
+                    }
+                    if (ImGui::MenuItem("Unpack"))
+                    {
+                        std::string tmplError;
+                        if (unpack_template_instance(document, commands, *tmplRootId, tmplError))
+                            feedback_ = "Unpacked template instance.";
+                        else
+                            feedback_ = tmplError;
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+            else
+            {
+                const auto selected = selectedTemplateAssetCallback_
+                    ? selectedTemplateAssetCallback_() : std::nullopt;
+                const bool canRelink = selected && selected->extension() == ".pttemplate" &&
+                    *selected != tmplFullPath;
+                ImGui::BeginDisabled(!canRelink && !browseTemplateAssetCallback_);
+                if (ImGui::SmallButton("Relink..."))
+                {
+                    if (canRelink)
+                    {
+                        std::string tmplError;
+                        if (relink_template_instance(document, commands, *tmplRootId,
+                                                     document.assetRoot, *selected, tmplError))
+                        {
+                            feedback_ = "Relinked template instance to " + selected->filename().string();
+                            if (templatePropagatedCallback_)
+                                templatePropagatedCallback_(*selected);
+                        }
+                        else
+                            feedback_ = tmplError;
+                    }
+                    else if (browseTemplateAssetCallback_)
+                        browseTemplateAssetCallback_(*tmplRootId);
+                }
+                ImGui::EndDisabled();
+                if (!canRelink && ImGui::IsItemHovered())
+                    ImGui::SetItemTooltip("Choose a .pttemplate asset in Project or browse for one.");
+            }
+        }
+    }
 
     ImGui::Spacing();
     if (revealObjectId_ && *revealObjectId_ == objectId && !revealComponentId_)
@@ -2695,38 +3342,6 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                               0.0f, 1.0f, 15.0f);
         draw_compact_vector2(document, commands, objectId, std::nullopt, {std::string("scale")}, "Scale",
                              1.0f, 1.0f, 0.0001f, std::nullopt, 0.05f, 0.1f);
-    }
-
-    ImGui::Spacing();
-    const float templateAvail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-    const bool templateOpen = ImGui::CollapsingHeader(
-        "###object_template", ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
-    {
-        const ImVec2 hMin = ImGui::GetItemRectMin();
-        const ImVec2 hMax = ImGui::GetItemRectMax();
-        const float textStartX = hMin.x + ImGui::GetTreeNodeToLabelSpacing();
-        draw_clipped_property_label(
-            ImGui::GetWindowDrawList(), textStartX, hMin.y,
-            std::max(1.0f, hMin.x + templateAvail - textStartX),
-            std::max(1.0f, hMax.y - hMin.y), "Object Template",
-            ImGui::GetColorU32(ImGuiCol_Text), ImGui::IsItemHovered());
-    }
-    if (templateOpen)
-    {
-        std::array<char, 256> templateNameBuffer{};
-        const std::size_t templateNameLength = std::min(templateName_.size(), templateNameBuffer.size() - 1);
-        std::memcpy(templateNameBuffer.data(), templateName_.data(), templateNameLength);
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::InputTextWithHint("##object-template-name", "Template name",
-                                     templateNameBuffer.data(), templateNameBuffer.size()))
-            templateName_ = templateNameBuffer.data();
-        const bool canSaveTemplate = !templateName_.empty() && !document.assetRoot.empty();
-        ImGui::BeginDisabled(!canSaveTemplate);
-        if (ImGui::Button("Save as Template"))
-            save_selected_template(document, objectId, catalog);
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered() && !canSaveTemplate)
-            ImGui::SetTooltip("A template name and project asset root are required.");
     }
     const auto refreshedObjectLocation = document.indexes.objectsById.find(objectId);
     object = refreshedObjectLocation == document.indexes.objectsById.end()
@@ -2787,14 +3402,32 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         const bool hasEnabled = type != 4;
         if (hasEnabled)
         {
-            const bool revealEnabled = consume_reveal_target(objectId, componentId, {std::string("enabled")});
+            const std::vector<FieldPathSegment> enabledPath{std::string("enabled")};
+            const bool revealEnabled = consume_reveal_target(objectId, componentId, enabledPath);
+            const bool enabledOverridden = template_field_is_overridden(
+                document, objectId, componentId, enabledPath);
             bool componentEnabled = component->value("enabled", true);
             ImGui::PushID(stable_field_id({std::string("enabled")}).c_str());
             if (revealEnabled)
                 ImGui::SetKeyboardFocusHere();
+            if (enabledOverridden)
+            {
+                ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.92f, 0.73f, 0.32f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+            }
             if (ImGui::Checkbox("##value", &componentEnabled))
             {
-                set(document, commands, objectId, componentId, {std::string("enabled")}, componentEnabled);
+                set(document, commands, objectId, componentId, enabledPath, componentEnabled);
+            }
+            if (enabledOverridden)
+            {
+                ImGui::PopStyleColor(4);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetItemTooltip("This field overrides its linked template value.");
+                draw_template_revert_context(document, commands, objectId, componentId,
+                                             enabledPath, feedback_);
             }
             ImGui::PopID();
             ImGui::SameLine();
@@ -2948,10 +3581,96 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                                  {std::string("offset")}, "Offset", 0.0f, 0.0f,
                                  std::nullopt, std::nullopt, 0.1f, 0.5f);
             draw_boolean(document, commands, objectId, componentId, {std::string("trigger")}, "Trigger");
-            draw_integer(document, commands, objectId, componentId,
-                         {std::string("collisionGroup")}, "Collision Group", 1, 0);
-            draw_integer(document, commands, objectId, componentId,
-                         {std::string("collisionMask")}, "Collision Mask", 1, 0);
+            {
+                const std::vector<FieldPathSegment> groupPath{std::string("collisionGroup")};
+                const std::vector<FieldPathSegment> maskPath{std::string("collisionMask")};
+                const bool revealLayer = consume_reveal_target(objectId, componentId, groupPath);
+                const Json *storedGroup = address_value(document, objectId, componentId, groupPath);
+                std::uint64_t currentGroup = 1;
+                if (storedGroup != nullptr)
+                {
+                    if (storedGroup->is_number_unsigned())
+                        currentGroup = storedGroup->get<std::uint64_t>();
+                    else if (storedGroup->is_number_integer() && storedGroup->get<std::int64_t>() >= 0)
+                        currentGroup = static_cast<std::uint64_t>(storedGroup->get<std::int64_t>());
+                }
+                const LayerSettings fallbackLayers = default_layer_settings();
+                const LayerSettings &effectiveLayers = layerSettings_ != nullptr ? *layerSettings_ : fallbackLayers;
+                const auto currentLayer = collision_group_to_layer(currentGroup);
+                const std::string currentLabel = currentLayer
+                    ? layer_display_label(effectiveLayers, *currentLayer)
+                    : ("Custom (" + std::to_string(currentGroup) + ")");
+
+                if (field_matches_search(document, objectId, componentId, groupPath, "Layer"))
+                {
+                    const bool overridden = template_field_is_overridden(
+                        document, objectId, componentId, groupPath) ||
+                        template_field_is_overridden(document, objectId, componentId, maskPath);
+                    begin_field("Layer", groupPath, overridden, false, [&] {
+                        draw_template_revert_context(document, commands, objectId, componentId,
+                                                     groupPath, feedback_, {maskPath});
+                    });
+                    if (revealLayer)
+                        ImGui::SetKeyboardFocusHere();
+                    const bool layerPopupOpen = ImGui::BeginCombo("##value", currentLabel.c_str());
+                    if (overridden && ImGui::IsItemHovered())
+                        ImGui::SetItemTooltip("This field overrides its linked template value.");
+                    if (layerPopupOpen)
+                    {
+                        for (std::size_t layerIdx = 0; layerIdx < LayerCount; ++layerIdx)
+                        {
+                            const auto idx8 = static_cast<std::uint8_t>(layerIdx);
+                            const bool isSelected = currentLayer && *currentLayer == idx8;
+                            const std::string itemLabel = layer_display_label(effectiveLayers, layerIdx);
+                            if (ImGui::Selectable(itemLabel.c_str(), isSelected))
+                            {
+                                const std::uint64_t newGroup = layer_to_collision_group(idx8);
+                                const std::uint64_t newMask = layer_to_collision_mask(effectiveLayers, idx8);
+                                std::vector<BatchPropertyEdit> edits;
+                                std::vector<std::pair<int, int>> targets;
+                                append_collider_targets(document, objectId,
+                                                        applyColliderLayerToDescendants_, targets);
+                                for (const auto &[targetObjectId, targetComponentId] : targets)
+                                {
+                                    edits.push_back({address_for_document(document, targetObjectId,
+                                        targetComponentId, std::nullopt,
+                                        {std::string("collisionGroup")}), PropertyValue::of(newGroup)});
+                                    edits.push_back({address_for_document(document, targetObjectId,
+                                        targetComponentId, std::nullopt,
+                                        {std::string("collisionMask")}), PropertyValue::of(newMask)});
+                                }
+                                const Selection current = selection.current();
+                                const auto result = commands.apply_batch(document, edits,
+                                                                         {current, current});
+                                if (result.status == CommandStatus::Rejected ||
+                                    result.status == CommandStatus::StaleAddress)
+                                    feedback_ = result.message;
+                                else
+                                    feedback_.clear();
+                            }
+                            if (isSelected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        if (openLayerSettingsCallback_)
+                        {
+                            ImGui::Separator();
+                            if (ImGui::MenuItem("Layer Settings..."))
+                                openLayerSettingsCallback_();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    draw_template_revert_context(document, commands, objectId, componentId,
+                                                 groupPath, feedback_, {maskPath});
+                    end_field();
+                    const auto children = object->find("children");
+                    if (children != object->end() && children->is_array() && !children->empty())
+                    {
+                        ImGui::Checkbox("Apply to children", &applyColliderLayerToDescendants_);
+                    }
+                    if (revealLayer)
+                        ImGui::SetScrollHereY(0.5f);
+                }
+            }
         }
         else if (type == 4)
         {
@@ -2981,7 +3700,10 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                                      {std::string("textureFilePath")}, "Texture"))
                 draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
                                            {std::string("textureFilePath")}, "Texture", true,
-                                           "Texture", browse, std::string{}, resourceIndex_);
+                                           "Texture", browse, std::string{}, resourceIndex_,
+                                           make_template_reference_override(document, commands, objectId,
+                                               componentId, std::nullopt,
+                                               {std::string("textureFilePath")}, feedback_));
             draw_enum(document, commands, objectId, componentId, {std::string("flip")}, "Flip", 0,
                       {{0, "None"}, {1, "Horizontal"}, {2, "Vertical"}, {3, "Horizontal + Vertical"}});
             draw_number(document, commands, objectId, componentId, {std::string("width")}, "Width", 16.0f,
@@ -3062,7 +3784,10 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
             {
                 draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
                                            {std::string("animationClipFilePath")}, "AnimationClip", true,
-                                           "Animation Clip", browse, std::string{}, resourceIndex_);
+                                           "Animation Clip", browse, std::string{}, resourceIndex_,
+                                           make_template_reference_override(document, commands, objectId,
+                                               componentId, std::nullopt,
+                                               {std::string("animationClipFilePath")}, feedback_));
                 const auto *clipField = address_value(document, objectId, componentId,
                                                       {std::string("animationClipFilePath")});
                 if (clipField != nullptr && clipField->is_string())
@@ -3070,13 +3795,12 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                     const std::string clipPath = *clipField;
                     if (!clipPath.empty() && clipPath.ends_with(".animset"))
                     {
-                        begin_field("", {std::string("animationClipFilePath"), std::string("editClip")});
+                        ImGui::BeginDisabled(!openAnimationCallback_);
                         if (ImGui::Button("Edit Clip...##AnimatorClip", ImVec2(-FLT_MIN, 0.0f)))
                         {
-                            if (openAnimationCallback_)
-                                openAnimationCallback_(resolve_animation_clip_path(document.assetRoot, clipPath));
+                            openAnimationCallback_(resolve_animation_clip_path(document.assetRoot, clipPath));
                         }
-                        end_field();
+                        ImGui::EndDisabled();
                     }
                 }
             }
@@ -3092,7 +3816,10 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                                      {std::string("filePath")}, "Audio File"))
                 draw_asset_reference_field(document, commands, objectId, componentId, std::nullopt,
                                            {std::string("filePath")}, "Audio", true,
-                                           "Audio File", browse, std::string{}, resourceIndex_);
+                                           "Audio File", browse, std::string{}, resourceIndex_,
+                                           make_template_reference_override(document, commands, objectId,
+                                               componentId, std::nullopt,
+                                               {std::string("filePath")}, feedback_));
             draw_number(document, commands, objectId, componentId, {std::string("gain")}, "Gain", 1.0f);
             draw_integer(document, commands, objectId, componentId, {std::string("loopCount")}, "Loop Count", 0);
             draw_boolean(document, commands, objectId, componentId, {std::string("autoPlay")}, "Auto Play");
@@ -3109,6 +3836,13 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                                                         FocusedPanel::Inspector});
                 behaviorFields_.draw(document, scriptSelection, commands, catalog, browse, resourceIndex_,
                                      searchQuery_);
+            }
+            if (behaviorRevealPending_)
+            {
+                revealObjectId_.reset();
+                revealComponentId_.reset();
+                revealPath_.clear();
+                behaviorRevealPending_ = false;
             }
         }
         else
@@ -3150,7 +3884,13 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
             if (ImGui::MenuItem(label))
             {
                 const Selection before = selection.current();
-                auto result = commands.add_component(document, objectId, default_component_record(type));
+                Json componentPayload = default_component_record(type);
+                if (type == 3 && layerSettings_ != nullptr)
+                {
+                    componentPayload["collisionGroup"] = layer_to_collision_group(0);
+                    componentPayload["collisionMask"] = layer_to_collision_mask(*layerSettings_, 0);
+                }
+                auto result = commands.add_component(document, objectId, std::move(componentPayload));
                 if (result.status == CommandStatus::Changed && result.command)
                 {
                     const int newComponentId = result.command->payload.value("id", 0);
@@ -3171,9 +3911,12 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         bool anyBehavior = false;
         const auto behaviorCatalog = catalog.snapshot();
         if (!behaviorCatalog)
-            ImGui::TextDisabled("Build the project to load the behavior catalog.");
+            ImGui::TextDisabled("Scanning project sources for behavior schemas...");
         else
         {
+            if (!catalog.last_error().empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.35f, 1.0f), "%s",
+                                   catalog.last_error().c_str());
             const auto behaviors = behaviorCatalog->document.find("behaviors");
             if (behaviors != behaviorCatalog->document.end() && behaviors->is_array())
             {
@@ -3186,6 +3929,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                     if (!discovery_query_matches(addPickerQuery_, behaviorType + " behavior"))
                         continue;
                     anyBehavior = true;
+                    if (behavior.contains("scanner_warning") && behavior["scanner_warning"].is_string())
+                        ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.35f, 1.0f), "%s",
+                            behavior["scanner_warning"].get_ref<const std::string &>().c_str());
                     if (ImGui::MenuItem(behaviorType.c_str()))
                     {
                         attach_behavior(behaviorType);
@@ -3200,7 +3946,16 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::EndPopup();
     }
     if (!feedback_.empty())
-        ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", feedback_.c_str());
+    {
+        const bool success = feedback_.starts_with("Template saved") ||
+            feedback_.starts_with("Applied template overrides") ||
+            feedback_.starts_with("Reverted template instance") ||
+            feedback_.starts_with("Relinked template instance") ||
+            feedback_.starts_with("Unpacked template instance");
+        const ImVec4 color = success ? ImVec4(0.45f, 0.82f, 0.55f, 1.0f)
+                                     : ImVec4(0.95f, 0.55f, 0.38f, 1.0f);
+        ImGui::TextColored(color, "%s", feedback_.c_str());
+    }
     if (scrubState_.active && !scrubState_.seenThisFrame)
         cancel_active_interactions(&document);
 }
@@ -3247,9 +4002,29 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
         else
             feedback_.clear();
     };
+    const auto root_template_targets = [&](const std::vector<FieldPathSegment> &path) {
+        std::vector<TemplatePropertyTarget> targets;
+        targets.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+            targets.push_back({objectId, std::nullopt, std::nullopt, path});
+        return targets;
+    };
+    const auto matches_any_object_search = [&](const std::vector<FieldPathSegment> &path,
+                                                const char *label) {
+        return std::any_of(objectIds.begin(), objectIds.end(), [&](const int objectId) {
+            return field_matches_search(document, objectId, std::nullopt, path, label);
+        });
+    };
+    const auto matches_any_component_search = [&](const auto &matching,
+                                                   const std::vector<FieldPathSegment> &path,
+                                                   const char *label) {
+        for (std::size_t index = 0; index < matching.size() && index < objectIds.size(); ++index)
+            if (field_matches_search(document, objectIds[index], matching[index].first, path, label))
+                return true;
+        return false;
+    };
     const auto draw_common_boolean = [&](std::vector<FieldPathSegment> path, const char *label) {
-        if (!field_matches_search(document, selection.current().objectId.value_or(-1),
-                                  std::nullopt, path, label))
+        if (!matches_any_object_search(path, label))
             return;
         auto values = common_values(path, [](const Json &value) { return value.is_boolean(); });
         if (!values)
@@ -3258,9 +4033,20 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
             return value != values->front();
         });
         bool value = values->front().get<bool>();
-        begin_field(label, path);
+        const auto revertTargets = root_template_targets(path);
+        const bool overridden = std::any_of(revertTargets.begin(), revertTargets.end(),
+            [&](const TemplatePropertyTarget &target) {
+                return template_field_is_overridden(document, target.objectId,
+                                                    target.componentId, target.fieldPath);
+            });
+        begin_field(label, path, overridden, false, [&] {
+            draw_template_revert_context(document, commands, revertTargets, feedback_);
+        });
         ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
         const bool changed = ImGui::Checkbox("##value", &value);
+        if (overridden && ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, revertTargets, feedback_);
         ImGui::PopItemFlag();
         end_field();
         if (changed)
@@ -3269,8 +4055,7 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
     const auto draw_common_number = [&](std::vector<FieldPathSegment> path, const char *label,
                                         std::optional<float> minimum = std::nullopt,
                                         std::optional<float> maximum = std::nullopt) {
-        if (!field_matches_search(document, selection.current().objectId.value_or(-1),
-                                  std::nullopt, path, label))
+        if (!matches_any_object_search(path, label))
             return;
         auto values = common_values(path, [](const Json &value) {
             return value.is_number() && std::isfinite(value.get<double>());
@@ -3283,13 +4068,35 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
         float value = json_float(&values->front(), 0.0f);
         const bool reveal = consume_reveal_target(selection.current().objectId.value_or(-1),
                                                   std::nullopt, path);
-        begin_field(label, path);
+        const auto revertTargets = root_template_targets(path);
+        const bool overridden = std::any_of(revertTargets.begin(), revertTargets.end(),
+            [&](const TemplatePropertyTarget &target) {
+                return template_field_is_overridden(document, target.objectId,
+                                                    target.componentId, target.fieldPath);
+            });
+        begin_field(label, path, overridden, false, [&] {
+            draw_template_revert_context(document, commands, revertTargets, feedback_);
+        });
         if (reveal)
             ImGui::SetKeyboardFocusHere();
         ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
-        const char *formatStr = "%.2f";
+        const ImGuiID valueId = ImGui::GetID("##value");
+        const bool valueActive = ImGui::GetActiveID() == valueId;
+        const bool useFullPrecision = valueActive ||
+            ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+        const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
+        const float originalValue = value;
         const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
                                                ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::IsItemActivated())
+        {
+            value = originalValue;
+            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->ReloadUserBufAndSelectAll();
+        }
+        if (overridden && ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, revertTargets, feedback_);
         ImGui::PopItemFlag();
         if (reveal)
             ImGui::SetScrollHereY(0.5f);
@@ -3469,10 +4276,146 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
 
                 if (headerOpen)
                 {
+                const std::vector<FieldPathSegment> colliderLayerPath{std::string("collisionGroup")};
+                if (type == 3 && matches_any_component_search(matching, colliderLayerPath, "Layer"))
+                {
+                    const LayerSettings fallbackLayers = default_layer_settings();
+                    const LayerSettings &effectiveLayers = layerSettings_ != nullptr ? *layerSettings_ : fallbackLayers;
+                    std::vector<std::optional<std::uint8_t>> selectedLayers;
+                    std::vector<std::uint64_t> selectedGroups;
+                    selectedLayers.reserve(matching.size());
+                    selectedGroups.reserve(matching.size());
+                    for (std::size_t index = 0; index < matching.size(); ++index)
+                    {
+                        const auto &target = matching[index];
+                        const Json *group = address_value(document, objectIds[index],
+                            target.second != nullptr
+                                ? std::optional<int>(target.first)
+                                : std::nullopt,
+                            {std::string("collisionGroup")});
+                        std::uint64_t value = 1;
+                        if (group != nullptr && group->is_number_unsigned())
+                            value = group->get<std::uint64_t>();
+                        else if (group != nullptr && group->is_number_integer() &&
+                                 group->get<std::int64_t>() >= 0)
+                            value = static_cast<std::uint64_t>(group->get<std::int64_t>());
+                        selectedGroups.push_back(value);
+                        selectedLayers.push_back(collision_group_to_layer(value));
+                    }
+                    const bool mixedLayer = std::any_of(selectedLayers.begin() + 1, selectedLayers.end(),
+                        [&](const auto &value) { return value != selectedLayers.front(); });
+                    const bool mixedGroup = std::any_of(selectedGroups.begin() + 1, selectedGroups.end(),
+                        [&](const auto value) { return value != selectedGroups.front(); });
+                    const std::string layerLabel = mixedLayer || mixedGroup ? "<Mixed>"
+                        : selectedLayers.front()
+                            ? layer_display_label(effectiveLayers, *selectedLayers.front())
+                            : "Custom (" + std::to_string(selectedGroups.front()) + ")";
+                    bool layerOverridden = false;
+                    for (std::size_t index = 0; index < matching.size(); ++index)
+                    {
+                        const auto &target = matching[index];
+                        const int componentId = target.second != nullptr ? target.first : -1;
+                        layerOverridden = layerOverridden ||
+                            template_field_is_overridden(document, objectIds[index],
+                                componentId, colliderLayerPath) ||
+                                template_field_is_overridden(document, objectIds[index],
+                                    componentId,
+                                    {std::string("collisionMask")});
+                    }
+                    std::vector<int> componentIds;
+                    componentIds.reserve(matching.size());
+                    for (const auto &target : matching)
+                        componentIds.push_back(target.first);
+                    const auto layerOverrideTargets = paired_collider_layer_targets(objectIds, componentIds);
+                    const std::vector<std::vector<FieldPathSegment>> layerOverridePaths{
+                        colliderLayerPath, {std::string("collisionMask")}};
+                    begin_field("Layer", colliderLayerPath, layerOverridden, false, [&] {
+                        draw_template_revert_context(document, commands, layerOverrideTargets,
+                                                     layerOverridePaths, feedback_);
+                    });
+                    const bool layerPopupOpen = ImGui::BeginCombo("##common_collider_layer", layerLabel.c_str());
+                    if (layerOverridden && ImGui::IsItemHovered())
+                        ImGui::SetItemTooltip("This field overrides its linked template value.");
+                    if (layerPopupOpen)
+                    {
+                        for (std::size_t layer = 0; layer < LayerCount; ++layer)
+                        {
+                            const auto layerIndex = static_cast<std::uint8_t>(layer);
+                            if (!ImGui::Selectable(layer_display_label(effectiveLayers, layer).c_str(),
+                                                   !mixedLayer && !mixedGroup &&
+                                                       selectedLayers.front() == layerIndex))
+                                continue;
+                            std::vector<std::pair<int, int>> colliderTargets;
+                            if (applyColliderLayerToDescendants_)
+                            {
+                                for (const int objectId : objectIds)
+                                    append_collider_targets(document, objectId, true, colliderTargets);
+                                std::sort(colliderTargets.begin(), colliderTargets.end());
+                                colliderTargets.erase(std::unique(colliderTargets.begin(), colliderTargets.end()),
+                                                      colliderTargets.end());
+                            }
+                            else
+                            {
+                                std::vector<int> componentIds;
+                                componentIds.reserve(matching.size());
+                                for (const auto &target : matching)
+                                    componentIds.push_back(target.first);
+                                colliderTargets = paired_collider_layer_targets(objectIds, componentIds);
+                            }
+                            std::vector<BatchPropertyEdit> edits;
+                            const auto group = layer_to_collision_group(layerIndex);
+                            const auto mask = layer_to_collision_mask(effectiveLayers, layerIndex);
+                            for (const auto &[targetObjectId, targetComponentId] : colliderTargets)
+                            {
+                                edits.push_back({address_for_document(document, targetObjectId,
+                                    targetComponentId, std::nullopt, {std::string("collisionGroup")}),
+                                    PropertyValue::of(group)});
+                                edits.push_back({address_for_document(document, targetObjectId,
+                                    targetComponentId, std::nullopt, {std::string("collisionMask")}),
+                                    PropertyValue::of(mask)});
+                            }
+                            const Selection current = selection.current();
+                            const auto result = commands.apply_batch(document, edits,
+                                                                     {current, current});
+                            if (result.status == CommandStatus::Rejected ||
+                                result.status == CommandStatus::StaleAddress)
+                                feedback_ = result.message;
+                            else
+                                feedback_.clear();
+                        }
+                        if (openLayerSettingsCallback_)
+                        {
+                            ImGui::Separator();
+                            if (ImGui::MenuItem("Layer Settings..."))
+                                openLayerSettingsCallback_();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::PushID(stable_field_id(colliderLayerPath).c_str());
+                    draw_template_revert_context(document, commands, layerOverrideTargets,
+                                                 layerOverridePaths, feedback_);
+                    ImGui::PopID();
+                    end_field();
+                    const bool hasChildren = std::any_of(objectIds.begin(), objectIds.end(),
+                        [&](const int objectId) {
+                            const Json *object = find_document_object_by_id(document, objectId);
+                            if (object == nullptr)
+                                return false;
+                            const auto children = object->find("children");
+                            return children != object->end() && children->is_array() &&
+                                   !children->empty();
+                        });
+                    if (hasChildren)
+                    {
+                        ImGui::Checkbox("Apply to children", &applyColliderLayerToDescendants_);
+                    }
+                }
                 for (auto it = matching.front().second->begin(); it != matching.front().second->end(); ++it)
                 {
                     const std::string key = it.key();
                     if (key == "id" || key == "type" || key == "behaviors")
+                        continue;
+                    if (type == 3 && (key == "collisionGroup" || key == "collisionMask"))
                         continue;
                     std::vector<Json> values;
                     values.reserve(matching.size());
@@ -3495,8 +4438,7 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                     const bool mixed = std::any_of(values.begin() + 1, values.end(),
                                                    [&](const Json &value) { return value != values.front(); });
                     const std::vector<FieldPathSegment> path{key};
-                    if (!field_matches_search(document, objectIds.front(), matching.front().first,
-                                              path, key))
+                    if (!matches_any_component_search(matching, path, key.c_str()))
                         continue;
                     const auto commit_component = [&](Json value) {
                         std::vector<BatchPropertyEdit> edits;
@@ -3533,14 +4475,57 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                                 targets.push_back(address_for_document(document, objectIds[index],
                                                                        matching[index].first, std::nullopt,
                                                                        path));
+                            std::vector<std::pair<int, int>> overriddenTargets;
+                            overriddenTargets.reserve(targets.size());
+                            for (const auto &target : targets)
+                            {
+                                if (target.componentId && template_field_is_overridden(
+                                        document, target.objectId, target.componentId, path))
+                                    overriddenTargets.emplace_back(target.objectId, *target.componentId);
+                            }
+                            ReferenceFieldOverride referenceOverride;
+                            referenceOverride.overridden = !overriddenTargets.empty();
+                            if (referenceOverride.overridden)
+                            {
+                                referenceOverride.revert = [this, &document, &commands,
+                                    overriddenTargets, path]() {
+                                    std::string error;
+                                    std::vector<TemplatePropertyTarget> targets;
+                                    targets.reserve(overriddenTargets.size());
+                                    for (const auto &[targetObjectId, targetComponentId] : overriddenTargets)
+                                        targets.push_back({targetObjectId, targetComponentId,
+                                                           std::nullopt, path});
+                                    if (revert_template_properties(document, commands, targets,
+                                                                   document.assetRoot, error))
+                                        feedback_.clear();
+                                    else
+                                        feedback_ = std::move(error);
+                                };
+                            }
                             draw_multi_asset_reference_field(document, commands, targets, values,
                                                              selection.current(), expectedAssetType, true,
                                                              assetLabel, browse, std::string{}, resourceIndex_,
-                                                             multiAssetBrowseCallback_);
+                                                             multiAssetBrowseCallback_,
+                                                             std::move(referenceOverride));
                             continue;
                         }
                     }
-                    begin_field(key.c_str(), path);
+                    std::vector<std::pair<int, int>> fieldOverrideTargets;
+                    fieldOverrideTargets.reserve(matching.size());
+                    for (std::size_t index = 0; index < matching.size(); ++index)
+                        if (template_field_is_overridden(document, objectIds[index],
+                                                         matching[index].first, path))
+                            fieldOverrideTargets.emplace_back(objectIds[index], matching[index].first);
+                    const auto show_override_tooltip = [&] {
+                        if (!fieldOverrideTargets.empty())
+                            ImGui::SetItemTooltip("This field overrides its linked template value.");
+                    };
+                    begin_field(key.c_str(), path, !fieldOverrideTargets.empty(),
+                                valueCategory == 2 || valueCategory == 3 || valueCategory == 4,
+                                [&] {
+                                    draw_template_revert_context(document, commands,
+                                        fieldOverrideTargets, {path}, feedback_);
+                                });
                     const ImGuiID labelId = ImGui::GetItemID();
                     const bool labelActivated = ImGui::IsItemActivated();
                     const bool labelActive = ImGui::IsItemActive();
@@ -3651,6 +4636,9 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                     {
                         bool value = values.front().get<bool>();
                         const bool changed = ImGui::Checkbox("##value", &value);
+                        show_override_tooltip();
+                        draw_template_revert_context(document, commands, fieldOverrideTargets,
+                                                     {path}, feedback_);
                         ImGui::PopItemFlag();
                         end_field();
                         if (changed)
@@ -3669,12 +4657,15 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
                         const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0,
                                                                 formatStr, ImGuiInputTextFlags_EnterReturnsTrue);
+                        show_override_tooltip();
                         if (ImGui::IsItemActivated())
                         {
                             value = originalValue;
                             if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
                                 state->ReloadUserBufAndSelectAll();
                         }
+                        draw_template_revert_context(document, commands, fieldOverrideTargets,
+                                                     {path}, feedback_);
                         const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
                         const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
                             (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
@@ -3695,12 +4686,15 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         }
                         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value,
                             nullptr, nullptr, "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
+                        show_override_tooltip();
                         if (ImGui::IsItemActivated())
                         {
                             value = originalValue;
                             if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
                                 state->ReloadUserBufAndSelectAll();
                         }
+                        draw_template_revert_context(document, commands, fieldOverrideTargets,
+                                                     {path}, feedback_);
                         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
                         const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
                             (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
@@ -3721,12 +4715,15 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         }
                         const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value,
                             nullptr, nullptr, "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
+                        show_override_tooltip();
                         if (ImGui::IsItemActivated())
                         {
                             value = originalValue;
                             if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
                                 state->ReloadUserBufAndSelectAll();
                         }
+                        draw_template_revert_context(document, commands, fieldOverrideTargets,
+                                                     {path}, feedback_);
                         const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
                         const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
                             (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
@@ -3749,6 +4746,9 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         std::memcpy(buffer.data(), stored.data(), stored.size());
                         const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
                                                               ImGuiInputTextFlags_EnterReturnsTrue);
+                        show_override_tooltip();
+                        draw_template_revert_context(document, commands, fieldOverrideTargets,
+                                                     {path}, feedback_);
                         const bool shouldCommit = changed || ImGui::IsItemDeactivatedAfterEdit();
                         ImGui::PopItemFlag();
                         end_field();
@@ -3762,7 +4762,15 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
         }
     }
     if (!feedback_.empty())
-        ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", feedback_.c_str());
+    {
+        const bool success = feedback_.starts_with("Applied") || feedback_.starts_with("Added") ||
+            feedback_.starts_with("Removed") || feedback_.starts_with("Pasted") ||
+            feedback_.starts_with("Reset") || feedback_.starts_with("Reverted") ||
+            feedback_.starts_with("Relinked") || feedback_.starts_with("Unpacked");
+        const ImVec4 color = success ? ImVec4(0.45f, 0.82f, 0.55f, 1.0f)
+                                     : ImVec4(0.95f, 0.55f, 0.38f, 1.0f);
+        ImGui::TextColored(color, "%s", feedback_.c_str());
+    }
     ImGui::PopID();
 }
 

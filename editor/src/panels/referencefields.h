@@ -39,6 +39,12 @@ using AssetBrowseCallback = std::function<void(PropertyAddress, std::string, boo
 using MultiAssetBrowseCallback =
     std::function<void(std::vector<PropertyAddress>, Selection, std::string, bool)>;
 
+struct ReferenceFieldOverride
+{
+    bool overridden = false;
+    std::function<void()> revert;
+};
+
 struct AssetCompletionResult
 {
     bool applied = false;
@@ -66,10 +72,6 @@ SceneReferenceInfo inspect_scene_reference(const DocumentSession &document, cons
                                            std::string_view expectedTarget);
 bool validate_scene_reference_assignment(const DocumentSession &document, const Json &value,
                                          std::string_view expectedTarget, bool nullable, std::string &error);
-bool draw_template_reference_kind_control(int objectId, int componentId,
-                                         std::size_t behaviorOrdinal,
-                                         std::string_view controlId,
-                                         std::optional<std::string> &declaredKind);
 Json make_template_reference_binding_declaration(int ownerId, int componentId,
                                                  std::size_t behaviorOrdinal,
                                                  std::string_view fieldName,
@@ -88,14 +90,16 @@ bool validate_asset_reference_assignment(const DocumentSession &document, const 
 void draw_scene_reference_field(DocumentSession &document, EditCommandService &commands,
                                 int objectId, int componentId,
                                 std::size_t behaviorOrdinal, const std::vector<FieldPathSegment> &path,
-                                std::string_view expectedTarget, bool nullable, const char *label);
+                                std::string_view expectedTarget, bool nullable, const char *label,
+                                ReferenceFieldOverride overrideInfo = {});
 void draw_asset_reference_field(DocumentSession &document, EditCommandService &commands,
                                 int objectId, std::optional<int> componentId,
                                 std::optional<std::size_t> behaviorOrdinal,
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedAssetType, bool nullable, const char *label,
                                 const AssetBrowseCallback &browse = {}, Json clearValue = nullptr,
-                                ResourceIndex *resourceIndex = nullptr);
+                                ResourceIndex *resourceIndex = nullptr,
+                                ReferenceFieldOverride overrideInfo = {});
 void draw_multi_asset_reference_field(DocumentSession &document, EditCommandService &commands,
                                       const std::vector<PropertyAddress> &targets,
                                       const std::vector<Json> &values,
@@ -105,5 +109,6 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
                                       const AssetBrowseCallback &browse = {},
                                       Json clearValue = nullptr,
                                       ResourceIndex *resourceIndex = nullptr,
-                                      const MultiAssetBrowseCallback &multiBrowse = {});
+                                      const MultiAssetBrowseCallback &multiBrowse = {},
+                                      ReferenceFieldOverride overrideInfo = {});
 } // namespace platformator_editor

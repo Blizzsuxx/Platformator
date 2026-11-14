@@ -54,7 +54,8 @@ struct ValidationResult
     }
 };
 
-ValidationResult validate_document(const DocumentSession &document);
+ValidationResult validate_document(const DocumentSession &document,
+                                   const Json &behaviorCatalog = Json::object());
 std::vector<int> validation_object_ids_for_resource_consumers(
     const std::vector<ResourceConsumer> &consumers, const DocumentIdentity &document);
 
@@ -104,12 +105,14 @@ class ValidationService
     ValidationService(const ValidationService &) = delete;
     ValidationService &operator=(const ValidationService &) = delete;
 
-    std::uint64_t request(const DocumentSession &document, bool forceFresh = false);
+    std::uint64_t request(const DocumentSession &document, bool forceFresh = false,
+                          const Json &behaviorCatalog = Json::object());
     // Revalidate only the supplied object IDs and merge those results with the
     // last complete result for the same document structure. If no compatible
     // complete base exists, this safely falls back to a full validation.
     std::uint64_t request_changed(const DocumentSession &document,
-                                  const std::vector<int> &changedObjectIds);
+                                  const std::vector<int> &changedObjectIds,
+                                  const Json &behaviorCatalog = Json::object());
     void set_wake_callback(std::function<void()> callback);
     std::optional<ValidationCompletion> take_current(const DocumentSession &document);
     void cancel() noexcept;

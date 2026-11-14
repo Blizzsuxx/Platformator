@@ -67,17 +67,6 @@ int run(int argc, char *args[], const std::string &defaultScenePath)
 {
     try
     {
-        const bool catalogRequested =
-            std::any_of(args + 1, args + argc, [](const char *argument) {
-                return argument != nullptr && std::string_view(argument) == "--editor-catalog";
-            });
-        if (catalogRequested)
-        {
-            if (argc != 2 || args[1] == nullptr || std::string_view(args[1]) != "--editor-catalog")
-                throw std::runtime_error("--editor-catalog cannot be combined with runtime arguments.");
-            std::cout << exportRegisteredBehaviorCatalog().dump() << '\n';
-            return 0;
-        }
         return run(parseRuntimeOptions(argc, args, defaultScenePath));
     }
     catch (const std::exception &error)

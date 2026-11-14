@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <SDL3/SDL.h>
@@ -390,48 +391,6 @@ bool validate_scene_reference_assignment(const DocumentSession &document, const 
     return false;
 }
 
-bool draw_template_reference_kind_control(int objectId, int componentId,
-                                          std::size_t behaviorOrdinal,
-                                          std::string_view controlId,
-                                          std::optional<std::string> &declaredKind)
-{
-    const std::string label(controlId);
-    ImGui::PushID(objectId);
-    ImGui::PushID(componentId);
-    ImGui::PushID(static_cast<int>(behaviorOrdinal));
-    ImGui::PushID(label.c_str());
-    const char *preview = declaredKind
-        ? (declaredKind->compare("Component") == 0 ? "Component" : "GameObject")
-        : "Not declared";
-    bool changed = false;
-    if (ImGui::BeginCombo(("Reference kind##" + label).c_str(), preview))
-    {
-        if (ImGui::Selectable("Not a reference", !declaredKind))
-        {
-            declaredKind.reset();
-            changed = true;
-        }
-        if (ImGui::Selectable("GameObject", declaredKind == "GameObject"))
-        {
-            declaredKind = "GameObject";
-            changed = true;
-        }
-        if (ImGui::Selectable("Component", declaredKind == "Component"))
-        {
-            declaredKind = "Component";
-            changed = true;
-        }
-        ImGui::EndCombo();
-    }
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Declare the meaning of this opaque integer for safe template remapping.");
-    ImGui::PopID();
-    ImGui::PopID();
-    ImGui::PopID();
-    ImGui::PopID();
-    return changed;
-}
-
 Json make_template_reference_binding_declaration(int ownerId, int componentId,
                                                   std::size_t behaviorOrdinal,
                                                   std::string_view fieldName,
@@ -552,18 +511,25 @@ bool validate_asset_reference_assignment(const DocumentSession &document, const 
     return false;
 }
 
+namespace
+{
+std::string asset_reference_key(const std::vector<PropertyAddress> &targets);
+void remember_asset_validation_error(const std::string &key, std::uint64_t valueRevision,
+                                     std::string message);
+void clear_asset_validation_error(const std::string &key);
+void show_asset_validation_error(const std::string &key, std::uint64_t valueRevision);
+} // namespace
+
 void draw_scene_reference_field(DocumentSession &document, EditCommandService &commands,
                                 int objectId, int componentId, std::size_t behaviorOrdinal,
                                 const std::vector<FieldPathSegment> &path,
-                                std::string_view expectedTarget, bool nullable, const char *label)
+                                std::string_view expectedTarget, bool nullable, const char *label,
+                                ReferenceFieldOverride overrideInfo)
 {
     push_field_id(objectId, componentId, behaviorOrdinal, path);
     const Json *current = read_path(property_owner(document, objectId, componentId, behaviorOrdinal), path);
     const Json defaultNull = nullptr;
     const auto info = inspect_scene_reference(document, current == nullptr ? defaultNull : *current, expectedTarget);
-    if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
-        info.state == ReferenceState::Invalid)
-        ImGui::TextWrapped("%s: reference unavailable. Choose a replacement.", label);
     const std::string targetType = expectedTarget == "GameObject"
         ? "GameObject" : std::string(expectedTarget) + " component";
     const std::string cleanInfoLabel = (info.state == ReferenceState::Resolved && info.fileId.has_value())
@@ -574,6 +540,8 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
         : info.state == ReferenceState::Resolved
             ? (cleanInfoLabel.empty() ? targetType + " (selected)" : targetType + ": " + cleanInfoLabel)
             : "Missing " + targetType;
+    const std::string validationKey = asset_reference_key({
+        address_for_document(document, objectId, componentId, behaviorOrdinal, path)});
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
     const float available = ImGui::GetContentRegionAvail().x;
@@ -583,23 +551,38 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
     ImGui::InvisibleButton("##scene-ref-label", ImVec2(labelWidth, frameHeight));
     draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
                                 labelWidth, frameHeight, label,
-                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                ImGui::GetColorU32(overrideInfo.overridden
+                                    ? ImGuiCol_NavHighlight : ImGuiCol_TextDisabled),
                                 ImGui::IsItemHovered());
+    if (overrideInfo.overridden && ImGui::IsItemHovered())
+        ImGui::SetTooltip("This field overrides its linked template value.");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x));
     auto assign = [&](Json value) {
         std::string error;
         if (!validate_scene_reference_assignment(document, value, expectedTarget, nullable, error))
         {
-            ImGui::SetTooltip("%s", error.c_str());
+            remember_asset_validation_error(validationKey, document.valueRevision, std::move(error));
             return;
         }
+        clear_asset_validation_error(validationKey);
         commands.set_property(document,
                               address_for_document(document, objectId, componentId,
                                                    behaviorOrdinal, path),
                               std::move(value));
     };
-    if (ImGui::BeginCombo("##reference-selector", identity.c_str()))
+    if (overrideInfo.overridden)
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+    const bool comboOpen = ImGui::BeginCombo("##reference-selector", identity.c_str());
+    if (overrideInfo.overridden)
+        ImGui::PopStyleColor();
+    if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
+        info.state == ReferenceState::Invalid)
+        ImGui::SetItemTooltip("%s", info.label.c_str());
+    else if (overrideInfo.overridden)
+        ImGui::SetItemTooltip("This field overrides its linked template value.");
+    show_asset_validation_error(validationKey, document.valueRevision);
+    if (comboOpen)
     {
         auto filterBuffer = load_scene_reference_search_buffer();
         ImGui::SetNextItemWidth(-FLT_MIN);
@@ -628,6 +611,12 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
             ImGui::PopID();
         }
         ImGui::EndCombo();
+    }
+    if (overrideInfo.overridden && ImGui::BeginPopupContextItem("SceneReferenceContextMenu"))
+    {
+        if (ImGui::MenuItem("Revert Property") && overrideInfo.revert)
+            overrideInfo.revert();
+        ImGui::EndPopup();
     }
     if (ImGui::BeginDragDropTarget())
     {
@@ -664,16 +653,78 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
 
 namespace
 {
-void draw_unresolved_asset_notice(const std::string &message)
+std::string asset_reference_tooltip(const std::string &rawPath, const AssetReferenceInfo &info)
 {
-    const float availWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-    const float lineHeight = ImGui::GetTextLineHeight();
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##unresolved-asset-notice", ImVec2(availWidth, lineHeight));
-    const std::string text = "Unresolved asset: " + message;
-    draw_clipped_property_label(
-        ImGui::GetWindowDrawList(), pos.x, pos.y, availWidth, lineHeight, text.c_str(),
-        ImGui::GetColorU32(ImGuiCol_TextDisabled), ImGui::IsItemHovered());
+    std::string tooltip = "Full path: " + (rawPath.empty() ? std::string("(unset)") : rawPath);
+    if ((info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
+         info.state == ReferenceState::Invalid) && !info.message.empty())
+        tooltip += "\n" + info.message;
+    return tooltip;
+}
+
+struct AssetValidationFeedback
+{
+    std::uint64_t valueRevision = 0;
+    std::string message;
+};
+
+std::unordered_map<std::string, AssetValidationFeedback> &asset_validation_feedback()
+{
+    static std::unordered_map<std::string, AssetValidationFeedback> feedback;
+    return feedback;
+}
+
+std::string asset_reference_key(const std::vector<PropertyAddress> &targets)
+{
+    std::string key;
+    for (const auto &target : targets)
+    {
+        key += std::to_string(target.identity.projectGeneration.value) + ":" +
+            std::to_string(target.identity.tabId.value) + ":" +
+            std::to_string(target.identity.documentGeneration.value) + ":" +
+            std::to_string(target.objectId) + ":" +
+            std::to_string(target.componentId.value_or(-1)) + ":" +
+            std::to_string(target.behaviorOrdinal ? *target.behaviorOrdinal :
+                std::numeric_limits<std::size_t>::max()) + ";";
+        for (const auto &segment : target.fieldPath)
+        {
+            if (const auto *name = std::get_if<std::string>(&segment))
+                key += "s" + std::to_string(name->size()) + ":" + *name + ";";
+            else
+                key += "i" + std::to_string(std::get<std::size_t>(segment)) + ";";
+        }
+        key.push_back('|');
+    }
+    return key;
+}
+
+void remember_asset_validation_error(const std::string &key, std::uint64_t valueRevision,
+                                     std::string message)
+{
+    auto &feedback = asset_validation_feedback();
+    if (feedback.size() >= 128 && !feedback.contains(key))
+        feedback.erase(feedback.begin());
+    feedback[key] = {valueRevision, std::move(message)};
+}
+
+void clear_asset_validation_error(const std::string &key)
+{
+    asset_validation_feedback().erase(key);
+}
+
+void show_asset_validation_error(const std::string &key, std::uint64_t valueRevision)
+{
+    auto &feedback = asset_validation_feedback();
+    const auto found = feedback.find(key);
+    if (found == feedback.end())
+        return;
+    if (found->second.valueRevision != valueRevision)
+    {
+        feedback.erase(found);
+        return;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetItemTooltip("%s", found->second.message.c_str());
 }
 } // namespace
 
@@ -683,7 +734,8 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                 const std::vector<FieldPathSegment> &path,
                                 std::string_view expectedAssetType, bool nullable, const char *label,
                                 const AssetBrowseCallback &browse, Json clearValue,
-                                ResourceIndex *resourceIndex)
+                                ResourceIndex *resourceIndex,
+                                ReferenceFieldOverride overrideInfo)
 {
     push_field_id(objectId, componentId, behaviorOrdinal, path);
     const Json *current = read_path(property_owner(document, objectId, componentId, behaviorOrdinal), path);
@@ -712,9 +764,6 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                                               DocumentGeneration{document.documentGeneration}},
                              objectId, componentId, std::move(role)});
     }
-    const std::string assetType = expectedAssetType == "AnimationClip" ? "Animation clip asset"
-        : expectedAssetType.empty() || expectedAssetType == "Asset" ? "Asset"
-        : std::string(expectedAssetType) + " asset";
     const std::string display = !info.path.empty()
         ? std::filesystem::path(info.path).filename().string()
         : "None";
@@ -723,21 +772,37 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
     const float available = ImGui::GetContentRegionAvail().x;
-    const float labelWidth = std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f));
+    const bool hasLabel = label != nullptr && label[0] != '\0';
+    const float labelWidth = hasLabel
+        ? std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f)) : 0.0f;
     const float frameHeight = ImGui::GetFrameHeight();
-    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##asset-ref-label", ImVec2(labelWidth, frameHeight));
-    draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
-                                labelWidth, frameHeight, label,
-                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                                ImGui::IsItemHovered());
-    ImGui::SameLine();
-    const float clearWidth = nullable
-        ? ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x
-        : 0.0f;
+    if (hasLabel)
+    {
+        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##asset-ref-label", ImVec2(labelWidth, frameHeight));
+        draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
+                                    labelWidth, frameHeight, label,
+                                    ImGui::GetColorU32(overrideInfo.overridden
+                                        ? ImGuiCol_NavHighlight : ImGuiCol_TextDisabled),
+                                    ImGui::IsItemHovered());
+        if (overrideInfo.overridden && ImGui::IsItemHovered())
+            ImGui::SetTooltip("This field overrides its linked template value.");
+        ImGui::SameLine();
+    }
+    const std::string validationKey = asset_reference_key({
+        address_for_document(document, objectId, componentId, behaviorOrdinal, path)});
+    if (overrideInfo.overridden)
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
     const bool choose = ImGui::Button((display + "##asset-selector").c_str(),
-                                      {std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
-    ImGui::SetItemTooltip("Full path: %s", rawPath.empty() ? "(unset)" : rawPath.c_str());
+                                      {std::max(1.0f, ImGui::GetContentRegionAvail().x), 0.0f});
+    if (overrideInfo.overridden)
+        ImGui::PopStyleColor();
+    const auto referenceTooltip = asset_reference_tooltip(rawPath, info);
+    if (overrideInfo.overridden)
+        ImGui::SetItemTooltip("%s\nThis field overrides its linked template value.", referenceTooltip.c_str());
+    else
+        ImGui::SetItemTooltip("%s", referenceTooltip.c_str());
+    show_asset_validation_error(validationKey, document.valueRevision);
     if (ImGui::BeginPopupContextItem("AssetReferenceContextMenu"))
     {
         if (ImGui::MenuItem("Copy Path", nullptr, false, !rawPath.empty()))
@@ -751,11 +816,14 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
         }
         if (nullable && ImGui::MenuItem("Clear", nullptr, false, !rawPath.empty()))
         {
+            clear_asset_validation_error(validationKey);
             commands.set_property(document,
                                   address_for_document(document, objectId, componentId,
                                                        behaviorOrdinal, path),
                                   clearValue);
         }
+        if (overrideInfo.overridden && ImGui::MenuItem("Revert Property") && overrideInfo.revert)
+            overrideInfo.revert();
         ImGui::EndPopup();
     }
     if (choose && browse)
@@ -784,28 +852,20 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
                 if (validate_asset_reference_assignment(document, dropped, expectedAssetType, nullable, error))
                 {
                     std::replace(dropped.begin(), dropped.end(), '\\', '/');
+                    clear_asset_validation_error(validationKey);
                     commands.set_property(document,
                         address_for_document(document, objectId, componentId,
                                              behaviorOrdinal, path), std::move(dropped));
                 }
                 else
+                {
+                    remember_asset_validation_error(validationKey, document.valueRevision, error);
                     ImGui::SetTooltip("%s", error.c_str());
+                }
             }
         }
         ImGui::EndDragDropTarget();
     }
-    if (nullable)
-    {
-        ImGui::SameLine();
-        if (ImGui::SmallButton((std::string("Clear##") + label).c_str()))
-            commands.set_property(document,
-                                  address_for_document(document, objectId, componentId,
-                                                       behaviorOrdinal, path),
-                                  clearValue);
-    }
-    if (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
-        info.state == ReferenceState::Invalid)
-        draw_unresolved_asset_notice(info.message);
     pop_field_id(path);
 }
 
@@ -955,7 +1015,8 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
                                       const AssetBrowseCallback &browse,
                                       Json clearValue,
                                       ResourceIndex *resourceIndex,
-                                      const MultiAssetBrowseCallback &multiBrowse)
+                                      const MultiAssetBrowseCallback &multiBrowse,
+                                      ReferenceFieldOverride overrideInfo)
 {
     if (targets.empty() || values.empty())
         return;
@@ -973,8 +1034,11 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
         : (!info.path.empty() ? std::filesystem::path(info.path).filename().string() : "None");
     const std::string rawPath = !mixed && frontValue.is_string()
         ? frontValue.get<std::string>() : std::string{};
+    const std::string validationKey = asset_reference_key(targets);
+    ImGui::PushID(validationKey.c_str());
 
     auto commit_all = [&](const Json &next) {
+        clear_asset_validation_error(validationKey);
         std::vector<BatchPropertyEdit> edits;
         edits.reserve(targets.size());
         for (const auto &target : targets)
@@ -985,23 +1049,39 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     ImGui::AlignTextToFramePadding();
     const float available = ImGui::GetContentRegionAvail().x;
-    const float labelWidth = std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f));
+    const bool hasLabel = label != nullptr && label[0] != '\0';
+    const float labelWidth = hasLabel
+        ? std::max(1.0f, std::min(124.0f * uiScale, available * 0.42f)) : 0.0f;
     const float frameHeight = ImGui::GetFrameHeight();
-    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##multi-asset-ref-label", ImVec2(labelWidth, frameHeight));
-    draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
-                                labelWidth, frameHeight, label,
-                                ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                                ImGui::IsItemHovered());
-    ImGui::SameLine();
-    const float clearWidth = nullable
-        ? ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x
-        : 0.0f;
+    if (hasLabel)
+    {
+        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##multi-asset-ref-label", ImVec2(labelWidth, frameHeight));
+        draw_clipped_property_label(ImGui::GetWindowDrawList(), cursorPos.x, cursorPos.y,
+                                    labelWidth, frameHeight, label,
+                                    ImGui::GetColorU32(overrideInfo.overridden
+                                        ? ImGuiCol_NavHighlight : ImGuiCol_TextDisabled),
+                                    ImGui::IsItemHovered());
+        if (overrideInfo.overridden && ImGui::IsItemHovered())
+            ImGui::SetTooltip("This field overrides its linked template value.");
+        ImGui::SameLine();
+    }
     ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+    if (overrideInfo.overridden)
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
     const bool choose = ImGui::Button((display + "##asset-selector").c_str(),
-                                      {std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth), 0.0f});
+                                      ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), 0.0f));
+    if (overrideInfo.overridden)
+        ImGui::PopStyleColor();
     ImGui::PopItemFlag();
-    ImGui::SetItemTooltip("Full path: %s", mixed ? "(multiple values)" : (rawPath.empty() ? "(unset)" : rawPath.c_str()));
+    const auto referenceTooltip = mixed
+        ? std::string("Multiple asset values.")
+        : asset_reference_tooltip(rawPath, info);
+    if (overrideInfo.overridden)
+        ImGui::SetItemTooltip("%s\nThis field overrides its linked template value.", referenceTooltip.c_str());
+    else
+        ImGui::SetItemTooltip("%s", referenceTooltip.c_str());
+    show_asset_validation_error(validationKey, document.valueRevision);
 
     if (ImGui::BeginPopupContextItem("MultiAssetReferenceContextMenu"))
     {
@@ -1016,6 +1096,8 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
         }
         if (nullable && ImGui::MenuItem("Clear", nullptr, false, mixed || !rawPath.empty()))
             commit_all(clearValue);
+        if (overrideInfo.overridden && ImGui::MenuItem("Revert Property") && overrideInfo.revert)
+            overrideInfo.revert();
         ImGui::EndPopup();
     }
 
@@ -1190,20 +1272,15 @@ void draw_multi_asset_reference_field(DocumentSession &document, EditCommandServ
                     commit_all(dropped);
                 }
                 else
+                {
+                    remember_asset_validation_error(validationKey, document.valueRevision, error);
                     ImGui::SetTooltip("%s", error.c_str());
+                }
             }
         }
         ImGui::EndDragDropTarget();
     }
 
-    if (nullable)
-    {
-        ImGui::SameLine();
-        if (ImGui::SmallButton((std::string("Clear##") + label).c_str()))
-            commit_all(clearValue);
-    }
-    if (!mixed && (info.state == ReferenceState::Dangling || info.state == ReferenceState::WrongKind ||
-                   info.state == ReferenceState::Invalid))
-        draw_unresolved_asset_notice(info.message);
+    ImGui::PopID();
 }
 } // namespace platformator_editor

@@ -207,8 +207,6 @@ WorkspaceActionResult DocumentWorkspace::set_project_roots(const std::filesystem
         const auto project = canonical_directory(projectRoot, "project root");
         const auto assets = canonical_directory(assetRoot, "asset root");
         std::error_code error;
-        if (!std::filesystem::is_regular_file(project / "CMakeLists.txt", error) || error)
-            return failed("project root must contain CMakeLists.txt: " + project.string());
         if (project == projectRoot_ && assets == assetRoot_)
             return completed();
         if (projectGeneration <= document_.projectGeneration)

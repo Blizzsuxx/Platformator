@@ -279,11 +279,23 @@ void validate_collider(const Json &component, int objectId, int componentId, Val
         bool valid = value != nullptr && (value->is_number_integer() || value->is_number_unsigned());
         if (valid && value->is_number_integer())
             valid = integer_value(value).value_or(-1) >= 0;
-        if (valid && value->is_number_unsigned())
-            valid = true;
+        std::uint64_t mask = 0;
+        if (valid)
+        {
+            if (value->is_number_unsigned())
+                mask = value->get<std::uint64_t>();
+            else
+                mask = static_cast<std::uint64_t>(value->get<std::int64_t>());
+            valid = mask <= std::numeric_limits<std::uint32_t>::max();
+            if (valid && std::string_view(field) == "collisionGroup")
+                valid = mask != 0 && (mask & (mask - 1)) == 0;
+        }
         if (!valid)
             add_issue(result, ValidationSeverity::Error, objectId, componentId, field,
-                      "Collision groups and masks must be nonnegative integer bit masks.", true);
+                      std::string(field) == "collisionGroup"
+                          ? "The collider active layer must be one nonzero 32-bit layer bit."
+                          : "The collider collision mask must be a nonnegative 32-bit value.",
+                      true);
     }
 }
 
@@ -393,8 +405,140 @@ void validate_audio(const DocumentSession &document, const Json &component,
     require_boolean(component, "autoPlay", "autoPlay", objectId, componentId, result);
 }
 
+const Json *find_behavior_descriptor(const Json &catalog, std::string_view name)
+{
+    const auto behaviors = catalog.find("behaviors");
+    if (behaviors == catalog.end() || !behaviors->is_array())
+        return nullptr;
+    for (const auto &behavior : *behaviors)
+        if (behavior.is_object() && behavior.value("name", std::string{}) == name)
+            return &behavior;
+    return nullptr;
+}
+
+bool behavior_value_matches(const Json &value, const Json &descriptor, std::string &reason)
+{
+    if (!descriptor.is_object() || !descriptor.contains("kind") || !descriptor["kind"].is_string())
+    {
+        reason = "behavior field descriptor is malformed";
+        return false;
+    }
+    const std::string kind = descriptor["kind"].get<std::string>();
+    if (kind == "optional")
+    {
+        if (value.is_null())
+            return true;
+        if (!descriptor.contains("element"))
+        {
+            reason = "optional field schema is missing its element type";
+            return false;
+        }
+        return behavior_value_matches(value, descriptor["element"], reason);
+    }
+    if (kind == "array")
+    {
+        if (!value.is_array() || !descriptor.contains("element"))
+        {
+            reason = "expected an array matching the behavior field schema";
+            return false;
+        }
+        for (const auto &entry : value)
+            if (!behavior_value_matches(entry, descriptor["element"], reason))
+            {
+                reason = "array element: " + reason;
+                return false;
+            }
+        return true;
+    }
+    if (kind == "boolean") return value.is_boolean();
+    if (kind == "signed_integer") return value.is_number_integer();
+    if (kind == "unsigned_integer")
+        return value.is_number_unsigned() || (value.is_number_integer() && value.get<std::int64_t>() >= 0);
+    if (kind == "number")
+        return value.is_number() && std::isfinite(value.get<double>());
+    if (kind == "string" || kind == "asset_reference") return value.is_string();
+    if (kind == "enum")
+    {
+        if (value.is_string())
+        {
+            if (!descriptor.contains("enum_values") || !descriptor["enum_values"].is_array())
+                return true;
+            return std::any_of(descriptor["enum_values"].begin(), descriptor["enum_values"].end(),
+                [&](const Json &entry) { return entry.value("name", std::string{}) == value.get<std::string>(); });
+        }
+        return value.is_number_integer();
+    }
+    if (kind == "vector2")
+        return value.is_object() && numeric_value(member(value, "x")).has_value() &&
+               numeric_value(member(value, "y")).has_value();
+    if (kind == "rectangle")
+        return value.is_object() && numeric_value(member(value, "x")).has_value() &&
+               numeric_value(member(value, "y")).has_value() &&
+               numeric_value(member(value, "w")).has_value() &&
+               numeric_value(member(value, "h")).has_value();
+    if (kind == "object_reference")
+    {
+        if (value.is_null() && descriptor.value("nullable", false))
+            return true;
+        return value.is_number_integer() && value.get<std::int64_t>() >= 0;
+    }
+    if (kind == "opaque_json") return true;
+    reason = "unsupported behavior field kind '" + kind + "'";
+    return false;
+}
+
+void validate_script(const Json &component, int objectId, int componentId,
+                     const Json &behaviorCatalog, ValidationResult &result)
+{
+    const Json *behaviors = member(component, "behaviors");
+    if (behaviors == nullptr || !behaviors->is_array())
+    {
+        add_issue(result, ValidationSeverity::Error, objectId, componentId, "behaviors",
+                  "A Script component must contain a behaviors array.", true);
+        return;
+    }
+    for (std::size_t index = 0; index < behaviors->size(); ++index)
+    {
+        const Json &record = (*behaviors)[index];
+        const std::string prefix = "behaviors[" + std::to_string(index) + "]";
+        if (!record.is_object() || !record.contains("type") || !record["type"].is_string() ||
+            record["type"].get_ref<const std::string &>().empty())
+        {
+            add_issue(result, ValidationSeverity::Error, objectId, componentId, prefix + ".type",
+                      "A behavior record must have a nonempty string type name.", true);
+            continue;
+        }
+        const std::string behaviorName = record["type"].get<std::string>();
+        const Json *descriptor = find_behavior_descriptor(behaviorCatalog, behaviorName);
+        if (descriptor == nullptr || !descriptor->value("field_schema_available", false) ||
+            !descriptor->contains("fields") || !(*descriptor)["fields"].is_array())
+        {
+            add_issue(result, ValidationSeverity::Warning, objectId, componentId, prefix + ".type",
+                      "Behavior source schema is unavailable; saved fields were preserved.", false);
+            continue;
+        }
+        if (descriptor->contains("scanner_warning") && (*descriptor)["scanner_warning"].is_string())
+            add_issue(result, ValidationSeverity::Warning, objectId, componentId, prefix,
+                      (*descriptor)["scanner_warning"].get<std::string>(), false);
+        for (const auto &field : (*descriptor)["fields"])
+        {
+            if (!field.is_object() || !field.contains("name") || !field["name"].is_string())
+                continue;
+            const std::string fieldName = field["name"].get<std::string>();
+            const auto value = record.find(fieldName);
+            if (value == record.end())
+                continue;
+            std::string reason;
+            if (!behavior_value_matches(*value, field, reason))
+                add_issue(result, ValidationSeverity::Error, objectId, componentId,
+                          prefix + "." + fieldName,
+                          "Saved value does not match the behavior field schema: " + reason, true);
+        }
+    }
+}
+
 void validate_component(const DocumentSession &document, const Json &component,
-                        int objectId, ValidationResult &result)
+                        int objectId, const Json &behaviorCatalog, ValidationResult &result)
 {
     const int componentId = component.at("id").get<int>();
     const auto type = integer_value(member(component, "type"));
@@ -422,7 +566,7 @@ void validate_component(const DocumentSession &document, const Json &component,
         validate_body(component, objectId, componentId, result);
         break;
     case SCRIPT:
-        // Behavior-specific fields belong to the game. Catalog validation is applied when a target is selected.
+        validate_script(component, objectId, componentId, behaviorCatalog, result);
         break;
     case SPRITE:
         validate_sprite(document, component, objectId, componentId, result);
@@ -435,7 +579,7 @@ void validate_component(const DocumentSession &document, const Json &component,
 }
 
 void validate_object_fields(const DocumentSession &document, const Json &object,
-                            ValidationResult &result)
+                            const Json &behaviorCatalog, ValidationResult &result)
 {
     const int objectId = object.at("id").get<int>();
     require_number(object, "rotation", "rotation", objectId, std::nullopt, result);
@@ -455,7 +599,7 @@ void validate_object_fields(const DocumentSession &document, const Json &object,
     const auto *components = member(object, "components");
     if (components != nullptr && components->is_array())
         for (const auto &component : *components)
-            validate_component(document, component, objectId, result);
+            validate_component(document, component, objectId, behaviorCatalog, result);
 }
 
 constexpr std::size_t MaximumLocalInputNodes = 16'384;
@@ -569,6 +713,11 @@ bool copy_validation_component(const Json &source, Json &destination,
                                   "sourceRectEnabled", "sourceRect"};
         std::copy(std::begin(selected), std::end(selected), fields);
         fieldCount = std::size(selected);
+    }
+    else if (type == SCRIPT)
+    {
+        fields[0] = "behaviors";
+        fieldCount = 1;
     }
     for (std::size_t index = 0; index < fieldCount; ++index)
         if (!copy_selected_member(source, destination, fields[index], nodes, bytes))
@@ -686,7 +835,7 @@ void bind_result_identity(ValidationCompletion &completion)
 
 } // namespace
 
-ValidationResult validate_document(const DocumentSession &document)
+ValidationResult validate_document(const DocumentSession &document, const Json &behaviorCatalog)
 {
     ValidationResult result;
     const auto structuralCheck = parse_document(document.root, document.documentGeneration,
@@ -713,7 +862,7 @@ ValidationResult validate_document(const DocumentSession &document)
     {
         const Json &object = *pending.back().object;
         pending.pop_back();
-        validate_object_fields(document, object, result);
+        validate_object_fields(document, object, behaviorCatalog, result);
         for (auto iter = object.at("children").rbegin(); iter != object.at("children").rend(); ++iter)
             pending.push_back({&*iter});
     }
@@ -752,6 +901,7 @@ struct ValidationService::Impl
         std::vector<int> replacedObjectIds;
         std::vector<LocalObject> localObjects;
         std::vector<int> inputFailures;
+        Json behaviorCatalog = Json::object();
     };
 
     mutable std::mutex mutex;
@@ -788,7 +938,7 @@ struct ValidationService::Impl
                 if (!job.incremental)
                 {
                     work::record(work::Counter::ValidationFullDocuments);
-                    job.completion.result = validate_document(job.snapshot);
+                    job.completion.result = validate_document(job.snapshot, job.behaviorCatalog);
                 }
                 else
                 {
@@ -804,7 +954,8 @@ struct ValidationService::Impl
                     });
                     for (const auto &local : job.localObjects)
                     {
-                        validate_object_fields(job.snapshot, local.input, job.completion.result);
+                        validate_object_fields(job.snapshot, local.input,
+                                               job.behaviorCatalog, job.completion.result);
                         work::record(work::Counter::ValidationLocalObjects);
                     }
                     for (const int objectId : job.inputFailures)
@@ -890,7 +1041,8 @@ void ValidationService::set_wake_callback(std::function<void()> callback)
     impl_->wakeCallback = std::move(callback);
 }
 
-std::uint64_t ValidationService::request(const DocumentSession &document, bool forceFresh)
+std::uint64_t ValidationService::request(const DocumentSession &document, bool forceFresh,
+                                         const Json &behaviorCatalog)
 {
     std::optional<Impl::Job> job;
     std::uint64_t requestId = 0;
@@ -932,6 +1084,7 @@ std::uint64_t ValidationService::request(const DocumentSession &document, bool f
         Impl::Job fullJob;
         fullJob.completion = std::move(completion);
         fullJob.snapshot = document;
+        fullJob.behaviorCatalog = behaviorCatalog;
         job.emplace(std::move(fullJob));
         if (impl_->active)
         {
@@ -950,12 +1103,13 @@ std::uint64_t ValidationService::request(const DocumentSession &document, bool f
 }
 
 std::uint64_t ValidationService::request_changed(const DocumentSession &document,
-                                                const std::vector<int> &changedObjectIds)
+                                                const std::vector<int> &changedObjectIds,
+                                                const Json &behaviorCatalog)
 {
     if (changedObjectIds.empty() ||
         !document.indexes.current_for(document.documentGeneration, document.structureRevision) ||
         changedObjectIds.size() > 4096)
-        return request(document);
+        return request(document, false, behaviorCatalog);
 
     const DocumentIdentity identity{ProjectGeneration{document.projectGeneration}, document.tabId,
                                     DocumentGeneration{document.documentGeneration}};
@@ -1015,6 +1169,7 @@ std::uint64_t ValidationService::request_changed(const DocumentSession &document
                 changedJob.completion = ValidationCompletion{identity, document.structureRevision,
                     document.valueRevision, requestId, {}};
                 changedJob.snapshot.assetRoot = document.assetRoot;
+                changedJob.behaviorCatalog = behaviorCatalog;
                 changedJob.baseResult = baseResult;
                 changedJob.baseRequestId = baseRequestId;
                 changedJob.replacedObjectIds = std::move(replacedIds);
@@ -1046,7 +1201,7 @@ std::uint64_t ValidationService::request_changed(const DocumentSession &document
     if (useFullValidation)
     {
         cancel();
-        return request(document);
+        return request(document, false, behaviorCatalog);
     }
     if (job)
         impl_->launch(std::move(*job));

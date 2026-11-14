@@ -90,7 +90,7 @@ std::optional<std::string_view> panel_for_semantic_node(std::string_view id) noe
         std::pair{std::string_view{"panel.scene"}, std::string_view{"main/panel/scene"}},
         std::pair{std::string_view{"panel.inspector"}, std::string_view{"main/panel/inspector"}},
         std::pair{std::string_view{"panel.console"}, std::string_view{"main/panel/console"}},
-        std::pair{std::string_view{"panel.run"}, std::string_view{"main/panel/run"}},
+        std::pair{std::string_view{"panel.project_settings"}, std::string_view{"main/panel/project_settings"}},
         std::pair{std::string_view{"panel.validation"}, std::string_view{"main/panel/validation"}},
         std::pair{std::string_view{"panel.game"}, std::string_view{"main/panel/game"}}};
     for (const auto &[panelId, rootId] : panelRoots)

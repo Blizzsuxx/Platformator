@@ -24,6 +24,7 @@ constexpr std::array kActions{
     EditorActionDescriptor{EditorAction::SelectMoveTool, "Move Tool", "W", true},
     EditorActionDescriptor{EditorAction::SelectRotateTool, "Rotate Tool", "E", true},
     EditorActionDescriptor{EditorAction::SelectScaleTool, "Scale Tool", "R", true},
+    EditorActionDescriptor{EditorAction::SelectRectangleTool, "Rectangle Tool", "T", true},
     EditorActionDescriptor{EditorAction::RenameSelection, "Rename", "F2", false, true},
     EditorActionDescriptor{EditorAction::DeleteSelection, "Delete Selection", "Delete", false, true},
     EditorActionDescriptor{EditorAction::DuplicateSelection, "Duplicate Selection", "Ctrl+D", false, true},
@@ -46,6 +47,7 @@ bool editor_action_allowed(EditorAction action, const EditorInputCapture &captur
         {
             if (action == EditorAction::SelectHandTool || action == EditorAction::SelectMoveTool ||
                 action == EditorAction::SelectRotateTool || action == EditorAction::SelectScaleTool ||
+                action == EditorAction::SelectRectangleTool ||
                 action == EditorAction::FrameSelected || action == EditorAction::FrameAll)
             {
                 return capture.sceneFocused || capture.hierarchyFocused;
@@ -89,6 +91,10 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
         if (!sceneOrHierarchy || shift || control)
             return std::nullopt;
         return EditorAction::SelectScaleTool;
+    case EditorKey::T:
+        if (!sceneOrHierarchy || shift || control)
+            return std::nullopt;
+        return EditorAction::SelectRectangleTool;
     case EditorKey::F2:
         if (!capture.hierarchyFocused || shift || control)
             return std::nullopt;

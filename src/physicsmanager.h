@@ -31,7 +31,7 @@ class PhysicsManager
     friend class Grid;
     friend class Rigidbody;
 
-  public:
+public:
     PhysicsManager();
     ~PhysicsManager();
 
@@ -65,7 +65,7 @@ class PhysicsManager
     void refreshSolverPairs(Collider *collider);
     void refreshResponse(Collider *collider);
 
-  private:
+private:
     void flushPendingColliderOperations();
 
     void updateSleepingStates(double timeDelta);

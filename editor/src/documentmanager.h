@@ -4,9 +4,11 @@
 #include "assetdocument.h"
 #include "panels/animation.h"
 #include "sessionids.h"
+#include "templates.h"
 #include "workspace.h"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -14,6 +16,7 @@
 
 namespace platformator_editor
 {
+struct LayerSettings;
 struct SceneViewState
 {
     float centerX = 0.0f;
@@ -24,7 +27,8 @@ struct SceneViewState
 enum class DocumentTabKind
 {
     Scene,
-    Animation
+    Animation,
+    Template
 };
 
 struct DocumentSourceStatus
@@ -57,6 +61,22 @@ struct SaveAllResult
     std::optional<TabId> failedTab;
 };
 
+struct TemplateRetargetFailure
+{
+    std::filesystem::path path;
+    std::string message;
+};
+
+struct TemplateRetargetResult
+{
+    std::size_t updatedCount = 0;
+    std::vector<TemplateRetargetFailure> failures;
+    bool recoveryStored = true;
+
+    bool succeeded() const noexcept { return failures.empty() && recoveryStored; }
+    operator std::size_t() const noexcept { return updatedCount; }
+};
+
 class DocumentTab
 {
   public:
@@ -67,6 +87,17 @@ class DocumentTab
     TabId id() const noexcept;
     DocumentIdentity identity() const noexcept;
     DocumentTabKind kind() const noexcept;
+    void set_kind(DocumentTabKind kind) noexcept { kind_ = kind; }
+    const std::filesystem::path &template_path() const noexcept { return templatePath_; }
+    void set_template_path(std::filesystem::path path) { templatePath_ = std::move(path); }
+    const nlohmann::json &template_reference_bindings() const noexcept;
+    void set_template_reference_bindings(nlohmann::json bindings);
+    bool auto_save_template() const noexcept { return templateAutoSave_; }
+    void set_auto_save_template(bool enabled) noexcept { templateAutoSave_ = enabled; }
+    bool auto_save_suspended_for_current_revision() const noexcept;
+    void suspend_auto_save_for_current_revision(std::string error);
+    void clear_auto_save_failure() noexcept;
+    const std::string &auto_save_error() const noexcept { return autoSaveError_; }
     EditCommandService &history() noexcept;
     const EditCommandService &history() const noexcept;
     DocumentWorkspace &workspace() noexcept;
@@ -93,6 +124,10 @@ class DocumentTab
     SelectionModel selection_;
     SceneViewState viewState_;
     std::vector<int> expandedHierarchyIds_;
+    std::filesystem::path templatePath_;
+    bool templateAutoSave_ = false;
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> autoSaveFailureRevision_;
+    std::string autoSaveError_;
     bool hasExpansionState_ = false;
     bool externalChangeAcknowledged_ = false;
     std::optional<FileIdentity> acknowledgedExternalIdentity_;
@@ -143,6 +178,9 @@ class AnimationDocumentTab
 class DocumentManager
 {
   public:
+    using TemplateBindingCollector = std::function<TemplateBindingCollection(
+        const DocumentSession &, const Json &, const Json &)>;
+
     DocumentManager(std::filesystem::path projectRoot,
                     std::filesystem::path assetRoot,
                     ProjectGeneration projectGeneration = ProjectGeneration{1});
@@ -156,6 +194,7 @@ class DocumentManager
     std::vector<TabId> animation_tab_ids() const;
     std::size_t tab_count() const noexcept;
     std::size_t animation_tab_count() const noexcept;
+    bool has_unsaved_changes() const noexcept;
     TabId active_animation_tab_id() const noexcept;
     AnimationDocumentTab *active_animation_tab() noexcept;
     const AnimationDocumentTab *active_animation_tab() const noexcept;
@@ -169,6 +208,15 @@ class DocumentManager
     TabId create_scene_tab();
     std::optional<TabId> open_scene(const std::filesystem::path &path,
                                    std::string *error = nullptr);
+    std::optional<TabId> open_scene_reusing_empty_tab(const std::filesystem::path &path,
+                                                      std::string *error = nullptr);
+    std::optional<TabId> open_template(const std::filesystem::path &path,
+                                      std::string *error = nullptr);
+    bool save_template_tab(TabId id, std::string *error = nullptr,
+                           bool allowExternalOverwrite = false,
+                           std::optional<FileIdentity> expectedExternalIdentity = std::nullopt);
+    bool revert_template_tab(TabId id, std::string *error = nullptr);
+    bool reload_template_tab(TabId id, std::string *error = nullptr);
     std::optional<TabId> open_animation(const std::filesystem::path &path,
                                         std::string *error = nullptr);
     WorkspaceActionResult save_scene_tab_as(const DocumentIdentity &identity,
@@ -189,7 +237,19 @@ class DocumentManager
     WorkspaceActionResult close_tab(TabId id, UnsavedDecision decision);
     WorkspaceActionResult set_project_roots(const std::filesystem::path &projectRoot,
                                             const std::filesystem::path &assetRoot,
-                                            ProjectGeneration generation);
+                                            ProjectGeneration generation,
+                                            bool discardDirtyDocuments = false);
+    std::vector<TabId> sync_layer_settings(const LayerSettings &settings);
+    std::uint32_t collision_group_layers_in_use() const noexcept;
+    std::size_t reconcile_template_asset(const std::filesystem::path &path);
+    TemplateRetargetResult retarget_template_asset_links(const std::filesystem::path &oldPath,
+                                                         const std::filesystem::path &newPath,
+                                                         bool directory);
+    TemplateRetargetResult retry_pending_template_asset_links();
+    void set_template_binding_collector(TemplateBindingCollector collector)
+    {
+        templateBindingCollector_ = std::move(collector);
+    }
 
   private:
     std::filesystem::path projectRoot_;
@@ -200,6 +260,7 @@ class DocumentManager
     std::vector<std::unique_ptr<AnimationDocumentTab>> animationTabs_;
     TabId activeTab_;
     TabId activeAnimationTab_;
+    TemplateBindingCollector templateBindingCollector_;
 
     std::unique_ptr<DocumentTab> make_tab();
     void deactivate_active_animation_panel() noexcept;

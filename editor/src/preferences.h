@@ -38,7 +38,6 @@ struct RunPreferences
     std::string buildPreset;
     std::string target;
     std::string executable;
-    std::string catalogProtocol = "unavailable";
     bool embeddedGameView = false;
     bool production = false;
     int width = 1280;
@@ -73,14 +72,22 @@ struct HostGeometryPreferences
     bool operator==(const HostGeometryPreferences &) const = default;
 };
 
+enum class SavedDocumentKind
+{
+    Scene,
+    Template,
+    Animation
+};
+
 struct SavedTabPreferences
 {
-    std::filesystem::path scenePath;
+    std::filesystem::path documentPath;
     float viewCenterX = 0.0f;
     float viewCenterY = 0.0f;
     float viewZoom = 1.0f;
     std::vector<int> expandedHierarchyIds;
     bool hasExpansionState = false;
+    SavedDocumentKind kind = SavedDocumentKind::Scene;
 
     bool operator==(const SavedTabPreferences &) const = default;
 };
@@ -105,12 +112,13 @@ struct WorkspacePreferences
         {"panel.game", main_host_layout_id},
         {"panel.hierarchy", main_host_layout_id}, {"panel.scene", main_host_layout_id},
         {"panel.inspector", main_host_layout_id}, {"panel.project", main_host_layout_id},
-        {"panel.console", main_host_layout_id}, {"panel.run", main_host_layout_id},
+        {"panel.console", main_host_layout_id}, {"panel.project_settings", main_host_layout_id},
         {"panel.validation", main_host_layout_id}};
     std::map<HostLayoutId, HostGeometryPreferences> hostGeometry{{main_host_layout_id, {}}};
     std::map<HostLayoutId, std::string> hostLayoutSettings;
     std::vector<SavedTabPreferences> openTabs;
     std::optional<std::filesystem::path> activeTabPath;
+    SavedDocumentKind activeDocumentKind = SavedDocumentKind::Scene;
     std::map<std::string, std::vector<int>> hiddenObjectIdsByScene;
     std::map<std::string, std::vector<int>> lockedObjectIdsByScene;
     SnapPreferences snap;
@@ -202,14 +210,49 @@ WorkspacePreferencesLoadResult load_workspace_preferences(const std::filesystem:
                                                           const std::filesystem::path &projectRoot);
 void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
                                      const std::filesystem::path &projectRoot);
+void apply_generated_project_run_defaults(WorkspacePreferences &preferences,
+                                          const std::filesystem::path &projectRoot);
 WorkspacePreferencesSaveResult save_workspace_preferences(const ProjectPreferencePaths &paths,
                                                           const WorkspacePreferences &preferences,
                                                           const std::string &layout,
                                                           bool writeSettings = true,
                                                           bool writeLayout = true);
+struct RecentProjectEntry
+{
+    std::string name;
+    std::filesystem::path rootPath;
+    std::int64_t lastOpenedUtc = 0;
+
+    bool operator==(const RecentProjectEntry &) const = default;
+};
+
+struct GlobalPreferences
+{
+    int version = 1;
+    std::optional<std::filesystem::path> lastProjectRoot;
+    std::vector<RecentProjectEntry> recentProjects;
+    std::optional<std::filesystem::path> rememberedPlatformatorRoot;
+
+    bool operator==(const GlobalPreferences &) const = default;
+};
+
+struct GlobalPreferencesLoadResult
+{
+    GlobalPreferences preferences;
+    std::string message;
+};
+
 LastWorkspaceLoadResult load_last_workspace(const std::filesystem::path &path);
 bool save_last_workspace(const std::filesystem::path &path,
                          const std::filesystem::path &projectRoot, std::string &error);
+GlobalPreferencesLoadResult load_global_preferences(const std::filesystem::path &path);
+bool save_global_preferences(const std::filesystem::path &path,
+                             const GlobalPreferences &preferences, std::string &error);
+void record_recent_project(GlobalPreferences &preferences,
+                           const std::filesystem::path &projectRoot,
+                           std::string_view displayName = {},
+                           std::int64_t timestampUtc = 0);
+void remove_recent_project(GlobalPreferences &preferences, const std::filesystem::path &projectRoot);
 void record_adopted_scene(WorkspacePreferences &preferences, const std::filesystem::path &scenePath);
 StartupSceneResolution resolve_startup_scene(const std::optional<std::filesystem::path> &explicitScene,
                                               const std::optional<std::filesystem::path> &recentScene,

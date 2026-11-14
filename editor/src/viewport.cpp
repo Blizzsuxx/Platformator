@@ -1133,6 +1133,11 @@ namespace platformator_editor
             cancel_gesture(commands, document);
             return;
         }
+        if (focusPending_)
+        {
+            ImGui::SetNextWindowFocus();
+            focusPending_ = false;
+        }
         if (!ImGui::Begin("Scene###panel.scene", &open_,
                           ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar))
         {
@@ -1192,59 +1197,101 @@ namespace platformator_editor
             tool_ = SceneTool::Scale;
         ImGui::SameLine(0.0f, 2.0f);
         if (icon_button(EditorIcon::RectTool, "##tool-rect", tool_ == SceneTool::Rectangle,
-                        "Rectangle Tool - Resize sprite and collider bounds", toolBtnSize))
+                        "Rectangle Tool (T) - Resize sprite and collider bounds", toolBtnSize))
             tool_ = SceneTool::Rectangle;
+        ImGui::SameLine(0.0f, 2.0f);
         ImGui::EndDisabled();
 
-        const float rightControlsWidth = 240.0f * uiScale;
+        const float rightControlsWidth = 320.0f * uiScale;
         const float currentX = ImGui::GetCursorPosX();
         const float availWidth = ImGui::GetContentRegionAvail().x + currentX;
-        if (availWidth > currentX + rightControlsWidth + 10.0f * uiScale)
+        const bool compactRightControls =
+            availWidth <= currentX + rightControlsWidth + 10.0f * uiScale;
+        if (!compactRightControls)
             ImGui::SameLine(availWidth - rightControlsWidth);
         else
-            ImGui::SameLine();
-
-        if (ImGui::SmallButton(showGrid_ ? "Grid" : "Grid (off)"))
-            showGrid_ = !showGrid_;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Toggle background grid display");
-
-        ImGui::SameLine();
-        char snapBuf[32];
-        std::snprintf(snapBuf, sizeof(snapBuf), "Snap: %.2g", snapPreferences.position);
-        if (ImGui::SmallButton(snapBuf))
-            ImGui::OpenPopup("##scene-snap-settings");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Configure position, rotation, and scale increments; hold Ctrl while dragging to snap");
-        if (ImGui::BeginPopup("##scene-snap-settings"))
         {
-            ImGui::DragFloat("Position step", &snapPreferences.position, 0.1f, 0.0001f, 1000000.0f, "%.2f");
-            ImGui::DragFloat("Rotation step (degrees)", &snapPreferences.rotationDegrees, 0.1f, 0.001f, 360.0f, "%.2f");
-            ImGui::DragFloat("Scale step", &snapPreferences.scale, 0.01f, 0.0001f, 10.0f, "%.2f");
-            const char *coordinateModes[] = {"World", "Local"};
-            int coordinateMode = snapPreferences.coordinateMode == "local" ? 1 : 0;
-            if (ImGui::Combo("Position coordinates", &coordinateMode, coordinateModes, 2))
-                snapPreferences.coordinateMode = coordinateMode == 1 ? "local" : "world";
-            ImGui::TextDisabled("Hold Ctrl while dragging to apply the configured increments.");
-            ImGui::EndPopup();
+            const float compactButtonWidth = ImGui::CalcTextSize("View...").x +
+                ImGui::GetStyle().FramePadding.x * 2.0f;
+            if (availWidth < currentX + compactButtonWidth + ImGui::GetStyle().ItemSpacing.x)
+                ImGui::NewLine();
+            else
+                ImGui::SameLine();
         }
+        bool frameSelected = frameSelectedRequested_;
+        bool frameAll = frameAllRequested_;
+        const auto drawSnapSettings = [&] {
+            if (ImGui::BeginPopup("##scene-snap-settings"))
+            {
+                ImGui::DragFloat("Position step", &snapPreferences.position, 0.1f, 0.0001f, 1000000.0f, "%.2f");
+                ImGui::DragFloat("Rotation step (degrees)", &snapPreferences.rotationDegrees, 0.1f, 0.001f, 360.0f, "%.2f");
+                ImGui::DragFloat("Scale step", &snapPreferences.scale, 0.01f, 0.0001f, 10.0f, "%.2f");
+                const char *coordinateModes[] = {"World", "Local"};
+                int coordinateMode = snapPreferences.coordinateMode == "local" ? 1 : 0;
+                if (ImGui::Combo("Position coordinates", &coordinateMode, coordinateModes, 2))
+                    snapPreferences.coordinateMode = coordinateMode == 1 ? "local" : "world";
+                ImGui::TextDisabled("Hold Ctrl while dragging to apply the configured increments.");
+                ImGui::EndPopup();
+            }
+        };
+        bool openCompactSnapSettings = false;
+        if (compactRightControls)
+        {
+            if (ImGui::SmallButton("View..."))
+                ImGui::OpenPopup("##scene-view-controls");
+            if (ImGui::BeginPopup("##scene-view-controls"))
+            {
+                if (ImGui::MenuItem("Grid", nullptr, showGrid_))
+                    showGrid_ = !showGrid_;
+                if (ImGui::MenuItem("Snap settings..."))
+                    openCompactSnapSettings = true;
+                char zoomLabel[48];
+                std::snprintf(zoomLabel, sizeof(zoomLabel), "Zoom: %d%% (reset)",
+                              static_cast<int>(std::round(viewZoom_ * 100.0f)));
+                if (ImGui::MenuItem(zoomLabel))
+                    viewZoom_ = 1.0f;
+                if (ImGui::MenuItem("Frame selected (F)"))
+                    frameSelected = true;
+                if (ImGui::MenuItem("Frame all (Shift+F)"))
+                    frameAll = true;
+                ImGui::EndPopup();
+            }
+        }
+        else
+        {
+            if (ImGui::SmallButton(showGrid_ ? "Grid" : "Grid (off)"))
+                showGrid_ = !showGrid_;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Toggle background grid display");
 
-        ImGui::SameLine();
-        char zoomBuf[32];
-        std::snprintf(zoomBuf, sizeof(zoomBuf), "%d%%", static_cast<int>(std::round(viewZoom_ * 100.0f)));
-        if (ImGui::SmallButton(zoomBuf))
-            viewZoom_ = 1.0f;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Viewport zoom level. Click to reset to 100%%.");
+            ImGui::SameLine();
+            char snapBuf[32];
+            std::snprintf(snapBuf, sizeof(snapBuf), "Snap: %.2g", snapPreferences.position);
+            if (ImGui::SmallButton(snapBuf))
+                ImGui::OpenPopup("##scene-snap-settings");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Configure position, rotation, and scale increments; hold Ctrl while dragging to snap");
 
-        ImGui::SameLine();
-        const bool frameSelected = ImGui::SmallButton("Frame") || frameSelectedRequested_;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Frame selected object (F)");
-        ImGui::SameLine();
-        const bool frameAll = ImGui::SmallButton("All") || frameAllRequested_;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Frame entire scene (Shift+F)");
+            ImGui::SameLine();
+            char zoomBuf[32];
+            std::snprintf(zoomBuf, sizeof(zoomBuf), "%d%%", static_cast<int>(std::round(viewZoom_ * 100.0f)));
+            if (ImGui::SmallButton(zoomBuf))
+                viewZoom_ = 1.0f;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Viewport zoom level. Click to reset to 100%%.");
+
+            ImGui::SameLine();
+            frameSelected = ImGui::SmallButton("Frame") || frameSelected;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Frame selected object (F)");
+            ImGui::SameLine();
+            frameAll = ImGui::SmallButton("All") || frameAll;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Frame entire scene (Shift+F)");
+        }
+        if (openCompactSnapSettings)
+            ImGui::OpenPopup("##scene-snap-settings");
+        drawSnapSettings();
 
         frameAllRequested_ = false;
         frameSelectedRequested_ = false;
@@ -1545,6 +1592,10 @@ namespace platformator_editor
             if (dispatch_editor_key(EditorKey::R, io.KeyShift, io.KeyCtrl, sceneCapture) ==
                 EditorAction::SelectScaleTool)
                 tool_ = SceneTool::Scale;
+        if (ImGui::IsKeyPressed(ImGuiKey_T))
+            if (dispatch_editor_key(EditorKey::T, io.KeyShift, io.KeyCtrl, sceneCapture) ==
+                EditorAction::SelectRectangleTool)
+                tool_ = SceneTool::Rectangle;
         if (!editingEnabled)
         {
             cancel_gesture(commands, document);
@@ -2475,7 +2526,7 @@ namespace platformator_editor
         add_tool("move", SceneTool::Move, "Move tool (W)");
         add_tool("rotate", SceneTool::Rotate, "Rotate tool (E)");
         add_tool("scale", SceneTool::Scale, "Scale tool (R)");
-        add_tool("rectangle", SceneTool::Rectangle, "Rectangle sizing tool");
+        add_tool("rectangle", SceneTool::Rectangle, "Rectangle sizing tool (T)");
 
         auto frameAll = make_node("frame-all", SemanticRole::Button, "Frame all Scene objects");
         frameAll.actions = {"activate"};

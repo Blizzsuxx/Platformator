@@ -172,6 +172,7 @@ class SceneViewportPanel
               std::function<SDL_Texture *(SDL_Texture *, int, int)> imageResolver = {});
     void set_visible(bool visible) noexcept;
     bool is_visible() const noexcept;
+    void request_focus() noexcept { focusPending_ = true; }
     void adjust_zoom(float factor) noexcept;
     void request_frame_selected() noexcept;
     void request_frame_all() noexcept;
@@ -249,6 +250,7 @@ class SceneViewportPanel
     bool panning_ = false;
     ViewportPoint panStart_{};
     bool open_ = true;
+    bool focusPending_ = false;
     bool hasView_ = false;
     std::uint64_t viewDocumentGeneration_ = 0;
     std::uint64_t viewProjectGeneration_ = 0;

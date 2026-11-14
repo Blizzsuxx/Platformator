@@ -231,14 +231,12 @@ void test_script_copy_and_reset_remove_unknown_default_overrides()
     rebuild_document_indexes(document);
 
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1,
-                      CatalogIdentity{"project", "debug", "game", "runner"});
+    catalog.configure(CatalogIdentity{"project", "debug", "game", "runner"});
     const Json schema{{"schema_version", 1},
         {"behaviors", Json::array({Json{{"name", "Move"}, {"field_schema_available", true},
             {"fields", Json::array({Json{{"name", "speed"}, {"kind", "number"}},
                                     Json{{"name", "label"}, {"kind", "string"}}})}}})}};
-    require(catalog.begin_query() && catalog.append_stdout(schema.dump()) &&
-                catalog.finish_query(0, std::chrono::milliseconds(1)),
+    require(catalog.set_source_catalog(schema),
             "script component field schema must become current");
 
     std::string error;

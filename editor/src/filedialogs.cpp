@@ -235,6 +235,8 @@ std::vector<FileDialogFilter> make_file_dialog_filters(AsyncRequestKind kind,
     case AsyncRequestKind::SaveAnimation:
         return {{"Animation sets", "animset"}};
     case AsyncRequestKind::OpenAsset:
+        if (expectedAssetType == "Template")
+            return {{"Platformator templates", "pttemplate"}};
         if (expectedAssetType == "Texture")
             return {{"Textures", "png;jpg;jpeg;bmp;gif;webp;tga;qoi;tif;tiff"}};
         if (expectedAssetType == "Audio")
@@ -316,8 +318,9 @@ FileDialogPathAction draw_file_dialog_path_entry(bool &open, std::string_view pr
         }
         else
         {
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel path entry"))
+            if (path[0] != '\0')
+                ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
                 action = cancel();
         }
         ImGui::EndPopup();

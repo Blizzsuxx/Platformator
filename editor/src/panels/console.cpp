@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -115,23 +116,22 @@ std::optional<std::string> source_file_url(const DiagnosticSourceLocation &sourc
     return url;
 }
 
-void set_clipboard_text(std::string_view value, std::string &feedback)
+std::string clipboard_feedback(std::string_view value)
 {
     if (value.find('\0') != std::string_view::npos)
-    {
-        feedback = "Clipboard text cannot represent embedded NUL bytes; retained output is unchanged.";
-        return;
-    }
+        return "Clipboard text cannot represent embedded NUL bytes; retained output is unchanged.";
     const std::string terminated(value);
-    feedback = SDL_SetClipboardText(terminated.c_str())
-                   ? "Copied to clipboard."
-                   : std::string("Clipboard copy failed: ") + SDL_GetError();
+    return SDL_SetClipboardText(terminated.c_str())
+        ? "Copied to clipboard."
+        : std::string("Clipboard copy failed: ") + SDL_GetError();
 }
 } // namespace
 
 void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
 {
     (void)status;
+    if (!feedback_.empty() && std::chrono::steady_clock::now() >= feedbackDeadline_)
+        feedback_.clear();
     itemBounds_.clear();
     drawnRows_.clear();
     focusedItem_.clear();
@@ -186,7 +186,7 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
     ImGui::BeginDisabled(console.text().empty());
     place(button_width("Copy All"));
     if (ImGui::Button("Copy All"))
-        set_clipboard_text(projection_.copy_all(console), feedback_);
+        set_feedback(clipboard_feedback(projection_.copy_all(console)));
     remember_item("copy-all");
     place(button_width("Clear"));
     if (ImGui::Button("Clear"))
@@ -195,14 +195,14 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         projection_.clear();
         selectedRow_.reset();
         projectedRevision_ = console.revision();
-        feedback_ = "Console output cleared.";
+        set_feedback("Console output cleared.");
     }
     remember_item("clear");
     ImGui::EndDisabled();
     place(button_width("Copy selected"));
     ImGui::BeginDisabled(!selectedRow_);
     if (ImGui::Button("Copy selected") && selectedRow_)
-        set_clipboard_text(projection_.copy_row(console, *selectedRow_), feedback_);
+        set_feedback(clipboard_feedback(projection_.copy_row(console, *selectedRow_)));
     ImGui::EndDisabled();
     remember_item("copy-selected");
     place(checkbox_width("Collapse repeats"));
@@ -298,15 +298,6 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
     draw_badge(EditorIcon::Error, "Error", "console-badge-error", filterState_.showErrors, filterState_.errorCount,
                ImVec4(0.70f, 0.20f, 0.20f, 1.0f));
 
-    if (console.truncated())
-    {
-        ImGui::TextDisabled("Older output removed at the 1 MiB retention limit; Copy All includes all retained bytes.");
-        remember_item("output");
-    }
-    if (projection_.omitted_rows() != 0)
-        ImGui::TextDisabled("%zu additional rows omitted from the index; retained raw output is still available with Copy All.",
-                            projection_.omitted_rows());
-
     const auto visibleRows = projection_.visible_rows(console.text());
     const float availableHeight = ImGui::GetContentRegionAvail().y;
     const bool hasSelection = selectedRow_.has_value() && *selectedRow_ < projection_.rows().size();
@@ -372,9 +363,9 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
                         if (url)
                         {
                             if (!SDL_OpenURL(url->c_str()))
-                                feedback_ = std::string("Could not open source file: ") + SDL_GetError();
+                                set_feedback(std::string("Could not open source file: ") + SDL_GetError());
                             else
-                                feedback_ = "Opened source file with the operating system association.";
+                                set_feedback("Opened source file with the operating system association.");
                         }
                     }
                 }
@@ -395,8 +386,6 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
         if (ImGui::SmallButton("Return to bottom"))
             projection_.return_to_bottom();
         remember_item("return-to-bottom");
-        ImGui::SameLine();
-        ImGui::TextDisabled("Follow is paused while browsing older rows.");
     }
 
     if (selectedRow_ && *selectedRow_ < projection_.rows().size())
@@ -425,16 +414,16 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
             if (ImGui::SmallButton("Open source"))
             {
                 if (!SDL_OpenURL(url->c_str()))
-                    feedback_ = std::string("Could not open source file: ") + SDL_GetError();
+                    set_feedback(std::string("Could not open source file: ") + SDL_GetError());
                 else
-                    feedback_ = "Opened source file with the operating system association.";
+                    set_feedback("Opened source file with the operating system association.");
             }
             remember_item("open-source");
             if (!url)
             {
                 ImGui::EndDisabled();
-                ImGui::SameLine();
-                ImGui::TextDisabled("Source file is not available.");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetItemTooltip("Source file is unavailable.");
             }
         }
         ImGui::BeginChild("ConsoleDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
@@ -446,6 +435,12 @@ void ConsolePanel::draw(const PipelineStatus &status, BoundedConsole &console)
 
     if (!feedback_.empty())
         ImGui::TextDisabled("%s", feedback_.c_str());
+}
+
+void ConsolePanel::set_feedback(std::string message)
+{
+    feedback_ = std::move(message);
+    feedbackDeadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(4);
 }
 
 void ConsolePanel::remember_item(std::string id)
@@ -504,7 +499,6 @@ std::vector<SemanticNode> ConsolePanel::semantic_nodes(const PipelineStatus &sta
     case PipelineStage::Idle: statusNode.value = "Idle"; break;
     case PipelineStage::Configuring: statusNode.value = "Configuring"; break;
     case PipelineStage::Building: statusNode.value = "Building"; break;
-    case PipelineStage::QueryingCatalog: statusNode.value = "Verifying behavior catalog"; break;
     case PipelineStage::Launching: statusNode.value = "Launching"; break;
     case PipelineStage::Running: statusNode.value = "Running"; break;
     }
@@ -563,13 +557,6 @@ std::vector<SemanticNode> ConsolePanel::semantic_nodes(const PipelineStatus &sta
 
     if (search_[0] != '\0')
         add_button(nodes, "clear-search", "Clear Console search", true);
-
-    constexpr const char *filterNames[] = {"All severities", "Errors", "Warnings", "Info"};
-    auto severity = make_node("severity", SemanticRole::Button, "Filter Console severity");
-    severity.value = filterNames[std::clamp(severityFilter_, 0, 3)];
-    severity.visible = true;
-    severity.actions = {"activate"};
-    nodes.push_back(std::move(severity));
 
     auto infoBadge = make_node("console-badge-info", SemanticRole::Button, "Toggle Info messages");
     infoBadge.value = filterState_.showInfo ? "Active" : "Inactive";
@@ -659,7 +646,7 @@ bool ConsolePanel::dispatch_semantic_action(const SemanticAction &action,
     }
     if (action.action == "activate" && action.nodeId == base + "copy-all")
     {
-        set_clipboard_text(projection_.copy_all(console), feedback_);
+        set_feedback(clipboard_feedback(projection_.copy_all(console)));
         return true;
     }
     if (action.action == "activate" && action.nodeId == base + "clear")
@@ -668,14 +655,14 @@ bool ConsolePanel::dispatch_semantic_action(const SemanticAction &action,
         projection_.clear();
         selectedRow_.reset();
         projectedRevision_ = console.revision();
-        feedback_ = "Console output cleared.";
+        set_feedback("Console output cleared.");
         return true;
     }
     if (action.action == "activate" && action.nodeId == base + "copy-selected")
     {
         if (!selectedRow_ || *selectedRow_ >= projection_.rows().size())
             return false;
-        set_clipboard_text(projection_.copy_row(console, *selectedRow_), feedback_);
+        set_feedback(clipboard_feedback(projection_.copy_row(console, *selectedRow_)));
         return true;
     }
     if (action.nodeId == base + "collapse-repeats" && action.action == "toggle")
@@ -699,36 +686,6 @@ bool ConsolePanel::dispatch_semantic_action(const SemanticAction &action,
     if (action.nodeId == base + "return-to-bottom" && action.action == "activate")
     {
         projection_.return_to_bottom();
-        return true;
-    }
-    if (action.nodeId == base + "severity" && action.action == "activate")
-    {
-        severityFilter_ = (severityFilter_ + 1) % 4;
-        if (severityFilter_ == 0)
-        {
-            filterState_.showInfo = true;
-            filterState_.showWarnings = true;
-            filterState_.showErrors = true;
-        }
-        else if (severityFilter_ == 1)
-        {
-            filterState_.showInfo = false;
-            filterState_.showWarnings = false;
-            filterState_.showErrors = true;
-        }
-        else if (severityFilter_ == 2)
-        {
-            filterState_.showInfo = false;
-            filterState_.showWarnings = true;
-            filterState_.showErrors = false;
-        }
-        else
-        {
-            filterState_.showInfo = true;
-            filterState_.showWarnings = false;
-            filterState_.showErrors = false;
-        }
-        projection_.set_severity_mask(filterState_.showInfo, filterState_.showWarnings, filterState_.showErrors);
         return true;
     }
     if ((action.nodeId == base + "console-badge-info" || action.nodeId == base + "info-badge") &&
@@ -777,9 +734,9 @@ bool ConsolePanel::dispatch_semantic_action(const SemanticAction &action,
             if (!url)
                 return false;
             if (!SDL_OpenURL(url->c_str()))
-                feedback_ = std::string("Could not open source file: ") + SDL_GetError();
+                set_feedback(std::string("Could not open source file: ") + SDL_GetError());
             else
-                feedback_ = "Opened source file with the operating system association.";
+                set_feedback("Opened source file with the operating system association.");
             selectedRow_ = rowIndex;
             return true;
         }

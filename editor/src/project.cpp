@@ -1,4 +1,6 @@
 #include "project.h"
+#include "layersettings.h"
+#include "documentio.h"
 
 #include <algorithm>
 #include <array>
@@ -635,10 +637,543 @@ ProjectRootCandidate validate_project_folder(const std::filesystem::path &projec
 {
     auto canonicalProject = canonical_directory(projectRoot, "project root");
     std::error_code error;
-    if (!std::filesystem::is_regular_file(canonicalProject / "CMakeLists.txt", error) || error)
-        throw std::invalid_argument("project root must contain CMakeLists.txt: " + canonicalProject.string());
-    const auto canonicalAssets = canonical_directory(canonicalProject / "assets", "asset root");
-    return {std::move(canonicalProject), canonicalAssets};
+    const bool hasCmake =
+        std::filesystem::is_regular_file(canonicalProject / "CMakeLists.txt", error) && !error;
+    error.clear();
+    const bool hasAssetsDir =
+        std::filesystem::is_directory(canonicalProject / "assets", error) && !error;
+    if (!hasCmake && !hasAssetsDir)
+    {
+        std::error_code sourceError;
+        const bool hasMainCpp = std::filesystem::is_regular_file(canonicalProject / "main.cpp", sourceError) &&
+                                !sourceError;
+        bool hasSceneFile = false;
+        for (const auto &entry : std::filesystem::directory_iterator(canonicalProject, error))
+        {
+            if (error)
+                break;
+            if (entry.is_regular_file(error) && entry.path().extension() == ".scene")
+            {
+                hasSceneFile = true;
+                break;
+            }
+        }
+        if (!hasSceneFile && !hasMainCpp)
+            throw std::invalid_argument(
+                "project root must contain CMakeLists.txt, assets/, main.cpp, or a .scene file: " +
+                canonicalProject.string());
+        return {canonicalProject, canonicalProject, true};
+    }
+    const auto canonicalAssets = hasAssetsDir
+        ? canonical_directory(canonicalProject / "assets", "asset root")
+        : canonicalProject;
+    return {std::move(canonicalProject), canonicalAssets, !hasCmake};
+}
+
+namespace
+{
+bool is_valid_project_identifier(std::string_view name) noexcept
+{
+    if (name.empty() || name.size() > 64)
+        return false;
+    const auto is_start = [](unsigned char ch) {
+        return std::isalpha(ch) != 0 || ch == '_';
+    };
+    const auto is_rest = [](unsigned char ch) {
+        return std::isalnum(ch) != 0 || ch == '_' || ch == '-';
+    };
+    if (!is_start(static_cast<unsigned char>(name.front())))
+        return false;
+    for (std::size_t i = 1; i < name.size(); ++i)
+    {
+        if (!is_rest(static_cast<unsigned char>(name[i])))
+            return false;
+    }
+    return true;
+}
+
+std::string sanitize_cmake_target_name(std::string_view raw)
+{
+    std::string result;
+    for (char ch : raw)
+    {
+        const unsigned char u = static_cast<unsigned char>(ch);
+        if (std::isalnum(u) != 0 || ch == '_')
+            result.push_back(ch);
+        else if (ch == '-' || ch == ' ')
+            result.push_back('_');
+    }
+    if (result.empty() || std::isdigit(static_cast<unsigned char>(result.front())) != 0)
+        result.insert(result.begin(), 'p');
+    return result;
+}
+
+bool is_platformator_source_root(const std::filesystem::path &candidate) noexcept
+{
+    if (candidate.empty())
+        return false;
+    std::error_code ec;
+    return std::filesystem::is_regular_file(candidate / "CMakeLists.txt", ec) && !ec &&
+           std::filesystem::is_regular_file(candidate / "include" / "platformator" / "runner.h", ec) && !ec;
+}
+} // namespace
+
+std::filesystem::path detect_platformator_source_root(const std::filesystem::path &hint)
+{
+    std::error_code ec;
+    auto probe = [&](std::filesystem::path start) -> std::filesystem::path {
+        if (start.empty())
+            return {};
+        start = std::filesystem::weakly_canonical(start, ec);
+        if (ec)
+            ec.clear();
+        for (int depth = 0; depth < 6 && !start.empty(); ++depth)
+        {
+            if (is_platformator_source_root(start))
+                return start;
+            const auto parent = start.parent_path();
+            if (parent == start)
+                break;
+            start = parent;
+        }
+        return {};
+    };
+    if (auto found = probe(hint); !found.empty())
+        return found;
+    if (auto found = probe(std::filesystem::current_path(ec)); !found.empty())
+        return found;
+    return {};
+}
+
+namespace
+{
+struct CmakeEnginePathSetting
+{
+    bool found = false;
+    bool editable = false;
+    std::size_t valueStart = 0;
+    std::size_t valueLength = 0;
+    std::filesystem::path value;
+};
+
+CmakeEnginePathSetting find_cmake_engine_path_setting(std::string_view contents)
+{
+    std::string lower(contents);
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    constexpr std::string_view variable = "platformator_engine_source_dir";
+    std::size_t search = 0;
+    while (search < lower.size())
+    {
+        const std::size_t setPos = lower.find("set", search);
+        if (setPos == std::string::npos)
+            break;
+        search = setPos + 3;
+        if ((setPos > 0 && (std::isalnum(static_cast<unsigned char>(lower[setPos - 1])) != 0 ||
+                            lower[setPos - 1] == '_')) ||
+            (search < lower.size() && (std::isalnum(static_cast<unsigned char>(lower[search])) != 0 ||
+                                      lower[search] == '_')))
+            continue;
+        std::size_t cursor = search;
+        while (cursor < lower.size() && std::isspace(static_cast<unsigned char>(lower[cursor])) != 0)
+            ++cursor;
+        if (cursor >= lower.size() || lower[cursor] != '(')
+            continue;
+        ++cursor;
+        while (cursor < lower.size() && std::isspace(static_cast<unsigned char>(lower[cursor])) != 0)
+            ++cursor;
+        const std::size_t nameStart = cursor;
+        while (cursor < lower.size() &&
+               (std::isalnum(static_cast<unsigned char>(lower[cursor])) != 0 || lower[cursor] == '_'))
+            ++cursor;
+        if (lower.substr(nameStart, cursor - nameStart) != variable)
+            continue;
+        CmakeEnginePathSetting result;
+        result.found = true;
+        while (cursor < lower.size() && std::isspace(static_cast<unsigned char>(lower[cursor])) != 0)
+            ++cursor;
+        if (cursor >= lower.size() || lower[cursor] == ')')
+            return result;
+        bool quoted = false;
+        if (contents[cursor] == '"')
+        {
+            quoted = true;
+            ++cursor;
+            const std::size_t valueStart = cursor;
+            while (cursor < contents.size())
+            {
+                if (contents[cursor] == '"' && (cursor == valueStart || contents[cursor - 1] != '\\'))
+                    break;
+                ++cursor;
+            }
+            if (cursor >= contents.size())
+                return result;
+            result.valueStart = valueStart;
+            result.valueLength = cursor - valueStart;
+        }
+        else
+        {
+            const std::size_t valueStart = cursor;
+            while (cursor < contents.size() && contents[cursor] != ')' &&
+                   std::isspace(static_cast<unsigned char>(contents[cursor])) == 0)
+                ++cursor;
+            result.valueStart = valueStart;
+            result.valueLength = cursor - valueStart;
+        }
+        const std::string value(contents.substr(result.valueStart, result.valueLength));
+        result.editable = !value.empty() && value.find('$') == std::string::npos &&
+                          value.find('\n') == std::string::npos && value.find('\r') == std::string::npos;
+        if (result.editable)
+            result.value = std::filesystem::path(value);
+        (void)quoted;
+        return result;
+    }
+    return {};
+}
+
+std::optional<std::string> read_bounded_cmake_file(const std::filesystem::path &path,
+                                                   std::string &error)
+{
+    std::error_code filesystemError;
+    const auto size = std::filesystem::file_size(path, filesystemError);
+    if (filesystemError || size > 1024U * 1024U)
+    {
+        error = filesystemError ? filesystemError.message() : "CMakeLists.txt exceeds the 1 MiB repair limit";
+        return std::nullopt;
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input.is_open())
+    {
+        error = "could not read CMakeLists.txt";
+        return std::nullopt;
+    }
+    return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+} // namespace
+
+ProjectEnginePathStatus inspect_project_engine_path(const std::filesystem::path &projectRoot)
+{
+    ProjectEnginePathStatus status;
+    const auto cmakePath = projectRoot / "CMakeLists.txt";
+    std::error_code filesystemError;
+    status.cmakeExists = std::filesystem::is_regular_file(cmakePath, filesystemError) && !filesystemError;
+    status.detectedSourceDirectory = detect_platformator_source_root(projectRoot);
+    if (!status.cmakeExists)
+    {
+        status.message = "CMakeLists.txt is missing.";
+        return status;
+    }
+    std::string error;
+    const auto contents = read_bounded_cmake_file(cmakePath, error);
+    if (!contents)
+    {
+        status.message = error;
+        return status;
+    }
+    const auto setting = find_cmake_engine_path_setting(*contents);
+    status.hasSourceDirectoryDirective = setting.found;
+    status.sourceDirectoryEditable = setting.editable;
+    status.configuredSourceDirectory = setting.value;
+    if (!setting.found)
+        status.message = "CMakeLists.txt has no literal Platformator source path to repair.";
+    else if (!setting.editable)
+        status.message = "CMakeLists.txt computes the Platformator source path dynamically.";
+    else
+    {
+        status.sourceDirectoryAvailable = is_platformator_source_root(setting.value);
+        if (!status.sourceDirectoryAvailable)
+            status.message = "The configured Platformator source directory is unavailable.";
+    }
+    return status;
+}
+
+ProjectScaffoldResult repair_project_engine_path(
+    const std::filesystem::path &projectRoot,
+    const std::filesystem::path &platformatorSourceRoot)
+{
+    const auto cmakePath = projectRoot / "CMakeLists.txt";
+    std::string readError;
+    auto contents = read_bounded_cmake_file(cmakePath, readError);
+    if (!contents)
+        return {false, projectRoot, "Could not inspect CMakeLists.txt: " + readError};
+    const auto setting = find_cmake_engine_path_setting(*contents);
+    if (!setting.found || !setting.editable)
+        return {false, projectRoot, "CMakeLists.txt does not contain an editable literal engine source path."};
+    std::error_code filesystemError;
+    auto resolvedRoot = std::filesystem::weakly_canonical(platformatorSourceRoot, filesystemError);
+    if (filesystemError || !is_platformator_source_root(resolvedRoot))
+        return {false, projectRoot, "The selected Platformator source directory is not a valid source tree."};
+    const std::string replacement = resolvedRoot.generic_string();
+    if (replacement.find('"') != std::string::npos || replacement.find('\n') != std::string::npos ||
+        replacement.find('\r') != std::string::npos)
+        return {false, projectRoot, "The selected source path contains unsupported CMake characters."};
+    contents->replace(setting.valueStart, setting.valueLength, replacement);
+    const auto written = write_file_atomically(cmakePath, *contents, true);
+    if (!written.succeeded())
+        return {false, projectRoot, "Could not update Platformator engine path: " + written.message};
+    return {true, projectRoot, "Updated the Platformator engine source path in CMakeLists.txt."};
+}
+
+ProjectScaffoldResult generate_project_cmakelists(
+    const std::filesystem::path &projectRoot,
+    std::string_view projectName,
+    const std::filesystem::path &platformatorSourceRoot,
+    bool overwrite)
+{
+    std::error_code ec;
+    if (!std::filesystem::is_directory(projectRoot, ec) || ec)
+        return {false, projectRoot, "Project root directory does not exist."};
+
+    const auto cmakePath = projectRoot / "CMakeLists.txt";
+    if (!overwrite && std::filesystem::exists(cmakePath, ec))
+        return {false, projectRoot, "CMakeLists.txt already exists."};
+
+    const std::string rawName = projectName.empty()
+        ? projectRoot.filename().string()
+        : std::string(projectName);
+    const std::string cmakeProjectName = sanitize_cmake_target_name(rawName);
+    const std::filesystem::path resolvedSourceRoot = !platformatorSourceRoot.empty()
+        ? platformatorSourceRoot
+        : detect_platformator_source_root();
+    const std::string sourceRootStr = resolvedSourceRoot.generic_string();
+
+    const auto mainCppPath = projectRoot / "main.cpp";
+    const bool mainExists = std::filesystem::exists(mainCppPath, ec);
+    if (ec)
+        return {false, projectRoot, "Failed to inspect project entry point: " + ec.message()};
+    if (mainExists && !std::filesystem::is_regular_file(mainCppPath, ec))
+        return {false, projectRoot, "Project entry point path exists but is not a regular file."};
+    if (ec)
+        return {false, projectRoot, "Failed to inspect project entry point: " + ec.message()};
+
+    // Keep an existing authored scene as the startup scene. Asset-only projects with an
+    // empty scenes directory get the same small starter scene used by New Project. A
+    // source-only project with its own main.cpp keeps its existing no-assets layout.
+    const auto assetsDirectory = projectRoot / "assets";
+    const bool assetsPathExists = std::filesystem::exists(assetsDirectory, ec);
+    if (ec)
+        return {false, projectRoot, "Failed to inspect the project assets directory: " + ec.message()};
+    const bool hasAssetsDirectory = assetsPathExists &&
+        std::filesystem::is_directory(assetsDirectory, ec);
+    if (ec)
+        return {false, projectRoot, "Failed to inspect the project assets directory: " + ec.message()};
+    const bool ensureStartupScene = hasAssetsDirectory || !mainExists;
+    const auto scenesDirectory = projectRoot / "assets" / "scenes";
+    std::vector<std::filesystem::path> sceneFiles;
+    if (ensureStartupScene)
+    {
+        std::filesystem::create_directories(scenesDirectory, ec);
+        if (ec)
+            return {false, projectRoot, "Failed to create startup scene directory: " + ec.message()};
+        for (std::filesystem::directory_iterator it(scenesDirectory, ec), end;
+             !ec && it != end; it.increment(ec))
+        {
+            std::error_code entryError;
+            if (it->path().extension() == ".scene" && it->is_regular_file(entryError) && !entryError)
+                sceneFiles.push_back(it->path());
+        }
+        if (ec)
+            return {false, projectRoot, "Failed to inspect startup scenes: " + ec.message()};
+    }
+    std::sort(sceneFiles.begin(), sceneFiles.end());
+    const auto preferredScene = scenesDirectory / "main.scene";
+    std::filesystem::path startupScene = preferredScene;
+    if (std::find(sceneFiles.begin(), sceneFiles.end(), preferredScene) == sceneFiles.end() &&
+        !sceneFiles.empty())
+        startupScene = sceneFiles.front();
+
+    bool createdStartupScene = false;
+    if (ensureStartupScene && sceneFiles.empty())
+    {
+        const nlohmann::json starterScene = nlohmann::json::array({
+            {{"id", 101}, {"name", "MainCamera"}, {"tag", "MainCamera"}, {"active", true},
+             {"position", {{"x", 0.0}, {"y", 0.0}}}, {"rotation", 0.0},
+             {"scale", {{"x", 1.0}, {"y", 1.0}}}, {"children", nlohmann::json::array()},
+             {"components", nlohmann::json::array({
+                  {{"id", 1001}, {"type", 2}, {"width", 640.0}, {"height", 480.0}}})}}});
+        const auto sceneWrite = write_file_atomically(startupScene, starterScene.dump(2) + "\n", false);
+        if (!sceneWrite.succeeded())
+            return {false, projectRoot, "Failed to create missing startup scene: " + sceneWrite.message};
+        createdStartupScene = true;
+    }
+
+    bool createdMain = false;
+    if (!mainExists)
+    {
+        const auto relativeScene = std::filesystem::relative(startupScene, projectRoot, ec).generic_string();
+        if (ec)
+            return {false, projectRoot, "Failed to resolve startup scene path: " + ec.message()};
+        std::string cppScene;
+        cppScene.reserve(relativeScene.size() + 8);
+        for (const char character : relativeScene)
+        {
+            if (character == '\\' || character == '"')
+                cppScene.push_back('\\');
+            cppScene.push_back(character);
+        }
+        const std::string mainSource = "#include \"platformator/runner.h\"\n\n"
+            "int main(int argc, char *args[])\n{\n"
+            "    return platformator::run(argc, args, \"" + cppScene + "\");\n}\n";
+        const auto mainWrite = write_file_atomically(mainCppPath, mainSource, false);
+        if (!mainWrite.succeeded())
+        {
+            if (createdStartupScene)
+            {
+                std::error_code cleanupError;
+                std::filesystem::remove(startupScene, cleanupError);
+            }
+            return {false, projectRoot, "Failed to create missing project entry point: " + mainWrite.message};
+        }
+        createdMain = true;
+    }
+
+    std::ostringstream out;
+    out << "cmake_minimum_required(VERSION 3.20)\n"
+        << "project(" << cmakeProjectName << " LANGUAGES CXX)\n\n"
+        << "set(CMAKE_CXX_STANDARD 20)\n"
+        << "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n"
+        << "set(CMAKE_CXX_EXTENSIONS OFF)\n\n"
+        << "set(PLATFORMATOR_ENGINE_SOURCE_DIR \"" << sourceRootStr << "\" CACHE PATH\n"
+        << "    \"Fallback path to local Platformator source tree when Platformator CONFIG package is not installed\")\n\n"
+        << "if(NOT TARGET Platformator::platformator)\n"
+        << "    find_package(Platformator CONFIG QUIET)\n"
+        << "    if(NOT Platformator_FOUND)\n"
+        << "        if(EXISTS \"${PLATFORMATOR_ENGINE_SOURCE_DIR}/CMakeLists.txt\")\n"
+        << "            add_subdirectory(\"${PLATFORMATOR_ENGINE_SOURCE_DIR}\"\n"
+        << "                             \"${CMAKE_CURRENT_BINARY_DIR}/platformator\"\n"
+        << "                             EXCLUDE_FROM_ALL)\n"
+        << "        else()\n"
+        << "            message(FATAL_ERROR\n"
+        << "                \"Platformator package not found and fallback source directory \"\n"
+        << "                \"'${PLATFORMATOR_ENGINE_SOURCE_DIR}' does not contain CMakeLists.txt. \"\n"
+        << "                \"Pass -DPlatformator_DIR=<prefix> or -DPLATFORMATOR_ENGINE_SOURCE_DIR=<repo>.\")\n"
+        << "        endif()\n"
+        << "    endif()\n"
+        << "endif()\n\n"
+        << "file(GLOB_RECURSE PROJECT_BEHAVIOR_SOURCES CONFIGURE_DEPENDS\n"
+        << "    \"${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/*.cpp\"\n"
+        << "    \"${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/*.h\"\n"
+        << "    \"${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/*.hpp\"\n"
+        << ")\n\n"
+        << "add_executable(" << cmakeProjectName << "\n"
+        << "    main.cpp\n"
+        << "    ${PROJECT_BEHAVIOR_SOURCES}\n"
+        << ")\n\n"
+        << "target_include_directories(" << cmakeProjectName << " PRIVATE\n"
+        << "    \"${CMAKE_CURRENT_SOURCE_DIR}\"\n"
+        << ")\n"
+        << "target_link_libraries(" << cmakeProjectName << " PRIVATE Platformator::platformator)\n\n"
+        << "if(WIN32)\n"
+        << "    add_custom_command(TARGET " << cmakeProjectName << " POST_BUILD\n"
+        << "        COMMAND ${CMAKE_COMMAND} -E copy_if_different\n"
+        << "            $<TARGET_RUNTIME_DLLS:" << cmakeProjectName << ">\n"
+        << "            $<TARGET_FILE_DIR:" << cmakeProjectName << ">\n"
+        << "        COMMAND_EXPAND_LISTS\n"
+        << "    )\n"
+        << "endif()\n";
+
+    const auto write = write_file_atomically(cmakePath, out.str(), overwrite);
+    if (!write.succeeded())
+    {
+        std::error_code cleanupError;
+        if (createdMain)
+            std::filesystem::remove(mainCppPath, cleanupError);
+        if (createdStartupScene)
+            std::filesystem::remove(startupScene, cleanupError);
+        return {false, projectRoot, "Failed writing CMakeLists.txt: " + write.message};
+    }
+
+    return {true, projectRoot, createdMain || createdStartupScene
+        ? "Generated CMakeLists.txt and missing startup files"
+        : "Generated CMakeLists.txt"};
+}
+
+ProjectScaffoldResult create_new_project(const ProjectScaffoldRequest &request)
+{
+    if (!is_valid_project_identifier(request.projectName))
+    {
+        return {false, {}, "Project name must match [A-Za-z_][A-Za-z0-9_-]* (1..64 characters)."};
+    }
+    std::error_code ec;
+    if (request.parentDirectory.empty() || !std::filesystem::is_directory(request.parentDirectory, ec) || ec)
+    {
+        return {false, {}, "Parent directory does not exist."};
+    }
+
+    const std::filesystem::path projectRoot = request.parentDirectory / request.projectName;
+    if (std::filesystem::exists(projectRoot, ec))
+    {
+        if (!std::filesystem::is_directory(projectRoot, ec) ||
+            !std::filesystem::is_empty(projectRoot, ec))
+        {
+            return {false, projectRoot, "Target project directory already exists and is not empty."};
+        }
+    }
+
+    const std::array<std::filesystem::path, 5> dirs = {
+        projectRoot / ".platformator",
+        projectRoot / "assets" / "behaviors",
+        projectRoot / "assets" / "templates",
+        projectRoot / "assets" / "audio",
+        projectRoot / "assets" / "scenes",
+    };
+    for (const auto &dir : dirs)
+    {
+        std::filesystem::create_directories(dir, ec);
+        if (ec)
+            return {false, projectRoot, "Failed to create directory " + dir.string() + ": " + ec.message()};
+    }
+
+    const auto layerSave = save_layer_settings(projectRoot, default_layer_settings());
+    if (!layerSave.succeeded)
+        return {false, projectRoot, layerSave.message};
+
+    const auto scenePath = projectRoot / "assets" / "scenes" / "main.scene";
+    const nlohmann::json starterScene = nlohmann::json::array({
+        {{"id", 101},
+         {"name", "MainCamera"},
+         {"tag", "MainCamera"},
+         {"active", true},
+         {"position", {{"x", 0.0}, {"y", 0.0}}},
+         {"rotation", 0.0},
+         {"scale", {{"x", 1.0}, {"y", 1.0}}},
+         {"children", nlohmann::json::array()},
+         {"components",
+          nlohmann::json::array({{{"id", 1001},
+                                  {"type", 2},
+                                  {"width", 640.0},
+                                  {"height", 480.0}}})}}
+    });
+    {
+        std::ofstream sceneFile(scenePath, std::ios::binary | std::ios::trunc);
+        if (!sceneFile.is_open())
+            return {false, projectRoot, "Failed to create starter scene."};
+        sceneFile << starterScene.dump(2) << '\n';
+        if (!sceneFile.good())
+            return {false, projectRoot, "Failed writing starter scene."};
+    }
+
+    const auto mainCppPath = projectRoot / "main.cpp";
+    {
+        std::ofstream mainFile(mainCppPath, std::ios::binary | std::ios::trunc);
+        if (!mainFile.is_open())
+            return {false, projectRoot, "Failed to create main.cpp."};
+        mainFile << "#include \"platformator/runner.h\"\n\n"
+                 << "int main(int argc, char *args[])\n"
+                 << "{\n"
+                 << "    return platformator::run(argc, args, \"assets/scenes/main.scene\");\n"
+                 << "}\n";
+        if (!mainFile.good())
+            return {false, projectRoot, "Failed writing main.cpp."};
+    }
+
+    const auto cmakeResult = generate_project_cmakelists(
+        projectRoot, request.projectName, request.platformatorSourceRoot, false);
+    if (!cmakeResult.succeeded)
+        return cmakeResult;
+
+    return {true, projectRoot, "Created project '" + request.projectName + "'"};
 }
 
 ProjectRunDiscovery discover_project_run_options(const std::filesystem::path &projectRoot,

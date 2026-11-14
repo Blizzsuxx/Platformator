@@ -106,7 +106,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             COMMAND $<TARGET_FILE:platformator_editor_accessibility_linux_test>)
     endif()
     set_tests_properties(platformator_editor_accessibility_linux_test PROPERTIES
-        LABELS "platformator;editor;editor-headless;linux")
+        LABELS "platformator;editor;editor-headless;linux"
+        SKIP_REGULAR_EXPRESSION "Failed to bind socket|Failed to create directory /run/user")
 endif()
 platformator_editor_add_test_if_sources(platformator_editor_sprite_region_test sprite_region_test.cpp)
 
@@ -197,6 +198,7 @@ platformator_editor_add_test_if_sources(platformator_editor_hierarchy_move_test 
 target_link_libraries(platformator_editor_hierarchy_move_test PRIVATE platformator_imgui)
 platformator_editor_add_test_if_sources(platformator_editor_discovery_test discovery_test.cpp)
 platformator_editor_add_test_if_sources(platformator_editor_project_watch_test project_watch_test.cpp)
+platformator_editor_add_test_if_sources(platformator_editor_audiopreview_test audiopreview_test.cpp)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME platformator_editor_capture_budget_test

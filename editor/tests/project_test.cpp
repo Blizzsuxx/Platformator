@@ -2,6 +2,8 @@
 #include "document.h"
 #include "editcommands.h"
 #include "editorwork.h"
+#include "audiopreview.h"
+#include "layersettings.h"
 #include "panels/project.h"
 #include "selection.h"
 #include "test_support.h"
@@ -72,11 +74,6 @@ struct ProjectPanelTestProbe
                                       const std::filesystem::path &directory)
     {
         return panel.selectedDirectory_ == directory;
-    }
-
-    static bool template_loaded(const ProjectPanel &panel)
-    {
-        return panel.selectedTemplate_.has_value();
     }
 
     static void set_search_query(ProjectPanel &panel, std::string query)
@@ -157,6 +154,16 @@ struct ProjectPanelTestProbe
     {
         const auto found = panel.directories_.find(directory.string());
         return found != panel.directories_.end() && found->second.loaded;
+    }
+
+    static bool project_shortcuts_allowed(bool wantTextInput, bool renaming)
+    {
+        return ProjectPanel::project_shortcuts_allowed(wantTextInput, renaming);
+    }
+
+    static const std::string &thumbnail_message(const ProjectPanel &panel)
+    {
+        return panel.thumbnailMessage_;
     }
 
     static bool presentation_uses_alias(const ProjectPanel &panel,
@@ -258,8 +265,12 @@ struct ProjectPanelTestProbe
     static std::string animation_failure(const ProjectPanel &panel,
                                          const std::filesystem::path &path)
     {
-        return panel.failedAnimationRefreshes_.contains(path.string())
-            ? panel.coverageMessage_ : "no cached animation failure";
+        if (!panel.failedAnimationRefreshes_.contains(path.string()))
+            return "no cached animation failure";
+        const auto failure = panel.failedAnimationMessages_.find(path.string());
+        return failure == panel.failedAnimationMessages_.end()
+            ? "Animation preview is unavailable; refresh the asset to retry."
+            : failure->second;
     }
 
     static ProjectBrowserViewState &view_state(ProjectPanel &panel)
@@ -642,6 +653,9 @@ void test_project_panel_alias_presentation_invalidation()
     require(std::filesystem::file_size(targetImage) == originalSize,
             "equal-metadata alias fixture must retain its original byte length");
     std::filesystem::last_write_time(targetImage, originalTime);
+    require(ProjectPanelTestProbe::wait_for_thumbnail_idle(panel),
+            "initial Project thumbnail jobs must drain before measuring the targeted refresh");
+    work::reset();
     panel.apply_changes(project_change(ProjectGeneration{project.generation},
                                        ProjectChangeKind::Modified,
                                        std::filesystem::canonical(targetImage), false));
@@ -650,9 +664,8 @@ void test_project_panel_alias_presentation_invalidation()
             "canonical replacement must invalidate the logical alias thumbnail version");
     require(ProjectPanelTestProbe::animation_stale(panel, animationPath),
             "a canonical texture change must invalidate animation-frame consumers reached through a file alias");
-    work::reset();
     require(ProjectPanelTestProbe::wait_for_thumbnail_idle(panel),
-            "old Project thumbnail jobs must drain before measuring the targeted refresh");
+            "targeted Project thumbnail jobs must finish before measuring the refreshed preview");
     SDL_Texture *newAliasTexture = nullptr;
     std::set<std::uintptr_t> changedDrawTextures;
     bool newPixelsPresented = false;
@@ -1059,9 +1072,12 @@ void test_initially_broken_alias_repairs_project_listings_and_previews()
     require(ProjectPanelTestProbe::request_thumbnail(panel, logicalImage) == nullptr &&
                 ProjectPanelTestProbe::request_animation_frame(panel, logicalAnimation, assetRoot).empty(),
             "first-demand broken Project previews must cache their missing image and animation state");
+    const std::string missingThumbnailMessage =
+        ProjectPanelTestProbe::thumbnail_message(panel);
     SDL_Texture *unrelatedTexture = ProjectPanelTestProbe::request_thumbnail(panel, unrelatedImage);
-    require(unrelatedTexture != nullptr,
-            "the unrelated Project image must be cached before repairing the broken alias");
+    require(unrelatedTexture != nullptr && !missingThumbnailMessage.empty() &&
+                ProjectPanelTestProbe::thumbnail_message(panel) == missingThumbnailMessage,
+            "a successful unrelated thumbnail must not clear the broken asset's diagnostic");
     ProjectPanelTestProbe::select_entry(panel, unrelatedImage);
     const auto documentBefore = document.root;
     const auto historyBefore = commands.history_status();
@@ -1262,7 +1278,7 @@ void test_project_assignment_uses_explicit_validated_target()
             "an escaping Project assignment must preserve valid scene references and history");
 }
 
-void test_project_template_controls_are_semantically_actionable()
+void test_project_template_selection_has_no_detached_controls()
 {
     ProjectPanelFrames frames;
     TemporaryDirectory temporary;
@@ -1270,7 +1286,7 @@ void test_project_template_controls_are_semantically_actionable()
     const auto assetRoot = projectRoot / "assets";
     const auto templateDirectory = assetRoot / "templates";
     std::filesystem::create_directories(templateDirectory);
-    std::ofstream(projectRoot / "CMakeLists.txt") << "project(template-semantic-test)\n";
+    std::ofstream(projectRoot / "CMakeLists.txt") << "project(template-selection-test)\n";
     const auto templatePath = templateDirectory / "semantic.pttemplate";
     std::ofstream(templatePath, std::ios::binary)
         << make_template_envelope("Semantic Template", object(50, "Instance")).dump(2);
@@ -1303,116 +1319,20 @@ void test_project_template_controls_are_semantically_actionable()
     const float yUnselected = foldersWindow->Pos.y;
 
     ProjectPanelTestProbe::select_entry(panel, templatePath);
-    auto nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
-    const auto loadNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
-        return node.id == "main/panel/project/template/load";
-    });
-    require(loadNode != nodes.end() && loadNode->enabled &&
-                loadNode->actions == std::vector<std::string>{"activate"},
-            "a selected template exposes a named semantic Load Template action");
-    require(panel.dispatch_semantic_action(document, commands, selection,
-                SemanticAction{.nodeId = loadNode->id, .action = "activate"},
-                WindowHostGeneration{4}, true) && ProjectPanelTestProbe::template_loaded(panel),
-            "semantic template loading must use the same contained-file validation as the visible control");
-
     (void)frames.draw(panel, document, commands, &selection);
+    const auto nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
+    const auto hasDetachedTemplateAction = std::any_of(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
+        return node.id.starts_with("main/panel/project/template/") ||
+               node.name.find("template assignment") != std::string::npos ||
+               node.name.find("Instantiate Template") != std::string::npos;
+    });
+    require(!hasDetachedTemplateAction,
+            "selecting a template must not expose detached load, assignment, or instantiate controls");
+
     foldersWindow = find_child("Asset folders");
     require(foldersWindow != nullptr, "Asset folders child window must remain after selecting template");
-    const float ySelected = foldersWindow->Pos.y;
-    require(std::abs(yUnselected - ySelected) < 0.001f,
-            "selecting an asset in ProjectPanel must produce 0 px vertical shift in folder/content child windows");
-    nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
-    const auto instantiateNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
-        return node.id == "main/panel/project/template/instantiate";
-    });
-    require(instantiateNode != nodes.end() && instantiateNode->enabled,
-            "a validated template with no unresolved external assignments exposes Instantiate Template");
-    require(panel.dispatch_semantic_action(document, commands, selection,
-                SemanticAction{.nodeId = instantiateNode->id, .action = "activate"},
-                WindowHostGeneration{4}, true),
-            "a current semantic Instantiate Template action must be accepted");
-    (void)frames.draw(panel, document, commands, &selection);
-    const auto insertedObjectId = selection.current().objectId;
-    require(document.indexes.objectsById.size() == 2 && insertedObjectId &&
-                document.indexes.objectsById.contains(*insertedObjectId) &&
-                commands.history_status().undoCommands == 1,
-            "semantic template instantiation must use the visible action's one-step history path");
-
-    document.root.push_back(object(98, "Destination Target"));
-    ++document.structureRevision;
-    rebuild_document_indexes(document);
-    const auto externalTemplatePath = templateDirectory / "external.pttemplate";
-    const Json externalRoot = object(70, "External Template", Json::array({component(71, 5,
-        Json{{"behaviors", Json::array({Json{{"type", "LinkBehavior"}, {"target", 98}}})}})}));
-    const Json externalBindings = Json::array({Json{{"owner_id", 70}, {"component_id", 71},
-        {"path", "/behaviors/0/target"}, {"target_kind", "GameObject"}, {"scope", "external"},
-        {"source_scene_identity", "/templates/source.scene"},
-        {"original_target_kind", "GameObject"}, {"original_target_id", 98}}});
-    std::ofstream(externalTemplatePath, std::ios::binary)
-        << make_template_envelope("External Template", externalRoot, externalBindings).dump(2);
-    ProjectPanelTestProbe::select_entry(panel, externalTemplatePath);
-    nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
-    const auto externalLoad = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
-        return node.id == "main/panel/project/template/load";
-    });
-    require(externalLoad != nodes.end() && panel.dispatch_semantic_action(document, commands, selection,
-                SemanticAction{.nodeId = externalLoad->id, .action = "activate"},
-                WindowHostGeneration{4}, true),
-            "the Project provider must load a template with declared external reference sites");
-    (void)frames.draw(panel, document, commands, &selection);
-    nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
-    const auto externalAssignment = std::find_if(nodes.begin(), nodes.end(),
-        [](const SemanticNode &node) {
-            return node.name.find("Assign external GameObject reference to Destination Target (#98)") !=
-                   std::string::npos;
-        });
-    const auto blockedInstantiate = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
-        return node.id == "main/panel/project/template/instantiate";
-    });
-    require(externalAssignment != nodes.end() && externalAssignment->actions ==
-                std::vector<std::string>{"activate"} && blockedInstantiate != nodes.end() &&
-                !blockedInstantiate->enabled,
-            "cross-scene external targets are selectable semantic actions and block instantiation until assigned");
-    require(panel.dispatch_semantic_action(document, commands, selection,
-                SemanticAction{.nodeId = externalAssignment->id, .action = "activate"},
-                WindowHostGeneration{4}, true),
-            "the current semantic external-target action must validate and retain its explicit identity");
-    (void)frames.draw(panel, document, commands, &selection);
-    nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
-    const auto readyInstantiate = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
-        return node.id == "main/panel/project/template/instantiate";
-    });
-    require(readyInstantiate != nodes.end() && readyInstantiate->enabled,
-            "a validated external assignment enables semantic template instantiation");
-    const std::string staleInstantiateId = readyInstantiate->id;
-    document.root.push_back(object(99, "Late Destination Target"));
-    ++document.structureRevision;
-    rebuild_document_indexes(document);
-    require(!panel.dispatch_semantic_action(document, commands, selection,
-                SemanticAction{.nodeId = staleInstantiateId, .action = "activate"},
-                WindowHostGeneration{4}, true),
-            "a semantic template action captured before a structural edit must be rejected");
-    (void)frames.draw(panel, document, commands, &selection);
-    nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
-    const auto refreshedInstantiate = std::find_if(nodes.begin(), nodes.end(),
-        [](const SemanticNode &node) {
-            return node.id == "main/panel/project/template/instantiate";
-        });
-    require(refreshedInstantiate != nodes.end() && refreshedInstantiate->enabled &&
-                panel.dispatch_semantic_action(document, commands, selection,
-                    SemanticAction{.nodeId = refreshedInstantiate->id, .action = "activate"},
-                    WindowHostGeneration{4}, true),
-            "a fresh snapshot must restore the explicit template instantiation action");
-    (void)frames.draw(panel, document, commands, &selection);
-    const int externalInstanceId = selection.current().objectId.value_or(-1);
-    const auto externalInstance = std::find_if(document.root.begin(), document.root.end(),
-        [externalInstanceId](const Json &record) {
-            return record.is_object() && record.value("id", -1) == externalInstanceId;
-        });
-    require(externalInstance != document.root.end() &&
-                (*externalInstance)["components"][0]["behaviors"][0]["target"] == 98 &&
-                commands.history_status().undoCommands == 2,
-            "semantic external assignment must preserve the chosen destination target in one retained insertion");
+    require(std::abs(yUnselected - foldersWindow->Pos.y) < 0.001f,
+            "selecting a template must not shift the Project panel folder layout");
 }
 
 void test_project_change_owner_commit_budget()
@@ -1582,12 +1502,60 @@ void test_project_browser_context_menu_operations_and_two_column_view()
             "reveal folder must produce a file:// URL");
     require(panel.last_revealed_url().find(folder.filename().string()) != std::string::npos,
             "reveal folder must target the folder directory itself");
+
+    require(ProjectPanelTestProbe::project_shortcuts_allowed(false, false) &&
+                !ProjectPanelTestProbe::project_shortcuts_allowed(true, false) &&
+                !ProjectPanelTestProbe::project_shortcuts_allowed(false, true) &&
+                !ProjectPanelTestProbe::project_shortcuts_allowed(true, true),
+            "F2, Ctrl+D, and Delete must all respect text-input focus and inline rename guards");
+
+    const auto clips = folder / "Clips";
+    std::filesystem::create_directories(clips);
+    const auto clip = clips / "preview.wav";
+    std::ofstream(clip, std::ios::binary) << "test audio";
+    AudioPreviewService audioPreview;
+    panel.set_audio_preview_service(&audioPreview);
+    require(audioPreview.toggle_or_play(clip) && audioPreview.active_path() == clip,
+            "Project parent-rename fixture must begin with an active audio preview request");
+    require(ProjectPanelTestProbe::execute_context_rename(panel, clips, "Renamed Clips") &&
+                !audioPreview.active_path().has_value() &&
+                std::filesystem::is_directory(folder / "Renamed Clips"),
+            "renaming a parent directory must stop an active audio clip within that directory");
+    audioPreview.shutdown();
 }
 } // namespace
 
 void run_project_cases()
 {
     TemporaryDirectory temporary;
+    const auto layerSyncAssets = temporary.path() / "layer-sync" / "assets";
+    std::filesystem::create_directories(layerSyncAssets);
+    const auto goodScene = layerSyncAssets / "good.scene";
+    const auto conflictedTemplate = layerSyncAssets / "conflicted.pttemplate";
+    LayerSettings layerSyncSettings = default_layer_settings();
+    set_layer_collision(layerSyncSettings, 0, 1, false);
+    write_json(goodScene, Json::array({Json{{"id", 1}, {"components", Json::array({
+        Json{{"id", 2}, {"type", 3}, {"collisionGroup", 1}, {"collisionMask", 0}}})},
+        {"children", Json::array()}}}));
+    std::ofstream(conflictedTemplate, std::ios::binary) << "{";
+    const auto partialLayerSync = sync_project_files_with_layer_settings(
+        layerSyncAssets, layerSyncSettings);
+    require(partialLayerSync.updatedFiles == 1 && partialLayerSync.failures.size() == 1 &&
+                partialLayerSync.failures.front().path == conflictedTemplate &&
+                read_json(goodScene)[0]["components"][0]["collisionMask"] ==
+                    layer_to_collision_mask(layerSyncSettings, 0),
+            "closed collider sync must persist successful files and return a path-specific failure for a conflicted asset");
+    write_json(conflictedTemplate, Json{{"format", "platformator.object-template"}, {"version", 1},
+        {"name", "Recoverable"}, {"root", Json{{"id", 3}, {"components", Json::array({
+            Json{{"id", 4}, {"type", 3}, {"collisionGroup", 1}, {"collisionMask", 0}}})},
+            {"children", Json::array()}}}, {"reference_bindings", Json::array()}});
+    const auto retriedLayerSync = sync_project_files_with_layer_settings(
+        layerSyncAssets, layerSyncSettings);
+    require(retriedLayerSync.succeeded() && retriedLayerSync.updatedFiles == 1 &&
+                read_json(conflictedTemplate)["root"]["components"][0]["collisionMask"] ==
+                    layer_to_collision_mask(layerSyncSettings, 0),
+            "retrying collider sync after repairing the conflicted asset must persist the remaining work");
+
     const auto projectRoot = temporary.path() / "project";
     const auto assetRoot = projectRoot / "assets";
     const auto scanRoot = assetRoot / "nested";
@@ -1667,20 +1635,100 @@ void run_project_cases()
                 oversizedDiscovery.status.find("1 MiB") != std::string::npos,
             "oversized preset manifests must stop discovery before an unbounded read");
 
+    const auto engineSource = temporary.path() / "platformator-source";
+    std::filesystem::create_directories(engineSource / "include" / "platformator");
+    std::ofstream(engineSource / "CMakeLists.txt") << "project(platformator)\n";
+    std::ofstream(engineSource / "include" / "platformator" / "runner.h") << "// fixture\n";
+    const auto repairProjectRoot = temporary.path() / "engine-repair-project";
+    const auto repairAssetRoot = repairProjectRoot / "assets";
+    std::filesystem::create_directories(repairAssetRoot);
+    const auto authoredAsset = repairAssetRoot / "keep.scene";
+    std::ofstream(authoredAsset) << "[]\n";
+    const auto customCmakePath = repairProjectRoot / "CMakeLists.txt";
+    const std::string customCmake =
+        "cmake_minimum_required(VERSION 3.20)\n"
+        "set(PLATFORMATOR_ENGINE_SOURCE_DIR \"/missing/platformator\" CACHE PATH \"engine\")\n"
+        "find_package(Platformator CONFIG QUIET)\n"
+        "add_subdirectory(custom-game)\n";
+    std::ofstream(customCmakePath, std::ios::binary | std::ios::trunc) << customCmake;
+    auto engineStatus = inspect_project_engine_path(repairProjectRoot);
+    require(engineStatus.cmakeExists && engineStatus.hasSourceDirectoryDirective &&
+                !engineStatus.sourceDirectoryAvailable && engineStatus.sourceDirectoryEditable,
+            "CMake inspection must identify a literal but unavailable Platformator source path");
+    const auto refusedRepair = repair_project_engine_path(
+        repairProjectRoot, temporary.path() / "not-a-platformator-source");
+    std::ifstream refusedInput(customCmakePath, std::ios::binary);
+    const std::string refusedContents((std::istreambuf_iterator<char>(refusedInput)),
+                                      std::istreambuf_iterator<char>());
+    require(!refusedRepair.succeeded && refusedContents == customCmake &&
+                std::filesystem::is_regular_file(authoredAsset),
+            "a rejected engine path must preserve custom CMake and authored assets");
+    const auto repairedPath = repair_project_engine_path(repairProjectRoot, engineSource);
+    engineStatus = inspect_project_engine_path(repairProjectRoot);
+    std::ifstream repairedInput(customCmakePath, std::ios::binary);
+    const std::string repairedContents((std::istreambuf_iterator<char>(repairedInput)),
+                                       std::istreambuf_iterator<char>());
+    require(repairedPath.succeeded && engineStatus.sourceDirectoryAvailable &&
+                repairedContents.find(std::filesystem::canonical(engineSource).generic_string()) != std::string::npos &&
+                repairedContents.find("add_subdirectory(custom-game)") != std::string::npos &&
+                repairedContents.find("find_package(Platformator CONFIG QUIET)") != std::string::npos,
+            "safe engine relinking must update only the path while preserving installed-package and custom build logic");
+    const auto regenerated = generate_project_cmakelists(repairProjectRoot, "RecoveredGame", engineSource, true);
+    std::ifstream regeneratedInput(customCmakePath, std::ios::binary);
+    const std::string regeneratedContents((std::istreambuf_iterator<char>(regeneratedInput)),
+                                          std::istreambuf_iterator<char>());
+    require(regenerated.succeeded &&
+                regeneratedContents.find("if(NOT TARGET Platformator::platformator)") != std::string::npos &&
+                regeneratedContents.find("find_package(Platformator CONFIG QUIET)") != std::string::npos &&
+                std::filesystem::is_regular_file(authoredAsset),
+            "confirmed CMake regeneration must guard existing Platformator targets, use the package-aware scaffold, and preserve authored assets");
+
     const auto validCandidate = validate_project_folder(projectRoot);
     require(validCandidate.projectRoot == std::filesystem::canonical(projectRoot) &&
                 validCandidate.assetRoot == std::filesystem::canonical(assetRoot),
             "a selected project folder must resolve its canonical CMake and assets roots");
+    std::ofstream(assetRoot / "sample.scene") << "[]";
+    const auto assetOnlyCandidate = validate_project_folder(assetRoot);
+    std::filesystem::remove(assetRoot / "sample.scene");
+    require(assetOnlyCandidate.assetRoot == std::filesystem::canonical(assetRoot),
+            "an asset-only folder with scene files must open without CMakeLists.txt");
+
+    const auto emptyFolder = temporary.path() / "empty-folder";
+    std::filesystem::create_directories(emptyFolder);
     bool rejectedFolder = false;
     try
     {
-        validate_project_folder(assetRoot);
+        validate_project_folder(emptyFolder);
     }
     catch (const std::invalid_argument &)
     {
         rejectedFolder = true;
     }
-    require(rejectedFolder, "a folder without the project CMake/assets conventions must be rejected");
+    require(rejectedFolder, "a folder without CMakeLists.txt, assets/, or .scene files must be rejected");
+
+    const auto sourceOnlyFolder = temporary.path() / "SourceOnlyGame";
+    std::filesystem::create_directories(sourceOnlyFolder);
+    const std::string authoredMain = "int main() { return 37; }\n";
+    std::ofstream(sourceOnlyFolder / "main.cpp", std::ios::binary) << authoredMain;
+    const auto sourceOnlyCandidate = validate_project_folder(sourceOnlyFolder);
+    require(sourceOnlyCandidate.projectRoot == std::filesystem::canonical(sourceOnlyFolder) &&
+                sourceOnlyCandidate.assetRoot == sourceOnlyCandidate.projectRoot &&
+                sourceOnlyCandidate.missingCmake,
+            "a source-only C++ project with main.cpp must open before it has assets or CMakeLists.txt");
+    const auto sourceOnlyGenerated = generate_project_cmakelists(
+        sourceOnlyFolder, "SourceOnlyGame", detect_platformator_source_root());
+    std::ifstream authoredMainInput(sourceOnlyFolder / "main.cpp", std::ios::binary);
+    const std::string retainedMain((std::istreambuf_iterator<char>(authoredMainInput)),
+                                   std::istreambuf_iterator<char>());
+    std::ifstream sourceOnlyCmakeInput(sourceOnlyFolder / "CMakeLists.txt", std::ios::binary);
+    const std::string generatedSourceOnlyCmake((std::istreambuf_iterator<char>(sourceOnlyCmakeInput)),
+                                               std::istreambuf_iterator<char>());
+    const auto generatedSourceCandidate = validate_project_folder(sourceOnlyFolder);
+    require(sourceOnlyGenerated.succeeded && retainedMain == authoredMain &&
+                generatedSourceOnlyCmake.find("main.cpp") != std::string::npos &&
+                !generatedSourceCandidate.missingCmake &&
+                generatedSourceCandidate.assetRoot == std::filesystem::canonical(sourceOnlyFolder),
+            "CMake generation for source-only projects must preserve authored main.cpp and establish runnable roots");
 
     ProjectContext context;
     context.set_roots(projectRoot, assetRoot);
@@ -1959,7 +2007,7 @@ void run_project_cases()
     test_initially_broken_alias_repairs_project_listings_and_previews();
     test_project_search_tracks_listing_revisions();
     test_project_assignment_uses_explicit_validated_target();
-    test_project_template_controls_are_semantically_actionable();
+    test_project_template_selection_has_no_detached_controls();
     test_project_change_owner_commit_budget();
     test_animation_preview_uploads_without_project_draw();
     test_project_browser_context_menu_operations_and_two_column_view();

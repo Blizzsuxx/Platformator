@@ -1,6 +1,7 @@
 #include "catalog_fixture.h"
 #include "test_support.h"
 #include "../src/behaviorcatalog.h"
+#include "../src/sourcescanner.h"
 #include "../src/process.h"
 #include <editorprotocol.h>
 
@@ -154,31 +155,11 @@ void run_shared_runner_catalog_cases()
     auto *oldError = std::cerr.rdbuf(stderrCapture.rdbuf());
     char executable[] = "catalog-fixture";
     char command[] = "--editor-catalog";
-    char *validArguments[] = {executable, command};
-    const int validStatus = platformator::run(2, validArguments, "");
+    char *removedArguments[] = {executable, command};
+    const int status = platformator::run(2, removedArguments, "");
     std::cout.rdbuf(oldOut);
     std::cerr.rdbuf(oldError);
-    require(validStatus == 0, "the shared runner must accept its early catalog command");
-    const auto runnerCatalog = nlohmann::json::parse(stdoutCapture.str());
-    require(runnerCatalog.value("schema_version", 0) == 1 &&
-                find_behavior(runnerCatalog, "TypedCatalogFixture") != nullptr,
-            "shared-runner catalog mode must export the linked registration set");
-    require(stderrCapture.str().empty(), "a successful catalog export must not mix diagnostics into stderr");
-
-    stdoutCapture.str({});
-    stdoutCapture.clear();
-    stderrCapture.str({});
-    stderrCapture.clear();
-    oldOut = std::cout.rdbuf(stdoutCapture.rdbuf());
-    oldError = std::cerr.rdbuf(stderrCapture.rdbuf());
-    char incompatible[] = "--scene";
-    char scene[] = "unexpected.scene";
-    char *invalidArguments[] = {executable, command, incompatible, scene};
-    const int invalidStatus = platformator::run(4, invalidArguments, "");
-    std::cout.rdbuf(oldOut);
-    std::cerr.rdbuf(oldError);
-    require(invalidStatus != 0 && stdoutCapture.str().empty() && !stderrCapture.str().empty(),
-            "catalog mode must reject run arguments without emitting a partial document");
+    require(status != 0, "the shared runner must reject the removed --editor-catalog CLI flag");
 }
 
 void run_catalog_identity_and_protocol_cases(const nlohmann::json &engineCatalog)
@@ -186,124 +167,209 @@ void run_catalog_identity_and_protocol_cases(const nlohmann::json &engineCatalog
     using namespace std::chrono_literals;
     using platformator_editor::BehaviorCatalog;
     using platformator_editor::CatalogIdentity;
-    using platformator_editor::CatalogProtocol;
     using platformator_editor::CatalogState;
 
     const CatalogIdentity identity{"/tmp/custom-project", "debug", "custom-main", "/tmp/custom-game",
                                    "binary-1", "inputs-1"};
-    BehaviorCatalog undeclared;
-    undeclared.configure(CatalogProtocol::Unavailable, identity);
-    require(!undeclared.can_query() && undeclared.can_build_only() && !undeclared.can_automatic_run() &&
-                !undeclared.begin_query(),
-            "undeclared custom entries must remain buildable without querying or automatic Run");
-
-    TemporaryDirectory temporary;
-    const auto customSource = temporary.path() / "custom_main.cpp";
-    {
-        std::ofstream source(customSource, std::ios::binary);
-        source << "int custom_main() { return 0; }\n";
-    }
-    std::ifstream originalStream(customSource, std::ios::binary);
-    const std::string original((std::istreambuf_iterator<char>(originalStream)), {});
-    require(original == "int custom_main() { return 0; }\n",
-            "the custom-entry fixture must retain its original source content");
-    std::ifstream afterStream(customSource, std::ios::binary);
-    const std::string after((std::istreambuf_iterator<char>(afterStream)), {});
-    require(after == original, "catalog policy checks must not rewrite custom game source");
-
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1, identity);
-    require(catalog.can_query() && catalog.can_build_only() && !catalog.can_automatic_run(),
-            "declaring the protocol permits a query but does not certify catalog availability");
-    require(catalog.begin_query() && catalog.append_stdout(engineCatalog.dump()) &&
-                catalog.append_stderr("fixture diagnostic") && catalog.finish_query(0, 250ms),
-            "a successful schema query must complete independently from stderr diagnostics");
-    require(catalog.state() == CatalogState::Current && catalog.can_automatic_run() && catalog.snapshot() &&
+    catalog.configure(identity);
+    require(catalog.set_source_catalog(engineCatalog),
+            "a valid source catalog must populate an immutable current schema snapshot");
+    require(catalog.state() == CatalogState::Current && catalog.snapshot() &&
                 catalog.snapshot()->document == engineCatalog,
-            "a valid identity-bound query must publish an immutable current schema snapshot");
+            "a valid source catalog must publish an immutable current schema snapshot");
 
     const CatalogIdentity changedIdentity{"/tmp/custom-project", "debug", "custom-main", "/tmp/custom-game",
                                           "binary-2", "inputs-2"};
-    catalog.configure(CatalogProtocol::CommonRunnerV1, changedIdentity);
-    require(catalog.state() == CatalogState::Stale && !catalog.can_automatic_run() && catalog.snapshot(),
-            "binary/source identity changes must retain data only as stale and block automatic Run");
-    require(catalog.begin_query() && catalog.append_stdout(engineCatalog.dump()),
-            "a compatible target may refresh its stale catalog");
-    catalog.configure(CatalogProtocol::CommonRunnerV1, identity);
-    require(!catalog.finish_query(0, 50ms) && catalog.state() == CatalogState::Stale,
-            "a completion for an identity superseded during the query must not become current");
-
-    BehaviorCatalog falseDeclaration;
-    falseDeclaration.configure(CatalogProtocol::CommonRunnerV1, identity);
-    require(falseDeclaration.begin_query() && falseDeclaration.append_stdout("gameplay started") &&
-                !falseDeclaration.finish_query(1, 100ms) && !falseDeclaration.can_automatic_run() &&
-                falseDeclaration.can_build_only(),
-            "a falsely declared custom entry must fail catalog verification without enabling Run");
+    catalog.configure(changedIdentity);
+    require(catalog.state() == CatalogState::Stale && catalog.snapshot(),
+            "configuring a different identity while Current must stale the cached snapshot");
+    catalog.configure(changedIdentity);
+    catalog.configure(identity);
+    require(catalog.state() == CatalogState::Stale && catalog.snapshot(),
+            "switching back to a previously cached catalog identity must not restore stale data as current");
 
     BehaviorCatalog malformed;
-    malformed.configure(CatalogProtocol::CommonRunnerV1, identity);
-    require(malformed.begin_query() && malformed.append_stdout(engineCatalog.dump() + "extra") &&
-                !malformed.finish_query(0, 100ms) && malformed.state() == CatalogState::Unavailable,
-            "extra non-JSON stdout must reject the full schema payload");
+    malformed.configure(identity);
+    require(!malformed.set_source_catalog(engineCatalog.dump() + "extra") &&
+                malformed.state() == CatalogState::Unavailable,
+            "extra non-JSON input must reject the schema payload");
+}
 
-    BehaviorCatalog timeout;
-    timeout.configure(CatalogProtocol::CommonRunnerV1, identity);
-    require(timeout.begin_query() && timeout.append_stdout(engineCatalog.dump()) &&
-                !timeout.finish_query(0, 10001ms, false) && !timeout.can_automatic_run(),
-            "catalog queries exceeding ten seconds must be rejected");
+void run_mario_source_reference_cases()
+{
+    using platformator_editor::BehaviorCatalog;
+    using platformator_editor::SourceBehaviorScanner;
 
-    BehaviorCatalog oversized;
-    oversized.configure(CatalogProtocol::CommonRunnerV1, identity);
-    require(oversized.begin_query() && !oversized.append_stdout(std::string(4 * 1024 * 1024 + 1, 'x')) &&
-                !oversized.finish_query(0, 100ms) && oversized.state() == CatalogState::Unavailable,
-            "catalog queries exceeding the four MiB stdout/stderr budget must be rejected");
+    const auto sourceRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    std::vector<std::pair<std::filesystem::path, std::string>> sources;
+    for (const char *name : {"mario_camera_rig.h", "mario_game.h"})
+    {
+        const auto path = sourceRoot / "examples/mario/assets/behaviors" / name;
+        std::ifstream input(path, std::ios::binary);
+        require(input.is_open(), "the real Mario behavior header must be available: " + path.string());
+        sources.emplace_back(path, std::string{std::istreambuf_iterator<char>(input),
+                                              std::istreambuf_iterator<char>()});
+    }
+    const auto scan = SourceBehaviorScanner::scan_sources(sources);
+    BehaviorCatalog catalog;
+    require(catalog.load_from_source_scan(scan), "real Mario source schemas must form a valid catalog");
+    const auto snapshot = catalog.snapshot();
+    const auto *rig = find_behavior(snapshot->document, "MarioCameraRig");
+    const auto *game = find_behavior(snapshot->document, "MarioGame");
+    require(rig != nullptr && game != nullptr, "both real Mario behaviors must be discovered");
+    const auto require_reference = [](const nlohmann::json &behavior, std::string_view name,
+                                      std::string_view target) {
+        const auto *field = find_field(behavior, name);
+        require(field != nullptr && field->value("kind", "") == "object_reference" &&
+                    field->value("target", "") == target && field->value("nullable", false) &&
+                    !field->contains("scanner_warning"),
+                "source-scanned ObjectReference field must expose its editable reference type: " +
+                    std::string(name));
+    };
+    require_reference(*rig, "camera", "Camera");
+    require_reference(*rig, "target", "GameObject");
+    require_reference(*game, "player", "GameObject");
+    require_reference(*game, "bgm", "Audio");
+    require(find_field(*rig, "cameraLead") != nullptr &&
+                find_field(*rig, "cameraLead")->value("kind", "") == "number",
+            "the camera rig's numeric field must remain available alongside its references");
 }
 
 void run_process_query_cases()
 {
-    using namespace std::chrono_literals;
     using platformator_editor::BehaviorCatalog;
-    using platformator_editor::BehaviorCatalogQuery;
     using platformator_editor::CatalogIdentity;
-    using platformator_editor::CatalogProtocol;
     using platformator_editor::CatalogState;
-    using platformator_editor::ProcessRequest;
+    using platformator_editor::SourceBehaviorScanner;
+
+    const auto tempDir = std::filesystem::temp_directory_path() / "platformator_scanner_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempDir, ec);
+    const auto srcDir = tempDir / "assets" / "behaviors";
+    std::filesystem::create_directories(srcDir);
+    {
+        std::ofstream out(srcDir / "PlayerMover.h");
+        out << "enum class MoveMode { Walk = 0, Run = 1 };\n"
+               "class PlayerMover : public Behavior {\n"
+               "public:\n"
+               "    float speed = 5.5f;\n"
+               "    MoveMode mode = MoveMode::Run;\n"
+               "    SERIALIZABLE_SCRIPT(PlayerMover, speed, mode)\n"
+               "};\n";
+    }
+
+    SourceBehaviorScanner scanner;
+    const auto scanResult = scanner.scan_project(tempDir, tempDir / "assets");
+    const auto it = scanResult.behaviors.find("PlayerMover");
+    require(scanResult.behaviors.size() == 1 && it != scanResult.behaviors.end() && it->second.typeName == "PlayerMover",
+            "SourceBehaviorScanner must extract PlayerMover behavior");
+    require(it->second.fields.size() == 2,
+            "SourceBehaviorScanner must extract speed and mode fields");
 
     BehaviorCatalog catalog;
-    catalog.configure(CatalogProtocol::CommonRunnerV1,
-                      CatalogIdentity{"/tmp/process-project", "debug", "fixture", "/tmp/catalog-fixture",
-                                      "binary", "inputs"});
-    BehaviorCatalogQuery query;
-    ProcessRequest request;
-    request.argv = {PLATFORMATOR_EDITOR_CATALOG_PROCESS_FIXTURE, "valid"};
-    request.workingDirectory = std::filesystem::current_path();
-    require(query.start(catalog, std::move(request), 1),
-            "a declared compatible target can launch a separate-stream catalog query");
-    const auto deadline = std::chrono::steady_clock::now() + 2s;
-    while (query.running() && std::chrono::steady_clock::now() < deadline)
-    {
-        query.poll();
-        std::this_thread::sleep_for(1ms);
-    }
-    query.poll();
-    require(!query.running() && catalog.state() == CatalogState::Current &&
-                catalog.can_automatic_run() && catalog.last_error().empty(),
-            "the process-backed query must accept one JSON stdout document while keeping stderr separate");
+    catalog.configure(CatalogIdentity{tempDir.string(), "debug", "main", "", "bin", "src"});
+    const auto loaded = catalog.load_from_source_scan(scanResult);
+    require(loaded && catalog.state() == CatalogState::Current,
+            "BehaviorCatalog::load_from_source_scan must populate current catalog");
 
-    ProcessRequest failing;
-    failing.argv = {PLATFORMATOR_EDITOR_CATALOG_PROCESS_FIXTURE, "fail"};
-    failing.workingDirectory = std::filesystem::current_path();
-    require(query.start(catalog, std::move(failing), 2), "a current catalog may be explicitly refreshed");
-    const auto failureDeadline = std::chrono::steady_clock::now() + 2s;
-    while (query.running() && std::chrono::steady_clock::now() < failureDeadline)
+    const auto bracedPath = srcDir / "BracedDefaults.h";
+    const auto write_braced_source = [&](std::string_view macro) {
+        std::ofstream out(bracedPath, std::ios::binary | std::ios::trunc);
+        out << "class BracedDefaults : public Behavior {\n"
+               "public:\n"
+               "    bool enabled{true};\n"
+               "    int count{4};\n"
+               "    float ratio{1.25f};\n"
+               "    Eigen::Vector2f offset{1.0f, 0.0f};\n"
+               "    SDL_FRect bounds{1.0f, 2.0f, 3.0f, 4.0f};\n"
+               "    ObjectRef<GameObject> target{17};\n"
+               "    std::vector<int> samples{1, 2, 3};\n"
+               "    std::optional<float> factor{2.5f};\n"
+               "    int id{7};\n"
+               "    std::vector<int> children{6, 7};\n"
+               "    std::optional<int> components{8};\n"
+               "    std::vector<int> overrides{9, 10};\n"
+               "    " << macro << "\n"
+               "};\n";
+    };
+    write_braced_source("SERIALIZABLE_SCRIPT(BracedDefaults, enabled, count, ratio, offset, bounds, target, samples, factor, id, children, components, overrides)");
+    const auto bracedScan = scanner.scan_project(tempDir, tempDir / "assets");
+    const auto braced = bracedScan.behaviors.find("BracedDefaults");
+    const auto field_named = [](const auto &behavior, std::string_view name)
+        -> const platformator_editor::SourceBehaviorFieldDescriptor * {
+        const auto field = std::find_if(behavior.fields.begin(), behavior.fields.end(),
+            [&](const auto &candidate) { return candidate.name == name; });
+        return field == behavior.fields.end() ? nullptr : &*field;
+    };
+    require(braced != bracedScan.behaviors.end() && braced->second.fields.size() == 12,
+            "a closing brace in a member initializer must not discard its declaration before the semicolon");
+    const auto *offset = field_named(braced->second, "offset");
+    const auto *bounds = field_named(braced->second, "bounds");
+    const auto *target = field_named(braced->second, "target");
+    const auto *samples = field_named(braced->second, "samples");
+    const auto *factor = field_named(braced->second, "factor");
+    const auto *idField = field_named(braced->second, "id");
+    const auto *childrenField = field_named(braced->second, "children");
+    const auto *componentsField = field_named(braced->second, "components");
+    const auto *overridesField = field_named(braced->second, "overrides");
+    require(offset && offset->defaultValue && *offset->defaultValue == nlohmann::json{{"x", 1.0}, {"y", 0.0}} &&
+                bounds && bounds->defaultValue && *bounds->defaultValue ==
+                    nlohmann::json{{"x", 1.0}, {"y", 2.0}, {"w", 3.0}, {"h", 4.0}} &&
+                target && target->defaultValue && *target->defaultValue == 17 &&
+                samples && samples->defaultValue && *samples->defaultValue == nlohmann::json::array({1, 2, 3}) &&
+                factor && factor->defaultValue && *factor->defaultValue == 2.5 &&
+                idField && idField->kind == "signed_integer" && idField->defaultValue &&
+                    *idField->defaultValue == 7 &&
+                childrenField && childrenField->kind == "array" && childrenField->element &&
+                    childrenField->element->kind == "signed_integer" && childrenField->defaultValue &&
+                    *childrenField->defaultValue == nlohmann::json::array({6, 7}) &&
+                componentsField && componentsField->kind == "optional" && componentsField->element &&
+                    componentsField->element->kind == "signed_integer" && componentsField->defaultValue &&
+                    *componentsField->defaultValue == 8 &&
+                overridesField && overridesField->kind == "array" && overridesField->element &&
+                    overridesField->element->kind == "signed_integer" && overridesField->defaultValue &&
+                    *overridesField->defaultValue == nlohmann::json::array({9, 10}),
+            "primitive and container fields named like editor metadata must remain in the scanned schema");
+    const bool loadedBracedDefaults = catalog.load_from_source_scan(bracedScan);
+    require(loadedBracedDefaults,
+            "the initial complete source scan must publish braced defaults: " + catalog.last_error() +
+                "; schema=" + bracedScan.to_catalog_json().dump());
+
     {
-        query.poll();
-        std::this_thread::sleep_for(1ms);
+        std::ofstream out(srcDir / "PlayerMover.h", std::ios::binary | std::ios::trunc);
+        out << "enum class MoveMode { Walk = 0, Run = 1 };\n"
+               "class PlayerMover : public Behavior { public: float speed = 9.5f; MoveMode mode = MoveMode::Run; "
+               "SERIALIZABLE_SCRIPT(PlayerMover, speed, mode) };\n";
     }
-    query.poll();
-    require(!query.running() && catalog.state() == CatalogState::Stale &&
-                !catalog.can_automatic_run() && catalog.last_error().find("status 7") != std::string::npos,
-            "a failed refresh must retain only a stale snapshot and disable automatic Run");
+    write_braced_source("SERIALIZABLE_SCRIPT(BracedDefaults, ratio, factor");
+    const auto malformedScan = scanner.scan_project(tempDir, tempDir / "assets");
+    require(std::any_of(malformedScan.diagnostics.begin(), malformedScan.diagnostics.end(),
+                [](const auto &diagnostic) {
+                    return diagnostic.typeName == "BracedDefaults" &&
+                           diagnostic.message.find("incomplete") != std::string::npos;
+                }),
+            "an incomplete SERIALIZABLE_SCRIPT call must be diagnosed even when source braces balance");
+    require(catalog.load_from_source_scan(malformedScan),
+            "the malformed edit scan must remain publishable with last-valid schemas retained");
+    const auto retainedBraced = find_behavior(catalog.snapshot()->document, "BracedDefaults");
+    const auto updatedPlayer = find_behavior(catalog.snapshot()->document, "PlayerMover");
+    require(retainedBraced && retainedBraced->at("fields").size() == 12 &&
+                retainedBraced->value("scanner_warning", std::string{}).find("last valid schema") != std::string::npos &&
+                updatedPlayer && find_field(*updatedPlayer, "speed") != nullptr &&
+                find_field(*updatedPlayer, "speed")->value("default_value", 0.0) == 9.5,
+            "the incomplete behavior must retain its last-valid fields while unaffected behaviors update");
+
+    write_braced_source("SERIALIZABLE_SCRIPT(BracedDefaults, ratio, factor)");
+    const auto recoveredScan = scanner.scan_project(tempDir, tempDir / "assets");
+    require(catalog.load_from_source_scan(recoveredScan),
+            "a repaired macro declaration must recover the current schema");
+    const auto recoveredBraced = find_behavior(catalog.snapshot()->document, "BracedDefaults");
+    require(recoveredBraced && recoveredBraced->at("fields").size() == 2 &&
+                find_field(*recoveredBraced, "enabled") == nullptr,
+            "valid recovery must apply intentional field deletion after the incomplete edit is fixed");
+
+    std::filesystem::remove_all(tempDir, ec);
 }
 } // namespace
 
@@ -398,6 +464,7 @@ int main()
         }
         require(rejectedConflict, "conflicting duplicate behavior schemas must be rejected");
         run_catalog_identity_and_protocol_cases(first);
+        run_mario_source_reference_cases();
         run_process_query_cases();
     }
     catch (const std::exception &error)

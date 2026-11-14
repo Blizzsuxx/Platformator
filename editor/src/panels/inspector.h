@@ -12,12 +12,16 @@
 
 #include "editcommands.h"
 #include "../accessibility.h"
+#include "../layersettings.h"
 #include "behaviorfields.h"
 #include "selection.h"
 #include "spriteeditor.h"
 
 namespace platformator_editor
 {
+std::vector<std::pair<int, int>> paired_collider_layer_targets(
+    const std::vector<int> &objectIds, const std::vector<int> &componentIds);
+
 class InspectorPanel
 {
   public:
@@ -28,6 +32,8 @@ class InspectorPanel
         int sourceHeight = 0;
     };
     using TexturePreparer = std::function<PreparedTextureInfo(const std::filesystem::path &)>;
+    using SelectTemplateAssetCallback = std::function<void(const std::filesystem::path &)>;
+    using SelectedTemplateAssetCallback = std::function<std::optional<std::filesystem::path>()>;
 
     void draw(DocumentSession &document, SelectionModel &selection, EditCommandService &commands,
               const BehaviorCatalog &catalog, const AssetBrowseCallback &browse = {},
@@ -50,13 +56,38 @@ class InspectorPanel
     {
         texturePreparer_ = std::move(callback);
     }
+    void set_layer_settings(const LayerSettings *layerSettings) noexcept
+    {
+        layerSettings_ = layerSettings;
+    }
+    void set_open_template_callback(std::function<void(const std::filesystem::path &)> callback)
+    {
+        openTemplateCallback_ = std::move(callback);
+    }
+    void set_select_template_asset_callback(SelectTemplateAssetCallback callback)
+    {
+        selectTemplateAssetCallback_ = std::move(callback);
+    }
+    void set_selected_template_asset_callback(SelectedTemplateAssetCallback callback)
+    {
+        selectedTemplateAssetCallback_ = std::move(callback);
+    }
+    void set_browse_template_asset_callback(std::function<void(int)> callback)
+    {
+        browseTemplateAssetCallback_ = std::move(callback);
+    }
+    void set_open_layer_settings_callback(std::function<void()> callback)
+    {
+        openLayerSettingsCallback_ = std::move(callback);
+    }
+    void set_template_propagated_callback(std::function<void(const std::filesystem::path &)> callback)
+    {
+        templatePropagatedCallback_ = std::move(callback);
+    }
     const SpriteSourceRegionWidget &sprite_region_widget() const noexcept
     {
         return spriteRegionWidget_;
     }
-    std::vector<Json> template_author_bindings(const DocumentSession &document) const;
-    std::vector<TemplateAuthorSchemaDeclaration> template_author_schemas(
-        const DocumentSession &document) const;
     std::vector<SemanticNode> semantic_nodes(const DocumentSession &document,
                                              const Selection &selection,
                                              std::string_view scope,
@@ -129,9 +160,11 @@ class InspectorPanel
     std::optional<Json> componentSettingsClipboard_;
     std::optional<Json> transformSettingsClipboard_;
     std::uint64_t hostGeneration_ = 0;
+    const LayerSettings *layerSettings_ = nullptr;
     std::optional<int> revealObjectId_;
     std::optional<int> revealComponentId_;
     std::string revealPath_;
+    bool behaviorRevealPending_ = false;
     struct IntegerDraft
     {
         int value = 0;
@@ -189,6 +222,13 @@ class InspectorPanel
     std::unordered_map<std::string, SemanticTarget> semanticTargets_;
     std::optional<std::string> semanticFocusNode_;
     std::function<void(const std::filesystem::path &)> openAnimationCallback_;
+    std::function<void(const std::filesystem::path &)> openTemplateCallback_;
+    SelectTemplateAssetCallback selectTemplateAssetCallback_;
+    SelectedTemplateAssetCallback selectedTemplateAssetCallback_;
+    std::function<void(int)> browseTemplateAssetCallback_;
+    std::function<void(const std::filesystem::path &)> templatePropagatedCallback_;
+    std::function<void()> openLayerSettingsCallback_;
+    bool applyColliderLayerToDescendants_ = false;
     MultiAssetBrowseCallback multiAssetBrowseCallback_;
     TexturePreparer texturePreparer_;
     SpriteSourceRegionWidget spriteRegionWidget_;

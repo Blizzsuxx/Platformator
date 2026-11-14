@@ -36,10 +36,6 @@ void test_copy_search_severity_selection_and_repeats()
     auto matches = view.visible_rows(raw.text());
     require(matches.size() == 1 && matches.front() == 0,
             "case-insensitive search must filter derived rows only");
-    view.set_severity_filter(DiagnosticSeverity::Warning);
-    require(view.visible_rows(raw.text()).empty(),
-            "severity filtering must hide nonmatching rows without changing Copy All");
-    view.set_severity_filter(std::nullopt);
     view.set_search("");
     view.set_collapse_repeats(false);
     view.rebuild(raw);
@@ -160,11 +156,13 @@ void test_console_semantics_and_owner_actions()
     const auto *copy = find("main/panel/console/copy-all");
     const auto *search = find("main/panel/console/search");
     const auto *severity = find("main/panel/console/severity");
+    const auto *warningBadge = find("main/panel/console/console-badge-warning");
     const auto *row = find("main/panel/console/row/0");
     require(copy != nullptr && copy->enabled && search != nullptr &&
                 search->role == SemanticRole::TextField &&
                 search->actions == std::vector<std::string>{"set_value"} &&
-                severity != nullptr && severity->value == "All severities" &&
+                severity == nullptr && warningBadge != nullptr &&
+                warningBadge->name == "Toggle Warning messages" &&
                 row != nullptr && row->selected == false && row->bounds.has_value() &&
                 row->value.find("broken value") != std::string::npos,
             "visible Console controls and rows must expose roles, values, state, text and bounds");
@@ -198,16 +196,19 @@ void test_console_semantics_and_owner_actions()
             "a row action captured before a Console revision change must be rejected");
 
     require(panel.dispatch_semantic_action({HostLayoutId{1}, WindowHostGeneration{1}, 1,
-                "main/panel/console/severity", "activate", {}}, status, raw) &&
+                "main/panel/console/console-badge-warning", "toggle", {}}, status, raw) &&
                 panel.dispatch_semantic_action({HostLayoutId{1}, WindowHostGeneration{1}, 1,
-                "main/panel/console/severity", "activate", {}}, status, raw),
-            "the semantic severity control must advance through its advertised choices");
+                "main/panel/console/console-badge-warning", "toggle", {}}, status, raw),
+            "severity badges must toggle independently through accessibility actions");
     nodes = panel.semantic_nodes(status, raw, "main/panel/console");
-    const auto selectedSeverity = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &candidate) {
-        return candidate.id == "main/panel/console/severity";
+    const auto selectedWarningBadge = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &candidate) {
+        return candidate.id == "main/panel/console/console-badge-warning";
     });
-    require(selectedSeverity != nodes.end() && selectedSeverity->value == "Warnings",
-            "the severity control must publish the active filter after an accessible action");
+    require(selectedWarningBadge != nodes.end() && selectedWarningBadge->selected &&
+                std::none_of(nodes.begin(), nodes.end(), [](const SemanticNode &candidate) {
+                    return candidate.id == "main/panel/console/severity";
+                }),
+            "Console semantics must expose the real warning badge without a phantom severity control");
     require(panel.dispatch_semantic_action({HostLayoutId{1}, WindowHostGeneration{1}, 1,
                 "main/panel/console/clear", "activate", {}}, status, raw) && raw.text().empty(),
             "the semantic Clear action must clear retained output and its projection");

@@ -229,7 +229,7 @@ namespace
     void test_runner_catalog_is_runtime_only_and_option_gated()
     {
         require(platformator::Runtime::tryGetCurrent() == nullptr && SDL_WasInit(0) == 0,
-                "play-session capability query must begin without Runtime or SDL initialization");
+                "play-session capability check must begin without Runtime or SDL initialization");
 
         std::ostringstream output;
         std::ostringstream errors;
@@ -242,23 +242,10 @@ namespace
         std::cout.rdbuf(previousOutput);
         std::cerr.rdbuf(previousErrors);
 
-        require(status == 0 && errors.str().empty(),
-                "the stock runner must answer its exclusive catalog query without stderr output");
-        const auto catalog = nlohmann::json::parse(output.str());
-        require(catalog.is_object() && catalog.value("schema_version", 0) == 1 &&
-                    catalog.contains("behaviors") && catalog["behaviors"].is_array(),
-                "session negotiation must preserve the schema-v1 behavior catalog envelope");
-#if defined(PLATFORMATOR_ENABLE_EDITOR_SESSION) && PLATFORMATOR_ENABLE_EDITOR_SESSION
-        const auto capabilities = platformator::editor_session::read_session_capabilities(catalog);
-        require(capabilities.supported && capabilities.playControl && capabilities.runtimeInspection &&
-                    capabilities.inputForwarding,
-                "an opt-in stock runner advertises owner-thread controls and input forwarding");
-#else
-        require(!catalog.contains("editor_capabilities"),
-                "a default-off stock runner must not advertise editor session capabilities");
-#endif
+        require(status != 0,
+                "the stock runner must reject the removed --editor-catalog CLI flag");
         require(platformator::Runtime::tryGetCurrent() == nullptr && SDL_WasInit(0) == 0,
-                "catalog capability negotiation must not initialize Runtime or SDL");
+                "rejected CLI check must not initialize Runtime or SDL");
     }
 
     void advance_to_starting(PlaySession &session, FakeTransport &transport,
@@ -266,10 +253,10 @@ namespace
     {
         require(session.begin_configuring(launch_identity(), "0123456789abcdef"),
                 "a complete saved launch identity and private nonce must configure a session");
-        require(session.begin_building() && session.begin_catalog_check(),
-                "session setup must follow Configuring → Building → CatalogCheck");
-        require(session.begin_starting(std::move(capabilities), std::move(transport.pair)),
-                "a compatible capability set and separate channels must enter Starting");
+        require(session.begin_building(),
+                "session setup must follow Configuring → Building");
+        require(session.begin_starting(std::move(transport.pair), capabilities),
+                "separate channels must enter Starting");
     }
 
     void test_built_pipeline_identity_is_finalized_before_catalog_validation()
@@ -282,9 +269,8 @@ namespace
         builtIdentity.executablePath = "/project/build/game";
         builtIdentity.binaryIdentity = "1234:5678";
         require(session.finalize_pipeline_identity(builtIdentity) &&
-                    session.launch_identity()->pipeline == builtIdentity &&
-                    session.begin_catalog_check(),
-                "the built executable identity is finalized before catalog validation begins");
+                    session.launch_identity()->pipeline == builtIdentity,
+                "the built executable identity is finalized before launch begins");
 
         PlaySession rejected;
         require(rejected.begin_configuring(identity, "0123456789abcdef") && rejected.begin_building(),
@@ -388,12 +374,15 @@ namespace
         FakeTransport replayTransport;
         advance_to_starting(replaySession, replayTransport);
         const auto replayGeneration = replaySession.generation();
-        emit_event(*replayTransport.eventPipe, replaySession.nonce(), replayGeneration.value, 1, 44, "ready");
+        emit_event(*replayTransport.eventPipe, replaySession.nonce(), replayGeneration.value, 1, 44,
+                   "capabilities", child_capabilities_body(true));
+        emit_event(*replayTransport.eventPipe, replaySession.nonce(), replayGeneration.value, 2, 44, "ready");
         replaySession.poll_events();
         require(replaySession.state() == PlaySessionState::Running,
                 "a matching Ready event starts a session exactly once");
         (void)replaySession.take_event();
-        emit_event(*replayTransport.eventPipe, replaySession.nonce(), replayGeneration.value, 1, 44, "state",
+        (void)replaySession.take_event();
+        emit_event(*replayTransport.eventPipe, replaySession.nonce(), replayGeneration.value, 2, 44, "state",
                    Json{{"state", "paused"}, {"request_sequence", 1}});
         replaySession.poll_events();
         require(replaySession.state() == PlaySessionState::Stopping &&
@@ -403,6 +392,32 @@ namespace
         require(replaySession.finish_stop_after_reap() && replayTransport.commandPipe->cancelled &&
                     replayTransport.eventPipe->cancelled,
                 "replayed sessions cancel transport during owner cleanup after reap");
+
+        PlaySession outOfOrder;
+        FakeTransport outOfOrderTransport;
+        advance_to_starting(outOfOrder, outOfOrderTransport);
+        const auto outOfOrderGeneration = outOfOrder.generation();
+        emit_event(*outOfOrderTransport.eventPipe, outOfOrder.nonce(), outOfOrderGeneration.value,
+                   1, 44, "ready");
+        outOfOrder.poll_events();
+        require(outOfOrder.state() == PlaySessionState::Stopping &&
+                    outOfOrder.last_error().find("before a valid child capabilities") != std::string::npos,
+                "Ready before capabilities must fail with the startup guidance");
+        require(outOfOrder.finish_stop_after_reap(), "out-of-order handshake cleans up after reap");
+
+        PlaySession mismatched;
+        FakeTransport mismatchedTransport;
+        advance_to_starting(mismatched, mismatchedTransport);
+        const auto mismatchedGeneration = mismatched.generation();
+        emit_event(*mismatchedTransport.eventPipe, mismatched.nonce(), mismatchedGeneration.value,
+                   1, 45, "capabilities", child_capabilities_body(true));
+        emit_event(*mismatchedTransport.eventPipe, mismatched.nonce(), mismatchedGeneration.value,
+                   2, 44, "ready");
+        mismatched.poll_events();
+        require(mismatched.state() == PlaySessionState::Stopping &&
+                    mismatched.last_error().find("different runtime") != std::string::npos,
+                "Ready must match the runtime serial that advertised capabilities");
+        require(mismatched.finish_stop_after_reap(), "mismatched handshake cleans up after reap");
     }
 
     void test_capability_and_queue_bounds()
@@ -410,11 +425,9 @@ namespace
         PlaySession unsupported;
         FakeTransport unsupportedTransport;
         require(unsupported.begin_configuring(launch_identity(), "0123456789abcdef") &&
-                    unsupported.begin_building() && unsupported.begin_catalog_check(),
-                "unsupported capability fixture reaches catalog negotiation");
-        auto noControl = play_capabilities();
-        noControl.playControl = false;
-        require(unsupported.begin_starting(noControl, std::move(unsupportedTransport.pair)) &&
+                    unsupported.begin_building(),
+                "unsupported capability fixture reaches starting");
+        require(unsupported.begin_starting(std::move(unsupportedTransport.pair)) &&
                     unsupported.mark_running(RuntimeSerial{44}) &&
                     !unsupported.request_pause() && !unsupported.request_step(),
                 "a protocol-compatible target can run without exposing unavailable pause or Step controls");
@@ -424,12 +437,10 @@ namespace
         PlaySession withInput;
         FakeTransport withInputTransport;
         require(withInput.begin_configuring(launch_identity(), "0123456789abcdef") &&
-                    withInput.begin_building() && withInput.begin_catalog_check(),
-                "input-forwarding fixture reaches catalog negotiation");
-        auto inputForwarding = play_capabilities();
-        inputForwarding.inputForwarding = true;
-        require(withInput.begin_starting(inputForwarding, std::move(withInputTransport.pair)),
-                "v1 accepts a capability set that enables input forwarding");
+                    withInput.begin_building(),
+                "input-forwarding fixture reaches starting");
+        require(withInput.begin_starting(std::move(withInputTransport.pair)),
+                "v1 accepts starting with transport");
 
         PlaySession bounded;
         FakeTransport transport(true);
@@ -451,10 +462,10 @@ namespace
         PlaySession missingMapping;
         FakeTransport noMapping;
         require(missingMapping.begin_configuring(launch_identity(), "0123456789abcdef") &&
-                    missingMapping.begin_building() && missingMapping.begin_catalog_check(),
-                "mapping fixture reaches catalog negotiation");
-        require(!missingMapping.begin_starting(play_capabilities(true), std::move(noMapping.pair)),
-                "frame streaming is rejected unless the fixed two-slot mapping is present");
+                    missingMapping.begin_building(),
+                "mapping fixture reaches starting");
+        require(missingMapping.begin_starting(std::move(noMapping.pair)),
+                "session enters starting without frame mapping until child sends capabilities");
     }
 
     void test_event_eof_is_visible_and_waits_for_reap()
@@ -479,10 +490,12 @@ namespace
         transport.eventPipe->maximumRead = 16U * 1024U;
         advance_to_starting(session, transport);
         const auto generation = session.generation();
-        emit_event(*transport.eventPipe, session.nonce(), generation.value, 1, 44, "ready");
-        for (std::uint64_t sequence = 2; sequence <= 70; ++sequence)
+        emit_event(*transport.eventPipe, session.nonce(), generation.value, 1, 44,
+                   "capabilities", child_capabilities_body(true));
+        emit_event(*transport.eventPipe, session.nonce(), generation.value, 2, 44, "ready");
+        for (std::uint64_t sequence = 3; sequence <= 70; ++sequence)
             emit_event(*transport.eventPipe, session.nonce(), generation.value, sequence, 44,
-                       "capabilities", child_capabilities_body());
+                       "object_page", Json{{"request_sequence", sequence}});
 
         session.poll_events();
         require(session.queued_events() == PlaySession::MaximumEventsPerCall,
@@ -611,18 +624,18 @@ namespace
         const auto semantic = panel.semantic_nodes(&session, "test/game");
         const auto frameNode = std::find_if(semantic.begin(), semantic.end(), [](const SemanticNode &node)
                                             { return node.id == "test/game/frame"; });
-        const auto pauseNode = std::find_if(semantic.begin(), semantic.end(), [](const SemanticNode &node)
-                                            { return node.id == "test/game/pause"; });
         require(frameNode != semantic.end() && frameNode->value.find("aspect preserved") != std::string::npos &&
                     frameNode->help.find("capture") != std::string::npos &&
-                    pauseNode != semantic.end() && pauseNode->enabled &&
-                    panel.dispatch_semantic_action(session,
-                                                   SemanticAction{HostLayoutId{1}, WindowHostGeneration{1}, 1, "test/game/pause", "activate", {}}),
-                "Game semantic nodes expose aspect status, external native-input fallback, and Pause");
+                    std::none_of(semantic.begin(), semantic.end(), [](const SemanticNode &node) {
+                        return node.id == "test/game/pause" || node.id == "test/game/resume" ||
+                               node.id == "test/game/step" || node.id == "test/game/stop";
+                    }),
+                "Game semantic nodes expose aspect/input guidance without duplicating global transport controls");
+        require(session.request_pause(), "the global toolbar can request pause from the shared play session");
         session.flush_commands();
         const auto pauseRequests = decode_requests(*transport.commandPipe);
         require(pauseRequests.size() == 3 && pauseRequests.back().type == "pause",
-                "semantic Pause queues the same nonblocking runtime control as the visible button");
+                "global Pause queues the same nonblocking runtime control to the play session");
 
         const auto pauseRequestSequence = pauseRequests.back().sequence;
         emit_event(*transport.eventPipe, session.nonce(), generation.value, 2, 44, "state",
@@ -631,34 +644,25 @@ namespace
         require(session.state() == PlaySessionState::Paused && session.take_event().has_value(),
                 "the Game panel receives the matching Paused acknowledgement before enabling paused controls");
         const auto pausedSemantic = panel.semantic_nodes(&session, "test/game");
-        const auto resumeNode = std::find_if(pausedSemantic.begin(), pausedSemantic.end(),
-                                             [](const SemanticNode &node)
-                                             { return node.id == "test/game/resume"; });
-        const auto stepNode = std::find_if(pausedSemantic.begin(), pausedSemantic.end(),
-                                           [](const SemanticNode &node)
-                                           { return node.id == "test/game/step"; });
-        require(resumeNode != pausedSemantic.end() && resumeNode->enabled &&
-                    stepNode != pausedSemantic.end() && stepNode->enabled &&
-                    panel.dispatch_semantic_action(session,
-                                                   SemanticAction{HostLayoutId{1}, WindowHostGeneration{1}, 2, "test/game/step", "activate", {}}),
-                "a Paused Game exposes an actionable single-step control and Resume");
+        require(std::none_of(pausedSemantic.begin(), pausedSemantic.end(), [](const SemanticNode &node) {
+                    return node.id == "test/game/resume" || node.id == "test/game/step";
+                }) && session.request_step(),
+                "a Paused Game leaves single-step and Resume to the global editor toolbar");
         session.flush_commands();
         const auto stepRequests = decode_requests(*transport.commandPipe);
         require(stepRequests.size() == 4 && stepRequests.back().type == "step",
-                "the semantic Step control queues one fixed simulation step through the session channel");
+                "global Step queues one fixed simulation step through the session channel");
         emit_event(*transport.eventPipe, session.nonce(), generation.value, 3, 44, "step_completed",
                    Json{{"request_sequence", stepRequests.back().sequence}, {"step_number", 1}});
         session.poll_events();
         require(session.state() == PlaySessionState::Paused && session.completed_steps() == 1 &&
                     session.take_event().has_value(),
                 "the Game panel remains Paused after one acknowledged fixed Step");
-        require(panel.dispatch_semantic_action(session,
-                                               SemanticAction{HostLayoutId{1}, WindowHostGeneration{1}, 3, "test/game/resume", "activate", {}}),
-                "the semantic Resume control accepts a Paused session");
+        require(session.request_resume(), "the global toolbar can resume a Paused session");
         session.flush_commands();
         const auto resumeRequests = decode_requests(*transport.commandPipe);
         require(resumeRequests.size() == 5 && resumeRequests.back().type == "resume",
-                "the semantic Resume control queues the matching nonblocking session request");
+                "global Resume queues the matching nonblocking session request");
         emit_event(*transport.eventPipe, session.nonce(), generation.value, 4, 44, "state",
                    Json{{"state", "running"}, {"request_sequence", resumeRequests.back().sequence}});
         session.poll_events();
@@ -674,37 +678,32 @@ namespace
 
         require(session.request_stop() && session.finish_stop_after_reap() && *transport.mappingClosed,
                 "Game session stop reaps and releases shared I/O before texture teardown");
-        std::size_t restartRequests = 0;
-        panel.set_restart_callback([&]
-                                   { ++restartRequests; });
         const auto unsupportedReload = GamePanel::asset_change_status_message(false);
         const auto advertisedReload = GamePanel::asset_change_status_message(true);
-        require(unsupportedReload.find("does not advertise") != std::string::npos &&
-                    advertisedReload.find("no safe reload transaction path") != std::string::npos,
-                "asset staleness status distinguishes absent capability from an unimplemented reload path");
-        panel.set_pipeline_status(unsupportedReload, true);
+        require(unsupportedReload == "Assets changed. Rebuild to use the latest files." &&
+                    advertisedReload == unsupportedReload,
+                "asset staleness status uses the same concise rebuild guidance for all targets");
+        panel.set_pipeline_status(unsupportedReload);
         const auto stoppedSemantic = panel.semantic_nodes(&session, "test/game");
         const auto statusNode = std::find_if(stoppedSemantic.begin(), stoppedSemantic.end(),
                                              [](const SemanticNode &node)
                                              { return node.id == "test/game/status"; });
-        const auto restartNode = std::find_if(stoppedSemantic.begin(), stoppedSemantic.end(),
-                                              [](const SemanticNode &node)
-                                              { return node.id == "test/game/restart"; });
         require(statusNode != stoppedSemantic.end() &&
-                    statusNode->value.find("live asset reload") != std::string::npos &&
-                    restartNode != stoppedSemantic.end() && restartNode->enabled &&
-                    panel.dispatch_semantic_action(session,
-                                                   SemanticAction{HostLayoutId{1}, WindowHostGeneration{1}, 2, "test/game/restart", "activate", {}}) &&
-                    restartRequests == 1,
-                "stale asset status and Build & Restart remain available through semantic controls");
-        panel.set_pipeline_status(advertisedReload, true);
+                    statusNode->value == unsupportedReload &&
+                    std::none_of(stoppedSemantic.begin(), stoppedSemantic.end(), [](const SemanticNode &node) {
+                        return node.id == "test/game/restart";
+                    }) &&
+                    !panel.dispatch_semantic_action(session,
+                        SemanticAction{HostLayoutId{1}, WindowHostGeneration{1}, 2, "test/game/restart", "activate", {}}),
+                "stale asset status remains available without duplicating Build & Restart");
+        panel.set_pipeline_status(advertisedReload);
         const auto advertisedSemantic = panel.semantic_nodes(&session, "test/game");
         const auto advertisedStatusNode = std::find_if(advertisedSemantic.begin(), advertisedSemantic.end(),
                                                        [](const SemanticNode &node)
                                                        { return node.id == "test/game/status"; });
         require(advertisedStatusNode != advertisedSemantic.end() &&
-                    advertisedStatusNode->value.find("no safe reload transaction path") != std::string::npos,
-                "a target's live-reload claim cannot hide the editor's missing safe apply path");
+                    advertisedStatusNode->value == advertisedReload,
+                "asset staleness status stays concise when live reload is advertised");
         panel.set_renderer(nullptr);
         SDL_DestroyRenderer(renderer);
         SDL_DestroySurface(surface);
@@ -1484,19 +1483,19 @@ namespace
     {
         auto provider = make_posix_session_channel_provider();
         std::string error;
-        auto channels = provider->create_pair(128, error);
+        auto channels = provider->create_pair(session_frame_mapping_limit, error);
         require(channels != nullptr && error.empty(), "owned PlaySession channel pair should be created");
 
         PlaySession session;
         require(session.begin_configuring(launch_identity(), "0123456789abcdef") &&
-                    session.begin_building() && session.begin_catalog_check(),
-                "owned-process launch must follow configuration, build, and catalog phases");
+                    session.begin_building(),
+                "owned-process launch must follow configuration and build phases");
         ProcessRequest request;
-        request.argv = {PLATFORMATOR_EDITOR_SESSION_PROCESS_FIXTURE};
+        request.argv = {PLATFORMATOR_EDITOR_SESSION_PROCESS_FIXTURE, "--scene", "test.scene"};
         request.workingDirectory = std::filesystem::absolute(
                                        PLATFORMATOR_EDITOR_SESSION_PROCESS_FIXTURE)
                                        .parent_path();
-        require(session.start_process(std::move(request), play_capabilities(), std::move(channels)),
+        require(session.start_process(std::move(request), std::move(channels)),
                 "PlaySession must launch an owned child with inherited channels");
 
         const auto readyDeadline = std::chrono::steady_clock::now() + 4s;
@@ -1535,19 +1534,19 @@ namespace
     {
         auto provider = make_posix_session_channel_provider();
         std::string error;
-        auto channels = provider->create_pair(128, error);
+        auto channels = provider->create_pair(session_frame_mapping_limit, error);
         require(channels != nullptr && error.empty(), "crashing PlaySession channel pair should be created");
 
         PlaySession session;
         require(session.begin_configuring(launch_identity(), "0123456789abcdef") &&
-                    session.begin_building() && session.begin_catalog_check(),
-                "crash launch must follow configuration, build, and catalog phases");
+                    session.begin_building(),
+                "crash launch must follow configuration and build phases");
         ProcessRequest request;
         request.argv = {PLATFORMATOR_EDITOR_SESSION_PROCESS_FIXTURE, "crash"};
         request.workingDirectory = std::filesystem::absolute(
                                        PLATFORMATOR_EDITOR_SESSION_PROCESS_FIXTURE)
                                        .parent_path();
-        require(session.start_process(std::move(request), play_capabilities(), std::move(channels)),
+        require(session.start_process(std::move(request), std::move(channels)),
                 "PlaySession must launch the process used by the crash regression");
 
         const auto reapDeadline = std::chrono::steady_clock::now() + 4s;
@@ -1677,12 +1676,21 @@ namespace
         request.identity = PipelineIdentity{request.projectRoot.string(), "debug", "session-fixture",
                                             request.executablePath.string(), "fixture-binary-v1", "fixture-source-v1"};
         const auto launchedIdentity = request.identity;
-        request.catalogProtocol = "common-runner-v1";
         request.embeddedGameView = true;
         const auto expectedDocumentIdentity = *request.sceneDocumentIdentity;
 
         GamePipeline pipeline;
         BehaviorCatalog catalog;
+        const CatalogIdentity catalogIdentity{request.identity.canonicalProjectPath,
+                                               request.identity.profile,
+                                               request.identity.target,
+                                               request.identity.executablePath,
+                                               request.identity.binaryIdentity,
+                                               request.identity.sourceInputIdentity};
+        require(catalog.set_source_catalog(Json{{"schema_version", 1},
+                                                {"behaviors", Json::array()}},
+                                           catalogIdentity),
+                "embedded Game pipeline fixture needs a current catalog for its behavior-free scene");
         require(pipeline.start(std::move(request), catalog, 811),
                 "embedded Game pipeline accepts the immutable saved scene and launches its session child");
         const auto runningDeadline = std::chrono::steady_clock::now() + 8s;
@@ -1713,7 +1721,7 @@ namespace
         }
         require(!pipeline.busy() && pipeline.status().outcome == PipelineOutcome::Cancelled &&
                     pipeline.status().transitions == std::vector<PipelineStage>{
-                                                         PipelineStage::Configuring, PipelineStage::Building, PipelineStage::QueryingCatalog,
+                                                         PipelineStage::Configuring, PipelineStage::Building,
                                                          PipelineStage::Launching, PipelineStage::Running, PipelineStage::Idle} &&
                     session->state() == PlaySessionState::Idle,
                 "embedded Stop reaps the owned child, drains its session mapping, and returns the pipeline to Idle");
@@ -1731,7 +1739,6 @@ namespace
         staleRequest.sceneSavedHistoryToken = 5;
         staleRequest.sceneSavedFileIdentity = staleRequest.savedScenePath.generic_string() + ":saved-v1";
         staleRequest.identity = launchedIdentity;
-        staleRequest.catalogProtocol = "common-runner-v1";
         staleRequest.embeddedGameView = true;
         require(pipeline.start(std::move(staleRequest), catalog, 812),
                 "a fresh embedded session can start after the prior child has been reaped");
@@ -1887,11 +1894,8 @@ namespace
 
         GamePanel panel;
         panel.set_renderer(renderer);
-        bool restartTriggered = false;
-        panel.set_restart_callback([&]() { restartTriggered = true; });
         panel.set_pipeline_status(
-            "Live asset reload is unavailable; rebuild and restart to apply changes.",
-            true);
+            "Live asset reload is unavailable; build and run again to apply changes.");
 
         // 1. Idle state across narrow/scaled and standard sizes: horizontal and vertical bounds
         for (const float scale : {1.0f, 1.5f, 2.0f})
@@ -2018,7 +2022,7 @@ namespace
         require(openSize.y < closedSize.y - 20.0f,
                 "opening RuntimeDetailsDrawer must reserve vertical space and shrink canvas height");
 
-        // Check narrow/scaled running layout with Details drawer open and Build & Restart visible
+        // Check narrow/scaled running layout with the Details drawer open.
         for (const float scale : {1.0f, 1.5f, 2.0f})
         {
             ImVec2 nSize{}, nMin{}, nMax{};
@@ -2087,7 +2091,6 @@ namespace
         ImGui::End();
         ImGui::Render();
 
-        static_cast<void>(restartTriggered);
         panel.release_renderer(renderer);
         ImGui::DestroyContext();
         SDL_DestroyRenderer(renderer);

@@ -8,6 +8,7 @@
 #include <imgui.h>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -46,15 +47,16 @@ class ConsolePanel
 
   private:
     void remember_item(std::string id);
+    void set_feedback(std::string message);
 
     ConsoleFilterState filterState_;
     ConsoleProjection projection_;
     std::array<char, 256> search_{};
     std::optional<std::size_t> selectedRow_;
     std::uint64_t projectedRevision_ = static_cast<std::uint64_t>(-1);
-    int severityFilter_ = 0;
     bool collapseRepeats_ = true;
     std::string feedback_;
+    std::chrono::steady_clock::time_point feedbackDeadline_{};
     std::map<std::string, SemanticBounds> itemBounds_;
     std::vector<std::size_t> drawnRows_;
     std::string focusedItem_;

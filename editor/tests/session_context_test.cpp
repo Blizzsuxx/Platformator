@@ -138,7 +138,7 @@ void test_only_one_runtime_can_be_active()
             "a second active Runtime must be rejected without replacing the owner");
 }
 
-void test_project_replacement_is_transactional_and_preserves_work()
+void test_project_replacement_is_transactional_and_retires_outgoing_work()
 {
     TestEnvironment environment;
     const auto firstProject = environment.root() / "first";
@@ -157,28 +157,13 @@ void test_project_replacement_is_transactional_and_preserves_work()
     auto edit = tab->history().create_object(tab->workspace().document_for_edit(), std::nullopt,
                                              "Unsaved object");
     require(edit && tab->workspace().dirty(), "root replacement fixture must contain unsaved work");
-    auto &document = tab->workspace().document_for_edit();
-    const auto nameAddress = address_for_document(document, 0, std::nullopt, std::nullopt,
-                                                   {std::string("name")});
-    const auto propertyEdit = tab->history().set_property(document, nameAddress, "Renamed camera");
-    require(propertyEdit.status == CommandStatus::Changed,
-            "root replacement fixture must retain a property edit");
-    const auto batchEdit = tab->history().apply_batch(document,
-        {{address_for_document(document, 0, std::nullopt, std::nullopt, {std::string("active")}),
-          PropertyValue::of(false)},
-         {address_for_document(document, 0, std::nullopt, std::nullopt, {std::string("tag")}),
-          PropertyValue::of("Batch tag")}});
-    require(batchEdit.status == CommandStatus::Changed && tab->history().history_status().undoCommands == 3,
-            "root replacement fixture must retain structural, property and batch edits");
     const TabId secondTabId = session.documents().create_scene_tab();
     auto *secondTab = session.documents().find(secondTabId);
     require(secondTab != nullptr, "root replacement must include every open document tab");
-    auto &secondDocument = secondTab->workspace().document_for_edit();
-    const auto secondNameAddress = address_for_document(secondDocument, 0, std::nullopt, std::nullopt,
-                                                         {std::string("name")});
-    require(secondTab->history().set_property(secondDocument, secondNameAddress, "Second renamed").status ==
-                CommandStatus::Changed,
-            "the second open tab must retain independent authoring history");
+    require(secondTab->history().create_object(secondTab->workspace().document_for_edit(), std::nullopt,
+                                               "Second unsaved object") &&
+                secondTab->workspace().dirty(),
+            "the second open tab must also carry independent unsaved work");
     const Json beforeRoot = tab->workspace().document().root;
     const auto beforeHistory = tab->history().history_status();
     const auto beforeIdentity = tab->identity();
@@ -191,51 +176,32 @@ void test_project_replacement_is_transactional_and_preserves_work()
                 tab->history().history_status().currentToken == beforeHistory.currentToken,
             "failed project replacement must preserve generation, document, dirty state and history");
 
-    const auto replaced = session.set_project_roots(secondProject, secondAssets);
-    require(replaced && session.generation() == ProjectGeneration{2} &&
-                tab->identity().projectGeneration == session.generation() &&
-                secondTab->identity().projectGeneration == session.generation() &&
+    const auto refused = session.set_project_roots(secondProject, secondAssets);
+    require(refused.status == WorkspaceActionStatus::Failed &&
+                session.generation() == beforeIdentity.projectGeneration &&
+                session.documents().find(tabId) == tab && session.documents().find(secondTabId) == secondTab &&
                 tab->workspace().document().root == beforeRoot && tab->workspace().dirty() &&
                 tab->history().history_status().currentToken == beforeHistory.currentToken,
-            "successful root replacement must invalidate project identity while preserving current authoring work");
+            "dirty project replacement must refuse without changing either open tab or its history");
 
-    const auto staleCallback = tab->history().set_property(document, nameAddress, "Stale callback");
-    require(staleCallback.status == CommandStatus::StaleAddress &&
-                tab->workspace().document().root == beforeRoot,
-            "external property callbacks from the old project identity must remain stale");
-    require(tab->history().undo(document, tab->selection()).status == CommandStatus::Changed &&
-                document.root[0]["active"] == true && document.root[0]["tag"] == "",
-            "Undo of a retained batch must remain usable after project-root replacement");
-    require(tab->history().redo(document, tab->selection()).status == CommandStatus::Changed &&
-                document.root[0]["active"] == false && document.root[0]["tag"] == "Batch tag",
-            "Redo of a retained batch must remain usable after project-root replacement");
-    require(tab->history().undo(document, tab->selection()).status == CommandStatus::Changed &&
-                document.root[0]["active"] == true,
-            "the migrated batch entry must still expose the property edit below it");
-    const auto propertyUndo = tab->history().undo(document, tab->selection());
-    require(propertyUndo.status == CommandStatus::Changed && document.root[0]["name"] == "Camera",
-            propertyUndo.message.empty()
-                ? "Undo of a retained property edit must remain usable after root replacement"
-                : propertyUndo.message);
-    require(tab->history().redo(document, tab->selection()).status == CommandStatus::Changed &&
-                document.root[0]["name"] == "Renamed camera",
-            "Redo of a retained property edit must remain usable after root replacement");
-    require(tab->history().undo(document, tab->selection()).status == CommandStatus::Changed &&
-                document.root[0]["name"] == "Camera",
-            "the migrated property entry must still expose the structural edit below it");
-    const auto structuralUndo = tab->history().undo(document, tab->selection());
-    require(structuralUndo.status == CommandStatus::Changed && document.root.size() == 1,
-            structuralUndo.message.empty()
-                ? "Undo of a retained structural edit must remain usable after root replacement"
-                : structuralUndo.message);
-    require(tab->history().redo(document, tab->selection()).status == CommandStatus::Changed &&
-                document.root.size() == 2,
-            "Redo of a retained structural edit must remain usable after root replacement");
-    require(secondTab->history().undo(secondDocument, secondTab->selection()).status == CommandStatus::Changed &&
-                secondDocument.root[0]["name"] == "Camera" &&
-                secondTab->history().redo(secondDocument, secondTab->selection()).status == CommandStatus::Changed &&
-                secondDocument.root[0]["name"] == "Second renamed",
-            "project-root replacement must migrate Undo and Redo for every open tab");
+    const auto replaced = session.set_project_roots(secondProject, secondAssets, true);
+    require(replaced && session.generation() == ProjectGeneration{2} &&
+                session.documents().tab_count() == 1 && session.documents().animation_tab_count() == 0 &&
+                session.documents().find(tabId) == nullptr && session.documents().find(secondTabId) == nullptr,
+            "explicit discard must retire all outgoing scene tabs and their histories");
+    const TabId incomingTab = session.documents().active_tab_id();
+    const auto *incoming = session.documents().find(incomingTab);
+    require(incoming != nullptr && incomingTab != tabId && incomingTab != secondTabId &&
+                !incoming->workspace().dirty() &&
+                incoming->workspace().document().projectRoot == std::filesystem::canonical(secondProject),
+            "successful replacement must provide a fresh clean document for the incoming project");
+
+    const auto returned = session.set_project_roots(firstProject, firstAssets);
+    require(returned && session.generation() == ProjectGeneration{3} &&
+                session.documents().tab_count() == 1 && session.documents().active_tab_id() != incomingTab &&
+                session.documents().active_tab()->workspace().document().projectRoot ==
+                    std::filesystem::canonical(firstProject),
+            "A-to-B-to-A project restoration must create fresh project-owned document identities");
 }
 } // namespace
 
@@ -245,7 +211,7 @@ int main()
     {
         test_identity_scopes_and_never_reuse();
         test_tab_history_selection_and_canonical_activation();
-        test_project_replacement_is_transactional_and_preserves_work();
+        test_project_replacement_is_transactional_and_retires_outgoing_work();
         test_only_one_runtime_can_be_active();
     }
     catch (const std::exception &error)

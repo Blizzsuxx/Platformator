@@ -167,7 +167,7 @@ DocumentIndexes build_indexes(const Json &root, std::uint64_t generation, std::u
             if (!allIds.insert(componentId).second)
                 throw std::invalid_argument("duplicate file ID " + std::to_string(componentId));
             const int componentType = read_component_type(component);
-            if (!componentSlots.insert(componentType).second)
+            if (componentType != kScriptType && !componentSlots.insert(componentType).second)
                 throw std::invalid_argument("duplicate component slot on object " + std::to_string(objectId));
             indexes.componentsById.emplace(componentId, ComponentLocation{objectId, componentIndex});
             if (componentType == kScriptType)

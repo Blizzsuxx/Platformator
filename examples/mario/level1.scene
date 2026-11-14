@@ -26,7 +26,7 @@
     "name": "Main Camera",
     "position": {
       "x": 0.0,
-      "y": 0.0
+      "y": -19.73328399658203
     },
     "rotation": 0.0,
     "scale": {
@@ -63,7 +63,71 @@
   },
   {
     "active": true,
-    "children": [],
+    "children": [
+      {
+        "active": true,
+        "children": [
+          {
+            "active": true,
+            "children": [
+              {
+                "active": true,
+                "children": [],
+                "components": [],
+                "id": 1097,
+                "name": "GameObject",
+                "position": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "rotation": 0.0,
+                "scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                },
+                "tag": ""
+              }
+            ],
+            "components": [],
+            "id": 1096,
+            "name": "GameObject",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "rotation": 0.0,
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "tag": ""
+          }
+        ],
+        "components": [
+          {
+            "flip": 0,
+            "height": 16.0,
+            "id": 1098,
+            "sourceRectEnabled": false,
+            "textureFilePath": "assets/tiles/brick.png",
+            "type": 6,
+            "width": 16.0
+          }
+        ],
+        "id": 1095,
+        "name": "GameObject",
+        "position": {
+          "x": 0.0,
+          "y": 1.0
+        },
+        "rotation": 0.0,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "tag": ""
+      }
+    ],
     "components": [
       {
         "colliderType": 1,

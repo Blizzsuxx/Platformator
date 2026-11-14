@@ -17,6 +17,36 @@ using namespace platformator_editor_test;
 
 namespace
 {
+void run_script_validation_checks_behavior_schemas()
+{
+    auto document = make_default_document();
+    document.root[0]["components"].push_back(component(
+        42, 5, Json{{"behaviors", Json::array({
+            Json{{"type", "Health"}, {"health", "high"}},
+            Json{{"type", "Legacy"}, {"preserved", Json{{"x", 1}}}},
+            Json{{"type", ""}}})}}));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    const Json catalog{{"schema_version", 1}, {"behaviors", Json::array({
+        Json{{"name", "Health"}, {"field_schema_available", true},
+             {"fields", Json::array({Json{{"name", "health"}, {"kind", "number"}}})}}})}};
+    const auto result = validate_document(document, catalog);
+    const auto has_issue = [&](std::string_view fieldPath, bool blocksRun) {
+        return std::any_of(result.issues.begin(), result.issues.end(), [&](const ValidationIssue &issue) {
+            return issue.componentId == 42 && issue.fieldPath == fieldPath && issue.blocksRun == blocksRun;
+        });
+    };
+    require(has_issue("behaviors[0].health", true),
+            "typed Script fields with a schema mismatch must block Run at the saved field path");
+    require(has_issue("behaviors[1].type", false),
+            "a Script behavior with unavailable schema must produce a nonblocking warning");
+    require(has_issue("behaviors[2].type", true),
+            "a Script behavior record without a nonempty type must block Run");
+    require(result.blocksRun,
+            "blocking Script validation issues must mark the document as unsafe to run");
+}
+
 void run_validation_rejects_stale_navigation_and_deleted_targets()
 {
     TemporaryDirectory temporary;
@@ -635,6 +665,7 @@ int main()
 {
     try
     {
+        run_script_validation_checks_behavior_schemas();
         run_validation_rejects_stale_navigation_and_deleted_targets();
         run_validation_snapshot_limits_are_explicit();
         run_asset_invalidation_revalidates_unchanged_document_revisions();

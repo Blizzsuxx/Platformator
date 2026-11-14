@@ -11,6 +11,14 @@
 
 namespace platformator_editor
 {
+float runtime_inspection_list_height(float availableHeight, bool showDetails,
+                                     float frameHeightWithSpacing, float itemSpacingY) noexcept
+{
+    const float detailsHeight = showDetails
+        ? frameHeightWithSpacing * 6.0f + itemSpacingY : 0.0f;
+    return std::max(1.0f, availableHeight - detailsHeight);
+}
+
 namespace
 {
 bool read_unsigned(const Json &value, std::uint64_t &result)
@@ -19,15 +27,6 @@ bool read_unsigned(const Json &value, std::uint64_t &result)
         return false;
     result = value.get<std::uint64_t>();
     return true;
-}
-
-std::string runtime_value(const Json &value)
-{
-    if (value.is_string())
-        return value.get<std::string>();
-    if (value.is_primitive())
-        return value.dump();
-    return "(structured value)";
 }
 
 void add_button(std::vector<SemanticNode> &nodes, const std::string &parentId,
@@ -112,11 +111,9 @@ void GamePanel::release_renderer(SDL_Renderer *renderer) noexcept
     }
 }
 
-std::string GamePanel::asset_change_status_message(bool liveAssetReloadAdvertised)
+std::string GamePanel::asset_change_status_message(bool)
 {
-    return liveAssetReloadAdvertised
-        ? "Asset files changed. The runner advertises live reload, but this editor has no safe reload transaction path; Build & Restart to use the latest assets."
-        : "Asset files changed. This runner does not advertise safe live asset reload; Build & Restart to use the latest assets.";
+    return "Assets changed. Rebuild to use the latest files.";
 }
 
 void GamePanel::observe_generation(PlaySession *session)
@@ -139,7 +136,6 @@ void GamePanel::observe_generation(PlaySession *session)
     if (next)
     {
         pipelineStatus_.clear();
-        restartAvailable_ = false;
     }
     runtimeObjects_.clear();
     selectedHandle_.reset();
@@ -163,15 +159,9 @@ void GamePanel::observe_generation(PlaySession *session)
     frameTexture_ = nullptr;
 }
 
-void GamePanel::set_pipeline_status(std::string message, bool restartAvailable)
+void GamePanel::set_pipeline_status(std::string message)
 {
     pipelineStatus_ = std::move(message);
-    restartAvailable_ = restartAvailable;
-}
-
-void GamePanel::set_restart_callback(std::function<void()> callback)
-{
-    restartCallback_ = std::move(callback);
 }
 
 bool GamePanel::upload_frame(PlaySession &session, std::uint32_t slot,
@@ -382,50 +372,37 @@ void GamePanel::draw(PlaySession *session, bool visible)
     const auto capabilities = idle ? decltype(session->capabilities()){} : session->capabilities();
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
 
-    // Fixed-height single-row toolbar: [Aspect] [Scale] [Details?] [Build & Restart?] (or compact "..." overflow)
+    // Fixed-height single-row toolbar: [Aspect] [Scale] [Details?] (or compact "..." overflow)
     const ImGuiStyle &style = ImGui::GetStyle();
     const float totalAvail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float spacing = style.ItemSpacing.x;
     const float padX = style.FramePadding.x * 2.0f;
 
     const bool hasDetails = !idle && capabilities.runtimeInspection;
-    const bool hasRestart = restartAvailable_ && restartCallback_;
     const char *detailsLabel = showRuntimeDetails_ ? "Hide Details" : "Details";
     const float detailsFullW = hasDetails ? (ImGui::CalcTextSize(detailsLabel).x + padX) : 0.0f;
-    const float restartFullW = hasRestart ? (ImGui::CalcTextSize("Build & Restart").x + padX) : 0.0f;
     const float overflowW = ImGui::CalcTextSize("...").x + padX;
     const float minControlPairW = std::min(totalAvail * 0.65f, 120.0f * uiScale);
 
     bool showDetailsInline = hasDetails;
-    bool showRestartInline = hasRestart;
     bool showOverflow = false;
-    auto inline_actions_width = [&](bool det, bool rst, bool ovf) {
+    auto inline_actions_width = [&](bool det, bool ovf) {
         float w = 0.0f;
         if (det)
             w += spacing + detailsFullW;
-        if (rst)
-            w += spacing + restartFullW;
         if (ovf)
             w += spacing + overflowW;
         return w;
     };
-    if (totalAvail - inline_actions_width(showDetailsInline, showRestartInline, false) < minControlPairW)
+    if (totalAvail - inline_actions_width(showDetailsInline, false) < minControlPairW)
     {
-        if (hasDetails && hasRestart)
-        {
-            showRestartInline = false;
-            showOverflow = true;
-            if (totalAvail - inline_actions_width(showDetailsInline, false, true) < minControlPairW)
-                showDetailsInline = false;
-        }
-        else if (hasDetails || hasRestart)
+        if (hasDetails)
         {
             showDetailsInline = false;
-            showRestartInline = false;
             showOverflow = true;
         }
     }
-    const float actionsW = inline_actions_width(showDetailsInline, showRestartInline, showOverflow);
+    const float actionsW = inline_actions_width(showDetailsInline, showOverflow);
     const float controlsAvail = std::max(1.0f, totalAvail - actionsW);
     const float aspectWidth = std::min(115.0f * uiScale, std::max(1.0f, (controlsAvail - spacing) * 0.48f));
     const float scaleWidth = std::min(125.0f * uiScale, std::max(1.0f, controlsAvail - spacing - aspectWidth));
@@ -449,12 +426,6 @@ void GamePanel::draw(PlaySession *session, bool visible)
         if (ImGui::Button(detailsLabel))
             showRuntimeDetails_ = !showRuntimeDetails_;
     }
-    if (showRestartInline)
-    {
-        ImGui::SameLine();
-        if (ImGui::Button("Build & Restart"))
-            restartCallback_();
-    }
     if (showOverflow)
     {
         ImGui::SameLine();
@@ -464,8 +435,6 @@ void GamePanel::draw(PlaySession *session, bool visible)
         {
             if (hasDetails && !showDetailsInline && ImGui::MenuItem(detailsLabel))
                 showRuntimeDetails_ = !showRuntimeDetails_;
-            if (hasRestart && !showRestartInline && ImGui::MenuItem("Build & Restart"))
-                restartCallback_();
             ImGui::EndPopup();
         }
     }
@@ -651,7 +620,12 @@ void GamePanel::draw_runtime_inspection(PlaySession *session)
         return;
     if (awaitingRuntimePage_)
         ImGui::TextDisabled("Reading one bounded runtime hierarchy page...");
-    if (ImGui::BeginChild("Runtime object list", ImVec2(0.0f, 150.0f), ImGuiChildFlags_Borders))
+    const bool showDetails = selectedSnapshot_.is_object() &&
+        selectedSnapshot_.value("status", std::string{}) == "ok";
+    const float listHeight = runtime_inspection_list_height(
+        ImGui::GetContentRegionAvail().y, showDetails,
+        ImGui::GetFrameHeightWithSpacing(), ImGui::GetStyle().ItemSpacing.y);
+    if (ImGui::BeginChild("Runtime object list", ImVec2(0.0f, listHeight), ImGuiChildFlags_Borders))
     {
         for (const auto &object : runtimeObjects_)
         {
@@ -673,7 +647,7 @@ void GamePanel::draw_runtime_inspection(PlaySession *session)
         }
     }
     ImGui::EndChild();
-    if (selectedSnapshot_.is_object() && selectedSnapshot_.value("status", std::string{}) == "ok")
+    if (showDetails)
     {
         ImGui::SeparatorText("Selected Runtime Object");
         ImGui::Text("Name: %s", selectedSnapshot_.value("name", std::string("GameObject")).c_str());
@@ -761,19 +735,9 @@ std::vector<SemanticNode> GamePanel::semantic_nodes(PlaySession *session,
 {
     std::vector<SemanticNode> nodes;
     const bool active = session != nullptr && session->state() != PlaySessionState::Idle;
-    const bool running = session != nullptr && session->state() == PlaySessionState::Running;
-    const bool paused = session != nullptr && session->state() == PlaySessionState::Paused;
-    const bool controls = session != nullptr && session->capabilities().playControl;
     const bool inspect = session != nullptr && session->capabilities().runtimeInspection;
-    add_button(nodes, parentId, "pause", "Pause embedded game", active && running && controls);
-    add_button(nodes, parentId, "resume", "Resume embedded game", active && paused && controls);
-    add_button(nodes, parentId, "step", "Advance one fixed simulation step", active && paused && controls);
-    add_button(nodes, parentId, "stop", "Stop embedded game", active);
     add_button(nodes, parentId, "refresh-objects", "Refresh read-only runtime objects",
-               active && inspect && !awaitingRuntimePage_);
-    if (restartAvailable_)
-        add_button(nodes, parentId, "restart", "Build and restart embedded game",
-                   static_cast<bool>(restartCallback_));
+               session != nullptr && inspect && !awaitingRuntimePage_);
     SemanticNode status;
     status.id = parentId + "/status";
     status.parentId = parentId;
@@ -828,19 +792,6 @@ bool GamePanel::dispatch_semantic_action(PlaySession &session,
     if (action.action != "activate")
         return false;
     const std::string &id = action.nodeId;
-    if (id.ends_with("/pause"))
-        return session.request_pause();
-    if (id.ends_with("/resume"))
-        return session.request_resume();
-    if (id.ends_with("/step"))
-        return session.request_step();
-    if (id.ends_with("/stop"))
-        return session.request_stop();
-    if (id.ends_with("/restart") && restartAvailable_ && restartCallback_)
-    {
-        restartCallback_();
-        return true;
-    }
     if (id.ends_with("/refresh-objects"))
     {
         if (!session.request_object_page())

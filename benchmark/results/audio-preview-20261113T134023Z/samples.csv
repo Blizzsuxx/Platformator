@@ -1,0 +1,11 @@
+stage,sample,elapsed_ms,succeeded
+cold,1,4.78525,true
+cold,2,2.83123,true
+cold,3,3.00607,true
+cold,4,2.87531,true
+cold,5,3.10585,true
+warm,1,0.042721,true
+warm,2,0.041518,true
+warm,3,0.040848,true
+warm,4,0.039605,true
+warm,5,0.041639,true

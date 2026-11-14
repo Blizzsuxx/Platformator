@@ -22,7 +22,8 @@ void run_script_validation_checks_behavior_schemas()
     auto document = make_default_document();
     document.root[0]["components"].push_back(component(
         42, 5, Json{{"behaviors", Json::array({
-            Json{{"type", "Health"}, {"health", "high"}},
+            Json{{"type", "Health"}, {"health", "high"},
+                 {"nullableTexture", nullptr}, {"requiredAudio", nullptr}, {"flag", "yes"}},
             Json{{"type", "Legacy"}, {"preserved", Json{{"x", 1}}}},
             Json{{"type", ""}}})}}));
     ++document.structureRevision;
@@ -30,7 +31,13 @@ void run_script_validation_checks_behavior_schemas()
 
     const Json catalog{{"schema_version", 1}, {"behaviors", Json::array({
         Json{{"name", "Health"}, {"field_schema_available", true},
-             {"fields", Json::array({Json{{"name", "health"}, {"kind", "number"}}})}}})}};
+             {"fields", Json::array({
+                 Json{{"name", "health"}, {"kind", "number"}},
+                 Json{{"name", "nullableTexture"}, {"kind", "asset_reference"},
+                      {"target", "Texture"}, {"nullable", true}},
+                 Json{{"name", "requiredAudio"}, {"kind", "asset_reference"},
+                      {"target", "Audio"}, {"nullable", false}},
+                 Json{{"name", "flag"}, {"kind", "boolean"}}})}}})}};
     const auto result = validate_document(document, catalog);
     const auto has_issue = [&](std::string_view fieldPath, bool blocksRun) {
         return std::any_of(result.issues.begin(), result.issues.end(), [&](const ValidationIssue &issue) {
@@ -43,6 +50,22 @@ void run_script_validation_checks_behavior_schemas()
             "a Script behavior with unavailable schema must produce a nonblocking warning");
     require(has_issue("behaviors[2].type", true),
             "a Script behavior record without a nonempty type must block Run");
+    require(!has_issue("behaviors[0].nullableTexture", true),
+            "nullable asset-reference fields must accept an explicit null value");
+    const auto issue_for = [&](std::string_view fieldPath) -> const ValidationIssue * {
+        const auto found = std::find_if(result.issues.begin(), result.issues.end(),
+            [&](const ValidationIssue &issue) {
+                return issue.componentId == 42 && issue.fieldPath == fieldPath;
+            });
+        return found == result.issues.end() ? nullptr : &*found;
+    };
+    const auto *requiredAssetIssue = issue_for("behaviors[0].requiredAudio");
+    const auto *booleanIssue = issue_for("behaviors[0].flag");
+    require(requiredAssetIssue != nullptr &&
+                requiredAssetIssue->message.find("expected a string asset reference") != std::string::npos &&
+                booleanIssue != nullptr &&
+                booleanIssue->message.find("expected a boolean value") != std::string::npos,
+            "each behavior schema mismatch must report a non-empty, actionable reason");
     require(result.blocksRun,
             "blocking Script validation issues must mark the document as unsafe to run");
 }

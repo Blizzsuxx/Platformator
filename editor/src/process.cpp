@@ -563,7 +563,8 @@ void GamePipeline::poll()
             impl.status.message = impl.playSession.state() == PlaySessionState::Paused
                 ? "embedded game is paused" : "embedded game is running";
         }
-        if (impl.playSession.state() == PlaySessionState::Stopping &&
+        if ((impl.playSession.state() == PlaySessionState::Stopping ||
+             impl.playSession.state() == PlaySessionState::Failed) &&
             impl.playSession.child_reaped())
         {
             const std::string error = impl.playSession.last_error();

@@ -87,6 +87,7 @@ class GameObject : public BaseObject
 
     bool getActive() const;
     Eigen::Vector2f getPosition() const;
+    const Eigen::Vector2f &getLocalPosition() const;
     float getX() const;
     float getY() const;
     const Eigen::Vector2f &getScale() const;
@@ -106,6 +107,7 @@ class GameObject : public BaseObject
     GameObject *setRotation(float rotation);
     GameObject *setActive(bool active);
     GameObject *setPosition(const Eigen::Vector2f &position);
+    GameObject *setLocalPosition(const Eigen::Vector2f &localPosition);
     GameObject *setScale(const Eigen::Vector2f &scale);
     GameObject *setName(const std::string &name);
     GameObject *setTag(const std::string &tag);
@@ -144,6 +146,7 @@ class GameObject : public BaseObject
     uint8_t flags;
 
     void validateMutation() const;
+    GameObject *applyLocalPosition(const Eigen::Vector2f &localPosition);
     void detachFromParent();
     void updateCollider();
     void queueTransform();

@@ -965,7 +965,14 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         if (object == nullptr || has_component_type(*object, type))
             return;
         const Selection before = selection.current();
-        const auto result = commands.add_component(document, objectId, default_component_record(type));
+        Json component = default_component_record(type);
+        if (type == 3)
+        {
+            const LayerSettings fallback = default_layer_settings();
+            component["collisionMask"] = layer_to_collision_mask(
+                layerSettings_ != nullptr ? *layerSettings_ : fallback, 0);
+        }
+        const auto result = commands.add_component(document, objectId, std::move(component));
         if (result.status == CommandStatus::Changed && result.command)
         {
             const int componentId = result.command->payload.value("id", 0);
@@ -1070,8 +1077,10 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     const std::vector<int> &selectionOrder = searchQuery_.empty()
         ? displayedObjectOrder_ : searchResultObjectOrder_;
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
-    const float hierarchyIndent = std::clamp(ImGui::GetStyle().IndentSpacing, 18.0f * uiScale, 28.0f * uiScale);
-    const float connectorOffset = 8.0f * uiScale;
+    const float fontSize = ImGui::GetFontSize();
+    const float treeFramePaddingX = 2.0f * uiScale;
+    const float hierarchyIndent = std::clamp(fontSize + 8.0f * uiScale, 20.0f * uiScale, 28.0f * uiScale);
+    const float connectorOffset = treeFramePaddingX + fontSize * 0.5f;
     const float treeBaseX = ImGui::GetCursorScreenPos().x;
     const ImU32 lineColor = ImGui::GetColorU32(ImGuiCol_TreeLines);
     const float lineThickness = std::max(1.0f, ImGui::GetStyle().TreeLinesSize);
@@ -1147,9 +1156,10 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                                     rowHeight * 0.5f;
         const float lastChildCenterY = firstRowPosition.y + static_cast<float>(lastChild) * rowStride +
                                        rowHeight * 0.5f;
-        if (lastChildCenterY < clipMinimum.y || parentCenterY > clipMaximum.y)
+        const float trunkTopY = std::min(lastChildCenterY, parentCenterY + fontSize * 0.45f);
+        if (lastChildCenterY < clipMinimum.y || trunkTopY > clipMaximum.y)
             continue;
-        drawList->AddLine({parentX, parentCenterY}, {parentX, lastChildCenterY},
+        drawList->AddLine({parentX, trunkTopY}, {parentX, lastChildCenterY},
                           lineColor, lineThickness);
         work::record(work::Counter::HierarchyConnectors);
     }
@@ -1162,10 +1172,13 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         if (parentIndex < 0)
             continue;
         const auto &parent = rows[static_cast<std::size_t>(parentIndex)];
-        const auto rowX = treeBaseX + static_cast<float>(row.depth) * hierarchyIndent + connectorOffset;
+        const float rowLeft = treeBaseX + static_cast<float>(row.depth) * hierarchyIndent;
+        const float rowEndX = row.hasChildren
+            ? (rowLeft + treeFramePaddingX - 2.0f * uiScale)
+            : (rowLeft + treeFramePaddingX + fontSize + 1.0f * uiScale);
         const float parentX = treeBaseX + static_cast<float>(parent.depth) * hierarchyIndent + connectorOffset;
         const float rowCenterY = firstRowPosition.y + static_cast<float>(rowIndex) * rowStride + rowHeight * 0.5f;
-        drawList->AddLine({parentX, rowCenterY}, {rowX, rowCenterY}, lineColor, lineThickness);
+        drawList->AddLine({parentX, rowCenterY}, {rowEndX, rowCenterY}, lineColor, lineThickness);
         work::record(work::Counter::HierarchyConnectors);
     }
     ImGuiListClipper clipper;
@@ -1184,7 +1197,11 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             }
             ImGui::PushID(row.id);
             ImGui::PushID(static_cast<int>(row.kind));
-            ImGui::Indent(static_cast<float>(row.depth) * hierarchyIndent);
+            const float rowIndent = row.depth > 0
+                ? static_cast<float>(row.depth) * hierarchyIndent
+                : 0.0f;
+            if (rowIndent > 0.0f)
+                ImGui::Indent(rowIndent);
             SemanticBounds semanticBounds;
             bool hasSemanticBounds = false;
             if (row.kind == HierarchyRowKind::Object)
@@ -1205,7 +1222,10 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 const bool wasExpanded = expandedObjects_.contains(row.id);
                 ImGui::SetNextItemOpen(wasExpanded, ImGuiCond_Always);
                 const std::string treeNodeId = "###obj_" + std::to_string(row.id);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                                    ImVec2(treeFramePaddingX, ImGui::GetStyle().FramePadding.y));
                 const bool open = ImGui::TreeNodeEx(treeNodeId.c_str(), flags, "");
+                ImGui::PopStyleVar();
                 const ImVec2 rowMinimum = ImGui::GetItemRectMin();
                 const ImVec2 rowMaximum = ImGui::GetItemRectMax();
                 semanticBounds = {rowMinimum.x, rowMinimum.y,
@@ -1213,7 +1233,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                                   rowMaximum.y - rowMinimum.y};
                 hasSemanticBounds = true;
                 const float iconSize = 14.0f * uiScale;
-                const float iconX = rowMinimum.x + ImGui::GetTreeNodeToLabelSpacing() + 3.0f * uiScale;
+                const float iconX = rowMinimum.x + treeFramePaddingX + fontSize + 4.0f * uiScale;
                 const float iconY = rowMinimum.y + (rowMaximum.y - rowMinimum.y - iconSize) * 0.5f;
                 ImDrawList *drawList = ImGui::GetWindowDrawList();
                 draw_editor_icon(EditorIcon::GameObject, drawList, {iconX, iconY}, iconSize,
@@ -1405,6 +1425,9 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 {
                     if (ImGui::MenuItem("Create Child"))
                         create_object(row.id);
+                    if (instantiateTemplateCallback_ != nullptr &&
+                        ImGui::MenuItem("Instantiate Template..."))
+                        instantiateTemplateCallback_(row.id);
                     if (hiddenObjectIds != nullptr)
                     {
                         const bool hidden = std::binary_search(hiddenObjectIds->begin(),
@@ -1579,7 +1602,8 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             }
             if (hasSemanticBounds)
                 semanticVisibleRows_.push_back({rowIndex, semanticBounds});
-            ImGui::Unindent(static_cast<float>(row.depth) * hierarchyIndent);
+            if (rowIndent > 0.0f)
+                ImGui::Unindent(rowIndent);
             ImGui::PopID();
             ImGui::PopID();
             if (structureChanged)
@@ -1651,6 +1675,9 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     {
         if (ImGui::MenuItem("Create Empty Object"))
             create_object(std::nullopt);
+        if (instantiateTemplateCallback_ != nullptr &&
+            ImGui::MenuItem("Instantiate Template..."))
+            instantiateTemplateCallback_(std::nullopt);
         ImGui::EndPopup();
     }
     ImGui::EndChild();

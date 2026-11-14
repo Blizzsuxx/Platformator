@@ -1200,14 +1200,19 @@ bool instantiate_asset_drop(DocumentSession &document, EditCommandService &comma
     {
         std::filesystem::path fullPath = p;
         std::error_code fileError;
-        if (!std::filesystem::exists(fullPath, fileError) && !document.assetRoot.empty())
+        const bool initialPathExists = std::filesystem::exists(fullPath, fileError);
+        if (fileError)
+            return false;
+        if (!initialPathExists && !document.assetRoot.empty())
         {
             auto rel = p;
             if (p.is_relative() && p.string().starts_with("assets/"))
                 rel = p.string().substr(7);
             fullPath = document.assetRoot / rel;
-            fileError.clear();
-            if (!std::filesystem::exists(fullPath, fileError))
+            const bool candidateExists = std::filesystem::exists(fullPath, fileError);
+            if (fileError)
+                return false;
+            if (!candidateExists)
                 fullPath = document.assetRoot / p;
         }
         std::ifstream file(fullPath);
@@ -1491,8 +1496,11 @@ void mark_template_override(DocumentSession &document, int objectId, std::string
 }
 
 std::filesystem::path resolve_template_asset_path(const std::filesystem::path &assetRoot,
-                                                  std::string_view templateRef)
+                                                  std::string_view templateRef,
+                                                  std::error_code *filesystemError)
 {
+    if (filesystemError != nullptr)
+        filesystemError->clear();
     std::filesystem::path p(templateRef);
     if (p.is_absolute() || assetRoot.empty())
         return p;
@@ -1503,6 +1511,12 @@ std::filesystem::path resolve_template_asset_path(const std::filesystem::path &a
     std::error_code fileError;
     if (std::filesystem::exists(candidate, fileError))
         return candidate;
+    if (fileError)
+    {
+        if (filesystemError != nullptr)
+            *filesystemError = fileError;
+        return candidate;
+    }
     return assetRoot / p;
 }
 
@@ -2388,13 +2402,24 @@ bool apply_template_instance(DocumentSession &sceneDocument, EditCommandService 
         return false;
     }
     const std::string templateRef = rootObj->at("template").get<std::string>();
-    const auto fullPath = resolve_template_asset_path(assetRoot, templateRef);
+    std::error_code templateFileError;
+    const auto fullPath = resolve_template_asset_path(assetRoot, templateRef, &templateFileError);
+    if (templateFileError)
+    {
+        errorOut = "Unable to inspect template file: " + templateFileError.message();
+        return false;
+    }
     std::string tmplName = rootObj->value("name", fullPath.stem().string());
     Json referenceBindings = Json::array();
     std::string previousContents;
     bool hadPreviousFile = false;
-    std::error_code templateFileError;
-    if (std::filesystem::exists(fullPath, templateFileError))
+    const bool templateFileExists = std::filesystem::exists(fullPath, templateFileError);
+    if (templateFileError)
+    {
+        errorOut = "Unable to inspect template file: " + templateFileError.message();
+        return false;
+    }
+    if (templateFileExists)
     {
         std::ifstream existingIn(fullPath);
         if (existingIn.is_open())

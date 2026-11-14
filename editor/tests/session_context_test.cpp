@@ -1,4 +1,5 @@
 #include "documentmanager.h"
+#include "layersettings.h"
 #include "projectsession.h"
 #include "sessionids.h"
 #include "test_support.h"
@@ -114,6 +115,42 @@ void test_tab_history_selection_and_canonical_activation()
             "opening the same canonical path must activate, not duplicate, the document");
 }
 
+void test_layer_sync_does_not_dirty_clean_documents_or_add_history()
+{
+    TestEnvironment environment;
+    const auto project = environment.filesystem_root();
+    const auto assets = project / "assets";
+    std::filesystem::create_directories(assets);
+    std::ofstream(project / "CMakeLists.txt") << "project(layer-sync-test)\n";
+
+    const auto scenePath = assets / "Collider.scene";
+    const Json collider = component(7, 3, Json{{"collisionGroup", layer_to_collision_group(0)},
+                                               {"collisionMask", 0}});
+    write_json(scenePath, scene({object(1, "Collider", Json::array({collider}))}));
+
+    DocumentManager manager(project, assets, ProjectGeneration{1});
+    const auto tabId = manager.open_scene(scenePath);
+    require(tabId.has_value(), "layer-sync fixture scene must open");
+    auto *tab = manager.find(*tabId);
+    require(tab != nullptr && !tab->workspace().dirty(),
+            "opened layer-sync fixture must begin clean");
+    const auto beforeHistory = tab->history().history_status();
+    const auto beforeRevision = tab->workspace().document().valueRevision;
+
+    auto settings = default_layer_settings();
+    settings.collisionMatrix[0] = 1u;
+    const auto changed = manager.sync_layer_settings(settings, false);
+    require(!changed.empty() &&
+                tab->workspace().document().root[0]["components"][0]["collisionMask"] == 1u,
+            "history-free synchronization must apply the current slot-0 collision mask");
+    const auto afterHistory = tab->history().history_status();
+    require(!tab->workspace().dirty() &&
+                afterHistory.currentToken == beforeHistory.currentToken &&
+                afterHistory.undoCommands == beforeHistory.undoCommands &&
+                tab->workspace().document().valueRevision > beforeRevision,
+            "derived layer synchronization must keep clean-file and undo state clean while revising values");
+}
+
 void test_only_one_runtime_can_be_active()
 {
     TestEnvironment environment;
@@ -211,6 +248,7 @@ int main()
     {
         test_identity_scopes_and_never_reuse();
         test_tab_history_selection_and_canonical_activation();
+        test_layer_sync_does_not_dirty_clean_documents_or_add_history();
         test_project_replacement_is_transactional_and_retires_outgoing_work();
         test_only_one_runtime_can_be_active();
     }

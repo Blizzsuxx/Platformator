@@ -648,16 +648,21 @@ ProjectRootCandidate validate_project_folder(const std::filesystem::path &projec
         const bool hasMainCpp = std::filesystem::is_regular_file(canonicalProject / "main.cpp", sourceError) &&
                                 !sourceError;
         bool hasSceneFile = false;
-        for (const auto &entry : std::filesystem::directory_iterator(canonicalProject, error))
+        for (std::filesystem::directory_iterator it(canonicalProject, error), end;
+             it != end && !error; it.increment(error))
         {
-            if (error)
-                break;
-            if (entry.is_regular_file(error) && entry.path().extension() == ".scene")
+            const auto &entry = *it;
+            if (entry.is_regular_file(error) && !error &&
+                entry.path().extension() == ".scene")
             {
                 hasSceneFile = true;
                 break;
             }
+            if (error)
+                break;
         }
+        if (error)
+            throw std::invalid_argument("could not inspect project folder: " + error.message());
         if (!hasSceneFile && !hasMainCpp)
             throw std::invalid_argument(
                 "project root must contain CMakeLists.txt, assets/, main.cpp, or a .scene file: " +
@@ -708,6 +713,8 @@ std::string sanitize_cmake_target_name(std::string_view raw)
     return result;
 }
 
+} // namespace
+
 bool is_platformator_source_root(const std::filesystem::path &candidate) noexcept
 {
     if (candidate.empty())
@@ -716,7 +723,6 @@ bool is_platformator_source_root(const std::filesystem::path &candidate) noexcep
     return std::filesystem::is_regular_file(candidate / "CMakeLists.txt", ec) && !ec &&
            std::filesystem::is_regular_file(candidate / "include" / "platformator" / "runner.h", ec) && !ec;
 }
-} // namespace
 
 std::filesystem::path detect_platformator_source_root(const std::filesystem::path &hint)
 {

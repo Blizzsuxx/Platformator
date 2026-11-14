@@ -44,6 +44,17 @@
 #include <unistd.h>
 #endif
 
+namespace platformator_editor
+{
+struct PlaySessionTestAccess
+{
+    static void expire_startup_deadline(PlaySession &session)
+    {
+        session.startupDeadline_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    }
+};
+} // namespace platformator_editor
+
 namespace
 {
     using namespace platformator::editor_session;
@@ -362,10 +373,10 @@ namespace
         const auto generation = session.generation();
         emit_event(*transport.eventPipe, "fedcba9876543210", generation.value, 1, 44, "ready");
         session.poll_events();
-        require(session.state() == PlaySessionState::Stopping &&
+        require(session.state() == PlaySessionState::Failed &&
                     session.last_error().find("stale nonce") != std::string::npos &&
                     !transport.commandPipe->cancelled && !transport.eventPipe->cancelled,
-                "foreign session events enter Stopping without cancelling I/O before child reap");
+                "foreign session events fail without cancelling I/O before child reap");
         require(session.finish_stop_after_reap() && transport.commandPipe->cancelled &&
                     transport.eventPipe->cancelled,
                 "failed session I/O is cancelled during owner cleanup after reap");
@@ -385,7 +396,7 @@ namespace
         emit_event(*replayTransport.eventPipe, replaySession.nonce(), replayGeneration.value, 2, 44, "state",
                    Json{{"state", "paused"}, {"request_sequence", 1}});
         replaySession.poll_events();
-        require(replaySession.state() == PlaySessionState::Stopping &&
+        require(replaySession.state() == PlaySessionState::Failed &&
                     replaySession.last_error().find("replayed") != std::string::npos &&
                     !replayTransport.commandPipe->cancelled && !replayTransport.eventPipe->cancelled,
                 "replayed event sequences fail closed before changing session state");
@@ -400,7 +411,7 @@ namespace
         emit_event(*outOfOrderTransport.eventPipe, outOfOrder.nonce(), outOfOrderGeneration.value,
                    1, 44, "ready");
         outOfOrder.poll_events();
-        require(outOfOrder.state() == PlaySessionState::Stopping &&
+        require(outOfOrder.state() == PlaySessionState::Failed &&
                     outOfOrder.last_error().find("before a valid child capabilities") != std::string::npos,
                 "Ready before capabilities must fail with the startup guidance");
         require(outOfOrder.finish_stop_after_reap(), "out-of-order handshake cleans up after reap");
@@ -414,7 +425,7 @@ namespace
         emit_event(*mismatchedTransport.eventPipe, mismatched.nonce(), mismatchedGeneration.value,
                    2, 44, "ready");
         mismatched.poll_events();
-        require(mismatched.state() == PlaySessionState::Stopping &&
+        require(mismatched.state() == PlaySessionState::Failed &&
                     mismatched.last_error().find("different runtime") != std::string::npos,
                 "Ready must match the runtime serial that advertised capabilities");
         require(mismatched.finish_stop_after_reap(), "mismatched handshake cleans up after reap");
@@ -454,7 +465,8 @@ namespace
                     bounded.queued_commands() == MaximumQueuedMessages - 8 &&
                     bounded.queued_command_bytes() <= MaximumQueuedBytes,
                 "optional capture requests preserve eight reliable control slots in the bounded queue");
-        require(!bounded.last_error().empty(), "queue saturation is reported to the owner");
+        require(!bounded.last_error().empty() && bounded.state() == PlaySessionState::Running,
+                "optional queue saturation is reported without failing the running session");
         require(bounded.request_stop(), "a saturated optional queue still permits cleanup to begin");
         require(bounded.finish_stop_after_reap(), "bounded sessions clean up after reap");
         require(*mappingClosed, "frame mapping is closed during post-reap cleanup");
@@ -468,6 +480,25 @@ namespace
                 "session enters starting without frame mapping until child sends capabilities");
     }
 
+    void test_startup_handshake_timeout_is_actionable_and_recoverable()
+    {
+        PlaySession session;
+        FakeTransport transport;
+        advance_to_starting(session, transport);
+        PlaySessionTestAccess::expire_startup_deadline(session);
+
+        session.poll_process();
+        require(session.state() == PlaySessionState::Failed &&
+                    session.last_error().find("handshake timed out") != std::string::npos &&
+                    session.last_error().find("inspect the Console logs") != std::string::npos &&
+                    session.last_error().find("External Game Window") != std::string::npos,
+                "a startup handshake timeout must fail with actionable log and launch-mode guidance");
+        require(session.finish_stop_after_reap() && session.state() == PlaySessionState::Failed,
+                "failed startup cleanup must retain its failure state after releasing channels");
+        require(session.begin_configuring(launch_identity(), "fedcba9876543210"),
+                "a cleaned failed session must allow a later launch attempt");
+    }
+
     void test_event_eof_is_visible_and_waits_for_reap()
     {
         PlaySession session;
@@ -476,10 +507,10 @@ namespace
         require(session.mark_running(RuntimeSerial{44}), "EOF fixture starts a child runtime");
         transport.eventPipe->closed = true;
         session.poll_events();
-        require(session.state() == PlaySessionState::Stopping &&
+        require(session.state() == PlaySessionState::Failed &&
                     session.last_error().find("closed") != std::string::npos,
                 "unexpected event EOF becomes a visible failure instead of waiting on the UI thread");
-        require(session.finish_stop_after_reap() && session.state() == PlaySessionState::Idle,
+        require(session.finish_stop_after_reap() && session.state() == PlaySessionState::Failed,
                 "EOF cleanup releases session identity after child reap");
     }
 
@@ -1557,12 +1588,12 @@ namespace
         }
         session.poll_process();
         require(session.child_reaped() && !session.process_running() &&
-                    session.state() == PlaySessionState::Stopping &&
+                    session.state() == PlaySessionState::Failed &&
                     session.last_error().find("signal") != std::string::npos,
                 "an unexpectedly killed child becomes a visible failure and is reaped before cleanup");
         require(session.launch_identity().has_value(),
                 "the failed launch identity remains owned until post-reap channel cleanup");
-        require(session.finish_stop_after_reap() && session.state() == PlaySessionState::Idle &&
+        require(session.finish_stop_after_reap() && session.state() == PlaySessionState::Failed &&
                     !session.launch_identity(),
                 "a crashed child's channels and immutable launch identity are released after reap");
     }
@@ -1684,8 +1715,6 @@ namespace
         const CatalogIdentity catalogIdentity{request.identity.canonicalProjectPath,
                                                request.identity.profile,
                                                request.identity.target,
-                                               request.identity.executablePath,
-                                               request.identity.binaryIdentity,
                                                request.identity.sourceInputIdentity};
         require(catalog.set_source_catalog(Json{{"schema_version", 1},
                                                 {"behaviors", Json::array()}},
@@ -1839,11 +1868,37 @@ namespace
         require(frameNode->value.find("capturing input") != std::string::npos, "frame value shows capturing input");
         require(frameNode->help.find("Escape") != std::string::npos, "frame help mentions Escape");
 
+        SDL_Event arrowDown{};
+        arrowDown.type = SDL_EVENT_KEY_DOWN;
+        arrowDown.key.scancode = SDL_SCANCODE_RIGHT;
+        SDL_Event arrowUp{};
+        arrowUp.type = SDL_EVENT_KEY_UP;
+        arrowUp.key.scancode = SDL_SCANCODE_RIGHT;
+        SDL_Event textInput{};
+        textInput.type = SDL_EVENT_TEXT_INPUT;
+        SDL_Event textEditing{};
+        textEditing.type = SDL_EVENT_TEXT_EDITING;
+        SDL_Event mouseDown{};
+        mouseDown.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        require(!GamePanel::should_forward_sdl_event_to_editor_ui(true, arrowDown) &&
+                    !GamePanel::should_forward_sdl_event_to_editor_ui(true, arrowUp) &&
+                    !GamePanel::should_forward_sdl_event_to_editor_ui(true, textInput) &&
+                    !GamePanel::should_forward_sdl_event_to_editor_ui(true, textEditing),
+                "captured embedded game must suppress editor UI keyboard and text events");
+        require(GamePanel::should_forward_sdl_event_to_editor_ui(true, mouseDown) &&
+                    GamePanel::should_forward_sdl_event_to_editor_ui(false, arrowDown) &&
+                    GamePanel::should_forward_sdl_event_to_editor_ui(false, textInput),
+                "mouse events and uncaptured keyboard events still forward to editor UI");
+
         SDL_Event escEvent{};
         escEvent.type = SDL_EVENT_KEY_DOWN;
         escEvent.key.scancode = SDL_SCANCODE_ESCAPE;
         panel.handle_sdl_event(&session, escEvent);
         require(!panel.is_input_captured(), "Escape releases input capture");
+
+        panel.capture_input();
+        panel.handle_sdl_event(nullptr, escEvent);
+        require(!panel.is_input_captured(), "Escape releases input capture even without an active session pointer");
 
         session.flush_commands();
         auto requests = decode_requests(*transport.commandPipe);
@@ -2110,6 +2165,7 @@ int main()
         test_partial_nonblocking_pause_step_resume_and_stop();
         test_stale_and_replayed_events_fail_closed();
         test_capability_and_queue_bounds();
+        test_startup_handshake_timeout_is_actionable_and_recoverable();
         test_event_eof_is_visible_and_waits_for_reap();
         test_coalesced_events_remain_bounded_without_being_dropped();
         test_parent_copies_only_owned_frame_slots_and_releases_after_copy();

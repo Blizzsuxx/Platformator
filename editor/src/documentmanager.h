@@ -92,12 +92,6 @@ class DocumentTab
     void set_template_path(std::filesystem::path path) { templatePath_ = std::move(path); }
     const nlohmann::json &template_reference_bindings() const noexcept;
     void set_template_reference_bindings(nlohmann::json bindings);
-    bool auto_save_template() const noexcept { return templateAutoSave_; }
-    void set_auto_save_template(bool enabled) noexcept { templateAutoSave_ = enabled; }
-    bool auto_save_suspended_for_current_revision() const noexcept;
-    void suspend_auto_save_for_current_revision(std::string error);
-    void clear_auto_save_failure() noexcept;
-    const std::string &auto_save_error() const noexcept { return autoSaveError_; }
     EditCommandService &history() noexcept;
     const EditCommandService &history() const noexcept;
     DocumentWorkspace &workspace() noexcept;
@@ -125,9 +119,6 @@ class DocumentTab
     SceneViewState viewState_;
     std::vector<int> expandedHierarchyIds_;
     std::filesystem::path templatePath_;
-    bool templateAutoSave_ = false;
-    std::optional<std::pair<std::uint64_t, std::uint64_t>> autoSaveFailureRevision_;
-    std::string autoSaveError_;
     bool hasExpansionState_ = false;
     bool externalChangeAcknowledged_ = false;
     std::optional<FileIdentity> acknowledgedExternalIdentity_;
@@ -239,7 +230,8 @@ class DocumentManager
                                             const std::filesystem::path &assetRoot,
                                             ProjectGeneration generation,
                                             bool discardDirtyDocuments = false);
-    std::vector<TabId> sync_layer_settings(const LayerSettings &settings);
+    std::vector<TabId> sync_layer_settings(const LayerSettings &settings,
+                                           bool recordUndo = true);
     std::uint32_t collision_group_layers_in_use() const noexcept;
     std::size_t reconcile_template_asset(const std::filesystem::path &path);
     TemplateRetargetResult retarget_template_asset_links(const std::filesystem::path &oldPath,

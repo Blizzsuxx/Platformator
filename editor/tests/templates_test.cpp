@@ -1854,7 +1854,7 @@ void test_template_file_and_directory_moves_retarget_open_and_closed_scenes()
             "reopening after directory moves must preserve overrides and must not recreate the old asset");
 }
 
-void test_template_auto_save_failure_pauses_until_edit_or_retry()
+void test_template_save_failure_preserves_previous_file_and_dirty_draft()
 {
     TemporaryDirectory temporary;
     const auto assetRoot = temporary.path() / "assets";
@@ -1869,7 +1869,6 @@ void test_template_auto_save_failure_pauses_until_edit_or_retry()
     require(tabId.has_value(), "autosave template fixture must open: " + openError);
     auto *tab = manager.find(*tabId);
     require(tab != nullptr, "autosave fixture tab must remain open");
-    tab->set_auto_save_template(true);
     auto &document = tab->workspace().document_for_edit();
     const int rootId = document.root[0].value("id", -1);
     require(tab->history().set_property(document,
@@ -1888,27 +1887,21 @@ void test_template_auto_save_failure_pauses_until_edit_or_retry()
 
     std::string saveError;
     const bool firstSave = manager.save_template_tab(*tabId, &saveError);
-    tab->suspend_auto_save_for_current_revision(saveError);
-    require(!firstSave && !saveError.empty() && tab->workspace().dirty() &&
-                tab->auto_save_suspended_for_current_revision() &&
-                tab->auto_save_error() == saveError,
-            "a failed automatic save must leave the draft dirty and suspend retries for that revision");
+    require(!firstSave && !saveError.empty() && tab->workspace().dirty(),
+            "a failed template save must leave the draft dirty for an explicit retry");
     std::ifstream preservedInput(blockedDirectory / "Autosave.pttemplate", std::ios::binary);
     const std::string preservedContents{std::istreambuf_iterator<char>(preservedInput),
                                         std::istreambuf_iterator<char>()};
     require(std::filesystem::is_regular_file(templateDirectory) &&
                 preservedContents == originalContents,
-            "a failed automatic save must leave the previous template file intact");
+            "a failed template save must leave the previous template file intact");
 
     std::filesystem::remove(templateDirectory, moveError);
     moveError.clear();
     std::filesystem::rename(blockedDirectory, templateDirectory, moveError);
     require(!moveError, "the original template file must be restored before retry");
-    tab->clear_auto_save_failure();
-    require(!tab->auto_save_suspended_for_current_revision() &&
-                manager.save_template_tab(*tabId, &saveError) && !tab->workspace().dirty() &&
-                tab->auto_save_error().empty(),
-            "an explicit Retry Save must resume autosave and clear the failure after a successful write");
+    require(manager.save_template_tab(*tabId, &saveError) && !tab->workspace().dirty(),
+            "an explicit retry must write the preserved dirty draft");
     std::ifstream savedInput(templatePath, std::ios::binary);
     const auto saved = parse_template_envelope(
         std::string{std::istreambuf_iterator<char>(savedInput), std::istreambuf_iterator<char>()});
@@ -2007,7 +2000,7 @@ int main()
         test_template_revert_is_atomic_and_scene_save_as_is_refused();
         test_template_file_identity_and_external_conflict_resolution();
         test_template_file_and_directory_moves_retarget_open_and_closed_scenes();
-        test_template_auto_save_failure_pauses_until_edit_or_retry();
+        test_template_save_failure_preserves_previous_file_and_dirty_draft();
         test_unsaved_inventory_covers_inactive_scene_template_and_animation_tabs();
         std::cout << "Template, binding, insertion, and duplicate cases passed\n";
         return 0;

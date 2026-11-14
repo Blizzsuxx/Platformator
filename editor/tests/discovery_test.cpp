@@ -8,7 +8,10 @@
 #include "selection.h"
 #include "test_support.h"
 
+#include <imgui.h>
+
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -42,6 +45,20 @@ struct HierarchyPanelTestProbe
             if (panel.searchVisibleRows_[index] && rows[index].kind == HierarchyRowKind::Object)
                 result.push_back(rows[index].id);
         return result;
+    }
+
+    static std::unordered_map<int, float> visible_row_left_x(const HierarchyPanel &panel)
+    {
+        std::unordered_map<int, float> leftById;
+        for (const auto &entry : panel.semanticVisibleRows_)
+        {
+            if (entry.rowIndex < 0 ||
+                static_cast<std::size_t>(entry.rowIndex) >= panel.rows_.size())
+                continue;
+            leftById.emplace(panel.rows_[static_cast<std::size_t>(entry.rowIndex)].id,
+                             entry.bounds.x);
+        }
+        return leftById;
     }
 };
 } // namespace platformator_editor
@@ -169,6 +186,65 @@ void run_hierarchy_search_cache_cases()
     require(HierarchyPanelTestProbe::visible_object_ids(panel, document, 22) ==
                 std::vector<int>({20, 22}),
             "selecting an object during search must reveal it with its ancestors even when it does not match the query");
+}
+
+void run_hierarchy_indentation_cases()
+{
+    DocumentSession document;
+    document.documentGeneration = 150;
+    document.root = Json::array({
+        object(20, "Player", Json::array(),
+               Json::array({object(21, "Child", Json::array(),
+                                   Json::array({object(22, "Grandchild")}))})),
+        object(23, "Main Camera")});
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    EditCommandService commands;
+    HierarchyPanel panel;
+    // Ensure ancestors are expanded so depth 0, 1, and 2 rows are all drawn.
+    HierarchyPanelTestProbe::visible_object_ids(panel, document, 22);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(640.0f, 480.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    unsigned char *pixels = nullptr;
+    int fontW = 0;
+    int fontH = 0;
+    io.Fonts->AddFontDefault();
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &fontW, &fontH);
+    io.Fonts->SetTexID(static_cast<ImTextureID>(1));
+    ImGui::GetStyle().WindowPadding = ImVec2(10.0f, 9.0f);
+    ImGui::GetStyle().IndentSpacing = 16.0f;
+
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(300.0f, 400.0f));
+    float contentMinX = 0.0f;
+    if (ImGui::Begin("Hierarchy"))
+    {
+        contentMinX = ImGui::GetCursorScreenPos().x;
+        panel.draw(document, selection, commands, true);
+    }
+    ImGui::End();
+    ImGui::Render();
+
+    const auto leftById = HierarchyPanelTestProbe::visible_row_left_x(panel);
+    ImGui::DestroyContext();
+
+    require(leftById.contains(20) && leftById.contains(21) &&
+                leftById.contains(22) && leftById.contains(23),
+            "hierarchy draw must record bounds for root, sibling, child, and grandchild rows");
+    require(std::abs(leftById.at(20) - contentMinX) < 1.0f &&
+                std::abs(leftById.at(23) - contentMinX) < 1.0f,
+            "top-level hierarchy rows must sit on the far left without ImGui::Indent(0) offset");
+    const float firstStep = leftById.at(21) - leftById.at(20);
+    const float secondStep = leftById.at(22) - leftById.at(21);
+    require(firstStep >= 20.0f && std::abs(firstStep - secondStep) < 1.0f,
+            "hierarchy child indentation must step uniformly by at least 20px per depth level");
 }
 
 void run_hierarchy_shortcut_capture_cases()
@@ -355,6 +431,7 @@ int main()
     {
         run_search_and_identity_cases();
         run_hierarchy_search_cache_cases();
+        run_hierarchy_indentation_cases();
         run_hierarchy_shortcut_capture_cases();
         run_assignment_preserves_previous_value();
         run_settings_semantics_cases();

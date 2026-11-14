@@ -846,7 +846,8 @@ void set_property_change_metadata(DocumentSession &document, const PropertyAddre
     }
     else if (!address.componentId && topField != nullptr)
     {
-        if (*topField == "name" || *topField == "label" || *topField == "tag")
+        if (*topField == "name" || *topField == "label" || *topField == "tag" ||
+            *topField == "template")
             change.categories.push_back(DocumentChangeCategory::Label);
         else if (*topField == "position" || *topField == "rotation" || *topField == "scale")
             change.categories.push_back(DocumentChangeCategory::Pose);

@@ -73,6 +73,7 @@ bool should_skip_directory(std::string_view name) noexcept;
 void clear_source_hash_cache() noexcept;
 std::size_t source_hash_cache_size() noexcept;
 ProjectRootCandidate validate_project_folder(const std::filesystem::path &projectRoot);
+bool is_platformator_source_root(const std::filesystem::path &candidate) noexcept;
 std::filesystem::path detect_platformator_source_root(
     const std::filesystem::path &hint = {});
 ProjectEnginePathStatus inspect_project_engine_path(const std::filesystem::path &projectRoot);

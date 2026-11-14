@@ -96,10 +96,15 @@ int main()
         auto *committed = runtime.getGameObject("committed");
         auto *editedParent = runtime.createGameObject()->setName("unsynchronized-parent")->setPosition({10, 20});
         auto *editedChild = runtime.createGameObject()->setName("unsynchronized-child")->setPosition({30, 40});
+        auto *editedGrandchild = runtime.createGameObject()->setName("unsynchronized-grandchild")->setPosition({35, 30});
         editedParent->addChild(editedChild);
+        editedChild->addChild(editedGrandchild);
         editedParent->setPosition({20, 30});
         editedChild->setPosition({45, 65});
-        require(editedChild->getPosition() == Eigen::Vector2f(45, 65),
+        require(editedChild->getPosition() == Eigen::Vector2f(45, 65) &&
+                    editedChild->getLocalPosition() == Eigen::Vector2f(25, 35) &&
+                    editedGrandchild->getPosition() == Eigen::Vector2f(50, 55) &&
+                    editedGrandchild->getLocalPosition() == Eigen::Vector2f(5, -10),
                 "Nested edits are current before serialization without a simulation step");
         const auto hierarchyPath = directory / "unsynchronized-hierarchy.scene";
         runtime.saveScene(hierarchyPath.string());
@@ -108,9 +113,12 @@ int main()
             return entry.value("name", "") == "unsynchronized-parent";
         });
         require(parentRecord != hierarchyDocument.end() && (*parentRecord)["children"].size() == 1 &&
-                    (*parentRecord)["children"][0]["position"]["x"] == 45 &&
-                    (*parentRecord)["children"][0]["position"]["y"] == 65,
-                "Scene serialization records the current descendant world position before frame synchronization");
+                    (*parentRecord)["children"][0]["position"]["x"] == 25 &&
+                    (*parentRecord)["children"][0]["position"]["y"] == 35 &&
+                    (*parentRecord)["children"][0]["children"].size() == 1 &&
+                    (*parentRecord)["children"][0]["children"][0]["position"]["x"] == 5 &&
+                    (*parentRecord)["children"][0]["children"][0]["position"]["y"] == -10,
+                "Scene serialization records the current descendant local position before frame synchronization");
         Json document = Json::parse(read(original));
         const auto base = document[0];
         const auto rejects = [&](const Json &bad) {
@@ -241,6 +249,25 @@ int main()
         failure([&] { last->setId(5); });
         runtime.clearScene();
         require(runtime.createGameObject()->getId() == 0, "A new empty scene resets its file-ID allocator");
+        runtime.loadScene(hierarchyPath.string());
+        auto *loadedParent = runtime.getGameObject("unsynchronized-parent");
+        auto *loadedChild = runtime.getGameObject("unsynchronized-child");
+        auto *loadedGrandchild = runtime.getGameObject("unsynchronized-grandchild");
+        require(loadedParent && loadedChild && loadedGrandchild &&
+                    loadedChild->getParent() == loadedParent &&
+                    loadedGrandchild->getParent() == loadedChild &&
+                    loadedParent->getPosition() == Eigen::Vector2f(20, 30) &&
+                    loadedParent->getLocalPosition() == Eigen::Vector2f(20, 30) &&
+                    loadedChild->getPosition() == Eigen::Vector2f(45, 65) &&
+                    loadedChild->getLocalPosition() == Eigen::Vector2f(25, 35) &&
+                    loadedGrandchild->getPosition() == Eigen::Vector2f(50, 55) &&
+                    loadedGrandchild->getLocalPosition() == Eigen::Vector2f(5, -10),
+                "Scene loading interprets child positions as parent-relative local offsets");
+        runtime.simulateFrame(dt);
+        require(loadedParent->getPosition() == Eigen::Vector2f(20, 30) &&
+                    loadedChild->getPosition() == Eigen::Vector2f(45, 65) &&
+                    loadedGrandchild->getPosition() == Eigen::Vector2f(50, 55),
+                "Loaded local child offsets remain consistent after transform synchronization");
         for (const auto &entry : std::filesystem::directory_iterator(directory))
             require(entry.path().filename().string().find(".tmp.") == std::string::npos,
                     "Failed saves must clean temporary files");

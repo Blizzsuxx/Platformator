@@ -153,7 +153,6 @@ class ProjectPanel
         ProjectGeneration projectGeneration;
         bool directory = false;
         bool behaviorRoot = false;
-        std::optional<AssetAssignmentTarget> assignment;
     };
 
     struct DirectoryState

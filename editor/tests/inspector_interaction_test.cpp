@@ -1463,6 +1463,14 @@ void run_compact_transform_input_precision_and_label_reverts()
     BehaviorCatalog catalog;
     InspectorPanel panel;
 
+    const ImVec2 nameInputPoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 120.0f, "/name");
+    const ImVec2 tagInputPoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 680.0f, "/tag");
+    require(std::abs(nameInputPoint.y - tagInputPoint.y) <= 4.0f &&
+                tagInputPoint.x > nameInputPoint.x,
+            "object Name and Tag fields must sit side by side on the same Inspector header row");
+
     const ImVec2 positionLabelPoint = find_single_object_widget(
         panel, document, selection, commands, catalog, 80.0f, nullptr, "position");
     frame(panel, document, selection, commands, catalog, positionLabelPoint, false,

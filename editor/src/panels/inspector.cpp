@@ -45,6 +45,14 @@ std::vector<std::pair<int, int>> paired_collider_layer_targets(
 
 namespace
 {
+std::string lowercase_ascii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
 EditorIcon component_icon(int type) noexcept
 {
     switch (type)
@@ -2559,6 +2567,14 @@ void InspectorPanel::draw_common_compact_transform(
         float valX = valsX->front();
         float valY = valsY->front();
 
+        std::vector<TemplatePropertyTarget> vectorRevertTargets = template_targets(pathX);
+        auto yTargets = template_targets(pathY);
+        vectorRevertTargets.insert(vectorRevertTargets.end(), yTargets.begin(), yTargets.end());
+        const bool rowOverridden = std::any_of(vectorRevertTargets.begin(), vectorRevertTargets.end(),
+            [&](const TemplatePropertyTarget &target) {
+                return template_field_is_overridden(document, target.objectId,
+                                                    target.componentId, target.fieldPath);
+            });
         ImGui::AlignTextToFramePadding();
         const ImVec2 labelStart = ImGui::GetCursorScreenPos();
         ImGui::InvisibleButton((std::string("##common_transform_vec_label") +
@@ -2567,11 +2583,13 @@ void InspectorPanel::draw_common_compact_transform(
         const bool labelHovered = ImGui::IsItemHovered();
         draw_clipped_property_label(ImGui::GetWindowDrawList(), labelStart.x, labelStart.y,
                                     labelWidth, ImGui::GetFrameHeight(), label,
-                                    ImGui::GetColorU32(labelHovered ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                                    rowOverridden && !labelHovered
+                                        ? ImGui::GetColorU32(ImGuiCol_NavHighlight)
+                                        : ImGui::GetColorU32(labelHovered ? ImGuiCol_Text
+                                                                        : ImGuiCol_TextDisabled),
                                     labelHovered);
-        std::vector<TemplatePropertyTarget> vectorRevertTargets = template_targets(pathX);
-        auto yTargets = template_targets(pathY);
-        vectorRevertTargets.insert(vectorRevertTargets.end(), yTargets.begin(), yTargets.end());
+        if (rowOverridden && labelHovered)
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
         ImGui::PushID(stable_field_id({std::string(baseProp)}).c_str());
         draw_template_revert_context(document, commands, vectorRevertTargets, feedback_);
         ImGui::PopID();
@@ -2878,7 +2896,7 @@ void InspectorPanel::draw_common_compact_transform(
         const bool valueActive = ImGui::GetActiveID() == valueId;
         const bool useFullPrecision = valueActive ||
             ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *format = mixedRot ? " — " : useFullPrecision ? "%.9g" : "%.2f";
+        const char *format = useFullPrecision ? "%.9g" : mixedRot ? " — " : "%.2f";
         const float originalRotation = valRot;
         const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, format,
                                                ImGuiInputTextFlags_EnterReturnsTrue);
@@ -3138,6 +3156,16 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     ImGui::Dummy(ImVec2(iconSize + 2.0f * uiScale, frameHeight));
     ImGui::SameLine();
 
+    const float tagLabelWidth = ImGui::CalcTextSize("Tag").x;
+    const float headerItemSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float headerAvailWidth = ImGui::GetContentRegionAvail().x;
+    const float headerInputBudget = std::max(
+        40.0f * uiScale, headerAvailWidth - tagLabelWidth - headerItemSpacing * 2.0f);
+    const float tagFieldWidth = std::min(
+        std::clamp(headerInputBudget * 0.36f, 64.0f * uiScale, 150.0f * uiScale),
+        headerInputBudget * 0.45f);
+    const float nameFieldWidth = std::max(1.0f, headerInputBudget - tagFieldWidth);
+
     std::string nameValue = object->value("name", std::string("GameObject"));
     std::array<char, 256> nameBuffer{};
     std::memcpy(nameBuffer.data(), nameValue.data(), std::min(nameValue.size(), nameBuffer.size() - 1));
@@ -3145,7 +3173,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     const bool nameOverridden = template_field_is_overridden(document, objectId,
                                                               std::nullopt, namePath);
     ImGui::PushID(stable_field_id({std::string("name")}).c_str());
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(nameFieldWidth);
     if (nameOverridden)
     {
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
@@ -3170,6 +3198,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::PopStyleColor(3);
     ImGui::PopID();
 
+    ImGui::SameLine();
     std::string tagValue = object->value("tag", std::string{});
     std::array<char, 256> tagBuffer{};
     std::memcpy(tagBuffer.data(), tagValue.data(), std::min(tagValue.size(), tagBuffer.size() - 1));
@@ -3617,11 +3646,19 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                         ImGui::SetItemTooltip("This field overrides its linked template value.");
                     if (layerPopupOpen)
                     {
+                        ImGui::SetNextItemWidth(-FLT_MIN);
+                        ImGui::InputTextWithHint("##collider-layer-search", "Search layers...",
+                                                 colliderLayerSearch_.data(), colliderLayerSearch_.size());
+                        const std::string query = lowercase_ascii(colliderLayerSearch_.data());
+                        bool anyLayer = false;
                         for (std::size_t layerIdx = 0; layerIdx < LayerCount; ++layerIdx)
                         {
                             const auto idx8 = static_cast<std::uint8_t>(layerIdx);
                             const bool isSelected = currentLayer && *currentLayer == idx8;
                             const std::string itemLabel = layer_display_label(effectiveLayers, layerIdx);
+                            if (!query.empty() && lowercase_ascii(itemLabel).find(query) == std::string::npos)
+                                continue;
+                            anyLayer = true;
                             if (ImGui::Selectable(itemLabel.c_str(), isSelected))
                             {
                                 const std::uint64_t newGroup = layer_to_collision_group(idx8);
@@ -3651,6 +3688,8 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                             if (isSelected)
                                 ImGui::SetItemDefaultFocus();
                         }
+                        if (!anyLayer)
+                            ImGui::TextDisabled("No matching layers.");
                         if (openLayerSettingsCallback_)
                         {
                             ImGui::Separator();
@@ -3772,7 +3811,42 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                                 return {true, {}};
                             return {false, {}};
                         },
-                        false);
+                        false, SourceRegionSection::All,
+                        [&](std::string_view field) {
+                            std::vector<std::vector<FieldPathSegment>> paths;
+                            if (field == "canvas")
+                                paths = {{std::string("sourceRect"), std::string("x")},
+                                         {std::string("sourceRect"), std::string("y")},
+                                         {std::string("sourceRect"), std::string("w")},
+                                         {std::string("sourceRect"), std::string("h")}};
+                            else
+                            {
+                                const std::string key = field == "width" ? "w"
+                                    : field == "height" ? "h" : std::string(field);
+                                paths = {{std::string("sourceRect"), key}};
+                            }
+                            return std::any_of(paths.begin(), paths.end(), [&](const auto &path) {
+                                return template_field_is_overridden(document, objectId, *componentId, path);
+                            });
+                        },
+                        [&](std::string_view field) {
+                            std::vector<TemplatePropertyTarget> targets;
+                            const auto append = [&](std::string key) {
+                                targets.push_back({objectId, *componentId, std::nullopt,
+                                    {std::string("sourceRect"), std::move(key)}});
+                            };
+                            if (field == "canvas")
+                            {
+                                append("x");
+                                append("y");
+                                append("w");
+                                append("h");
+                            }
+                            else
+                                append(field == "width" ? "w" : field == "height" ? "h" :
+                                       std::string(field));
+                            draw_template_revert_context(document, commands, targets, feedback_);
+                        });
                 }
             }
 
@@ -4338,10 +4412,20 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         ImGui::SetItemTooltip("This field overrides its linked template value.");
                     if (layerPopupOpen)
                     {
+                        ImGui::SetNextItemWidth(-FLT_MIN);
+                        ImGui::InputTextWithHint("##common-collider-layer-search", "Search layers...",
+                                                 commonColliderLayerSearch_.data(),
+                                                 commonColliderLayerSearch_.size());
+                        const std::string query = lowercase_ascii(commonColliderLayerSearch_.data());
+                        bool anyLayer = false;
                         for (std::size_t layer = 0; layer < LayerCount; ++layer)
                         {
                             const auto layerIndex = static_cast<std::uint8_t>(layer);
-                            if (!ImGui::Selectable(layer_display_label(effectiveLayers, layer).c_str(),
+                            const std::string itemLabel = layer_display_label(effectiveLayers, layer);
+                            if (!query.empty() && lowercase_ascii(itemLabel).find(query) == std::string::npos)
+                                continue;
+                            anyLayer = true;
+                            if (!ImGui::Selectable(itemLabel.c_str(),
                                                    !mixedLayer && !mixedGroup &&
                                                        selectedLayers.front() == layerIndex))
                                 continue;
@@ -4383,6 +4467,8 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                             else
                                 feedback_.clear();
                         }
+                        if (!anyLayer)
+                            ImGui::TextDisabled("No matching layers.");
                         if (openLayerSettingsCallback_)
                         {
                             ImGui::Separator();
@@ -4391,10 +4477,8 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         }
                         ImGui::EndCombo();
                     }
-                    ImGui::PushID(stable_field_id(colliderLayerPath).c_str());
                     draw_template_revert_context(document, commands, layerOverrideTargets,
                                                  layerOverridePaths, feedback_);
-                    ImGui::PopID();
                     end_field();
                     const bool hasChildren = std::any_of(objectIds.begin(), objectIds.end(),
                         [&](const int objectId) {

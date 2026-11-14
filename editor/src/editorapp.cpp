@@ -612,22 +612,6 @@ std::vector<std::string> make_run_arguments(const RunPreferences &preferences,
     return arguments;
 }
 
-std::string executable_identity(const std::filesystem::path &path)
-{
-    std::error_code error;
-    const auto canonical = std::filesystem::canonical(path, error);
-    if (error || !std::filesystem::is_regular_file(canonical))
-        return {};
-    const auto size = std::filesystem::file_size(canonical, error);
-    if (error)
-        return {};
-    const auto modified = std::filesystem::last_write_time(canonical, error);
-    if (error)
-        return {};
-    return canonical.string() + ":" + std::to_string(size) + ":" +
-           std::to_string(modified.time_since_epoch().count());
-}
-
 bool same_pipeline_inputs(const PipelineIdentity &left, const PipelineIdentity &right)
 {
     return left.canonicalProjectPath == right.canonicalProjectPath && left.profile == right.profile &&
@@ -646,6 +630,12 @@ struct PendingAssetAssignment
 struct PendingTemplateRelink
 {
     int objectId = -1;
+    DocumentIdentity identity;
+};
+
+struct PendingTemplateInstantiation
+{
+    std::optional<int> parentObjectId;
     DocumentIdentity identity;
 };
 
@@ -1218,12 +1208,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::optional<bool> pendingPipelineBuildOnly;
         BehaviorCatalog behaviorCatalog;
         CatalogIdentity catalogIdentity;
-        std::string catalogBinaryIdentity;
-        std::filesystem::path lastCatalogExecutable;
         std::string lastCatalogSourceInputIdentity;
         std::string lastCatalogBuildPreset;
         std::string lastCatalogTarget;
-        std::chrono::steady_clock::time_point nextCatalogIdentityCheck{};
         auto configure_catalog_identity = [&] {
             CatalogIdentity next;
             next.canonicalProjectPath = activeProjectRoot.lexically_normal().string();
@@ -1231,16 +1218,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 ? (preferences.run.production ? "production" : "debug")
                 : preferences.run.buildPreset;
             next.target = preferences.run.target;
-            auto executable = native_path_from_utf8(preferences.run.executable);
-            if (!executable.empty())
-            {
-                if (!executable.is_absolute())
-                    executable = activeProjectRoot / executable;
-                std::error_code pathError;
-                const auto absolute = std::filesystem::absolute(executable, pathError);
-                next.executablePath = (pathError ? executable : absolute).lexically_normal().string();
-            }
-            next.binaryIdentity = catalogBinaryIdentity;
             next.sourceInputIdentity = sourceInputIdentity;
             if (next == catalogIdentity)
                 return false;
@@ -1248,17 +1225,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             behaviorCatalog.configure(catalogIdentity);
             return true;
         };
-        const auto initialExecutable = native_path_from_utf8(preferences.run.executable);
-        lastCatalogExecutable = initialExecutable.empty() ? std::filesystem::path{}
-            : (initialExecutable.is_absolute() ? initialExecutable
-                                               : activeProjectRoot / initialExecutable).lexically_normal();
         lastCatalogSourceInputIdentity = sourceInputIdentity;
         lastCatalogBuildPreset = preferences.run.buildPreset.empty()
             ? (preferences.run.production ? "production" : "debug")
             : preferences.run.buildPreset;
         lastCatalogTarget = preferences.run.target;
-        catalogBinaryIdentity = executable_identity(lastCatalogExecutable);
-        nextCatalogIdentityCheck = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         (void)configure_catalog_identity();
         bool initialCatalogRefreshPending = projectOpened;
         std::unique_ptr<ImGuiSdlSession> imgui;
@@ -1345,6 +1316,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::string dialogError;
         std::optional<PendingAssetAssignment> pendingAssetAssignment;
         std::optional<PendingTemplateRelink> pendingTemplateRelink;
+        std::optional<PendingTemplateInstantiation> pendingTemplateInstantiation;
         std::optional<TabId> closeAnimationPromptTab;
         struct AnimationExternalConflict
         {
@@ -1682,6 +1654,13 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             pendingTemplateRelink = PendingTemplateRelink{objectId, identity};
             (void)dialogs->open_asset(window, identity, activeAssetRoot, "Template");
         });
+        hierarchyPanel.set_instantiate_template_callback([&](std::optional<int> parentObjectId) {
+            if (activeDocumentTab == nullptr || activeDocumentTab->kind() == DocumentTabKind::Animation)
+                return;
+            const auto identity = activeDocumentTab->identity();
+            pendingTemplateInstantiation = PendingTemplateInstantiation{parentObjectId, identity};
+            (void)dialogs->open_asset(window, identity, activeAssetRoot, "Template");
+        });
         inspectorPanel.set_template_propagated_callback([&](const std::filesystem::path &tmplPath) {
             std::ifstream in(tmplPath);
             if (!in.is_open())
@@ -1993,6 +1972,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (!active)
                     append_restore_message("The previously active document tab could not be restored: " + error);
             }
+            documentManager.sync_layer_settings(layerSettings, false);
             bind_active_document();
             return restoreMessage;
         };
@@ -2053,8 +2033,15 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         GlobalPreferences globalPrefs = globalPrefsPath
             ? load_global_preferences(*globalPrefsPath).preferences
             : GlobalPreferences{};
+        if (globalPrefs.rememberedPlatformatorRoot &&
+            !is_platformator_source_root(*globalPrefs.rememberedPlatformatorRoot))
+            globalPrefs.rememberedPlatformatorRoot.reset();
         if (!globalPrefs.rememberedPlatformatorRoot && !activeProjectRoot.empty())
-            globalPrefs.rememberedPlatformatorRoot = detect_platformator_source_root(activeProjectRoot);
+        {
+            const auto detected = detect_platformator_source_root(activeProjectRoot);
+            if (is_platformator_source_root(detected))
+                globalPrefs.rememberedPlatformatorRoot = detected;
+        }
         if (!projectOpened && globalPrefs.rememberedPlatformatorRoot &&
             newProjectParentDir[0] == '\0')
             std::snprintf(newProjectParentDir, sizeof(newProjectParentDir), "%s",
@@ -2537,6 +2524,21 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             dialogs->save_scene(window, activeDocumentTab->identity(),
                                 workspace->document().sourcePath.value_or(activeProjectRoot));
         };
+        auto save_first_dirty_untitled_scene_as = [&] {
+            for (const TabId id : documentManager.tab_ids())
+            {
+                const auto *tab = documentManager.find(id);
+                if (tab == nullptr || tab->kind() != DocumentTabKind::Scene ||
+                    !tab->workspace().dirty() || tab->workspace().document().sourcePath)
+                    continue;
+                if (!activate_document_tab(id))
+                    continue;
+                request_save_as();
+                showUnsavedPrompt = false;
+                return true;
+            }
+            return false;
+        };
         auto request_open_scene = [&] {
             openSceneDialogPending = true;
             statusMessage = "Choose a scene file to open...";
@@ -2557,7 +2559,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = "Scene could not be opened: " + error;
                 return false;
             }
-            documentManager.sync_layer_settings(layerSettings);
+            documentManager.sync_layer_settings(layerSettings, false);
             bind_active_document();
             reveal_scene_panel();
             if (workspace->document().sourcePath)
@@ -2578,7 +2580,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             std::string error;
             if (documentManager.open_template(path, &error))
             {
-                documentManager.sync_layer_settings(layerSettings);
+                documentManager.sync_layer_settings(layerSettings, false);
                 bind_active_document();
                 reveal_scene_panel();
                 if (activeDocumentTab != nullptr && !activeDocumentTab->template_path().empty())
@@ -2816,6 +2818,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return false;
             }
             missingCmakeLists = false;
+            lastConfiguredArgv.clear();
+            lastConfiguredProjectRoot.clear();
             projectPanel.refresh();
             projectSettingsPanel.refresh_discovery(false);
             statusMessage = generated.message;
@@ -2879,7 +2883,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (decision == UnsavedDecision::Cancel)
                     result = {WorkspaceActionStatus::Cancelled, {}};
                 else if (decision == UnsavedDecision::Save)
+                {
+                    if (save_first_dirty_untitled_scene_as())
+                        return;
                     result = documentManager.save_all().action;
+                }
                 else
                     result = {WorkspaceActionStatus::Completed, {}};
             }
@@ -2926,10 +2934,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     result = {WorkspaceActionStatus::Cancelled, {}};
                 else if (decision == UnsavedDecision::Discard)
                     result = {WorkspaceActionStatus::Completed, {}};
-                else if (workspace->dirty() && !workspace->document().sourcePath)
+                else if (save_first_dirty_untitled_scene_as())
                 {
-                    request_save_as();
-                    showUnsavedPrompt = false;
                     return;
                 }
                 else
@@ -3235,7 +3241,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 showOverwritePrompt = false;
                 pendingSaveAsPath.clear();
                 if (pendingAction != PendingAction::None)
-                    execute_pending(pendingAction == PendingAction::Exit
+                    execute_pending(pendingAction == PendingAction::Exit ||
+                                    pendingAction == PendingAction::ChangeProjectRoots
                         ? UnsavedDecision::Save : UnsavedDecision::Discard);
                 if (closeAfterSaveTab)
                     close_document_tab(*closeAfterSaveTab, UnsavedDecision::Discard);
@@ -3573,6 +3580,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             projectPanel.refresh();
             dialogs->shutdown();
             pendingAssetAssignment.reset();
+            pendingTemplateInstantiation.reset();
+            pendingTemplateRelink.reset();
             cancel_scene_gesture();
             if (behaviorScanCancellation)
                 behaviorScanCancellation->store(true, std::memory_order_release);
@@ -3619,7 +3628,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         std::string("Layer settings were invalid and defaults are active: ") +
                         loadedLayers.message;
                 projectSettingsPanel.commit_layer_draft(layerSettings);
-                documentManager.sync_layer_settings(layerSettings);
                 audioPreview.stop();
                 close_all_detached_hosts();
                 preferences = std::move(nextPreferences);
@@ -3640,7 +3648,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
                 dialogs = std::make_unique<FileDialogService>(projectContext.snapshot().generation);
                 rebuild_runtime_context(activeAssetRoot);
-                catalogBinaryIdentity.clear();
                 (void)configure_catalog_identity();
                 initialCatalogRefreshPending = true;
                 nextSourceScan = std::chrono::steady_clock::now() + source_scan_interval();
@@ -3697,7 +3704,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             : syncRecovery.message)
                         : std::string{};
                     projectSettingsPanel.commit_layer_draft(layerSettings);
-                    documentManager.sync_layer_settings(layerSettings);
                     projectOpened = oldProjectOpened;
                     close_all_detached_hosts();
                     preferences = oldPreferences;
@@ -3710,7 +3716,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     dialogs = std::make_unique<FileDialogService>(projectContext.snapshot().generation);
                     rebuild_runtime_context(activeAssetRoot);
                     restore_detached_hosts();
-                    catalogBinaryIdentity.clear();
                     (void)configure_catalog_identity();
                     initialCatalogRefreshPending = true;
                     nextSourceScan = std::chrono::steady_clock::now() + source_scan_interval();
@@ -4009,8 +4014,17 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     const auto matchesPath = [&](const std::filesystem::path &changed) {
                         if (changed.empty())
                             return false;
-                        const auto normalized = changed.lexically_normal();
-                        const auto active = activeAudio->lexically_normal();
+                        const auto canonicalize = [](const std::filesystem::path &path) {
+                            std::error_code pathError;
+                            auto normalized = std::filesystem::weakly_canonical(path, pathError);
+                            if (!pathError)
+                                return normalized;
+                            pathError.clear();
+                            normalized = std::filesystem::absolute(path, pathError);
+                            return (pathError ? path : normalized).lexically_normal();
+                        };
+                        const auto normalized = canonicalize(changed);
+                        const auto active = canonicalize(*activeAudio);
                         if (!event.directory)
                             return normalized == active;
                         const auto relative = active.lexically_relative(normalized);
@@ -4318,35 +4332,17 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
             if (!gamePipeline.busy())
             {
-                const auto executable = native_path_from_utf8(preferences.run.executable);
-                const auto selectedExecutable = executable.empty()
-                    ? std::filesystem::path{}
-                    : (executable.is_absolute() ? executable : activeProjectRoot / executable).lexically_normal();
                 const std::string activeBuildPreset = preferences.run.buildPreset.empty()
                     ? (preferences.run.production ? "production" : "debug")
                     : preferences.run.buildPreset;
-
-                const bool inputsChanged = selectedExecutable != lastCatalogExecutable ||
-                    sourceInputIdentity != lastCatalogSourceInputIdentity ||
+                const bool inputsChanged = sourceInputIdentity != lastCatalogSourceInputIdentity ||
                     activeBuildPreset != lastCatalogBuildPreset ||
                     preferences.run.target != lastCatalogTarget;
-                const bool throttleExpired = now >= nextCatalogIdentityCheck;
-
-                const bool selectedExecutableAvailable = !selectedExecutable.empty();
-                if (inputsChanged || (selectedExecutableAvailable && throttleExpired))
+                if (inputsChanged)
                 {
-                    lastCatalogExecutable = selectedExecutable;
                     lastCatalogSourceInputIdentity = sourceInputIdentity;
                     lastCatalogBuildPreset = activeBuildPreset;
                     lastCatalogTarget = preferences.run.target;
-                    std::error_code executableError;
-                    const bool executableExists = selectedExecutableAvailable &&
-                        std::filesystem::is_regular_file(selectedExecutable, executableError) &&
-                        !executableError;
-                    catalogBinaryIdentity = executableExists
-                        ? executable_identity(selectedExecutable) : std::string{};
-                    nextCatalogIdentityCheck = now + std::chrono::seconds(1);
-
                     if (configure_catalog_identity())
                         refresh_behavior_catalog();
                 }
@@ -4397,7 +4393,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     event.type == SDL_EVENT_MOUSE_WHEEL ||
                     event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_TEXT_INPUT)
                     tickDriver.note_input_event(std::chrono::steady_clock::now());
-                if (gamePanel.is_input_captured())
+                const bool gameInputCaptured = gamePanel.is_input_captured();
+                if (gameInputCaptured)
                 {
                     if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
                     {
@@ -4405,7 +4402,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         gamePanel.handle_sdl_event(playSession, event);
                     }
                 }
-                if (!gamePanel.is_input_captured() && event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+                if (!GamePanel::should_forward_sdl_event_to_editor_ui(gameInputCaptured, event))
+                    continue;
+                if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
                     event.key.scancode == SDL_SCANCODE_DELETE &&
                     event.key.windowID == SDL_GetWindowID(window))
                     deleteKeyPressedThisFrame = true;
@@ -4592,6 +4591,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     result.outcome == AsyncRequestOutcome::Cancelled)
                 {
                     pendingAssetAssignment.reset();
+                    if (pendingTemplateInstantiation &&
+                        pendingTemplateInstantiation->identity == result.identity.documentIdentity)
+                    {
+                        pendingTemplateInstantiation.reset();
+                        statusMessage = "Template instantiation was cancelled.";
+                    }
                     if (pendingTemplateRelink &&
                         pendingTemplateRelink->identity == result.identity.documentIdentity)
                     {
@@ -4629,6 +4634,14 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 if (result.outcome == AsyncRequestOutcome::Failed)
                 {
+                    if (result.identity.kind == AsyncRequestKind::OpenAsset &&
+                        pendingTemplateInstantiation &&
+                        pendingTemplateInstantiation->identity == result.identity.documentIdentity)
+                    {
+                        pendingTemplateInstantiation.reset();
+                        statusMessage = "Template selection failed: " + result.error;
+                        continue;
+                    }
                     if (result.identity.kind == AsyncRequestKind::OpenAsset && pendingTemplateRelink &&
                         pendingTemplateRelink->identity == result.identity.documentIdentity)
                     {
@@ -4731,6 +4744,27 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     else
                         statusMessage = relinkError;
                 }
+                else if (result.identity.kind == AsyncRequestKind::OpenAsset &&
+                         pendingTemplateInstantiation &&
+                         pendingTemplateInstantiation->identity == result.identity.documentIdentity)
+                {
+                    const PendingTemplateInstantiation request = *pendingTemplateInstantiation;
+                    pendingTemplateInstantiation.reset();
+                    if (activeDocumentTab == nullptr || activeDocumentTab->identity() != request.identity)
+                    {
+                        statusMessage = "Template instantiation was cancelled because the active document changed.";
+                        continue;
+                    }
+                    const bool inserted = instantiate_asset_drop(
+                        workspace->document_for_edit(), *editCommands, *selection,
+                        result.selectedPath.string(), EditorAssetKind::Template, 0.0f, 0.0f,
+                        request.parentObjectId);
+                    statusMessage = inserted
+                        ? "Instantiated template " + result.selectedPath.filename().string() + "."
+                        : "The selected template could not be instantiated.";
+                    if (inserted)
+                        hierarchyPanel.invalidate();
+                }
                 else if (result.identity.kind == AsyncRequestKind::OpenAsset && pendingAssetAssignment)
                 {
                     auto assignment = std::move(*pendingAssetAssignment);
@@ -4784,7 +4818,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 update_validation_dependencies(*completedValidation);
                 validation = std::move(completedValidation->result);
             }
-            if (!validationService.is_current(currentDocument))
+            if (!debouncedValidationDeadline &&
+                !validationService.is_current(currentDocument))
                 request_current_validation(currentDocument);
             if (const auto &ticket = pendingRunValidation.ticket(); ticket)
             {
@@ -4825,6 +4860,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
 
             imgui->begin_frame();
+            if (gamePanel.is_input_captured())
+                ImGui::GetIO().ClearInputKeys();
             ImGuiContext *mainImGuiContext = ImGui::GetCurrentContext();
             std::unordered_set<HostLayoutId> detachedFramesStarted;
             for (auto &[hostId, host] : detachedHosts)
@@ -4832,6 +4869,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 host->begin_frame();
                 detachedFramesStarted.insert(hostId);
                 ImGui::SetCurrentContext(host->context());
+                if (gamePanel.is_input_captured())
+                    ImGui::GetIO().ClearInputKeys();
                 int hostWidth = 0;
                 int hostHeight = 0;
                 int hostPixelWidth = 0;
@@ -4861,6 +4900,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (detachedFramesStarted.insert(hostId).second)
                 {
                     host->second->begin_frame();
+                    if (gamePanel.is_input_captured())
+                        ImGui::GetIO().ClearInputKeys();
                     int hostWidth = 0;
                     int hostHeight = 0;
                     int hostPixelWidth = 0;
@@ -5090,7 +5131,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::MenuItem("Save All", nullptr, false,
                                         !projectLocked && (hasDirtySceneTab || hasDirtyAnimationTab)))
                         save_all_documents();
-                    if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, !projectLocked))
+                    if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false,
+                                        !projectLocked && activeDocumentTab != nullptr &&
+                                            activeDocumentTab->kind() != DocumentTabKind::Template))
                         request_save_as();
                     ImGui::Separator();
                     if (ImGui::MenuItem("Exit"))
@@ -5245,7 +5288,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::BeginMenu("Physics", canAdd))
                     {
                         if (ImGui::MenuItem("Box Collider"))
-                            editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(3));
+                        {
+                            Json collider = default_component_record(3);
+                            collider["collisionMask"] = layer_to_collision_mask(layerSettings, 0);
+                            editCommands->add_component(workspace->document_for_edit(),
+                                                        *selectedObjId, std::move(collider));
+                        }
                         if (ImGui::MenuItem("Rigidbody"))
                             editCommands->add_component(workspace->document_for_edit(), *selectedObjId, default_component_record(4));
                         ImGui::EndMenu();
@@ -5390,10 +5438,20 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         };
                         if (ImGui::MenuItem("Default"))
                         {
+                            std::vector<HostLayoutId> hostIds;
+                            for (const auto &[hostId, host] : detachedHosts)
+                            {
+                                (void)host;
+                                hostIds.push_back(hostId);
+                            }
+                            for (const HostLayoutId hostId : hostIds)
+                                close_detached_host(hostId);
                             reset_workspace_layout(preferences);
                             savedLayout = defaultLayout;
                             if (!savedLayout.empty())
                                 ImGui::LoadIniSettingsFromMemory(savedLayout.data(), savedLayout.size());
+                            activeScale = options.uiScaleProvided ? options.uiScale : 1.0f;
+                            lastAppliedScale = -1.0f;
                             statusMessage = "Applied Default layout preset.";
                         }
                         if (ImGui::MenuItem("Tall"))
@@ -5438,7 +5496,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         showShortcutReference = true;
                     ImGui::Separator();
                     if (ImGui::MenuItem("About Platformator"))
-                        statusMessage = "Platformator Editor v0.14";
+                        statusMessage = "Platformator Editor v0.15";
                     ImGui::EndMenu();
                 }
 
@@ -5631,6 +5689,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 externalAnimationConflict.has_value() || externalAnimationSaveAsPending ||
                 animationDestinationOverwrite.has_value() ||
                 showManualPath || pendingAssetAssignment.has_value() || closeAfterSaveTab.has_value() ||
+                pendingTemplateInstantiation.has_value() ||
                 closePromptTab.has_value() || pendingGameSessionCloseTab.has_value() ||
                 applyProjectRootsAfterFrame;
             const bool sceneTabActionsEnabled = !tabActionsLocked && !projectLocked;
@@ -5647,7 +5706,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const std::string cleanName = tab->workspace().document().sourcePath
                     ? path_to_utf8(tab->workspace().document().sourcePath->filename())
                     : "Untitled";
-                std::string tabName = cleanName;
+                const std::string displayName = tab->kind() == DocumentTabKind::Template
+                    ? "Template: " + cleanName : cleanName;
+                std::string tabName = displayName;
                 if (tab->workspace().dirty())
                     tabName += " *";
                 const auto sourceStatus = std::find_if(cachedSourceStatuses.begin(), cachedSourceStatuses.end(),
@@ -5664,7 +5725,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 // cannot move the close button and all following tabs.
                 const float markerWidth = ImGui::CalcTextSize(" * !").x;
                 const float closeBtnWidth = ImGui::CalcTextSize("×").x + ImGui::GetStyle().FramePadding.x * 2.0f;
-                const float tabWidth = ImGui::CalcTextSize(cleanName.c_str()).x + markerWidth +
+                const float tabWidth = ImGui::CalcTextSize(displayName.c_str()).x + markerWidth +
                                        ImGui::GetStyle().FramePadding.x * 2.0f + closeBtnWidth;
                 ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
                 ImGui::SetNextItemAllowOverlap();
@@ -5764,12 +5825,17 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     ProjectScaffoldRequest npOpts;
                     npOpts.projectName = newProjectName;
                     npOpts.parentDirectory = std::filesystem::path(newProjectParentDir);
-                    npOpts.platformatorSourceRoot = globalPrefs.rememberedPlatformatorRoot.value_or(
-                        detect_platformator_source_root());
+                    npOpts.platformatorSourceRoot = globalPrefs.rememberedPlatformatorRoot &&
+                            is_platformator_source_root(*globalPrefs.rememberedPlatformatorRoot)
+                        ? *globalPrefs.rememberedPlatformatorRoot
+                        : detect_platformator_source_root();
                     const auto npResult = create_new_project(npOpts);
                     if (npResult.succeeded)
                     {
-                        globalPrefs.rememberedPlatformatorRoot = npOpts.platformatorSourceRoot;
+                        if (is_platformator_source_root(npOpts.platformatorSourceRoot))
+                            globalPrefs.rememberedPlatformatorRoot = npOpts.platformatorSourceRoot;
+                        else
+                            globalPrefs.rememberedPlatformatorRoot.reset();
                         if (globalPrefsPath)
                         {
                             std::string preferenceError;
@@ -6004,6 +6070,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const std::vector<Json> authorReferenceBindings;
                 const std::vector<TemplateAuthorSchemaDeclaration> authorSchemaDeclarations;
                 ImGui::BeginDisabled(documentEditingLocked);
+                hierarchyPanel.set_layer_settings(&layerSettings);
                 hierarchyPanel.draw(visibilityDocument, *selection, *editCommands,
                                     !documentEditingLocked,
                                     &hiddenObjectIds, &lockedObjectIds,
@@ -6212,8 +6279,21 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         {
                             const auto id = parseSceneTabId(
                                 std::string_view(action.nodeId).substr(sceneTabClosePrefix.size()));
-                            if (id && documentManager.find(*id) != nullptr)
-                                closePromptTab = *id;
+                            if (id)
+                            {
+                                const auto *tab = documentManager.find(*id);
+                                if (tab != nullptr)
+                                {
+                                    if (tab->workspace().dirty())
+                                        closePromptTab = *id;
+                                    else
+                                    {
+                                        const auto closed = close_document_tab(*id, UnsavedDecision::Discard);
+                                        if (!closed)
+                                            statusMessage = closed.message;
+                                    }
+                                }
+                            }
                         }
                         return;
                     }
@@ -6277,7 +6357,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         }
                         else if (command == "file/save-as")
                         {
-                            if (!projectLocked)
+                            if (!projectLocked && activeDocumentTab != nullptr &&
+                                activeDocumentTab->kind() != DocumentTabKind::Template)
                                 request_save_as();
                         }
                         else if (command == "file/exit")
@@ -6508,17 +6589,23 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         return;
                     }
 #endif
-                    if (action.nodeId == "main/panel/project_settings/generate_cmake" &&
-                        action.action == "activate")
+                    if (action.nodeId.starts_with("main/panel/project_settings/") && !projectLocked)
                     {
-                        if (!projectLocked)
+                        if (action.action == "activate" &&
+                            action.nodeId.ends_with("/generate_cmake"))
+                        {
                             (void)generate_project_manifest();
-                        return;
+                            return;
+                        }
+                        if (action.action == "activate" &&
+                            action.nodeId.ends_with("/repair_engine_path"))
+                        {
+                            (void)repair_project_manifest_engine_path();
+                            return;
+                        }
+                        if (projectSettingsPanel.dispatch_semantic_action(preferences.run, action))
+                            return;
                     }
-                    if (action.nodeId.starts_with("main/panel/project_settings/") &&
-                        !projectLocked &&
-                        projectSettingsPanel.dispatch_semantic_action(preferences.run, action))
-                        return;
                     if (projectPanel.dispatch_semantic_action(
                             workspace->document_for_edit(), *editCommands, *selection, action,
                             mainAccessibilityGeneration, !projectLocked && !documentEditingLocked))
@@ -6528,12 +6615,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     }
                     if (projectLocked)
                         return;
-                    if (action.nodeId == "main/panel/project_settings/repair_engine_path" &&
-                        action.action == "activate")
-                    {
-                        (void)repair_project_manifest_engine_path();
-                        return;
-                    }
                     if (scenePanel.dispatch_semantic_action(
                             action, workspace->document(), selection->current()))
                         return;
@@ -6897,7 +6978,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             addMenuCommand("file/save-all", "file", "Save All Scenes",
                            !projectLocked && !tabActionsLocked && hasDirtyAnyDoc,
                            hasDirtyAnyDoc ? "modified documents available" : "all saved");
-            addMenuCommand("file/save-as", "file", "Save Scene As", !projectLocked);
+            addMenuCommand("file/save-as", "file", "Save Scene As",
+                           !projectLocked && activeDocumentTab != nullptr &&
+                               activeDocumentTab->kind() != DocumentTabKind::Template);
             addMenuCommand("file/exit", "file", "Exit Editor", true);
 
             // Edit
@@ -7538,8 +7621,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     sceneDockId = sceneWindow->DockId;
             }
             ImGui::SetNextWindowDockID(sceneDockId, ImGuiCond_FirstUseEver);
+            const ImGuiWindowFlags gameWindowFlags = gamePanel.is_input_captured()
+                ? ImGuiWindowFlags_NoNavInputs
+                : ImGuiWindowFlags_None;
             const auto gameFrame = begin_panel_window(showGame,
-                "Game###panel.game", &showGame);
+                "Game###panel.game", &showGame, gameWindowFlags);
             if (gameFrame.contentsVisible)
             {
                 gamePanel.draw(playSession, true);

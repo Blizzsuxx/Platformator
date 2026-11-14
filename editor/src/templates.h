@@ -87,7 +87,8 @@ void mark_template_override(DocumentSession &document, int objectId, std::string
 std::string template_override_path_for_address(const DocumentSession &document,
                                               const PropertyAddress &address);
 std::filesystem::path resolve_template_asset_path(const std::filesystem::path &assetRoot,
-                                                  std::string_view templateRef);
+                                                  std::string_view templateRef,
+                                                  std::error_code *filesystemError = nullptr);
 std::string normalize_template_asset_ref(const std::filesystem::path &assetRoot,
                                          const std::filesystem::path &fullPath);
 bool apply_template_instance(DocumentSession &sceneDocument, EditCommandService &commands,

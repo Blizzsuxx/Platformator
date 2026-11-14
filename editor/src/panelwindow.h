@@ -10,11 +10,12 @@ struct PanelWindowFrame
     bool contentsVisible = false;
 };
 
-inline PanelWindowFrame begin_panel_window(bool visible, const char *title, bool *open)
+inline PanelWindowFrame begin_panel_window(bool visible, const char *title, bool *open,
+                                             ImGuiWindowFlags flags = 0)
 {
     if (!visible)
         return {};
-    return {true, ImGui::Begin(title, open)};
+    return {true, ImGui::Begin(title, open, flags)};
 }
 
 inline void end_panel_window(PanelWindowFrame frame)

@@ -30,7 +30,8 @@ enum class PlaySessionState
     Starting,
     Running,
     Paused,
-    Stopping
+    Stopping,
+    Failed
 };
 
 struct PlaySessionLaunchIdentity
@@ -48,6 +49,7 @@ class PlaySession
   public:
     static constexpr std::size_t MaximumPumpBytesPerCall = 256U * 1024U;
     static constexpr std::size_t MaximumEventsPerCall = 64;
+    static constexpr std::chrono::seconds StartupHandshakeTimeout{10};
 
     PlaySession();
     ~PlaySession() = default;
@@ -100,6 +102,7 @@ class PlaySession
     const BoundedConsole &stderr_log() const noexcept;
 
   private:
+    friend struct PlaySessionTestAccess;
     using ProtocolMessage = platformator::editor_session::Message;
 
     bool queue_command(std::string type, Json body,
@@ -126,6 +129,7 @@ class PlaySession
     bool processStopRequested_ = false;
     bool childCapabilitiesValidated_ = false;
     std::chrono::steady_clock::time_point stopDeadline_{};
+    std::chrono::steady_clock::time_point startupDeadline_{};
     std::deque<ProtocolMessage> pendingDecodedEvents_;
     std::size_t pendingDecodedEventBytes_ = 0;
     std::deque<ProtocolMessage> events_;

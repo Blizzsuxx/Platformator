@@ -51,7 +51,7 @@ PlaySession::PlaySession() = default;
 
 bool PlaySession::begin_configuring(PlaySessionLaunchIdentity identity, std::string nonce)
 {
-    if (state_ != PlaySessionState::Idle)
+    if (state_ != PlaySessionState::Idle && state_ != PlaySessionState::Failed)
     {
         lastError_ = "a play session is already active";
         return false;
@@ -85,6 +85,7 @@ bool PlaySession::begin_configuring(PlaySessionLaunchIdentity identity, std::str
     childReaped_ = true;
     processStopRequested_ = false;
     stopDeadline_ = {};
+    startupDeadline_ = {};
     launchIdentity_ = std::move(identity);
     nonce_ = std::move(nonce);
     runtimeSerial_ = {};
@@ -140,6 +141,7 @@ bool PlaySession::begin_starting(std::unique_ptr<SessionChannelPair> channels,
     childCapabilitiesValidated_ = false;
     channels_ = std::move(channels);
     state_ = PlaySessionState::Starting;
+    startupDeadline_ = std::chrono::steady_clock::now() + StartupHandshakeTimeout;
     return true;
 }
 
@@ -260,7 +262,13 @@ bool PlaySession::start_process(ProcessRequest request,
 void PlaySession::poll_process()
 {
     if (!processStarted_)
+    {
+        if (state_ == PlaySessionState::Starting && startupDeadline_ !=
+                std::chrono::steady_clock::time_point{} &&
+            std::chrono::steady_clock::now() >= startupDeadline_)
+            fail("embedded Game startup handshake timed out; inspect the Console logs or switch Launch Mode to External Game Window");
         return;
+    }
     process_.poll();
     if (!process_.running() && !childReaped_)
         childReaped_ = true;
@@ -284,6 +292,10 @@ void PlaySession::poll_process()
     {
         flush_commands();
         poll_events();
+        if (state_ == PlaySessionState::Starting && startupDeadline_ !=
+                std::chrono::steady_clock::time_point{} &&
+            std::chrono::steady_clock::now() >= startupDeadline_)
+            fail("embedded Game startup handshake timed out; inspect the Console logs or switch Launch Mode to External Game Window");
     }
 }
 
@@ -480,7 +492,7 @@ bool PlaySession::release_all_inputs()
 
 bool PlaySession::request_stop()
 {
-    if (state_ == PlaySessionState::Idle)
+    if (state_ == PlaySessionState::Idle || state_ == PlaySessionState::Failed)
         return false;
     if (state_ == PlaySessionState::Stopping)
         return true;
@@ -505,7 +517,7 @@ bool PlaySession::request_stop()
 
 bool PlaySession::finish_stop_after_reap()
 {
-    if (state_ != PlaySessionState::Stopping)
+    if (state_ != PlaySessionState::Stopping && state_ != PlaySessionState::Failed)
         return false;
     if (processStarted_ && !childReaped_)
         return false;
@@ -519,6 +531,7 @@ bool PlaySession::finish_stop_after_reap()
             channels_->frameMapping->close();
         channels_.reset();
     }
+    const bool failed = !lastError_.empty();
     launchIdentity_.reset();
     capabilities_ = {};
     generation_ = {};
@@ -528,8 +541,9 @@ bool PlaySession::finish_stop_after_reap()
     childReaped_ = true;
     processStopRequested_ = false;
     stopDeadline_ = {};
+    startupDeadline_ = {};
     reset_protocol_state();
-    state_ = PlaySessionState::Idle;
+    state_ = failed ? PlaySessionState::Failed : PlaySessionState::Idle;
     return true;
 }
 
@@ -929,13 +943,22 @@ bool PlaySession::handle_event(ProtocolMessage message)
 
 void PlaySession::fail(std::string error) noexcept
 {
+    const bool startupFailure = state_ == PlaySessionState::Starting;
+    if (startupFailure && error.find("inspect the Console logs") == std::string::npos)
+        error += "; inspect the Console logs or switch Launch Mode to External Game Window";
     if (lastError_.empty())
         lastError_ = std::move(error);
-    if (state_ != PlaySessionState::Idle)
-        state_ = PlaySessionState::Stopping;
-    if (processStarted_ && process_.running() && stopDeadline_ ==
-            std::chrono::steady_clock::time_point{})
-        stopDeadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    if (state_ != PlaySessionState::Idle && state_ != PlaySessionState::Failed)
+    {
+        if (processStarted_ && process_.running())
+        {
+            state_ = PlaySessionState::Stopping;
+            if (stopDeadline_ == std::chrono::steady_clock::time_point{})
+                stopDeadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        }
+        else
+            state_ = PlaySessionState::Failed;
+    }
 }
 
 void PlaySession::reset_protocol_state() noexcept

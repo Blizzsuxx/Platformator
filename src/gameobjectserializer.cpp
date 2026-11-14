@@ -14,7 +14,7 @@
 void to_json(nlohmann::json &j, const GameObject &gameObject)
 {
     j = nlohmann::json{{"id", gameObject.getId()},         {"rotation", gameObject.getRotation()},
-                       {"active", gameObject.getActive()}, {"position", gameObject.getPosition()},
+                       {"active", gameObject.getActive()}, {"position", gameObject.getLocalPosition()},
                        {"scale", gameObject.getScale()},   {"name", gameObject.getName()},
                        {"tag", gameObject.getTag()}};
 

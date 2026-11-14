@@ -418,6 +418,7 @@ const Json *find_behavior_descriptor(const Json &catalog, std::string_view name)
 
 bool behavior_value_matches(const Json &value, const Json &descriptor, std::string &reason)
 {
+    reason.clear();
     if (!descriptor.is_object() || !descriptor.contains("kind") || !descriptor["kind"].is_string())
     {
         reason = "behavior field descriptor is malformed";
@@ -450,37 +451,98 @@ bool behavior_value_matches(const Json &value, const Json &descriptor, std::stri
             }
         return true;
     }
-    if (kind == "boolean") return value.is_boolean();
-    if (kind == "signed_integer") return value.is_number_integer();
+    if (kind == "boolean")
+    {
+        if (value.is_boolean())
+            return true;
+        reason = "expected a boolean value";
+        return false;
+    }
+    if (kind == "signed_integer")
+    {
+        if (value.is_number_integer())
+            return true;
+        reason = "expected a signed integer value";
+        return false;
+    }
     if (kind == "unsigned_integer")
-        return value.is_number_unsigned() || (value.is_number_integer() && value.get<std::int64_t>() >= 0);
+    {
+        if (value.is_number_unsigned() ||
+            (value.is_number_integer() && value.get<std::int64_t>() >= 0))
+            return true;
+        reason = "expected a non-negative integer value";
+        return false;
+    }
     if (kind == "number")
-        return value.is_number() && std::isfinite(value.get<double>());
-    if (kind == "string" || kind == "asset_reference") return value.is_string();
+    {
+        if (value.is_number() && std::isfinite(value.get<double>()))
+            return true;
+        reason = "expected a finite number value";
+        return false;
+    }
+    if (kind == "string")
+    {
+        if (value.is_string())
+            return true;
+        reason = "expected a string value";
+        return false;
+    }
+    if (kind == "asset_reference")
+    {
+        if (value.is_null() && descriptor.value("nullable", false))
+            return true;
+        if (value.is_string())
+            return true;
+        reason = descriptor.value("nullable", false)
+            ? "expected a string asset reference or null"
+            : "expected a string asset reference";
+        return false;
+    }
     if (kind == "enum")
     {
         if (value.is_string())
         {
             if (!descriptor.contains("enum_values") || !descriptor["enum_values"].is_array())
                 return true;
-            return std::any_of(descriptor["enum_values"].begin(), descriptor["enum_values"].end(),
+            const bool found = std::any_of(descriptor["enum_values"].begin(), descriptor["enum_values"].end(),
                 [&](const Json &entry) { return entry.value("name", std::string{}) == value.get<std::string>(); });
+            if (!found)
+                reason = "value is not a declared enum option";
+            return found;
         }
-        return value.is_number_integer();
+        if (value.is_number_integer())
+            return true;
+        reason = "expected an enum option or integer value";
+        return false;
     }
     if (kind == "vector2")
-        return value.is_object() && numeric_value(member(value, "x")).has_value() &&
-               numeric_value(member(value, "y")).has_value();
+    {
+        if (value.is_object() && numeric_value(member(value, "x")).has_value() &&
+            numeric_value(member(value, "y")).has_value())
+            return true;
+        reason = "expected an object with numeric x and y values";
+        return false;
+    }
     if (kind == "rectangle")
-        return value.is_object() && numeric_value(member(value, "x")).has_value() &&
-               numeric_value(member(value, "y")).has_value() &&
-               numeric_value(member(value, "w")).has_value() &&
-               numeric_value(member(value, "h")).has_value();
+    {
+        if (value.is_object() && numeric_value(member(value, "x")).has_value() &&
+            numeric_value(member(value, "y")).has_value() &&
+            numeric_value(member(value, "w")).has_value() &&
+            numeric_value(member(value, "h")).has_value())
+            return true;
+        reason = "expected an object with numeric x, y, w and h values";
+        return false;
+    }
     if (kind == "object_reference")
     {
         if (value.is_null() && descriptor.value("nullable", false))
             return true;
-        return value.is_number_integer() && value.get<std::int64_t>() >= 0;
+        if (value.is_number_integer() && value.get<std::int64_t>() >= 0)
+            return true;
+        reason = descriptor.value("nullable", false)
+            ? "expected a non-negative object ID or null"
+            : "expected a non-negative object ID";
+        return false;
     }
     if (kind == "opaque_json") return true;
     reason = "unsupported behavior field kind '" + kind + "'";

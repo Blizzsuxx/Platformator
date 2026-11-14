@@ -25,7 +25,7 @@ class SceneBuildContext : public platformator::ReferenceResolver
     AnimationClip *loadAnimationClip(const std::string &path) override;
 
   private:
-    GameObject *buildObject(const nlohmann::json &record);
+    GameObject *buildObject(const nlohmann::json &record, GameObject *parent = nullptr);
     void addIdentity(BaseObject &object, platformator_detail::ObjectKind kind);
     GameManager &manager;
     std::string path;

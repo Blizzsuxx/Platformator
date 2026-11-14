@@ -93,7 +93,7 @@ void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
     ids.emplace(object.getId(), &object);
 }
 
-GameObject *SceneBuildContext::buildObject(const Json &record)
+GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *parent)
 {
     auto *object = new GameObject();
     try
@@ -108,14 +108,16 @@ GameObject *SceneBuildContext::buildObject(const Json &record)
     object->setId(record.at("id").get<int>());
     object->setName(record.at("name").get<std::string>());
     object->setTag(record.at("tag").get<std::string>());
+    addIdentity(*object, Kind::GameObject);
+    if (parent != nullptr)
+        parent->addChild(object);
     const auto position = record.at("position").get<Eigen::Vector2f>();
     const auto scale = record.at("scale").get<Eigen::Vector2f>();
     const auto rotation = record.at("rotation").get<float>();
-    object->setPosition(position);
+    object->setLocalPosition(position);
     object->setRotation(rotation);
     object->setScale(scale);
     object->setActive(record.at("active").get<bool>());
-    addIdentity(*object, Kind::GameObject);
     for (const auto &entry : record.at("components"))
     {
         std::unique_ptr<Component> component;
@@ -193,7 +195,7 @@ GameObject *SceneBuildContext::buildObject(const Json &record)
         addIdentity(*raw, kind);
     }
     for (const auto &child : record.at("children"))
-        object->addChild(buildObject(child));
+        buildObject(child, object);
     return object;
 }
 

@@ -55,6 +55,7 @@ class GamePanel
     void capture_input() noexcept { capturingInput_ = true; }
     void release_input_capture(PlaySession *session = nullptr);
     void handle_sdl_event(PlaySession *session, const SDL_Event &event);
+    static bool should_forward_sdl_event_to_editor_ui(bool gameInputCaptured, const SDL_Event &event) noexcept;
 
   private:
     void observe_generation(PlaySession *session);

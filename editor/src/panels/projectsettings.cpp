@@ -70,6 +70,7 @@ void ProjectSettingsPanel::set_project_root(std::filesystem::path projectRoot)
     if (projectRoot_ == projectRoot && !projectRoot_.empty())
         return;
     projectRoot_ = std::move(projectRoot);
+    enginePathStatus_.reset();
     textDrafts_.clear();
     committedText_.clear();
     layerValidationError_.clear();
@@ -96,9 +97,11 @@ void ProjectSettingsPanel::refresh_discovery(bool requestFileApiQuery)
     if (projectRoot_.empty())
     {
         discovery_ = {};
+        enginePathStatus_.reset();
         return;
     }
     discovery_ = discover_project_run_options(projectRoot_, requestFileApiQuery);
+    enginePathStatus_ = inspect_project_engine_path(projectRoot_);
 }
 
 ProjectSettingsAction ProjectSettingsPanel::draw(RunPreferences &preferences,
@@ -160,7 +163,9 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
     }
     else
     {
-        const auto enginePath = inspect_project_engine_path(projectRoot_);
+        if (!enginePathStatus_)
+            enginePathStatus_ = inspect_project_engine_path(projectRoot_);
+        const auto &enginePath = *enginePathStatus_;
         const bool pathNeedsRepair = enginePath.hasSourceDirectoryDirective &&
             !enginePath.sourceDirectoryAvailable;
         if (pathNeedsRepair)
@@ -189,15 +194,16 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
         if (ImGui::BeginPopupModal("Regenerate CMakeLists.txt?", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize))
         {
+            const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
             ImGui::TextWrapped("This replaces the existing CMakeLists.txt with Platformator's generated build file. Project assets are preserved.");
             ImGui::Spacing();
-            if (ImGui::Button("Regenerate", ImVec2(130.0f, 0.0f)))
+            if (ImGui::Button("Regenerate", ImVec2(130.0f * uiScale, 0.0f)))
             {
                 action = ProjectSettingsAction::RegenerateExistingCMakeLists;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(130.0f, 0.0f)))
+            if (ImGui::Button("Cancel", ImVec2(130.0f * uiScale, 0.0f)))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
@@ -506,6 +512,7 @@ std::vector<SemanticNode> ProjectSettingsPanel::semantic_nodes(const RunPreferen
 
     auto modeNode = make_node("launch_mode", SemanticRole::Button, "Launch Mode");
     modeNode.value = preferences.embeddedGameView ? "Embedded Game View" : "External Game Window";
+    modeNode.actions.push_back("set_value");
     nodes.push_back(std::move(modeNode));
 
     auto targetNode = make_node("target", SemanticRole::TextField, "CMake Target");
@@ -522,7 +529,9 @@ std::vector<SemanticNode> ProjectSettingsPanel::semantic_nodes(const RunPreferen
     }
     else
     {
-        const auto enginePath = inspect_project_engine_path(projectRoot_);
+        if (!enginePathStatus_)
+            enginePathStatus_ = inspect_project_engine_path(projectRoot_);
+        const auto &enginePath = *enginePathStatus_;
         if (enginePath.hasSourceDirectoryDirective && !enginePath.sourceDirectoryAvailable &&
             !enginePath.detectedSourceDirectory.empty())
         {
@@ -548,12 +557,28 @@ std::vector<SemanticNode> ProjectSettingsPanel::semantic_nodes(const RunPreferen
 bool ProjectSettingsPanel::dispatch_semantic_action(RunPreferences &preferences,
                                                     const SemanticAction &action)
 {
+    if (action.action == "set_value" && action.nodeId.ends_with("/launch_mode"))
+    {
+        if (action.value == "Embedded Game View" || action.value == "embedded")
+        {
+            preferences.embeddedGameView = true;
+            return true;
+        }
+        if (action.value == "External Game Window" || action.value == "external")
+        {
+            preferences.embeddedGameView = false;
+            return true;
+        }
+        return false;
+    }
     if (action.action == "activate" && action.nodeId.ends_with("/regenerate_cmake"))
     {
         regenerateConfirmationRequested_ = true;
         return true;
     }
-    if (action.action == "activate" && action.nodeId.ends_with("/generate_cmake"))
+    if (action.action == "activate" &&
+        (action.nodeId.ends_with("/generate_cmake") ||
+         action.nodeId.ends_with("/repair_engine_path")))
         return true;
     if (action.action == "set_value" &&
         action.nodeId.ends_with("/target"))

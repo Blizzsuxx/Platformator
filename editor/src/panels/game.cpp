@@ -127,7 +127,8 @@ void GamePanel::observe_generation(PlaySession *session)
     else
     {
         if (session == nullptr || session->state() == PlaySessionState::Idle ||
-            session->state() == PlaySessionState::Stopping)
+            session->state() == PlaySessionState::Stopping ||
+            session->state() == PlaySessionState::Failed)
         {
             release_input_capture(session);
         }
@@ -146,9 +147,12 @@ void GamePanel::observe_generation(PlaySession *session)
     captureVisible_ = false;
     semanticHandles_.clear();
     hasFramePixels_ = false;
-    status_ = session != nullptr && session->state() != PlaySessionState::Idle
-        ? "Embedded game session is starting."
-        : "No embedded game session is active.";
+    if (session != nullptr && session->state() == PlaySessionState::Failed)
+        status_ = "Embedded Game failed to start. Inspect Console logs or switch Launch Mode to External Game Window.";
+    else
+        status_ = session != nullptr && session->state() != PlaySessionState::Idle
+            ? "Embedded game session is starting."
+            : "No embedded game session is active.";
     for (const auto &[renderer, texture] : frameTextures_)
     {
         (void)renderer;
@@ -312,6 +316,7 @@ void GamePanel::set_visible(PlaySession *session, bool visible)
         release_input_capture(session);
     if (session == nullptr || session->state() == PlaySessionState::Idle ||
         session->state() == PlaySessionState::Stopping ||
+        session->state() == PlaySessionState::Failed ||
         !session->capabilities().frameStream || captureVisible_ == visible)
         return;
     if (session->request_capture(visible))
@@ -328,17 +333,35 @@ void GamePanel::release_input_capture(PlaySession *session)
     }
 }
 
+bool GamePanel::should_forward_sdl_event_to_editor_ui(bool gameInputCaptured, const SDL_Event &event) noexcept
+{
+    if (!gameInputCaptured)
+        return true;
+    switch (event.type)
+    {
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_UP:
+    case SDL_EVENT_TEXT_INPUT:
+    case SDL_EVENT_TEXT_EDITING:
+        return false;
+    default:
+        return true;
+    }
+}
+
 void GamePanel::handle_sdl_event(PlaySession *session, const SDL_Event &event)
 {
-    if (!capturingInput_ || session == nullptr)
+    if (!capturingInput_)
+        return;
+    if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE)
+    {
+        release_input_capture(session);
+        return;
+    }
+    if (session == nullptr)
         return;
     if (event.type == SDL_EVENT_KEY_DOWN)
     {
-        if (event.key.scancode == SDL_SCANCODE_ESCAPE)
-        {
-            release_input_capture(session);
-            return;
-        }
         EmbeddedInputEvent inputEvent;
         inputEvent.kind = EmbeddedInputKind::KeyDown;
         inputEvent.scancode = static_cast<int>(event.key.scancode);
@@ -362,11 +385,13 @@ void GamePanel::draw(PlaySession *session, bool visible)
     observe_generation(session);
     set_visible(session, visible);
     if (!visible || session == nullptr || session->state() == PlaySessionState::Idle ||
-        session->state() == PlaySessionState::Stopping)
+        session->state() == PlaySessionState::Stopping ||
+        session->state() == PlaySessionState::Failed)
     {
         release_input_capture(session);
     }
-    const bool idle = session == nullptr || session->state() == PlaySessionState::Idle;
+    const bool idle = session == nullptr || session->state() == PlaySessionState::Idle ||
+                      session->state() == PlaySessionState::Failed;
     const bool running = !idle && session->state() == PlaySessionState::Running;
     const bool paused = !idle && session->state() == PlaySessionState::Paused;
     const auto capabilities = idle ? decltype(session->capabilities()){} : session->capabilities();
@@ -734,7 +759,8 @@ std::vector<SemanticNode> GamePanel::semantic_nodes(PlaySession *session,
                                                      const std::string &parentId)
 {
     std::vector<SemanticNode> nodes;
-    const bool active = session != nullptr && session->state() != PlaySessionState::Idle;
+    const bool active = session != nullptr && session->state() != PlaySessionState::Idle &&
+                        session->state() != PlaySessionState::Failed;
     const bool inspect = session != nullptr && session->capabilities().runtimeInspection;
     add_button(nodes, parentId, "refresh-objects", "Refresh read-only runtime objects",
                session != nullptr && inspect && !awaitingRuntimePage_);
@@ -743,9 +769,10 @@ std::vector<SemanticNode> GamePanel::semantic_nodes(PlaySession *session,
     status.parentId = parentId;
     status.role = SemanticRole::Text;
     status.name = "Embedded Game status";
-    status.value = session == nullptr || session->state() == PlaySessionState::Idle
-        ? (pipelineStatus_.empty() ? status_ : pipelineStatus_)
-        : (pipelineStatus_.empty() ? status_ : status_ + " " + pipelineStatus_);
+    if (session == nullptr || session->state() == PlaySessionState::Idle)
+        status.value = pipelineStatus_.empty() ? status_ : pipelineStatus_;
+    else
+        status.value = pipelineStatus_.empty() ? status_ : status_ + " " + pipelineStatus_;
     status.visible = true;
     nodes.push_back(std::move(status));
     SemanticNode frame;

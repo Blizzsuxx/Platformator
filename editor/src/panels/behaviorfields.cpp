@@ -613,6 +613,10 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
     bool changed = false;
     Json draft = current != nullptr && current->is_object() ? *current : Json::object();
     begin_field(label, path);
+    const ImVec4 parentFrameBg = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+    const ImVec4 parentFrameBgHovered = ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered);
+    const ImVec4 parentFrameBgActive = ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive);
+    ImGui::PopStyleColor(3);
     const float availableWidth = ImGui::GetContentRegionAvail().x;
     const float columnSpacing = ImGui::GetStyle().ItemSpacing.x;
     const std::size_t columns = names.size() == 4 ? 2 : names.size();
@@ -739,6 +743,9 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
         ImGui::PopID();
         ImGui::EndGroup();
     }
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, parentFrameBg);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, parentFrameBgHovered);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, parentFrameBgActive);
     end_field();
     return changed;
 }

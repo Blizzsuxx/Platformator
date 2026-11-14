@@ -81,6 +81,7 @@ class ProjectSettingsPanel
     ProjectSettingsCategory category_ = ProjectSettingsCategory::BuildAndRun;
     std::filesystem::path projectRoot_;
     ProjectRunDiscovery discovery_;
+    std::optional<ProjectEnginePathStatus> enginePathStatus_;
     std::map<std::string, SemanticChoice> semanticChoices_;
     std::map<std::string, std::string> textDrafts_;
     std::map<std::string, std::string> committedText_;

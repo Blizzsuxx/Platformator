@@ -211,7 +211,9 @@ bool SpriteSourceRegionWidget::draw(
     const SpriteSourceRegion &currentRegion,
     const std::function<std::string(std::string_view)> &addressForField,
     const std::function<CommitOutcome(const SpriteSourceRegion &)> &onCommit,
-    bool allowSameLineNumericFields, SourceRegionSection section)
+    bool allowSameLineNumericFields, SourceRegionSection section,
+    const std::function<bool(std::string_view)> &isFieldOverridden,
+    const std::function<void(std::string_view)> &drawFieldOverrideContext)
 {
     const std::string dragScope = addressForField ? addressForField("canvas") : std::string(canvasButtonId);
     if (dragging_ && activeDragScope_ != dragScope)
@@ -252,8 +254,13 @@ bool SpriteSourceRegionWidget::draw(
         lastCanvasMin_ = minimum;
         lastCanvasMax_ = maximum;
         const bool hovered = ImGui::IsItemHovered();
-        if (hovered)
+        const bool canvasOverridden = isFieldOverridden && isFieldOverridden("canvas");
+        if (canvasOverridden && hovered)
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        else if (hovered)
             ImGui::SetTooltip("%d × %d pixels", sourceWidth, sourceHeight);
+        if (drawFieldOverrideContext)
+            drawFieldOverrideContext("canvas");
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         const auto textureId = static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(preparedThumbnail));
         drawList->AddImage(textureId, minimum, maximum);
@@ -338,6 +345,13 @@ bool SpriteSourceRegionWidget::draw(
                                   double step, auto update) {
         ImGui::BeginGroup();
         ImGui::AlignTextToFramePadding();
+        const bool overridden = isFieldOverridden && isFieldOverridden(field);
+        if (overridden)
+        {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
+        }
         if (field == "x" || field == "y")
             ImGui::TextColored(field == "x" ? kAxisXColor
                                            : kAxisYColor, "%s", label);
@@ -347,6 +361,15 @@ bool SpriteSourceRegionWidget::draw(
         ImGui::SetNextItemWidth(std::max(1.0f, fieldWidth - ImGui::CalcTextSize(label).x - ImGui::GetStyle().ItemSpacing.x));
         const std::string hiddenLabel = std::string("##") + label;
         const auto outcome = draft.draw(hiddenLabel.c_str(), addressForField(field), committed, step, false);
+        if (overridden)
+        {
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+            if (drawFieldOverrideContext)
+                drawFieldOverrideContext(field);
+            ImGui::PopStyleColor(3);
+        }
+        else if (drawFieldOverrideContext)
+            drawFieldOverrideContext(field);
         ImGui::EndGroup();
         if (outcome.kind == NumericDraftOutcomeKind::Invalid)
         {

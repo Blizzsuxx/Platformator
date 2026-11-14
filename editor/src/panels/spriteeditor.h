@@ -51,7 +51,9 @@ class SpriteSourceRegionWidget
               const std::function<std::string(std::string_view)> &addressForField,
               const std::function<CommitOutcome(const SpriteSourceRegion &)> &onCommit,
               bool allowSameLineNumericFields = true,
-              SourceRegionSection section = SourceRegionSection::All);
+              SourceRegionSection section = SourceRegionSection::All,
+              const std::function<bool(std::string_view)> &isFieldOverridden = {},
+              const std::function<void(std::string_view)> &drawFieldOverrideContext = {});
     const std::string &feedback() const noexcept { return feedback_; }
     ImVec2 last_canvas_min() const noexcept { return lastCanvasMin_; }
     ImVec2 last_canvas_max() const noexcept { return lastCanvasMax_; }

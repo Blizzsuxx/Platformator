@@ -15,6 +15,7 @@
 #include "selection.h"
 #include "../templates.h"
 #include "../accessibility.h"
+#include "../layersettings.h"
 
 namespace platformator_editor
 {
@@ -64,9 +65,16 @@ class HierarchyPanel
     void apply_change(const DocumentSession &document, const DocumentChange &change);
     void invalidate() noexcept;
     void set_on_frame_selected(std::function<void()> callback) { onFrameSelected_ = std::move(callback); }
+    void set_layer_settings(const LayerSettings *settings) noexcept { layerSettings_ = settings; }
+    void set_instantiate_template_callback(std::function<void(std::optional<int>)> callback)
+    {
+        instantiateTemplateCallback_ = std::move(callback);
+    }
 
   private:
     std::function<void()> onFrameSelected_;
+    std::function<void(std::optional<int>)> instantiateTemplateCallback_;
+    const LayerSettings *layerSettings_ = nullptr;
     void rebuild(const DocumentSession &document);
     void refresh_labels(const DocumentSession &document);
     void update_search_matches(const DocumentSession &document);

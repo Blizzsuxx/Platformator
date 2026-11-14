@@ -47,6 +47,11 @@ Eigen::Vector2f GameObject::getPosition() const
     return immediateWorldPosition;
 }
 
+const Eigen::Vector2f &GameObject::getLocalPosition() const
+{
+    return position;
+}
+
 float GameObject::getX() const
 {
     return getPosition().x();
@@ -148,9 +153,22 @@ GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
     if (!position.allFinite())
         throw std::invalid_argument("position must be finite");
     const auto local = parent ? (position - parent->getPosition()).eval() : position;
-    if (this->position == local)
+    return applyLocalPosition(local);
+}
+
+GameObject *GameObject::setLocalPosition(const Eigen::Vector2f &localPosition)
+{
+    validateMutation();
+    if (!localPosition.allFinite())
+        throw std::invalid_argument("position must be finite");
+    return applyLocalPosition(localPosition);
+}
+
+GameObject *GameObject::applyLocalPosition(const Eigen::Vector2f &localPosition)
+{
+    if (this->position == localPosition)
         return this;
-    this->position = local;
+    this->position = localPosition;
 
     queueTransform();
     if (auto *body = getComponent<Rigidbody>())

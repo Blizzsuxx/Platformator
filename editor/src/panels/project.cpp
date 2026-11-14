@@ -56,6 +56,17 @@ bool path_is_within(const std::filesystem::path &root, const std::filesystem::pa
     return true;
 }
 
+std::filesystem::path canonical_for_matching(const std::filesystem::path &path)
+{
+    std::error_code error;
+    auto result = std::filesystem::weakly_canonical(path, error);
+    if (!error)
+        return result;
+    error.clear();
+    result = std::filesystem::absolute(path, error);
+    return (error ? path : result).lexically_normal();
+}
+
 const Json *resolve_object(const Json &root, const ObjectLocation &location)
 {
     if (!root.is_array() || location.childIndices.empty())
@@ -423,18 +434,6 @@ std::vector<SemanticNode> ProjectPanel::semantic_nodes(const DocumentSession &do
     contents.expanded = true;
     nodes.push_back(std::move(contents));
 
-    const std::string refreshId = prefix + "/refresh";
-    SemanticNode refresh;
-    refresh.id = refreshId;
-    refresh.parentId = prefix;
-    refresh.role = SemanticRole::Button;
-    refresh.name = "Refresh project assets";
-    refresh.value = bounded_semantic_text(!coverageMessage_.empty() ? coverageMessage_ : thumbnailMessage_);
-    refresh.help = "Refresh the selected folder and recheck referenced resources.";
-    refresh.visible = true;
-    refresh.actions = {"activate"};
-    nodes.push_back(std::move(refresh));
-
     SemanticNode location;
     location.id = prefix + "/location";
     location.parentId = prefix;
@@ -458,49 +457,8 @@ std::vector<SemanticNode> ProjectPanel::semantic_nodes(const DocumentSession &do
 
     pendingSemanticTargets_.clear();
     semanticTargets_.clear();
-    pendingSemanticTargets_.emplace(refreshId, SemanticProjectTarget{});
     for (const auto &[id, target] : pendingTileTargets_)
         pendingSemanticTargets_.emplace(id, target);
-
-    std::error_code selectedEntryError;
-    const bool selectedEntryIsDirectory = selectedEntry_ &&
-        std::filesystem::is_directory(*selectedEntry_, selectedEntryError);
-    if (selectedEntry_ && !selectedEntryError && selection.objectId &&
-        path_is_within(semanticAssetRoot, *selectedEntry_) && !selectedEntryIsDirectory)
-    {
-        SelectionModel currentSelection;
-        currentSelection.set(document, selection);
-        const auto assignments = asset_assignment_targets(document, currentSelection,
-                                                          *selectedEntry_);
-        std::size_t count = 0;
-        for (const auto &assignment : assignments)
-        {
-            if (count++ >= 32)
-                break;
-            const std::string id = prefix + "/assign/" +
-                semantic_path_token(selectedEntry_->lexically_relative(semanticAssetRoot)) + "/" +
-                semantic_text_token(assignment.label + "/" +
-                    std::to_string(assignment.address.objectId) + "/" +
-                    std::to_string(assignment.address.componentId.value_or(-1)));
-            SemanticNode node;
-            node.id = id;
-            node.parentId = prefix;
-            node.role = SemanticRole::Button;
-            node.name = bounded_semantic_text("Assign to " + assignment.label);
-            node.value = bounded_semantic_text("assets/" +
-                selectedEntry_->lexically_relative(semanticAssetRoot).generic_string());
-            node.visible = true;
-            node.enabled = true;
-            node.focused = semanticFocusNode_ && *semanticFocusNode_ == id;
-            node.actions = {"activate"};
-            nodes.push_back(std::move(node));
-            SemanticProjectTarget target;
-            target.path = *selectedEntry_;
-            target.projectGeneration = ProjectGeneration{document.projectGeneration};
-            target.assignment = assignment;
-            pendingSemanticTargets_.emplace(id, std::move(target));
-        }
-    }
 
     if (semanticFocusNode_ && !pendingSemanticTargets_.contains(*semanticFocusNode_))
         semanticFocusNode_.reset();
@@ -525,15 +483,10 @@ bool ProjectPanel::dispatch_semantic_action(DocumentSession &document,
                                             WindowHostGeneration hostGeneration,
                                             bool allowEdits)
 {
-    constexpr std::string_view refreshId = "main/panel/project/refresh";
+    (void)commands;
+    (void)allowEdits;
     if (action.action != "activate")
         return false;
-    if (action.nodeId == refreshId)
-    {
-        refresh();
-        referenceRetryRequested_ = true;
-        return true;
-    }
     const auto found = semanticTargets_.find(action.nodeId);
     if (found == semanticTargets_.end())
         return false;
@@ -541,35 +494,6 @@ bool ProjectPanel::dispatch_semantic_action(DocumentSession &document,
     if (target.projectGeneration &&
         target.projectGeneration != ProjectGeneration{context_.snapshot().generation})
         return false;
-    if (target.assignment)
-    {
-        if (!allowEdits || !selectedEntry_ || *selectedEntry_ != target.path ||
-            target.projectGeneration != ProjectGeneration{document.projectGeneration})
-            return false;
-        const Selection before = selection.current();
-        const auto candidates = asset_assignment_targets(document, selection, target.path);
-        const auto current = std::find_if(candidates.begin(), candidates.end(),
-            [&](const AssetAssignmentTarget &candidate) {
-                return candidate.label == target.assignment->label &&
-                       candidate.address.identity == target.assignment->address.identity &&
-                       candidate.address.objectId == target.assignment->address.objectId &&
-                       candidate.address.componentId == target.assignment->address.componentId &&
-                       candidate.address.fieldPath == target.assignment->address.fieldPath;
-            });
-        if (current == candidates.end())
-            return false;
-        std::string error;
-        if (!assign_asset_target(document, commands, *current, target.path, error))
-            return false;
-        semanticFocusNode_ = action.nodeId;
-        Selection focused = selection.current();
-        focused.focusedPanel = FocusedPanel::Project;
-        focused.focusedHost = hostGeneration;
-        selection.set(document, std::move(focused));
-        commands.set_last_selection_state({before, selection.current()});
-        return true;
-    }
-
     if (target.path.empty() || !path_is_within(document.assetRoot, target.path) ||
         !path_is_within(target.root, target.path))
         return false;
@@ -1880,7 +1804,7 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
             else
                 (void)open_asset(path);
         }
-        if (ImGui::MenuItem("Reveal in File Manager"))
+        if (ImGui::MenuItem("Show in File Manager"))
         {
             reveal_in_file_manager(path);
         }
@@ -2058,7 +1982,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
             else
                 (void)open_asset(path);
         }
-        if (ImGui::MenuItem("Reveal in File Manager"))
+        if (ImGui::MenuItem("Show in File Manager"))
         {
             reveal_in_file_manager(path);
         }
@@ -2226,7 +2150,16 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
 bool ProjectPanel::execute_context_delete(const std::filesystem::path &targetPath)
 {
     std::error_code ec;
-    const bool removed = std::filesystem::remove_all(targetPath, ec) > 0;
+    const bool isDirectory = std::filesystem::is_directory(targetPath, ec) && !ec;
+    ec.clear();
+    const bool removed = std::filesystem::remove_all(targetPath, ec) > 0 && !ec;
+    if (removed && audioPreview_ != nullptr && audioPreview_->active_path())
+    {
+        const auto target = canonical_for_matching(targetPath);
+        const auto active = canonical_for_matching(*audioPreview_->active_path());
+        if (target == active || (isDirectory && path_is_within(target, active)))
+            audioPreview_->stop();
+    }
     if (selectedEntry_ && *selectedEntry_ == targetPath)
         selectedEntry_.reset();
     refresh();
@@ -2265,8 +2198,8 @@ bool ProjectPanel::execute_context_rename(const std::filesystem::path &targetPat
     {
         if (audioPreview_ != nullptr && audioPreview_->active_path())
         {
-            const auto activePath = audioPreview_->active_path()->lexically_normal();
-            const auto renamedPath = targetPath.lexically_normal();
+            const auto activePath = canonical_for_matching(*audioPreview_->active_path());
+            const auto renamedPath = canonical_for_matching(targetPath);
             if (activePath == renamedPath || (directory && path_is_within(renamedPath, activePath)))
                 audioPreview_->stop();
         }
@@ -2298,8 +2231,6 @@ bool ProjectPanel::reveal_in_file_manager(const std::filesystem::path &targetPat
 void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::string &rootLabel,
                                  bool behaviorRoot)
 {
-    request_scan(selectedDirectory_);
-    auto &state = directories_[selectedDirectory_.string()];
     const auto relative = selectedDirectory_.lexically_relative(root);
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
     if (ImGui::SmallButton(rootLabel.c_str()))
@@ -2330,6 +2261,10 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     }
     ImGui::PopStyleColor();
     ImGui::Separator();
+
+    request_scan(selectedDirectory_);
+    auto &state = directories_[selectedDirectory_.string()];
+    behaviorRoot = selectedRoot_ == assetRoot_ / "behaviors";
 
     if (!state.error.empty())
         ImGui::TextWrapped("%s", state.error.c_str());
@@ -2423,7 +2358,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         }
         ImGui::PopID();
     };
-    const float footerHeight = ImGui::GetFrameHeightWithSpacing() + 6.0f;
+    const float footerHeight = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y + 2.0f;
     ImGui::BeginChild("##contents-scroll", ImVec2(0.0f, -footerHeight), ImGuiChildFlags_None);
 
     if (entries.empty())
@@ -2520,7 +2455,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
                 execute_context_create("Animation Clip", selectedDirectory_);
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Reveal in File Manager"))
+        if (ImGui::MenuItem("Show in File Manager"))
         {
             reveal_in_file_manager(selectedDirectory_);
         }
@@ -2554,12 +2489,69 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     ImGui::EndChild();
 
     ImGui::Separator();
-    ImGui::TextDisabled("%zu items", filteredIndexes.size());
-    ImGui::SameLine();
+    const float footerStartX = ImGui::GetCursorPosX();
+    const float footerAvailWidth = ImGui::GetContentRegionAvail().x;
     const float sliderWidth = 140.0f * uiScale;
-    const float avail = ImGui::GetContentRegionAvail().x;
-    if (avail > sliderWidth)
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - sliderWidth);
+    const float spacingX = ImGui::GetStyle().ItemSpacing.x;
+    const float sliderX = footerStartX + std::max(0.0f, footerAvailWidth - sliderWidth);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%zu items", filteredIndexes.size());
+    if (audioPreview_ != nullptr &&
+        (audioPreview_->active_path().has_value() || !audioPreview_->last_error().empty()))
+    {
+        const float maxAudioX = sliderX - spacingX;
+        const float usedAfterCountX = ImGui::GetItemRectMax().x -
+            (ImGui::GetWindowPos().x - ImGui::GetScrollX());
+        if (maxAudioX - usedAfterCountX > 48.0f * uiScale)
+        {
+            const float clipLeftScreenX = ImGui::GetWindowPos().x - ImGui::GetScrollX() +
+                                          usedAfterCountX;
+            const float clipRightScreenX = ImGui::GetWindowPos().x - ImGui::GetScrollX() +
+                                           maxAudioX;
+            const float clipTopScreenY = ImGui::GetWindowPos().y - ImGui::GetScrollY();
+            const float clipBottomScreenY = clipTopScreenY + ImGui::GetWindowHeight();
+            ImGui::PushClipRect(ImVec2(clipLeftScreenX, clipTopScreenY),
+                                ImVec2(clipRightScreenX, clipBottomScreenY), true);
+            ImGui::SameLine();
+            ImGui::TextDisabled("|");
+            if (const auto activeAudioPath = audioPreview_->active_path())
+            {
+                ImGui::SameLine();
+                ImGui::TextUnformatted(activeAudioPath->filename().string().c_str());
+                ImGui::SameLine();
+                if (audioPreview_->state() == AudioPlaybackState::Loading)
+                {
+                    ImGui::TextDisabled("Loading");
+                    ImGui::SameLine();
+                }
+                else if (audioPreview_->state() == AudioPlaybackState::Playing)
+                {
+                    ImGui::TextDisabled("Playing");
+                    ImGui::SameLine();
+                }
+                else if (audioPreview_->state() == AudioPlaybackState::Paused)
+                {
+                    ImGui::TextDisabled("Paused");
+                    ImGui::SameLine();
+                }
+                if (ImGui::SmallButton("Stop"))
+                    audioPreview_->stop();
+            }
+            if (!audioPreview_->last_error().empty())
+            {
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.4f, 1.0f));
+                ImGui::TextUnformatted("Audio Error");
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered())
+                    ImGui::SetItemTooltip("%s", audioPreview_->last_error().c_str());
+            }
+            ImGui::PopClipRect();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::GetCursorPosX() < sliderX)
+        ImGui::SetCursorPosX(sliderX);
     ImGui::SetNextItemWidth(sliderWidth);
     ImGui::SliderFloat("##thumbnail-scale", &viewState_.thumbnailScale, 0.0f, 1.0f,
                        viewState_.thumbnailScale <= 0.0f ? "List" : "Grid");
@@ -2750,42 +2742,6 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &,
     {
         ImGui::TextDisabled("Project asset root is unavailable.");
         return;
-    }
-
-    if (audioPreview_ != nullptr)
-    {
-        if (audioPreview_->active_path())
-        {
-            ImGui::TextDisabled("Audio Preview");
-            ImGui::SameLine();
-            ImGui::TextUnformatted(audioPreview_->active_path()->filename().string().c_str());
-            ImGui::SameLine();
-            if (audioPreview_->state() == AudioPlaybackState::Loading)
-            {
-                ImGui::TextDisabled("Loading");
-                ImGui::SameLine();
-            }
-            else if (audioPreview_->state() == AudioPlaybackState::Playing)
-            {
-                ImGui::TextDisabled("Playing");
-                ImGui::SameLine();
-            }
-            else if (audioPreview_->state() == AudioPlaybackState::Paused)
-            {
-                ImGui::TextDisabled("Paused");
-                ImGui::SameLine();
-            }
-            if (ImGui::SmallButton("Stop"))
-                audioPreview_->stop();
-        }
-        if (!audioPreview_->last_error().empty())
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.4f, 1.0f));
-            ImGui::TextWrapped("%s", audioPreview_->last_error().c_str());
-            ImGui::PopStyleColor();
-        }
-        if (audioPreview_->active_path() || !audioPreview_->last_error().empty())
-            ImGui::Separator();
     }
 
     const auto behaviorRoot = assetRoot / "behaviors";

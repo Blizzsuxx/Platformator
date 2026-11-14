@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -154,6 +155,8 @@ class InspectorPanel
     std::string templateName_;
     std::string templateNameSelectionKey_;
     std::string addPickerQuery_;
+    std::array<char, 128> colliderLayerSearch_{};
+    std::array<char, 128> commonColliderLayerSearch_{};
     std::string lastSelectionKey_;
     std::string lastObjectSelectionKey_;
     std::vector<int> currentOrderedSelection_;

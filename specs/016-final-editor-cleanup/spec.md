@@ -167,6 +167,8 @@ A developer uses the editor for extended daily sessions across multiple scenes, 
 - **FR-013**: System MUST expose a **Layer** selector in the GameObject Inspector header (supporting single- and multi-object editing, undo/redo, and optional recursive application to child GameObjects).
 - **FR-014**: The engine runtime and scene serialization MUST store each GameObject's layer index and apply the project's collision layer matrix bitmap during collision detection so disabled layer pairs do not generate physical collisions or trigger overlaps.
 
+The Inspector's Collider **Layer** selector stores the selected index in `collisionGroup` and derives `collisionMask` from the project matrix. Matrix edits resynchronize open documents' masks, so FR-013's editor control and FR-014's serialized/runtime filtering share one layer model.
+
 #### Prefab-Style Object Template Editing
 - **FR-015**: System MUST support linking instantiated GameObjects in a scene to a single-level source `.pttemplate` asset (saving a template containing another template instance flattens/unpacks the inner instance rather than nesting templates) while preserving per-instance property overrides and reference bindings.
 - **FR-016**: System MUST allow users to open any `.pttemplate` asset in an isolated **Template Editing** mode (via double-click in Project browser or **Open** on an instance in the Inspector) with full Hierarchy, Scene preview, Inspector, Undo/Redo, Save, and a clear exit action back to the active scene.

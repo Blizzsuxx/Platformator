@@ -59,6 +59,29 @@ const char *document_kind_name(DocumentTabKind kind) noexcept
     return "Document";
 }
 
+Json *find_document_object_mutable(DocumentSession &document, int objectId)
+{
+    const auto location = document.indexes.objectsById.find(objectId);
+    if (location == document.indexes.objectsById.end())
+        return nullptr;
+    Json *current = &document.root;
+    const auto &indices = location->second.childIndices;
+    for (std::size_t index = 0; index < indices.size(); ++index)
+    {
+        if (!current->is_array() || indices[index] >= current->size())
+            return nullptr;
+        current = &(*current)[indices[index]];
+        if (index + 1 < indices.size())
+        {
+            auto children = current->find("children");
+            if (children == current->end() || !children->is_array())
+                return nullptr;
+            current = &*children;
+        }
+    }
+    return current->is_object() ? current : nullptr;
+}
+
 void reconcile_linked_templates(DocumentTab &tab)
 {
     auto &document = tab.workspace().document_for_edit();
@@ -241,28 +264,6 @@ void DocumentTab::set_template_reference_bindings(nlohmann::json bindings)
     if (root.is_array() && root.size() == 1 && root[0].is_object())
         root[0][std::string(EditorTemplateBindingsKey)] =
             bindings.is_array() ? std::move(bindings) : nlohmann::json::array();
-}
-
-bool DocumentTab::auto_save_suspended_for_current_revision() const noexcept
-{
-    if (!autoSaveFailureRevision_)
-        return false;
-    const auto &document = workspace_.document();
-    return *autoSaveFailureRevision_ ==
-        std::pair{document.structureRevision, document.valueRevision};
-}
-
-void DocumentTab::suspend_auto_save_for_current_revision(std::string error)
-{
-    const auto &document = workspace_.document();
-    autoSaveFailureRevision_ = std::pair{document.structureRevision, document.valueRevision};
-    autoSaveError_ = std::move(error);
-}
-
-void DocumentTab::clear_auto_save_failure() noexcept
-{
-    autoSaveFailureRevision_.reset();
-    autoSaveError_.clear();
 }
 
 EditCommandService &DocumentTab::history() noexcept { return history_; }
@@ -483,7 +484,7 @@ std::optional<DocumentSourceOwner> DocumentManager::source_owner_for_destination
     {
         if (matches(tab->id(), DocumentTabKind::Scene,
                     tab->workspace().document().sourcePath))
-            return DocumentSourceOwner{tab->id(), DocumentTabKind::Scene};
+            return DocumentSourceOwner{tab->id(), tab->kind()};
         if (!resolutionError.empty())
             break;
     }
@@ -788,7 +789,10 @@ TemplateRetargetResult DocumentManager::retarget_template_asset_links(
         if (!it->is_regular_file(scanError) || scanError)
         {
             if (scanError)
+            {
                 result.failures.push_back({path, "could not inspect closed scene: " + scanError.message()});
+                scanError.clear();
+            }
             continue;
         }
         const auto canonicalPath = normalized(path);
@@ -1229,7 +1233,6 @@ bool DocumentManager::save_template_tab(TabId id, std::string *error,
     tab->workspace().mark_saved();
     tab->workspace().document_for_edit().sourceIdentity = savedIdentity;
     tab->set_template_reference_bindings(bindings);
-    tab->clear_auto_save_failure();
     tab->clear_external_change_acknowledgement();
 
     return true;
@@ -1639,7 +1642,8 @@ WorkspaceActionResult DocumentManager::set_project_roots(
     return {WorkspaceActionStatus::Completed, {}};
 }
 
-std::vector<TabId> DocumentManager::sync_layer_settings(const LayerSettings &settings)
+std::vector<TabId> DocumentManager::sync_layer_settings(const LayerSettings &settings,
+                                                        bool recordUndo)
 {
     std::vector<TabId> changedTabs;
     for (const auto &tab : tabs_)
@@ -1648,12 +1652,13 @@ std::vector<TabId> DocumentManager::sync_layer_settings(const LayerSettings &set
             continue;
         auto &doc = tab->workspace().document_for_edit();
         std::vector<BatchPropertyEdit> edits;
+        bool changedWithoutHistory = false;
         for (const int objectId : doc.indexes.orderedObjectIds)
         {
-            const Json *object = find_document_object_by_id(doc, objectId);
+            Json *object = find_document_object_mutable(doc, objectId);
             if (object == nullptr || !object->contains("components") || !(*object)["components"].is_array())
                 continue;
-            for (const auto &component : (*object)["components"])
+            for (auto &component : (*object)["components"])
             {
                 if (!component.is_object() || component.value("type", -1) != 3 ||
                     !component.contains("id") || !component["id"].is_number_integer())
@@ -1678,18 +1683,30 @@ std::vector<TabId> DocumentManager::sync_layer_settings(const LayerSettings &set
                 if (!component.contains("collisionMask") || current != desired)
                 {
                     const int componentId = component["id"].get<int>();
-                    edits.push_back({address_for_document(doc, objectId, componentId, std::nullopt,
-                                                          {std::string("collisionMask")}),
-                                     PropertyValue::of(desired)});
+                    if (recordUndo)
+                        edits.push_back({address_for_document(doc, objectId, componentId, std::nullopt,
+                                                              {std::string("collisionMask")}),
+                                         PropertyValue::of(desired)});
+                    else
+                    {
+                        component["collisionMask"] = desired;
+                        changedWithoutHistory = true;
+                    }
                 }
             }
         }
-        if (edits.empty())
-            continue;
-        const Selection current = tab->selection().current();
-        const auto applied = tab->history().apply_batch(doc, edits, SelectionState{current, current});
-        if (applied.status == CommandStatus::Changed)
+        if (recordUndo && !edits.empty())
+        {
+            const Selection current = tab->selection().current();
+            const auto applied = tab->history().apply_batch(doc, edits, SelectionState{current, current});
+            if (applied.status == CommandStatus::Changed)
+                changedTabs.push_back(tab->id());
+        }
+        else if (changedWithoutHistory)
+        {
+            ++doc.valueRevision;
             changedTabs.push_back(tab->id());
+        }
     }
     return changedTabs;
 }

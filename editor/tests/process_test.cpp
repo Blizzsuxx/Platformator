@@ -307,8 +307,6 @@ void install_empty_current_catalog(BehaviorCatalog &catalog, const PipelineReque
     const CatalogIdentity identity{request.identity.canonicalProjectPath,
                                    request.identity.profile,
                                    request.identity.target,
-                                   request.identity.executablePath,
-                                   request.identity.binaryIdentity,
                                    request.identity.sourceInputIdentity};
     require(catalog.set_source_catalog(Json{{"schema_version", 1},
         {"behaviors", Json::array()}}, identity),
@@ -424,8 +422,6 @@ void test_pipeline_behavior_verification_and_identity_invalidation()
                 CatalogIdentity{missingBehavior.identity.canonicalProjectPath,
                                 missingBehavior.identity.profile,
                                 missingBehavior.identity.target,
-                                missingBehavior.identity.executablePath,
-                                missingBehavior.identity.binaryIdentity,
                                 missingBehavior.identity.sourceInputIdentity}),
             "source catalog fixture must become current");
     missingBehavior.scene = Json::array({Json{{"components", Json::array({
@@ -444,8 +440,6 @@ void test_pipeline_behavior_verification_and_identity_invalidation()
                 CatalogIdentity{currentRun.identity.canonicalProjectPath,
                                 currentRun.identity.profile,
                                 currentRun.identity.target,
-                                currentRun.identity.executablePath,
-                                currentRun.identity.binaryIdentity,
                                 currentRun.identity.sourceInputIdentity}),
             "source catalog fixture must become current before valid run");
     require(pipeline.start(currentRun, catalog, 302), "a valid behavior-free scene should run");
@@ -476,8 +470,6 @@ void test_pipeline_rejects_stale_catalog_before_launch()
     const CatalogIdentity identity{request.identity.canonicalProjectPath,
                                    request.identity.profile,
                                    request.identity.target,
-                                   request.identity.executablePath,
-                                   request.identity.binaryIdentity,
                                    request.identity.sourceInputIdentity};
     require(catalog.set_source_catalog(Json{{"schema_version", 1},
         {"behaviors", Json::array()}}, identity),
@@ -555,8 +547,6 @@ void run_live_pipeline(const std::filesystem::path &projectRoot,
     const CatalogIdentity catalogIdentity{request.identity.canonicalProjectPath,
                                           request.identity.profile,
                                           request.identity.target,
-                                          request.identity.executablePath,
-                                          request.identity.binaryIdentity,
                                           request.identity.sourceInputIdentity};
     require(catalog.load_from_source_scan(scan, catalogIdentity),
             "live pipeline must start from a current source catalog");

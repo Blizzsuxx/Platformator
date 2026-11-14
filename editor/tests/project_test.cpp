@@ -13,11 +13,13 @@
 #include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_sdlrenderer3.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -154,11 +156,6 @@ struct ProjectPanelTestProbe
     {
         const auto found = panel.directories_.find(directory.string());
         return found != panel.directories_.end() && found->second.loaded;
-    }
-
-    static bool project_shortcuts_allowed(bool wantTextInput, bool renaming)
-    {
-        return ProjectPanel::project_shortcuts_allowed(wantTextInput, renaming);
     }
 
     static const std::string &thumbnail_message(const ProjectPanel &panel)
@@ -352,14 +349,21 @@ class ProjectPanelFrames
 
     std::set<std::uintptr_t> draw(ProjectPanel &panel, DocumentSession &document,
                                   EditCommandService &commands,
-                                  SelectionModel *selection = nullptr)
+                                  SelectionModel *selection = nullptr,
+                                  const std::vector<std::pair<ImGuiKey, bool>> &keyEvents = {},
+                                  std::optional<bool> wantTextInput = std::nullopt)
     {
         SDL_Event event;
         while (SDL_PollEvent(&event))
             ImGui_ImplSDL3_ProcessEvent(&event);
         ImGui_ImplSDLRenderer3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
+        for (const auto &[key, down] : keyEvents)
+            ImGui::GetIO().AddKeyEvent(key, down);
         ImGui::NewFrame();
+        if (wantTextInput)
+            ImGui::GetIO().WantTextInput = *wantTextInput;
+        ImGui::SetNextWindowFocus();
         ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
         ImGui::SetNextWindowSize({1080.0f, 800.0f}, ImGuiCond_Always);
         ImGui::Begin("Project and Assets###panel.project",
@@ -1255,21 +1259,17 @@ void test_project_assignment_uses_explicit_validated_target()
     ProjectPanelTestProbe::select_entry(panel, texture);
     const auto semanticNodes = panel.semantic_nodes(document, selection.current(),
                                                     "main/panel/project");
-    const auto semanticTarget = std::find_if(semanticNodes.begin(), semanticNodes.end(),
-        [](const SemanticNode &node) {
-            return node.name.find("Assign to Sprite B (#2)") != std::string::npos;
-        });
-    require(semanticTarget != semanticNodes.end() && semanticTarget->visible &&
-                semanticTarget->enabled && semanticTarget->actions == std::vector<std::string>{"activate"},
-            "Project semantics expose a named action for each compatible explicit assignment target");
-    const SemanticAction assignSecond{.nodeId = semanticTarget->id, .action = "activate"};
+    require(std::none_of(semanticNodes.begin(), semanticNodes.end(), [](const SemanticNode &node) {
+                return node.id.find("/assign/") != std::string::npos;
+            }),
+            "Project semantics do not expose hidden asset-assignment buttons");
     std::string error;
-    require(panel.dispatch_semantic_action(document, commands, selection, assignSecond,
-                                           WindowHostGeneration{1}, true) &&
+    require(ProjectPanelTestProbe::assign_target(panel, document, commands, selection,
+                                                  texture, 1, error) &&
                 document.root[1]["components"][0]["textureFilePath"] == "assets/shared.png" &&
                 document.root[0]["components"][0]["textureFilePath"] == "assets/old.png" &&
                 commands.history_status().undoCommands == 1,
-            "activating an accessible Project assignment changes only that explicit target in one history entry");
+            "an explicit asset assignment helper changes only its chosen target in one history entry");
     const Json previous = document.root;
     require(!ProjectPanelTestProbe::assign_target(panel, document, commands, selection,
                                                   outsideTexture, 1, error, texture) &&
@@ -1401,6 +1401,7 @@ void test_project_browser_context_menu_operations_and_two_column_view()
     ProjectChanges changes;
     ProjectScanService scans(1);
     ProjectPanel panel(context, changes, scans, nullptr);
+    ProjectPanelFrames frames;
 
     auto &viewState = ProjectPanelTestProbe::view_state(panel);
     require(viewState.folderTreeWidth == 190.0f,
@@ -1503,11 +1504,39 @@ void test_project_browser_context_menu_operations_and_two_column_view()
     require(panel.last_revealed_url().find(folder.filename().string()) != std::string::npos,
             "reveal folder must target the folder directory itself");
 
-    require(ProjectPanelTestProbe::project_shortcuts_allowed(false, false) &&
-                !ProjectPanelTestProbe::project_shortcuts_allowed(true, false) &&
-                !ProjectPanelTestProbe::project_shortcuts_allowed(false, true) &&
-                !ProjectPanelTestProbe::project_shortcuts_allowed(true, true),
-            "F2, Ctrl+D, and Delete must all respect text-input focus and inline rename guards");
+    const auto shortcutAsset = folder / "Shortcut Asset.scene";
+    std::ofstream(shortcutAsset) << "[]\n";
+    ProjectPanelTestProbe::select_entry(panel, shortcutAsset);
+    auto shortcutDocument = make_default_document(projectRoot, assetRoot,
+                                                   context.snapshot().generation);
+    EditCommandService shortcutCommands;
+    shortcutCommands.reset_history(shortcutDocument.documentGeneration);
+    shortcutCommands.mark_saved();
+    (void)frames.draw(panel, shortcutDocument, shortcutCommands);
+    (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr,
+                      {{ImGuiKey_F2, true}}, true);
+    require(!viewState.renaming,
+            "an actual F2 ImGui key event must not start rename while text input owns the keyboard");
+
+    viewState.renaming = true;
+    viewState.renamingPath = shortcutAsset;
+    std::snprintf(viewState.renameBuffer, sizeof(viewState.renameBuffer), "%s",
+                  shortcutAsset.filename().string().c_str());
+    (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr,
+                      {{ImGuiKey_F2, false}, {ImGuiKey_LeftCtrl, true},
+                       {ImGuiKey_D, true}}, false);
+    require(!std::filesystem::exists(folder / "Shortcut Asset Copy.scene"),
+            "an actual Ctrl+D ImGui key event must not duplicate assets during inline rename");
+
+    viewState.renaming = false;
+    viewState.renamingPath.clear();
+    viewState.pendingDeletePath.clear();
+    viewState.confirmDeletePending = false;
+    (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr,
+                      {{ImGuiKey_LeftCtrl, false}, {ImGuiKey_D, false},
+                       {ImGuiKey_Delete, true}}, true);
+    require(std::filesystem::exists(shortcutAsset) && viewState.pendingDeletePath.empty(),
+            "an actual Delete ImGui key event must not queue deletion while text input owns the keyboard");
 
     const auto clips = folder / "Clips";
     std::filesystem::create_directories(clips);
@@ -1515,12 +1544,70 @@ void test_project_browser_context_menu_operations_and_two_column_view()
     std::ofstream(clip, std::ios::binary) << "test audio";
     AudioPreviewService audioPreview;
     panel.set_audio_preview_service(&audioPreview);
+    const auto measureAssetContentsPosY = [&]() -> std::pair<float, float> {
+        (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr, {}, false);
+        ImGuiContext *ctx = ImGui::GetCurrentContext();
+        for (ImGuiWindow *win : ctx->Windows)
+        {
+            if (win != nullptr && win->Active &&
+                std::strstr(win->Name, "Asset contents") != nullptr)
+                return {win->Pos.y, win->Size.y};
+        }
+        throw std::runtime_error("ProjectPanel must render Asset contents child window");
+    };
+    const auto idleContentsBounds = measureAssetContentsPosY();
     require(audioPreview.toggle_or_play(clip) && audioPreview.active_path() == clip,
             "Project parent-rename fixture must begin with an active audio preview request");
+    const auto playingContentsBounds = measureAssetContentsPosY();
+    require(idleContentsBounds.first == playingContentsBounds.first &&
+                idleContentsBounds.second == playingContentsBounds.second,
+            "activating audio preview must not shift or resize Asset contents vertically");
+    ImGuiWindow *contentsWin = nullptr;
+    for (ImGuiWindow *win : ImGui::GetCurrentContext()->Windows)
+    {
+        if (win != nullptr && win->Active &&
+            std::strstr(win->Name, "Asset contents") != nullptr)
+        {
+            contentsWin = win;
+            break;
+        }
+    }
+    require(contentsWin != nullptr, "Asset contents window must be active while previewing");
+    const ImGuiID stopId = contentsWin->GetID("Stop");
+    const float footerY = contentsWin->Pos.y + contentsWin->Size.y - 16.0f;
+    bool clickedStop = false;
+    for (float x = contentsWin->Pos.x + 20.0f;
+         x < contentsWin->Pos.x + contentsWin->Size.x - 150.0f; x += 6.0f)
+    {
+        ImGui::GetIO().AddMousePosEvent(x, footerY);
+        (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr, {}, false);
+        if (ImGui::GetHoveredID() == stopId)
+        {
+            ImGui::GetIO().AddMouseButtonEvent(0, true);
+            (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr, {}, false);
+            ImGui::GetIO().AddMouseButtonEvent(0, false);
+            (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr, {}, false);
+            clickedStop = true;
+            break;
+        }
+    }
+    require(clickedStop && !audioPreview.active_path().has_value(),
+            "clicking Stop in the footer audio preview must stop playback without crashing");
+    require(audioPreview.toggle_or_play(clip) && audioPreview.active_path() == clip,
+            "Project parent-rename fixture must restart active audio preview before rename");
     require(ProjectPanelTestProbe::execute_context_rename(panel, clips, "Renamed Clips") &&
                 !audioPreview.active_path().has_value() &&
                 std::filesystem::is_directory(folder / "Renamed Clips"),
             "renaming a parent directory must stop an active audio clip within that directory");
+    const auto deleteClips = folder / "Delete Clips";
+    std::filesystem::create_directories(deleteClips);
+    const auto deletedClip = deleteClips / "deleted.wav";
+    std::ofstream(deletedClip, std::ios::binary) << "test audio";
+    require(audioPreview.toggle_or_play(deletedClip) && audioPreview.active_path() == deletedClip,
+            "Project delete fixture must begin with an active audio preview request");
+    require(ProjectPanelTestProbe::execute_context_delete(panel, deleteClips) &&
+                !audioPreview.active_path().has_value(),
+            "deleting a parent directory must stop its active audio preview");
     audioPreview.shutdown();
 }
 } // namespace

@@ -169,8 +169,7 @@ void run_catalog_identity_and_protocol_cases(const nlohmann::json &engineCatalog
     using platformator_editor::CatalogIdentity;
     using platformator_editor::CatalogState;
 
-    const CatalogIdentity identity{"/tmp/custom-project", "debug", "custom-main", "/tmp/custom-game",
-                                   "binary-1", "inputs-1"};
+    const CatalogIdentity identity{"/tmp/custom-project", "debug", "custom-main", "inputs-1"};
     BehaviorCatalog catalog;
     catalog.configure(identity);
     require(catalog.set_source_catalog(engineCatalog),
@@ -179,8 +178,7 @@ void run_catalog_identity_and_protocol_cases(const nlohmann::json &engineCatalog
                 catalog.snapshot()->document == engineCatalog,
             "a valid source catalog must publish an immutable current schema snapshot");
 
-    const CatalogIdentity changedIdentity{"/tmp/custom-project", "debug", "custom-main", "/tmp/custom-game",
-                                          "binary-2", "inputs-2"};
+    const CatalogIdentity changedIdentity{"/tmp/custom-project", "debug", "custom-main", "inputs-2"};
     catalog.configure(changedIdentity);
     require(catalog.state() == CatalogState::Stale && catalog.snapshot(),
             "configuring a different identity while Current must stale the cached snapshot");
@@ -268,7 +266,7 @@ void run_process_query_cases()
             "SourceBehaviorScanner must extract speed and mode fields");
 
     BehaviorCatalog catalog;
-    catalog.configure(CatalogIdentity{tempDir.string(), "debug", "main", "", "bin", "src"});
+    catalog.configure(CatalogIdentity{tempDir.string(), "debug", "main", "src"});
     const auto loaded = catalog.load_from_source_scan(scanResult);
     require(loaded && catalog.state() == CatalogState::Current,
             "BehaviorCatalog::load_from_source_scan must populate current catalog");

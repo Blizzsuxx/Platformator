@@ -25,8 +25,6 @@ struct CatalogIdentity
     std::string canonicalProjectPath;
     std::string profile;
     std::string target;
-    std::string executablePath;
-    std::string binaryIdentity;
     std::string sourceInputIdentity;
 
     bool operator==(const CatalogIdentity &) const = default;

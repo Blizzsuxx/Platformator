@@ -1804,6 +1804,8 @@ void run_inspector_semantics_select_and_reveal_current_fields()
             "activating a semantic component node selects its validated component identity");
 
     auto templateDocument = make_default_document(projectRoot, assetRoot, 3);
+    EditCommandService templateCommands;
+    templateCommands.reset_history(templateDocument.documentGeneration);
     SelectionModel templateSelection;
     templateSelection.set(templateDocument, Selection{0, std::nullopt, std::nullopt,
                                                        FocusedPanel::Inspector});
@@ -1823,10 +1825,11 @@ void run_inspector_semantics_select_and_reveal_current_fields()
     const bool templateSaveDispatched = templatePanel.dispatch_semantic_action(
         templateDocument, templateSelection,
         SemanticAction{.nodeId = saveTemplateId, .action = "activate"}, templateScope,
-        &semanticCatalog, &commands);
+        &semanticCatalog, &templateCommands);
     const auto savedTemplate = assetRoot / "templates" / "Camera.pttemplate";
-    require(templateSaveDispatched && std::filesystem::is_regular_file(savedTemplate),
-            "a current semantic template-save action must use conflict-safe template persistence: " +
+    require(templateSaveDispatched && std::filesystem::is_regular_file(savedTemplate) &&
+                is_template_instance_root(templateDocument.root.at(0)),
+            "a current semantic template-save action must use conflict-safe template persistence and link the object: " +
                 std::string("dispatched=") + (templateSaveDispatched ? "true" : "false") +
                 ", exists=" + (std::filesystem::exists(savedTemplate) ? "true" : "false") +
                 ", feedback=" + templatePanel.feedback());

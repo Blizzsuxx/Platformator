@@ -1294,8 +1294,43 @@ bool DocumentManager::reload_template_tab(TabId id, std::string *error)
     if (!revert_template_tab(id, error))
         return false;
     if (auto *tab = find(id); tab != nullptr && tab->kind() == DocumentTabKind::Template)
+    {
         tab->history().reset_history(tab->workspace().document().documentGeneration);
+        tab->clear_external_change_acknowledgement();
+    }
     return true;
+}
+
+bool DocumentManager::refresh_open_template_tabs(const std::filesystem::path &templatePath,
+                                               std::string *error)
+{
+    if (templatePath.empty())
+        return true;
+    std::error_code targetError;
+    const auto normalizedTarget = templatePath.lexically_normal();
+    bool allSucceeded = true;
+    for (const auto &tab : tabs_)
+    {
+        if (!tab || tab->kind() != DocumentTabKind::Template)
+            continue;
+        std::error_code compareError;
+        const bool sameFile =
+            std::filesystem::equivalent(tab->template_path(), templatePath, compareError) ||
+            (!targetError && tab->template_path().lexically_normal() == normalizedTarget);
+        if (!sameFile)
+            continue;
+        const auto status = tab->workspace().source_file_status();
+        if (status.state == SourceFileState::Current || status.state == SourceFileState::NoSource)
+            continue;
+        const bool synced = tab->workspace().dirty()
+            ? revert_template_tab(tab->id(), error)
+            : reload_template_tab(tab->id(), error);
+        if (synced)
+            tab->clear_external_change_acknowledgement();
+        else
+            allSucceeded = false;
+    }
+    return allSucceeded;
 }
 
 std::optional<TabId> DocumentManager::open_animation(const std::filesystem::path &path,

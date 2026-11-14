@@ -811,7 +811,7 @@ void run_editor_action_and_style_cases()
     require(!defaultWindowSettings.highPixelDensity,
             "the new high-density window option must preserve the runtime default");
     const auto actions = editor_action_descriptors();
-    require(actions.size() == 22, "all workspace commands must have discoverable action descriptors");
+    require(actions.size() == 24, "all workspace commands must have discoverable action descriptors");
     for (const auto &action : actions)
         require(!action.label.empty() && !action.shortcut.empty(),
                 "each available workspace action must expose its label and shortcut");
@@ -830,7 +830,9 @@ void run_editor_action_and_style_cases()
                 binding(EditorAction::SelectScaleTool) == "R" &&
                 binding(EditorAction::SelectRectangleTool) == "T" &&
                 binding(EditorAction::Build) == "Ctrl+B" &&
-                binding(EditorAction::Preferences) == "Ctrl+,",
+                binding(EditorAction::Preferences) == "Ctrl+," &&
+                binding(EditorAction::CopySelection) == "Ctrl+C" &&
+                binding(EditorAction::PasteSelection) == "Ctrl+V",
             "discoverable action bindings must include framing, transform tools and workspace commands");
 
     EditorInputCapture clearCapture{true, false, false, false, true};

@@ -1975,6 +1975,269 @@ void test_unsaved_inventory_covers_inactive_scene_template_and_animation_tabs()
                 }()) && read_json(animationPath).value("loop", true) == false,
             "Save All must persist every dirty document kind and clear the shutdown dirty inventory");
 }
+
+void test_template_position_override_duplicate_revert_and_open_tab_apply_sync()
+{
+    TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    const auto templateDir = assetRoot / "templates";
+    std::filesystem::create_directories(templateDir);
+    std::ofstream(projectRoot / "CMakeLists.txt") << "project(template-ux-test)\n";
+
+    Json coinRoot = object(1, "Coin", Json::array({
+        component(2, 6, Json{{"textureFilePath", "coin.png"}, {"flip", 0},
+                             {"width", 16.0}, {"height", 16.0}})}));
+    coinRoot["position"] = Json{{"x", 10.0}, {"y", 20.0}};
+    coinRoot["tag"] = "pickup";
+    const auto coinPath = templateDir / "Coin.pttemplate";
+    write_json(coinPath, make_template_envelope("Coin", coinRoot));
+
+    DocumentManager manager(projectRoot, assetRoot);
+    auto *sceneTab = manager.active_tab();
+    require(sceneTab != nullptr && sceneTab->kind() == DocumentTabKind::Scene,
+            "DocumentManager must start on a Scene tab");
+    auto &sceneDoc = sceneTab->workspace().document_for_edit();
+    auto &sceneCmds = sceneTab->history();
+    SelectionModel selection;
+
+    // 1. Dropping a template into the scene at a different position marks position overrides.
+    require(instantiate_asset_drop(sceneDoc, sceneCmds, selection, coinPath.string(),
+                                   EditorAssetKind::Template, 150.0f, 225.0f),
+            "scene drop of Coin template must succeed");
+    const int droppedId = *selection.current().objectId;
+    const Json *dropped = find_document_object_by_id(sceneDoc, droppedId);
+    require(dropped != nullptr &&
+                dropped->at("position").at("x") == 150.0 &&
+                dropped->at("position").at("y") == 225.0 &&
+                is_property_overridden(*dropped, "position.x") &&
+                is_property_overridden(*dropped, "position.y"),
+            "placing a template into a scene at a custom position must mark position overrides");
+
+    // 2. Duplicating keeps exact position and marks renamed Copy override on template nodes.
+    const auto dup = sceneCmds.duplicate_objects(sceneDoc, {droppedId});
+    require(dup.status == CommandStatus::Changed && dup.affectedObjectIds.size() == 1,
+            "duplicating a template instance must succeed");
+    const int dupId = dup.affectedObjectIds.front();
+    const Json *duplicated = find_document_object_by_id(sceneDoc, dupId);
+    require(duplicated != nullptr &&
+                duplicated->at("position").at("x") == 150.0 &&
+                duplicated->at("position").at("y") == 225.0 &&
+                duplicated->at("name") == "Coin Copy" &&
+                is_property_overridden(*duplicated, "name") &&
+                is_property_overridden(*duplicated, "position.x") &&
+                is_property_overridden(*duplicated, "position.y"),
+            "duplicating a template instance must keep exact position and mark copy name override");
+
+    // 3. Reverting to template restores position and removes local non-template additions.
+    const auto addedLocalComp = sceneCmds.add_component(sceneDoc, droppedId,
+        component(0, 3, Json{{"colliderType", 0}, {"radius", 8.0},
+                             {"offset", {{"x", 0.0}, {"y", 0.0}}}, {"trigger", true},
+                             {"collisionGroup", 1}, {"collisionMask", 1}}));
+    const auto addedLocalChild = sceneCmds.create_object(sceneDoc, droppedId, "LocalChild");
+    require(addedLocalComp && addedLocalChild,
+            "adding local component and child before Revert must succeed");
+    require(sceneCmds.set_property(sceneDoc,
+                address_for_document(sceneDoc, droppedId, std::nullopt, std::nullopt, {std::string("tag")}),
+                "modified").status == CommandStatus::Changed,
+            "modifying tag before Revert must succeed");
+
+    std::string error;
+    require(revert_template_instance(sceneDoc, sceneCmds, droppedId, assetRoot, error),
+            "revert_template_instance must succeed: " + error);
+    const Json *reverted = find_document_object_by_id(sceneDoc, droppedId);
+    require(reverted != nullptr &&
+                reverted->at("position").at("x") == 10.0 &&
+                reverted->at("position").at("y") == 20.0 &&
+                reverted->at("tag") == "pickup" &&
+                reverted->at("components").size() == 1 &&
+                reverted->at("children").empty() &&
+                !reverted->contains("overrides"),
+            "Revert to Template must restore position and template properties while removing local additions");
+
+    // 4. Applying overrides while the template tab is open syncs it without external conflict prompts.
+    const auto tmplTabId = manager.open_template(coinPath, &error);
+    require(tmplTabId.has_value(), "open_template must succeed: " + error);
+    auto *tmplTab = manager.find(*tmplTabId);
+    require(tmplTab != nullptr &&
+                tmplTab->workspace().source_file_status().state == SourceFileState::Current,
+            "newly opened template tab must start clean");
+
+    require(sceneCmds.set_property(sceneDoc,
+                address_for_document(sceneDoc, dupId, std::nullopt, std::nullopt, {std::string("tag")}),
+                "gold-pickup").status == CommandStatus::Changed,
+            "editing instance tag before Apply must succeed");
+    mark_template_override(sceneDoc, dupId, "tag");
+    const Json emptyCatalog = Json::object();
+    require(apply_template_instance(sceneDoc, sceneCmds, dupId, assetRoot, error, &emptyCatalog),
+            "apply_template_instance must succeed: " + error);
+    require(manager.refresh_open_template_tabs(coinPath, &error),
+            "refresh_open_template_tabs must sync open template tab cleanly: " + error);
+    require(tmplTab->workspace().source_file_status().state == SourceFileState::Current &&
+                !tmplTab->workspace().dirty() &&
+                tmplTab->workspace().document().root[0].at("tag") == "gold-pickup",
+            "open template tab must reflect Apply changes with no Reload from Disk conflict");
+}
+
+void test_component_subtype_bindings_and_mario_manager_export()
+{
+    const auto tempDir = std::filesystem::temp_directory_path() / "platformator_component_subtype_tmpl_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempDir, ec);
+    const auto tmplDir = tempDir / "assets" / "templates";
+    std::filesystem::create_directories(tmplDir);
+
+    // Schema matching MarioGame (ObjectReference<GameObject> player, ObjectReference<Audio> bgm)
+    // plus every concrete Component subtype emitted by ObjectTargetName<T>.
+    const Json catalog{{"schema_version", 1}, {"behaviors", Json::array({
+        Json{{"name", "MarioGame"}, {"field_schema_available", true},
+             {"fields", Json::array({
+                 Json{{"name", "player"}, {"kind", "object_reference"}, {"target", "GameObject"}},
+                 Json{{"name", "bgm"}, {"kind", "object_reference"}, {"target", "Audio"}}})}},
+        Json{{"name", "SubtypeRig"}, {"field_schema_available", true},
+             {"fields", Json::array({
+                 Json{{"name", "animator"}, {"kind", "object_reference"}, {"target", "Animator"}},
+                 Json{{"name", "audio"}, {"kind", "object_reference"}, {"target", "Audio"}},
+                 Json{{"name", "camera"}, {"kind", "object_reference"}, {"target", "Camera"}},
+                 Json{{"name", "collider"}, {"kind", "object_reference"}, {"target", "Collider"}},
+                 Json{{"name", "rigidbody"}, {"kind", "object_reference"}, {"target", "Rigidbody"}},
+                 Json{{"name", "script"}, {"kind", "object_reference"}, {"target", "ScriptComponent"}},
+                 Json{{"name", "sprite"}, {"kind", "object_reference"}, {"target", "Sprite"}}})}}})}};
+
+    const Json playerObj = object(100, "Player");
+    const Json bgmObj = object(101, "BGM", Json::array({component(102, 1)}));
+    const Json wrongTargetObj = object(103, "CameraHolder", Json::array({component(104, 2)}));
+    const Json managerObj = object(
+        10, "Manager",
+        Json::array({
+            component(11, 5, Json{{"behaviors", Json::array({
+                Json{{"type", "MarioGame"}, {"player", 100}, {"bgm", 102}},
+                Json{{"type", "SubtypeRig"},
+                     {"animator", 21}, {"audio", 22}, {"camera", 23}, {"collider", 24},
+                     {"rigidbody", 25}, {"script", 11}, {"sprite", 26}}})}}),
+            component(21, 0),
+            component(22, 1),
+            component(23, 2),
+            component(24, 3),
+            component(25, 4),
+            component(26, 6)}));
+
+    auto sourceParsed = parse_document(scene({playerObj, bgmObj, wrongTargetObj, managerObj}));
+    require(static_cast<bool>(sourceParsed), "source scene must parse");
+    DocumentSession &sourceDoc = *sourceParsed.document;
+    sourceDoc.sourcePath = tempDir / "level1.scene";
+    EditCommandService cmds;
+
+    const auto exported = export_object_as_template(
+        sourceDoc, cmds, 10, tmplDir, catalog);
+    require(exported.succeeded && std::filesystem::exists(exported.outputPath),
+            "exporting object with component subtype ObjectReferences must succeed: " +
+                exported.message);
+
+    std::ifstream in(exported.outputPath);
+    const Json savedJson = Json::parse(in);
+    const auto loaded = load_template_envelope(savedJson);
+    require(static_cast<bool>(loaded),
+            "template envelope with component subtype bindings must load cleanly: " + loaded.error);
+
+    bool sawExternalAudio = false;
+    bool sawInternalCamera = false;
+    bool sawInternalScript = false;
+    for (const auto &binding : loaded.asset->reference_bindings())
+    {
+        const std::string kind = binding.value("target_kind", std::string{});
+        const std::string scope = binding.value("scope", std::string{});
+        if (kind == "Audio" && scope == "external")
+            sawExternalAudio = true;
+        if (kind == "Camera" && scope == "internal")
+            sawInternalCamera = true;
+        if (kind == "ScriptComponent" && scope == "internal")
+            sawInternalScript = true;
+    }
+    require(sawExternalAudio && sawInternalCamera && sawInternalScript,
+            "exported reference_bindings must preserve specific component subtype target_kind");
+
+    // Wrong component type in envelope or unsupported target kind must still be rejected.
+    {
+        Json mismatchEnvelope = savedJson;
+        for (auto &binding : mismatchEnvelope["reference_bindings"])
+        {
+            if (binding.value("target_kind", std::string{}) == "Camera")
+                binding["target_kind"] = "Audio";
+        }
+        require(!static_cast<bool>(load_template_envelope(std::move(mismatchEnvelope))),
+                "mismatched component subtype binding must be rejected");
+
+        Json unsupportedEnvelope = savedJson;
+        unsupportedEnvelope["reference_bindings"][0]["target_kind"] = "UnknownWidget";
+        require(!static_cast<bool>(load_template_envelope(std::move(unsupportedEnvelope))),
+                "unsupported component target kind must be rejected");
+    }
+
+    // Author declaration helper must accept component subtypes cleanly.
+    const Json authorDecl = make_template_reference_binding_declaration(10, 11, 0, "bgm", "Audio");
+    require(authorDecl.is_object() && authorDecl.value("target_kind", std::string{}) == "Audio",
+            "make_template_reference_binding_declaration must accept component subtypes");
+
+    // Inserting into another scene validates external subtype matches and remaps internal subtypes.
+    auto destParsed = parse_document(scene({
+        object(500, "DestPlayer"),
+        object(501, "DestAudio", Json::array({component(502, 1)})),
+        object(503, "DestCamera", Json::array({component(504, 2)}))}));
+    require(static_cast<bool>(destParsed), "destination scene must parse");
+    DocumentSession &destDoc = *destParsed.document;
+    destDoc.sourcePath = tempDir / "level2.scene";
+    EditCommandService destCmds;
+    const auto coverage = template_asset_binding_coverage(*loaded.asset);
+    require(coverage.assured, "template binding coverage must be assured: " + coverage.error);
+
+    const std::vector<TemplateExternalAssignment> wrongAssignments{
+        {10, 11, "/behaviors/0/player", 500},
+        {10, 11, "/behaviors/0/bgm", 504}};
+    const auto rejectedInsert = insert_template(
+        destCmds, destDoc, *loaded.asset, template_scene_identity(destDoc), coverage,
+        std::nullopt, std::numeric_limits<std::size_t>::max(), wrongAssignments);
+    require(!rejectedInsert &&
+                rejectedInsert.error.find("wrong target kind") != std::string::npos,
+            "external assignment with wrong component subtype must be rejected");
+
+    const std::vector<TemplateExternalAssignment> validAssignments{
+        {10, 11, "/behaviors/0/player", 500},
+        {10, 11, "/behaviors/0/bgm", 502}};
+    const auto inserted = insert_template(
+        destCmds, destDoc, *loaded.asset, template_scene_identity(destDoc), coverage,
+        std::nullopt, std::numeric_limits<std::size_t>::max(), validAssignments);
+    require(static_cast<bool>(inserted),
+            "insert_template with valid component subtype assignments must succeed: " +
+                inserted.error);
+    const int insertedRootId = inserted.sourceToDestinationIds.at(10);
+    const Json *insertedRoot = find_document_object_by_id(destDoc, insertedRootId);
+    require(insertedRoot != nullptr, "inserted root must exist");
+    const auto &destBehaviors = insertedRoot->at("components").at(0).at("behaviors");
+    require(destBehaviors.at(0).at("player") == 500 &&
+                destBehaviors.at(0).at("bgm") == 502 &&
+                destBehaviors.at(1).at("camera") == inserted.sourceToDestinationIds.at(23) &&
+                destBehaviors.at(1).at("script") == inserted.sourceToDestinationIds.at(11),
+            "inserted instance must remap internal and apply external component subtype targets");
+
+    // Duplicate/copy of object carrying component subtype bindings must remap internal targets too.
+    const auto dupCollected = collect_template_bindings(
+        destDoc, *insertedRoot, template_scene_identity(destDoc), catalog);
+    require(static_cast<bool>(dupCollected) && dupCollected.assured,
+            "collect_template_bindings on inserted instance must succeed: " + dupCollected.error);
+    const auto dup = destCmds.duplicate_objects(
+        destDoc, {insertedRootId}, {}, DuplicateReferencePolicy::RemapInternalTargets,
+        dupCollected.bindings, dupCollected.assured);
+    require(dup.status == CommandStatus::Changed && dup.affectedObjectIds.size() == 1,
+            "duplicating object with component subtype bindings must succeed: " + dup.message);
+    const Json *dupRoot = find_document_object_by_id(destDoc, dup.affectedObjectIds.front());
+    require(dupRoot != nullptr &&
+                dupRoot->at("components").at(0).at("behaviors").at(1).at("camera") ==
+                    dupRoot->at("components").at(3).at("id"),
+            "duplicating must remap internal component subtype reference to duplicated component");
+
+    std::filesystem::remove_all(tempDir, ec);
+}
 } // namespace
 
 int main()
@@ -2002,6 +2265,8 @@ int main()
         test_template_file_and_directory_moves_retarget_open_and_closed_scenes();
         test_template_save_failure_preserves_previous_file_and_dirty_draft();
         test_unsaved_inventory_covers_inactive_scene_template_and_animation_tabs();
+        test_template_position_override_duplicate_revert_and_open_tab_apply_sync();
+        test_component_subtype_bindings_and_mario_manager_export();
         std::cout << "Template, binding, insertion, and duplicate cases passed\n";
         return 0;
     }

@@ -29,6 +29,8 @@ enum class EditorAction
     RenameSelection,
     DeleteSelection,
     DuplicateSelection,
+    CopySelection,
+    PasteSelection,
     Preferences
 };
 
@@ -67,6 +69,8 @@ enum class EditorKey
     F2,
     Delete,
     D,
+    C,
+    V,
     Comma
 };
 

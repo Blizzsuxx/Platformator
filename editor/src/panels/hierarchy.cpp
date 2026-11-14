@@ -193,7 +193,7 @@ DuplicateBindingSet collect_duplicate_bindings(const DocumentSession &document,
             {
                 const int targetId = binding.value("original_target_id", -1);
                 const std::string targetKind = binding.value("target_kind", std::string{});
-                const bool selectedTarget = targetKind == "Component"
+                const bool selectedTarget = is_template_component_target_kind(targetKind)
                     ? selectedComponents.contains(targetId)
                     : selectedObjects.contains(targetId);
                 if (selectedTarget)
@@ -877,6 +877,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     {
         lastRevealedObjectId_.reset();
         pendingScrollObjectId_.reset();
+        pendingClickSelectObjectId_.reset();
     }
     const auto focus_hierarchy = [&]() {
         if (selection.current().focusedPanel == FocusedPanel::Hierarchy)
@@ -886,10 +887,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         selection.set(document, std::move(focused));
     };
     const auto set_duplicate_policy_status = [&](std::string message) {
-        duplicatePolicyStatus_ = std::move(message);
-        duplicatePolicyStatusUntil_ = duplicatePolicyStatus_.empty()
-            ? std::chrono::steady_clock::time_point{}
-            : std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        this->set_duplicate_policy_status(std::move(message));
     };
     if (!duplicatePolicyStatus_.empty() &&
         std::chrono::steady_clock::now() >= duplicatePolicyStatusUntil_)
@@ -925,8 +923,8 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         lastMouseInteractionFrame_ = frameCount;
     const EditorInputCapture keyboardCapture{true, io.WantTextInput || ImGui::IsAnyItemActive(),
         modalOpen, activeGesture, false, hierarchyFocused};
-    const auto start_rename = [&]() {
-        const auto objectId = selection.current().objectId;
+    const auto start_rename = [&](std::optional<int> targetObjectId = std::nullopt) {
+        const auto objectId = targetObjectId ? targetObjectId : selection.current().objectId;
         if (!objectId)
             return;
         const auto location = document.indexes.objectsById.find(*objectId);
@@ -934,6 +932,10 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             ? nullptr : resolve_object(document.root, location->second);
         if (object == nullptr)
             return;
+        if (selection.current().objectId != objectId)
+            selection.set_objects(document, {*objectId}, *objectId, *objectId);
+        focus_hierarchy();
+        lastRevealedObjectId_ = *objectId;
         const std::string name = object->value("name", std::string("GameObject"));
         renameBuffer_.assign(name.begin(), name.end());
         renameBuffer_.push_back('\0');
@@ -993,6 +995,20 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             commands.set_last_selection_state({before, selection.current()});
             invalidate();
         }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_C, false) &&
+        dispatch_editor_key(EditorKey::C, io.KeyShift, io.KeyCtrl,
+                            keyboardCapture) == EditorAction::CopySelection)
+    {
+        copy_selection(document, selection.current(), duplicationReferencePolicy,
+                       behaviorCatalog, authorReferenceBindings, authorSchemaDeclarations);
+    }
+    if (editingAllowed && ImGui::IsKeyPressed(ImGuiKey_V, false) &&
+        dispatch_editor_key(EditorKey::V, io.KeyShift, io.KeyCtrl,
+                            keyboardCapture) == EditorAction::PasteSelection)
+    {
+        paste_selection(document, selection, commands, duplicationReferencePolicy,
+                        editingAllowed, selection.current().objectId, true);
     }
     const auto commit_rename = [&]() {
         if (!renameTargetObjectId_ || renameBuffer_.empty())
@@ -1396,18 +1412,29 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         invalidate();
                     }
                 }
-                if (ImGui::IsItemClicked() && !lockHovered && !eyeHovered)
+                if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !lockHovered && !eyeHovered)
+                    pendingClickSelectObjectId_ = row.id;
+                const bool dragDropPayloadActive = ImGui::GetDragDropPayload() != nullptr;
+                if (pendingClickSelectObjectId_ == row.id &&
+                    (dragDropPayloadActive || ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left)))
+                    pendingClickSelectObjectId_.reset();
+                if (pendingClickSelectObjectId_ == row.id &&
+                    ImGui::IsMouseReleased(ImGuiMouseButton_Left))
                 {
-                    const ImGuiIO &io = ImGui::GetIO();
-                    if (io.KeyShift)
-                        selection.select_range(document, row.id, selectionOrder, io.KeyCtrl);
-                    else if (io.KeyCtrl)
-                        selection.toggle_object(document, row.id);
-                    else
-                        selection.set_objects(document, {row.id}, row.id, row.id);
-                    // The clicked row is already visible; do not ask for a reveal/scroll.
-                    lastRevealedObjectId_ = row.id;
-                    focus_hierarchy();
+                    pendingClickSelectObjectId_.reset();
+                    if (rowHovered && !lockHovered && !eyeHovered && !dragDropPayloadActive)
+                    {
+                        const ImGuiIO &io = ImGui::GetIO();
+                        if (io.KeyShift)
+                            selection.select_range(document, row.id, selectionOrder, io.KeyCtrl);
+                        else if (io.KeyCtrl)
+                            selection.toggle_object(document, row.id);
+                        else
+                            selection.set_objects(document, {row.id}, row.id, row.id);
+                        // The clicked row is already visible; do not ask for a reveal/scroll.
+                        lastRevealedObjectId_ = row.id;
+                        focus_hierarchy();
+                    }
                 }
                 else if (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter))
                 {
@@ -1417,6 +1444,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 }
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 {
+                    pendingClickSelectObjectId_.reset();
                     selection.set_objects(document, {row.id}, row.id, row.id);
                     lastRevealedObjectId_ = row.id;
                     focus_hierarchy();
@@ -1425,6 +1453,7 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 }
                 if (ImGui::BeginDragDropSource())
                 {
+                    pendingClickSelectObjectId_.reset();
                     ImGui::SetDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT", &row.id, sizeof(row.id));
                     const std::string displayLabel = std::string(strip_identity_suffix(row.label));
                     ImGui::TextUnformatted(displayLabel.c_str());
@@ -1541,6 +1570,36 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         }
                         ImGui::EndMenu();
                     }
+                    if (ImGui::MenuItem("Rename", "F2", false, editingAllowed))
+                        start_rename(row.id);
+                    if (ImGui::MenuItem("Copy", "Ctrl+C"))
+                    {
+                        const auto &selectedIds = selection.current().selectedObjectIds;
+                        const bool rowSelected = std::find(
+                            selectedIds.begin(), selectedIds.end(), row.id) != selectedIds.end();
+                        copy_object_ids(document,
+                            rowSelected && !selectedIds.empty() ? selectedIds : std::vector<int>{row.id},
+                            duplicationReferencePolicy, behaviorCatalog,
+                            authorReferenceBindings, authorSchemaDeclarations);
+                    }
+                    if (ImGui::MenuItem("Paste", "Ctrl+V", false,
+                                        editingAllowed && !clipboard_.subtrees.empty()))
+                    {
+                        paste_selection(document, selection, commands, duplicationReferencePolicy,
+                                        editingAllowed, row.id, true);
+                    }
+                    if (ImGui::MenuItem("Paste as Child", nullptr, false,
+                                        editingAllowed && !clipboard_.subtrees.empty()))
+                    {
+                        std::size_t childCount = 0;
+                        const auto loc = document.indexes.objectsById.find(row.id);
+                        if (loc != document.indexes.objectsById.end())
+                            if (const Json *obj = resolve_object(document.root, loc->second))
+                                if (const auto ch = obj->find("children"); ch != obj->end() && ch->is_array())
+                                    childCount = ch->size();
+                        paste_clipboard_into(document, selection, commands, row.id, childCount,
+                                             duplicationReferencePolicy, editingAllowed, true);
+                    }
                     if (ImGui::MenuItem("Duplicate"))
                     {
                         const Selection before = selection.current();
@@ -1566,13 +1625,16 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         }
                         invalidate();
                     }
-                    if (!document.assetRoot.empty() && ImGui::MenuItem("Save as Template"))
+                    if (!document.assetRoot.empty() &&
+                        ImGui::MenuItem("Save as Template", nullptr, false, editingAllowed))
                     {
                         static const Json emptyCatalog{{"behaviors", Json::array()}};
                         const Json &catalog = behaviorCatalog != nullptr ? *behaviorCatalog : emptyCatalog;
                         const auto exported = export_object_as_template(
-                            document, row.id, document.assetRoot / "templates", catalog,
+                            document, commands, row.id, document.assetRoot / "templates", catalog,
                             authorReferenceBindings, authorSchemaDeclarations);
+                        if (exported.succeeded)
+                            invalidate();
                         set_duplicate_policy_status(exported.message);
                     }
                     if (ImGui::MenuItem("Delete"))
@@ -1687,14 +1749,23 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             ImGui::EndDragDropTarget();
         }
     }
+    if (!ImGui::IsAnyItemHovered() && !modalOpen && ImGui::IsWindowHovered() &&
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)))
+        focus_hierarchy();
     if (ImGui::BeginPopupContextWindow("Hierarchy empty-space actions",
                                         ImGuiPopupFlags_MouseButtonRight |
                                             ImGuiPopupFlags_NoOpenOverItems))
     {
         if (ImGui::MenuItem("Create Empty Object"))
             create_object(std::nullopt);
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false,
+                            editingAllowed && !clipboard_.subtrees.empty()))
+            paste_clipboard_into(document, selection, commands, std::nullopt, document.root.size(),
+                                 duplicationReferencePolicy, editingAllowed, true);
         ImGui::EndPopup();
     }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        pendingClickSelectObjectId_.reset();
     ImGui::EndChild();
     ImGui::PopStyleVar();
     if (!duplicatePolicyStatus_.empty())
@@ -1760,5 +1831,156 @@ HierarchyDropPlacement resolve_hierarchy_drop_placement(
         }
     }
     return placement;
+}
+
+void HierarchyPanel::set_duplicate_policy_status(std::string message)
+{
+    duplicatePolicyStatus_ = std::move(message);
+    if (duplicatePolicyStatus_.empty())
+        duplicatePolicyStatusUntil_ = {};
+    else
+        duplicatePolicyStatusUntil_ = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+}
+
+bool HierarchyPanel::copy_object_ids(
+    const DocumentSession &document,
+    const std::vector<int> &rawIds,
+    const std::string *duplicationReferencePolicy,
+    const Json *behaviorCatalog,
+    const std::vector<Json> &authorReferenceBindings,
+    const std::vector<TemplateAuthorSchemaDeclaration> &authorSchemaDeclarations)
+{
+    if (rawIds.empty())
+        return false;
+    Selection selected;
+    selected.selectedObjectIds = rawIds;
+    selected.objectId = rawIds.back();
+    const std::vector<int> roots = selected_top_level_roots(document, selected);
+    if (roots.empty())
+        return false;
+
+    std::vector<Json> subtrees;
+    subtrees.reserve(roots.size());
+    for (const int id : roots)
+    {
+        const auto location = document.indexes.objectsById.find(id);
+        const Json *object = location == document.indexes.objectsById.end()
+            ? nullptr
+            : resolve_object(document.root, location->second);
+        if (object != nullptr)
+            subtrees.push_back(*object);
+    }
+    if (subtrees.empty())
+        return false;
+
+    std::string sceneIdentity = template_scene_identity(document);
+    if (sceneIdentity.empty())
+        sceneIdentity = "unsaved-document:" + std::to_string(document.tabId.value) + ":" +
+                        std::to_string(document.documentGeneration);
+
+    const bool remapReferences = duplicationReferencePolicy != nullptr &&
+        *duplicationReferencePolicy == "remap-internal-targets";
+    const auto bindingCoverage = remapReferences
+        ? collect_duplicate_bindings(document, roots, behaviorCatalog,
+                                     authorReferenceBindings, authorSchemaDeclarations)
+        : DuplicateBindingSet{};
+
+    clipboard_.subtrees = std::move(subtrees);
+    clipboard_.typedReferenceBindings = bindingCoverage.bindings;
+    clipboard_.bindingCoverageAssured = bindingCoverage.assured;
+    clipboard_.sourceSceneIdentity = std::move(sceneIdentity);
+    clipboard_.bindingError = bindingCoverage.error;
+    return true;
+}
+
+bool HierarchyPanel::copy_selection(
+    const DocumentSession &document,
+    const Selection &selection,
+    const std::string *duplicationReferencePolicy,
+    const Json *behaviorCatalog,
+    const std::vector<Json> &authorReferenceBindings,
+    const std::vector<TemplateAuthorSchemaDeclaration> &authorSchemaDeclarations)
+{
+    std::vector<int> ids = selection.selectedObjectIds;
+    if (ids.empty() && selection.objectId)
+        ids.push_back(*selection.objectId);
+    return copy_object_ids(document, ids, duplicationReferencePolicy, behaviorCatalog,
+                           authorReferenceBindings, authorSchemaDeclarations);
+}
+
+bool HierarchyPanel::paste_clipboard_into(
+    DocumentSession &document,
+    SelectionModel &selection,
+    EditCommandService &commands,
+    std::optional<int> destinationParent,
+    std::size_t insertionIndex,
+    const std::string *duplicationReferencePolicy,
+    bool editingAllowed,
+    bool focusHierarchy)
+{
+    if (!editingAllowed || clipboard_.subtrees.empty())
+        return false;
+
+    const Selection before = selection.current();
+    const bool remapReferences = duplicationReferencePolicy != nullptr &&
+        *duplicationReferencePolicy == "remap-internal-targets";
+    const auto pasted = commands.paste_objects(
+        document, clipboard_.subtrees, destinationParent, insertionIndex, {before, before},
+        remapReferences ? DuplicateReferencePolicy::RemapInternalTargets
+                        : DuplicateReferencePolicy::PreserveExistingTargets,
+        clipboard_.typedReferenceBindings,
+        !remapReferences || clipboard_.bindingCoverageAssured);
+    set_duplicate_policy_status(pasted.status == CommandStatus::Changed
+        ? std::string{}
+        : (!clipboard_.bindingError.empty() ? clipboard_.bindingError : pasted.message));
+    if (pasted.status != CommandStatus::Changed || pasted.affectedObjectIds.empty())
+        return false;
+
+    if (destinationParent)
+        expandedObjects_.insert(*destinationParent);
+    for (const int id : pasted.affectedObjectIds)
+        expandedObjects_.insert(id);
+    selection.set_objects(document, pasted.affectedObjectIds,
+                          pasted.affectedObjectIds.back(), pasted.affectedObjectIds.front());
+    if (focusHierarchy && selection.current().focusedPanel != FocusedPanel::Hierarchy)
+    {
+        Selection focused = selection.current();
+        focused.focusedPanel = FocusedPanel::Hierarchy;
+        selection.set(document, std::move(focused));
+    }
+    commands.set_last_selection_state({before, selection.current()});
+    invalidate();
+    return true;
+}
+
+bool HierarchyPanel::paste_selection(
+    DocumentSession &document,
+    SelectionModel &selection,
+    EditCommandService &commands,
+    const std::string *duplicationReferencePolicy,
+    bool editingAllowed,
+    std::optional<int> anchorObjectId,
+    bool focusHierarchy)
+{
+    if (!editingAllowed || clipboard_.subtrees.empty())
+        return false;
+
+    const std::optional<int> anchor = anchorObjectId ? anchorObjectId : selection.current().objectId;
+    std::optional<int> destinationParent;
+    std::size_t insertionIndex = document.root.size();
+    if (anchor)
+    {
+        const auto loc = document.indexes.objectsById.find(*anchor);
+        const auto parent = document.indexes.parentById.find(*anchor);
+        if (loc != document.indexes.objectsById.end() && !loc->second.childIndices.empty())
+        {
+            destinationParent = parent != document.indexes.parentById.end()
+                ? parent->second
+                : std::nullopt;
+            insertionIndex = loc->second.childIndices.back() + 1;
+        }
+    }
+    return paste_clipboard_into(document, selection, commands, destinationParent, insertionIndex,
+                                duplicationReferencePolicy, editingAllowed, focusHierarchy);
 }
 } // namespace platformator_editor

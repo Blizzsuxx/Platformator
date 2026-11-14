@@ -24,819 +24,1261 @@ using namespace platformator_editor;
 
 namespace
 {
-void require(bool condition, const std::string &message)
-{
-    if (!condition)
-        throw std::runtime_error(message);
-}
-
-const Json *resolve_object(const Json &root, const ObjectLocation &location)
-{
-    if (!root.is_array() || location.childIndices.empty())
-        return nullptr;
-    const Json *object = nullptr;
-    const Json *siblings = &root;
-    for (std::size_t depth = 0; depth < location.childIndices.size(); ++depth)
+    void require(bool condition, const std::string &message)
     {
-        if (depth > 0)
-        {
-            if (object == nullptr)
-                return nullptr;
-            const auto children = object->find("children");
-            if (children == object->end())
-                return nullptr;
-            siblings = &*children;
-        }
-        const auto index = location.childIndices[depth];
-        if (!siblings->is_array() || index >= siblings->size())
-            return nullptr;
-        object = &(*siblings)[index];
+        if (!condition)
+            throw std::runtime_error(message);
     }
-    return object;
-}
 
-Json object(int id, double x, double y, Json children = Json::array())
-{
-    return Json{{"id", id}, {"name", "object-" + std::to_string(id)}, {"tag", ""},
-                {"active", true}, {"position", {{"x", x}, {"y", y}}},
-                {"scale", {{"x", 1.0}, {"y", 1.0}}}, {"rotation", 0.0},
-                {"components", Json::array()}, {"children", std::move(children)}};
-}
-
-DocumentSession move_fixture()
-{
-    DocumentSession document = make_default_document();
-    Json child = object(11, 2.0, 3.0);
-    child["unknownMovePayload"] = Json{{"preserve", true}};
-    document.root = Json::array({object(10, 100.0, 200.0, Json::array({child})),
-                                 object(20, 10.0, 20.0), object(30, -4.0, 7.0),
-                                 object(40, 5.0, 9.0)});
-    ++document.structureRevision;
-    rebuild_document_indexes(document);
-    return document;
-}
-
-void transactional_moves_preserve_world_order_and_identity()
-{
-    auto document = move_fixture();
-    const Json original = document.root;
-    EditCommandService commands;
-    SelectionModel selection;
-    selection.set(document, Selection{11, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
-    const Selection selected = selection.current();
-    commands.reset_history(document.documentGeneration);
-    commands.mark_saved();
-
-    const auto originalStructureRevision = document.structureRevision;
-    const auto moved = commands.move_object(document, 11, 20, 0, {selected, selected});
-    require(moved.status == CommandStatus::Changed && moved.change.structural &&
-                document.structureRevision == originalStructureRevision + 1 &&
-                moved.change.identity == DocumentIdentity{ProjectGeneration{document.projectGeneration},
-                    document.tabId, DocumentGeneration{document.documentGeneration}},
-            "cross-parent move must commit as one structural transaction");
-    const Json movedRoot = document.root;
-    require(document.root[0]["children"].empty() && document.root[1]["children"].size() == 1 &&
-                document.root[1]["children"][0]["id"] == 11 &&
-                document.root[1]["children"][0]["unknownMovePayload"]["preserve"] == true,
-            "move must preserve the complete subtree and unknown payload under its new parent");
-    require(document.root[1]["children"][0]["position"]["x"] == 92.0 &&
-                document.root[1]["children"][0]["position"]["y"] == 183.0,
-            "cross-parent move must subtract destination world translation from the old world position");
-    require(commands.history_status().undoCommands == 1 && commands.dirty(),
-            "one successful move must create exactly one dirty history entry");
-
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == original &&
-                selection.current() == selected,
-            "Undo must restore exact source parent, sibling index, local values and selection");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root == movedRoot &&
-                selection.current() == selected,
-            "Redo must restore exact destination placement and local values in one step");
-
-    const Json beforeReorder = document.root;
-    const auto reordered = commands.move_object(document, 30, std::nullopt, 4, {selected, selected});
-    require(reordered.status == CommandStatus::Changed && document.root[2]["id"] == 40 &&
-                document.root[3]["id"] == 30,
-            "same-parent move must normalize the insertion index after source removal");
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == beforeReorder,
-            "same-parent Undo must restore the exact sibling order");
-    const auto noOp = commands.move_object(document, 30, std::nullopt, 3, {selected, selected});
-    require(noOp.status == CommandStatus::NoChange && document.root == beforeReorder,
-            "a same-parent drop at the normalized current index must be a no-op");
-
-    const Json beforeCycle = document.root;
-    const auto historyBeforeCycle = commands.history_status();
-    const auto cycle = commands.move_object(document, 20, 11, 0, {selected, selected});
-    require(cycle.status == CommandStatus::Rejected && document.root == beforeCycle &&
-                commands.history_status().undoCommands == historyBeforeCycle.undoCommands,
-            "cycle rejection must leave content, revisions and retained history unchanged");
-    const auto invalidIndex = commands.move_object(document, 30, 20, 99, {selected, selected});
-    require(invalidIndex.status == CommandStatus::Rejected && document.root == beforeCycle,
-            "an invalid destination index must fail without partial removal");
-
-    auto staleDocument = move_fixture();
-    EditCommandService staleCommands;
-    const Json beforeStale = staleDocument.root;
-    const auto staleRevision = staleDocument.structureRevision;
-    const auto stale = staleCommands.move_object(staleDocument, 999, 20, 0);
-    require(stale.status == CommandStatus::StaleAddress && staleDocument.root == beforeStale &&
-                staleDocument.structureRevision == staleRevision,
-            "a stale source identity must be rejected without mutating the document");
-}
-
-void root_nested_moves_round_trip_exactly()
-{
-    auto document = move_fixture();
-    const Json original = document.root;
-    EditCommandService commands;
-    SelectionModel selection;
-    selection.set(document, Selection{30, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
-    const auto selected = selection.current();
-    commands.reset_history(document.documentGeneration);
-    commands.mark_saved();
-
-    const auto intoNested = commands.move_object(document, 30, 20, 0, {selected, selected});
-    require(intoNested.status == CommandStatus::Changed && document.root.size() == 3 &&
-                document.root[1]["children"].size() == 1 &&
-                document.root[1]["children"][0]["id"] == 30 &&
-                document.root[1]["children"][0]["position"]["x"] == -14.0 &&
-                document.root[1]["children"][0]["position"]["y"] == -13.0,
-            "root-to-nested move must preserve world translation and insert at the requested child index");
-    const Json nestedState = document.root;
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == original,
-            "Undo of a root-to-nested move must restore the exact root position and payload");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root == nestedState,
-            "Redo of a root-to-nested move must restore the exact nested state");
-
-    const auto backToRoot = commands.move_object(document, 30, std::nullopt, 1, {selected, selected});
-    require(backToRoot.status == CommandStatus::Changed && document.root[1]["id"] == 30 &&
-                document.root[1]["position"]["x"] == -4.0 &&
-                document.root[1]["position"]["y"] == 7.0 &&
-                document.root[1]["children"].empty(),
-            "nested-to-root move must restore root-local coordinates and remove the child from its parent");
-    const Json rootState = document.root;
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == nestedState,
-            "Undo of a nested-to-root move must restore the exact parent and child index");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root == rootState,
-            "Redo of a nested-to-root move must restore the exact root placement");
-
-    Selection group;
-    group.selectedObjectIds = {10, 11, 20};
-    group.objectId = 11;
-    require(selected_top_level_roots(document, group) == std::vector<int>({10, 20}),
-            "move selection normalization must omit selected descendants of selected ancestors");
-}
-
-void hierarchy_focus_without_delete_key_does_not_delete_selection()
-{
-    auto document = move_fixture();
-    SelectionModel selection;
-    selection.set(document, Selection{10, std::nullopt, std::nullopt,
-                                      FocusedPanel::Hierarchy});
-    EditCommandService commands;
-    HierarchyPanel panel;
-
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.DisplaySize = {800.0f, 600.0f};
-    io.DeltaTime = 1.0f / 60.0f;
-    io.Fonts->AddFontDefault();
-    io.Fonts->Build();
-
-    const auto draw = [&](bool deleteKeyPressed = false,
-                          bool mouseButtonEventThisFrame = false) {
-        ImGui::NewFrame();
-        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
-        ImGui::SetNextWindowSize({600.0f, 420.0f}, ImGuiCond_Always);
-        ImGui::Begin("Hierarchy selection regression", nullptr,
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoSavedSettings);
-        panel.draw(document, selection, commands, true, nullptr, nullptr, nullptr, nullptr,
-                   {}, {}, deleteKeyPressed, mouseButtonEventThisFrame);
-        ImVec2 rowMinimum{};
-        ImVec2 rowMaximum{};
-        for (const auto &node : panel.semantic_nodes(document, selection.current(),
-                                                     "test/tab/1/document/1"))
+    const Json *resolve_object(const Json &root, const ObjectLocation &location)
+    {
+        if (!root.is_array() || location.childIndices.empty())
+            return nullptr;
+        const Json *object = nullptr;
+        const Json *siblings = &root;
+        for (std::size_t depth = 0; depth < location.childIndices.size(); ++depth)
         {
-            if (node.id == "test/tab/1/document/1/object/40" && node.bounds)
+            if (depth > 0)
             {
-                rowMinimum = {static_cast<float>(node.bounds->x),
-                              static_cast<float>(node.bounds->y)};
-                rowMaximum = {static_cast<float>(node.bounds->x + node.bounds->width),
-                              static_cast<float>(node.bounds->y + node.bounds->height)};
+                if (object == nullptr)
+                    return nullptr;
+                const auto children = object->find("children");
+                if (children == object->end())
+                    return nullptr;
+                siblings = &*children;
+            }
+            const auto index = location.childIndices[depth];
+            if (!siblings->is_array() || index >= siblings->size())
+                return nullptr;
+            object = &(*siblings)[index];
+        }
+        return object;
+    }
+
+    Json object(int id, double x, double y, Json children = Json::array())
+    {
+        return Json{{"id", id}, {"name", "object-" + std::to_string(id)}, {"tag", ""}, {"active", true}, {"position", {{"x", x}, {"y", y}}}, {"scale", {{"x", 1.0}, {"y", 1.0}}}, {"rotation", 0.0}, {"components", Json::array()}, {"children", std::move(children)}};
+    }
+
+    DocumentSession move_fixture()
+    {
+        DocumentSession document = make_default_document();
+        Json child = object(11, 2.0, 3.0);
+        child["unknownMovePayload"] = Json{{"preserve", true}};
+        document.root = Json::array({object(10, 100.0, 200.0, Json::array({child})),
+                                     object(20, 10.0, 20.0), object(30, -4.0, 7.0),
+                                     object(40, 5.0, 9.0)});
+        ++document.structureRevision;
+        rebuild_document_indexes(document);
+        return document;
+    }
+
+    void transactional_moves_preserve_world_order_and_identity()
+    {
+        auto document = move_fixture();
+        const Json original = document.root;
+        EditCommandService commands;
+        SelectionModel selection;
+        selection.set(document, Selection{11, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+        const Selection selected = selection.current();
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+
+        const auto originalStructureRevision = document.structureRevision;
+        const auto moved = commands.move_object(document, 11, 20, 0, {selected, selected});
+        require(moved.status == CommandStatus::Changed && moved.change.structural &&
+                    document.structureRevision == originalStructureRevision + 1 &&
+                    moved.change.identity == DocumentIdentity{ProjectGeneration{document.projectGeneration},
+                                                              document.tabId, DocumentGeneration{document.documentGeneration}},
+                "cross-parent move must commit as one structural transaction");
+        const Json movedRoot = document.root;
+        require(document.root[0]["children"].empty() && document.root[1]["children"].size() == 1 &&
+                    document.root[1]["children"][0]["id"] == 11 &&
+                    document.root[1]["children"][0]["unknownMovePayload"]["preserve"] == true,
+                "move must preserve the complete subtree and unknown payload under its new parent");
+        require(document.root[1]["children"][0]["position"]["x"] == 92.0 &&
+                    document.root[1]["children"][0]["position"]["y"] == 183.0,
+                "cross-parent move must subtract destination world translation from the old world position");
+        require(commands.history_status().undoCommands == 1 && commands.dirty(),
+                "one successful move must create exactly one dirty history entry");
+
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == original &&
+                    selection.current() == selected,
+                "Undo must restore exact source parent, sibling index, local values and selection");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root == movedRoot &&
+                    selection.current() == selected,
+                "Redo must restore exact destination placement and local values in one step");
+
+        const Json beforeReorder = document.root;
+        const auto reordered = commands.move_object(document, 30, std::nullopt, 4, {selected, selected});
+        require(reordered.status == CommandStatus::Changed && document.root[2]["id"] == 40 &&
+                    document.root[3]["id"] == 30,
+                "same-parent move must normalize the insertion index after source removal");
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == beforeReorder,
+                "same-parent Undo must restore the exact sibling order");
+        const auto noOp = commands.move_object(document, 30, std::nullopt, 3, {selected, selected});
+        require(noOp.status == CommandStatus::NoChange && document.root == beforeReorder,
+                "a same-parent drop at the normalized current index must be a no-op");
+
+        const Json beforeCycle = document.root;
+        const auto historyBeforeCycle = commands.history_status();
+        const auto cycle = commands.move_object(document, 20, 11, 0, {selected, selected});
+        require(cycle.status == CommandStatus::Rejected && document.root == beforeCycle &&
+                    commands.history_status().undoCommands == historyBeforeCycle.undoCommands,
+                "cycle rejection must leave content, revisions and retained history unchanged");
+        const auto invalidIndex = commands.move_object(document, 30, 20, 99, {selected, selected});
+        require(invalidIndex.status == CommandStatus::Rejected && document.root == beforeCycle,
+                "an invalid destination index must fail without partial removal");
+
+        auto staleDocument = move_fixture();
+        EditCommandService staleCommands;
+        const Json beforeStale = staleDocument.root;
+        const auto staleRevision = staleDocument.structureRevision;
+        const auto stale = staleCommands.move_object(staleDocument, 999, 20, 0);
+        require(stale.status == CommandStatus::StaleAddress && staleDocument.root == beforeStale &&
+                    staleDocument.structureRevision == staleRevision,
+                "a stale source identity must be rejected without mutating the document");
+    }
+
+    void root_nested_moves_round_trip_exactly()
+    {
+        auto document = move_fixture();
+        const Json original = document.root;
+        EditCommandService commands;
+        SelectionModel selection;
+        selection.set(document, Selection{30, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+        const auto selected = selection.current();
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+
+        const auto intoNested = commands.move_object(document, 30, 20, 0, {selected, selected});
+        require(intoNested.status == CommandStatus::Changed && document.root.size() == 3 &&
+                    document.root[1]["children"].size() == 1 &&
+                    document.root[1]["children"][0]["id"] == 30 &&
+                    document.root[1]["children"][0]["position"]["x"] == -14.0 &&
+                    document.root[1]["children"][0]["position"]["y"] == -13.0,
+                "root-to-nested move must preserve world translation and insert at the requested child index");
+        const Json nestedState = document.root;
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == original,
+                "Undo of a root-to-nested move must restore the exact root position and payload");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root == nestedState,
+                "Redo of a root-to-nested move must restore the exact nested state");
+
+        const auto backToRoot = commands.move_object(document, 30, std::nullopt, 1, {selected, selected});
+        require(backToRoot.status == CommandStatus::Changed && document.root[1]["id"] == 30 &&
+                    document.root[1]["position"]["x"] == -4.0 &&
+                    document.root[1]["position"]["y"] == 7.0 &&
+                    document.root[1]["children"].empty(),
+                "nested-to-root move must restore root-local coordinates and remove the child from its parent");
+        const Json rootState = document.root;
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == nestedState,
+                "Undo of a nested-to-root move must restore the exact parent and child index");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root == rootState,
+                "Redo of a nested-to-root move must restore the exact root placement");
+
+        Selection group;
+        group.selectedObjectIds = {10, 11, 20};
+        group.objectId = 11;
+        require(selected_top_level_roots(document, group) == std::vector<int>({10, 20}),
+                "move selection normalization must omit selected descendants of selected ancestors");
+    }
+
+    void hierarchy_focus_without_delete_key_does_not_delete_selection()
+    {
+        auto document = move_fixture();
+        SelectionModel selection;
+        selection.set(document, Selection{10, std::nullopt, std::nullopt,
+                                          FocusedPanel::Hierarchy});
+        EditCommandService commands;
+        HierarchyPanel panel;
+
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {800.0f, 600.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+
+        const auto draw = [&](bool deleteKeyPressed = false,
+                              bool mouseButtonEventThisFrame = false)
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({600.0f, 420.0f}, ImGuiCond_Always);
+            ImGui::Begin("Hierarchy selection regression", nullptr,
+                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                             ImGuiWindowFlags_NoSavedSettings);
+            panel.draw(document, selection, commands, true, nullptr, nullptr, nullptr, nullptr,
+                       {}, {}, deleteKeyPressed, mouseButtonEventThisFrame);
+            ImVec2 rowMinimum{};
+            ImVec2 rowMaximum{};
+            for (const auto &node : panel.semantic_nodes(document, selection.current(),
+                                                         "test/tab/1/document/1"))
+            {
+                if (node.id == "test/tab/1/document/1/object/40" && node.bounds)
+                {
+                    rowMinimum = {static_cast<float>(node.bounds->x),
+                                  static_cast<float>(node.bounds->y)};
+                    rowMaximum = {static_cast<float>(node.bounds->x + node.bounds->width),
+                                  static_cast<float>(node.bounds->y + node.bounds->height)};
+                    break;
+                }
+            }
+            ImGui::End();
+            ImGui::Render();
+            return std::pair{rowMinimum, rowMaximum};
+        };
+
+        draw();
+        require(document.indexes.objectsById.contains(10) && commands.history_status().undoCommands == 0,
+                "a focused Hierarchy selection with no Delete key press must remain intact across a frame");
+        auto semanticNodes = panel.semantic_nodes(document, selection.current(), "test/tab/1/document/1");
+        const SemanticNode *selectedSemanticObject = nullptr;
+        bool hasHierarchyRoot = false;
+        for (const auto &node : semanticNodes)
+        {
+            hasHierarchyRoot |= node.id == "test/tab/1/document/1/hierarchy" &&
+                                node.name == "Hierarchy";
+            if (node.id == "test/tab/1/document/1/object/10")
+                selectedSemanticObject = &node;
+        }
+        require(hasHierarchyRoot && selectedSemanticObject != nullptr &&
+                    selectedSemanticObject->selected && selectedSemanticObject->focused &&
+                    selectedSemanticObject->bounds && selectedSemanticObject->bounds->width > 0.0 &&
+                    selectedSemanticObject->actions == std::vector<std::string>({"activate", "reveal"}),
+                "visible Hierarchy rows expose stable accessible identity, selection, focus, bounds and actions");
+        SemanticSnapshot semanticSnapshot;
+        semanticSnapshot.hostLayoutId = HostLayoutId{8};
+        semanticSnapshot.hostGeneration = WindowHostGeneration{1};
+        semanticSnapshot.revision = 1;
+        semanticSnapshot.nodes = semanticNodes;
+        AccessibilitySnapshots semanticStore;
+        std::string semanticError;
+        require(semanticStore.publish(std::move(semanticSnapshot), &semanticError),
+                "Hierarchy semantic parent references must form a valid immutable snapshot: " + semanticError);
+
+        const Json beforeAccessibleAction = document.root;
+        require(semanticStore.enqueue_action({HostLayoutId{8}, WindowHostGeneration{1}, 1, "test/tab/1/document/1/object/20", "activate", {}}),
+                "visible object activation must be accepted only from the published semantic snapshot");
+        bool accessibleActionHandled = false;
+        require(semanticStore.dispatch_pending(1,
+                                               [&](const SemanticAction &action, const SemanticNode &)
+                                               {
+                                                   accessibleActionHandled = panel.dispatch_semantic_action(
+                                                       document, selection, action, "test/tab/1/document/1", WindowHostGeneration{1});
+                                               }) == 1 &&
+                    accessibleActionHandled && selection.current().objectId == 20 &&
+                    selection.current().focusedHost == WindowHostGeneration{1} &&
+                    document.root == beforeAccessibleAction && commands.history_status().undoCommands == 0,
+                "validated Hierarchy activation selects on the owner thread without mutating authored data");
+
+        selection.set(document, Selection{10, std::nullopt, std::nullopt,
+                                          FocusedPanel::Hierarchy});
+        const Json beforeMouseSelection = document.root;
+        std::size_t clickedObjectRows = 0;
+        for (const auto &node : semanticNodes)
+        {
+            constexpr std::string_view objectPrefix = "test/tab/1/document/1/object/";
+            if (!node.id.starts_with(objectPrefix) || !node.bounds)
+                continue;
+            const int objectId = std::stoi(node.id.substr(objectPrefix.size()));
+            io.AddMousePosEvent(static_cast<float>(node.bounds->x + node.bounds->width * 0.5),
+                                static_cast<float>(node.bounds->y + node.bounds->height * 0.5));
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            draw();
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            draw();
+            require(selection.current().objectId == objectId && document.root == beforeMouseSelection &&
+                        commands.history_status().undoCommands == 0,
+                    "clicking each visible Hierarchy object must select it on release without deleting authored data");
+            ++clickedObjectRows;
+        }
+        require(clickedObjectRows >= 4,
+                "the Hierarchy click regression must exercise each visible fixture object row");
+
+        // ImGui key state by itself is not authoritative for destructive input;
+        // the application must pass the edge from SDL's physical keyboard event.
+        io.AddKeyEvent(ImGuiKey_Delete, true);
+        draw();
+        require(document.root == beforeMouseSelection &&
+                    commands.history_status().undoCommands == 0,
+                "an ImGui Delete state without an SDL keyboard event must not delete the selected object");
+        io.AddKeyEvent(ImGuiKey_Delete, false);
+        draw();
+        draw();
+
+        draw(true, true);
+        require(document.root == beforeMouseSelection &&
+                    commands.history_status().undoCommands == 0,
+                "a raw SDL mouse-button event must suppress Delete even if ImGui reports no active mouse press");
+
+        selection.set(document, Selection{10, std::nullopt, std::nullopt,
+                                          FocusedPanel::Hierarchy});
+        draw(true);
+        require(document.indexes.objectsById.contains(10) &&
+                    commands.history_status().undoCommands == 0,
+                "an SDL Delete edge without a current ImGui key edge must not delete the selection");
+        io.AddKeyEvent(ImGuiKey_Delete, true);
+        draw(true);
+        require(!document.indexes.objectsById.contains(10) && commands.history_status().undoCommands == 1,
+                "an explicit Delete key press must still delete the selected object in one history step");
+        io.AddKeyEvent(ImGuiKey_Delete, false);
+        draw();
+        selection.set(document, Selection{20, std::nullopt, std::nullopt,
+                                          FocusedPanel::Hierarchy});
+        const auto lastRowAfterDelete = draw();
+        const ImVec2 secondClickedRowCenter{
+            (lastRowAfterDelete.first.x + lastRowAfterDelete.second.x) * 0.5f,
+            (lastRowAfterDelete.first.y + lastRowAfterDelete.second.y) * 0.5f};
+        io.AddMousePosEvent(secondClickedRowCenter.x, secondClickedRowCenter.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        io.AddKeyEvent(ImGuiKey_Delete, true);
+        draw(true);
+        require(selection.current().objectId == 20 && document.indexes.objectsById.contains(20) &&
+                    commands.history_status().undoCommands == 1,
+                "a Delete key event coincident with a Hierarchy mouse press must not delete the previous selection");
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        io.AddKeyEvent(ImGuiKey_Delete, false);
+        draw();
+        require(selection.current().objectId == 40 && document.indexes.objectsById.contains(20) &&
+                    commands.history_status().undoCommands == 1,
+                "releasing the click after a suppressed Delete key must select object 40 without deleting object 20");
+
+        io.AddMousePosEvent(secondClickedRowCenter.x, secondClickedRowCenter.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        draw();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        draw(true);
+        require(selection.current().objectId == 40 && document.indexes.objectsById.contains(40) &&
+                    commands.history_status().undoCommands == 1,
+                "a Delete key event coincident with mouse release must not delete the clicked object");
+        draw();
+        ImGui::DestroyContext();
+    }
+
+    void selected_block_moves_preserve_order_and_are_atomic()
+    {
+        auto document = move_fixture();
+        const Json original = document.root;
+        EditCommandService commands;
+        SelectionModel selection;
+        selection.set_objects(document, {20, 40}, 40, 20);
+        const auto selected = selection.current();
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+        const auto originalStructureRevision = document.structureRevision;
+
+        const auto reordered = commands.move_objects(document, {20, 40}, std::nullopt, 4,
+                                                     {selected, selected});
+        require(reordered.status == CommandStatus::Changed && document.root[0]["id"] == 10 &&
+                    document.root[1]["id"] == 30 && document.root[2]["id"] == 20 &&
+                    document.root[3]["id"] == 40 &&
+                    document.structureRevision == originalStructureRevision + 1 &&
+                    commands.history_status().undoCommands == 1,
+                "selected roots must move as one ordered block and one structural history transaction");
+        const Json reorderedState = document.root;
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == original,
+                "Undo must restore every block member to its exact prior parent and sibling index");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root == reorderedState,
+                "Redo must preserve the selected block order exactly");
+        const auto noOp = commands.move_objects(document, {20, 40}, std::nullopt, 2,
+                                                {selected, selected});
+        require(noOp.status == CommandStatus::NoChange && document.root == reorderedState,
+                "dropping an already ordered selected block at its current index must be a no-op");
+
+        const Json beforeNestedBlock = document.root;
+        const auto nested = commands.move_objects(document, {10, 11, 30}, 20, 0,
+                                                  {selected, selected});
+        require(nested.status == CommandStatus::Changed && document.root[0]["id"] == 20 &&
+                    document.root[0]["children"].size() == 2 &&
+                    document.root[0]["children"][0]["id"] == 10 &&
+                    document.root[0]["children"][0]["position"]["x"] == 90.0 &&
+                    document.root[0]["children"][0]["position"]["y"] == 180.0 &&
+                    document.root[0]["children"][0]["children"][0]["id"] == 11 &&
+                    document.root[0]["children"][1]["id"] == 30 &&
+                    document.root[0]["children"][1]["position"]["x"] == -14.0 &&
+                    document.root[0]["children"][1]["position"]["y"] == -13.0,
+                "block normalization must omit selected descendants while retaining their subtree and block order");
+        const Json nestedState = document.root;
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == beforeNestedBlock,
+                "Undo must roll back all cross-parent block removals and insertions atomically");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root == nestedState,
+                "Redo must restore the exact cross-parent block and descendant payload");
+
+        const auto historyBeforeReject = commands.history_status();
+        const auto duplicate = commands.move_objects(document, {10, 10}, std::nullopt, 0,
+                                                     {selected, selected});
+        require(duplicate.status == CommandStatus::Rejected && document.root == nestedState &&
+                    commands.history_status().undoCommands == historyBeforeReject.undoCommands,
+                "duplicate block members must be rejected without changing content or retained history");
+        const auto invalid = commands.move_objects(document, {10, 30}, std::nullopt, 99,
+                                                   {selected, selected});
+        require(invalid.status == CommandStatus::Rejected && document.root == nestedState &&
+                    commands.history_status().undoCommands == historyBeforeReject.undoCommands,
+                "invalid block insertion must be rejected before any member is removed");
+    }
+
+    void selected_block_duplicate_and_delete_are_single_history_steps()
+    {
+        auto document = move_fixture();
+        document.root[0]["components"].push_back(Json{{"id", 50}, {"type", 2}, {"width", 320.0}, {"height", 200.0}});
+        ++document.structureRevision;
+        rebuild_document_indexes(document);
+        const Json original = document.root;
+        EditCommandService commands;
+        SelectionModel selection;
+        selection.set_objects(document, {10, 11, 30}, 11, 10);
+        const Selection before = selection.current();
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+
+        const auto duplicated = commands.duplicate_objects(document, {10, 11, 30}, {before, before});
+        require(duplicated.status == CommandStatus::Changed && duplicated.affectedObjectIds.size() == 2 &&
+                    document.root.size() == 6 && commands.history_status().undoCommands == 1 &&
+                    document.root[1]["name"] == "object-10 Copy" &&
+                    document.root[1]["children"].size() == 1 &&
+                    document.root[1]["children"][0]["id"] != 11 &&
+                    document.root[1]["children"][0]["unknownMovePayload"]["preserve"] == true &&
+                    document.root[1]["components"][0]["id"] != 50,
+                "duplicate must normalize selected descendants, remap the complete subtree, and commit once");
+        const Json duplicatedState = document.root;
+        selection.set_objects(document, duplicated.affectedObjectIds, duplicated.affectedObjectIds.back(),
+                              duplicated.affectedObjectIds.front());
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == original &&
+                    selection.current().objectId == 11 &&
+                    selection.current().selectedObjectIds == before.selectedObjectIds,
+                "Undo of a block duplicate must restore exact content and prior multi-selection");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root == duplicatedState &&
+                    selection.current().selectedObjectIds == duplicated.affectedObjectIds,
+                "Redo of a block duplicate must restore exact allocated identities and select the duplicates");
+
+        const Json beforeDelete = document.root;
+        selection.set(document, before);
+        const Selection deleteSelection = selection.current();
+        const auto deleted = commands.delete_objects(document, {10, 11, 30},
+                                                     {deleteSelection, deleteSelection});
+        require(deleted.status == CommandStatus::Changed && document.root.size() == 4 &&
+                    document.indexes.objectsById.contains(20) && document.indexes.objectsById.contains(40) &&
+                    !document.indexes.objectsById.contains(10) && !document.indexes.objectsById.contains(30) &&
+                    commands.history_status().undoCommands == 2,
+                "delete must normalize selected descendants and remove all roots as one transaction");
+        selection.repair(document);
+        const Selection afterDelete = selection.current();
+        commands.set_last_selection_state({deleteSelection, afterDelete});
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root == beforeDelete &&
+                    selection.current() == deleteSelection,
+                "Undo of a block delete must restore exact hierarchy and selection");
+        require(static_cast<bool>(commands.redo(document, selection)) && document.root.size() == 4,
+                "Redo of a block delete must remove the same selected roots in one step");
+    }
+
+    void asset_drop_hierarchy_instantiation_test()
+    {
+        auto document = move_fixture();
+        EditCommandService commands;
+        SelectionModel selection;
+
+        // 1. Drop sprite onto object 20 -> creates child with sprite component
+        const bool droppedSprite = instantiate_asset_drop(document, commands, selection, "sprites/player.png",
+                                                          EditorAssetKind::Image, 0.0f, 0.0f, 20);
+        require(droppedSprite, "instantiating sprite asset drop on object 20 must succeed");
+        require(selection.current().objectId.has_value(), "instantiating asset drop must select new child");
+        const int newChildId = *selection.current().objectId;
+        const auto parentFound = document.indexes.parentById.find(newChildId);
+        require(parentFound != document.indexes.parentById.end() && parentFound->second == 20,
+                "instantiated sprite object must be a child of object 20");
+
+        // 2. Drop script behavior onto object 40 -> attaches behavior to object 40
+        const bool droppedScript = instantiate_asset_drop(document, commands, selection, "scripts/Mover.cpp",
+                                                          EditorAssetKind::Script, 0.0f, 0.0f, 40);
+        require(droppedScript, "instantiating script asset drop on object 40 must attach behavior");
+        const auto loc40 = document.indexes.objectsById.find(40);
+        require(loc40 != document.indexes.objectsById.end(), "object 40 must exist");
+
+        // 3. Drop sprite onto background (no parent) -> creates root object
+        const bool droppedRoot = instantiate_asset_drop(document, commands, selection, "sprites/bg.png",
+                                                        EditorAssetKind::Image, 0.0f, 0.0f, std::nullopt);
+        require(droppedRoot, "instantiating sprite asset drop on root must succeed");
+        const int rootNewId = *selection.current().objectId;
+        const auto rootParent = document.indexes.parentById.find(rootNewId);
+        require(rootParent != document.indexes.parentById.end() && !rootParent->second.has_value(),
+                "root dropped object must not have a parent");
+    }
+
+    void export_and_between_object_template_drop_test()
+    {
+        require(sanitize_template_filename_stem("Ground A") == "Ground-A" &&
+                    sanitize_template_filename_stem("  Coin!! ") == "Coin" &&
+                    sanitize_template_filename_stem("!!!") == "GameObject",
+                "template filename sanitization must be consistent");
+
+        platformator_editor_test::TemporaryDirectory temp;
+        const auto projectRoot = temp.path() / "proj";
+        const auto assetRoot = projectRoot / "assets";
+        const auto tmplDir = assetRoot / "templates";
+        std::filesystem::create_directories(tmplDir);
+
+        auto document = move_fixture();
+        document.projectRoot = projectRoot;
+        document.assetRoot = assetRoot;
+        EditCommandService commands;
+        SelectionModel selection;
+        commands.set_property(
+            document,
+            address_for_document(document, 20, std::nullopt, std::nullopt, {std::string("name")}),
+            std::string("Ground A"));
+        const Json emptyCatalog{{"behaviors", Json::array()}};
+
+        const auto exported1 = export_object_as_template(document, 20, tmplDir, emptyCatalog);
+        require(exported1.succeeded && exported1.outputPath.filename() == "Ground-A.pttemplate" &&
+                    exported1.message == "Saved template Ground-A.pttemplate.",
+                "first unified template export must use sanitized object name");
+        const auto exported2 = export_object_as_template(document, 20, tmplDir, emptyCatalog);
+        require(exported2.succeeded && exported2.outputPath.filename() == "Ground-A-2.pttemplate" &&
+                    exported2.message == "Saved template Ground-A-2.pttemplate.",
+                "second unified template export must suffix -2");
+
+        // Drag placement helper: top edge -> before target row; expanded bottom edge -> first child;
+        // collapsed/leaf bottom edge -> after target row; script drops -> always Into.
+        const HierarchyRow parentRow{HierarchyRowKind::Object, 10, 0, "Root A", true, -1};
+        const HierarchyRow childRow{HierarchyRowKind::Object, 11, 1, "Child A1", false, 0};
+        const HierarchyRow secondRoot{HierarchyRowKind::Object, 20, 0, "Ground A", false, 2};
+
+        const auto beforeSecondRoot = resolve_hierarchy_drop_placement(
+            document, secondRoot, false, true, 100.0f, 120.0f, 102.0f);
+        require(beforeSecondRoot.zone == HierarchyDropPlacementZone::Before &&
+                    !beforeSecondRoot.destinationParent.has_value() &&
+                    beforeSecondRoot.destinationIndex == 1 &&
+                    beforeSecondRoot.indicatorDepth == 0,
+                "top 25% of root row 20 must insert at root index 1 before row 20");
+
+        const auto expandedAfterParent = resolve_hierarchy_drop_placement(
+            document, parentRow, true, true, 40.0f, 60.0f, 58.0f);
+        require(expandedAfterParent.zone == HierarchyDropPlacementZone::After &&
+                    expandedAfterParent.destinationParent == 10 &&
+                    expandedAfterParent.destinationIndex == 0 &&
+                    expandedAfterParent.indicatorDepth == 1,
+                "bottom 25% of expanded parent must insert as its first child between parent and children");
+
+        const auto collapsedAfterParent = resolve_hierarchy_drop_placement(
+            document, parentRow, false, true, 40.0f, 60.0f, 58.0f);
+        require(collapsedAfterParent.zone == HierarchyDropPlacementZone::After &&
+                    !collapsedAfterParent.destinationParent.has_value() &&
+                    collapsedAfterParent.destinationIndex == 1 &&
+                    collapsedAfterParent.indicatorDepth == 0,
+                "bottom 25% of collapsed parent must insert after parent at root index 1");
+
+        const auto afterChild = resolve_hierarchy_drop_placement(
+            document, childRow, false, true, 60.0f, 80.0f, 78.0f);
+        require(afterChild.zone == HierarchyDropPlacementZone::After &&
+                    afterChild.destinationParent == 10 &&
+                    afterChild.destinationIndex == 1 &&
+                    afterChild.indicatorDepth == 1,
+                "bottom 25% of leaf child must insert as next sibling under parent");
+
+        const auto scriptTopEdge = resolve_hierarchy_drop_placement(
+            document, secondRoot, false, false, 100.0f, 120.0f, 102.0f);
+        require(scriptTopEdge.zone == HierarchyDropPlacementZone::Into &&
+                    scriptTopEdge.destinationParent == 20,
+                "script drops must always attach Into the target object");
+
+        // Instantiate template between root object 10 and root object 20 (at root index 1).
+        const std::size_t rootsBefore = document.root.size();
+        require(instantiate_asset_drop(document, commands, selection,
+                                       "assets/templates/Ground-A.pttemplate",
+                                       EditorAssetKind::Template, 0.0f, 0.0f,
+                                       beforeSecondRoot.destinationParent,
+                                       beforeSecondRoot.destinationIndex),
+                "instantiating template between two root objects must succeed");
+        require(document.root.size() == rootsBefore + 1 &&
+                    document.root[0].value("id", -1) == 10 &&
+                    document.root[2].value("id", -1) == 20 &&
+                    is_template_instance_root(document.root[1]),
+                "between-object template drop must place linked template instance at exact root index 1");
+
+        // Instantiate template as first child between expanded parent 10 and its child 11.
+        const std::size_t childrenBefore = document.root[0]["children"].size();
+        require(instantiate_asset_drop(document, commands, selection,
+                                       "assets/templates/Ground-A.pttemplate",
+                                       EditorAssetKind::Template, 0.0f, 0.0f,
+                                       expandedAfterParent.destinationParent,
+                                       expandedAfterParent.destinationIndex),
+                "instantiating template before first child of expanded parent must succeed");
+        require(document.root[0]["children"].size() == childrenBefore + 1 &&
+                    is_template_instance_root(document.root[0]["children"][0]) &&
+                    document.root[0]["children"][1].value("id", -1) == 11,
+                "between-parent-and-child template drop must insert before existing first child");
+    }
+
+    void hierarchy_preset_creation_and_visibility_lock_toggling_test()
+    {
+        auto document = move_fixture();
+        EditCommandService commands;
+        SelectionModel selection;
+        std::vector<int> hiddenObjects;
+        std::vector<int> lockedObjects;
+        HierarchyPanel panel;
+
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {800.0f, 600.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+
+        const auto render = [&]()
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({300.0f, 600.0f}, ImGuiCond_Always);
+            panel.draw(document, selection, commands, true, &hiddenObjects, &lockedObjects);
+            ImGui::Render();
+        };
+
+        render();
+
+        // 1. Preset creation: Sprite preset (atomic with component)
+        const auto undoBeforeSprite = commands.history_status().undoCommands;
+        auto spriteObj = commands.create_object(document, std::nullopt, "Sprite",
+                                                std::numeric_limits<std::size_t>::max(), {},
+                                                Json::array({default_component_record(6)}));
+        require(spriteObj.status == CommandStatus::Changed && spriteObj.command, "create Sprite preset object must succeed");
+        require(commands.history_status().undoCommands == undoBeforeSprite + 1, "preset creation must take exactly 1 undo step");
+        const int spriteId = spriteObj.command->payload.value("id", 0);
+        require(document.indexes.objectsById.contains(spriteId), "Sprite preset object must exist");
+        const auto locSprite = document.indexes.objectsById.find(spriteId);
+        const Json *spriteJson = locSprite == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locSprite->second);
+        require(spriteJson != nullptr && has_component_type(*spriteJson, 6), "Sprite preset object must have component 6");
+
+        // Single undo removes preset object and component atomically
+        commands.undo(document, selection);
+        require(!document.indexes.objectsById.contains(spriteId), "single undo must remove preset object and its component");
+        commands.redo(document, selection);
+        require(document.indexes.objectsById.contains(spriteId), "single redo must restore preset object and its component");
+
+        // 2. Preset creation: Camera preset (atomic with component)
+        auto camObj = commands.create_object(document, std::nullopt, "Camera",
+                                             std::numeric_limits<std::size_t>::max(), {},
+                                             Json::array({default_component_record(2)}));
+        require(camObj.status == CommandStatus::Changed && camObj.command, "create Camera preset object must succeed");
+        const int camId = camObj.command->payload.value("id", 0);
+        const auto locCam = document.indexes.objectsById.find(camId);
+        const Json *camJson = locCam == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locCam->second);
+        require(camJson != nullptr && has_component_type(*camJson, 2), "Camera preset object must have component 2");
+
+        // 3. Preset creation: Audio preset (atomic with component)
+        auto audioObj = commands.create_object(document, std::nullopt, "Audio",
+                                               std::numeric_limits<std::size_t>::max(), {},
+                                               Json::array({default_component_record(1)}));
+        require(audioObj.status == CommandStatus::Changed && audioObj.command, "create Audio preset object must succeed");
+        const int audioId = audioObj.command->payload.value("id", 0);
+        const auto locAudio = document.indexes.objectsById.find(audioId);
+        const Json *audioJson = locAudio == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locAudio->second);
+        require(audioJson != nullptr && has_component_type(*audioJson, 1), "Audio preset object must have component 1");
+
+        // 4. Visibility toggling via set_editor_object_id_state
+        require(!std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must initially be visible");
+        set_editor_object_id_state(hiddenObjects, 10, true);
+        require(std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must now be hidden");
+        set_editor_object_id_state(hiddenObjects, 10, false);
+        require(!std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must be visible again");
+
+        // 5. Lock toggling via set_editor_object_id_state
+        require(!std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must initially be unlocked");
+        set_editor_object_id_state(lockedObjects, 20, true);
+        require(std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must now be locked");
+        set_editor_object_id_state(lockedObjects, 20, false);
+        require(!std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must be unlocked again");
+
+        render();
+
+        ImGui::DestroyContext();
+    }
+
+    void hierarchy_scroll_stability_on_template_add_test()
+    {
+        platformator_editor_test::TemporaryDirectory temp;
+        const auto projectRoot = temp.path() / "proj";
+        const auto assetRoot = projectRoot / "assets";
+        const auto tmplDir = assetRoot / "templates";
+        std::filesystem::create_directories(tmplDir);
+
+        DocumentSession document = make_default_document();
+        document.projectRoot = projectRoot;
+        document.assetRoot = assetRoot;
+        document.root = Json::array();
+        for (int id = 1; id <= 30; ++id)
+            document.root.push_back(object(id, static_cast<double>(id), 0.0));
+        ++document.structureRevision;
+        rebuild_document_indexes(document);
+
+        EditCommandService commands;
+        SelectionModel selection;
+        const Json emptyCatalog{{"behaviors", Json::array()}};
+        const auto exported = export_object_as_template(document, 1, tmplDir, emptyCatalog);
+        require(exported.succeeded, "fixture template export for scroll test must succeed");
+
+        HierarchyPanel panel;
+        std::vector<int> hiddenObjects;
+        std::vector<int> lockedObjects;
+
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {400.0f, 260.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+
+        const auto render = [&](bool injectExternPayload = false)
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({300.0f, 240.0f}, ImGuiCond_Always);
+            if (ImGui::Begin("Hierarchy"))
+            {
+                panel.draw(document, selection, commands, true, &hiddenObjects, &lockedObjects);
+            }
+            ImGui::End();
+            if (injectExternPayload && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))
+            {
+                AssetDragPayload payload{};
+                std::snprintf(payload.relativeAssetPath, sizeof(payload.relativeAssetPath), "%s",
+                              "assets/templates/object-1.pttemplate");
+                payload.kind = EditorAssetKind::Template;
+                ImGui::SetDragDropPayload("PLATFORMATOR_ASSET_PATH", &payload, sizeof(payload));
+                ImGui::EndDragDropSource();
+            }
+            ImGui::Render();
+        };
+
+        const auto find_rows_window = [](ImGuiWindow *outer) -> ImGuiWindow *
+        {
+            if (outer == nullptr)
+                return nullptr;
+            for (ImGuiWindow *child : outer->DC.ChildWindows)
+            {
+                if (child != nullptr && std::string_view(child->Name).find("HierarchyRows") != std::string_view::npos)
+                    return child;
+            }
+            return nullptr;
+        };
+
+        render();
+        render();
+        ImGuiWindow *outerWindow = ImGui::FindWindowByName("Hierarchy");
+        ImGuiWindow *rowsWindow = find_rows_window(outerWindow);
+        require(outerWindow != nullptr && rowsWindow != nullptr,
+                "Hierarchy and HierarchyRows windows must exist");
+        require(outerWindow->ScrollMax.y == 0.0f && rowsWindow->ScrollMax.y > 120.0f,
+                "HierarchyRows must scroll while outer Hierarchy stays non-scrollable");
+
+        // 1. Drop a template via ImGui drag-drop onto a middle visible row while scrolled down.
+        const float scrolledY = 100.0f;
+        ImGui::SetScrollY(rowsWindow, scrolledY);
+        render();
+        require(std::fabs(rowsWindow->Scroll.y - scrolledY) < 1.0f,
+                "initial scroll position must apply cleanly");
+
+        std::optional<SemanticBounds> middleRowBounds;
+        const auto semanticNodes = panel.semantic_nodes(document, selection.current(), "test/tab/1/document/1");
+        for (const auto &node : semanticNodes)
+        {
+            if (node.id.find("/object/") != std::string::npos && node.bounds &&
+                node.bounds->height > 0.0 &&
+                node.bounds->y > static_cast<double>(rowsWindow->InnerRect.Min.y) + 40.0 &&
+                node.bounds->y + node.bounds->height < static_cast<double>(rowsWindow->InnerRect.Max.y) - 40.0)
+            {
+                middleRowBounds = node.bounds;
                 break;
             }
         }
-        ImGui::End();
-        ImGui::Render();
-        return std::pair{rowMinimum, rowMaximum};
-    };
+        require(middleRowBounds.has_value(), "must find a middle visible Hierarchy row to drop onto");
 
-    draw();
-    require(document.indexes.objectsById.contains(10) && commands.history_status().undoCommands == 0,
-            "a focused Hierarchy selection with no Delete key press must remain intact across a frame");
-    auto semanticNodes = panel.semantic_nodes(document, selection.current(), "test/tab/1/document/1");
-    const SemanticNode *selectedSemanticObject = nullptr;
-    bool hasHierarchyRoot = false;
-    for (const auto &node : semanticNodes)
-    {
-        hasHierarchyRoot |= node.id == "test/tab/1/document/1/hierarchy" &&
-                            node.name == "Hierarchy";
-        if (node.id == "test/tab/1/document/1/object/10")
-            selectedSemanticObject = &node;
+        const float dropX = static_cast<float>(middleRowBounds->x + middleRowBounds->width * 0.5);
+        const float dropY = static_cast<float>(middleRowBounds->y + middleRowBounds->height * 0.1); // Before zone
+        io.AddMousePosEvent(dropX, dropY);
+        io.AddMouseButtonEvent(0, true);
+        render(true);
+        // Keep external drag payload alive while releasing mouse over the target row.
+        io.AddMouseButtonEvent(0, false);
+        render(true);
+        // Run subsequent frames (including post-selection reveal evaluation).
+        render(false);
+        render(false);
+
+        require(document.root.size() == 31,
+                "drag-dropping template onto a visible Hierarchy row must insert it into the scene");
+        require(std::fabs(rowsWindow->Scroll.y - scrolledY) < 1.0f,
+                "dropping a template onto a visible Hierarchy row must not reset or jump HierarchyRows scroll");
+        require(outerWindow->ScrollMax.y == 0.0f && outerWindow->Scroll.y == 0.0f,
+                "dropping a template mid-clipper must not make the outer Hierarchy window scrollable");
+
+        // 2. Append a template off-screen at the bottom while scrolled at the top:
+        // scroll advances minimally to bring it into view, rather than jumping it to the top.
+        ImGui::SetScrollY(rowsWindow, 0.0f);
+        render();
+        require(instantiate_asset_drop(document, commands, selection,
+                                       "assets/templates/object-1.pttemplate",
+                                       EditorAssetKind::Template, 0.0f, 0.0f,
+                                       std::nullopt, std::numeric_limits<std::size_t>::max()),
+                "appending template at bottom of Hierarchy must succeed");
+        render();
+        render();
+        render();
+        const float rowStride = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+        const float expectedMinScroll = std::max(0.0f, rowsWindow->ScrollMax.y - rowStride * 2.0f);
+        require(rowsWindow->Scroll.y >= expectedMinScroll &&
+                    rowsWindow->Scroll.y <= rowsWindow->ScrollMax.y + 0.5f,
+                "revealing an off-screen bottom template must scroll cleanly to show it at the bottom");
+        require(outerWindow->ScrollMax.y == 0.0f,
+                "outer Hierarchy window must remain non-scrollable after bottom reveal");
+
+        ImGui::DestroyContext();
     }
-    require(hasHierarchyRoot && selectedSemanticObject != nullptr &&
-                selectedSemanticObject->selected && selectedSemanticObject->focused &&
-                selectedSemanticObject->bounds && selectedSemanticObject->bounds->width > 0.0 &&
-                selectedSemanticObject->actions == std::vector<std::string>({"activate", "reveal"}),
-            "visible Hierarchy rows expose stable accessible identity, selection, focus, bounds and actions");
-    SemanticSnapshot semanticSnapshot;
-    semanticSnapshot.hostLayoutId = HostLayoutId{8};
-    semanticSnapshot.hostGeneration = WindowHostGeneration{1};
-    semanticSnapshot.revision = 1;
-    semanticSnapshot.nodes = semanticNodes;
-    AccessibilitySnapshots semanticStore;
-    std::string semanticError;
-    require(semanticStore.publish(std::move(semanticSnapshot), &semanticError),
-            "Hierarchy semantic parent references must form a valid immutable snapshot: " + semanticError);
 
-    const Json beforeAccessibleAction = document.root;
-    require(semanticStore.enqueue_action({HostLayoutId{8}, WindowHostGeneration{1}, 1,
-                "test/tab/1/document/1/object/20", "activate", {}}),
-            "visible object activation must be accepted only from the published semantic snapshot");
-    bool accessibleActionHandled = false;
-    require(semanticStore.dispatch_pending(1,
-                [&](const SemanticAction &action, const SemanticNode &) {
-                    accessibleActionHandled = panel.dispatch_semantic_action(
-                        document, selection, action, "test/tab/1/document/1", WindowHostGeneration{1});
-                }) == 1 && accessibleActionHandled && selection.current().objectId == 20 &&
-                selection.current().focusedHost == WindowHostGeneration{1} &&
-                document.root == beforeAccessibleAction && commands.history_status().undoCommands == 0,
-            "validated Hierarchy activation selects on the owner thread without mutating authored data");
-
-    selection.set(document, Selection{10, std::nullopt, std::nullopt,
-                                      FocusedPanel::Hierarchy});
-    const Json beforeMouseSelection = document.root;
-    std::size_t clickedObjectRows = 0;
-    for (const auto &node : semanticNodes)
+    void hierarchy_copy_paste_shortcuts_and_commands_test()
     {
-        constexpr std::string_view objectPrefix = "test/tab/1/document/1/object/";
-        if (!node.id.starts_with(objectPrefix) || !node.bounds)
-            continue;
-        const int objectId = std::stoi(node.id.substr(objectPrefix.size()));
-        io.AddMousePosEvent(static_cast<float>(node.bounds->x + node.bounds->width * 0.5),
-                            static_cast<float>(node.bounds->y + node.bounds->height * 0.5));
-        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-        draw();
-        require(selection.current().objectId == objectId && document.root == beforeMouseSelection &&
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {640.0f, 720.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+
+        auto document = move_fixture();
+        document.root[0]["components"].push_back(Json{{"id", 50}, {"type", 2}, {"width", 320.0}, {"height", 200.0}});
+        ++document.structureRevision;
+        rebuild_document_indexes(document);
+        const Json original = document.root;
+        EditCommandService commands;
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+        SelectionModel selection;
+        HierarchyPanel hierarchy;
+
+        selection.set_objects(document, {10, 11, 30}, 11, 10);
+        {
+            Selection focused = selection.current();
+            focused.focusedPanel = FocusedPanel::Hierarchy;
+            selection.set(document, std::move(focused));
+        }
+
+        const auto render = [&]()
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({320.0f, 500.0f}, ImGuiCond_Always);
+            ImGui::Begin("Hierarchy###panel.hierarchy");
+            hierarchy.draw(document, selection, commands, true);
+            ImGui::End();
+            ImGui::Render();
+        };
+
+        render();
+
+        // Ctrl+C copies normalized top-level roots {10 (with child 11), 30} without mutating history.
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        io.AddKeyEvent(ImGuiKey_C, true);
+        render();
+        io.AddKeyEvent(ImGuiKey_C, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        render();
+        require(document.root == original && commands.history_status().undoCommands == 0,
+                "Ctrl+C in Hierarchy must snapshot clipboard without modifying the document or Undo stack");
+
+        // Select object 20 (root index 1) and press Ctrl+V to paste right after it.
+        selection.set(document, Selection{20, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+        render();
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        io.AddKeyEvent(ImGuiKey_V, true);
+        render();
+        io.AddKeyEvent(ImGuiKey_V, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        render();
+        require(document.root.size() == 6 && commands.history_status().undoCommands == 1 &&
+                    document.root.at(2).at("name") == "object-10 Copy" &&
+                    document.root.at(3).at("name") == "object-30 Copy" &&
+                    document.root.at(2).at("id") != 10 &&
+                    document.root.at(2).at("children").size() == 1 &&
+                    document.root.at(2).at("children").at(0).at("id") != 11 &&
+                    document.root.at(2).at("children").at(0).at("unknownMovePayload").at("preserve") == true &&
+                    document.root.at(2).at("components").size() == 1 &&
+                    document.root.at(2).at("components").at(0).at("id") != 50 &&
+                    selection.current().selectedObjectIds.size() == 2,
+                "Ctrl+V in Hierarchy must paste copied subtrees after the selected object with fresh IDs and one Undo step");
+        const int firstPasted10 = document.root.at(2).at("id").get<int>();
+        const int firstPasted30 = document.root.at(3).at("id").get<int>();
+        require(selection.current().selectedObjectIds == std::vector<int>({firstPasted10, firstPasted30}),
+                "pasting must select the newly pasted root objects");
+
+        // Pressing Ctrl+V a second time must increment Copy suffixes and paste after the new selection.
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        io.AddKeyEvent(ImGuiKey_V, true);
+        render();
+        io.AddKeyEvent(ImGuiKey_V, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        render();
+        require(document.root.size() == 8 && commands.history_status().undoCommands == 2 &&
+                    document.root.at(4).at("name") == "object-10 Copy 2" &&
+                    document.root.at(5).at("name") == "object-30 Copy 2",
+                "repeated Ctrl+V must disambiguate pasted sibling names cleanly");
+
+        // Ctrl+V when Hierarchy is not the focused panel must be ignored.
+        {
+            Selection unfocused = selection.current();
+            unfocused.focusedPanel = FocusedPanel::Inspector;
+            selection.set(document, std::move(unfocused));
+        }
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        io.AddKeyEvent(ImGuiKey_V, true);
+        render();
+        io.AddKeyEvent(ImGuiKey_V, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        render();
+        require(document.root.size() == 8 && commands.history_status().undoCommands == 2,
+                "Ctrl+V must not paste into Hierarchy when another panel owns focus");
+
+        // Two Undos revert back to original fixture cleanly.
+        require(static_cast<bool>(commands.undo(document, selection)) && document.root.size() == 6 &&
+                    static_cast<bool>(commands.undo(document, selection)) && document.root == original,
+                "Undoing pasted batches must restore original Hierarchy in one step per paste");
+
+        // Deleting source object 10 and pasting must keep working from clipboard and keep base name when unused.
+        require(static_cast<bool>(commands.delete_object(document, 10)),
+                "deleting source object before paste must succeed");
+        selection.repair(document);
+        render();
+        const auto pastedAfterDelete = commands.paste_objects(
+            document, {original.at(0)}, std::nullopt, document.root.size());
+        require(pastedAfterDelete.status == CommandStatus::Changed &&
+                    document.root.back().at("name") == "object-10" &&
+                    document.root.back().at("id") != 10,
+                "paste must preserve the base name when no destination sibling shares it and assign fresh IDs");
+
+        // Pasting into an empty document assigns valid ID 0 without rejecting.
+        DocumentSession emptyDoc = make_default_document();
+        emptyDoc.root = Json::array();
+        ++emptyDoc.structureRevision;
+        rebuild_document_indexes(emptyDoc);
+        EditCommandService emptyCommands;
+        emptyCommands.reset_history(emptyDoc.documentGeneration);
+        const auto pastedIntoEmpty = emptyCommands.paste_objects(emptyDoc, {original.at(2)}, std::nullopt, 0);
+        require(pastedIntoEmpty.status == CommandStatus::Changed &&
+                    emptyDoc.root.size() == 1 &&
+                    emptyDoc.root.at(0).at("id") == 0 &&
+                    emptyDoc.root.at(0).at("name") == "object-30",
+                "pasting into an empty document must succeed cleanly");
+
+        ImGui::DestroyContext();
+    }
+
+    void scene_copy_paste_behavior_test()
+    {
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {640.0f, 720.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+
+        auto document = move_fixture();
+        const Json original = document.root;
+        EditCommandService commands;
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+        SelectionModel selection;
+        HierarchyPanel hierarchy;
+
+        selection.set(document, Selection{10, std::nullopt, std::nullopt, FocusedPanel::Scene});
+        require(hierarchy.copy_selection(document, selection.current()),
+                "copying Scene selection must succeed");
+        require(hierarchy.has_clipboard() && document.root == original &&
                     commands.history_status().undoCommands == 0,
-                "clicking each visible Hierarchy object must select it without deleting authored data");
-        ++clickedObjectRows;
+                "Scene Ctrl+C equivalent must snapshot clipboard without mutating document or Undo stack");
+
+        selection.set(document, Selection{20, std::nullopt, std::nullopt, FocusedPanel::Scene});
+        require(!hierarchy.paste_selection(document, selection, commands, nullptr, false,
+                                           selection.current().objectId, false) &&
+                    document.root == original,
+                "Scene paste must do nothing while editing is locked");
+
+        require(hierarchy.paste_selection(document, selection, commands, nullptr, true,
+                                          selection.current().objectId, false),
+                "Scene paste must insert copy after the selected anchor");
+        require(document.root.size() == 5 &&
+                    document.root.at(2).at("name") == "object-10 Copy" &&
+                    document.root.at(2).at("id") != 10 &&
+                    selection.current().focusedPanel == FocusedPanel::Scene &&
+                    selection.current().objectId == document.root.at(2).at("id").get<int>(),
+                "Scene paste must keep Scene focus, assign fresh ID, and select the pasted object");
+
+        // Repeated Scene paste uses the new selection as anchor and disambiguates sibling names.
+        require(hierarchy.paste_selection(document, selection, commands, nullptr, true,
+                                          selection.current().objectId, false),
+                "repeated Scene paste must succeed");
+        require(document.root.size() == 6 &&
+                    document.root.at(3).at("name") == "object-10 Copy 2" &&
+                    selection.current().focusedPanel == FocusedPanel::Scene,
+                "repeated Scene paste must disambiguate Copy suffix and preserve Scene focus");
+
+        // Switching to Hierarchy and pressing Ctrl+V reuses the exact same clipboard.
+        {
+            Selection focused = selection.current();
+            focused.focusedPanel = FocusedPanel::Hierarchy;
+            selection.set(document, std::move(focused));
+        }
+        const auto renderHierarchy = [&]()
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({320.0f, 500.0f}, ImGuiCond_Always);
+            ImGui::Begin("Hierarchy###panel.hierarchy");
+            hierarchy.draw(document, selection, commands, true);
+            ImGui::End();
+            ImGui::Render();
+        };
+        renderHierarchy();
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        io.AddKeyEvent(ImGuiKey_V, true);
+        renderHierarchy();
+        io.AddKeyEvent(ImGuiKey_V, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        renderHierarchy();
+        require(document.root.size() == 7 &&
+                    document.root.at(4).at("name") == "object-10 Copy 3" &&
+                    commands.history_status().undoCommands == 3,
+                "Hierarchy Ctrl+V must share clipboard with Scene copy");
+
+        ImGui::DestroyContext();
+    }
+
+    void export_template_links_object_and_context_rename_test()
+    {
+        platformator_editor_test::TemporaryDirectory temp;
+        const auto projectRoot = temp.path() / "proj";
+        const auto assetRoot = projectRoot / "assets";
+        const auto tmplDir = assetRoot / "templates";
+        std::filesystem::create_directories(tmplDir);
+
+        auto document = move_fixture();
+        document.projectRoot = projectRoot;
+        document.assetRoot = assetRoot;
+        document.root[0]["components"].push_back(Json{{"id", 50}, {"type", 6}, {"textureFilePath", "assets/coin.png"}});
+        ++document.structureRevision;
+        rebuild_document_indexes(document);
+        EditCommandService commands;
+        commands.reset_history(document.documentGeneration);
+        commands.mark_saved();
+        SelectionModel selection;
+        const Json emptyCatalog{{"behaviors", Json::array()}};
+
+        const auto exported = export_object_as_template(document, commands, 10, tmplDir, emptyCatalog);
+        require(exported.succeeded && exported.outputPath.filename() == "object-10.pttemplate",
+                "command-backed template export must write .pttemplate file");
+        const Json &linkedRoot = document.root.at(0);
+        require(is_template_instance_root(linkedRoot) &&
+                    linkedRoot.value("template", std::string{}) == "templates/object-10.pttemplate" &&
+                    linkedRoot.value("templateNodeId", -1) == 10 &&
+                    !linkedRoot.contains("overrides") &&
+                    linkedRoot.at("components").at(0).value("templateComponentId", -1) == 50 &&
+                    linkedRoot.at("children").at(0).value("templateNodeId", -1) == 11 &&
+                    find_template_instance_root(document, 11) == 10,
+                "creating a template from an object must immediately link that object and its subtree as an instance");
+
+        // Moving the newly linked template instance marks an override and Revert restores saved position.
+        commands.set_property(
+            document,
+            address_for_document(document, 10, std::nullopt, std::nullopt,
+                                 {std::string("position"), std::string("x")}),
+            250.0);
+        require(is_property_overridden(document.root.at(0), "position.x"),
+                "editing an exported template instance must track overrides");
+        std::string revertError;
+        require(revert_template_instance(document, commands, 10, assetRoot, revertError) &&
+                    document.root.at(0).at("position").at("x") == 100.0 &&
+                    !is_property_overridden(document.root.at(0), "position.x"),
+                "reverting newly linked template instance must restore exported template values");
+
+        // Hierarchy right-click "Object actions" popup must offer Rename and rename the right-clicked row.
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {640.0f, 720.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
+
+        HierarchyPanel hierarchy;
+        selection.set(document, Selection{10, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+        const auto render = [&]()
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({320.0f, 500.0f}, ImGuiCond_Always);
+            ImGui::Begin("Hierarchy###panel.hierarchy");
+            hierarchy.draw(document, selection, commands, true);
+            ImGui::End();
+            ImGui::Render();
+        };
+        render();
+
+        const auto nodes = hierarchy.semantic_nodes(document, selection.current(), "hierarchy");
+        std::optional<SemanticBounds> row20Bounds;
+        for (const auto &node : nodes)
+            if (node.name.find("object-20") != std::string::npos)
+                row20Bounds = node.bounds;
+        require(row20Bounds.has_value(), "object-20 semantic row bounds must exist");
+
+        // Right-click object 20 (while object 10 is selected) to open Object actions popup.
+        io.AddMousePosEvent(row20Bounds->x + 40.0f, row20Bounds->y + row20Bounds->height * 0.5f);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        render();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        render();
+        render();
+
+        bool foundPopup = false;
+        ImVec2 renameClickPos{};
+        for (ImGuiWindow *window : ImGui::GetCurrentContext()->Windows)
+        {
+            if (window != nullptr && window->Active &&
+                (window->Flags & ImGuiWindowFlags_Popup) != 0)
+            {
+                foundPopup = true;
+                const ImGuiStyle &style = ImGui::GetStyle();
+                const float innerHeight = std::max(1.0f, window->Size.y - style.WindowPadding.y * 2.0f);
+                renameClickPos = ImVec2(
+                    window->Pos.x + window->Size.x * 0.5f,
+                    window->Pos.y + style.WindowPadding.y + innerHeight * (2.5f / 9.0f));
+                break;
+            }
+        }
+        require(foundPopup, "right-clicking object row must open Object actions context menu");
+
+        io.AddMousePosEvent(renameClickPos.x, renameClickPos.y);
+        render();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        render();
         io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
-        draw();
+        render();
+        require(selection.current().objectId == 20,
+                "clicking Rename in right-click menu must select the right-clicked object");
+
+        render();
+        io.AddInputCharactersUTF8("RenamedViaMenu");
+        render();
+        io.AddKeyEvent(ImGuiKey_Enter, true);
+        render();
+        io.AddKeyEvent(ImGuiKey_Enter, false);
+        render();
+        require(document.root.at(1).at("name") == "RenamedViaMenu",
+                "Rename context menu item must start inline rename and commit the new name (actual=" +
+                    document.root.at(1).value("name", std::string{}) + ")");
+
+        ImGui::DestroyContext();
     }
-    require(clickedObjectRows >= 4,
-            "the Hierarchy click regression must exercise each visible fixture object row");
 
-    // ImGui key state by itself is not authoritative for destructive input;
-    // the application must pass the edge from SDL's physical keyboard event.
-    io.AddKeyEvent(ImGuiKey_Delete, true);
-    draw();
-    require(document.root == beforeMouseSelection &&
-                commands.history_status().undoCommands == 0,
-            "an ImGui Delete state without an SDL keyboard event must not delete the selected object");
-    io.AddKeyEvent(ImGuiKey_Delete, false);
-    draw();
-    draw();
-
-    draw(true, true);
-    require(document.root == beforeMouseSelection &&
-                commands.history_status().undoCommands == 0,
-            "a raw SDL mouse-button event must suppress Delete even if ImGui reports no active mouse press");
-
-    selection.set(document, Selection{10, std::nullopt, std::nullopt,
-                                      FocusedPanel::Hierarchy});
-    draw(true);
-    require(document.indexes.objectsById.contains(10) &&
-                commands.history_status().undoCommands == 0,
-            "an SDL Delete edge without a current ImGui key edge must not delete the selection");
-    io.AddKeyEvent(ImGuiKey_Delete, true);
-    draw(true);
-    require(!document.indexes.objectsById.contains(10) && commands.history_status().undoCommands == 1,
-            "an explicit Delete key press must still delete the selected object in one history step");
-    io.AddKeyEvent(ImGuiKey_Delete, false);
-    draw();
-    selection.set(document, Selection{20, std::nullopt, std::nullopt,
-                                      FocusedPanel::Hierarchy});
-    const auto lastRowAfterDelete = draw();
-    const ImVec2 secondClickedRowCenter{
-        (lastRowAfterDelete.first.x + lastRowAfterDelete.second.x) * 0.5f,
-        (lastRowAfterDelete.first.y + lastRowAfterDelete.second.y) * 0.5f};
-    io.AddMousePosEvent(secondClickedRowCenter.x, secondClickedRowCenter.y);
-    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-    io.AddKeyEvent(ImGuiKey_Delete, true);
-    draw(true);
-    require(selection.current().objectId == 40 && document.indexes.objectsById.contains(20) &&
-                commands.history_status().undoCommands == 1,
-            "a Delete key event coincident with a Hierarchy click must not delete the previous selection");
-    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
-    io.AddKeyEvent(ImGuiKey_Delete, false);
-    draw();
-
-    io.AddMousePosEvent(secondClickedRowCenter.x, secondClickedRowCenter.y);
-    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-    draw();
-    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
-    draw(true);
-    require(selection.current().objectId == 40 && document.indexes.objectsById.contains(40) &&
-                commands.history_status().undoCommands == 1,
-            "a Delete key event coincident with mouse release must not delete the clicked object");
-    draw();
-    ImGui::DestroyContext();
-}
-
-void selected_block_moves_preserve_order_and_are_atomic()
-{
-    auto document = move_fixture();
-    const Json original = document.root;
-    EditCommandService commands;
-    SelectionModel selection;
-    selection.set_objects(document, {20, 40}, 40, 20);
-    const auto selected = selection.current();
-    commands.reset_history(document.documentGeneration);
-    commands.mark_saved();
-    const auto originalStructureRevision = document.structureRevision;
-
-    const auto reordered = commands.move_objects(document, {20, 40}, std::nullopt, 4,
-                                                  {selected, selected});
-    require(reordered.status == CommandStatus::Changed && document.root[0]["id"] == 10 &&
-                document.root[1]["id"] == 30 && document.root[2]["id"] == 20 &&
-                document.root[3]["id"] == 40 &&
-                document.structureRevision == originalStructureRevision + 1 &&
-                commands.history_status().undoCommands == 1,
-            "selected roots must move as one ordered block and one structural history transaction");
-    const Json reorderedState = document.root;
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == original,
-            "Undo must restore every block member to its exact prior parent and sibling index");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root == reorderedState,
-            "Redo must preserve the selected block order exactly");
-    const auto noOp = commands.move_objects(document, {20, 40}, std::nullopt, 2,
-                                             {selected, selected});
-    require(noOp.status == CommandStatus::NoChange && document.root == reorderedState,
-            "dropping an already ordered selected block at its current index must be a no-op");
-
-    const Json beforeNestedBlock = document.root;
-    const auto nested = commands.move_objects(document, {10, 11, 30}, 20, 0,
-                                               {selected, selected});
-    require(nested.status == CommandStatus::Changed && document.root[0]["id"] == 20 &&
-                document.root[0]["children"].size() == 2 &&
-                document.root[0]["children"][0]["id"] == 10 &&
-                document.root[0]["children"][0]["position"]["x"] == 90.0 &&
-                document.root[0]["children"][0]["position"]["y"] == 180.0 &&
-                document.root[0]["children"][0]["children"][0]["id"] == 11 &&
-                document.root[0]["children"][1]["id"] == 30 &&
-                document.root[0]["children"][1]["position"]["x"] == -14.0 &&
-                document.root[0]["children"][1]["position"]["y"] == -13.0,
-            "block normalization must omit selected descendants while retaining their subtree and block order");
-    const Json nestedState = document.root;
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == beforeNestedBlock,
-            "Undo must roll back all cross-parent block removals and insertions atomically");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root == nestedState,
-            "Redo must restore the exact cross-parent block and descendant payload");
-
-    const auto historyBeforeReject = commands.history_status();
-    const auto duplicate = commands.move_objects(document, {10, 10}, std::nullopt, 0,
-                                                  {selected, selected});
-    require(duplicate.status == CommandStatus::Rejected && document.root == nestedState &&
-                commands.history_status().undoCommands == historyBeforeReject.undoCommands,
-            "duplicate block members must be rejected without changing content or retained history");
-    const auto invalid = commands.move_objects(document, {10, 30}, std::nullopt, 99,
-                                                {selected, selected});
-    require(invalid.status == CommandStatus::Rejected && document.root == nestedState &&
-                commands.history_status().undoCommands == historyBeforeReject.undoCommands,
-            "invalid block insertion must be rejected before any member is removed");
-}
-
-void selected_block_duplicate_and_delete_are_single_history_steps()
-{
-    auto document = move_fixture();
-    document.root[0]["components"].push_back(Json{{"id", 50}, {"type", 2},
-        {"width", 320.0}, {"height", 200.0}});
-    ++document.structureRevision;
-    rebuild_document_indexes(document);
-    const Json original = document.root;
-    EditCommandService commands;
-    SelectionModel selection;
-    selection.set_objects(document, {10, 11, 30}, 11, 10);
-    const Selection before = selection.current();
-    commands.reset_history(document.documentGeneration);
-    commands.mark_saved();
-
-    const auto duplicated = commands.duplicate_objects(document, {10, 11, 30}, {before, before});
-    require(duplicated.status == CommandStatus::Changed && duplicated.affectedObjectIds.size() == 2 &&
-                document.root.size() == 6 && commands.history_status().undoCommands == 1 &&
-                document.root[1]["name"] == "object-10 Copy" &&
-                document.root[1]["children"].size() == 1 &&
-                document.root[1]["children"][0]["id"] != 11 &&
-                document.root[1]["children"][0]["unknownMovePayload"]["preserve"] == true &&
-                document.root[1]["components"][0]["id"] != 50,
-            "duplicate must normalize selected descendants, remap the complete subtree, and commit once");
-    const Json duplicatedState = document.root;
-    selection.set_objects(document, duplicated.affectedObjectIds, duplicated.affectedObjectIds.back(),
-                          duplicated.affectedObjectIds.front());
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == original &&
-                selection.current().objectId == 11 &&
-                selection.current().selectedObjectIds == before.selectedObjectIds,
-            "Undo of a block duplicate must restore exact content and prior multi-selection");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root == duplicatedState &&
-                selection.current().selectedObjectIds == duplicated.affectedObjectIds,
-            "Redo of a block duplicate must restore exact allocated identities and select the duplicates");
-
-    const Json beforeDelete = document.root;
-    selection.set(document, before);
-    const Selection deleteSelection = selection.current();
-    const auto deleted = commands.delete_objects(document, {10, 11, 30},
-                                                  {deleteSelection, deleteSelection});
-    require(deleted.status == CommandStatus::Changed && document.root.size() == 4 &&
-                document.indexes.objectsById.contains(20) && document.indexes.objectsById.contains(40) &&
-                !document.indexes.objectsById.contains(10) && !document.indexes.objectsById.contains(30) &&
-                commands.history_status().undoCommands == 2,
-            "delete must normalize selected descendants and remove all roots as one transaction");
-    selection.repair(document);
-    const Selection afterDelete = selection.current();
-    commands.set_last_selection_state({deleteSelection, afterDelete});
-    require(static_cast<bool>(commands.undo(document, selection)) && document.root == beforeDelete &&
-                selection.current() == deleteSelection,
-            "Undo of a block delete must restore exact hierarchy and selection");
-    require(static_cast<bool>(commands.redo(document, selection)) && document.root.size() == 4,
-            "Redo of a block delete must remove the same selected roots in one step");
-}
-
-void asset_drop_hierarchy_instantiation_test()
-{
-    auto document = move_fixture();
-    EditCommandService commands;
-    SelectionModel selection;
-
-    // 1. Drop sprite onto object 20 -> creates child with sprite component
-    const bool droppedSprite = instantiate_asset_drop(document, commands, selection, "sprites/player.png",
-                                                     EditorAssetKind::Image, 0.0f, 0.0f, 20);
-    require(droppedSprite, "instantiating sprite asset drop on object 20 must succeed");
-    require(selection.current().objectId.has_value(), "instantiating asset drop must select new child");
-    const int newChildId = *selection.current().objectId;
-    const auto parentFound = document.indexes.parentById.find(newChildId);
-    require(parentFound != document.indexes.parentById.end() && parentFound->second == 20,
-            "instantiated sprite object must be a child of object 20");
-
-    // 2. Drop script behavior onto object 40 -> attaches behavior to object 40
-    const bool droppedScript = instantiate_asset_drop(document, commands, selection, "scripts/Mover.cpp",
-                                                     EditorAssetKind::Script, 0.0f, 0.0f, 40);
-    require(droppedScript, "instantiating script asset drop on object 40 must attach behavior");
-    const auto loc40 = document.indexes.objectsById.find(40);
-    require(loc40 != document.indexes.objectsById.end(), "object 40 must exist");
-
-    // 3. Drop sprite onto background (no parent) -> creates root object
-    const bool droppedRoot = instantiate_asset_drop(document, commands, selection, "sprites/bg.png",
-                                                   EditorAssetKind::Image, 0.0f, 0.0f, std::nullopt);
-    require(droppedRoot, "instantiating sprite asset drop on root must succeed");
-    const int rootNewId = *selection.current().objectId;
-    const auto rootParent = document.indexes.parentById.find(rootNewId);
-    require(rootParent != document.indexes.parentById.end() && !rootParent->second.has_value(),
-            "root dropped object must not have a parent");
-}
-
-void export_and_between_object_template_drop_test()
-{
-    require(sanitize_template_filename_stem("Ground A") == "Ground-A" &&
-                sanitize_template_filename_stem("  Coin!! ") == "Coin" &&
-                sanitize_template_filename_stem("!!!") == "GameObject",
-            "template filename sanitization must be consistent");
-
-    platformator_editor_test::TemporaryDirectory temp;
-    const auto projectRoot = temp.path() / "proj";
-    const auto assetRoot = projectRoot / "assets";
-    const auto tmplDir = assetRoot / "templates";
-    std::filesystem::create_directories(tmplDir);
-
-    auto document = move_fixture();
-    document.projectRoot = projectRoot;
-    document.assetRoot = assetRoot;
-    EditCommandService commands;
-    SelectionModel selection;
-    commands.set_property(
-        document,
-        address_for_document(document, 20, std::nullopt, std::nullopt, {std::string("name")}),
-        std::string("Ground A"));
-    const Json emptyCatalog{{"behaviors", Json::array()}};
-
-    const auto exported1 = export_object_as_template(document, 20, tmplDir, emptyCatalog);
-    require(exported1.succeeded && exported1.outputPath.filename() == "Ground-A.pttemplate" &&
-                exported1.message == "Saved template Ground-A.pttemplate.",
-            "first unified template export must use sanitized object name");
-    const auto exported2 = export_object_as_template(document, 20, tmplDir, emptyCatalog);
-    require(exported2.succeeded && exported2.outputPath.filename() == "Ground-A-2.pttemplate" &&
-                exported2.message == "Saved template Ground-A-2.pttemplate.",
-            "second unified template export must suffix -2");
-
-    // Drag placement helper: top edge -> before target row; expanded bottom edge -> first child;
-    // collapsed/leaf bottom edge -> after target row; script drops -> always Into.
-    const HierarchyRow parentRow{HierarchyRowKind::Object, 10, 0, "Root A", true, -1};
-    const HierarchyRow childRow{HierarchyRowKind::Object, 11, 1, "Child A1", false, 0};
-    const HierarchyRow secondRoot{HierarchyRowKind::Object, 20, 0, "Ground A", false, 2};
-
-    const auto beforeSecondRoot = resolve_hierarchy_drop_placement(
-        document, secondRoot, false, true, 100.0f, 120.0f, 102.0f);
-    require(beforeSecondRoot.zone == HierarchyDropPlacementZone::Before &&
-                !beforeSecondRoot.destinationParent.has_value() &&
-                beforeSecondRoot.destinationIndex == 1 &&
-                beforeSecondRoot.indicatorDepth == 0,
-            "top 25% of root row 20 must insert at root index 1 before row 20");
-
-    const auto expandedAfterParent = resolve_hierarchy_drop_placement(
-        document, parentRow, true, true, 40.0f, 60.0f, 58.0f);
-    require(expandedAfterParent.zone == HierarchyDropPlacementZone::After &&
-                expandedAfterParent.destinationParent == 10 &&
-                expandedAfterParent.destinationIndex == 0 &&
-                expandedAfterParent.indicatorDepth == 1,
-            "bottom 25% of expanded parent must insert as its first child between parent and children");
-
-    const auto collapsedAfterParent = resolve_hierarchy_drop_placement(
-        document, parentRow, false, true, 40.0f, 60.0f, 58.0f);
-    require(collapsedAfterParent.zone == HierarchyDropPlacementZone::After &&
-                !collapsedAfterParent.destinationParent.has_value() &&
-                collapsedAfterParent.destinationIndex == 1 &&
-                collapsedAfterParent.indicatorDepth == 0,
-            "bottom 25% of collapsed parent must insert after parent at root index 1");
-
-    const auto afterChild = resolve_hierarchy_drop_placement(
-        document, childRow, false, true, 60.0f, 80.0f, 78.0f);
-    require(afterChild.zone == HierarchyDropPlacementZone::After &&
-                afterChild.destinationParent == 10 &&
-                afterChild.destinationIndex == 1 &&
-                afterChild.indicatorDepth == 1,
-            "bottom 25% of leaf child must insert as next sibling under parent");
-
-    const auto scriptTopEdge = resolve_hierarchy_drop_placement(
-        document, secondRoot, false, false, 100.0f, 120.0f, 102.0f);
-    require(scriptTopEdge.zone == HierarchyDropPlacementZone::Into &&
-                scriptTopEdge.destinationParent == 20,
-            "script drops must always attach Into the target object");
-
-    // Instantiate template between root object 10 and root object 20 (at root index 1).
-    const std::size_t rootsBefore = document.root.size();
-    require(instantiate_asset_drop(document, commands, selection,
-                                   "assets/templates/Ground-A.pttemplate",
-                                   EditorAssetKind::Template, 0.0f, 0.0f,
-                                   beforeSecondRoot.destinationParent,
-                                   beforeSecondRoot.destinationIndex),
-            "instantiating template between two root objects must succeed");
-    require(document.root.size() == rootsBefore + 1 &&
-                document.root[0].value("id", -1) == 10 &&
-                document.root[2].value("id", -1) == 20 &&
-                is_template_instance_root(document.root[1]),
-            "between-object template drop must place linked template instance at exact root index 1");
-
-    // Instantiate template as first child between expanded parent 10 and its child 11.
-    const std::size_t childrenBefore = document.root[0]["children"].size();
-    require(instantiate_asset_drop(document, commands, selection,
-                                   "assets/templates/Ground-A.pttemplate",
-                                   EditorAssetKind::Template, 0.0f, 0.0f,
-                                   expandedAfterParent.destinationParent,
-                                   expandedAfterParent.destinationIndex),
-            "instantiating template before first child of expanded parent must succeed");
-    require(document.root[0]["children"].size() == childrenBefore + 1 &&
-                is_template_instance_root(document.root[0]["children"][0]) &&
-                document.root[0]["children"][1].value("id", -1) == 11,
-            "between-parent-and-child template drop must insert before existing first child");
-}
-
-void hierarchy_preset_creation_and_visibility_lock_toggling_test()
-{
-    auto document = move_fixture();
-    EditCommandService commands;
-    SelectionModel selection;
-    std::vector<int> hiddenObjects;
-    std::vector<int> lockedObjects;
-    HierarchyPanel panel;
-
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.DisplaySize = {800.0f, 600.0f};
-    io.DeltaTime = 1.0f / 60.0f;
-    io.Fonts->AddFontDefault();
-    io.Fonts->Build();
-
-    const auto render = [&]()
+    void hierarchy_selects_on_release_and_supports_reference_drag_test()
     {
-        ImGui::NewFrame();
-        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
-        ImGui::SetNextWindowSize({300.0f, 600.0f}, ImGuiCond_Always);
-        panel.draw(document, selection, commands, true, &hiddenObjects, &lockedObjects);
-        ImGui::Render();
-    };
+        auto document = move_fixture();
+        EditCommandService commands;
+        commands.reset_history(document.documentGeneration);
+        SelectionModel selection;
+        selection.set(document, Selection{10, std::nullopt, std::nullopt, FocusedPanel::Hierarchy});
+        HierarchyPanel hierarchy;
 
-    render();
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {720.0f, 500.0f};
+        io.DeltaTime = 1.0f / 60.0f;
+        io.Fonts->AddFontDefault();
+        io.Fonts->Build();
 
-    // 1. Preset creation: Sprite preset (atomic with component)
-    const auto undoBeforeSprite = commands.history_status().undoCommands;
-    auto spriteObj = commands.create_object(document, std::nullopt, "Sprite",
-                                           std::numeric_limits<std::size_t>::max(), {},
-                                           Json::array({default_component_record(6)}));
-    require(spriteObj.status == CommandStatus::Changed && spriteObj.command, "create Sprite preset object must succeed");
-    require(commands.history_status().undoCommands == undoBeforeSprite + 1, "preset creation must take exactly 1 undo step");
-    const int spriteId = spriteObj.command->payload.value("id", 0);
-    require(document.indexes.objectsById.contains(spriteId), "Sprite preset object must exist");
-    const auto locSprite = document.indexes.objectsById.find(spriteId);
-    const Json *spriteJson = locSprite == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locSprite->second);
-    require(spriteJson != nullptr && has_component_type(*spriteJson, 6), "Sprite preset object must have component 6");
-
-    // Single undo removes preset object and component atomically
-    commands.undo(document, selection);
-    require(!document.indexes.objectsById.contains(spriteId), "single undo must remove preset object and its component");
-    commands.redo(document, selection);
-    require(document.indexes.objectsById.contains(spriteId), "single redo must restore preset object and its component");
-
-    // 2. Preset creation: Camera preset (atomic with component)
-    auto camObj = commands.create_object(document, std::nullopt, "Camera",
-                                         std::numeric_limits<std::size_t>::max(), {},
-                                         Json::array({default_component_record(2)}));
-    require(camObj.status == CommandStatus::Changed && camObj.command, "create Camera preset object must succeed");
-    const int camId = camObj.command->payload.value("id", 0);
-    const auto locCam = document.indexes.objectsById.find(camId);
-    const Json *camJson = locCam == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locCam->second);
-    require(camJson != nullptr && has_component_type(*camJson, 2), "Camera preset object must have component 2");
-
-    // 3. Preset creation: Audio preset (atomic with component)
-    auto audioObj = commands.create_object(document, std::nullopt, "Audio",
-                                           std::numeric_limits<std::size_t>::max(), {},
-                                           Json::array({default_component_record(1)}));
-    require(audioObj.status == CommandStatus::Changed && audioObj.command, "create Audio preset object must succeed");
-    const int audioId = audioObj.command->payload.value("id", 0);
-    const auto locAudio = document.indexes.objectsById.find(audioId);
-    const Json *audioJson = locAudio == document.indexes.objectsById.end() ? nullptr : resolve_object(document.root, locAudio->second);
-    require(audioJson != nullptr && has_component_type(*audioJson, 1), "Audio preset object must have component 1");
-
-    // 4. Visibility toggling via set_editor_object_id_state
-    require(!std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must initially be visible");
-    set_editor_object_id_state(hiddenObjects, 10, true);
-    require(std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must now be hidden");
-    set_editor_object_id_state(hiddenObjects, 10, false);
-    require(!std::binary_search(hiddenObjects.begin(), hiddenObjects.end(), 10), "object 10 must be visible again");
-
-    // 5. Lock toggling via set_editor_object_id_state
-    require(!std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must initially be unlocked");
-    set_editor_object_id_state(lockedObjects, 20, true);
-    require(std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must now be locked");
-    set_editor_object_id_state(lockedObjects, 20, false);
-    require(!std::binary_search(lockedObjects.begin(), lockedObjects.end(), 20), "object 20 must be unlocked again");
-
-    render();
-
-    ImGui::DestroyContext();
-}
-
-void hierarchy_scroll_stability_on_template_add_test()
-{
-    platformator_editor_test::TemporaryDirectory temp;
-    const auto projectRoot = temp.path() / "proj";
-    const auto assetRoot = projectRoot / "assets";
-    const auto tmplDir = assetRoot / "templates";
-    std::filesystem::create_directories(tmplDir);
-
-    DocumentSession document = make_default_document();
-    document.projectRoot = projectRoot;
-    document.assetRoot = assetRoot;
-    document.root = Json::array();
-    for (int id = 1; id <= 30; ++id)
-        document.root.push_back(object(id, static_cast<double>(id), 0.0));
-    ++document.structureRevision;
-    rebuild_document_indexes(document);
-
-    EditCommandService commands;
-    SelectionModel selection;
-    const Json emptyCatalog{{"behaviors", Json::array()}};
-    const auto exported = export_object_as_template(document, 1, tmplDir, emptyCatalog);
-    require(exported.succeeded, "fixture template export for scroll test must succeed");
-
-    HierarchyPanel panel;
-    std::vector<int> hiddenObjects;
-    std::vector<int> lockedObjects;
-
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.DisplaySize = {400.0f, 260.0f};
-    io.DeltaTime = 1.0f / 60.0f;
-    io.Fonts->AddFontDefault();
-    io.Fonts->Build();
-
-    const auto render = [&](bool injectExternPayload = false)
-    {
-        ImGui::NewFrame();
-        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
-        ImGui::SetNextWindowSize({300.0f, 240.0f}, ImGuiCond_Always);
-        if (ImGui::Begin("Hierarchy"))
+        std::optional<int> droppedObjectId;
+        const auto render = [&]()
         {
-            panel.draw(document, selection, commands, true, &hiddenObjects, &lockedObjects);
-        }
-        ImGui::End();
-        if (injectExternPayload && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))
-        {
-            AssetDragPayload payload{};
-            std::snprintf(payload.relativeAssetPath, sizeof(payload.relativeAssetPath), "%s",
-                          "assets/templates/object-1.pttemplate");
-            payload.kind = EditorAssetKind::Template;
-            ImGui::SetDragDropPayload("PLATFORMATOR_ASSET_PATH", &payload, sizeof(payload));
-            ImGui::EndDragDropSource();
-        }
-        ImGui::Render();
-    };
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({320.0f, 500.0f}, ImGuiCond_Always);
+            ImGui::Begin("Hierarchy###panel.hierarchy");
+            hierarchy.draw(document, selection, commands, true);
+            ImGui::End();
 
-    const auto find_rows_window = [](ImGuiWindow *outer) -> ImGuiWindow *
-    {
-        if (outer == nullptr)
-            return nullptr;
-        for (ImGuiWindow *child : outer->DC.ChildWindows)
-        {
-            if (child != nullptr && std::string_view(child->Name).find("HierarchyRows") != std::string_view::npos)
-                return child;
-        }
-        return nullptr;
-    };
+            ImGui::SetNextWindowPos({340.0f, 0.0f}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({360.0f, 500.0f}, ImGuiCond_Always);
+            ImGui::Begin("Inspector###panel.inspector");
+            if (selection.current().objectId == 10)
+            {
+                ImGui::Button("ReferenceTarget", {200.0f, 40.0f});
+                if (ImGui::BeginDragDropTarget())
+                {
+                    if (const ImGuiPayload *payload =
+                            ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT");
+                        payload != nullptr && payload->Data != nullptr && payload->DataSize == sizeof(int))
+                    {
+                        int dropped = -1;
+                        std::memcpy(&dropped, payload->Data, sizeof(dropped));
+                        droppedObjectId = dropped;
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+            }
+            ImGui::End();
+            ImGui::Render();
+        };
+        render();
+        render();
 
-    render();
-    render();
-    ImGuiWindow *outerWindow = ImGui::FindWindowByName("Hierarchy");
-    ImGuiWindow *rowsWindow = find_rows_window(outerWindow);
-    require(outerWindow != nullptr && rowsWindow != nullptr,
-            "Hierarchy and HierarchyRows windows must exist");
-    require(outerWindow->ScrollMax.y == 0.0f && rowsWindow->ScrollMax.y > 120.0f,
-            "HierarchyRows must scroll while outer Hierarchy stays non-scrollable");
+        const auto nodes = hierarchy.semantic_nodes(document, selection.current(), "hierarchy");
+        std::optional<SemanticBounds> row20Bounds;
+        for (const auto &node : nodes)
+            if (node.name.find("object-20") != std::string::npos)
+                row20Bounds = node.bounds;
+        require(row20Bounds.has_value(), "object-20 semantic row bounds must exist");
 
-    // 1. Drop a template via ImGui drag-drop onto a middle visible row while scrolled down.
-    const float scrolledY = 100.0f;
-    ImGui::SetScrollY(rowsWindow, scrolledY);
-    render();
-    require(std::fabs(rowsWindow->Scroll.y - scrolledY) < 1.0f,
-            "initial scroll position must apply cleanly");
+        const ImVec2 row20Center(row20Bounds->x + 60.0f, row20Bounds->y + row20Bounds->height * 0.5f);
+        const ImVec2 refTargetCenter(440.0f, 45.0f);
 
-    std::optional<SemanticBounds> middleRowBounds;
-    const auto semanticNodes = panel.semantic_nodes(document, selection.current(), "test/tab/1/document/1");
-    for (const auto &node : semanticNodes)
-    {
-        if (node.id.find("/object/") != std::string::npos && node.bounds &&
-            node.bounds->height > 0.0 &&
-            node.bounds->y > static_cast<double>(rowsWindow->InnerRect.Min.y) + 40.0 &&
-            node.bounds->y + node.bounds->height < static_cast<double>(rowsWindow->InnerRect.Max.y) - 40.0)
-        {
-            middleRowBounds = node.bounds;
-            break;
-        }
+        // 1. Pressing on object 20 must NOT switch selection away from object 10.
+        io.AddMousePosEvent(row20Center.x, row20Center.y);
+        render();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        render();
+        require(selection.current().objectId == 10,
+                "pressing an unselected Hierarchy object must not change Inspector selection before release");
+
+        // 2. Dragging object 20 onto object 10's Inspector reference field keeps 10 selected and delivers 20.
+        io.AddMousePosEvent(row20Center.x + 20.0f, row20Center.y);
+        render();
+        io.AddMousePosEvent(refTargetCenter.x, refTargetCenter.y);
+        render();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        render();
+        require(selection.current().objectId == 10 && droppedObjectId == 20,
+                "dragging a Hierarchy object onto a reference field must deliver its ID without deselecting the inspected object");
+
+        // 3. After resetting click timing, clicking and releasing on object 20 without dragging selects it on release.
+        for (int i = 0; i < 35; ++i)
+            render();
+        io.AddMousePosEvent(row20Center.x, row20Center.y);
+        render();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        render();
+        require(selection.current().objectId == 10,
+                "mouse-down on object 20 must defer selection until release");
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        render();
+        require(selection.current().objectId == 20,
+                "releasing click on object 20 without dragging must select object 20");
+
+        ImGui::DestroyContext();
     }
-    require(middleRowBounds.has_value(), "must find a middle visible Hierarchy row to drop onto");
-
-    const float dropX = static_cast<float>(middleRowBounds->x + middleRowBounds->width * 0.5);
-    const float dropY = static_cast<float>(middleRowBounds->y + middleRowBounds->height * 0.1); // Before zone
-    io.AddMousePosEvent(dropX, dropY);
-    io.AddMouseButtonEvent(0, true);
-    render(true);
-    // Keep external drag payload alive while releasing mouse over the target row.
-    io.AddMouseButtonEvent(0, false);
-    render(true);
-    // Run subsequent frames (including post-selection reveal evaluation).
-    render(false);
-    render(false);
-
-    require(document.root.size() == 31,
-            "drag-dropping template onto a visible Hierarchy row must insert it into the scene");
-    require(std::fabs(rowsWindow->Scroll.y - scrolledY) < 1.0f,
-            "dropping a template onto a visible Hierarchy row must not reset or jump HierarchyRows scroll");
-    require(outerWindow->ScrollMax.y == 0.0f && outerWindow->Scroll.y == 0.0f,
-            "dropping a template mid-clipper must not make the outer Hierarchy window scrollable");
-
-    // 2. Append a template off-screen at the bottom while scrolled at the top:
-    // scroll advances minimally to bring it into view, rather than jumping it to the top.
-    ImGui::SetScrollY(rowsWindow, 0.0f);
-    render();
-    require(instantiate_asset_drop(document, commands, selection,
-                                   "assets/templates/object-1.pttemplate",
-                                   EditorAssetKind::Template, 0.0f, 0.0f,
-                                   std::nullopt, std::numeric_limits<std::size_t>::max()),
-            "appending template at bottom of Hierarchy must succeed");
-    render();
-    render();
-    render();
-    const float rowStride = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
-    const float expectedMinScroll = std::max(0.0f, rowsWindow->ScrollMax.y - rowStride * 2.0f);
-    require(rowsWindow->Scroll.y >= expectedMinScroll &&
-                rowsWindow->Scroll.y <= rowsWindow->ScrollMax.y + 0.5f,
-            "revealing an off-screen bottom template must scroll cleanly to show it at the bottom");
-    require(outerWindow->ScrollMax.y == 0.0f,
-            "outer Hierarchy window must remain non-scrollable after bottom reveal");
-
-    ImGui::DestroyContext();
-}
 } // namespace
 
 int main()
@@ -852,6 +1294,10 @@ int main()
         export_and_between_object_template_drop_test();
         hierarchy_preset_creation_and_visibility_lock_toggling_test();
         hierarchy_scroll_stability_on_template_add_test();
+        hierarchy_copy_paste_shortcuts_and_commands_test();
+        scene_copy_paste_behavior_test();
+        export_template_links_object_and_context_rename_test();
+        hierarchy_selects_on_release_and_supports_reference_drag_test();
         std::cout << "[PASS] platformator_editor_hierarchy_move_test\n";
         return 0;
     }

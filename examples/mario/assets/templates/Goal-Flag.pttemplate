@@ -1,0 +1,75 @@
+{
+  "format": "platformator.object-template",
+  "name": "Goal Flag",
+  "reference_bindings": [],
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "height": 164.0,
+        "id": 1084,
+        "offset": {
+          "x": 6.0,
+          "y": 12.0
+        },
+        "trigger": true,
+        "type": 3,
+        "width": 17.0
+      },
+      {
+        "flip": 0,
+        "height": 190.0,
+        "id": 1085,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/items/flag.png",
+        "type": 6,
+        "width": 32.0
+      },
+      {
+        "animationClipFilePath": "",
+        "currentFrameIndex": 0,
+        "id": 1087,
+        "playbackSpeed": 1.0,
+        "playing": false,
+        "type": 0
+      },
+      {
+        "behaviors": [
+          {
+            "type": "MarioGoalFlag",
+            "waveAnimset": "assets/animations/flag.animset",
+            "winSound": "assets/audio/win.wav"
+          }
+        ],
+        "id": 1088,
+        "type": 5
+      },
+      {
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.95,
+        "id": 1086,
+        "loopCount": 0,
+        "type": 1
+      }
+    ],
+    "id": 121,
+    "name": "Goal Flag",
+    "position": {
+      "x": 2063.596540032286,
+      "y": 351.6173324087698
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 4.0,
+      "y": 1.0
+    },
+    "tag": "goal"
+  },
+  "version": 1
+}

@@ -76,6 +76,37 @@ struct TemplateInsertResult
     explicit operator bool() const noexcept { return status == CommandStatus::Changed; }
 };
 
+inline bool is_template_object_target_kind(std::string_view kind) noexcept
+{
+    return kind == "GameObject" || kind == "Object";
+}
+
+inline std::optional<int> template_component_type_for_target_kind(std::string_view kind) noexcept
+{
+    if (kind == "Animator") return 0;
+    if (kind == "Audio") return 1;
+    if (kind == "Camera") return 2;
+    if (kind == "Collider") return 3;
+    if (kind == "Rigidbody") return 4;
+    if (kind == "ScriptComponent") return 5;
+    if (kind == "Sprite") return 6;
+    return std::nullopt;
+}
+
+inline bool is_template_component_target_kind(std::string_view kind) noexcept
+{
+    return kind == "Component" || template_component_type_for_target_kind(kind).has_value();
+}
+
+inline bool is_supported_template_target_kind(std::string_view kind) noexcept
+{
+    return is_template_object_target_kind(kind) || is_template_component_target_kind(kind);
+}
+
+bool component_matches_target_kind(const Json &component, std::string_view kind) noexcept;
+bool document_target_matches_kind(const DocumentSession &document, int id,
+                                  std::string_view kind) noexcept;
+
 Json make_template_envelope(std::string name, Json root, Json referenceBindings = Json::array());
 void strip_nested_template_metadata(Json &subtree);
 const Json *find_document_object_by_id(const DocumentSession &document, int objectId);
@@ -153,8 +184,23 @@ struct TemplateExportResult
 
 std::string sanitize_template_filename_stem(std::string_view objectName);
 
+bool link_object_as_template_instance(DocumentSession &sceneDocument,
+                                      EditCommandService &commands,
+                                      int objectId,
+                                      const std::filesystem::path &templatePath,
+                                      std::string &errorOut);
+
 TemplateExportResult export_object_as_template(
     const DocumentSession &document,
+    int objectId,
+    const std::filesystem::path &targetDirectory,
+    const Json &behaviorCatalog,
+    const std::vector<Json> &authorBindings = {},
+    const std::vector<TemplateAuthorSchemaDeclaration> &authorDeclaredBehaviors = {});
+
+TemplateExportResult export_object_as_template(
+    DocumentSession &document,
+    EditCommandService &commands,
     int objectId,
     const std::filesystem::path &targetDirectory,
     const Json &behaviorCatalog,

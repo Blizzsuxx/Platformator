@@ -645,7 +645,8 @@ const std::string &InspectorPanel::feedback() const noexcept
 }
 
 void InspectorPanel::save_selected_template(DocumentSession &document, int objectId,
-                                             const BehaviorCatalog &catalog)
+                                             const BehaviorCatalog &catalog,
+                                             EditCommandService *commands)
 {
     if (templateName_.empty() || document.assetRoot.empty())
     {
@@ -689,6 +690,20 @@ void InspectorPanel::save_selected_template(DocumentSession &document, int objec
             feedback_ = written.status == AtomicWriteStatus::Conflict
                 ? "A template with that file name already exists. Choose a different name."
                 : "Template could not be saved: " + written.message;
+        else if (commands != nullptr)
+        {
+            std::string linkError;
+            if (link_object_as_template_instance(document, *commands, objectId, destination, linkError))
+                feedback_ = "Template saved to assets/templates/" + destination.filename().string() + ".";
+            else
+            {
+                std::error_code removeError;
+                std::filesystem::remove(destination, removeError);
+                feedback_ = linkError.empty()
+                    ? "Template could not be linked to the selected GameObject."
+                    : linkError;
+            }
+        }
         else
             feedback_ = "Template saved to assets/templates/" + destination.filename().string() + ".";
     }
@@ -1316,7 +1331,7 @@ bool InspectorPanel::dispatch_semantic_action(DocumentSession &document,
     case SemanticOperation::SaveTemplate:
         if (catalog == nullptr)
             return false;
-        save_selected_template(document, semanticTarget.objectId, *catalog);
+        save_selected_template(document, semanticTarget.objectId, *catalog, commands);
         selection.set(document, std::move(next));
         break;
     case SemanticOperation::EditClip:

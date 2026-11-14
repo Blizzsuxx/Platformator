@@ -208,6 +208,8 @@ class DocumentManager
                            std::optional<FileIdentity> expectedExternalIdentity = std::nullopt);
     bool revert_template_tab(TabId id, std::string *error = nullptr);
     bool reload_template_tab(TabId id, std::string *error = nullptr);
+    bool refresh_open_template_tabs(const std::filesystem::path &templatePath,
+                                    std::string *error = nullptr);
     std::optional<TabId> open_animation(const std::filesystem::path &path,
                                         std::string *error = nullptr);
     WorkspaceActionResult save_scene_tab_as(const DocumentIdentity &identity,

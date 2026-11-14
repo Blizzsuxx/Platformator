@@ -92,6 +92,18 @@ class HierarchyPanel
     void invalidate() noexcept;
     void set_on_frame_selected(std::function<void()> callback) { onFrameSelected_ = std::move(callback); }
     void set_layer_settings(const LayerSettings *settings) noexcept { layerSettings_ = settings; }
+    bool copy_selection(const DocumentSession &document, const Selection &selection,
+                        const std::string *duplicationReferencePolicy = nullptr,
+                        const Json *behaviorCatalog = nullptr,
+                        const std::vector<Json> &authorReferenceBindings = {},
+                        const std::vector<TemplateAuthorSchemaDeclaration> &authorSchemaDeclarations = {});
+    bool paste_selection(DocumentSession &document, SelectionModel &selection,
+                         EditCommandService &commands,
+                         const std::string *duplicationReferencePolicy = nullptr,
+                         bool editingAllowed = true,
+                         std::optional<int> anchorObjectId = std::nullopt,
+                         bool focusHierarchy = false);
+    bool has_clipboard() const noexcept { return !clipboard_.subtrees.empty(); }
 
   private:
     std::function<void()> onFrameSelected_;
@@ -114,6 +126,7 @@ class HierarchyPanel
     std::optional<int> renameTargetObjectId_;
     bool renameFocusPending_ = false;
     int lastMouseInteractionFrame_ = -2;
+    std::optional<int> pendingClickSelectObjectId_;
     std::optional<int> lastRevealedObjectId_;
     std::optional<int> pendingScrollObjectId_;
     bool initializedExpansion_ = false;
@@ -147,5 +160,25 @@ class HierarchyPanel
     bool hasSearchExpansionBackup_ = false;
     std::string duplicatePolicyStatus_;
     std::chrono::steady_clock::time_point duplicatePolicyStatusUntil_{};
+    struct ClipboardSnapshot
+    {
+        std::vector<Json> subtrees;
+        Json typedReferenceBindings = Json::array();
+        bool bindingCoverageAssured = false;
+        std::string sourceSceneIdentity;
+        std::string bindingError;
+    };
+    void set_duplicate_policy_status(std::string message);
+    bool copy_object_ids(const DocumentSession &document, const std::vector<int> &rawIds,
+                         const std::string *duplicationReferencePolicy,
+                         const Json *behaviorCatalog,
+                         const std::vector<Json> &authorReferenceBindings,
+                         const std::vector<TemplateAuthorSchemaDeclaration> &authorSchemaDeclarations);
+    bool paste_clipboard_into(DocumentSession &document, SelectionModel &selection,
+                              EditCommandService &commands,
+                              std::optional<int> destinationParent, std::size_t insertionIndex,
+                              const std::string *duplicationReferencePolicy,
+                              bool editingAllowed, bool focusHierarchy);
+    ClipboardSnapshot clipboard_;
 };
 } // namespace platformator_editor

@@ -393,6 +393,7 @@ void run_document_authoring_cases()
                              {"offset", {{"x", 0.0}, {"y", 0.0}}}, {"trigger", false},
                              {"collisionGroup", 1}, {"collisionMask", 1}})}),
         Json::array({object(10, "Internal Child")}));
+    structuralRoot["position"] = Json{{"x", 12.5}, {"y", -7.25}};
     auto structuralParsed = parse_document(Json::array({structuralRoot}), 81);
     require(static_cast<bool>(structuralParsed), "structural mutation fixture must parse");
     DocumentSession structuralDocument = std::move(*structuralParsed.document);
@@ -402,10 +403,10 @@ void run_document_authoring_cases()
                 structuralDocument.root.size() == 2,
             "subtree duplication must insert one complete copy after its source");
     const Json &copy = structuralDocument.root[1];
-    require(copy["id"] != 0 && copy["name"] != "Root" && copy["position"]["x"] == 32.0 &&
-                copy["position"]["y"] == 32.0 && copy["children"][0]["id"] != 10 &&
+    require(copy["id"] != 0 && copy["name"] != "Root" && copy["position"]["x"] == 12.5 &&
+                copy["position"]["y"] == -7.25 && copy["children"][0]["id"] != 10 &&
                 copy["components"][0]["id"] != 1 && copy["components"][1]["id"] != 2,
-            "duplicate subtrees must receive unique object/component IDs, a new name and the local +32 offset");
+            "duplicate subtrees must receive unique object/component IDs, a new name and keep the source position");
     require(copy["components"][0]["behaviors"][0]["references"] == referenceBehavior["references"],
             "duplication must preserve self, internal, external and component-target reference numbers");
     auto conflict = structuralCommands.add_component(

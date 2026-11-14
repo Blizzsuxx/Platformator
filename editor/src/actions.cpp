@@ -28,6 +28,8 @@ constexpr std::array kActions{
     EditorActionDescriptor{EditorAction::RenameSelection, "Rename", "F2", false, true},
     EditorActionDescriptor{EditorAction::DeleteSelection, "Delete Selection", "Delete", false, true},
     EditorActionDescriptor{EditorAction::DuplicateSelection, "Duplicate Selection", "Ctrl+D", false, true},
+    EditorActionDescriptor{EditorAction::CopySelection, "Copy", "Ctrl+C", false, false},
+    EditorActionDescriptor{EditorAction::PasteSelection, "Paste", "Ctrl+V", false, false},
     EditorActionDescriptor{EditorAction::Preferences, "Editor Preferences", "Ctrl+,", false},
 };
 } // namespace
@@ -50,7 +52,8 @@ bool editor_action_allowed(EditorAction action, const EditorInputCapture &captur
             if (action == EditorAction::SelectHandTool || action == EditorAction::SelectMoveTool ||
                 action == EditorAction::SelectRotateTool || action == EditorAction::SelectScaleTool ||
                 action == EditorAction::SelectRectangleTool ||
-                action == EditorAction::FrameSelected || action == EditorAction::FrameAll)
+                action == EditorAction::FrameSelected || action == EditorAction::FrameAll ||
+                action == EditorAction::CopySelection || action == EditorAction::PasteSelection)
             {
                 return capture.sceneFocused || capture.hierarchyFocused;
             }
@@ -109,6 +112,14 @@ std::optional<EditorAction> dispatch_editor_key(EditorKey key, bool shift, bool 
         if (!capture.hierarchyFocused || !control || shift)
             return std::nullopt;
         return EditorAction::DuplicateSelection;
+    case EditorKey::C:
+        if (!sceneOrHierarchy || !control || shift)
+            return std::nullopt;
+        return EditorAction::CopySelection;
+    case EditorKey::V:
+        if (!sceneOrHierarchy || !control || shift)
+            return std::nullopt;
+        return EditorAction::PasteSelection;
     case EditorKey::Comma:
         if (!control || shift)
             return std::nullopt;

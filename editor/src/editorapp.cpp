@@ -1554,7 +1554,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             });
         projectPanel.set_hierarchy_object_template_drop_callback(
             [&](int objectId, const std::filesystem::path &templateDirectory) {
-                const auto &document = workspace->document();
+                if (workspace == nullptr || editCommands == nullptr)
+                    return;
+                auto &document = workspace->document_for_edit();
                 const auto catalogSnapshot = behaviorCatalog.snapshot();
                 if (!catalogSnapshot)
                 {
@@ -1562,7 +1564,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     return;
                 }
                 const auto exported = export_object_as_template(
-                    document, objectId, templateDirectory, catalogSnapshot->document);
+                    document, *editCommands, objectId, templateDirectory, catalogSnapshot->document);
+                if (exported.succeeded)
+                    hierarchyPanel.invalidate();
                 statusMessage = exported.message;
             });
         inspectorPanel.set_select_template_asset_callback([&](const std::filesystem::path &path) {
@@ -1585,6 +1589,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             (void)dialogs->open_asset(window, identity, activeAssetRoot, "Template");
         });
         inspectorPanel.set_template_propagated_callback([&](const std::filesystem::path &tmplPath) {
+            std::string refreshError;
+            (void)documentManager.refresh_open_template_tabs(tmplPath, &refreshError);
             std::ifstream in(tmplPath);
             if (!in.is_open())
                 return;
@@ -1696,14 +1702,17 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             collectionSource.root.push_back(Json{{"id", targetId}, {"components", Json::array()},
                                                                  {"children", Json::array()}});
                     }
-                    else if (targetKind == "Component" && syntheticComponentTargets.insert(targetId).second)
+                    else if (is_template_component_target_kind(targetKind) &&
+                             syntheticComponentTargets.insert(targetId).second)
                     {
                         while (has_id(nextSyntheticObjectId) ||
                                syntheticGameObjectTargets.contains(nextSyntheticObjectId) ||
                                syntheticComponentTargets.contains(nextSyntheticObjectId))
                             ++nextSyntheticObjectId;
+                        const int syntheticType =
+                            template_component_type_for_target_kind(targetKind).value_or(2);
                         collectionSource.root.push_back(Json{{"id", nextSyntheticObjectId++},
-                            {"components", Json::array({Json{{"id", targetId}, {"type", 2}}})},
+                            {"components", Json::array({Json{{"id", targetId}, {"type", syntheticType}}})},
                             {"children", Json::array()}});
                     }
                     rebuild_document_indexes(collectionSource);
@@ -4896,6 +4905,17 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 else if (action == EditorAction::FrameAll)
                     scenePanel.request_frame_all();
             }
+            if (documentManager.active_animation_tab() == nullptr &&
+                shortcutCapture.sceneFocused && !shortcutCapture.hierarchyFocused &&
+                ImGui::IsKeyPressed(ImGuiKey_C, false) &&
+                dispatch_editor_key(EditorKey::C, inputIo.KeyShift, inputIo.KeyCtrl,
+                                    shortcutCapture) == EditorAction::CopySelection)
+            {
+                const auto duplicateCatalog = behaviorCatalog.snapshot();
+                hierarchyPanel.copy_selection(workspace->document(), selection->current(),
+                                              &preferences.duplicationReferencePolicy,
+                                              duplicateCatalog ? &duplicateCatalog->document : nullptr);
+            }
             const auto f5Action = ImGui::IsKeyPressed(ImGuiKey_F5)
                 ? dispatch_editor_key(EditorKey::F5, inputIo.KeyShift, inputIo.KeyCtrl, shortcutCapture)
                 : std::nullopt;
@@ -4937,6 +4957,18 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         scenePanel.adjust_zoom(1.0f / 1.1f);
                     else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_B))
                         queue_pipeline(true);
+                    else if (documentManager.active_animation_tab() == nullptr &&
+                             shortcutCapture.sceneFocused && !shortcutCapture.hierarchyFocused &&
+                             ImGui::IsKeyPressed(ImGuiKey_V, false) &&
+                             dispatch_editor_key(EditorKey::V, inputIo.KeyShift, inputIo.KeyCtrl,
+                                                 shortcutCapture) == EditorAction::PasteSelection)
+                    {
+                        commit_scene_gesture();
+                        inspectorPanel.commit_active_interactions();
+                        hierarchyPanel.paste_selection(workspace->document_for_edit(), *selection, *editCommands,
+                                                       &preferences.duplicationReferencePolicy, true,
+                                                       selection->current().objectId, false);
+                    }
                     else if (f5Action == EditorAction::BuildAndRun)
                         request_build_and_run();
                 }

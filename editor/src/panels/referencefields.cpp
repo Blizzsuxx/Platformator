@@ -4,6 +4,7 @@
 #include "../resourceindex.h"
 #include "../discovery.h"
 #include "../style.h"
+#include "../templates.h"
 
 #include <algorithm>
 #include <array>
@@ -103,31 +104,13 @@ const Json *resolve_object(const Json &root, const ObjectLocation &location)
 
 bool component_matches(const Json &component, std::string_view expectedTarget)
 {
-    if (!component.is_object())
-        return false;
-    const auto type = component.find("type");
-    if (type == component.end())
-        return false;
-    const auto parsed = json_id(*type);
-    if (!parsed)
-        return false;
-    if (expectedTarget == "Component")
-        return true;
-    const int wanted = expectedTarget == "Animator"          ? 0
-                       : expectedTarget == "Audio"            ? 1
-                       : expectedTarget == "Camera"           ? 2
-                       : expectedTarget == "Collider"         ? 3
-                       : expectedTarget == "Rigidbody"        ? 4
-                       : expectedTarget == "ScriptComponent"  ? 5
-                       : expectedTarget == "Sprite"           ? 6
-                                                               : -1;
-    return wanted >= 0 && *parsed == wanted;
+    return component_matches_target_kind(component, expectedTarget);
 }
 
 std::string target_label(const Json &documentRoot, const DocumentIndexes &indexes, int id,
                          std::string_view target, bool includeIds = true)
 {
-    if (target == "GameObject")
+    if (is_template_object_target_kind(target))
     {
         const auto location = indexes.objectsById.find(id);
         if (location == indexes.objectsById.end())
@@ -335,7 +318,7 @@ SceneReferenceInfo inspect_scene_reference(const DocumentSession &document, cons
     const auto id = json_id(value);
     if (!id)
         return {ReferenceState::Invalid, std::nullopt, "Invalid reference value"};
-    if (expectedTarget == "GameObject")
+    if (is_template_object_target_kind(expectedTarget))
     {
         const auto location = document.indexes.objectsById.find(*id);
         if (location == document.indexes.objectsById.end())
@@ -409,7 +392,7 @@ Json make_template_reference_path_declaration(int ownerId, int componentId,
 {
     if (ownerId < 0 || componentId < 0 || relativePointer.empty() ||
         relativePointer.front() != '/' ||
-        (targetKind != "GameObject" && targetKind != "Component"))
+        !is_supported_template_target_kind(targetKind))
         return Json::object();
     for (std::size_t index = 0; index < relativePointer.size(); ++index)
     {
@@ -626,7 +609,7 @@ void draw_scene_reference_field(DocumentSession &document, EditCommandService &c
             {
                 const int droppedObject = *static_cast<const int *>(payload->Data);
                 std::optional<int> target;
-                if (expectedTarget == "GameObject")
+                if (is_template_object_target_kind(expectedTarget))
                     target = droppedObject;
                 else
                 {

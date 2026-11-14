@@ -1021,11 +1021,7 @@ void remap_subtree_ids(Json &root, int firstId, std::vector<int> &assigned,
 
 bool duplicate_target_kind_exists(const DocumentSession &document, int id, std::string_view kind)
 {
-    if (kind == "GameObject" || kind == "Object")
-        return document.indexes.objectsById.contains(id);
-    if (kind == "Component")
-        return document.indexes.componentsById.contains(id);
-    return false;
+    return document_target_matches_kind(document, id, kind);
 }
 
 Json *find_object_by_id(Json &root, int objectId)
@@ -1350,6 +1346,20 @@ StructuralCommandResult commit_structural(DocumentSession &document, StructuralC
     result.affectedObjectIds = std::move(preparedAffectedIds);
     // The service-level observer list is attached by the caller after the commit.
     return result;
+}
+void mark_cloned_name_override(Json &clone, std::string_view sourceName, std::string_view clonedName)
+{
+    if (clonedName == sourceName ||
+        (!clone.contains("template") && !clone.contains("templateNodeId")))
+        return;
+    if (!clone.contains("overrides") || !clone["overrides"].is_array())
+        clone["overrides"] = Json::array();
+    auto &overrides = clone["overrides"];
+    const bool alreadyMarked = std::any_of(overrides.begin(), overrides.end(), [](const Json &entry) {
+        return entry.is_string() && entry.get<std::string>() == "name";
+    });
+    if (!alreadyMarked)
+        overrides.push_back("name");
 }
 } // namespace
 
@@ -2911,23 +2921,52 @@ StructuralCommandResult EditCommandService::duplicate_object(DocumentSession &do
     };
     for (std::size_t suffix = 2; nameTaken(copiedName); ++suffix)
         copiedName = sourceName + " Copy " + std::to_string(suffix);
+    mark_cloned_name_override(duplicate, sourceName, copiedName);
     duplicate["name"] = std::move(copiedName);
-    auto position = duplicate.find("position");
-    if (position == duplicate.end() || !position->is_object() ||
-        !position->contains("x") || !position->contains("y") ||
-        !position->at("x").is_number() || !position->at("y").is_number())
-        return failed_structural(CommandStatus::Rejected, "object position cannot be offset for duplication", document);
-    const double x = position->at("x").get<double>() + 32.0;
-    const double y = position->at("y").get<double>() + 32.0;
-    if (!std::isfinite(x) || !std::isfinite(y))
-        return failed_structural(CommandStatus::Rejected, "duplicated object position is outside the finite range", document);
-    (*position)["x"] = x;
-    (*position)["y"] = y;
 
     StructuralCommand command{document.documentGeneration, StructuralCommandKind::InsertObject,
                               parentEntry->second, objectId, std::nullopt, sourceIndex + 1,
                               std::move(duplicate), std::move(selection)};
     return apply(document, command, CommandDirection::Forward);
+}
+
+CommandResult EditCommandService::commit_cloned_batch(DocumentSession &document,
+                                                      std::vector<BatchOperation> &operations,
+                                                      const std::vector<int> &clonedRootIds,
+                                                      const std::unordered_map<int, int> &sourceToClone,
+                                                      SelectionState selection,
+                                                      DuplicateReferencePolicy referencePolicy,
+                                                      const Json &typedReferenceBindings)
+{
+    if (referencePolicy == DuplicateReferencePolicy::RemapInternalTargets)
+    {
+        std::vector<Json *> clonePayloads;
+        clonePayloads.reserve(operations.size());
+        for (auto &operation : operations)
+        {
+            auto *structural = std::get_if<StructuralCommand>(&operation);
+            if (structural == nullptr)
+                return failed(CommandStatus::Rejected,
+                              "multi-root clone produced a non-structural operation", document);
+            clonePayloads.push_back(&structural->payload);
+        }
+        std::string error;
+        if (!remap_duplicate_reference_sites(document, clonePayloads, sourceToClone,
+                                             typedReferenceBindings, error))
+            return failed(CommandStatus::Rejected, std::move(error), document);
+    }
+
+    Selection after = selection.after;
+    after.selectedObjectIds = clonedRootIds;
+    after.objectId = clonedRootIds.back();
+    after.componentId.reset();
+    after.behaviorOrdinal.reset();
+    after.rangeAnchorObjectId = clonedRootIds.front();
+    selection.after = std::move(after);
+    auto result = apply_batch(document, operations, std::move(selection));
+    if (result.status == CommandStatus::Changed)
+        result.affectedObjectIds = clonedRootIds;
+    return result;
 }
 
 CommandResult EditCommandService::duplicate_objects(DocumentSession &document,
@@ -3015,21 +3054,8 @@ CommandResult EditCommandService::duplicate_objects(DocumentSession &document,
         for (std::size_t suffix = 2; siblingNames.contains(copiedName); ++suffix)
             copiedName = sourceName + " Copy " + std::to_string(suffix);
         siblingNames.insert(copiedName);
+        mark_cloned_name_override(duplicate, sourceName, copiedName);
         duplicate["name"] = std::move(copiedName);
-
-        auto position = duplicate.find("position");
-        if (position == duplicate.end() || !position->is_object() || !position->contains("x") ||
-            !position->contains("y") || !position->at("x").is_number() ||
-            !position->at("y").is_number())
-            return failed(CommandStatus::Rejected,
-                          "object position cannot be offset for duplication", document);
-        const double x = position->at("x").get<double>() + 32.0;
-        const double y = position->at("y").get<double>() + 32.0;
-        if (!std::isfinite(x) || !std::isfinite(y))
-            return failed(CommandStatus::Rejected,
-                          "duplicated object position is outside the finite range", document);
-        (*position)["x"] = x;
-        (*position)["y"] = y;
 
         const auto &priorIndexes = priorDuplicateIndexes[parent->second];
         const auto priorBefore = static_cast<std::size_t>(std::count_if(
@@ -3046,35 +3072,99 @@ CommandResult EditCommandService::duplicate_objects(DocumentSession &document,
         operations.emplace_back(std::move(insert));
     }
 
-    if (referencePolicy == DuplicateReferencePolicy::RemapInternalTargets)
+    return commit_cloned_batch(document, operations, duplicatedRootIds, sourceToDuplicate,
+                               std::move(selection), referencePolicy, typedReferenceBindings);
+}
+
+CommandResult EditCommandService::paste_objects(DocumentSession &document,
+                                                  const std::vector<Json> &subtrees,
+                                                  std::optional<int> destinationParentObjectId,
+                                                  std::size_t insertionIndex,
+                                                  SelectionState selection,
+                                                  DuplicateReferencePolicy referencePolicy,
+                                                  const Json &typedReferenceBindings,
+                                                  bool bindingCoverageAssured)
+{
+    try
     {
-        std::vector<Json *> duplicatePayloads;
-        duplicatePayloads.reserve(operations.size());
-        for (auto &operation : operations)
+        rebuild_document_indexes(document);
+    }
+    catch (const std::exception &error)
+    {
+        return failed(CommandStatus::Rejected,
+                      std::string("cannot prepare hierarchy paste indexes: ") + error.what(), document);
+    }
+    if (subtrees.empty())
+        return failed(CommandStatus::Rejected, "cannot paste an empty clipboard selection", document);
+    if (destinationParentObjectId && !document.indexes.objectsById.contains(*destinationParentObjectId))
+        return failed(CommandStatus::StaleAddress, "destination parent for paste is no longer present", document);
+    if (referencePolicy == DuplicateReferencePolicy::RemapInternalTargets &&
+        (!bindingCoverageAssured || !typedReferenceBindings.is_array()))
+        return failed(CommandStatus::Rejected,
+            "internal reference remapping requires complete typed binding coverage", document);
+
+    Json *destSiblings = mutable_siblings(document, destinationParentObjectId);
+    if (destSiblings == nullptr)
+        return failed(CommandStatus::StaleAddress, "destination sibling list is unavailable", document);
+    const std::size_t clampedIndex = std::min(insertionIndex, destSiblings->size());
+
+    const auto firstId = first_unused_id(document);
+    if (!firstId)
+        return failed(CommandStatus::Rejected, "no file IDs remain for pasted subtrees", document);
+
+    std::set<std::string> siblingNames;
+    for (const auto &sibling : *destSiblings)
+        if (sibling.is_object())
+            siblingNames.insert(sibling.value("name", std::string{}));
+
+    std::vector<int> pastedRootIds;
+    std::vector<BatchOperation> operations;
+    pastedRootIds.reserve(subtrees.size());
+    operations.reserve(subtrees.size());
+    std::vector<int> assignedIds;
+    std::unordered_map<int, int> sourceToPasted;
+    const auto identity = document_identity(document);
+
+    for (std::size_t index = 0; index < subtrees.size(); ++index)
+    {
+        if (!subtrees[index].is_object())
+            return failed(CommandStatus::Rejected, "pasted clipboard entry is not a GameObject", document);
+        Json pasted = subtrees[index];
+        try
         {
-            auto *structural = std::get_if<StructuralCommand>(&operation);
-            if (structural == nullptr)
-                return failed(CommandStatus::Rejected,
-                              "multi-root duplicate produced a non-structural operation", document);
-            duplicatePayloads.push_back(&structural->payload);
+            remap_subtree_ids(pasted, *firstId, assignedIds, &sourceToPasted);
         }
-        std::string error;
-        if (!remap_duplicate_reference_sites(document, duplicatePayloads, sourceToDuplicate,
-                                             typedReferenceBindings, error))
-            return failed(CommandStatus::Rejected, std::move(error), document);
+        catch (const std::exception &error)
+        {
+            return failed(CommandStatus::Rejected, error.what(), document);
+        }
+
+        const std::string baseName = pasted.value("name", std::string("GameObject"));
+        const std::string resolvedBase = baseName.empty() ? std::string("GameObject") : baseName;
+        std::string pastedName = resolvedBase;
+        if (siblingNames.contains(pastedName))
+        {
+            pastedName = resolvedBase + " Copy";
+            for (std::size_t suffix = 2; siblingNames.contains(pastedName); ++suffix)
+                pastedName = resolvedBase + " Copy " + std::to_string(suffix);
+        }
+        siblingNames.insert(pastedName);
+        mark_cloned_name_override(pasted, baseName, pastedName);
+        pasted["name"] = std::move(pastedName);
+
+        const int pastedId = pasted.value("id", -1);
+        if (pastedId < 0)
+            return failed(CommandStatus::Rejected, "pasted subtree did not receive a valid root ID", document);
+        pastedRootIds.push_back(pastedId);
+        StructuralCommand insert{document.documentGeneration, StructuralCommandKind::InsertObject,
+            destinationParentObjectId, pastedId, std::nullopt, clampedIndex + index,
+            std::move(pasted), selection};
+        insert.identity = identity;
+        operations.emplace_back(std::move(insert));
     }
 
-    Selection after = selection.after;
-    after.selectedObjectIds = duplicatedRootIds;
-    after.objectId = duplicatedRootIds.back();
-    after.componentId.reset();
-    after.behaviorOrdinal.reset();
-    after.rangeAnchorObjectId = duplicatedRootIds.front();
-    selection.after = std::move(after);
-    auto result = apply_batch(document, operations, std::move(selection));
-    if (result.status == CommandStatus::Changed)
-        result.affectedObjectIds = duplicatedRootIds;
-    return result;
+    return commit_cloned_batch(document, operations, pastedRootIds, sourceToPasted,
+                               std::move(selection), referencePolicy, typedReferenceBindings);
 }
 
 CommandResult EditCommandService::move_object(DocumentSession &document, int objectId,

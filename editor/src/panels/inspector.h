@@ -149,7 +149,8 @@ class InspectorPanel
                                   const std::vector<int> &objectIds,
                                   const AssetBrowseCallback &browse = {});
     void save_selected_template(DocumentSession &document, int objectId,
-                                const BehaviorCatalog &catalog);
+                                const BehaviorCatalog &catalog,
+                                EditCommandService *commands = nullptr);
     bool consume_reveal_target(int objectId, std::optional<int> componentId,
                                const std::vector<FieldPathSegment> &path);
 

@@ -255,17 +255,35 @@ void run_hierarchy_shortcut_capture_cases()
                 dispatch_editor_key(EditorKey::Delete, false, false, hierarchy) ==
                 EditorAction::DeleteSelection &&
                 dispatch_editor_key(EditorKey::D, false, true, hierarchy) ==
-                EditorAction::DuplicateSelection,
-            "F2, Delete, and Ctrl+D must be routed while Hierarchy owns keyboard focus");
+                EditorAction::DuplicateSelection &&
+                dispatch_editor_key(EditorKey::C, false, true, hierarchy) ==
+                EditorAction::CopySelection &&
+                dispatch_editor_key(EditorKey::V, false, true, hierarchy) ==
+                EditorAction::PasteSelection,
+            "F2, Delete, Ctrl+D, Ctrl+C, and Ctrl+V must be routed while Hierarchy owns keyboard focus");
+    const EditorInputCapture scene{true, false, false, false, true, false};
+    require(dispatch_editor_key(EditorKey::C, false, true, scene) ==
+                EditorAction::CopySelection &&
+                dispatch_editor_key(EditorKey::V, false, true, scene) ==
+                EditorAction::PasteSelection &&
+                !dispatch_editor_key(EditorKey::F2, false, false, scene) &&
+                !dispatch_editor_key(EditorKey::Delete, false, false, scene) &&
+                !dispatch_editor_key(EditorKey::D, false, true, scene),
+            "Ctrl+C and Ctrl+V must be routed while Scene owns keyboard focus without enabling hierarchy-only shortcuts");
     for (const auto capture : {EditorInputCapture{true, true, false, false, false, true},
                                EditorInputCapture{true, false, true, false, false, true},
                                EditorInputCapture{true, false, false, true, false, true},
                                EditorInputCapture{false, false, false, false, false, true},
-                               EditorInputCapture{true, false, false, false, true, false}})
+                               EditorInputCapture{true, false, false, false, false, false},
+                               EditorInputCapture{true, true, false, false, true, false},
+                               EditorInputCapture{true, false, true, false, true, false},
+                               EditorInputCapture{true, false, false, true, true, false}})
         require(!dispatch_editor_key(EditorKey::F2, false, false, capture) &&
                     !dispatch_editor_key(EditorKey::Delete, false, false, capture) &&
-                    !dispatch_editor_key(EditorKey::D, false, true, capture),
-                "hierarchy mutation shortcuts must respect text, modal, gesture, app, and panel capture");
+                    !dispatch_editor_key(EditorKey::D, false, true, capture) &&
+                    !dispatch_editor_key(EditorKey::C, false, true, capture) &&
+                    !dispatch_editor_key(EditorKey::V, false, true, capture),
+                "hierarchy and scene copy/paste shortcuts must respect text, modal, gesture, app, and panel capture");
 }
 
 void run_assignment_preserves_previous_value()

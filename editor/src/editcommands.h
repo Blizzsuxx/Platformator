@@ -295,6 +295,14 @@ class EditCommandService
                                         DuplicateReferencePolicy::PreserveExistingTargets,
                                     const Json &typedReferenceBindings = Json::array(),
                                     bool bindingCoverageAssured = false);
+    CommandResult paste_objects(DocumentSession &document, const std::vector<Json> &subtrees,
+                                std::optional<int> destinationParentObjectId,
+                                std::size_t insertionIndex = std::numeric_limits<std::size_t>::max(),
+                                SelectionState selection = {},
+                                DuplicateReferencePolicy referencePolicy =
+                                    DuplicateReferencePolicy::PreserveExistingTargets,
+                                const Json &typedReferenceBindings = Json::array(),
+                                bool bindingCoverageAssured = false);
     CommandResult move_object(DocumentSession &document, int objectId,
                               std::optional<int> destinationParentObjectId,
                               std::size_t insertionIndex = std::numeric_limits<std::size_t>::max(),
@@ -369,6 +377,13 @@ class EditCommandService
     CommandResult commit_batch_candidate(DocumentSession &document, DocumentSession &&candidate,
                                          BatchCommand &&command, DocumentChange change,
                                          bool recordHistory);
+    CommandResult commit_cloned_batch(DocumentSession &document,
+                                      std::vector<BatchOperation> &operations,
+                                      const std::vector<int> &clonedRootIds,
+                                      const std::unordered_map<int, int> &sourceToClone,
+                                      SelectionState selection,
+                                      DuplicateReferencePolicy referencePolicy,
+                                      const Json &typedReferenceBindings);
     void prune_history();
     bool token_reachable(std::uint64_t token) const noexcept;
     std::uint64_t current_token() const noexcept;

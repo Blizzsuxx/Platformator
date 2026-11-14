@@ -1,0 +1,57 @@
+{
+  "format": "platformator.object-template",
+  "name": "Death Zone",
+  "reference_bindings": [],
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "height": 160.0,
+        "id": 1040,
+        "offset": {
+          "x": 157.84712854688496,
+          "y": -56.373974481030245
+        },
+        "trigger": true,
+        "type": 3,
+        "width": 3000.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "id": 1039,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "id": 113,
+    "name": "Death Zone",
+    "position": {
+      "x": 1115.111514052584,
+      "y": 629.3454215775158
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "death"
+  },
+  "version": 1
+}

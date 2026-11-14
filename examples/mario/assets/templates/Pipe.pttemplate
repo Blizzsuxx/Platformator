@@ -1,0 +1,67 @@
+{
+  "format": "platformator.object-template",
+  "name": "Pipe",
+  "reference_bindings": [],
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "height": 73.0,
+        "id": 1031,
+        "offset": {
+          "x": 0.0,
+          "y": 5.0
+        },
+        "trigger": false,
+        "type": 3,
+        "width": 55.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 1.0,
+        "gravity": false,
+        "id": 1030,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 96.0,
+        "id": 1032,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/tiles/pipe.png",
+        "type": 6,
+        "width": 72.0
+      }
+    ],
+    "id": 110,
+    "name": "Pipe",
+    "position": {
+      "x": 1340.0,
+      "y": 408.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid"
+  },
+  "version": 1
+}

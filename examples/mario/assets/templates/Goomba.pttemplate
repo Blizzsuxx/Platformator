@@ -1,0 +1,102 @@
+{
+  "format": "platformator.object-template",
+  "name": "Goomba",
+  "reference_bindings": [],
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "height": 28.0,
+        "id": 1072,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "type": 3,
+        "width": 28.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.8,
+        "gravity": false,
+        "id": 1071,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": -55.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 32.0,
+        "id": 1073,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/enemies/walk_0.png",
+        "type": 6,
+        "width": 32.0
+      },
+      {
+        "animationClipFilePath": "",
+        "currentFrameIndex": 0,
+        "id": 1075,
+        "playbackSpeed": 1.0,
+        "playing": false,
+        "type": 0
+      },
+      {
+        "behaviors": [
+          {
+            "direction": -1,
+            "maxX": 730,
+            "minX": 550,
+            "squashAnimset": "assets/animations/goomba_squash.animset",
+            "squashDuration": 0.28,
+            "stompMinSpeed": 10,
+            "stompSound": "assets/audio/stomp.wav",
+            "stompTolerance": 14,
+            "type": "MarioPatrolEnemy",
+            "walkAnimset": "assets/animations/goomba.animset",
+            "walkSpeed": 55
+          }
+        ],
+        "id": 1076,
+        "type": 5
+      },
+      {
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.9,
+        "id": 1074,
+        "loopCount": 0,
+        "type": 1
+      }
+    ],
+    "id": 119,
+    "name": "Goomba",
+    "position": {
+      "x": 640.0,
+      "y": 418.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy"
+  },
+  "version": 1
+}

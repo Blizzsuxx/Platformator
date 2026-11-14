@@ -1,0 +1,104 @@
+{
+  "format": "platformator.object-template",
+  "name": "Player",
+  "reference_bindings": [],
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "height": 32.0,
+        "id": 1004,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "type": 3,
+        "width": 28.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.6,
+        "gravity": false,
+        "id": 1003,
+        "mass": 3.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 32.0,
+        "id": 1005,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/player/idle_0.png",
+        "type": 6,
+        "width": 32.0
+      },
+      {
+        "animationClipFilePath": "",
+        "currentFrameIndex": 0,
+        "id": 1007,
+        "playbackSpeed": 1.0,
+        "playing": false,
+        "type": 0
+      },
+      {
+        "behaviors": [
+          {
+            "fallAnimset": "assets/animations/player_fall.animset",
+            "gravity": 358.065,
+            "hurtSound": "assets/audio/hurt.wav",
+            "idleAnimset": "assets/animations/player.animset",
+            "jumpAnimset": "assets/animations/player_jump.animset",
+            "jumpSound": "assets/audio/jump.wav",
+            "jumpSpeed": 250,
+            "maxFallSpeed": 460,
+            "runAnimset": "assets/animations/player_run.animset",
+            "stompBounceFactor": 0.65,
+            "type": "MarioPlayer",
+            "walkSpeed": 180,
+            "winAnimset": "assets/animations/player_win.animset"
+          }
+        ],
+        "id": 1008,
+        "type": 5
+      },
+      {
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.9,
+        "id": 1006,
+        "loopCount": 0,
+        "type": 1
+      }
+    ],
+    "id": 102,
+    "name": "Player",
+    "position": {
+      "x": 120.0,
+      "y": 408.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "player"
+  },
+  "version": 1
+}

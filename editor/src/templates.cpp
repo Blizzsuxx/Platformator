@@ -262,23 +262,20 @@ std::string pointer_string(const std::vector<std::string> &segments)
     return pointer;
 }
 
-bool is_object_kind(std::string_view kind)
-{
-    return kind == "GameObject" || kind == "Object";
-}
-
 bool target_exists(const TemplateIndex &index, int id, std::string_view kind)
 {
-    if (is_object_kind(kind)) return index.objects.contains(id);
-    if (kind == "Component") return index.components.contains(id);
-    return false;
+    if (is_template_object_target_kind(kind))
+        return index.objects.contains(id);
+    if (!is_template_component_target_kind(kind))
+        return false;
+    const auto found = index.components.find(id);
+    return found != index.components.end() && found->second != nullptr &&
+           component_matches_target_kind(*found->second, kind);
 }
 
 bool target_exists(const DocumentSession &document, int id, std::string_view kind)
 {
-    if (is_object_kind(kind)) return document.indexes.objectsById.contains(id);
-    if (kind == "Component") return document.indexes.componentsById.contains(id);
-    return false;
+    return document_target_matches_kind(document, id, kind);
 }
 
 const Json *component_or_object(const TemplateIndex &index, int ownerId,
@@ -432,7 +429,7 @@ bool collect_declared_value(const Json &descriptor, const Json &value,
     if (kind != "object_reference")
         return true;
     const std::string targetKind = descriptor.value("target", std::string("GameObject"));
-    if (!is_object_kind(targetKind) && targetKind != "Component")
+    if (!is_supported_template_target_kind(targetKind))
     {
         error = "compiled object-reference metadata has an unsupported target kind";
         return false;
@@ -507,7 +504,7 @@ bool append_author_binding(const Json &declaration, const TemplateIndex &subtree
         return false;
     }
     const std::string targetKind = declaration["target_kind"].get<std::string>();
-    if (!is_object_kind(targetKind) && targetKind != "Component")
+    if (!is_supported_template_target_kind(targetKind))
     {
         error = "author reference declaration has an unsupported target kind";
         return false;
@@ -609,24 +606,14 @@ bool validate_binding(const Json &binding, const TemplateIndex &index,
 
     const std::string &kind = kindField->get_ref<const std::string &>();
     const std::string &scope = scopeField->get_ref<const std::string &>();
-    if (!is_object_kind(kind) && kind != "Component")
+    if (!is_supported_template_target_kind(kind))
     {
-        error = "reference binding target_kind must be GameObject, Object, or Component";
+        error = "reference binding target_kind must be GameObject, Object, or a supported Component type";
         return false;
     }
     if (scope == "internal")
     {
-        bool targetExists = false;
-        if (kind == "GameObject" || kind == "Object")
-            targetExists = index.objects.contains(*targetId);
-        else if (kind == "Component")
-            targetExists = index.components.contains(*targetId);
-        else
-        {
-            error = "internal reference target_kind must be GameObject, Object, or Component";
-            return false;
-        }
-        if (!targetExists)
+        if (!target_exists(index, *targetId, kind))
         {
             error = "internal reference target ID must resolve to a compatible identity in the template";
             return false;
@@ -689,6 +676,21 @@ std::string validate_envelope(const Json &document)
     return {};
 }
 } // namespace
+
+void append_override_entry(Json &object, std::string_view fieldPath)
+{
+    if (!object.is_object() || fieldPath.empty())
+        return;
+    if (!object.contains("overrides") || !object["overrides"].is_array())
+        object["overrides"] = Json::array();
+    auto &overrides = object["overrides"];
+    for (const auto &entry : overrides)
+    {
+        if (entry.is_string() && entry.get<std::string>() == fieldPath)
+            return;
+    }
+    overrides.push_back(std::string(fieldPath));
+}
 
 TemplateAssetV1::TemplateAssetV1(Json envelope) : envelope_(std::move(envelope)) {}
 const Json &TemplateAssetV1::root() const { return envelope_.at("root"); }
@@ -1010,10 +1012,27 @@ TemplateInsertResult insert_template(
         Json inserted = asset.root();
         if (rootPosition)
         {
+            double templateX = 0.0;
+            double templateY = 0.0;
+            if (const auto posIt = asset.root().find("position");
+                posIt != asset.root().end() && posIt->is_object())
+            {
+                if (const auto xIt = posIt->find("x"); xIt != posIt->end() && xIt->is_number())
+                    templateX = xIt->get<double>();
+                if (const auto yIt = posIt->find("y"); yIt != posIt->end() && yIt->is_number())
+                    templateY = yIt->get<double>();
+            }
             if (!inserted.contains("position") || !inserted["position"].is_object())
                 inserted["position"] = Json::object();
             inserted["position"]["x"] = rootPosition->first;
             inserted["position"]["y"] = rootPosition->second;
+            if (!linkedTemplatePath.empty())
+            {
+                if (rootPosition->first != static_cast<float>(templateX))
+                    append_override_entry(inserted, "position.x");
+                if (rootPosition->second != static_cast<float>(templateY))
+                    append_override_entry(inserted, "position.y");
+            }
         }
         std::vector<int> insertedObjects;
         std::vector<Json *> objectStack{&inserted};
@@ -1314,6 +1333,33 @@ TemplateExportResult export_object_as_template(
     return {true, target, "Saved template " + target.filename().string() + "."};
 }
 
+TemplateExportResult export_object_as_template(
+    DocumentSession &document,
+    EditCommandService &commands,
+    int objectId,
+    const std::filesystem::path &targetDirectory,
+    const Json &behaviorCatalog,
+    const std::vector<Json> &authorBindings,
+    const std::vector<TemplateAuthorSchemaDeclaration> &authorDeclaredBehaviors)
+{
+    auto exported = export_object_as_template(
+        static_cast<const DocumentSession &>(document), objectId, targetDirectory,
+        behaviorCatalog, authorBindings, authorDeclaredBehaviors);
+    if (!exported.succeeded)
+        return exported;
+
+    std::string linkError;
+    if (!link_object_as_template_instance(document, commands, objectId, exported.outputPath, linkError))
+    {
+        std::error_code removeError;
+        std::filesystem::remove(exported.outputPath, removeError);
+        return {false, {}, linkError.empty()
+            ? "Template export succeeded, but object could not be linked as a template instance."
+            : std::move(linkError)};
+    }
+    return exported;
+}
+
 bool instantiate_asset_drop(DocumentSession &document, EditCommandService &commands,
                             SelectionModel &selection, const std::string &assetPath,
                             EditorAssetKind kind, float targetX, float targetY,
@@ -1519,6 +1565,42 @@ const Json *find_document_object_by_id(const DocumentSession &document, int obje
     return resolve_object_at(document.root, loc->second);
 }
 
+bool component_matches_target_kind(const Json &component, std::string_view kind) noexcept
+{
+    if (!is_template_component_target_kind(kind) || !component.is_object())
+        return false;
+    const auto type = component.find("type");
+    if (type == component.end())
+        return false;
+    const auto parsed = read_identity(*type);
+    if (!parsed)
+        return false;
+    if (kind == "Component")
+        return true;
+    const auto wanted = template_component_type_for_target_kind(kind);
+    return wanted.has_value() && *parsed == *wanted;
+}
+
+bool document_target_matches_kind(const DocumentSession &document, int id,
+                                  std::string_view kind) noexcept
+{
+    if (is_template_object_target_kind(kind))
+        return document.indexes.objectsById.contains(id);
+    if (!is_template_component_target_kind(kind))
+        return false;
+    const auto location = document.indexes.componentsById.find(id);
+    if (location == document.indexes.componentsById.end())
+        return false;
+    const Json *owner = find_document_object_by_id(document, location->second.ownerObjectId);
+    if (owner == nullptr)
+        return false;
+    const auto components = owner->find("components");
+    if (components == owner->end() || !components->is_array() ||
+        location->second.componentIndex >= components->size())
+        return false;
+    return component_matches_target_kind((*components)[location->second.componentIndex], kind);
+}
+
 bool is_template_instance_root(const Json &object) noexcept
 {
     return object.is_object() && object.contains("template") && object["template"].is_string() &&
@@ -1613,15 +1695,7 @@ void mark_template_override(DocumentSession &document, int objectId, std::string
     Json *obj = resolve_object_mutable_at(document.root, loc->second);
     if (obj == nullptr || !is_template_node(*obj))
         return;
-    if (!obj->contains("overrides") || !(*obj)["overrides"].is_array())
-        (*obj)["overrides"] = Json::array();
-    auto &overrides = (*obj)["overrides"];
-    for (const auto &entry : overrides)
-    {
-        if (entry.is_string() && entry.get<std::string>() == fieldPath)
-            return;
-    }
-    overrides.push_back(std::string(fieldPath));
+    append_override_entry(*obj, fieldPath);
 }
 
 std::filesystem::path resolve_template_asset_path(const std::filesystem::path &assetRoot,
@@ -1817,7 +1891,8 @@ std::vector<std::string> template_source_paths(const Json &sourceNode)
 
 void sync_node_from_template(Json &instanceNode, const Json &templateNode,
                              std::unordered_set<int> &usedIds, int &nextId,
-                             bool isRoot)
+                             bool isRoot, bool preserveRootPosition = true,
+                             bool removeLocalAdditions = false)
 {
     auto is_overridden_path = [&](std::string path) {
         if (is_property_overridden(instanceNode, path))
@@ -1906,7 +1981,7 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
                 if (source.contains(it.key()))
                     continue;
                 const std::string childPath = path.empty() ? it.key() : path + "." + it.key();
-                if (source_owned_at(childPath) && !has_override_at_or_below(childPath))
+                if ((removeLocalAdditions || source_owned_at(childPath)) && !has_override_at_or_below(childPath))
                     merged.erase(it.key());
             }
             for (auto it = source.begin(); it != source.end(); ++it)
@@ -1934,7 +2009,8 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
             for (std::size_t i = source.size(); i < current.size(); ++i)
             {
                 const std::string childPath = path + "[" + std::to_string(i) + "]";
-                if (!source_owned_at(childPath) || has_override_at_or_below(childPath))
+                if (!removeLocalAdditions &&
+                    (!source_owned_at(childPath) || has_override_at_or_below(childPath)))
                 {
                     const std::size_t compactedIndex = merged.size();
                     merged.push_back(current[i]);
@@ -1953,7 +2029,20 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
     for (auto it = templateNode.begin(); it != templateNode.end(); ++it)
         if (!is_game_object_envelope_metadata_key(it.key())) nextSourceKeys.push_back(it.key());
     const Json previousSourceKeys = instanceNode.value("templateSourceKeys", Json::array());
-    if (previousSourceKeys.is_array())
+    if (removeLocalAdditions)
+    {
+        std::vector<std::string> extraKeys;
+        for (auto it = instanceNode.begin(); it != instanceNode.end(); ++it)
+        {
+            const std::string &key = it.key();
+            if (!is_game_object_envelope_metadata_key(key) &&
+                std::find(nextSourceKeys.begin(), nextSourceKeys.end(), key) == nextSourceKeys.end())
+                extraKeys.push_back(key);
+        }
+        for (const auto &key : extraKeys)
+            instanceNode.erase(key);
+    }
+    else if (previousSourceKeys.is_array())
     {
         for (const auto &entry : previousSourceKeys)
         {
@@ -1968,7 +2057,7 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
     {
         const std::string path = key;
         const auto current = instanceNode.find(key);
-        if (key == "position" && isRoot)
+        if (preserveRootPosition && key == "position" && isRoot)
             continue;
         if (current == instanceNode.end())
             instanceNode[key] = templateNode[key];
@@ -2017,7 +2106,18 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
                     else if (!is_overridden_path(fieldKey))
                         merged[it.key()] = merge_value(merge_value, *current, it.value(), fieldKey);
                 }
-                if (priorSourceFields.is_array())
+                if (removeLocalAdditions)
+                {
+                    std::vector<std::string> extraFields;
+                    for (auto it = merged.begin(); it != merged.end(); ++it)
+                        if (!is_component_envelope_metadata_key(it.key()) &&
+                            std::find(nextSourceFields.begin(), nextSourceFields.end(), it.key()) ==
+                                nextSourceFields.end())
+                            extraFields.push_back(it.key());
+                    for (const auto &field : extraFields)
+                        merged.erase(field);
+                }
+                else if (priorSourceFields.is_array())
                     for (const auto &key : priorSourceFields)
                         if (key.is_string() &&
                             std::find(nextSourceFields.begin(), nextSourceFields.end(), key.get<std::string>()) ==
@@ -2045,14 +2145,21 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
                 updatedComponents.push_back(std::move(added));
             }
         }
-        for (std::size_t i = 0; i < existingComponents.size(); ++i)
+        if (!removeLocalAdditions)
         {
-            if (consumed[i] || !existingComponents[i].is_object() ||
-                existingComponents[i].contains("templateComponentId"))
-                continue;
-            updatedComponents.push_back(existingComponents[i]);
+            for (std::size_t i = 0; i < existingComponents.size(); ++i)
+            {
+                if (consumed[i] || !existingComponents[i].is_object() ||
+                    existingComponents[i].contains("templateComponentId"))
+                    continue;
+                updatedComponents.push_back(existingComponents[i]);
+            }
         }
         instanceNode["components"] = std::move(updatedComponents);
+    }
+    else if (removeLocalAdditions)
+    {
+        instanceNode["components"] = Json::array();
     }
     instanceNode["templateSourcePaths"] = nextSourcePaths;
 
@@ -2118,7 +2225,8 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
             if (matchIdx)
             {
                 Json childCopy = existingChildren[*matchIdx];
-                sync_node_from_template(childCopy, tmplChild, usedIds, nextId, false);
+                sync_node_from_template(childCopy, tmplChild, usedIds, nextId, false,
+                                        preserveRootPosition, removeLocalAdditions);
                 updatedChildren.push_back(std::move(childCopy));
             }
             else
@@ -2168,11 +2276,18 @@ void sync_node_from_template(Json &instanceNode, const Json &templateNode,
                 updatedChildren.push_back(std::move(newChild));
             }
         }
-        for (std::size_t i = 0; i < existingChildren.size(); ++i)
-            if (!childConsumed[i] && existingChildren[i].is_object() &&
-                !existingChildren[i].contains("templateNodeId"))
-                updatedChildren.push_back(existingChildren[i]);
+        if (!removeLocalAdditions)
+        {
+            for (std::size_t i = 0; i < existingChildren.size(); ++i)
+                if (!childConsumed[i] && existingChildren[i].is_object() &&
+                    !existingChildren[i].contains("templateNodeId"))
+                    updatedChildren.push_back(existingChildren[i]);
+        }
         instanceNode["children"] = std::move(updatedChildren);
+    }
+    else if (removeLocalAdditions)
+    {
+        instanceNode["children"] = Json::array();
     }
 }
 
@@ -2511,7 +2626,97 @@ bool restore_template_source_ids(Json &root, Json &bindings, std::string &error,
         *destinationToSourceResult = std::move(destinationToSource);
     return true;
 }
+bool stamp_template_source_metadata(Json &object, const TemplateIdMap *instanceToSource,
+                                    std::string &errorOut)
+{
+    if (!object.is_object())
+        return true;
+    const int instanceId = object.value("id", -1);
+    int sourceObjectId = instanceId;
+    if (instanceToSource != nullptr)
+    {
+        const auto sourceId = instanceToSource->find(instanceId);
+        if (sourceId == instanceToSource->end())
+        {
+            errorOut = "an applied object could not be assigned its saved template identity";
+            return false;
+        }
+        sourceObjectId = sourceId->second;
+    }
+    object["templateNodeId"] = sourceObjectId;
+    std::vector<std::string> sourceKeys;
+    for (auto it = object.begin(); it != object.end(); ++it)
+        if (!is_game_object_envelope_metadata_key(it.key()))
+            sourceKeys.push_back(it.key());
+    object["templateSourceKeys"] = std::move(sourceKeys);
+    if (object.contains("components") && object["components"].is_array())
+        for (auto &component : object["components"])
+        {
+            if (!component.is_object())
+                continue;
+            const int instanceComponentId = component.value("id", -1);
+            int sourceCompId = instanceComponentId;
+            if (instanceToSource != nullptr)
+            {
+                const auto sourceComponentId = instanceToSource->find(instanceComponentId);
+                if (sourceComponentId == instanceToSource->end())
+                {
+                    errorOut = "an applied component could not be assigned its saved template identity";
+                    return false;
+                }
+                sourceCompId = sourceComponentId->second;
+            }
+            component["templateComponentId"] = sourceCompId;
+            std::vector<std::string> sourceFields;
+            for (auto it = component.begin(); it != component.end(); ++it)
+                if (!is_component_envelope_metadata_key(it.key()))
+                    sourceFields.push_back(it.key());
+            component["templateSourceFields"] = std::move(sourceFields);
+        }
+    object["templateSourcePaths"] = template_source_paths(object);
+    if (object.contains("children") && object["children"].is_array())
+        for (auto &child : object["children"])
+            if (!stamp_template_source_metadata(child, instanceToSource, errorOut))
+                return false;
+    return true;
+}
 } // namespace
+
+bool link_object_as_template_instance(DocumentSession &sceneDocument, EditCommandService &commands,
+                                      int objectId, const std::filesystem::path &templatePath,
+                                      std::string &errorOut)
+{
+    rebuild_document_indexes(sceneDocument);
+    const auto loc = sceneDocument.indexes.objectsById.find(objectId);
+    if (loc == sceneDocument.indexes.objectsById.end())
+    {
+        errorOut = "The selected GameObject is no longer present in the active scene.";
+        return false;
+    }
+    const Json *sourceObject = resolve_object_at(sceneDocument.root, loc->second);
+    if (sourceObject == nullptr)
+    {
+        errorOut = "The selected GameObject is no longer present in the active scene.";
+        return false;
+    }
+
+    Json updatedInstance = *sourceObject;
+    strip_nested_template_metadata(updatedInstance);
+    updatedInstance["template"] = normalize_template_asset_ref(sceneDocument.assetRoot, templatePath);
+    if (!stamp_template_source_metadata(updatedInstance, nullptr, errorOut))
+        return false;
+
+    const auto committed = apply_object_snapshot(sceneDocument, commands, objectId,
+                                                 *sourceObject, updatedInstance);
+    if (committed.status != CommandStatus::Changed && committed.status != CommandStatus::NoChange)
+    {
+        errorOut = committed.message.empty()
+            ? "Could not link exported GameObject as a template instance."
+            : committed.message;
+        return false;
+    }
+    return true;
+}
 
 bool apply_template_instance(DocumentSession &sceneDocument, EditCommandService &commands,
                              int instanceRootId, const std::filesystem::path &assetRoot,
@@ -2609,49 +2814,7 @@ bool apply_template_instance(DocumentSession &sceneDocument, EditCommandService 
     // Clear overrides through the same history as the authored values.
     Json updatedInstance = *rootObj;
     clear_overrides_recursive(updatedInstance);
-    const auto stampSourceMetadata = [&](const auto &self, Json &object) -> bool {
-        if (!object.is_object())
-            return true;
-        const int instanceId = object.value("id", -1);
-        const auto sourceId = instanceToSource.find(instanceId);
-        if (sourceId == instanceToSource.end())
-        {
-            errorOut = "an applied object could not be assigned its saved template identity";
-            return false;
-        }
-        object["templateNodeId"] = sourceId->second;
-        std::vector<std::string> sourceKeys;
-        for (auto it = object.begin(); it != object.end(); ++it)
-            if (!is_game_object_envelope_metadata_key(it.key()))
-                sourceKeys.push_back(it.key());
-        object["templateSourceKeys"] = std::move(sourceKeys);
-        if (object.contains("components") && object["components"].is_array())
-            for (auto &component : object["components"])
-            {
-                if (!component.is_object())
-                    continue;
-                const int instanceComponentId = component.value("id", -1);
-                const auto sourceComponentId = instanceToSource.find(instanceComponentId);
-                if (sourceComponentId == instanceToSource.end())
-                {
-                    errorOut = "an applied component could not be assigned its saved template identity";
-                    return false;
-                }
-                component["templateComponentId"] = sourceComponentId->second;
-                std::vector<std::string> sourceFields;
-                for (auto it = component.begin(); it != component.end(); ++it)
-                    if (!is_component_envelope_metadata_key(it.key()))
-                        sourceFields.push_back(it.key());
-                component["templateSourceFields"] = std::move(sourceFields);
-            }
-        object["templateSourcePaths"] = template_source_paths(object);
-        if (object.contains("children") && object["children"].is_array())
-            for (auto &child : object["children"])
-                if (!self(self, child))
-                    return false;
-        return true;
-    };
-    if (!stampSourceMetadata(stampSourceMetadata, updatedInstance))
+    if (!stamp_template_source_metadata(updatedInstance, &instanceToSource, errorOut))
     {
         if (hadPreviousFile)
             (void)write_file_atomically(fullPath, previousContents, true);
@@ -2706,8 +2869,6 @@ bool revert_template_instance(DocumentSession &sceneDocument, EditCommandService
         return false;
     }
 
-    const Json savedPos = rootObj->contains("position") ? rootObj->at("position") : Json{{"x", 0.0}, {"y", 0.0}};
-
     std::unordered_set<int> usedIds;
     for (const auto &[id, _] : sceneDocument.indexes.objectsById)
         usedIds.insert(id);
@@ -2719,10 +2880,9 @@ bool revert_template_instance(DocumentSession &sceneDocument, EditCommandService
 
     Json updatedInstance = *rootObj;
     clear_overrides_recursive(updatedInstance);
-    sync_node_from_template(updatedInstance, loaded.asset->root(), usedIds, nextId, true);
+    sync_node_from_template(updatedInstance, loaded.asset->root(), usedIds, nextId, true, false, true);
     if (!sync_template_reference_values(updatedInstance, *rootObj, *loaded.asset, errorOut))
         return false;
-    updatedInstance["position"] = savedPos;
     const auto committed = apply_object_snapshot(sceneDocument, commands, instanceRootId,
                                                  *rootObj, updatedInstance);
     if (committed.status != CommandStatus::Changed && committed.status != CommandStatus::NoChange)
@@ -3553,4 +3713,4 @@ std::size_t propagate_template_to_scene(DocumentSession &sceneDocument, EditComm
         return 0;
     return matchingRootIds.size();
 }
-} // namespace platformator_editor
+} // namespace platformator_editor platformator_editor

@@ -2,6 +2,7 @@
 
 #include "behaviorcatalog.h"
 #include "editcommands.h"
+#include "panels/livepropertyedit.h"
 #include "referencefields.h"
 #include "selection.h"
 #include "templates.h"
@@ -44,6 +45,8 @@ class BehaviorFieldsPanel
 
     void set_host_generation(std::uint64_t generation, DocumentSession *document = nullptr) noexcept;
     void cancel_active_interactions(DocumentSession *document = nullptr);
+    void commit_active_interactions();
+    void discard_active_interactions(DocumentSession *document = nullptr);
     void reveal_field(int objectId, int componentId, std::size_t behaviorOrdinal,
                       std::string fieldPath);
 
@@ -72,6 +75,7 @@ class BehaviorFieldsPanel
     std::vector<int> feedbackObjectIds_;
     std::uint64_t feedbackRevision_ = 0;
     ScrubState scrubState_;
+    LivePropertyEditState liveEdit_;
     std::uint64_t hostGeneration_ = 0;
 };
 } // namespace platformator_editor

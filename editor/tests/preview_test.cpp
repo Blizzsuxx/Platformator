@@ -1699,6 +1699,83 @@ void check_malformed_collider_preview_placeholders()
             "a collider-only edit must refresh local proxy geometry without copying Sprite or Animator JSON");
     preview.release();
 }
+
+void check_shared_texture_and_animation_consumers_after_rebuild()
+{
+    TemporaryAssets assets;
+    RuntimeOptions options;
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.assetRoot = (assets.root / "assets").string();
+    platformator::Runtime runtime(options);
+
+    DocumentSession sceneA = make_default_document(assets.root.parent_path(), assets.root / "assets", 501);
+    sceneA.tabId = TabId{10};
+    sceneA.root.push_back(object_record(101, "Ground A", 20.0f, 20.0f,
+        Json::array({sprite_component(1001, "assets/textures/red_circle.png")})));
+    sceneA.root.push_back(object_record(102, "Ground B", 60.0f, 20.0f,
+        Json::array({sprite_component(1002, "assets/textures/red_circle.png")})));
+    sceneA.root.push_back(object_record(103, "Ground C", 100.0f, 20.0f,
+        Json::array({sprite_component(1003, "assets/textures/red_circle.png")})));
+    sceneA.root.push_back(object_record(201, "Coin A", 140.0f, 20.0f,
+        Json::array({sprite_component(2001, ""), animator_component(2002, "assets/animations/preview.animset")})));
+    sceneA.root.push_back(object_record(202, "Coin B", 180.0f, 20.0f,
+        Json::array({sprite_component(2003, ""), animator_component(2004, "assets/animations/preview.animset")})));
+    sceneA.structureRevision++;
+    rebuild_document_indexes(sceneA);
+
+    DocumentSession sceneB = make_default_document(assets.root.parent_path(), assets.root / "assets", 502);
+    sceneB.tabId = TabId{11};
+    sceneB.root.push_back(object_record(301, "Other Tab Sprite", 40.0f, 40.0f,
+        Json::array({sprite_component(3001, "assets/textures/asymmetric.png")})));
+    sceneB.structureRevision++;
+    rebuild_document_indexes(sceneB);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{sceneA.projectGeneration}, sceneA.assetRoot);
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+
+    preview.reconcile(sceneA, true);
+    wait_for_asset_preparation(preview, sceneA);
+    for (int id : {101, 102, 103, 201, 202})
+    {
+        const auto *info = preview.object_info(id);
+        require(info != nullptr && info->textureAvailable && info->assetError.empty(),
+                "every object sharing an async texture or animation clip must receive its sprite on initial load (id=" +
+                    std::to_string(id) + ")");
+    }
+
+    // Switch to another document tab so sceneA's proxies are released (and uncached textures freed).
+    preview.reconcile(sceneB, true);
+    wait_for_asset_preparation(preview, sceneB);
+
+    // Switch back to sceneA so shared textures/animations must be re-prepared across multiple consumers.
+    preview.reconcile(sceneA, true);
+    wait_for_asset_preparation(preview, sceneA);
+    for (int id : {101, 102, 103, 201, 202})
+    {
+        const auto *info = preview.object_info(id);
+        require(info != nullptr && info->textureAvailable && info->assetError.empty(),
+                "switching back to a document must restore textures on ALL shared consumers (id=" +
+                    std::to_string(id) + ")");
+    }
+
+    // Also verify deleting the first animation consumer mid-flight still keeps and commits the clip for Coin B.
+    preview.reconcile(sceneB, true);
+    wait_for_asset_preparation(preview, sceneB);
+    preview.reconcile(sceneA, true);
+    DocumentSession sceneAWithoutFirstCoin = sceneA;
+    sceneAWithoutFirstCoin.root.erase(sceneAWithoutFirstCoin.root.begin() + 3);
+    ++sceneAWithoutFirstCoin.structureRevision;
+    rebuild_document_indexes(sceneAWithoutFirstCoin);
+    preview.reconcile(sceneAWithoutFirstCoin, true);
+    wait_for_asset_preparation(preview, sceneAWithoutFirstCoin);
+    const auto *remainingCoin = preview.object_info(202);
+    require(remainingCoin != nullptr && remainingCoin->textureAvailable && remainingCoin->assetError.empty(),
+            "removing the first animation consumer while loading must still commit the clip to remaining consumers");
+    preview.release();
+}
 } // namespace
 
 int main()
@@ -1717,6 +1794,7 @@ int main()
 #endif
         check_shared_animation_dependency_reload();
         check_animation_dependency_queue_recovery_and_stale_generation();
+        check_shared_texture_and_animation_consumers_after_rebuild();
         platformator_editor::run_viewport_cases();
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
         const auto counts = work::snapshot();

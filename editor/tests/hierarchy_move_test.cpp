@@ -6,9 +6,14 @@
 #include "assetformats.h"
 #include "preferences.h"
 #include "componenttypes.h"
+#include "test_support.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
+#include <cmath>
+#include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -500,6 +505,111 @@ void asset_drop_hierarchy_instantiation_test()
             "root dropped object must not have a parent");
 }
 
+void export_and_between_object_template_drop_test()
+{
+    require(sanitize_template_filename_stem("Ground A") == "Ground-A" &&
+                sanitize_template_filename_stem("  Coin!! ") == "Coin" &&
+                sanitize_template_filename_stem("!!!") == "GameObject",
+            "template filename sanitization must be consistent");
+
+    platformator_editor_test::TemporaryDirectory temp;
+    const auto projectRoot = temp.path() / "proj";
+    const auto assetRoot = projectRoot / "assets";
+    const auto tmplDir = assetRoot / "templates";
+    std::filesystem::create_directories(tmplDir);
+
+    auto document = move_fixture();
+    document.projectRoot = projectRoot;
+    document.assetRoot = assetRoot;
+    EditCommandService commands;
+    SelectionModel selection;
+    commands.set_property(
+        document,
+        address_for_document(document, 20, std::nullopt, std::nullopt, {std::string("name")}),
+        std::string("Ground A"));
+    const Json emptyCatalog{{"behaviors", Json::array()}};
+
+    const auto exported1 = export_object_as_template(document, 20, tmplDir, emptyCatalog);
+    require(exported1.succeeded && exported1.outputPath.filename() == "Ground-A.pttemplate" &&
+                exported1.message == "Saved template Ground-A.pttemplate.",
+            "first unified template export must use sanitized object name");
+    const auto exported2 = export_object_as_template(document, 20, tmplDir, emptyCatalog);
+    require(exported2.succeeded && exported2.outputPath.filename() == "Ground-A-2.pttemplate" &&
+                exported2.message == "Saved template Ground-A-2.pttemplate.",
+            "second unified template export must suffix -2");
+
+    // Drag placement helper: top edge -> before target row; expanded bottom edge -> first child;
+    // collapsed/leaf bottom edge -> after target row; script drops -> always Into.
+    const HierarchyRow parentRow{HierarchyRowKind::Object, 10, 0, "Root A", true, -1};
+    const HierarchyRow childRow{HierarchyRowKind::Object, 11, 1, "Child A1", false, 0};
+    const HierarchyRow secondRoot{HierarchyRowKind::Object, 20, 0, "Ground A", false, 2};
+
+    const auto beforeSecondRoot = resolve_hierarchy_drop_placement(
+        document, secondRoot, false, true, 100.0f, 120.0f, 102.0f);
+    require(beforeSecondRoot.zone == HierarchyDropPlacementZone::Before &&
+                !beforeSecondRoot.destinationParent.has_value() &&
+                beforeSecondRoot.destinationIndex == 1 &&
+                beforeSecondRoot.indicatorDepth == 0,
+            "top 25% of root row 20 must insert at root index 1 before row 20");
+
+    const auto expandedAfterParent = resolve_hierarchy_drop_placement(
+        document, parentRow, true, true, 40.0f, 60.0f, 58.0f);
+    require(expandedAfterParent.zone == HierarchyDropPlacementZone::After &&
+                expandedAfterParent.destinationParent == 10 &&
+                expandedAfterParent.destinationIndex == 0 &&
+                expandedAfterParent.indicatorDepth == 1,
+            "bottom 25% of expanded parent must insert as its first child between parent and children");
+
+    const auto collapsedAfterParent = resolve_hierarchy_drop_placement(
+        document, parentRow, false, true, 40.0f, 60.0f, 58.0f);
+    require(collapsedAfterParent.zone == HierarchyDropPlacementZone::After &&
+                !collapsedAfterParent.destinationParent.has_value() &&
+                collapsedAfterParent.destinationIndex == 1 &&
+                collapsedAfterParent.indicatorDepth == 0,
+            "bottom 25% of collapsed parent must insert after parent at root index 1");
+
+    const auto afterChild = resolve_hierarchy_drop_placement(
+        document, childRow, false, true, 60.0f, 80.0f, 78.0f);
+    require(afterChild.zone == HierarchyDropPlacementZone::After &&
+                afterChild.destinationParent == 10 &&
+                afterChild.destinationIndex == 1 &&
+                afterChild.indicatorDepth == 1,
+            "bottom 25% of leaf child must insert as next sibling under parent");
+
+    const auto scriptTopEdge = resolve_hierarchy_drop_placement(
+        document, secondRoot, false, false, 100.0f, 120.0f, 102.0f);
+    require(scriptTopEdge.zone == HierarchyDropPlacementZone::Into &&
+                scriptTopEdge.destinationParent == 20,
+            "script drops must always attach Into the target object");
+
+    // Instantiate template between root object 10 and root object 20 (at root index 1).
+    const std::size_t rootsBefore = document.root.size();
+    require(instantiate_asset_drop(document, commands, selection,
+                                   "assets/templates/Ground-A.pttemplate",
+                                   EditorAssetKind::Template, 0.0f, 0.0f,
+                                   beforeSecondRoot.destinationParent,
+                                   beforeSecondRoot.destinationIndex),
+            "instantiating template between two root objects must succeed");
+    require(document.root.size() == rootsBefore + 1 &&
+                document.root[0].value("id", -1) == 10 &&
+                document.root[2].value("id", -1) == 20 &&
+                is_template_instance_root(document.root[1]),
+            "between-object template drop must place linked template instance at exact root index 1");
+
+    // Instantiate template as first child between expanded parent 10 and its child 11.
+    const std::size_t childrenBefore = document.root[0]["children"].size();
+    require(instantiate_asset_drop(document, commands, selection,
+                                   "assets/templates/Ground-A.pttemplate",
+                                   EditorAssetKind::Template, 0.0f, 0.0f,
+                                   expandedAfterParent.destinationParent,
+                                   expandedAfterParent.destinationIndex),
+            "instantiating template before first child of expanded parent must succeed");
+    require(document.root[0]["children"].size() == childrenBefore + 1 &&
+                is_template_instance_root(document.root[0]["children"][0]) &&
+                document.root[0]["children"][1].value("id", -1) == 11,
+            "between-parent-and-child template drop must insert before existing first child");
+}
+
 void hierarchy_preset_creation_and_visibility_lock_toggling_test()
 {
     auto document = move_fixture();
@@ -585,6 +695,148 @@ void hierarchy_preset_creation_and_visibility_lock_toggling_test()
 
     ImGui::DestroyContext();
 }
+
+void hierarchy_scroll_stability_on_template_add_test()
+{
+    platformator_editor_test::TemporaryDirectory temp;
+    const auto projectRoot = temp.path() / "proj";
+    const auto assetRoot = projectRoot / "assets";
+    const auto tmplDir = assetRoot / "templates";
+    std::filesystem::create_directories(tmplDir);
+
+    DocumentSession document = make_default_document();
+    document.projectRoot = projectRoot;
+    document.assetRoot = assetRoot;
+    document.root = Json::array();
+    for (int id = 1; id <= 30; ++id)
+        document.root.push_back(object(id, static_cast<double>(id), 0.0));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    EditCommandService commands;
+    SelectionModel selection;
+    const Json emptyCatalog{{"behaviors", Json::array()}};
+    const auto exported = export_object_as_template(document, 1, tmplDir, emptyCatalog);
+    require(exported.succeeded, "fixture template export for scroll test must succeed");
+
+    HierarchyPanel panel;
+    std::vector<int> hiddenObjects;
+    std::vector<int> lockedObjects;
+
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {400.0f, 260.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    const auto render = [&](bool injectExternPayload = false)
+    {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({300.0f, 240.0f}, ImGuiCond_Always);
+        if (ImGui::Begin("Hierarchy"))
+        {
+            panel.draw(document, selection, commands, true, &hiddenObjects, &lockedObjects);
+        }
+        ImGui::End();
+        if (injectExternPayload && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))
+        {
+            AssetDragPayload payload{};
+            std::snprintf(payload.relativeAssetPath, sizeof(payload.relativeAssetPath), "%s",
+                          "assets/templates/object-1.pttemplate");
+            payload.kind = EditorAssetKind::Template;
+            ImGui::SetDragDropPayload("PLATFORMATOR_ASSET_PATH", &payload, sizeof(payload));
+            ImGui::EndDragDropSource();
+        }
+        ImGui::Render();
+    };
+
+    const auto find_rows_window = [](ImGuiWindow *outer) -> ImGuiWindow *
+    {
+        if (outer == nullptr)
+            return nullptr;
+        for (ImGuiWindow *child : outer->DC.ChildWindows)
+        {
+            if (child != nullptr && std::string_view(child->Name).find("HierarchyRows") != std::string_view::npos)
+                return child;
+        }
+        return nullptr;
+    };
+
+    render();
+    render();
+    ImGuiWindow *outerWindow = ImGui::FindWindowByName("Hierarchy");
+    ImGuiWindow *rowsWindow = find_rows_window(outerWindow);
+    require(outerWindow != nullptr && rowsWindow != nullptr,
+            "Hierarchy and HierarchyRows windows must exist");
+    require(outerWindow->ScrollMax.y == 0.0f && rowsWindow->ScrollMax.y > 120.0f,
+            "HierarchyRows must scroll while outer Hierarchy stays non-scrollable");
+
+    // 1. Drop a template via ImGui drag-drop onto a middle visible row while scrolled down.
+    const float scrolledY = 100.0f;
+    ImGui::SetScrollY(rowsWindow, scrolledY);
+    render();
+    require(std::fabs(rowsWindow->Scroll.y - scrolledY) < 1.0f,
+            "initial scroll position must apply cleanly");
+
+    std::optional<SemanticBounds> middleRowBounds;
+    const auto semanticNodes = panel.semantic_nodes(document, selection.current(), "test/tab/1/document/1");
+    for (const auto &node : semanticNodes)
+    {
+        if (node.id.find("/object/") != std::string::npos && node.bounds &&
+            node.bounds->height > 0.0 &&
+            node.bounds->y > static_cast<double>(rowsWindow->InnerRect.Min.y) + 40.0 &&
+            node.bounds->y + node.bounds->height < static_cast<double>(rowsWindow->InnerRect.Max.y) - 40.0)
+        {
+            middleRowBounds = node.bounds;
+            break;
+        }
+    }
+    require(middleRowBounds.has_value(), "must find a middle visible Hierarchy row to drop onto");
+
+    const float dropX = static_cast<float>(middleRowBounds->x + middleRowBounds->width * 0.5);
+    const float dropY = static_cast<float>(middleRowBounds->y + middleRowBounds->height * 0.1); // Before zone
+    io.AddMousePosEvent(dropX, dropY);
+    io.AddMouseButtonEvent(0, true);
+    render(true);
+    // Keep external drag payload alive while releasing mouse over the target row.
+    io.AddMouseButtonEvent(0, false);
+    render(true);
+    // Run subsequent frames (including post-selection reveal evaluation).
+    render(false);
+    render(false);
+
+    require(document.root.size() == 31,
+            "drag-dropping template onto a visible Hierarchy row must insert it into the scene");
+    require(std::fabs(rowsWindow->Scroll.y - scrolledY) < 1.0f,
+            "dropping a template onto a visible Hierarchy row must not reset or jump HierarchyRows scroll");
+    require(outerWindow->ScrollMax.y == 0.0f && outerWindow->Scroll.y == 0.0f,
+            "dropping a template mid-clipper must not make the outer Hierarchy window scrollable");
+
+    // 2. Append a template off-screen at the bottom while scrolled at the top:
+    // scroll advances minimally to bring it into view, rather than jumping it to the top.
+    ImGui::SetScrollY(rowsWindow, 0.0f);
+    render();
+    require(instantiate_asset_drop(document, commands, selection,
+                                   "assets/templates/object-1.pttemplate",
+                                   EditorAssetKind::Template, 0.0f, 0.0f,
+                                   std::nullopt, std::numeric_limits<std::size_t>::max()),
+            "appending template at bottom of Hierarchy must succeed");
+    render();
+    render();
+    render();
+    const float rowStride = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+    const float expectedMinScroll = std::max(0.0f, rowsWindow->ScrollMax.y - rowStride * 2.0f);
+    require(rowsWindow->Scroll.y >= expectedMinScroll &&
+                rowsWindow->Scroll.y <= rowsWindow->ScrollMax.y + 0.5f,
+            "revealing an off-screen bottom template must scroll cleanly to show it at the bottom");
+    require(outerWindow->ScrollMax.y == 0.0f,
+            "outer Hierarchy window must remain non-scrollable after bottom reveal");
+
+    ImGui::DestroyContext();
+}
 } // namespace
 
 int main()
@@ -597,7 +849,9 @@ int main()
         selected_block_moves_preserve_order_and_are_atomic();
         selected_block_duplicate_and_delete_are_single_history_steps();
         asset_drop_hierarchy_instantiation_test();
+        export_and_between_object_template_drop_test();
         hierarchy_preset_creation_and_visibility_lock_toggling_test();
+        hierarchy_scroll_stability_on_template_add_test();
         std::cout << "[PASS] platformator_editor_hierarchy_move_test\n";
         return 0;
     }

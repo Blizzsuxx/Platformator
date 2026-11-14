@@ -211,6 +211,75 @@ DuplicateBindingSet collect_duplicate_bindings(const DocumentSession &document,
     return result;
 }
 
+bool parse_asset_drop_payload(const ImGuiPayload *payload,
+                             std::string &assetPathOut,
+                             EditorAssetKind &kindOut)
+{
+    assetPathOut.clear();
+    kindOut = EditorAssetKind::Other;
+    if (payload == nullptr)
+        return false;
+    if (payload->DataSize == sizeof(AssetDragPayload) && payload->Data != nullptr)
+    {
+        const auto *data = static_cast<const AssetDragPayload *>(payload->Data);
+        assetPathOut = data->relativeAssetPath;
+        kindOut = data->kind;
+        return !assetPathOut.empty();
+    }
+    if (payload->Data != nullptr && payload->DataSize > 0)
+    {
+        assetPathOut = std::string(static_cast<const char *>(payload->Data),
+                                   static_cast<std::size_t>(payload->DataSize));
+        while (!assetPathOut.empty() && assetPathOut.back() == '\0')
+            assetPathOut.pop_back();
+        kindOut = editor_asset_format(assetPathOut).kind;
+        return !assetPathOut.empty();
+    }
+    return false;
+}
+
+bool hierarchy_selection_contains_ancestor(const DocumentSession &document,
+                                         const std::vector<int> &movingIds,
+                                         std::optional<int> destinationParent)
+{
+    for (auto ancestor = destinationParent; ancestor;)
+    {
+        if (std::find(movingIds.begin(), movingIds.end(), *ancestor) != movingIds.end())
+            return true;
+        const auto parent = document.indexes.parentById.find(*ancestor);
+        ancestor = parent == document.indexes.parentById.end() ? std::nullopt : parent->second;
+    }
+    return false;
+}
+
+void draw_hierarchy_drop_indicator(ImDrawList *drawList,
+                                 const HierarchyDropPlacement &placement,
+                                 const ImVec2 &rowMinimum,
+                                 const ImVec2 &rowMaximum,
+                                 const ImRect &rowDropRect,
+                                 float treeBaseX,
+                                 float hierarchyIndent,
+                                 float treeFramePaddingX,
+                                 float uiScale)
+{
+    if (drawList == nullptr)
+        return;
+    const ImU32 color = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
+    if (placement.zone == HierarchyDropPlacementZone::Into)
+    {
+        drawList->AddRect(rowMinimum, rowMaximum, color, 2.0f * uiScale, 0, 2.0f * uiScale);
+        return;
+    }
+    const float lineY = placement.zone == HierarchyDropPlacementZone::Before
+        ? rowDropRect.Min.y
+        : rowDropRect.Max.y;
+    const float lineStartX = std::min(
+        rowMaximum.x - 16.0f * uiScale,
+        treeBaseX + static_cast<float>(placement.indicatorDepth) * hierarchyIndent + treeFramePaddingX);
+    drawList->AddCircleFilled(ImVec2(lineStartX, lineY), 3.0f * uiScale, color);
+    drawList->AddLine(ImVec2(lineStartX, lineY), ImVec2(rowMaximum.x, lineY), color, 2.0f * uiScale);
+}
+
 int resize_rename_buffer(ImGuiInputTextCallbackData *data)
 {
     if (data == nullptr || data->EventFlag != ImGuiInputTextFlags_CallbackResize)
@@ -1094,14 +1163,24 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         {
             const float targetTop = static_cast<float>(row->second) * rowStride;
             const float scrollTop = ImGui::GetScrollY();
-            const float viewHeight = ImGui::GetWindowHeight();
-            const float margin = rowHeight;
-            const bool above = targetTop < scrollTop + margin;
-            const bool below = targetTop + rowHeight > scrollTop + viewHeight - margin;
+            const float availHeight = std::max(0.0f, ImGui::GetContentRegionAvail().y);
+            const float viewHeight = availHeight > 0.0f ? availHeight : ImGui::GetWindowHeight();
+            const float maxMargin = std::max(0.0f, (viewHeight - rowHeight) * 0.5f);
+            const float margin = std::min(rowHeight, maxMargin);
+            const bool above = targetTop < scrollTop;
+            const bool below = targetTop + rowHeight > scrollTop + viewHeight;
             if (above || below)
             {
-                const float maxScroll = std::max(0.0f, ImGui::GetScrollMaxY());
-                const float target = targetTop - margin;
+                const float itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
+                const float contentHeight = rows.empty()
+                    ? 0.0f
+                    : std::max(0.0f, static_cast<float>(rows.size()) * rowStride - itemSpacingY);
+                const float maxScroll = std::max(
+                    std::max(0.0f, ImGui::GetScrollMaxY()),
+                    std::max(0.0f, contentHeight - viewHeight));
+                const float target = above
+                    ? (targetTop - margin)
+                    : (targetTop + rowHeight + margin - viewHeight);
                 ImGui::SetScrollY(std::clamp(target, 0.0f, maxScroll));
             }
             pendingScrollObjectId_.reset();
@@ -1181,10 +1260,11 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         drawList->AddLine({parentX, rowCenterY}, {rowEndX, rowCenterY}, lineColor, lineThickness);
         work::record(work::Counter::HierarchyConnectors);
     }
-    ImGuiListClipper clipper;
-    clipper.Begin(static_cast<int>(rows.size()));
     bool structureChanged = false;
-    while (clipper.Step())
+    {
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(rows.size()), rowStride);
+        while (clipper.Step())
     {
         for (int rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; ++rowIndex)
         {
@@ -1350,11 +1430,16 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                     ImGui::TextUnformatted(displayLabel.c_str());
                     ImGui::EndDragDropSource();
                 }
-                if (ImGui::BeginDragDropTarget())
+                const float halfRowGap = ImGui::GetStyle().ItemSpacing.y * 0.5f;
+                const ImRect rowDropRect(
+                    ImVec2(rowMinimum.x, rowMinimum.y - halfRowGap),
+                    ImVec2(rowMaximum.x, rowMaximum.y + halfRowGap));
+                const ImGuiID rowDropTargetId = ImGui::GetID("###obj_drop");
+                if (ImGui::BeginDragDropTargetCustom(rowDropRect, rowDropTargetId))
                 {
-                    const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(
-                        "PLATFORMATOR_HIERARCHY_OBJECT");
-                    if (payload != nullptr && payload->Data != nullptr && payload->DataSize == sizeof(int))
+                    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(
+                            "PLATFORMATOR_HIERARCHY_OBJECT", ImGuiDragDropFlags_AcceptPeekOnly);
+                        payload != nullptr && payload->Data != nullptr && payload->DataSize == sizeof(int))
                     {
                         int draggedObjectId = 0;
                         std::memcpy(&draggedObjectId, payload->Data, sizeof(draggedObjectId));
@@ -1363,57 +1448,50 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         if (std::find(moveIds.begin(), moveIds.end(), draggedObjectId) == moveIds.end())
                             moveIds = {draggedObjectId};
 
-                        const float dragTargetHeight = std::max(1.0f, rowMaximum.y - rowMinimum.y);
-                        const float relativeY = ImGui::GetMousePos().y - rowMinimum.y;
-                        std::optional<int> destinationParent;
-                        std::size_t destinationIndex = std::numeric_limits<std::size_t>::max();
-                        const auto location = document.indexes.objectsById.find(row.id);
-                        const auto parent = document.indexes.parentById.find(row.id);
-                        if (relativeY < dragTargetHeight * 0.25f && location != document.indexes.objectsById.end() &&
-                            parent != document.indexes.parentById.end())
+                        const HierarchyDropPlacement placement = resolve_hierarchy_drop_placement(
+                            document, row, wasExpanded, true,
+                            rowDropRect.Min.y, rowDropRect.Max.y, ImGui::GetMousePos().y);
+                        if (!hierarchy_selection_contains_ancestor(document, moveIds, placement.destinationParent))
                         {
-                            destinationParent = parent->second;
-                            destinationIndex = location->second.childIndices.back();
+                            draw_hierarchy_drop_indicator(
+                                drawList, placement, rowMinimum, rowMaximum, rowDropRect,
+                                treeBaseX, hierarchyIndent, treeFramePaddingX, uiScale);
                         }
-                        else if (relativeY > dragTargetHeight * 0.75f &&
-                                 location != document.indexes.objectsById.end() &&
-                                 parent != document.indexes.parentById.end())
+                        if (payload->IsDelivery())
                         {
-                            destinationParent = parent->second;
-                            destinationIndex = location->second.childIndices.back() + 1;
-                        }
-                        else
-                            destinationParent = row.id;
-
-                        const auto moved = commands.move_objects(document, moveIds, destinationParent,
-                            destinationIndex, {current, current});
-                        if (moved.status == CommandStatus::Changed)
-                        {
-                            invalidate();
-                            structureChanged = true;
+                            const auto moved = commands.move_objects(
+                                document, moveIds, placement.destinationParent,
+                                placement.destinationIndex, {current, current});
+                            if (moved.status == CommandStatus::Changed)
+                            {
+                                if (placement.destinationParent)
+                                    expandedObjects_.insert(*placement.destinationParent);
+                                invalidate();
+                                structureChanged = true;
+                            }
                         }
                     }
-                    if (const ImGuiPayload *assetPayload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+                    if (const ImGuiPayload *assetPayload = ImGui::AcceptDragDropPayload(
+                            "PLATFORMATOR_ASSET_PATH", ImGuiDragDropFlags_AcceptPeekOnly))
                     {
                         std::string assetPath;
                         EditorAssetKind kind = EditorAssetKind::Other;
-                        if (assetPayload->DataSize == sizeof(AssetDragPayload))
+                        if (parse_asset_drop_payload(assetPayload, assetPath, kind))
                         {
-                            const auto *data = static_cast<const AssetDragPayload *>(assetPayload->Data);
-                            assetPath = data->relativeAssetPath;
-                            kind = data->kind;
-                        }
-                        else if (assetPayload->Data != nullptr && assetPayload->DataSize > 0)
-                        {
-                            assetPath = std::string(static_cast<const char *>(assetPayload->Data), assetPayload->DataSize);
-                            while (!assetPath.empty() && assetPath.back() == '\0')
-                                assetPath.pop_back();
-                            kind = editor_asset_format(assetPath).kind;
-                        }
-                        if (!assetPath.empty())
-                        {
-                            if (instantiate_asset_drop(document, commands, selection, assetPath, kind, 0.0f, 0.0f, row.id))
+                            const bool supportsSiblingInsertion = kind != EditorAssetKind::Script;
+                            const HierarchyDropPlacement placement = resolve_hierarchy_drop_placement(
+                                document, row, wasExpanded, supportsSiblingInsertion,
+                                rowDropRect.Min.y, rowDropRect.Max.y, ImGui::GetMousePos().y);
+                            draw_hierarchy_drop_indicator(
+                                drawList, placement, rowMinimum, rowMaximum, rowDropRect,
+                                treeBaseX, hierarchyIndent, treeFramePaddingX, uiScale);
+                            if (assetPayload->IsDelivery() &&
+                                instantiate_asset_drop(document, commands, selection, assetPath, kind,
+                                                       0.0f, 0.0f, placement.destinationParent,
+                                                       placement.destinationIndex))
                             {
+                                if (placement.destinationParent)
+                                    expandedObjects_.insert(*placement.destinationParent);
                                 invalidate();
                                 structureChanged = true;
                             }
@@ -1425,9 +1503,6 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                 {
                     if (ImGui::MenuItem("Create Child"))
                         create_object(row.id);
-                    if (instantiateTemplateCallback_ != nullptr &&
-                        ImGui::MenuItem("Instantiate Template..."))
-                        instantiateTemplateCallback_(row.id);
                     if (hiddenObjectIds != nullptr)
                     {
                         const bool hidden = std::binary_search(hiddenObjectIds->begin(),
@@ -1491,78 +1566,14 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
                         }
                         invalidate();
                     }
-                    if (!document.assetRoot.empty() && ImGui::MenuItem("Save as Template..."))
+                    if (!document.assetRoot.empty() && ImGui::MenuItem("Save as Template"))
                     {
-                        const auto loc = document.indexes.objectsById.find(row.id);
-                        const Json *obj = loc == document.indexes.objectsById.end()
-                            ? nullptr : resolve_object(document.root, loc->second);
-                        if (obj != nullptr)
-                        {
-                            std::string rawName = obj->value("name", std::string("Template"));
-                            std::string safeName;
-                            for (unsigned char c : rawName)
-                            {
-                                if (std::isalnum(c) || c == '_' || c == '-')
-                                    safeName.push_back(static_cast<char>(c));
-                                else if (c == ' ')
-                                    safeName.push_back('_');
-                            }
-                            if (safeName.empty())
-                                safeName = "Template";
-                            const auto tmplDir = document.assetRoot / "templates";
-                            std::error_code pathError;
-                            std::filesystem::create_directories(tmplDir, pathError);
-                            auto tmplPath = tmplDir / (safeName + ".pttemplate");
-                            int suffix = 1;
-                            while (!pathError && std::filesystem::exists(tmplPath, pathError) && !pathError)
-                                tmplPath = tmplDir / (safeName + "_" + std::to_string(suffix++) + ".pttemplate");
-                            std::string sceneIdentity = template_scene_identity(document);
-                            if (sceneIdentity.empty())
-                                sceneIdentity = "unsaved-document:" + std::to_string(document.tabId.value) + ":" +
-                                                std::to_string(document.documentGeneration);
-                            std::unordered_set<int> subtreeObjects;
-                            std::unordered_set<int> subtreeComponents;
-                            collect_duplicate_identity_set(*obj, subtreeObjects, subtreeComponents);
-                            std::vector<Json> localAuthorBindings;
-                            for (const auto &binding : authorReferenceBindings)
-                                if (binding.is_object() && binding.contains("owner_id") &&
-                                    binding["owner_id"].is_number_integer() &&
-                                    subtreeObjects.contains(binding["owner_id"].get<int>()))
-                                    localAuthorBindings.push_back(binding);
-                            std::vector<TemplateAuthorSchemaDeclaration> localAuthorSchemas;
-                            for (const auto &declaration : authorSchemaDeclarations)
-                                if (subtreeObjects.contains(declaration.ownerId) &&
-                                    subtreeComponents.contains(declaration.componentId))
-                                    localAuthorSchemas.push_back(declaration);
-                            static const Json emptyCatalog{{"behaviors", Json::array()}};
-                            const Json &catalog = behaviorCatalog != nullptr ? *behaviorCatalog : emptyCatalog;
-                            const auto coverage = collect_template_bindings(
-                                document, *obj, sceneIdentity, catalog,
-                                localAuthorBindings, localAuthorSchemas);
-                            if (!coverage || !coverage.assured)
-                            {
-                                std::string notice = coverage.error.empty()
-                                    ? "Template has behavior fields whose reference schema is unavailable."
-                                    : coverage.error;
-                                if (!coverage.unresolvedBehaviors.empty())
-                                    notice += " (" + coverage.unresolvedBehaviors.front() + ")";
-                                set_duplicate_policy_status(std::move(notice));
-                            }
-                            else
-                            {
-                                const Json envelope = make_template_envelope(
-                                    rawName, *obj, coverage.bindings);
-                                std::error_code directoryError;
-                                std::filesystem::create_directories(tmplDir, directoryError);
-                                const auto written = pathError || directoryError
-                                    ? AtomicWriteResult{AtomicWriteStatus::Failed,
-                                                        (pathError ? pathError : directoryError).message(), false}
-                                    : write_file_atomically(tmplPath, envelope.dump(2) + "\n", false);
-                                set_duplicate_policy_status(written.succeeded()
-                                    ? "Saved template: " + tmplPath.filename().string()
-                                    : "Template save failed: " + written.message);
-                            }
-                        }
+                        static const Json emptyCatalog{{"behaviors", Json::array()}};
+                        const Json &catalog = behaviorCatalog != nullptr ? *behaviorCatalog : emptyCatalog;
+                        const auto exported = export_object_as_template(
+                            document, row.id, document.assetRoot / "templates", catalog,
+                            authorReferenceBindings, authorSchemaDeclarations);
+                        set_duplicate_policy_status(exported.message);
                     }
                     if (ImGui::MenuItem("Delete"))
                     {
@@ -1611,55 +1622,62 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
         }
         if (structureChanged)
             break;
+        }
+        clipper.End();
     }
     const ImVec2 windowPosition = ImGui::GetWindowPos();
     const ImVec2 contentMinimum = ImGui::GetCursorScreenPos();
     const ImVec2 windowSize = ImGui::GetWindowSize();
     const ImVec2 padding = ImGui::GetStyle().WindowPadding;
-    const ImRect dropBounds(contentMinimum,
+    const float backgroundTopY = contentMinimum.y - ImGui::GetStyle().ItemSpacing.y * 0.5f;
+    const ImRect dropBounds(ImVec2(contentMinimum.x, backgroundTopY),
                             ImVec2(windowPosition.x + windowSize.x - padding.x,
                                    windowPosition.y + windowSize.y - padding.y));
     if (dropBounds.Max.y > dropBounds.Min.y && dropBounds.Max.x > dropBounds.Min.x)
     {
         if (ImGui::BeginDragDropTargetCustom(dropBounds, ImGui::GetID("##hierarchy-background-drop")))
         {
-            const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("PLATFORMATOR_HIERARCHY_OBJECT");
-            if (payload != nullptr && payload->Data != nullptr && payload->DataSize == sizeof(int))
+            ImDrawList *bgDrawList = ImGui::GetWindowDrawList();
+            const auto drawBottomInsertLine = [&]() {
+                const float lineY = contentMinimum.y;
+                const ImU32 color = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
+                bgDrawList->AddCircleFilled(ImVec2(treeBaseX + treeFramePaddingX, lineY),
+                                            3.0f * uiScale, color);
+                bgDrawList->AddLine(ImVec2(treeBaseX + treeFramePaddingX, lineY),
+                                    ImVec2(dropBounds.Max.x, lineY), color, 2.0f * uiScale);
+            };
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(
+                    "PLATFORMATOR_HIERARCHY_OBJECT", ImGuiDragDropFlags_AcceptPeekOnly);
+                payload != nullptr && payload->Data != nullptr && payload->DataSize == sizeof(int))
             {
-                int draggedObjectId = 0;
-                std::memcpy(&draggedObjectId, payload->Data, sizeof(draggedObjectId));
-                const auto &current = selection.current();
-                std::vector<int> moveIds = current.selectedObjectIds;
-                if (std::find(moveIds.begin(), moveIds.end(), draggedObjectId) == moveIds.end())
-                    moveIds = {draggedObjectId};
-                const auto moved = commands.move_objects(document, moveIds, std::nullopt,
-                    document.root.size(), {current, current});
-                if (moved.status == CommandStatus::Changed)
+                drawBottomInsertLine();
+                if (payload->IsDelivery())
                 {
-                    invalidate();
-                    structureChanged = true;
+                    int draggedObjectId = 0;
+                    std::memcpy(&draggedObjectId, payload->Data, sizeof(draggedObjectId));
+                    const auto &current = selection.current();
+                    std::vector<int> moveIds = current.selectedObjectIds;
+                    if (std::find(moveIds.begin(), moveIds.end(), draggedObjectId) == moveIds.end())
+                        moveIds = {draggedObjectId};
+                    const auto moved = commands.move_objects(document, moveIds, std::nullopt,
+                        document.root.size(), {current, current});
+                    if (moved.status == CommandStatus::Changed)
+                    {
+                        invalidate();
+                        structureChanged = true;
+                    }
                 }
             }
-            if (const ImGuiPayload *assetPayload = ImGui::AcceptDragDropPayload("PLATFORMATOR_ASSET_PATH"))
+            if (const ImGuiPayload *assetPayload = ImGui::AcceptDragDropPayload(
+                    "PLATFORMATOR_ASSET_PATH", ImGuiDragDropFlags_AcceptPeekOnly))
             {
                 std::string assetPath;
                 EditorAssetKind kind = EditorAssetKind::Other;
-                if (assetPayload->DataSize == sizeof(AssetDragPayload))
+                if (parse_asset_drop_payload(assetPayload, assetPath, kind))
                 {
-                    const auto *data = static_cast<const AssetDragPayload *>(assetPayload->Data);
-                    assetPath = data->relativeAssetPath;
-                    kind = data->kind;
-                }
-                else if (assetPayload->Data != nullptr && assetPayload->DataSize > 0)
-                {
-                    assetPath = std::string(static_cast<const char *>(assetPayload->Data), assetPayload->DataSize);
-                    while (!assetPath.empty() && assetPath.back() == '\0')
-                        assetPath.pop_back();
-                    kind = editor_asset_format(assetPath).kind;
-                }
-                if (!assetPath.empty())
-                {
-                    if (instantiate_asset_drop(document, commands, selection, assetPath, kind, 0.0f, 0.0f, std::nullopt))
+                    drawBottomInsertLine();
+                    if (assetPayload->IsDelivery() &&
+                        instantiate_asset_drop(document, commands, selection, assetPath, kind, 0.0f, 0.0f, std::nullopt))
                     {
                         invalidate();
                         structureChanged = true;
@@ -1675,9 +1693,6 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
     {
         if (ImGui::MenuItem("Create Empty Object"))
             create_object(std::nullopt);
-        if (instantiateTemplateCallback_ != nullptr &&
-            ImGui::MenuItem("Instantiate Template..."))
-            instantiateTemplateCallback_(std::nullopt);
         ImGui::EndPopup();
     }
     ImGui::EndChild();
@@ -1693,5 +1708,57 @@ void HierarchyPanel::draw(DocumentSession &document, SelectionModel &selection,
             ImGui::EndTooltip();
         }
     }
+}
+
+HierarchyDropPlacement resolve_hierarchy_drop_placement(
+    const DocumentSession &document,
+    const HierarchyRow &targetRow,
+    bool targetExpanded,
+    bool supportsSiblingInsertion,
+    float rowTopY,
+    float rowBottomY,
+    float mouseY)
+{
+    HierarchyDropPlacement placement;
+    placement.zone = HierarchyDropPlacementZone::Into;
+    placement.destinationParent = targetRow.id;
+    placement.destinationIndex = std::numeric_limits<std::size_t>::max();
+    placement.indicatorDepth = targetRow.depth;
+    if (!supportsSiblingInsertion)
+        return placement;
+
+    const auto location = document.indexes.objectsById.find(targetRow.id);
+    const auto parent = document.indexes.parentById.find(targetRow.id);
+    if (location == document.indexes.objectsById.end() ||
+        location->second.childIndices.empty() ||
+        parent == document.indexes.parentById.end())
+        return placement;
+
+    const float dragTargetHeight = std::max(1.0f, rowBottomY - rowTopY);
+    const float relativeY = mouseY - rowTopY;
+    if (relativeY < dragTargetHeight * 0.25f)
+    {
+        placement.zone = HierarchyDropPlacementZone::Before;
+        placement.destinationParent = parent->second;
+        placement.destinationIndex = location->second.childIndices.back();
+        placement.indicatorDepth = targetRow.depth;
+    }
+    else if (relativeY > dragTargetHeight * 0.75f)
+    {
+        placement.zone = HierarchyDropPlacementZone::After;
+        if (targetRow.hasChildren && targetExpanded)
+        {
+            placement.destinationParent = targetRow.id;
+            placement.destinationIndex = 0;
+            placement.indicatorDepth = targetRow.depth + 1;
+        }
+        else
+        {
+            placement.destinationParent = parent->second;
+            placement.destinationIndex = location->second.childIndices.back() + 1;
+            placement.indicatorDepth = targetRow.depth;
+        }
+    }
+    return placement;
 }
 } // namespace platformator_editor

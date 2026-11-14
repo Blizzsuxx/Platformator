@@ -354,6 +354,7 @@ struct ScrubContext
     DocumentSession &document;
     const std::vector<int> &orderedSelection;
     std::uint64_t hostGeneration = 0;
+    LiveEditContext &liveEdit;
 };
 
 void restore_scrub_targets(DocumentSession &document, const BehaviorFieldsPanel::ScrubState &scrub)
@@ -706,10 +707,6 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
             });
         if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
             value = static_cast<float>(apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<double>());
-        const ImGuiID valueId = ImGui::GetID("##value");
-        const bool valueActive = ImGui::GetActiveID() == valueId;
-        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
         const bool overridden = active_behavior_field_is_overridden(valuePath);
         if (overridden)
         {
@@ -717,27 +714,58 @@ bool draw_vector(DocumentSession &document, EditCommandService &commands, int ob
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.34f, 0.30f, 0.18f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.40f, 0.35f, 0.20f, 1.0f));
         }
-        const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
-                                                     ImGuiInputTextFlags_EnterReturnsTrue);
-        if (overridden)
-            ImGui::PopStyleColor(3);
-        draw_active_behavior_revert_context(valuePath);
-        if (ImGui::IsItemActivated())
+        const auto afterAxisWidget = [&]() {
+            if (overridden)
+                ImGui::PopStyleColor(3);
+            draw_active_behavior_revert_context(valuePath);
+        };
+        if (current == nullptr || !current->is_object())
         {
-            value = originalValue;
-            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->ReloadUserBufAndSelectAll();
+            const float originalValue = value;
+            const ImGuiID valueId = ImGui::GetID("##value");
+            const std::uint32_t widgetKey = static_cast<std::uint32_t>(valueId);
+            const bool valueActive = ImGui::GetActiveID() == valueId;
+            const bool wasActive = valueActive ||
+                (scrubCtx.liveEdit.state.active() && scrubCtx.liveEdit.state.widget_id() == widgetKey);
+            const bool useFullPrecision = valueActive ||
+                ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
+            const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
+            ImGui::PushItemFlag(ImGuiItemFlags_LiveEditOnInputScalar, true);
+            const bool valueChanged = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr);
+            ImGui::PopItemFlag();
+            const bool activated = ImGui::IsItemActivated();
+            if (activated)
+            {
+                value = originalValue;
+                if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                    state->ReloadUserBufAndSelectAll();
+            }
+            afterAxisWidget();
+            const bool itemActive = ImGui::IsItemActive();
+            const bool cancel = (wasActive || itemActive) && ImGui::IsKeyPressed(ImGuiKey_Escape);
+            if (!activated && !cancel && valueChanged && value != originalValue && std::isfinite(value))
+            {
+                draft[name] = value;
+                if (scrubCtx.liveEdit.state.update_single(
+                        document, commands,
+                        address_for_document(document, objectId, componentId, ordinal, path),
+                        scrubCtx.liveEdit.selection, widgetKey, scrubCtx.hostGeneration,
+                        scrubCtx.orderedSelection, draft, scrubCtx.liveEdit.feedback))
+                {
+                    changed = true;
+                }
+            }
+            scrubCtx.liveEdit.state.finish_widget(widgetKey, &document, itemActive, cancel);
         }
-        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !ImGui::IsItemActivated() && !cancel && (valueChanged || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
-        if (commit && std::isfinite(value))
+        else
         {
-            draft[name] = value;
-            if (current == nullptr || !current->is_object())
-                set_value(document, commands, objectId, componentId, ordinal, path, draft);
-            else
-                set_value(document, commands, objectId, componentId, ordinal, valuePath, value);
-            changed = true;
+            const std::vector<PropertyAddress> targets{
+                address_for_document(document, objectId, componentId, ordinal, valuePath)};
+            if (live_input_float("##value", value, false, scrubCtx.liveEdit, targets,
+                                 std::nullopt, std::nullopt, nullptr, afterAxisWidget))
+            {
+                changed = true;
+            }
         }
         ImGui::PopID();
         ImGui::PopID();
@@ -781,7 +809,6 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
     if (current->is_number_float())
     {
         double value = current->get<double>();
-        const double originalValue = value;
         const auto scrubIx = begin_field(label, path, true);
         apply_label_scrub(
             scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
@@ -809,24 +836,12 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
             });
         if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
             value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<double>();
-        const ImGuiID valueId = ImGui::GetID("##value");
-        const bool valueActive = ImGui::GetActiveID() == valueId;
-        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
-                                                ImGuiInputTextFlags_EnterReturnsTrue);
-        draw_active_behavior_revert_context(path);
-        if (ImGui::IsItemActivated())
-        {
-            value = originalValue;
-            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->ReloadUserBufAndSelectAll();
-        }
-        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !ImGui::IsItemActivated() && !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+        const std::vector<PropertyAddress> targets{
+            address_for_document(document, objectId, componentId, ordinal, path)};
+        live_input_double("##value", value, false, scrubCtx.liveEdit, targets, nullptr, [&] {
+            draw_active_behavior_revert_context(path);
+        });
         end_field();
-        if (commit && std::isfinite(value))
-            set_value(document, commands, objectId, componentId, ordinal, path, value);
         return true;
     }
     if (current->is_string())
@@ -840,13 +855,12 @@ bool draw_raw_value(DocumentSession &document, EditCommandService &commands, int
         std::array<char, 2048> buffer{};
         std::memcpy(buffer.data(), value.data(), value.size());
         begin_field(label, path);
-        const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
-                                              ImGuiInputTextFlags_EnterReturnsTrue);
-        draw_active_behavior_revert_context(path);
-        const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
+        const std::vector<PropertyAddress> targets{
+            address_for_document(document, objectId, componentId, ordinal, path)};
+        live_input_string("##value", buffer.data(), buffer.size(), scrubCtx.liveEdit, targets, [&] {
+            draw_active_behavior_revert_context(path);
+        });
         end_field();
-        if (commit)
-            set_value(document, commands, objectId, componentId, ordinal, path, std::string(buffer.data()));
         return true;
     }
     if (current->is_null())
@@ -963,12 +977,11 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                 });
             if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
                 value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta, minOpt, maxOpt).get<std::uint64_t>();
-            const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value, &minimum, &limit,
-                "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
-            draw_active_behavior_revert_context(path);
-            const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-            if (!cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()))
-                set_value(document, commands, objectId, componentId, ordinal, path, value);
+            const std::vector<PropertyAddress> targets{
+                address_for_document(document, objectId, componentId, ordinal, path)};
+            live_input_uint64("##value", value, &minimum, &limit, scrubCtx.liveEdit, targets, [&] {
+                draw_active_behavior_revert_context(path);
+            });
         }
         else
         {
@@ -1004,12 +1017,11 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                 });
             if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
                 value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta, minOpt, maxOpt).get<std::int64_t>();
-            const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value, &minimum, &maximum,
-                "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
-            draw_active_behavior_revert_context(path);
-            const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-            if (!cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()))
-                set_value(document, commands, objectId, componentId, ordinal, path, value);
+            const std::vector<PropertyAddress> targets{
+                address_for_document(document, objectId, componentId, ordinal, path)};
+            live_input_int64("##value", value, &minimum, &maximum, scrubCtx.liveEdit, targets, [&] {
+                draw_active_behavior_revert_context(path);
+            });
         }
         end_field();
         return true;
@@ -1046,25 +1058,12 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             });
         if (scrubCtx.scrub.active && scrubCtx.scrub.widgetId == scrubIx.id && scrubCtx.scrub.moved && !scrubCtx.scrub.targets.empty())
             value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta).get<double>();
-        const ImGuiID valueId = ImGui::GetID("##value");
-        const bool valueActive = ImGui::GetActiveID() == valueId;
-        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
-        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
-                                                ImGuiInputTextFlags_EnterReturnsTrue);
-        draw_active_behavior_revert_context(path);
-        if (ImGui::IsItemActivated())
-        {
-            value = originalValue;
-            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->ReloadUserBufAndSelectAll();
-        }
-        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !ImGui::IsItemActivated() && !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) &&
-                            (current == nullptr || value != originalValue);
+        const std::vector<PropertyAddress> targets{
+            address_for_document(document, objectId, componentId, ordinal, path)};
+        live_input_double("##value", value, false, scrubCtx.liveEdit, targets, nullptr, [&] {
+            draw_active_behavior_revert_context(path);
+        });
         end_field();
-        if (commit && std::isfinite(value))
-            set_value(document, commands, objectId, componentId, ordinal, path, value);
         return true;
     }
     if (kind == "string")
@@ -1078,13 +1077,12 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
         std::array<char, 2048> buffer{};
         std::memcpy(buffer.data(), old.data(), old.size());
         begin_field(label, path);
-        const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
-                                              ImGuiInputTextFlags_EnterReturnsTrue);
-        draw_active_behavior_revert_context(path);
-        const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
+        const std::vector<PropertyAddress> targets{
+            address_for_document(document, objectId, componentId, ordinal, path)};
+        live_input_string("##value", buffer.data(), buffer.size(), scrubCtx.liveEdit, targets, [&] {
+            draw_active_behavior_revert_context(path);
+        });
         end_field();
-        if (commit)
-            set_value(document, commands, objectId, componentId, ordinal, path, std::string(buffer.data()));
         return true;
     }
     if (kind == "enum")
@@ -1333,6 +1331,22 @@ void BehaviorFieldsPanel::set_host_generation(std::uint64_t generation, Document
 
 void BehaviorFieldsPanel::cancel_active_interactions(DocumentSession *document)
 {
+    liveEdit_.commit();
+    if (!scrubState_.active)
+        return;
+    if (document != nullptr)
+        restore_scrub_targets(*document, scrubState_);
+    scrubState_ = {};
+}
+
+void BehaviorFieldsPanel::commit_active_interactions()
+{
+    liveEdit_.commit();
+}
+
+void BehaviorFieldsPanel::discard_active_interactions(DocumentSession *document)
+{
+    liveEdit_.cancel(document);
     if (!scrubState_.active)
         return;
     if (document != nullptr)
@@ -1399,7 +1413,11 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
         cancel_active_interactions(&document);
     }
     scrubState_.seenThisFrame = false;
-    const ScrubContext scrubCtx{scrubState_, document, selection.current().selectedObjectIds, hostGeneration_};
+    liveEdit_.begin_frame(document, currentSelection.selectedObjectIds, hostGeneration_);
+    LiveEditContext liveEditCtx{document, commands, liveEdit_, currentSelection,
+                                  hostGeneration_, currentSelection.selectedObjectIds, feedback_};
+    const ScrubContext scrubCtx{scrubState_, document, currentSelection.selectedObjectIds,
+                                hostGeneration_, liveEditCtx};
     if (!selection.current().objectId || !selection.current().componentId)
     {
         cancel_active_interactions(&document);
@@ -1570,6 +1588,7 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     }
     if (!feedback_.empty())
         ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", feedback_.c_str());
+    liveEdit_.end_frame();
     if (scrubState_.active && !scrubState_.seenThisFrame)
         cancel_active_interactions(&document);
 }
@@ -1603,7 +1622,10 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
         cancel_active_interactions(&document);
     }
     scrubState_.seenThisFrame = false;
-    const ScrubContext scrubCtx{scrubState_, document, objectIds, hostGeneration_};
+    liveEdit_.begin_frame(document, objectIds, hostGeneration_);
+    LiveEditContext liveEditCtx{document, commands, liveEdit_, selection,
+                                  hostGeneration_, objectIds, feedback_};
+    const ScrubContext scrubCtx{scrubState_, document, objectIds, hostGeneration_, liveEditCtx};
     if (objectIds.size() < 2)
     {
         cancel_active_interactions(&document);
@@ -1839,84 +1861,74 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
                 else if (kind == "number")
                 {
                     double value = values.front().get<double>();
-                    const double originalValue = value;
                     apply_label_scrub(
                         scrubCtx, scrubIx, 0.1, 0.5, std::nullopt, std::nullopt,
                         capture_multi_targets, preview_multi_delta, commit_multi_delta);
+                    std::vector<PropertyAddress> targets;
+                    targets.reserve(participants.size());
+                    for (const auto &participant : participants)
+                        targets.push_back(address_for_document(document, participant.objectId,
+                                                               participant.componentId,
+                                                               behaviorOrdinal, path));
                     if (scrubState_.active && scrubState_.widgetId == scrubIx.id &&
                         scrubState_.moved && !scrubState_.targets.empty())
                     {
                         value = apply_numeric_delta(scrubState_.targets.front().originalJson,
                                                     scrubState_.accumDelta).get<double>();
                     }
-                    const ImGuiID valueId = ImGui::GetID("##value");
-                    const bool valueActive = ImGui::GetActiveID() == valueId;
-                    const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-                    const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
-                    const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0, formatStr,
-                                                            ImGuiInputTextFlags_EnterReturnsTrue);
-                    draw_active_behavior_revert_context(path);
-                    if (ImGui::IsItemActivated())
-                    {
-                        value = originalValue;
-                        if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                            state->ReloadUserBufAndSelectAll();
-                    }
-                    const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                    const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
-                        (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+                    live_input_double("##value", value, mixed, liveEditCtx, targets, nullptr, [&] {
+                        draw_active_behavior_revert_context(path);
+                    });
                     ImGui::PopItemFlag();
                     end_field();
-                    if (shouldCommit && std::isfinite(value))
-                        commit(value);
                 }
                 else if (kind == "signed_integer")
                 {
                     std::int64_t value = json_signed(&values.front());
-                    const std::int64_t originalValue = value;
                     apply_label_scrub(
                         scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
                         capture_multi_targets, preview_multi_delta, commit_multi_delta);
+                    std::vector<PropertyAddress> targets;
+                    targets.reserve(participants.size());
+                    for (const auto &participant : participants)
+                        targets.push_back(address_for_document(document, participant.objectId,
+                                                               participant.componentId,
+                                                               behaviorOrdinal, path));
                     if (scrubState_.active && scrubState_.widgetId == scrubIx.id &&
                         scrubState_.moved && !scrubState_.targets.empty())
                     {
                         value = apply_numeric_delta(scrubState_.targets.front().originalJson,
                                                     scrubState_.accumDelta).get<std::int64_t>();
                     }
-                    const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value,
-                        nullptr, nullptr, "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
-                    draw_active_behavior_revert_context(path);
-                    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                    const bool shouldCommit = !cancel &&
-                        (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+                    live_input_int64("##value", value, nullptr, nullptr, liveEditCtx, targets, [&] {
+                        draw_active_behavior_revert_context(path);
+                    });
                     ImGui::PopItemFlag();
                     end_field();
-                    if (shouldCommit)
-                        commit(value);
                 }
                 else if (kind == "unsigned_integer")
                 {
                     std::uint64_t value = json_unsigned(&values.front());
-                    const std::uint64_t originalValue = value;
                     apply_label_scrub(
                         scrubCtx, scrubIx, 1.0, 1.0, std::nullopt, std::nullopt,
                         capture_multi_targets, preview_multi_delta, commit_multi_delta);
+                    std::vector<PropertyAddress> targets;
+                    targets.reserve(participants.size());
+                    for (const auto &participant : participants)
+                        targets.push_back(address_for_document(document, participant.objectId,
+                                                               participant.componentId,
+                                                               behaviorOrdinal, path));
                     if (scrubState_.active && scrubState_.widgetId == scrubIx.id &&
                         scrubState_.moved && !scrubState_.targets.empty())
                     {
                         value = apply_numeric_delta(scrubState_.targets.front().originalJson,
                                                     scrubState_.accumDelta).get<std::uint64_t>();
                     }
-                    const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value,
-                        nullptr, nullptr, "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
-                    draw_active_behavior_revert_context(path);
-                    const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                    const bool shouldCommit = !cancel &&
-                        (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+                    live_input_uint64("##value", value, nullptr, nullptr, liveEditCtx, targets, [&] {
+                        draw_active_behavior_revert_context(path);
+                    });
                     ImGui::PopItemFlag();
                     end_field();
-                    if (shouldCommit)
-                        commit(value);
                 }
                 else
                 {
@@ -1951,6 +1963,7 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
     ImGui::PopID();
     if (!feedback_.empty())
         ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", feedback_.c_str());
+    liveEdit_.end_frame();
     if (scrubState_.active && !scrubState_.seenThisFrame)
         cancel_active_interactions(&document);
     static_cast<void>(resourceIndex);

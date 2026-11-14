@@ -15,6 +15,7 @@
 #include "../accessibility.h"
 #include "../layersettings.h"
 #include "behaviorfields.h"
+#include "livepropertyedit.h"
 #include "selection.h"
 #include "spriteeditor.h"
 
@@ -42,6 +43,8 @@ class InspectorPanel
     void reveal_field(int objectId, std::optional<int> componentId, std::string fieldPath);
     void set_host_generation(std::uint64_t generation, DocumentSession *document = nullptr) noexcept;
     void cancel_active_interactions(DocumentSession *document = nullptr);
+    void commit_active_interactions();
+    void discard_active_interactions(DocumentSession *document = nullptr);
     const std::string &feedback() const noexcept;
     const std::string &search_query() const noexcept { return searchQuery_; }
     void set_search_query(std::string query) { searchQuery_ = std::move(query); }
@@ -159,6 +162,7 @@ class InspectorPanel
     std::array<char, 128> commonColliderLayerSearch_{};
     std::string lastSelectionKey_;
     std::string lastObjectSelectionKey_;
+    Selection currentSelection_;
     std::vector<int> currentOrderedSelection_;
     std::optional<Json> componentSettingsClipboard_;
     std::optional<Json> transformSettingsClipboard_;
@@ -200,6 +204,7 @@ class InspectorPanel
         std::optional<double> maximum;
     };
     NumericScrubState scrubState_;
+    LivePropertyEditState liveEdit_;
     BehaviorFieldsPanel behaviorFields_;
     ResourceIndex *resourceIndex_ = nullptr;
     enum class SemanticOperation

@@ -1,0 +1,93 @@
+{
+  "format": "platformator.object-template",
+  "name": "Coin",
+  "reference_bindings": [],
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 0,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "id": 1042,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "radius": 10.0,
+        "trigger": true,
+        "type": 3
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "id": 1041,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 22.0,
+        "id": 1043,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/items/coin_0.png",
+        "type": 6,
+        "width": 22.0
+      },
+      {
+        "animationClipFilePath": "",
+        "currentFrameIndex": 0,
+        "id": 1045,
+        "playbackSpeed": 1.0,
+        "playing": false,
+        "type": 0
+      },
+      {
+        "behaviors": [
+          {
+            "coinSound": "assets/audio/coin.wav",
+            "spinAnimset": "assets/animations/coin.animset",
+            "type": "MarioCoin"
+          }
+        ],
+        "id": 1046,
+        "type": 5
+      },
+      {
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.85,
+        "id": 1044,
+        "loopCount": 0,
+        "type": 1
+      }
+    ],
+    "id": 114,
+    "name": "Coin",
+    "position": {
+      "x": 504.379,
+      "y": 329.7832
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "coin"
+  },
+  "version": 1
+}

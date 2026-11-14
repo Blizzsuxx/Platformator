@@ -901,27 +901,37 @@ void EditorPreview::poll_asset_reloads(const DocumentSession &document)
 
     const DocumentIdentity currentIdentity{ProjectGeneration{document.projectGeneration}, document.tabId,
                                            DocumentGeneration{document.documentGeneration}};
+    const auto collect_target_object_ids = [&](const AssetReloadState::Target &target,
+                                               std::set<int> &objectIds) {
+        const auto add_if_current = [&](const ResourceConsumer &consumer) {
+            if (consumer.document == currentIdentity)
+                objectIds.insert(consumer.objectId);
+        };
+        for (const auto &consumer : target.consumers)
+            add_if_current(consumer);
+        for (const auto &consumer : resourceIndex_->affected_consumers(target.logicalPath))
+            add_if_current(consumer);
+    };
     const auto target_has_live_demand = [&](const AssetReloadState::Target &target,
                                             AssetReloadState::Kind kind) {
         if (kind == AssetReloadState::Kind::Texture)
             return true;
-        if (target.consumers.empty())
-            return false;
-        for (const auto &consumer : target.consumers)
-        {
+        const auto matches_animation_consumer = [&](const ResourceConsumer &consumer) {
             if (consumer.document != currentIdentity)
-                continue;
+                return false;
             const auto found = proxies_.find(consumer.objectId);
             if (found == proxies_.end())
-                continue;
+                return false;
             const Proxy &proxy = found->second;
-            if (kind == AssetReloadState::Kind::Animation)
-            {
-                if (proxy.clipConsumer && *proxy.clipConsumer == consumer &&
-                    proxy.registeredClipPath == target.logicalPath)
-                    return true;
-            }
-        }
+            return proxy.clipConsumer && *proxy.clipConsumer == consumer &&
+                   proxy.registeredClipPath == target.logicalPath;
+        };
+        for (const auto &consumer : target.consumers)
+            if (matches_animation_consumer(consumer))
+                return true;
+        for (const auto &consumer : resourceIndex_->affected_consumers(target.logicalPath))
+            if (matches_animation_consumer(consumer))
+                return true;
         return false;
     };
 
@@ -1231,18 +1241,16 @@ void EditorPreview::poll_asset_reloads(const DocumentSession &document)
         else
             for (const auto &target : liveTargets)
                 resourceIndex_->set_preparation_state(target.token, ResourcePreparationState::Failed, error);
-        const DocumentIdentity identity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                        DocumentGeneration{document.documentGeneration}};
+        std::set<int> failedObjects;
         for (const auto &target : liveTargets)
-        for (const auto &consumer : target.consumers)
+            collect_target_object_ids(target, failedObjects);
+        for (const int objectId : failedObjects)
         {
-            if (consumer.document != identity)
-                continue;
-            const auto proxy = proxies_.find(consumer.objectId);
+            const auto proxy = proxies_.find(objectId);
             if (proxy == proxies_.end())
                 continue;
             proxy->second.info.assetError = error;
-            if (auto info = authoringInfos_.find(consumer.objectId); info != authoringInfos_.end())
+            if (auto info = authoringInfos_.find(objectId); info != authoringInfos_.end())
                 info->second.assetError = error;
         }
         lastError_ = error;
@@ -1255,8 +1263,6 @@ void EditorPreview::poll_asset_reloads(const DocumentSession &document)
             request.kind == AssetReloadState::Kind::Texture ? ResourceKind::Texture : ResourceKind::Animation);
         resourceIndex_->set_preparation_state(target.token, ResourcePreparationState::Ready);
     }
-    const DocumentIdentity identity{ProjectGeneration{document.projectGeneration}, document.tabId,
-                                    DocumentGeneration{document.documentGeneration}};
     std::vector<std::filesystem::path> preparedFrameLogicalPaths;
     if (request.kind == AssetReloadState::Kind::Animation)
     {
@@ -1279,9 +1285,7 @@ void EditorPreview::poll_asset_reloads(const DocumentSession &document)
     }
     std::set<int> affectedObjects;
     for (const auto &target : liveTargets)
-        for (const auto &consumer : target.consumers)
-            if (consumer.document == identity)
-                affectedObjects.insert(consumer.objectId);
+        collect_target_object_ids(target, affectedObjects);
 
     std::vector<int> commitObjects;
     commitObjects.reserve(affectedObjects.size());
@@ -1576,7 +1580,12 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     proxy.object->setRotation(rotation);
     platformator_editor_detail::EditorPreviewAccess::publish_proxy_position(*proxy.object, worldX, worldY);
 
-    if (documentStateUnchanged)
+    const bool pendingSpriteReady = !proxy.info.textureAvailable && proxy.failedAssetIdentity.empty() &&
+        ((!spriteInputs.texturePath.empty() &&
+          platformator_detail::RuntimeAccess::findTexture(spriteInputs.texturePath) != nullptr) ||
+         (!animatorInputs.clipPath.empty() &&
+          platformator_detail::RuntimeAccess::findAnimationClip(animatorInputs.clipPath) != nullptr));
+    if (documentStateUnchanged && !pendingSpriteReady)
     {
         syncAuthoringAsset();
         return;

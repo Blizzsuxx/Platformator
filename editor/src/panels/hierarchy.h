@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
 #include <chrono>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -33,6 +35,30 @@ struct HierarchyRow
     bool hasChildren = false;
     int parentRowIndex = -1;
 };
+
+enum class HierarchyDropPlacementZone
+{
+    Before,
+    Into,
+    After
+};
+
+struct HierarchyDropPlacement
+{
+    HierarchyDropPlacementZone zone = HierarchyDropPlacementZone::Into;
+    std::optional<int> destinationParent;
+    std::size_t destinationIndex = std::numeric_limits<std::size_t>::max();
+    std::size_t indicatorDepth = 0;
+};
+
+HierarchyDropPlacement resolve_hierarchy_drop_placement(
+    const DocumentSession &document,
+    const HierarchyRow &targetRow,
+    bool targetExpanded,
+    bool supportsSiblingInsertion,
+    float rowTopY,
+    float rowBottomY,
+    float mouseY);
 
 class HierarchyPanel
 {
@@ -66,14 +92,9 @@ class HierarchyPanel
     void invalidate() noexcept;
     void set_on_frame_selected(std::function<void()> callback) { onFrameSelected_ = std::move(callback); }
     void set_layer_settings(const LayerSettings *settings) noexcept { layerSettings_ = settings; }
-    void set_instantiate_template_callback(std::function<void(std::optional<int>)> callback)
-    {
-        instantiateTemplateCallback_ = std::move(callback);
-    }
 
   private:
     std::function<void()> onFrameSelected_;
-    std::function<void(std::optional<int>)> instantiateTemplateCallback_;
     const LayerSettings *layerSettings_ = nullptr;
     void rebuild(const DocumentSession &document);
     void refresh_labels(const DocumentSession &document);

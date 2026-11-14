@@ -633,12 +633,6 @@ struct PendingTemplateRelink
     DocumentIdentity identity;
 };
 
-struct PendingTemplateInstantiation
-{
-    std::optional<int> parentObjectId;
-    DocumentIdentity identity;
-};
-
 } // namespace
 
 LaunchOptions parse_launch_options(int argc, const char *const argv[],
@@ -1316,7 +1310,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::string dialogError;
         std::optional<PendingAssetAssignment> pendingAssetAssignment;
         std::optional<PendingTemplateRelink> pendingTemplateRelink;
-        std::optional<PendingTemplateInstantiation> pendingTemplateInstantiation;
         std::optional<TabId> closeAnimationPromptTab;
         struct AnimationExternalConflict
         {
@@ -1562,78 +1555,15 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         projectPanel.set_hierarchy_object_template_drop_callback(
             [&](int objectId, const std::filesystem::path &templateDirectory) {
                 const auto &document = workspace->document();
-                const Json *sourceObject = find_document_object_by_id(document, objectId);
-                if (sourceObject == nullptr)
-                {
-                    statusMessage = "The dragged GameObject is no longer present in the active scene.";
-                    return;
-                }
                 const auto catalogSnapshot = behaviorCatalog.snapshot();
                 if (!catalogSnapshot)
                 {
                     statusMessage = "Template export is waiting for the behavior source scan.";
                     return;
                 }
-                std::string sceneIdentity = template_scene_identity(document);
-                if (sceneIdentity.empty())
-                    sceneIdentity = "unsaved-document:" + std::to_string(document.tabId.value) + ":" +
-                                    std::to_string(document.documentGeneration);
-
-                const auto collected = collect_template_bindings(
-                    document, *sourceObject, sceneIdentity, catalogSnapshot->document);
-                if (!collected || !collected.assured)
-                {
-                    statusMessage = collected.error.empty()
-                        ? "Template export requires complete behavior reference declarations."
-                        : collected.error;
-                    if (!collected.unresolvedBehaviors.empty())
-                        statusMessage += " (" + collected.unresolvedBehaviors.front() + ")";
-                    return;
-                }
-
-                std::string templateName = sourceObject->value("name", std::string("GameObject"));
-                std::string fileStem;
-                bool previousSeparator = false;
-                for (const unsigned char character : templateName)
-                {
-                    const bool allowed = std::isalnum(character) != 0 || character == '_' || character == '-';
-                    if (allowed)
-                    {
-                        fileStem.push_back(static_cast<char>(character));
-                        previousSeparator = false;
-                    }
-                    else if (!previousSeparator && !fileStem.empty())
-                    {
-                        fileStem.push_back('-');
-                        previousSeparator = true;
-                    }
-                }
-                while (!fileStem.empty() && fileStem.back() == '-')
-                    fileStem.pop_back();
-                if (fileStem.empty())
-                    fileStem = "game-object";
-                std::error_code directoryError;
-                std::filesystem::create_directories(templateDirectory, directoryError);
-                if (directoryError)
-                {
-                    statusMessage = "Could not create the Templates folder: " + directoryError.message();
-                    return;
-                }
-                std::filesystem::path target = templateDirectory / (fileStem + ".pttemplate");
-                std::size_t suffix = 2;
-                while (std::filesystem::exists(target, directoryError) && !directoryError)
-                    target = templateDirectory / (fileStem + "-" + std::to_string(suffix++) + ".pttemplate");
-                if (directoryError)
-                {
-                    statusMessage = "Could not inspect the Templates folder: " + directoryError.message();
-                    return;
-                }
-                const Json envelope = make_template_envelope(
-                    templateName, collected.validatedSubtree, collected.bindings);
-                const auto written = write_file_atomically(target, envelope.dump(2) + "\n", false);
-                statusMessage = written.succeeded()
-                    ? "Saved template " + target.filename().string() + "."
-                    : "Template export failed: " + written.message;
+                const auto exported = export_object_as_template(
+                    document, objectId, templateDirectory, catalogSnapshot->document);
+                statusMessage = exported.message;
             });
         inspectorPanel.set_select_template_asset_callback([&](const std::filesystem::path &path) {
             if (projectPanel.select_asset(path))
@@ -1652,13 +1582,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return;
             const auto identity = activeDocumentTab->identity();
             pendingTemplateRelink = PendingTemplateRelink{objectId, identity};
-            (void)dialogs->open_asset(window, identity, activeAssetRoot, "Template");
-        });
-        hierarchyPanel.set_instantiate_template_callback([&](std::optional<int> parentObjectId) {
-            if (activeDocumentTab == nullptr || activeDocumentTab->kind() == DocumentTabKind::Animation)
-                return;
-            const auto identity = activeDocumentTab->identity();
-            pendingTemplateInstantiation = PendingTemplateInstantiation{parentObjectId, identity};
             (void)dialogs->open_asset(window, identity, activeAssetRoot, "Template");
         });
         inspectorPanel.set_template_propagated_callback([&](const std::filesystem::path &tmplPath) {
@@ -2483,6 +2406,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
         };
         auto undo_edit = [&] {
+            inspectorPanel.commit_active_interactions();
             if (!(animationWindowFocused && showAnimationEditorWindow &&
                   documentManager.active_animation_tab() != nullptr))
                 commit_scene_gesture();
@@ -2491,6 +2415,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                  *selection, statusMessage);
         };
         auto redo_edit = [&] {
+            inspectorPanel.commit_active_interactions();
             if (!(animationWindowFocused && showAnimationEditorWindow &&
                   documentManager.active_animation_tab() != nullptr))
                 commit_scene_gesture();
@@ -2521,6 +2446,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = "Save As is available for Scene tabs; save templates with the Template Save action.";
                 return;
             }
+            inspectorPanel.commit_active_interactions();
+            commit_scene_gesture();
             dialogs->save_scene(window, activeDocumentTab->identity(),
                                 workspace->document().sourcePath.value_or(activeProjectRoot));
         };
@@ -2870,7 +2797,10 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 projectSettingsPanel.discard_layer_draft(layerSettings);
             }
             if (decision == UnsavedDecision::Save)
+            {
+                inspectorPanel.commit_active_interactions();
                 commit_scene_gesture();
+            }
             else if (decision == UnsavedDecision::Discard)
                 cancel_scene_gesture();
             WorkspaceActionResult result{WorkspaceActionStatus::Failed, "no pending workspace action"};
@@ -3047,7 +2977,10 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             const DocumentIdentity closingIdentity{
                 ProjectGeneration{tab->workspace().document().projectGeneration}, tab->id(),
                 DocumentGeneration{tab->workspace().document().documentGeneration}};
-            inspectorPanel.cancel_active_interactions(&tab->workspace().document_for_edit());
+            if (decision == UnsavedDecision::Discard)
+                inspectorPanel.discard_active_interactions(&tab->workspace().document_for_edit());
+            else
+                inspectorPanel.cancel_active_interactions(&tab->workspace().document_for_edit());
             if (wasActive)
             {
                 if (decision == UnsavedDecision::Discard)
@@ -3224,8 +3157,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
         };
         auto save_as_to = [&](const std::filesystem::path &path, bool overwrite) {
-            inspectorPanel.cancel_active_interactions(
-                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
+            inspectorPanel.commit_active_interactions();
             commit_scene_gesture();
             const auto saved = documentManager.save_scene_tab_as(
                 activeDocumentTab->identity(), path, overwrite);
@@ -3291,6 +3223,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return;
             }
             commit_scene_gesture();
+            inspectorPanel.commit_active_interactions();
             if (activeDocumentTab != nullptr && activeDocumentTab->kind() == DocumentTabKind::Template)
             {
                 std::string error;
@@ -3334,8 +3267,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
             if (!save_layer_settings_draft())
                 return;
-            inspectorPanel.cancel_active_interactions(
-                workspace != nullptr ? &workspace->document_for_edit() : nullptr);
+            inspectorPanel.commit_active_interactions();
             scenePanel.commit_gesture();
             const auto result = documentManager.save_all();
             if (sync_saved_animation_tabs(documentManager, result.savedTabs,
@@ -3580,7 +3512,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             projectPanel.refresh();
             dialogs->shutdown();
             pendingAssetAssignment.reset();
-            pendingTemplateInstantiation.reset();
             pendingTemplateRelink.reset();
             cancel_scene_gesture();
             if (behaviorScanCancellation)
@@ -4591,12 +4522,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     result.outcome == AsyncRequestOutcome::Cancelled)
                 {
                     pendingAssetAssignment.reset();
-                    if (pendingTemplateInstantiation &&
-                        pendingTemplateInstantiation->identity == result.identity.documentIdentity)
-                    {
-                        pendingTemplateInstantiation.reset();
-                        statusMessage = "Template instantiation was cancelled.";
-                    }
                     if (pendingTemplateRelink &&
                         pendingTemplateRelink->identity == result.identity.documentIdentity)
                     {
@@ -4634,14 +4559,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 if (result.outcome == AsyncRequestOutcome::Failed)
                 {
-                    if (result.identity.kind == AsyncRequestKind::OpenAsset &&
-                        pendingTemplateInstantiation &&
-                        pendingTemplateInstantiation->identity == result.identity.documentIdentity)
-                    {
-                        pendingTemplateInstantiation.reset();
-                        statusMessage = "Template selection failed: " + result.error;
-                        continue;
-                    }
                     if (result.identity.kind == AsyncRequestKind::OpenAsset && pendingTemplateRelink &&
                         pendingTemplateRelink->identity == result.identity.documentIdentity)
                     {
@@ -4743,27 +4660,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             result.selectedPath.filename().string() + ".";
                     else
                         statusMessage = relinkError;
-                }
-                else if (result.identity.kind == AsyncRequestKind::OpenAsset &&
-                         pendingTemplateInstantiation &&
-                         pendingTemplateInstantiation->identity == result.identity.documentIdentity)
-                {
-                    const PendingTemplateInstantiation request = *pendingTemplateInstantiation;
-                    pendingTemplateInstantiation.reset();
-                    if (activeDocumentTab == nullptr || activeDocumentTab->identity() != request.identity)
-                    {
-                        statusMessage = "Template instantiation was cancelled because the active document changed.";
-                        continue;
-                    }
-                    const bool inserted = instantiate_asset_drop(
-                        workspace->document_for_edit(), *editCommands, *selection,
-                        result.selectedPath.string(), EditorAssetKind::Template, 0.0f, 0.0f,
-                        request.parentObjectId);
-                    statusMessage = inserted
-                        ? "Instantiated template " + result.selectedPath.filename().string() + "."
-                        : "The selected template could not be instantiated.";
-                    if (inserted)
-                        hierarchyPanel.invalidate();
                 }
                 else if (result.identity.kind == AsyncRequestKind::OpenAsset && pendingAssetAssignment)
                 {
@@ -4947,6 +4843,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 appFocused,
                 gamePanel.is_input_captured()};
             const bool shortcutAllowed = editor_action_allowed(EditorAction::NewScene, shortcutCapture);
+            const bool saveAllowed = editor_action_allowed(EditorAction::Save, shortcutCapture);
+            const bool saveAsAllowed = editor_action_allowed(EditorAction::SaveAs, shortcutCapture);
             if (ImGui::IsKeyPressed(ImGuiKey_Comma))
             {
                 const auto action = dispatch_editor_key(EditorKey::Comma, inputIo.KeyShift,
@@ -5007,37 +4905,41 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                                               applyProjectRootsAfterFrame;
             if (f5Action == EditorAction::Stop && ownedOperationActive)
                 stop_owned_operation();
-            if (shortcutAllowed && !gamePipeline.busy() &&
+            const bool operationsIdle = !gamePipeline.busy() &&
                 !pendingPipelineBuildOnly && pendingAction != PendingAction::BuildAndRun &&
-                pendingAction != PendingAction::ChangeProjectRoots && !applyProjectRootsAfterFrame)
+                pendingAction != PendingAction::ChangeProjectRoots && !applyProjectRootsAfterFrame;
+            if (operationsIdle)
             {
-                if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N))
-                    create_scene_tab();
-                else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O))
-                    request_open_scene();
-                else if (inputIo.KeyCtrl && inputIo.KeyShift && ImGui::IsKeyPressed(ImGuiKey_S))
+                if (saveAsAllowed && inputIo.KeyCtrl && inputIo.KeyShift && ImGui::IsKeyPressed(ImGuiKey_S))
                     request_save_as();
-                else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S))
+                else if (saveAllowed && inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S))
                     save_current();
-                else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z))
+                else if (shortcutAllowed)
                 {
-                    if (inputIo.KeyShift)
+                    if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N))
+                        create_scene_tab();
+                    else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O))
+                        request_open_scene();
+                    else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z))
+                    {
+                        if (inputIo.KeyShift)
+                            redo_edit();
+                        else
+                            undo_edit();
+                    }
+                    else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y))
                         redo_edit();
-                    else
-                        undo_edit();
+                    else if (inputIo.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
+                                            ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)))
+                        scenePanel.adjust_zoom(1.1f);
+                    else if (inputIo.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
+                                            ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)))
+                        scenePanel.adjust_zoom(1.0f / 1.1f);
+                    else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_B))
+                        queue_pipeline(true);
+                    else if (f5Action == EditorAction::BuildAndRun)
+                        request_build_and_run();
                 }
-                else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y))
-                    redo_edit();
-                else if (inputIo.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
-                                        ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)))
-                    scenePanel.adjust_zoom(1.1f);
-                else if (inputIo.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
-                                        ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)))
-                    scenePanel.adjust_zoom(1.0f / 1.1f);
-                else if (inputIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_B))
-                    queue_pipeline(true);
-                else if (f5Action == EditorAction::BuildAndRun)
-                    request_build_and_run();
             }
             ImGui::SetCurrentContext(mainImGuiContext);
 
@@ -5689,7 +5591,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 externalAnimationConflict.has_value() || externalAnimationSaveAsPending ||
                 animationDestinationOverwrite.has_value() ||
                 showManualPath || pendingAssetAssignment.has_value() || closeAfterSaveTab.has_value() ||
-                pendingTemplateInstantiation.has_value() ||
                 closePromptTab.has_value() || pendingGameSessionCloseTab.has_value() ||
                 applyProjectRootsAfterFrame;
             const bool sceneTabActionsEnabled = !tabActionsLocked && !projectLocked;
@@ -8191,6 +8092,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 {
                     showExternalConflictPrompt = false;
                     ImGui::CloseCurrentPopup();
+                    inspectorPanel.commit_active_interactions();
                     commit_scene_gesture();
                     bool saved = false;
                     std::string saveMessage;

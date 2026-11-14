@@ -63,76 +63,12 @@
   },
   {
     "active": true,
-    "children": [
-      {
-        "active": true,
-        "children": [
-          {
-            "active": true,
-            "children": [
-              {
-                "active": true,
-                "children": [],
-                "components": [],
-                "id": 1097,
-                "name": "GameObject",
-                "position": {
-                  "x": 0.0,
-                  "y": 0.0
-                },
-                "rotation": 0.0,
-                "scale": {
-                  "x": 1.0,
-                  "y": 1.0
-                },
-                "tag": ""
-              }
-            ],
-            "components": [],
-            "id": 1096,
-            "name": "GameObject",
-            "position": {
-              "x": 0.0,
-              "y": 0.0
-            },
-            "rotation": 0.0,
-            "scale": {
-              "x": 1.0,
-              "y": 1.0
-            },
-            "tag": ""
-          }
-        ],
-        "components": [
-          {
-            "flip": 0,
-            "height": 16.0,
-            "id": 1098,
-            "sourceRectEnabled": false,
-            "textureFilePath": "assets/tiles/brick.png",
-            "type": 6,
-            "width": 16.0
-          }
-        ],
-        "id": 1095,
-        "name": "GameObject",
-        "position": {
-          "x": 0.0,
-          "y": 1.0
-        },
-        "rotation": 0.0,
-        "scale": {
-          "x": 1.0,
-          "y": 1.0
-        },
-        "tag": ""
-      }
-    ],
+    "children": [],
     "components": [
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 32.0,
         "id": 1004,
         "offset": {
@@ -230,7 +166,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 20.0,
         "id": 1010,
         "offset": {
@@ -291,7 +227,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 20.0,
         "id": 1013,
         "offset": {
@@ -352,7 +288,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 20.0,
         "id": 1016,
         "offset": {
@@ -413,68 +349,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "height": 20.0,
-        "id": 1019,
-        "offset": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "trigger": false,
-        "type": 3,
-        "width": 640.0
-      },
-      {
-        "angularVelocity": 0.0,
-        "bodyType": 1,
-        "force": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "friction": 1.0,
-        "gravity": false,
-        "id": 1018,
-        "mass": 1.0,
-        "restitution": 0.0,
-        "torque": 0.0,
-        "type": 4,
-        "velocity": {
-          "x": 0.0,
-          "y": 0.0
-        }
-      },
-      {
-        "flip": 0,
-        "height": 48.0,
-        "id": 1020,
-        "sourceRect": null,
-        "sourceRectEnabled": false,
-        "textureFilePath": "assets/tiles/ground.png",
-        "type": 6,
-        "width": 640.0
-      }
-    ],
-    "id": 106,
-    "name": "Ground D",
-    "position": {
-      "x": 1520.0,
-      "y": 448.0
-    },
-    "rotation": 0.0,
-    "scale": {
-      "x": 1.0,
-      "y": 1.0
-    },
-    "tag": "solid"
-  },
-  {
-    "active": true,
-    "children": [],
-    "components": [
-      {
-        "colliderType": 1,
-        "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 20.0,
         "id": 1090,
         "offset": {
@@ -535,16 +410,16 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "height": 14.0,
-        "id": 1022,
+        "collisionMask": 4294967295,
+        "height": 20.0,
+        "id": 1019,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "trigger": false,
         "type": 3,
-        "width": 79.0
+        "width": 640.0
       },
       {
         "angularVelocity": 0.0,
@@ -555,7 +430,7 @@
         },
         "friction": 1.0,
         "gravity": false,
-        "id": 1021,
+        "id": 1018,
         "mass": 1.0,
         "restitution": 0.0,
         "torque": 0.0,
@@ -567,20 +442,20 @@
       },
       {
         "flip": 0,
-        "height": 24.0,
-        "id": 1023,
+        "height": 48.0,
+        "id": 1020,
         "sourceRect": null,
         "sourceRectEnabled": false,
-        "textureFilePath": "assets/tiles/platform.png",
+        "textureFilePath": "assets/tiles/ground.png",
         "type": 6,
-        "width": 128.0
+        "width": 640.0
       }
     ],
-    "id": 107,
-    "name": "Platform A",
+    "id": 106,
+    "name": "Ground D",
     "position": {
-      "x": 504.73275389579794,
-      "y": 372.87273619207764
+      "x": 1520.0,
+      "y": 448.0
     },
     "rotation": 0.0,
     "scale": {
@@ -596,7 +471,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 14.0,
         "id": 1025,
         "offset": {
@@ -657,7 +532,68 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
+        "height": 14.0,
+        "id": 1022,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "type": 3,
+        "width": 79.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 1.0,
+        "gravity": false,
+        "id": 1021,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 24.0,
+        "id": 1023,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/tiles/platform.png",
+        "type": 6,
+        "width": 128.0
+      }
+    ],
+    "id": 107,
+    "name": "Platform A",
+    "position": {
+      "x": 504.73275389579794,
+      "y": 372.87273619207764
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
         "height": 14.0,
         "id": 1028,
         "offset": {
@@ -718,7 +654,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 73.0,
         "id": 1031,
         "offset": {
@@ -779,68 +715,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "height": 20.0,
-        "id": 1034,
-        "offset": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "trigger": false,
-        "type": 3,
-        "width": 60.0
-      },
-      {
-        "angularVelocity": 0.0,
-        "bodyType": 1,
-        "force": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "friction": 1.0,
-        "gravity": false,
-        "id": 1033,
-        "mass": 1.0,
-        "restitution": 0.0,
-        "torque": 0.0,
-        "type": 4,
-        "velocity": {
-          "x": 0.0,
-          "y": 0.0
-        }
-      },
-      {
-        "flip": 0,
-        "height": 32.0,
-        "id": 1035,
-        "sourceRect": null,
-        "sourceRectEnabled": false,
-        "textureFilePath": "assets/tiles/brick.png",
-        "type": 6,
-        "width": 96.0
-      }
-    ],
-    "id": 111,
-    "name": "Brick Row Left",
-    "position": {
-      "x": 654.0559265805686,
-      "y": 297.619599292986
-    },
-    "rotation": 0.0,
-    "scale": {
-      "x": 1.0,
-      "y": 1.0
-    },
-    "tag": "solid"
-  },
-  {
-    "active": true,
-    "children": [],
-    "components": [
-      {
-        "colliderType": 1,
-        "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 20.0,
         "id": 1037,
         "offset": {
@@ -901,7 +776,68 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
+        "height": 20.0,
+        "id": 1034,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "type": 3,
+        "width": 60.0
+      },
+      {
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 1.0,
+        "gravity": false,
+        "id": 1033,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "type": 4,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "flip": 0,
+        "height": 32.0,
+        "id": 1035,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/tiles/brick.png",
+        "type": 6,
+        "width": 96.0
+      }
+    ],
+    "id": 111,
+    "name": "Brick Row Left",
+    "position": {
+      "x": 654.0559265805686,
+      "y": 297.619599292986
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "colliderType": 1,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
         "height": 160.0,
         "id": 1040,
         "offset": {
@@ -952,13 +888,23 @@
       {
         "colliderType": 0,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "id": 1042,
+        "collisionMask": 4294967295,
+        "id": 29,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "radius": 10.0,
+        "templateComponentId": 1042,
+        "templateSourceFields": [
+          "colliderType",
+          "collisionGroup",
+          "collisionMask",
+          "offset",
+          "radius",
+          "trigger",
+          "type"
+        ],
         "trigger": true,
         "type": 3
       },
@@ -971,9 +917,22 @@
         },
         "friction": 0.0,
         "gravity": false,
-        "id": 1041,
+        "id": 30,
         "mass": 1.0,
         "restitution": 0.0,
+        "templateComponentId": 1041,
+        "templateSourceFields": [
+          "angularVelocity",
+          "bodyType",
+          "force",
+          "friction",
+          "gravity",
+          "mass",
+          "restitution",
+          "torque",
+          "type",
+          "velocity"
+        ],
         "torque": 0.0,
         "type": 4,
         "velocity": {
@@ -984,9 +943,19 @@
       {
         "flip": 0,
         "height": 22.0,
-        "id": 1043,
+        "id": 31,
         "sourceRect": null,
         "sourceRectEnabled": false,
+        "templateComponentId": 1043,
+        "templateSourceFields": [
+          "flip",
+          "height",
+          "sourceRect",
+          "sourceRectEnabled",
+          "textureFilePath",
+          "type",
+          "width"
+        ],
         "textureFilePath": "assets/items/coin_0.png",
         "type": 6,
         "width": 22.0
@@ -994,9 +963,17 @@
       {
         "animationClipFilePath": "",
         "currentFrameIndex": 0,
-        "id": 1045,
+        "id": 32,
         "playbackSpeed": 1.0,
         "playing": false,
+        "templateComponentId": 1045,
+        "templateSourceFields": [
+          "animationClipFilePath",
+          "currentFrameIndex",
+          "playbackSpeed",
+          "playing",
+          "type"
+        ],
         "type": 0
       },
       {
@@ -1007,22 +984,39 @@
             "type": "MarioCoin"
           }
         ],
-        "id": 1046,
+        "id": 33,
+        "templateComponentId": 1046,
+        "templateSourceFields": [
+          "behaviors",
+          "type"
+        ],
         "type": 5
       },
       {
         "autoPlay": false,
         "filePath": "",
         "gain": 0.85,
-        "id": 1044,
+        "id": 34,
         "loopCount": 0,
+        "templateComponentId": 1044,
+        "templateSourceFields": [
+          "autoPlay",
+          "filePath",
+          "gain",
+          "loopCount",
+          "type"
+        ],
         "type": 1
       }
     ],
-    "id": 114,
-    "name": "Coin A",
+    "id": 28,
+    "name": "Coin",
+    "overrides": [
+      "name",
+      "position.x"
+    ],
     "position": {
-      "x": 504.379,
+      "x": 504.0,
       "y": 329.7832
     },
     "rotation": 0.0,
@@ -1030,7 +1024,75 @@
       "x": 1.0,
       "y": 1.0
     },
-    "tag": "coin"
+    "tag": "coin",
+    "template": "templates/Coin.pttemplate",
+    "templateNodeId": 114,
+    "templateSourceKeys": [
+      "active",
+      "name",
+      "position",
+      "rotation",
+      "scale",
+      "tag"
+    ],
+    "templateSourcePaths": [
+      "active",
+      "name",
+      "position",
+      "position.x",
+      "position.y",
+      "rotation",
+      "scale",
+      "scale.x",
+      "scale.y",
+      "tag",
+      "component[id=1042].colliderType",
+      "component[id=1042].collisionGroup",
+      "component[id=1042].collisionMask",
+      "component[id=1042].offset",
+      "component[id=1042].offset.x",
+      "component[id=1042].offset.y",
+      "component[id=1042].radius",
+      "component[id=1042].trigger",
+      "component[id=1042].type",
+      "component[id=1041].angularVelocity",
+      "component[id=1041].bodyType",
+      "component[id=1041].force",
+      "component[id=1041].force.x",
+      "component[id=1041].force.y",
+      "component[id=1041].friction",
+      "component[id=1041].gravity",
+      "component[id=1041].mass",
+      "component[id=1041].restitution",
+      "component[id=1041].torque",
+      "component[id=1041].type",
+      "component[id=1041].velocity",
+      "component[id=1041].velocity.x",
+      "component[id=1041].velocity.y",
+      "component[id=1043].flip",
+      "component[id=1043].height",
+      "component[id=1043].sourceRect",
+      "component[id=1043].sourceRectEnabled",
+      "component[id=1043].textureFilePath",
+      "component[id=1043].type",
+      "component[id=1043].width",
+      "component[id=1045].animationClipFilePath",
+      "component[id=1045].currentFrameIndex",
+      "component[id=1045].playbackSpeed",
+      "component[id=1045].playing",
+      "component[id=1045].type",
+      "component[id=1046].behaviors",
+      "component[id=1046].behaviors[0]",
+      "component[id=1046].behaviors[0].coinSound",
+      "component[id=1046].behaviors[0].spinAnimset",
+      "component[id=1046].behaviors[0].type",
+      "component[id=1046].type",
+      "component[id=1044].autoPlay",
+      "component[id=1044].filePath",
+      "component[id=1044].gain",
+      "component[id=1044].loopCount",
+      "component[id=1044].type"
+    ]
   },
   {
     "active": true,
@@ -1039,13 +1101,23 @@
       {
         "colliderType": 0,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "id": 1048,
+        "collisionMask": 4294967295,
+        "id": 1,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "radius": 10.0,
+        "templateComponentId": 1042,
+        "templateSourceFields": [
+          "colliderType",
+          "collisionGroup",
+          "collisionMask",
+          "offset",
+          "radius",
+          "trigger",
+          "type"
+        ],
         "trigger": true,
         "type": 3
       },
@@ -1058,9 +1130,22 @@
         },
         "friction": 0.0,
         "gravity": false,
-        "id": 1047,
+        "id": 2,
         "mass": 1.0,
         "restitution": 0.0,
+        "templateComponentId": 1041,
+        "templateSourceFields": [
+          "angularVelocity",
+          "bodyType",
+          "force",
+          "friction",
+          "gravity",
+          "mass",
+          "restitution",
+          "torque",
+          "type",
+          "velocity"
+        ],
         "torque": 0.0,
         "type": 4,
         "velocity": {
@@ -1071,9 +1156,19 @@
       {
         "flip": 0,
         "height": 22.0,
-        "id": 1049,
+        "id": 3,
         "sourceRect": null,
         "sourceRectEnabled": false,
+        "templateComponentId": 1043,
+        "templateSourceFields": [
+          "flip",
+          "height",
+          "sourceRect",
+          "sourceRectEnabled",
+          "textureFilePath",
+          "type",
+          "width"
+        ],
         "textureFilePath": "assets/items/coin_0.png",
         "type": 6,
         "width": 22.0
@@ -1081,9 +1176,17 @@
       {
         "animationClipFilePath": "",
         "currentFrameIndex": 0,
-        "id": 1051,
+        "id": 4,
         "playbackSpeed": 1.0,
         "playing": false,
+        "templateComponentId": 1045,
+        "templateSourceFields": [
+          "animationClipFilePath",
+          "currentFrameIndex",
+          "playbackSpeed",
+          "playing",
+          "type"
+        ],
         "type": 0
       },
       {
@@ -1094,30 +1197,114 @@
             "type": "MarioCoin"
           }
         ],
-        "id": 1052,
+        "id": 5,
+        "templateComponentId": 1046,
+        "templateSourceFields": [
+          "behaviors",
+          "type"
+        ],
         "type": 5
       },
       {
         "autoPlay": false,
         "filePath": "",
         "gain": 0.85,
-        "id": 1050,
+        "id": 6,
         "loopCount": 0,
+        "templateComponentId": 1044,
+        "templateSourceFields": [
+          "autoPlay",
+          "filePath",
+          "gain",
+          "loopCount",
+          "type"
+        ],
         "type": 1
       }
     ],
-    "id": 115,
-    "name": "Coin B",
+    "id": 0,
+    "name": "Coin",
+    "overrides": [
+      "position"
+    ],
     "position": {
-      "x": 820.0,
-      "y": 260.0
+      "x": 818.9180908203125,
+      "y": 260.14642333984375
     },
     "rotation": 0.0,
     "scale": {
       "x": 1.0,
       "y": 1.0
     },
-    "tag": "coin"
+    "tag": "coin",
+    "template": "templates/Coin.pttemplate",
+    "templateNodeId": 114,
+    "templateSourceKeys": [
+      "active",
+      "name",
+      "position",
+      "rotation",
+      "scale",
+      "tag"
+    ],
+    "templateSourcePaths": [
+      "active",
+      "name",
+      "position",
+      "position.x",
+      "position.y",
+      "rotation",
+      "scale",
+      "scale.x",
+      "scale.y",
+      "tag",
+      "component[id=1042].colliderType",
+      "component[id=1042].collisionGroup",
+      "component[id=1042].collisionMask",
+      "component[id=1042].offset",
+      "component[id=1042].offset.x",
+      "component[id=1042].offset.y",
+      "component[id=1042].radius",
+      "component[id=1042].trigger",
+      "component[id=1042].type",
+      "component[id=1041].angularVelocity",
+      "component[id=1041].bodyType",
+      "component[id=1041].force",
+      "component[id=1041].force.x",
+      "component[id=1041].force.y",
+      "component[id=1041].friction",
+      "component[id=1041].gravity",
+      "component[id=1041].mass",
+      "component[id=1041].restitution",
+      "component[id=1041].torque",
+      "component[id=1041].type",
+      "component[id=1041].velocity",
+      "component[id=1041].velocity.x",
+      "component[id=1041].velocity.y",
+      "component[id=1043].flip",
+      "component[id=1043].height",
+      "component[id=1043].sourceRect",
+      "component[id=1043].sourceRectEnabled",
+      "component[id=1043].textureFilePath",
+      "component[id=1043].type",
+      "component[id=1043].width",
+      "component[id=1045].animationClipFilePath",
+      "component[id=1045].currentFrameIndex",
+      "component[id=1045].playbackSpeed",
+      "component[id=1045].playing",
+      "component[id=1045].type",
+      "component[id=1046].behaviors",
+      "component[id=1046].behaviors[0]",
+      "component[id=1046].behaviors[0].coinSound",
+      "component[id=1046].behaviors[0].spinAnimset",
+      "component[id=1046].behaviors[0].type",
+      "component[id=1046].type",
+      "component[id=1044].autoPlay",
+      "component[id=1044].filePath",
+      "component[id=1044].gain",
+      "component[id=1044].loopCount",
+      "component[id=1044].type"
+    ]
   },
   {
     "active": true,
@@ -1126,13 +1313,23 @@
       {
         "colliderType": 0,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "id": 1054,
+        "collisionMask": 4294967295,
+        "id": 8,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "radius": 10.0,
+        "templateComponentId": 1042,
+        "templateSourceFields": [
+          "colliderType",
+          "collisionGroup",
+          "collisionMask",
+          "offset",
+          "radius",
+          "trigger",
+          "type"
+        ],
         "trigger": true,
         "type": 3
       },
@@ -1145,9 +1342,22 @@
         },
         "friction": 0.0,
         "gravity": false,
-        "id": 1053,
+        "id": 9,
         "mass": 1.0,
         "restitution": 0.0,
+        "templateComponentId": 1041,
+        "templateSourceFields": [
+          "angularVelocity",
+          "bodyType",
+          "force",
+          "friction",
+          "gravity",
+          "mass",
+          "restitution",
+          "torque",
+          "type",
+          "velocity"
+        ],
         "torque": 0.0,
         "type": 4,
         "velocity": {
@@ -1158,9 +1368,19 @@
       {
         "flip": 0,
         "height": 22.0,
-        "id": 1055,
+        "id": 10,
         "sourceRect": null,
         "sourceRectEnabled": false,
+        "templateComponentId": 1043,
+        "templateSourceFields": [
+          "flip",
+          "height",
+          "sourceRect",
+          "sourceRectEnabled",
+          "textureFilePath",
+          "type",
+          "width"
+        ],
         "textureFilePath": "assets/items/coin_0.png",
         "type": 6,
         "width": 22.0
@@ -1168,9 +1388,17 @@
       {
         "animationClipFilePath": "",
         "currentFrameIndex": 0,
-        "id": 1057,
+        "id": 11,
         "playbackSpeed": 1.0,
         "playing": false,
+        "templateComponentId": 1045,
+        "templateSourceFields": [
+          "animationClipFilePath",
+          "currentFrameIndex",
+          "playbackSpeed",
+          "playing",
+          "type"
+        ],
         "type": 0
       },
       {
@@ -1181,30 +1409,114 @@
             "type": "MarioCoin"
           }
         ],
-        "id": 1058,
+        "id": 12,
+        "templateComponentId": 1046,
+        "templateSourceFields": [
+          "behaviors",
+          "type"
+        ],
         "type": 5
       },
       {
         "autoPlay": false,
         "filePath": "",
         "gain": 0.85,
-        "id": 1056,
+        "id": 13,
         "loopCount": 0,
+        "templateComponentId": 1044,
+        "templateSourceFields": [
+          "autoPlay",
+          "filePath",
+          "gain",
+          "loopCount",
+          "type"
+        ],
         "type": 1
       }
     ],
-    "id": 116,
-    "name": "Coin C",
+    "id": 7,
+    "name": "Coin",
+    "overrides": [
+      "position"
+    ],
     "position": {
-      "x": 1110.0,
-      "y": 204.0
+      "x": 1111.16552734375,
+      "y": 205.03131103515625
     },
     "rotation": 0.0,
     "scale": {
       "x": 1.0,
       "y": 1.0
     },
-    "tag": "coin"
+    "tag": "coin",
+    "template": "templates/Coin.pttemplate",
+    "templateNodeId": 114,
+    "templateSourceKeys": [
+      "active",
+      "name",
+      "position",
+      "rotation",
+      "scale",
+      "tag"
+    ],
+    "templateSourcePaths": [
+      "active",
+      "name",
+      "position",
+      "position.x",
+      "position.y",
+      "rotation",
+      "scale",
+      "scale.x",
+      "scale.y",
+      "tag",
+      "component[id=1042].colliderType",
+      "component[id=1042].collisionGroup",
+      "component[id=1042].collisionMask",
+      "component[id=1042].offset",
+      "component[id=1042].offset.x",
+      "component[id=1042].offset.y",
+      "component[id=1042].radius",
+      "component[id=1042].trigger",
+      "component[id=1042].type",
+      "component[id=1041].angularVelocity",
+      "component[id=1041].bodyType",
+      "component[id=1041].force",
+      "component[id=1041].force.x",
+      "component[id=1041].force.y",
+      "component[id=1041].friction",
+      "component[id=1041].gravity",
+      "component[id=1041].mass",
+      "component[id=1041].restitution",
+      "component[id=1041].torque",
+      "component[id=1041].type",
+      "component[id=1041].velocity",
+      "component[id=1041].velocity.x",
+      "component[id=1041].velocity.y",
+      "component[id=1043].flip",
+      "component[id=1043].height",
+      "component[id=1043].sourceRect",
+      "component[id=1043].sourceRectEnabled",
+      "component[id=1043].textureFilePath",
+      "component[id=1043].type",
+      "component[id=1043].width",
+      "component[id=1045].animationClipFilePath",
+      "component[id=1045].currentFrameIndex",
+      "component[id=1045].playbackSpeed",
+      "component[id=1045].playing",
+      "component[id=1045].type",
+      "component[id=1046].behaviors",
+      "component[id=1046].behaviors[0]",
+      "component[id=1046].behaviors[0].coinSound",
+      "component[id=1046].behaviors[0].spinAnimset",
+      "component[id=1046].behaviors[0].type",
+      "component[id=1046].type",
+      "component[id=1044].autoPlay",
+      "component[id=1044].filePath",
+      "component[id=1044].gain",
+      "component[id=1044].loopCount",
+      "component[id=1044].type"
+    ]
   },
   {
     "active": true,
@@ -1213,13 +1525,23 @@
       {
         "colliderType": 0,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "id": 1060,
+        "collisionMask": 4294967295,
+        "id": 15,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "radius": 10.0,
+        "templateComponentId": 1042,
+        "templateSourceFields": [
+          "colliderType",
+          "collisionGroup",
+          "collisionMask",
+          "offset",
+          "radius",
+          "trigger",
+          "type"
+        ],
         "trigger": true,
         "type": 3
       },
@@ -1232,9 +1554,22 @@
         },
         "friction": 0.0,
         "gravity": false,
-        "id": 1059,
+        "id": 16,
         "mass": 1.0,
         "restitution": 0.0,
+        "templateComponentId": 1041,
+        "templateSourceFields": [
+          "angularVelocity",
+          "bodyType",
+          "force",
+          "friction",
+          "gravity",
+          "mass",
+          "restitution",
+          "torque",
+          "type",
+          "velocity"
+        ],
         "torque": 0.0,
         "type": 4,
         "velocity": {
@@ -1245,9 +1580,19 @@
       {
         "flip": 0,
         "height": 22.0,
-        "id": 1061,
+        "id": 17,
         "sourceRect": null,
         "sourceRectEnabled": false,
+        "templateComponentId": 1043,
+        "templateSourceFields": [
+          "flip",
+          "height",
+          "sourceRect",
+          "sourceRectEnabled",
+          "textureFilePath",
+          "type",
+          "width"
+        ],
         "textureFilePath": "assets/items/coin_0.png",
         "type": 6,
         "width": 22.0
@@ -1255,9 +1600,17 @@
       {
         "animationClipFilePath": "",
         "currentFrameIndex": 0,
-        "id": 1063,
+        "id": 18,
         "playbackSpeed": 1.0,
         "playing": false,
+        "templateComponentId": 1045,
+        "templateSourceFields": [
+          "animationClipFilePath",
+          "currentFrameIndex",
+          "playbackSpeed",
+          "playing",
+          "type"
+        ],
         "type": 0
       },
       {
@@ -1268,30 +1621,114 @@
             "type": "MarioCoin"
           }
         ],
-        "id": 1064,
+        "id": 19,
+        "templateComponentId": 1046,
+        "templateSourceFields": [
+          "behaviors",
+          "type"
+        ],
         "type": 5
       },
       {
         "autoPlay": false,
         "filePath": "",
         "gain": 0.85,
-        "id": 1062,
+        "id": 20,
         "loopCount": 0,
+        "templateComponentId": 1044,
+        "templateSourceFields": [
+          "autoPlay",
+          "filePath",
+          "gain",
+          "loopCount",
+          "type"
+        ],
         "type": 1
       }
     ],
-    "id": 117,
-    "name": "Coin D",
+    "id": 14,
+    "name": "Coin",
+    "overrides": [
+      "position"
+    ],
     "position": {
-      "x": 1490.0,
-      "y": 396.0
+      "x": 1490.44287109375,
+      "y": 395.7139587402344
     },
     "rotation": 0.0,
     "scale": {
       "x": 1.0,
       "y": 1.0
     },
-    "tag": "coin"
+    "tag": "coin",
+    "template": "templates/Coin.pttemplate",
+    "templateNodeId": 114,
+    "templateSourceKeys": [
+      "active",
+      "name",
+      "position",
+      "rotation",
+      "scale",
+      "tag"
+    ],
+    "templateSourcePaths": [
+      "active",
+      "name",
+      "position",
+      "position.x",
+      "position.y",
+      "rotation",
+      "scale",
+      "scale.x",
+      "scale.y",
+      "tag",
+      "component[id=1042].colliderType",
+      "component[id=1042].collisionGroup",
+      "component[id=1042].collisionMask",
+      "component[id=1042].offset",
+      "component[id=1042].offset.x",
+      "component[id=1042].offset.y",
+      "component[id=1042].radius",
+      "component[id=1042].trigger",
+      "component[id=1042].type",
+      "component[id=1041].angularVelocity",
+      "component[id=1041].bodyType",
+      "component[id=1041].force",
+      "component[id=1041].force.x",
+      "component[id=1041].force.y",
+      "component[id=1041].friction",
+      "component[id=1041].gravity",
+      "component[id=1041].mass",
+      "component[id=1041].restitution",
+      "component[id=1041].torque",
+      "component[id=1041].type",
+      "component[id=1041].velocity",
+      "component[id=1041].velocity.x",
+      "component[id=1041].velocity.y",
+      "component[id=1043].flip",
+      "component[id=1043].height",
+      "component[id=1043].sourceRect",
+      "component[id=1043].sourceRectEnabled",
+      "component[id=1043].textureFilePath",
+      "component[id=1043].type",
+      "component[id=1043].width",
+      "component[id=1045].animationClipFilePath",
+      "component[id=1045].currentFrameIndex",
+      "component[id=1045].playbackSpeed",
+      "component[id=1045].playing",
+      "component[id=1045].type",
+      "component[id=1046].behaviors",
+      "component[id=1046].behaviors[0]",
+      "component[id=1046].behaviors[0].coinSound",
+      "component[id=1046].behaviors[0].spinAnimset",
+      "component[id=1046].behaviors[0].type",
+      "component[id=1046].type",
+      "component[id=1044].autoPlay",
+      "component[id=1044].filePath",
+      "component[id=1044].gain",
+      "component[id=1044].loopCount",
+      "component[id=1044].type"
+    ]
   },
   {
     "active": true,
@@ -1300,13 +1737,23 @@
       {
         "colliderType": 0,
         "collisionGroup": 1,
-        "collisionMask": 1,
-        "id": 1066,
+        "collisionMask": 4294967295,
+        "id": 22,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "radius": 10.0,
+        "templateComponentId": 1042,
+        "templateSourceFields": [
+          "colliderType",
+          "collisionGroup",
+          "collisionMask",
+          "offset",
+          "radius",
+          "trigger",
+          "type"
+        ],
         "trigger": true,
         "type": 3
       },
@@ -1319,9 +1766,22 @@
         },
         "friction": 0.0,
         "gravity": false,
-        "id": 1065,
+        "id": 23,
         "mass": 1.0,
         "restitution": 0.0,
+        "templateComponentId": 1041,
+        "templateSourceFields": [
+          "angularVelocity",
+          "bodyType",
+          "force",
+          "friction",
+          "gravity",
+          "mass",
+          "restitution",
+          "torque",
+          "type",
+          "velocity"
+        ],
         "torque": 0.0,
         "type": 4,
         "velocity": {
@@ -1332,9 +1792,19 @@
       {
         "flip": 0,
         "height": 22.0,
-        "id": 1067,
+        "id": 24,
         "sourceRect": null,
         "sourceRectEnabled": false,
+        "templateComponentId": 1043,
+        "templateSourceFields": [
+          "flip",
+          "height",
+          "sourceRect",
+          "sourceRectEnabled",
+          "textureFilePath",
+          "type",
+          "width"
+        ],
         "textureFilePath": "assets/items/coin_0.png",
         "type": 6,
         "width": 22.0
@@ -1342,9 +1812,17 @@
       {
         "animationClipFilePath": "",
         "currentFrameIndex": 0,
-        "id": 1069,
+        "id": 25,
         "playbackSpeed": 1.0,
         "playing": false,
+        "templateComponentId": 1045,
+        "templateSourceFields": [
+          "animationClipFilePath",
+          "currentFrameIndex",
+          "playbackSpeed",
+          "playing",
+          "type"
+        ],
         "type": 0
       },
       {
@@ -1355,30 +1833,114 @@
             "type": "MarioCoin"
           }
         ],
-        "id": 1070,
+        "id": 26,
+        "templateComponentId": 1046,
+        "templateSourceFields": [
+          "behaviors",
+          "type"
+        ],
         "type": 5
       },
       {
         "autoPlay": false,
         "filePath": "",
         "gain": 0.85,
-        "id": 1068,
+        "id": 27,
         "loopCount": 0,
+        "templateComponentId": 1044,
+        "templateSourceFields": [
+          "autoPlay",
+          "filePath",
+          "gain",
+          "loopCount",
+          "type"
+        ],
         "type": 1
       }
     ],
-    "id": 118,
-    "name": "Coin E",
+    "id": 21,
+    "name": "Coin",
+    "overrides": [
+      "position"
+    ],
     "position": {
-      "x": 1750.0,
-      "y": 396.0
+      "x": 1750.5118408203125,
+      "y": 396.31756591796875
     },
     "rotation": 0.0,
     "scale": {
       "x": 1.0,
       "y": 1.0
     },
-    "tag": "coin"
+    "tag": "coin",
+    "template": "templates/Coin.pttemplate",
+    "templateNodeId": 114,
+    "templateSourceKeys": [
+      "active",
+      "name",
+      "position",
+      "rotation",
+      "scale",
+      "tag"
+    ],
+    "templateSourcePaths": [
+      "active",
+      "name",
+      "position",
+      "position.x",
+      "position.y",
+      "rotation",
+      "scale",
+      "scale.x",
+      "scale.y",
+      "tag",
+      "component[id=1042].colliderType",
+      "component[id=1042].collisionGroup",
+      "component[id=1042].collisionMask",
+      "component[id=1042].offset",
+      "component[id=1042].offset.x",
+      "component[id=1042].offset.y",
+      "component[id=1042].radius",
+      "component[id=1042].trigger",
+      "component[id=1042].type",
+      "component[id=1041].angularVelocity",
+      "component[id=1041].bodyType",
+      "component[id=1041].force",
+      "component[id=1041].force.x",
+      "component[id=1041].force.y",
+      "component[id=1041].friction",
+      "component[id=1041].gravity",
+      "component[id=1041].mass",
+      "component[id=1041].restitution",
+      "component[id=1041].torque",
+      "component[id=1041].type",
+      "component[id=1041].velocity",
+      "component[id=1041].velocity.x",
+      "component[id=1041].velocity.y",
+      "component[id=1043].flip",
+      "component[id=1043].height",
+      "component[id=1043].sourceRect",
+      "component[id=1043].sourceRectEnabled",
+      "component[id=1043].textureFilePath",
+      "component[id=1043].type",
+      "component[id=1043].width",
+      "component[id=1045].animationClipFilePath",
+      "component[id=1045].currentFrameIndex",
+      "component[id=1045].playbackSpeed",
+      "component[id=1045].playing",
+      "component[id=1045].type",
+      "component[id=1046].behaviors",
+      "component[id=1046].behaviors[0]",
+      "component[id=1046].behaviors[0].coinSound",
+      "component[id=1046].behaviors[0].spinAnimset",
+      "component[id=1046].behaviors[0].type",
+      "component[id=1046].type",
+      "component[id=1044].autoPlay",
+      "component[id=1044].filePath",
+      "component[id=1044].gain",
+      "component[id=1044].loopCount",
+      "component[id=1044].type"
+    ]
   },
   {
     "active": true,
@@ -1387,7 +1949,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 28.0,
         "id": 1072,
         "offset": {
@@ -1483,7 +2045,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 28.0,
         "id": 1078,
         "offset": {
@@ -1579,7 +2141,7 @@
       {
         "colliderType": 1,
         "collisionGroup": 1,
-        "collisionMask": 1,
+        "collisionMask": 4294967295,
         "height": 164.0,
         "id": 1084,
         "offset": {

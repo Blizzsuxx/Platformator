@@ -144,8 +144,26 @@ TemplateInsertResult insert_template(
     std::string_view linkedTemplatePath = {},
     std::optional<std::pair<float, float>> rootPosition = std::nullopt);
 
+struct TemplateExportResult
+{
+    bool succeeded = false;
+    std::filesystem::path outputPath;
+    std::string message;
+};
+
+std::string sanitize_template_filename_stem(std::string_view objectName);
+
+TemplateExportResult export_object_as_template(
+    const DocumentSession &document,
+    int objectId,
+    const std::filesystem::path &targetDirectory,
+    const Json &behaviorCatalog,
+    const std::vector<Json> &authorBindings = {},
+    const std::vector<TemplateAuthorSchemaDeclaration> &authorDeclaredBehaviors = {});
+
 bool instantiate_asset_drop(DocumentSession &document, EditCommandService &commands,
                             SelectionModel &selection, const std::string &assetPath,
                             EditorAssetKind kind, float targetX = 0.0f, float targetY = 0.0f,
-                            std::optional<int> parentObjectId = std::nullopt);
+                            std::optional<int> parentObjectId = std::nullopt,
+                            std::size_t insertionIndex = std::numeric_limits<std::size_t>::max());
 } // namespace platformator_editor

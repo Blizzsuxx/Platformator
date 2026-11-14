@@ -108,6 +108,7 @@ add_library(platformator_editor_core STATIC
     src/panels/animation.cpp
     src/panels/hierarchy.cpp
     src/panels/inspector.cpp
+    src/panels/livepropertyedit.cpp
     src/panels/project.cpp
     src/panels/referencefields.cpp
     src/panels/projectsettings.cpp

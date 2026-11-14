@@ -871,13 +871,20 @@ void run_editor_action_and_style_cases()
                     EditorAction::DuplicateSelection &&
                 !dispatch_editor_key(EditorKey::D, false, true, clearCapture),
             "rename/delete/duplicate shortcuts must require focused Hierarchy capture");
-    for (const auto capture : {EditorInputCapture{true, true, false, false, true},
-                               EditorInputCapture{true, false, true, false, true},
+    const EditorInputCapture textInputCapture{true, true, false, false, true};
+    require(editor_action_allowed(EditorAction::Save, textInputCapture) &&
+                editor_action_allowed(EditorAction::SaveAs, textInputCapture) &&
+                !editor_action_allowed(EditorAction::NewScene, textInputCapture) &&
+                !editor_action_allowed(EditorAction::Undo, textInputCapture) &&
+                !editor_action_allowed(EditorAction::FrameSelected, textInputCapture),
+            "Save and Save As must stay allowed during text input while other shortcuts are suppressed");
+    for (const auto capture : {EditorInputCapture{true, false, true, false, true},
                                EditorInputCapture{true, false, false, true, true},
-                               EditorInputCapture{false, false, false, false, true}})
+                               EditorInputCapture{false, false, false, false, true},
+                               EditorInputCapture{true, true, false, false, true, false, true, true}})
         require(!editor_action_allowed(EditorAction::Save, capture) &&
                     !editor_action_allowed(EditorAction::FrameSelected, capture),
-                "text input, modal dialogs, active gestures and application focus loss must suppress shortcuts");
+                "modal dialogs, active gestures, focus loss and embedded game focus must suppress shortcuts");
     clearCapture.sceneFocused = false;
     require(!editor_action_allowed(EditorAction::FrameSelected, clearCapture) &&
                 editor_action_allowed(EditorAction::Save, clearCapture),

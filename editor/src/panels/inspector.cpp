@@ -1384,6 +1384,7 @@ void InspectorPanel::set_host_generation(std::uint64_t generation, DocumentSessi
 
 void InspectorPanel::cancel_active_interactions(DocumentSession *document)
 {
+    liveEdit_.commit();
     if (scrubState_.active)
     {
         if (document != nullptr &&
@@ -1418,6 +1419,19 @@ void InspectorPanel::cancel_active_interactions(DocumentSession *document)
     behaviorFields_.cancel_active_interactions(document);
     spriteRegionWidget_.cancel_drag();
     spriteRegionWidget_.cancel_numeric_drafts();
+}
+
+void InspectorPanel::commit_active_interactions()
+{
+    liveEdit_.commit();
+    behaviorFields_.commit_active_interactions();
+}
+
+void InspectorPanel::discard_active_interactions(DocumentSession *document)
+{
+    liveEdit_.cancel(document);
+    behaviorFields_.discard_active_interactions(document);
+    cancel_active_interactions(document);
 }
 
 void InspectorPanel::draw_search_bar()
@@ -1706,49 +1720,33 @@ bool InspectorPanel::draw_number(DocumentSession &document, EditCommandService &
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (reveal)
         ImGui::SetKeyboardFocusHere();
-    const float originalValue = value;
-    const ImGuiID valueId = ImGui::GetID("##value");
-    const bool valueActive = ImGui::GetActiveID() == valueId;
-    const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-    const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
     if (overridden)
     {
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
     }
-    const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
-                                           ImGuiInputTextFlags_EnterReturnsTrue);
-    if (overridden)
-        ImGui::PopStyleColor(3);
-    if (overridden)
-    {
-        if (ImGui::IsItemHovered())
-            ImGui::SetItemTooltip("This field overrides its linked template value.");
-        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
-    }
-    if (ImGui::IsItemActivated())
-    {
-        value = originalValue;
-        if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-            state->ReloadUserBufAndSelectAll();
-    }
-    if (reveal)
-        ImGui::SetScrollHereY(0.5f);
-    const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-    const bool commit = !ImGui::IsItemActivated() && !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+    const std::string rangeError = std::string(label) + " is outside the supported range.";
+    LiveEditContext liveCtx{document, commands, liveEdit_, currentSelection_,
+                            hostGeneration_, currentOrderedSelection_, feedback_};
+    const std::vector<PropertyAddress> targets{
+        address_for_document(document, objectId, componentId, std::nullopt, path)};
+    const bool updated = live_input_float(
+        "##value", value, false, liveCtx, targets, minimum, maximum, rangeError.c_str(), [&] {
+            if (overridden)
+                ImGui::PopStyleColor(3);
+            if (overridden)
+            {
+                if (ImGui::IsItemHovered())
+                    ImGui::SetItemTooltip("This field overrides its linked template value.");
+                draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+            }
+            if (reveal)
+                ImGui::SetScrollHereY(0.5f);
+        });
     ImGui::PopID();
 
-    if (scrubCommitted)
-        return true;
-    if (!commit)
-        return false;
-    if (!std::isfinite(value) || (minimum && value < *minimum) || (maximum && value > *maximum))
-    {
-        feedback_ = std::string(label) + " is outside the supported range.";
-        return false;
-    }
-    return set(document, commands, objectId, componentId, std::move(path), value);
+    return scrubCommitted || updated;
 }
 
 bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService &commands, int objectId,
@@ -1889,14 +1887,17 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     else if (!inserted && !draftIt->second.wasActive && ImGui::GetActiveID() != widgetId)
         draftIt->second.value = storedValue;
 
+    const bool wasActive = draftIt->second.wasActive ||
+                           (liveEdit_.active() && liveEdit_.widget_id() == widgetId);
     if (overridden)
     {
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
     }
-    const bool changed = ImGui::InputInt("##value", &draftIt->second.value, 1, 100,
-                                         ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::PushItemFlag(ImGuiItemFlags_LiveEditOnInputScalar, true);
+    const bool changed = ImGui::InputInt("##value", &draftIt->second.value, 1, 100);
+    ImGui::PopItemFlag();
     if (overridden)
     {
         ImGui::PopStyleColor(3);
@@ -1907,34 +1908,27 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     if (reveal)
         ImGui::SetScrollHereY(0.5f);
     const bool itemActive = ImGui::IsItemActive();
-    const bool enterPressed = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-                              ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
-    const bool cancel = itemActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-    const bool commit = !cancel && (ImGui::IsItemDeactivatedAfterEdit() ||
-                                    (changed && (enterPressed || !itemActive)));
+    const bool cancel = (wasActive || itemActive) && ImGui::IsKeyPressed(ImGuiKey_Escape);
     const int value = draftIt->second.value;
     draftIt->second.wasActive = itemActive;
-    if (cancel)
+    bool updated = false;
+    if (!scrubCommitted && !cancel && changed)
     {
-        integerDrafts_.erase(draftIt);
+        if ((minimum && value < *minimum) || (maximum && value > *maximum))
+            feedback_ = std::string(label) + " is outside the supported range.";
+        else
+            updated = liveEdit_.update_single(
+                document, commands,
+                address_for_document(document, objectId, componentId, std::nullopt, path),
+                currentSelection_, widgetId, hostGeneration_, currentOrderedSelection_,
+                value, feedback_);
     }
+    liveEdit_.finish_widget(widgetId, &document, itemActive, cancel);
+    if (cancel || scrubCommitted)
+        integerDrafts_.erase(draftIt);
     ImGui::PopID();
 
-    if (scrubCommitted)
-    {
-        integerDrafts_.erase(widgetId);
-        return true;
-    }
-    if (!commit)
-        return false;
-    if ((minimum && value < *minimum) || (maximum && value > *maximum))
-    {
-        feedback_ = std::string(label) + " is outside the supported range.";
-        integerDrafts_.erase(widgetId);
-        return false;
-    }
-    integerDrafts_.erase(widgetId);
-    return set(document, commands, objectId, componentId, std::move(path), value);
+    return scrubCommitted || updated;
 }
 
 bool InspectorPanel::draw_string(DocumentSession &document, EditCommandService &commands, int objectId,
@@ -1959,21 +1953,22 @@ bool InspectorPanel::draw_string(DocumentSession &document, EditCommandService &
     });
     if (reveal)
         ImGui::SetKeyboardFocusHere();
-    const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
-                                          ImGuiInputTextFlags_EnterReturnsTrue);
-    if (overridden)
-    {
-        if (ImGui::IsItemHovered())
-            ImGui::SetItemTooltip("This field overrides its linked template value.");
-        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
-    }
-    if (reveal)
-        ImGui::SetScrollHereY(0.5f);
-    const bool commit = changed || ImGui::IsItemDeactivatedAfterEdit();
+    LiveEditContext liveCtx{document, commands, liveEdit_, currentSelection_,
+                            hostGeneration_, currentOrderedSelection_, feedback_};
+    const std::vector<PropertyAddress> targets{
+        address_for_document(document, objectId, componentId, std::nullopt, path)};
+    const bool updated = live_input_string("##value", buffer.data(), buffer.size(), liveCtx, targets, [&] {
+        if (overridden)
+        {
+            if (ImGui::IsItemHovered())
+                ImGui::SetItemTooltip("This field overrides its linked template value.");
+            draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+        }
+        if (reveal)
+            ImGui::SetScrollHereY(0.5f);
+    });
     end_field();
-    if (!commit)
-        return false;
-    return set(document, commands, objectId, componentId, std::move(path), std::string(buffer.data()));
+    return updated;
 }
 
 bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &commands, int objectId,
@@ -2191,45 +2186,27 @@ bool InspectorPanel::draw_compact_vector2(
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
         }
-        const float originalValue = axisVal;
-        const ImGuiID valueId = ImGui::GetID("##value");
-        const bool valueActive = ImGui::GetActiveID() == valueId;
-        const bool useFullPrecision = valueActive ||
-            ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *format = useFullPrecision ? "%.9g" : "%.2f";
-        const bool changed = ImGui::InputFloat("##value", &axisVal, 0.0f, 0.0f, format,
-                                               ImGuiInputTextFlags_EnterReturnsTrue);
-        if (ImGui::IsItemActivated())
-        {
-            axisVal = originalValue;
-            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->ReloadUserBufAndSelectAll();
-        }
-        if (overridden)
-            ImGui::PopStyleColor(3);
-        if (overridden && ImGui::IsItemHovered())
-            ImGui::SetItemTooltip("This field overrides its linked template value.");
-        if (overridden)
-            draw_template_revert_context(document, commands, objectId, componentId,
-                                         path, feedback_);
-        if (reveal)
-            ImGui::SetScrollHereY(0.5f);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
+        const std::string rangeError = std::string(label) + " " + axisName + " is outside the supported range.";
+        LiveEditContext liveCtx{document, commands, liveEdit_, currentSelection_,
+                                hostGeneration_, currentOrderedSelection_, feedback_};
+        const std::vector<PropertyAddress> targets{
+            address_for_document(document, objectId, componentId, std::nullopt, path)};
+        const bool updated = live_input_float(
+            "##value", axisVal, false, liveCtx, targets, minimum, maximum, rangeError.c_str(), [&] {
+                if (overridden)
+                    ImGui::PopStyleColor(3);
+                if (overridden && ImGui::IsItemHovered())
+                    ImGui::SetItemTooltip("This field overrides its linked template value.");
+                if (overridden)
+                    draw_template_revert_context(document, commands, objectId, componentId,
+                                                 path, feedback_);
+                if (reveal)
+                    ImGui::SetScrollHereY(0.5f);
+            });
         ImGui::PopID();
 
-        if (commit)
-        {
-            if (!std::isfinite(axisVal) || (minimum && axisVal < *minimum) || (maximum && axisVal > *maximum))
-            {
-                feedback_ = std::string(label) + " " + axisName + " is outside the supported range.";
-            }
-            else
-            {
-                set(document, commands, objectId, componentId, path, axisVal);
-                anyCommitted = true;
-            }
-        }
+        if (updated)
+            anyCommitted = true;
     };
 
     draw_axis("X", "##scrub_x", kAxisXColor, valX, pathX, defaultX);
@@ -2359,47 +2336,31 @@ bool InspectorPanel::draw_compact_rotation(
     const bool reveal = consume_reveal_target(objectId, componentId, path);
     if (reveal)
         ImGui::SetKeyboardFocusHere();
-    const float originalVal = val;
-    const ImGuiID valueId = ImGui::GetID("##value");
-    const bool valueActive = ImGui::GetActiveID() == valueId;
-    const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-    const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
     if (overridden)
     {
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.27f, 0.24f, 0.16f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
     }
-    const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, formatStr,
-                                           ImGuiInputTextFlags_EnterReturnsTrue);
-    if (overridden)
-        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
-    if (overridden)
-        ImGui::PopStyleColor(3);
-    if (overridden && ImGui::IsItemHovered())
-        ImGui::SetItemTooltip("This field overrides its linked template value.");
-    if (ImGui::IsItemActivated())
-    {
-        val = originalVal;
-        if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-            state->ReloadUserBufAndSelectAll();
-    }
-    if (reveal)
-        ImGui::SetScrollHereY(0.5f);
-    const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-    const bool commit = !ImGui::IsItemActivated() && !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit()) && val != originalVal;
+    const std::string rangeError = std::string(label) + " is outside the supported range.";
+    LiveEditContext liveCtx{document, commands, liveEdit_, currentSelection_,
+                            hostGeneration_, currentOrderedSelection_, feedback_};
+    const std::vector<PropertyAddress> targets{
+        address_for_document(document, objectId, componentId, std::nullopt, path)};
+    const bool updated = live_input_float(
+        "##value", val, false, liveCtx, targets, std::nullopt, std::nullopt, rangeError.c_str(), [&] {
+            if (overridden)
+                draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+            if (overridden)
+                ImGui::PopStyleColor(3);
+            if (overridden && ImGui::IsItemHovered())
+                ImGui::SetItemTooltip("This field overrides its linked template value.");
+            if (reveal)
+                ImGui::SetScrollHereY(0.5f);
+        });
     ImGui::PopID();
 
-    if (commit)
-    {
-        if (!std::isfinite(val))
-        {
-            feedback_ = std::string(label) + " is outside the supported range.";
-            return false;
-        }
-        return set(document, commands, objectId, componentId, path, val);
-    }
-    return false;
+    return updated;
 }
 
 void InspectorPanel::draw_common_compact_transform(
@@ -2420,18 +2381,12 @@ void InspectorPanel::draw_common_compact_transform(
         return values;
     };
 
-    const auto commit_common = [&](const std::vector<FieldPathSegment> &path, float value) {
-        std::vector<BatchPropertyEdit> edits;
-        edits.reserve(objectIds.size());
+    const auto object_targets = [&](const std::vector<FieldPathSegment> &path) {
+        std::vector<PropertyAddress> targets;
+        targets.reserve(objectIds.size());
         for (const int objectId : objectIds)
-            edits.push_back({address_for_document(document, objectId, std::nullopt, std::nullopt, path),
-                             PropertyValue::of(Json(value))});
-        const Selection current = selection.current();
-        const auto result = commands.apply_batch(document, edits, {current, current});
-        if (result.status == CommandStatus::Rejected || result.status == CommandStatus::StaleAddress)
-            feedback_ = result.message;
-        else
-            feedback_.clear();
+            targets.push_back(address_for_document(document, objectId, std::nullopt, std::nullopt, path));
+        return targets;
     };
     const auto template_targets = [&](const std::vector<FieldPathSegment> &path) {
         std::vector<TemplatePropertyTarget> targets;
@@ -2726,38 +2681,20 @@ void InspectorPanel::draw_common_compact_transform(
                 ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
             }
-            const ImGuiID valueId = ImGui::GetID("##value");
-            const bool valueActive = ImGui::GetActiveID() == valueId;
-            const bool useFullPrecision = valueActive ||
-                ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-            const char *format = useFullPrecision ? "%.9g" : mixed ? " — " : "%.2f";
-            const float originalValue = val;
-            const bool changed = ImGui::InputFloat("##value", &val, 0.0f, 0.0f, format,
-                                                   ImGuiInputTextFlags_EnterReturnsTrue);
-            if (ImGui::IsItemActivated())
-            {
-                val = originalValue;
-                if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                    state->ReloadUserBufAndSelectAll();
-            }
-            if (overridden)
-            {
-                ImGui::PopStyleColor(3);
-                ImGui::SetItemTooltip("This field overrides its linked template value.");
-            }
-            draw_template_revert_context(document, commands, revertTargets, feedback_);
+            const std::string rangeError = std::string(label) + " " + axisName + " is outside the supported range.";
+            LiveEditContext liveCtx{document, commands, liveEdit_, selection.current(),
+                                    hostGeneration_, currentOrderedSelection_, feedback_};
+            live_input_float("##value", val, mixed, liveCtx, object_targets(path),
+                             minimum, std::nullopt, rangeError.c_str(), [&] {
+                if (overridden)
+                {
+                    ImGui::PopStyleColor(3);
+                    ImGui::SetItemTooltip("This field overrides its linked template value.");
+                }
+                draw_template_revert_context(document, commands, revertTargets, feedback_);
+            });
             ImGui::PopItemFlag();
-            const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-            const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
             ImGui::PopID();
-
-            if (commit)
-            {
-                if (!std::isfinite(val) || (minimum && val < *minimum))
-                    feedback_ = std::string(label) + " " + axisName + " is outside the supported range.";
-                else
-                    commit_common(path, val);
-            }
         };
 
         draw_common_axis("X", "##common_scrub_x", kAxisXColor, valX, mixedX, *valsX, pathX);
@@ -2892,37 +2829,19 @@ void InspectorPanel::draw_common_compact_transform(
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
         }
-        const ImGuiID valueId = ImGui::GetID("##value");
-        const bool valueActive = ImGui::GetActiveID() == valueId;
-        const bool useFullPrecision = valueActive ||
-            ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *format = useFullPrecision ? "%.9g" : mixedRot ? " — " : "%.2f";
-        const float originalRotation = valRot;
-        const bool changed = ImGui::InputFloat("##value", &valRot, 0.0f, 0.0f, format,
-                                               ImGuiInputTextFlags_EnterReturnsTrue);
-        if (ImGui::IsItemActivated())
-        {
-            valRot = originalRotation;
-            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->ReloadUserBufAndSelectAll();
-        }
-        if (overridden)
-        {
-            ImGui::PopStyleColor(3);
-            ImGui::SetItemTooltip("This field overrides its linked template value.");
-        }
-        draw_template_revert_context(document, commands, revertTargets, feedback_);
+        LiveEditContext liveCtx{document, commands, liveEdit_, selection.current(),
+                                hostGeneration_, currentOrderedSelection_, feedback_};
+        live_input_float("##value", valRot, mixedRot, liveCtx, object_targets(rotPath),
+                         std::nullopt, std::nullopt, "Rotation is outside the supported range.", [&] {
+            if (overridden)
+            {
+                ImGui::PopStyleColor(3);
+                ImGui::SetItemTooltip("This field overrides its linked template value.");
+            }
+            draw_template_revert_context(document, commands, revertTargets, feedback_);
+        });
         ImGui::PopItemFlag();
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
         ImGui::PopID();
-        if (commit)
-        {
-            if (!std::isfinite(valRot))
-                feedback_ = "Rotation is outside the supported range.";
-            else
-                commit_common(rotPath, valRot);
-        }
     }
 
     draw_common_vec2("Scale", "scale", 1.0f, 1.0f, 0.0001f, 0.05f, 0.1f);
@@ -2934,7 +2853,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
 {
     resourceIndex_ = resourceIndex;
     selection.repair(document);
-    currentOrderedSelection_ = selection.current().selectedObjectIds;
+    currentSelection_ = selection.current();
+    currentOrderedSelection_ = currentSelection_.selectedObjectIds;
+    liveEdit_.begin_frame(document, currentOrderedSelection_, hostGeneration_);
     if (scrubState_.active &&
         (document.projectGeneration != scrubState_.projectGeneration ||
          document.tabId.value != scrubState_.tabId ||
@@ -2966,6 +2887,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         behaviorFields_.draw_multi_object_fields(document, selection.current(), commands, catalog,
                                                  selection.current().selectedObjectIds,
                                                  resourceIndex_, searchQuery_);
+        liveEdit_.end_frame();
         if (scrubState_.active && !scrubState_.seenThisFrame)
             cancel_active_interactions(&document);
         return;
@@ -3182,18 +3104,18 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     }
     if (revealName)
         ImGui::SetKeyboardFocusHere();
-    const bool nameChanged = ImGui::InputText("##value", nameBuffer.data(), nameBuffer.size(),
-                                             ImGuiInputTextFlags_EnterReturnsTrue);
-    if (revealName)
-        ImGui::SetScrollHereY(0.5f);
-    if (nameChanged || ImGui::IsItemDeactivatedAfterEdit())
-    {
-        set(document, commands, objectId, std::nullopt, namePath, std::string(nameBuffer.data()));
-    }
-    if (nameOverridden && ImGui::IsItemHovered())
-        ImGui::SetItemTooltip("This field overrides its linked template value.");
-    draw_template_revert_context(document, commands, objectId, std::nullopt,
-                                 namePath, feedback_);
+    LiveEditContext headerLiveCtx{document, commands, liveEdit_, currentSelection_,
+                                  hostGeneration_, currentOrderedSelection_, feedback_};
+    const std::vector<PropertyAddress> nameTargets{
+        address_for_document(document, objectId, std::nullopt, std::nullopt, namePath)};
+    live_input_string("##value", nameBuffer.data(), nameBuffer.size(), headerLiveCtx, nameTargets, [&] {
+        if (revealName)
+            ImGui::SetScrollHereY(0.5f);
+        if (nameOverridden && ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, std::nullopt,
+                                     namePath, feedback_);
+    });
     if (nameOverridden)
         ImGui::PopStyleColor(3);
     ImGui::PopID();
@@ -3221,18 +3143,16 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     }
     if (revealTag)
         ImGui::SetKeyboardFocusHere();
-    const bool tagChanged = ImGui::InputText("##value", tagBuffer.data(), tagBuffer.size(),
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-    if (revealTag)
-        ImGui::SetScrollHereY(0.5f);
-    if (tagChanged || ImGui::IsItemDeactivatedAfterEdit())
-    {
-        set(document, commands, objectId, std::nullopt, tagPath, std::string(tagBuffer.data()));
-    }
-    if (tagOverridden && ImGui::IsItemHovered())
-        ImGui::SetItemTooltip("This field overrides its linked template value.");
-    draw_template_revert_context(document, commands, objectId, std::nullopt,
-                                 tagPath, feedback_);
+    const std::vector<PropertyAddress> tagTargets{
+        address_for_document(document, objectId, std::nullopt, std::nullopt, tagPath)};
+    live_input_string("##value", tagBuffer.data(), tagBuffer.size(), headerLiveCtx, tagTargets, [&] {
+        if (revealTag)
+            ImGui::SetScrollHereY(0.5f);
+        if (tagOverridden && ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, std::nullopt,
+                                     tagPath, feedback_);
+    });
     if (tagOverridden)
         ImGui::PopStyleColor(3);
     ImGui::PopID();
@@ -4030,6 +3950,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                                      : ImVec4(0.95f, 0.55f, 0.38f, 1.0f);
         ImGui::TextColored(color, "%s", feedback_.c_str());
     }
+    liveEdit_.end_frame();
     if (scrubState_.active && !scrubState_.seenThisFrame)
         cancel_active_interactions(&document);
 }
@@ -4154,37 +4075,22 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
         if (reveal)
             ImGui::SetKeyboardFocusHere();
         ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
-        const ImGuiID valueId = ImGui::GetID("##value");
-        const bool valueActive = ImGui::GetActiveID() == valueId;
-        const bool useFullPrecision = valueActive ||
-            ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-        const char *formatStr = useFullPrecision ? "%.9g" : "%.2f";
-        const float originalValue = value;
-        const bool changed = ImGui::InputFloat("##value", &value, 0.0f, 0.0f, formatStr,
-                                               ImGuiInputTextFlags_EnterReturnsTrue);
-        if (ImGui::IsItemActivated())
-        {
-            value = originalValue;
-            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->ReloadUserBufAndSelectAll();
-        }
-        if (overridden && ImGui::IsItemHovered())
-            ImGui::SetItemTooltip("This field overrides its linked template value.");
-        draw_template_revert_context(document, commands, revertTargets, feedback_);
+        std::vector<PropertyAddress> targets;
+        targets.reserve(objectIds.size());
+        for (const int objectId : objectIds)
+            targets.push_back(address_for_document(document, objectId, std::nullopt, std::nullopt, path));
+        const std::string rangeError = std::string(label) + " is outside the supported range.";
+        LiveEditContext liveCtx{document, commands, liveEdit_, selection.current(),
+                                hostGeneration_, currentOrderedSelection_, feedback_};
+        live_input_float("##value", value, false, liveCtx, targets, minimum, maximum, rangeError.c_str(), [&] {
+            if (overridden && ImGui::IsItemHovered())
+                ImGui::SetItemTooltip("This field overrides its linked template value.");
+            draw_template_revert_context(document, commands, revertTargets, feedback_);
+        });
         ImGui::PopItemFlag();
         if (reveal)
             ImGui::SetScrollHereY(0.5f);
-        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        const bool commit = !cancel && (changed || ImGui::IsItemDeactivatedAfterEdit());
         end_field();
-        if (!commit)
-            return;
-        if (!std::isfinite(value) || (minimum && value < *minimum) || (maximum && value > *maximum))
-        {
-            feedback_ = std::string(label) + " is outside the supported range.";
-            return;
-        }
-        commit_common(path, Json(value));
     };
 
     draw_common_boolean({std::string("active")}, "Active");
@@ -4716,13 +4622,26 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         return hasScrubPreview;
                     };
                     ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+                    const auto component_targets = [&]() {
+                        std::vector<PropertyAddress> targets;
+                        targets.reserve(matching.size());
+                        for (std::size_t index = 0; index < matching.size(); ++index)
+                            targets.push_back(address_for_document(document, objectIds[index],
+                                                                   matching[index].first, std::nullopt, path));
+                        return targets;
+                    };
+                    LiveEditContext multiLiveCtx{document, commands, liveEdit_, selection.current(),
+                                                 hostGeneration_, currentOrderedSelection_, feedback_};
+                    const auto afterMultiComponentWidget = [&]() {
+                        show_override_tooltip();
+                        draw_template_revert_context(document, commands, fieldOverrideTargets,
+                                                     {path}, feedback_);
+                    };
                     if (valueCategory == 1)
                     {
                         bool value = values.front().get<bool>();
                         const bool changed = ImGui::Checkbox("##value", &value);
-                        show_override_tooltip();
-                        draw_template_revert_context(document, commands, fieldOverrideTargets,
-                                                     {path}, feedback_);
+                        afterMultiComponentWidget();
                         ImGui::PopItemFlag();
                         end_field();
                         if (changed)
@@ -4731,90 +4650,41 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                     else if (valueCategory == 2)
                     {
                         double value = values.front().get<double>();
-                        const double originalValue = value;
                         Json scrubPreview;
                         if (handle_multi_scrub(scrubPreview, 0.1f, 0.5f, std::nullopt) && scrubPreview.is_number())
                             value = scrubPreview.get<double>();
-                        const ImGuiID valueId = ImGui::GetID("##value");
-                        const bool valueActive = ImGui::GetActiveID() == valueId;
-                        const bool useFullPrecision = valueActive || ImGui::GetCurrentContext()->DeactivatedItemData.ID == valueId;
-                        const char *formatStr = useFullPrecision ? "%.17g" : "%.2f";
-                        const bool changed = ImGui::InputDouble("##value", &value, 0.0, 0.0,
-                                                                formatStr, ImGuiInputTextFlags_EnterReturnsTrue);
-                        show_override_tooltip();
-                        if (ImGui::IsItemActivated())
-                        {
-                            value = originalValue;
-                            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                                state->ReloadUserBufAndSelectAll();
-                        }
-                        draw_template_revert_context(document, commands, fieldOverrideTargets,
-                                                     {path}, feedback_);
-                        const bool cancel = valueActive && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                        const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
-                            (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+                        live_input_double("##value", value, false, multiLiveCtx,
+                                          component_targets(), nullptr, afterMultiComponentWidget);
                         ImGui::PopItemFlag();
                         end_field();
-                        if (shouldCommit && std::isfinite(value))
-                            commit_component(value);
                     }
                     else if (valueCategory == 3)
                     {
                         std::int64_t value = values.front().get<std::int64_t>();
-                        const std::int64_t originalValue = value;
                         Json scrubPreview;
                         if (handle_multi_scrub(scrubPreview, 1.0f, 1.0f, std::nullopt) &&
                             scrubPreview.is_number_integer())
                         {
                             value = scrubPreview.get<std::int64_t>();
                         }
-                        const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &value,
-                            nullptr, nullptr, "%lld", ImGuiInputTextFlags_EnterReturnsTrue);
-                        show_override_tooltip();
-                        if (ImGui::IsItemActivated())
-                        {
-                            value = originalValue;
-                            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                                state->ReloadUserBufAndSelectAll();
-                        }
-                        draw_template_revert_context(document, commands, fieldOverrideTargets,
-                                                     {path}, feedback_);
-                        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                        const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
-                            (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+                        live_input_int64("##value", value, nullptr, nullptr, multiLiveCtx,
+                                         component_targets(), afterMultiComponentWidget);
                         ImGui::PopItemFlag();
                         end_field();
-                        if (shouldCommit)
-                            commit_component(value);
                     }
                     else if (valueCategory == 4)
                     {
                         std::uint64_t value = values.front().get<std::uint64_t>();
-                        const std::uint64_t originalValue = value;
                         Json scrubPreview;
                         if (handle_multi_scrub(scrubPreview, 1.0f, 1.0f, 0.0) &&
                             scrubPreview.is_number_unsigned())
                         {
                             value = scrubPreview.get<std::uint64_t>();
                         }
-                        const bool changed = ImGui::InputScalar("##value", ImGuiDataType_U64, &value,
-                            nullptr, nullptr, "%llu", ImGuiInputTextFlags_EnterReturnsTrue);
-                        show_override_tooltip();
-                        if (ImGui::IsItemActivated())
-                        {
-                            value = originalValue;
-                            if (ImGuiInputTextState *state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                                state->ReloadUserBufAndSelectAll();
-                        }
-                        draw_template_revert_context(document, commands, fieldOverrideTargets,
-                                                     {path}, feedback_);
-                        const bool cancel = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-                        const bool shouldCommit = !ImGui::IsItemActivated() && !cancel &&
-                            (changed || ImGui::IsItemDeactivatedAfterEdit()) && value != originalValue;
+                        live_input_uint64("##value", value, nullptr, nullptr, multiLiveCtx,
+                                          component_targets(), afterMultiComponentWidget);
                         ImGui::PopItemFlag();
                         end_field();
-                        if (shouldCommit)
-                            commit_component(value);
                     }
                     else
                     {
@@ -4828,16 +4698,10 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         }
                         std::array<char, 2048> buffer{};
                         std::memcpy(buffer.data(), stored.data(), stored.size());
-                        const bool changed = ImGui::InputText("##value", buffer.data(), buffer.size(),
-                                                              ImGuiInputTextFlags_EnterReturnsTrue);
-                        show_override_tooltip();
-                        draw_template_revert_context(document, commands, fieldOverrideTargets,
-                                                     {path}, feedback_);
-                        const bool shouldCommit = changed || ImGui::IsItemDeactivatedAfterEdit();
+                        live_input_string("##value", buffer.data(), buffer.size(), multiLiveCtx,
+                                          component_targets(), afterMultiComponentWidget);
                         ImGui::PopItemFlag();
                         end_field();
-                        if (shouldCommit)
-                            commit_component(std::string(buffer.data()));
                     }
                 }
                 }

@@ -39,8 +39,10 @@ std::span<const EditorActionDescriptor> editor_action_descriptors() noexcept
 
 bool editor_action_allowed(EditorAction action, const EditorInputCapture &capture) noexcept
 {
-    if (!capture.appFocused || !capture.focusedHost || capture.textInput ||
+    if (!capture.appFocused || !capture.focusedHost ||
         capture.modalOpen || capture.gestureActive || capture.embeddedGameFocused)
+        return false;
+    if (capture.textInput && action != EditorAction::Save && action != EditorAction::SaveAs)
         return false;
     for (const auto &descriptor : kActions)
         if (descriptor.action == action)

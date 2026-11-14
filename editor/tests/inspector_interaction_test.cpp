@@ -1,5 +1,6 @@
 #include "test_support.h"
 
+#include "actions.h"
 #include "document.h"
 #include "editcommands.h"
 #include "editorwork.h"
@@ -429,11 +430,14 @@ void start_integer_draft(InspectorPanel &panel, DocumentSession &document, Selec
     ImGuiIO &io = ImGui::GetIO();
     frame(panel, document, selection, commands, catalog, point, true);
     frame(panel, document, selection, commands, catalog, point);
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
     io.AddKeyEvent(ImGuiKey_LeftCtrl, true);
     io.AddKeyEvent(ImGuiKey_A, true);
     frame(panel, document, selection, commands, catalog, point);
     io.AddKeyEvent(ImGuiKey_A, false);
     io.AddKeyEvent(ImGuiKey_LeftCtrl, false);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
+    frame(panel, document, selection, commands, catalog, point);
     for (const char character : text)
         io.AddInputCharacter(static_cast<unsigned int>(character));
     frame(panel, document, selection, commands, catalog, point);
@@ -482,11 +486,14 @@ void start_numeric_draft(InspectorPanel &panel, DocumentSession &document, Selec
     ImGuiIO &io = ImGui::GetIO();
     frame(panel, document, selection, commands, catalog, point, true);
     frame(panel, document, selection, commands, catalog, point);
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
     io.AddKeyEvent(ImGuiKey_LeftCtrl, true);
     io.AddKeyEvent(ImGuiKey_A, true);
     frame(panel, document, selection, commands, catalog, point);
     io.AddKeyEvent(ImGuiKey_A, false);
     io.AddKeyEvent(ImGuiKey_LeftCtrl, false);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
+    frame(panel, document, selection, commands, catalog, point);
     for (const char character : text)
         io.AddInputCharacter(static_cast<unsigned int>(character));
     frame(panel, document, selection, commands, catalog, point);
@@ -499,11 +506,14 @@ void cancel_numeric_text(InspectorPanel &panel, DocumentSession &document, Selec
     ImGuiIO &io = ImGui::GetIO();
     frame(panel, document, selection, commands, catalog, point, true);
     frame(panel, document, selection, commands, catalog, point);
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
     io.AddKeyEvent(ImGuiKey_LeftCtrl, true);
     io.AddKeyEvent(ImGuiKey_A, true);
     frame(panel, document, selection, commands, catalog, point);
     io.AddKeyEvent(ImGuiKey_A, false);
     io.AddKeyEvent(ImGuiKey_LeftCtrl, false);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
+    frame(panel, document, selection, commands, catalog, point);
     for (const char character : text)
         io.AddInputCharacter(static_cast<unsigned int>(character));
     frame(panel, document, selection, commands, catalog, point);
@@ -512,6 +522,11 @@ void cancel_numeric_text(InspectorPanel &panel, DocumentSession &document, Selec
     io.AddKeyEvent(ImGuiKey_Escape, false);
     frame(panel, document, selection, commands, catalog, point);
 }
+
+ImVec2 find_single_object_widget(InspectorPanel &panel, DocumentSession &document,
+                                 SelectionModel &selection, EditCommandService &commands,
+                                 BehaviorCatalog &catalog, float x, const char *inputPath,
+                                 const char *vectorProperty, bool rotationLabel);
 
 void run_integer_fields_keep_independent_drafts()
 {
@@ -601,41 +616,89 @@ void run_integer_fields_keep_independent_drafts()
             "an invalid intermediate integer must not overwrite its authored value or create history");
 
     start_integer_draft(panel, document, selection, commands, catalog, group, "9");
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 9,
+            "typing into an integer field must update the document immediately before losing focus");
     selection.set(document, Selection{10, 20, std::nullopt, FocusedPanel::Inspector});
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 9 &&
+                commands.history_status().undoCommands == undoBeforeCancel + 1,
+            "changing selection must finalize a live-written integer change as one Undo command");
+    require(commands.undo(document, selection).status != CommandStatus::Rejected &&
+                document.root[0]["components"][1]["currentFrameIndex"] == 7,
+            "undoing a live integer edit must restore the value before typing");
+
     selection.set(document, Selection{kObjectId, std::nullopt, std::nullopt, FocusedPanel::Inspector});
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, true);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, false);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
-                commands.history_status().undoCommands == undoBeforeCancel,
-            "changing selection must discard the old field draft");
-
     start_integer_draft(panel, document, selection, commands, catalog, group, "8");
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 8,
+            "typing '8' must commit to the document while still focused");
+    panel.commit_active_interactions();
+    const TabId originalTabId = document.tabId;
     document.tabId = TabId{document.tabId.value + 1};
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, true);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, false);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
-                commands.history_status().undoCommands == undoBeforeCancel,
-            "changing tab identity must discard drafts associated with the previous tab");
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 8 &&
+                commands.history_status().undoCommands == undoBeforeCancel + 1,
+            "committing before switching tabs must retain the live-written integer value");
+    document.tabId = originalTabId;
+    require(commands.undo(document, selection).status != CommandStatus::Rejected &&
+                document.root[0]["components"][1]["currentFrameIndex"] == 7,
+            "undoing after tab commit must restore the pre-edit integer value");
 
     start_integer_draft(panel, document, selection, commands, catalog, group, "6");
-    panel.set_host_generation(1);
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 6,
+            "typing '6' must update the document immediately");
+    panel.set_host_generation(1, &document);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    panel.set_host_generation(0);
+    panel.set_host_generation(0, &document);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, true);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, false);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(document.root[0]["components"][1]["currentFrameIndex"] == 7 &&
-                commands.history_status().undoCommands == undoBeforeCancel,
-            "changing host generation must discard an integer draft from the prior host");
+    require(document.root[0]["components"][1]["currentFrameIndex"] == 6 &&
+                commands.history_status().undoCommands == undoBeforeCancel + 1,
+            "changing host generation must commit a live-written integer edit as one Undo command");
+
+    // Also verify character-by-character live string commit on Name + single-step Undo & Escape cancel.
+    const ImVec2 namePoint = find_single_object_widget(
+        panel, document, selection, commands, catalog, 200.0f, "/name", nullptr, false);
+    const std::string originalName = document.root[0]["name"].get<std::string>();
+    const std::size_t undoBeforeName = commands.history_status().undoCommands;
+    start_numeric_draft(panel, document, selection, commands, catalog, namePoint, "H");
+    require(document.root[0]["name"] == "H",
+            "typing the first character into Name must update the document immediately");
+    io.AddInputCharacter('e');
+    frame(panel, document, selection, commands, catalog, namePoint);
+    io.AddInputCharacter('r');
+    frame(panel, document, selection, commands, catalog, namePoint);
+    io.AddInputCharacter('o');
+    frame(panel, document, selection, commands, catalog, namePoint);
+    require(document.root[0]["name"] == "Hero" &&
+                commands.history_status().undoCommands == undoBeforeName,
+            "typing subsequent characters must live-update Name without spamming Undo history");
+    {
+        const EditorInputCapture captureWhileFocused{
+            true, io.WantTextInput || ImGui::IsAnyItemActive(),
+            false, false, false, false, true, false};
+        require(captureWhileFocused.textInput &&
+                    editor_action_allowed(EditorAction::Save, captureWhileFocused) &&
+                    editor_action_allowed(EditorAction::SaveAs, captureWhileFocused) &&
+                    !editor_action_allowed(EditorAction::NewScene, captureWhileFocused),
+                "Save and Save As shortcuts must remain allowed while focused on an Inspector field");
+    }
+    frame(panel, document, selection, commands, catalog, {20.0f, 850.0f}, true);
+    frame(panel, document, selection, commands, catalog, {20.0f, 850.0f}, false);
+    require(document.root[0]["name"] == "Hero" &&
+                commands.history_status().undoCommands == undoBeforeName + 1,
+            "blurring after live-typing Name must coalesce into one Undo command");
+    cancel_numeric_text(panel, document, selection, commands, catalog, namePoint, "Temp");
+    require(document.root[0]["name"] == "Hero" &&
+                commands.history_status().undoCommands == undoBeforeName + 1,
+            "Escape while live-typing Name must revert to pre-edit name with zero Undo commands");
+    require(commands.undo(document, selection).status != CommandStatus::Rejected &&
+                document.root[0]["name"] == originalName,
+            "undoing the coalesced Name edit must restore the original object name in one step");
+    start_numeric_draft(panel, document, selection, commands, catalog, namePoint, "SavedName");
+    panel.commit_active_interactions();
+    require(document.root[0]["name"] == "SavedName" &&
+                commands.history_status().undoCommands == undoBeforeName + 1,
+            "committing active Inspector interactions for Save must preserve and coalesce the typed value");
     ImGui::DestroyContext();
 }
 
@@ -756,30 +819,29 @@ void run_behavior_numeric_edit_preserves_unmodeled_data()
             "Escape must cancel a behavior numeric draft without changing its value or history");
 
     start_numeric_draft(panel, document, selection, commands, catalog, field, "9.87654321");
+    require(behavior["value"] == 9.87654321,
+            "typing into a behavior numeric field must update the document immediately before losing focus");
     selection.set(document, Selection{10, 20, std::nullopt, FocusedPanel::Inspector});
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
     selection.set(document, Selection{kObjectId, kScriptId, 0, FocusedPanel::Inspector});
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, true);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, false);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(behavior["value"] == 2.345678901234567 &&
-                commands.history_status().undoCommands == undoAfterEdit,
-            "changing selection must discard an active behavior numeric draft");
+    require(behavior["value"] == 9.87654321 &&
+                commands.history_status().undoCommands == undoAfterEdit + 1,
+            "changing selection must finalize a live-written behavior numeric edit as one Undo command");
+    require(commands.undo(document, selection).status != CommandStatus::Rejected &&
+                behavior["value"] == 2.345678901234567,
+            "undoing a live behavior numeric edit must restore its previous high-precision value");
 
     start_numeric_draft(panel, document, selection, commands, catalog, field, "9.87654321");
-    panel.set_host_generation(1);
+    require(behavior["value"] == 9.87654321,
+            "typing into a behavior numeric field must commit live before host generation change");
+    panel.set_host_generation(1, &document);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    panel.set_host_generation(0);
+    panel.set_host_generation(0, &document);
     frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, true);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    io.AddKeyEvent(ImGuiKey_Enter, false);
-    frame(panel, document, selection, commands, catalog, {500.0f, 500.0f});
-    require(behavior["value"] == 2.345678901234567 &&
-                commands.history_status().undoCommands == undoAfterEdit,
-            "changing host generation must discard a behavior numeric draft from the prior host");
+    require(behavior["value"] == 9.87654321 &&
+                commands.history_status().undoCommands == undoAfterEdit + 1,
+            "changing host generation must finalize a live-written behavior numeric edit");
     ImGui::DestroyContext();
 }
 

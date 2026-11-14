@@ -2,6 +2,7 @@
 #include "documentio.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <filesystem>
 #include <fstream>
@@ -1186,10 +1187,138 @@ TemplateInsertResult insert_template(
     }
 }
 
+namespace
+{
+void collect_subtree_ids_for_export(const Json &object,
+                                    std::unordered_set<int> &objectIds,
+                                    std::unordered_set<int> &componentIds)
+{
+    if (!object.is_object())
+        return;
+    if (object.contains("id") && object["id"].is_number_integer())
+        objectIds.insert(object["id"].get<int>());
+    if (object.contains("components") && object["components"].is_array())
+    {
+        for (const auto &component : object["components"])
+        {
+            if (component.is_object() && component.contains("id") && component["id"].is_number_integer())
+                componentIds.insert(component["id"].get<int>());
+        }
+    }
+    if (object.contains("children") && object["children"].is_array())
+    {
+        for (const auto &child : object["children"])
+            collect_subtree_ids_for_export(child, objectIds, componentIds);
+    }
+}
+} // namespace
+
+std::string sanitize_template_filename_stem(std::string_view objectName)
+{
+    std::string stem;
+    bool previousSeparator = false;
+    for (const unsigned char character : objectName)
+    {
+        const bool allowed = std::isalnum(character) != 0 || character == '_' || character == '-';
+        if (allowed)
+        {
+            stem.push_back(static_cast<char>(character));
+            previousSeparator = false;
+        }
+        else if (!previousSeparator && !stem.empty())
+        {
+            stem.push_back('-');
+            previousSeparator = true;
+        }
+    }
+    while (!stem.empty() && stem.back() == '-')
+        stem.pop_back();
+    if (stem.empty())
+        stem = "GameObject";
+    return stem;
+}
+
+TemplateExportResult export_object_as_template(
+    const DocumentSession &document,
+    int objectId,
+    const std::filesystem::path &targetDirectory,
+    const Json &behaviorCatalog,
+    const std::vector<Json> &authorBindings,
+    const std::vector<TemplateAuthorSchemaDeclaration> &authorDeclaredBehaviors)
+{
+    const Json *sourceObject = find_document_object_by_id(document, objectId);
+    if (sourceObject == nullptr)
+        return {false, {}, "The selected GameObject is no longer present in the active scene."};
+    if (targetDirectory.empty())
+        return {false, {}, "Template destination directory is unavailable."};
+
+    std::string sceneIdentity = template_scene_identity(document);
+    if (sceneIdentity.empty())
+        sceneIdentity = "unsaved-document:" + std::to_string(document.tabId.value) + ":" +
+                        std::to_string(document.documentGeneration);
+
+    std::unordered_set<int> subtreeObjects;
+    std::unordered_set<int> subtreeComponents;
+    collect_subtree_ids_for_export(*sourceObject, subtreeObjects, subtreeComponents);
+
+    std::vector<Json> localAuthorBindings;
+    for (const auto &binding : authorBindings)
+    {
+        if (binding.is_object() && binding.contains("owner_id") &&
+            binding["owner_id"].is_number_integer() &&
+            subtreeObjects.contains(binding["owner_id"].get<int>()))
+            localAuthorBindings.push_back(binding);
+    }
+
+    std::vector<TemplateAuthorSchemaDeclaration> localAuthorSchemas;
+    for (const auto &declaration : authorDeclaredBehaviors)
+    {
+        if (subtreeObjects.contains(declaration.ownerId) &&
+            subtreeComponents.contains(declaration.componentId))
+            localAuthorSchemas.push_back(declaration);
+    }
+
+    const auto collected = collect_template_bindings(
+        document, *sourceObject, sceneIdentity, behaviorCatalog,
+        localAuthorBindings, localAuthorSchemas);
+    if (!collected || !collected.assured)
+    {
+        std::string message = collected.error.empty()
+            ? "Template export requires complete behavior reference declarations."
+            : collected.error;
+        if (!collected.unresolvedBehaviors.empty())
+            message += " (" + collected.unresolvedBehaviors.front() + ")";
+        return {false, {}, std::move(message)};
+    }
+
+    std::error_code directoryError;
+    std::filesystem::create_directories(targetDirectory, directoryError);
+    if (directoryError)
+        return {false, {}, "Could not create the Templates folder: " + directoryError.message()};
+
+    const std::string templateName = sourceObject->value("name", std::string("GameObject"));
+    const std::string fileStem = sanitize_template_filename_stem(templateName);
+    std::filesystem::path target = targetDirectory / (fileStem + ".pttemplate");
+    std::size_t suffix = 2;
+    while (std::filesystem::exists(target, directoryError) && !directoryError)
+        target = targetDirectory / (fileStem + "-" + std::to_string(suffix++) + ".pttemplate");
+    if (directoryError)
+        return {false, {}, "Could not inspect the Templates folder: " + directoryError.message()};
+
+    const Json envelope = make_template_envelope(
+        templateName, collected.validatedSubtree, collected.bindings);
+    const auto written = write_file_atomically(target, envelope.dump(2) + "\n", false);
+    if (!written.succeeded())
+        return {false, {}, "Template export failed: " + written.message};
+
+    return {true, target, "Saved template " + target.filename().string() + "."};
+}
+
 bool instantiate_asset_drop(DocumentSession &document, EditCommandService &commands,
                             SelectionModel &selection, const std::string &assetPath,
                             EditorAssetKind kind, float targetX, float targetY,
-                            std::optional<int> parentObjectId)
+                            std::optional<int> parentObjectId,
+                            std::size_t insertionIndex)
 {
     std::filesystem::path p(assetPath);
     std::string stemName = p.stem().string();
@@ -1231,7 +1360,7 @@ bool instantiate_asset_drop(DocumentSession &document, EditCommandService &comma
                         : std::nullopt;
                 auto insertResult = insert_template(commands, document, *loadResult.asset,
                                                     sceneId, coverage, parentObjectId,
-                                                    std::numeric_limits<std::size_t>::max(),
+                                                    insertionIndex,
                                                     {}, {}, normalizedRef, rootPosition);
                 if (insertResult && !insertResult.insertedObjectIds.empty())
                 {
@@ -1299,7 +1428,7 @@ bool instantiate_asset_drop(DocumentSession &document, EditCommandService &comma
         return true;
     }
 
-    auto createResult = commands.create_object(document, parentObjectId, stemName);
+    auto createResult = commands.create_object(document, parentObjectId, stemName, insertionIndex);
     if (createResult.status == CommandStatus::Changed && createResult.command)
     {
         const int newId = createResult.command->payload.value("id", 0);

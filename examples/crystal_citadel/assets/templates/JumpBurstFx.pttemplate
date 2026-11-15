@@ -1,0 +1,55 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "JumpBurstFx",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 16.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/fx/jump_fx_0.png"
+      },
+      {
+        "id": 2,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/jump_burst.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 3,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelTimedEffect",
+            "duration": 0.25,
+            "rotationSpeed": 0.0,
+            "riseSpeed": 28.0,
+            "clip": "assets/animations/jump_burst.animset"
+          }
+        ]
+      }
+    ],
+    "id": 4,
+    "name": "JumpBurstFx",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "fx"
+  }
+}

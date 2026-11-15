@@ -1,0 +1,211 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "CrystalArchonBoss",
+  "root": {
+    "active": true,
+    "children": [
+      {
+        "active": true,
+        "children": [],
+        "components": [
+          {
+            "id": 1,
+            "type": 6,
+            "flip": 0,
+            "width": 40.0,
+            "height": 24.0,
+            "sourceRect": null,
+            "sourceRectEnabled": false,
+            "textureFilePath": "assets/textures/enemies/archon_crown.png"
+          }
+        ],
+        "id": 2,
+        "name": "ArchonCrown",
+        "parentId": 12,
+        "position": {
+          "x": 0.0,
+          "y": -42.0
+        },
+        "rotation": 0.0,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "tag": "boss_part"
+      },
+      {
+        "active": true,
+        "children": [],
+        "components": [
+          {
+            "id": 3,
+            "type": 6,
+            "flip": 0,
+            "width": 22.0,
+            "height": 22.0,
+            "sourceRect": null,
+            "sourceRectEnabled": false,
+            "textureFilePath": "assets/textures/enemies/archon_orb.png"
+          }
+        ],
+        "id": 4,
+        "name": "ArchonOrbL",
+        "parentId": 12,
+        "position": {
+          "x": -42.0,
+          "y": 0.0
+        },
+        "rotation": 0.0,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "tag": "boss_part"
+      },
+      {
+        "active": true,
+        "children": [],
+        "components": [
+          {
+            "id": 5,
+            "type": 6,
+            "flip": 0,
+            "width": 22.0,
+            "height": 22.0,
+            "sourceRect": null,
+            "sourceRectEnabled": false,
+            "textureFilePath": "assets/textures/enemies/archon_orb.png"
+          }
+        ],
+        "id": 6,
+        "name": "ArchonOrbR",
+        "parentId": 12,
+        "position": {
+          "x": 42.0,
+          "y": 0.0
+        },
+        "rotation": 0.0,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "tag": "boss_part"
+      }
+    ],
+    "components": [
+      {
+        "id": 8,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 64.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/archon_body.png"
+      },
+      {
+        "id": 9,
+        "type": 3,
+        "colliderType": 1,
+        "width": 52.0,
+        "height": 56.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27
+      },
+      {
+        "id": 10,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 3.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 11,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/enemy_hit.wav",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 7,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelArchonBoss",
+            "maxHp": 12,
+            "hp": 12,
+            "arenaMinX": 160.0,
+            "arenaMaxX": 780.0,
+            "hoverY": 230.0,
+            "moveSpeed": 75.0,
+            "attackInterval": 2.2,
+            "summonInterval": 6.5,
+            "crownChild": 2,
+            "leftOrbChild": 4,
+            "rightOrbChild": 6,
+            "bossBoltTemplate": "assets/templates/EnemyBolt.pttemplate",
+            "minionTemplate": "assets/templates/Slime.pttemplate",
+            "rewardGemTemplate": "assets/templates/CrystalGem.pttemplate",
+            "defeatPortalTemplate": "assets/templates/LevelPortal.pttemplate",
+            "explosionFxTemplate": "assets/templates/HitSparkFx.pttemplate"
+          }
+        ]
+      }
+    ],
+    "id": 12,
+    "name": "CrystalArchonBoss",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "boss"
+  },
+  "reference_bindings": [
+    {
+      "owner_id": 12,
+      "component_id": 7,
+      "path": "/behaviors/0/crownChild",
+      "target_kind": "GameObject",
+      "scope": "internal"
+    },
+    {
+      "owner_id": 12,
+      "component_id": 7,
+      "path": "/behaviors/0/leftOrbChild",
+      "target_kind": "GameObject",
+      "scope": "internal"
+    },
+    {
+      "owner_id": 12,
+      "component_id": 7,
+      "path": "/behaviors/0/rightOrbChild",
+      "target_kind": "GameObject",
+      "scope": "internal"
+    }
+  ]
+}

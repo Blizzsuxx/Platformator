@@ -1,0 +1,81 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "PlayerBolt",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 20.0,
+        "height": 12.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/projectiles/player_bolt_0.png"
+      },
+      {
+        "id": 2,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 7.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 15
+      },
+      {
+        "id": 3,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.2,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 4,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelProjectile",
+            "speedX": 380.0,
+            "speedY": 0.0,
+            "lifetime": 1.6,
+            "damage": 1,
+            "friendly": true,
+            "impactFxTemplate": "assets/templates/HitSparkFx.pttemplate"
+          }
+        ]
+      }
+    ],
+    "id": 5,
+    "name": "PlayerBolt",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "projectile"
+  }
+}

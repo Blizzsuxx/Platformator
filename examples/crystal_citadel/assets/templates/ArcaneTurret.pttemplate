@@ -1,0 +1,138 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "ArcaneTurret",
+  "root": {
+    "active": true,
+    "children": [
+      {
+        "active": true,
+        "children": [],
+        "components": [
+          {
+            "id": 1,
+            "type": 6,
+            "flip": 0,
+            "width": 32.0,
+            "height": 16.0,
+            "sourceRect": null,
+            "sourceRectEnabled": false,
+            "textureFilePath": "assets/textures/enemies/turret_barrel.png"
+          }
+        ],
+        "id": 2,
+        "name": "TurretBarrel",
+        "parentId": 8,
+        "position": {
+          "x": 0.0,
+          "y": -4.0
+        },
+        "rotation": 0.0,
+        "scale": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "tag": "turret_part"
+      }
+    ],
+    "components": [
+      {
+        "id": 4,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/turret_base.png"
+      },
+      {
+        "id": 5,
+        "type": 3,
+        "colliderType": 1,
+        "width": 30.0,
+        "height": 30.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27
+      },
+      {
+        "id": 6,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 7,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/turret_fire.wav",
+        "gain": 0.5,
+        "loopCount": 0
+      },
+      {
+        "id": 3,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelArcaneTurret",
+            "barrelObject": 2,
+            "barrelSprite": 1,
+            "boltTemplate": "assets/templates/EnemyBolt.pttemplate",
+            "muzzleFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "fireSound": "assets/audio/turret_fire.wav",
+            "fireInterval": 2.1,
+            "detectRange": 480.0,
+            "boltSpeed": 230.0
+          }
+        ]
+      }
+    ],
+    "id": 8,
+    "name": "ArcaneTurret",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy"
+  },
+  "reference_bindings": [
+    {
+      "owner_id": 8,
+      "component_id": 3,
+      "path": "/behaviors/0/barrelObject",
+      "target_kind": "GameObject",
+      "scope": "internal"
+    },
+    {
+      "owner_id": 8,
+      "component_id": 3,
+      "path": "/behaviors/0/barrelSprite",
+      "target_kind": "Sprite",
+      "scope": "internal"
+    }
+  ]
+}

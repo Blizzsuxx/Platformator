@@ -1,0 +1,104 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "Slime",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/slime_0.png"
+      },
+      {
+        "id": 2,
+        "type": 3,
+        "colliderType": 1,
+        "width": 26.0,
+        "height": 22.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27
+      },
+      {
+        "id": 3,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.9,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 4,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/slime_bounce.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 5,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/slime_split.wav",
+        "gain": 0.55,
+        "loopCount": 0
+      },
+      {
+        "id": 6,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelSplittingSlime",
+            "generation": 1,
+            "maxGeneration": 2,
+            "hp": 1,
+            "walkSpeed": 75.0,
+            "minX": 0.0,
+            "maxX": 0.0,
+            "direction": -1.0,
+            "selfTemplate": "assets/templates/Slime.pttemplate",
+            "gemTemplate": "assets/templates/CrystalGem.pttemplate",
+            "splitFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "bounceAnim": "assets/animations/slime_bounce.animset",
+            "splitSound": "assets/audio/slime_split.wav"
+          }
+        ]
+      }
+    ],
+    "id": 7,
+    "name": "Slime",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy"
+  }
+}

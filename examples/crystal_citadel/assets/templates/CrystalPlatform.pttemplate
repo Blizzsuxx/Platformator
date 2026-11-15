@@ -1,0 +1,67 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "CrystalPlatform",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png"
+      },
+      {
+        "id": 2,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 3,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "id": 4,
+    "name": "CrystalPlatform",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid"
+  }
+}

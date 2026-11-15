@@ -1,0 +1,55 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "HitSparkFx",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/fx/spark_0.png"
+      },
+      {
+        "id": 2,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/spark_burst.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 3,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelTimedEffect",
+            "duration": 0.35,
+            "rotationSpeed": 7.0,
+            "riseSpeed": 18.0,
+            "clip": "assets/animations/spark_burst.animset"
+          }
+        ]
+      }
+    ],
+    "id": 4,
+    "name": "HitSparkFx",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "fx"
+  }
+}

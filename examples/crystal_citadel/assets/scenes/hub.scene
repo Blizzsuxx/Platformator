@@ -1,0 +1,3686 @@
+[
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 13,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelGameManager",
+            "levelTitle": "Crystal Citadel - Sanctuary Hub",
+            "nextScenePath": "assets/scenes/level1_cavern.scene",
+            "hubScenePath": "assets/scenes/hub.scene",
+            "requiredGems": 0,
+            "collectedGems": 0,
+            "enemiesDefeated": 0,
+            "player": 1,
+            "bgm": 9,
+            "victoryEffectTemplate": "assets/templates/HitSparkFx.pttemplate"
+          }
+        ]
+      }
+    ],
+    "id": 14,
+    "name": "GameManager",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "manager"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 9,
+        "type": 1,
+        "autoPlay": true,
+        "filePath": "assets/audio/bgm_hub.wav",
+        "gain": 0.42,
+        "loopCount": -1,
+        "templateComponentId": 1
+      }
+    ],
+    "id": 8,
+    "name": "BGM",
+    "parentId": -1,
+    "position": {
+      "x": 120.0,
+      "y": 260.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "audio",
+    "template": "templates/BGM.pttemplate",
+    "templateNodeId": 2
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 10,
+        "type": 2,
+        "width": 640.0,
+        "height": 480.0
+      },
+      {
+        "id": 11,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCameraRig",
+            "camera": 10,
+            "target": 1,
+            "minX": 0.0,
+            "maxX": 520.0,
+            "minY": -80.0,
+            "maxY": 120.0,
+            "verticalOffset": 40.0
+          }
+        ]
+      }
+    ],
+    "id": 12,
+    "name": "Main Camera",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "camera"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 40.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/player/wizard_idle_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 1,
+        "width": 24.0,
+        "height": 38.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 5,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/player_idle.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 6,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.6,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 7,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelPlayer",
+            "walkSpeed": 195.0,
+            "jumpSpeed": 275.0,
+            "gravity": 412.02,
+            "maxHp": 5,
+            "hp": 5,
+            "fireCooldown": 0.28,
+            "boltTemplate": "assets/templates/PlayerBolt.pttemplate",
+            "jumpFxTemplate": "assets/templates/JumpBurstFx.pttemplate",
+            "shieldTemplate": "assets/templates/OrbitShield.pttemplate",
+            "idleAnim": "assets/animations/player_idle.animset",
+            "runAnim": "assets/animations/player_run.animset",
+            "jumpAnim": "assets/animations/player_jump.animset",
+            "fallAnim": "assets/animations/player_fall.animset",
+            "jumpSound": "assets/audio/jump.wav",
+            "shootSound": "assets/audio/shoot.wav",
+            "hurtSound": "assets/audio/hurt.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 1,
+    "name": "Player",
+    "parentId": -1,
+    "position": {
+      "x": 120.0,
+      "y": 380.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "player",
+    "template": "templates/Player.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 16,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 17,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 18,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 15,
+    "name": "HubFloor_0",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 20,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 21,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 22,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 19,
+    "name": "HubFloor_1",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 24,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 25,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 26,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 23,
+    "name": "HubFloor_2",
+    "parentId": -1,
+    "position": {
+      "x": 64.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 28,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 29,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 30,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 27,
+    "name": "HubFloor_3",
+    "parentId": -1,
+    "position": {
+      "x": 128.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 32,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 33,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 34,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 31,
+    "name": "HubFloor_4",
+    "parentId": -1,
+    "position": {
+      "x": 192.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 36,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 37,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 38,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 35,
+    "name": "HubFloor_5",
+    "parentId": -1,
+    "position": {
+      "x": 256.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 40,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 41,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 42,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 39,
+    "name": "HubFloor_6",
+    "parentId": -1,
+    "position": {
+      "x": 320.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 44,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 45,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 46,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 43,
+    "name": "HubFloor_7",
+    "parentId": -1,
+    "position": {
+      "x": 384.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 48,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 49,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 50,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 47,
+    "name": "HubFloor_8",
+    "parentId": -1,
+    "position": {
+      "x": 448.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 52,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 53,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 54,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 51,
+    "name": "HubFloor_9",
+    "parentId": -1,
+    "position": {
+      "x": 512.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 56,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 57,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 58,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 55,
+    "name": "HubFloor_10",
+    "parentId": -1,
+    "position": {
+      "x": 576.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 60,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 61,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 62,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 59,
+    "name": "HubFloor_11",
+    "parentId": -1,
+    "position": {
+      "x": 640.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 64,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 65,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 66,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 63,
+    "name": "HubFloor_12",
+    "parentId": -1,
+    "position": {
+      "x": 704.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 68,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 69,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 70,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 67,
+    "name": "HubFloor_13",
+    "parentId": -1,
+    "position": {
+      "x": 768.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 72,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 73,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 74,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 71,
+    "name": "HubFloor_14",
+    "parentId": -1,
+    "position": {
+      "x": 832.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 76,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 77,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 78,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 75,
+    "name": "HubFloor_15",
+    "parentId": -1,
+    "position": {
+      "x": 896.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 80,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 81,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 82,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 79,
+    "name": "HubFloor_16",
+    "parentId": -1,
+    "position": {
+      "x": 960.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 84,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 85,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 86,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 83,
+    "name": "HubFloor_17",
+    "parentId": -1,
+    "position": {
+      "x": 1024.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 88,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 89,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 90,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 87,
+    "name": "HubFloor_18",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 92,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 93,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 94,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 91,
+    "name": "WallL_368",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 368.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 96,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 97,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 98,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 95,
+    "name": "WallR_368",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 368.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 100,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 101,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 102,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 99,
+    "name": "WallL_304",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 104,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 105,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 106,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 103,
+    "name": "WallR_304",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 108,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 109,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 110,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 107,
+    "name": "WallL_240",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 240.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 112,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 113,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 114,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 111,
+    "name": "WallR_240",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 240.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 116,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 117,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 118,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 115,
+    "name": "WallL_176",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 176.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 120,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 121,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 122,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 119,
+    "name": "WallR_176",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 176.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 124,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 125,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 126,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 123,
+    "name": "ShrinePlat_0",
+    "parentId": -1,
+    "position": {
+      "x": 320.0,
+      "y": 320.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 128,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 129,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 130,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 127,
+    "name": "ShrinePlat_1",
+    "parentId": -1,
+    "position": {
+      "x": 384.0,
+      "y": 320.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 132,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 133,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 134,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 131,
+    "name": "ShrinePlat_2",
+    "parentId": -1,
+    "position": {
+      "x": 448.0,
+      "y": 320.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 136,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 137,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 138,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 135,
+    "name": "ShrinePlat_3",
+    "parentId": -1,
+    "position": {
+      "x": 512.0,
+      "y": 320.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 140,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 141,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 142,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 139,
+    "name": "ShrinePlat_4",
+    "parentId": -1,
+    "position": {
+      "x": 576.0,
+      "y": 320.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 144,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 145,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 146,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 143,
+    "name": "BalconyPlat_0",
+    "parentId": -1,
+    "position": {
+      "x": 680.0,
+      "y": 270.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 148,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 149,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 150,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 147,
+    "name": "BalconyPlat_1",
+    "parentId": -1,
+    "position": {
+      "x": 744.0,
+      "y": 270.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 152,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 153,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 154,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 151,
+    "name": "BalconyPlat_2",
+    "parentId": -1,
+    "position": {
+      "x": 808.0,
+      "y": 270.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 156,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 157,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 158,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 155,
+    "name": "BalconyPlat_3",
+    "parentId": -1,
+    "position": {
+      "x": 872.0,
+      "y": 270.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 160,
+        "type": 6,
+        "flip": 0,
+        "width": 36.0,
+        "height": 18.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/jump_pad.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 161,
+        "type": 3,
+        "colliderType": 1,
+        "width": 36.0,
+        "height": 16.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 162,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 163,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/bounce.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 4
+      },
+      {
+        "id": 164,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelJumpPad",
+            "bounceFactor": 1.55,
+            "burstFxTemplate": "assets/templates/JumpBurstFx.pttemplate",
+            "bounceSound": "assets/audio/bounce.wav"
+          }
+        ],
+        "templateComponentId": 5
+      }
+    ],
+    "id": 159,
+    "name": "HubJumpPad",
+    "parentId": -1,
+    "position": {
+      "x": 272.0,
+      "y": 408.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "jumppad",
+    "template": "templates/JumpPad.pttemplate",
+    "templateNodeId": 6
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 166,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/crate.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 167,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 168,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 169,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/crate_break.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 4
+      },
+      {
+        "id": 170,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelBreakableCrate",
+            "hitPoints": 1,
+            "dropCount": 2,
+            "lootTemplate": "assets/templates/CrystalGem.pttemplate",
+            "bonusLootTemplate": "assets/templates/ShieldCore.pttemplate",
+            "breakFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "breakSound": "assets/audio/crate_break.wav"
+          }
+        ],
+        "templateComponentId": 5
+      }
+    ],
+    "id": 165,
+    "name": "TrainingCrate",
+    "parentId": -1,
+    "position": {
+      "x": 210.0,
+      "y": 400.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "crate",
+    "template": "templates/BreakableCrate.pttemplate",
+    "templateNodeId": 6
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 172,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/shield_core_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 173,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 12.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 174,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 175,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/shield_pulse.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 176,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 177,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 0,
+            "healAmount": 1,
+            "grantsShield": true,
+            "idleAnim": "assets/animations/shield_pulse.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 171,
+    "name": "HubShieldCore",
+    "parentId": -1,
+    "position": {
+      "x": 384.0,
+      "y": 288.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/ShieldCore.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 179,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 180,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 181,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 182,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 183,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 184,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 178,
+    "name": "HubGem_0",
+    "parentId": -1,
+    "position": {
+      "x": 448.0,
+      "y": 288.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 186,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 187,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 188,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 189,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 190,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 191,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 185,
+    "name": "HubGem_1",
+    "parentId": -1,
+    "position": {
+      "x": 512.0,
+      "y": 288.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 193,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 194,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 195,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 196,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 197,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 198,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 192,
+    "name": "HubGem_2",
+    "parentId": -1,
+    "position": {
+      "x": 744.0,
+      "y": 236.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 200,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/crawler_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 201,
+        "type": 3,
+        "colliderType": 1,
+        "width": 28.0,
+        "height": 24.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27,
+        "templateComponentId": 2
+      },
+      {
+        "id": 202,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 203,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/crawler_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 204,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/enemy_hit.wav",
+        "gain": 0.5,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 205,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelPatrolEnemy",
+            "walkSpeed": 65.0,
+            "minX": 540.0,
+            "maxX": 780.0,
+            "direction": -1.0,
+            "hp": 2,
+            "dropTemplate": "assets/templates/CrystalGem.pttemplate",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/crawler_walk.animset",
+            "squashAnim": "assets/animations/crawler_squash.animset",
+            "hitSound": "assets/audio/enemy_hit.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 199,
+    "name": "PracticeCrawler",
+    "parentId": -1,
+    "position": {
+      "x": 620.0,
+      "y": 400.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy",
+    "template": "templates/CaveCrawler.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 207,
+        "type": 6,
+        "flip": 0,
+        "width": 40.0,
+        "height": 56.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/portal_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 208,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 1,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 209,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 210,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/portal_swirl.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 211,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/warp.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 212,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelLevelPortal",
+            "targetScenePath": "assets/scenes/level1_cavern.scene",
+            "requiredGems": 0,
+            "portalAnim": "assets/animations/portal_swirl.animset",
+            "warpFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "warpSound": "assets/audio/warp.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 206,
+    "name": "PortalToCavern",
+    "parentId": -1,
+    "position": {
+      "x": 930.0,
+      "y": 388.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "portal",
+    "template": "templates/LevelPortal.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 214,
+        "type": 6,
+        "flip": 0,
+        "width": 40.0,
+        "height": 56.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/portal_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 215,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 1,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 216,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 217,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/portal_swirl.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 218,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/warp.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 219,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelLevelPortal",
+            "targetScenePath": "assets/scenes/level2_foundry.scene",
+            "requiredGems": 0,
+            "portalAnim": "assets/animations/portal_swirl.animset",
+            "warpFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "warpSound": "assets/audio/warp.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 213,
+    "name": "PortalToFoundry",
+    "parentId": -1,
+    "position": {
+      "x": 712.0,
+      "y": 232.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "portal",
+    "template": "templates/LevelPortal.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 221,
+        "type": 6,
+        "flip": 0,
+        "width": 40.0,
+        "height": 56.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/portal_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 222,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 1,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 223,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 224,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/portal_swirl.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 225,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/warp.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 226,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelLevelPortal",
+            "targetScenePath": "assets/scenes/level3_sanctum.scene",
+            "requiredGems": 0,
+            "portalAnim": "assets/animations/portal_swirl.animset",
+            "warpFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "warpSound": "assets/audio/warp.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 220,
+    "name": "PortalToSanctum",
+    "parentId": -1,
+    "position": {
+      "x": 840.0,
+      "y": 232.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "portal",
+    "template": "templates/LevelPortal.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 228,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 16.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/death_zone.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 229,
+        "type": 3,
+        "colliderType": 1,
+        "width": 2600.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 64,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 230,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 227,
+    "name": "Abyss",
+    "parentId": -1,
+    "position": {
+      "x": 512.0,
+      "y": 560.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "death",
+    "template": "templates/DeathZone.pttemplate",
+    "templateNodeId": 4
+  }
+]

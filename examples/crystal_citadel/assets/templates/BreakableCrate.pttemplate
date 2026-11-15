@@ -1,0 +1,90 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "BreakableCrate",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/crate.png"
+      },
+      {
+        "id": 2,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 3,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 4,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/crate_break.wav",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 5,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelBreakableCrate",
+            "hitPoints": 1,
+            "dropCount": 2,
+            "lootTemplate": "assets/templates/CrystalGem.pttemplate",
+            "bonusLootTemplate": "assets/templates/ShieldCore.pttemplate",
+            "breakFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "breakSound": "assets/audio/crate_break.wav"
+          }
+        ]
+      }
+    ],
+    "id": 6,
+    "name": "BreakableCrate",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "crate"
+  }
+}

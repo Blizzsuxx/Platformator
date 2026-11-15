@@ -1,0 +1,5035 @@
+[
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 13,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelGameManager",
+            "levelTitle": "Crystal Citadel - Echoing Caverns",
+            "nextScenePath": "assets/scenes/level2_foundry.scene",
+            "hubScenePath": "assets/scenes/hub.scene",
+            "requiredGems": 3,
+            "collectedGems": 0,
+            "enemiesDefeated": 0,
+            "player": 1,
+            "bgm": 9,
+            "victoryEffectTemplate": "assets/templates/HitSparkFx.pttemplate"
+          }
+        ]
+      }
+    ],
+    "id": 14,
+    "name": "GameManager",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "manager"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 9,
+        "type": 1,
+        "autoPlay": true,
+        "filePath": "assets/audio/bgm_cavern.wav",
+        "gain": 0.42,
+        "loopCount": -1,
+        "templateComponentId": 1
+      }
+    ],
+    "id": 8,
+    "name": "BGM",
+    "parentId": -1,
+    "position": {
+      "x": 96.0,
+      "y": 260.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "audio",
+    "template": "templates/BGM.pttemplate",
+    "templateNodeId": 2
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 10,
+        "type": 2,
+        "width": 640.0,
+        "height": 480.0
+      },
+      {
+        "id": 11,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCameraRig",
+            "camera": 10,
+            "target": 1,
+            "minX": 0.0,
+            "maxX": 1220.0,
+            "minY": -80.0,
+            "maxY": 120.0,
+            "verticalOffset": 40.0
+          }
+        ]
+      }
+    ],
+    "id": 12,
+    "name": "Main Camera",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "camera"
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 40.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/player/wizard_idle_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 1,
+        "width": 24.0,
+        "height": 38.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 5,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/player_idle.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 6,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.6,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 7,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelPlayer",
+            "walkSpeed": 195.0,
+            "jumpSpeed": 275.0,
+            "gravity": 412.02,
+            "maxHp": 5,
+            "hp": 5,
+            "fireCooldown": 0.28,
+            "boltTemplate": "assets/templates/PlayerBolt.pttemplate",
+            "jumpFxTemplate": "assets/templates/JumpBurstFx.pttemplate",
+            "shieldTemplate": "assets/templates/OrbitShield.pttemplate",
+            "idleAnim": "assets/animations/player_idle.animset",
+            "runAnim": "assets/animations/player_run.animset",
+            "jumpAnim": "assets/animations/player_jump.animset",
+            "fallAnim": "assets/animations/player_fall.animset",
+            "jumpSound": "assets/audio/jump.wav",
+            "shootSound": "assets/audio/shoot.wav",
+            "hurtSound": "assets/audio/hurt.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 1,
+    "name": "Player",
+    "parentId": -1,
+    "position": {
+      "x": 96.0,
+      "y": 380.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "player",
+    "template": "templates/Player.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 16,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 17,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 18,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 15,
+    "name": "CavernFloorA_0",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 20,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 21,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 22,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 19,
+    "name": "CavernFloorA_1",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 24,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 25,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 26,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 23,
+    "name": "CavernFloorA_2",
+    "parentId": -1,
+    "position": {
+      "x": 64.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 28,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 29,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 30,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 27,
+    "name": "CavernFloorA_3",
+    "parentId": -1,
+    "position": {
+      "x": 128.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 32,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 33,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 34,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 31,
+    "name": "CavernFloorA_4",
+    "parentId": -1,
+    "position": {
+      "x": 192.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 36,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 37,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 38,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 35,
+    "name": "CavernFloorA_5",
+    "parentId": -1,
+    "position": {
+      "x": 256.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 40,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 41,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 42,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 39,
+    "name": "CavernFloorA_6",
+    "parentId": -1,
+    "position": {
+      "x": 320.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 44,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 45,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 46,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 43,
+    "name": "CavernFloorA_7",
+    "parentId": -1,
+    "position": {
+      "x": 384.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 48,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 49,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 50,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 47,
+    "name": "CavernFloorA_8",
+    "parentId": -1,
+    "position": {
+      "x": 448.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 52,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 53,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 54,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 51,
+    "name": "CavernFloorA_9",
+    "parentId": -1,
+    "position": {
+      "x": 512.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 56,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 57,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 58,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 55,
+    "name": "CavernFloorA_10",
+    "parentId": -1,
+    "position": {
+      "x": 576.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 60,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 61,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 62,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 59,
+    "name": "CavernFloorB_0",
+    "parentId": -1,
+    "position": {
+      "x": 768.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 64,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 65,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 66,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 63,
+    "name": "CavernFloorB_1",
+    "parentId": -1,
+    "position": {
+      "x": 832.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 68,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 69,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 70,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 67,
+    "name": "CavernFloorB_2",
+    "parentId": -1,
+    "position": {
+      "x": 896.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 72,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 73,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 74,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 71,
+    "name": "CavernFloorB_3",
+    "parentId": -1,
+    "position": {
+      "x": 960.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 76,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 77,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 78,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 75,
+    "name": "CavernFloorB_4",
+    "parentId": -1,
+    "position": {
+      "x": 1024.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 80,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 81,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 82,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 79,
+    "name": "CavernFloorB_5",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 84,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 85,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 86,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 83,
+    "name": "CavernFloorB_6",
+    "parentId": -1,
+    "position": {
+      "x": 1152.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 88,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 89,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 90,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 87,
+    "name": "CavernFloorB_7",
+    "parentId": -1,
+    "position": {
+      "x": 1216.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 92,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 93,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 94,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 91,
+    "name": "CavernFloorB_8",
+    "parentId": -1,
+    "position": {
+      "x": 1280.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 96,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 97,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 98,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 95,
+    "name": "CavernFloorC_0",
+    "parentId": -1,
+    "position": {
+      "x": 1408.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 100,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 101,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 102,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 99,
+    "name": "CavernFloorC_1",
+    "parentId": -1,
+    "position": {
+      "x": 1472.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 104,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 105,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 106,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 103,
+    "name": "CavernFloorC_2",
+    "parentId": -1,
+    "position": {
+      "x": 1536.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 108,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 109,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 110,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 107,
+    "name": "CavernFloorC_3",
+    "parentId": -1,
+    "position": {
+      "x": 1600.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 112,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 113,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 114,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 111,
+    "name": "CavernFloorC_4",
+    "parentId": -1,
+    "position": {
+      "x": 1664.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 116,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 117,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 118,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 115,
+    "name": "CavernFloorC_5",
+    "parentId": -1,
+    "position": {
+      "x": 1728.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 120,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 121,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 122,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 119,
+    "name": "CavernFloorC_6",
+    "parentId": -1,
+    "position": {
+      "x": 1792.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 124,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 125,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 126,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 123,
+    "name": "CavernFloorC_7",
+    "parentId": -1,
+    "position": {
+      "x": 1856.0,
+      "y": 432.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 128,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 129,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 130,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 127,
+    "name": "WallL_368",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 368.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 132,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 133,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 134,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 131,
+    "name": "WallR_368",
+    "parentId": -1,
+    "position": {
+      "x": 1856.0,
+      "y": 368.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 136,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 137,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 138,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 135,
+    "name": "WallL_304",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 140,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 141,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 142,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 139,
+    "name": "WallR_304",
+    "parentId": -1,
+    "position": {
+      "x": 1856.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 144,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 145,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 146,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 143,
+    "name": "WallL_240",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 240.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 148,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 149,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 150,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 147,
+    "name": "WallR_240",
+    "parentId": -1,
+    "position": {
+      "x": 1856.0,
+      "y": 240.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 152,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 153,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 154,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 151,
+    "name": "WallL_176",
+    "parentId": -1,
+    "position": {
+      "x": -64.0,
+      "y": 176.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 156,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/stone_ground.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 157,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 158,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 155,
+    "name": "WallR_176",
+    "parentId": -1,
+    "position": {
+      "x": 1856.0,
+      "y": 176.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/StoneGround.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 160,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 161,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 162,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 159,
+    "name": "CavernLedgeA_0",
+    "parentId": -1,
+    "position": {
+      "x": 320.0,
+      "y": 336.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 164,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 165,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 166,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 163,
+    "name": "CavernLedgeA_1",
+    "parentId": -1,
+    "position": {
+      "x": 384.0,
+      "y": 336.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 168,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 169,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 170,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 167,
+    "name": "CavernLedgeA_2",
+    "parentId": -1,
+    "position": {
+      "x": 448.0,
+      "y": 336.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 172,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 173,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 174,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 171,
+    "name": "CavernBridge_0",
+    "parentId": -1,
+    "position": {
+      "x": 608.0,
+      "y": 376.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 176,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 177,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 178,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 175,
+    "name": "CavernBridge_1",
+    "parentId": -1,
+    "position": {
+      "x": 672.0,
+      "y": 376.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 180,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 181,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 182,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 179,
+    "name": "CavernLedgeB_0",
+    "parentId": -1,
+    "position": {
+      "x": 960.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 184,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 185,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 186,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 183,
+    "name": "CavernLedgeB_1",
+    "parentId": -1,
+    "position": {
+      "x": 1024.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 188,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 189,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 190,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 187,
+    "name": "CavernLedgeB_2",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 192,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 193,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 194,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 191,
+    "name": "CavernLedgeB_3",
+    "parentId": -1,
+    "position": {
+      "x": 1152.0,
+      "y": 304.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 196,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 197,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 198,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 195,
+    "name": "CavernGapStep_0",
+    "parentId": -1,
+    "position": {
+      "x": 1300.0,
+      "y": 360.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 200,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/crystal_platform.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 201,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 20.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 202,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 199,
+    "name": "CavernGapStep_1",
+    "parentId": -1,
+    "position": {
+      "x": 1364.0,
+      "y": 360.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "solid",
+    "template": "templates/CrystalPlatform.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 204,
+        "type": 6,
+        "flip": 0,
+        "width": 36.0,
+        "height": 18.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/jump_pad.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 205,
+        "type": 3,
+        "colliderType": 1,
+        "width": 36.0,
+        "height": 16.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 206,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 207,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/bounce.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 4
+      },
+      {
+        "id": 208,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelJumpPad",
+            "bounceFactor": 1.55,
+            "burstFxTemplate": "assets/templates/JumpBurstFx.pttemplate",
+            "bounceSound": "assets/audio/bounce.wav"
+          }
+        ],
+        "templateComponentId": 5
+      }
+    ],
+    "id": 203,
+    "name": "CavernJump_0",
+    "parentId": -1,
+    "position": {
+      "x": 480.0,
+      "y": 408.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "jumppad",
+    "template": "templates/JumpPad.pttemplate",
+    "templateNodeId": 6
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 210,
+        "type": 6,
+        "flip": 0,
+        "width": 36.0,
+        "height": 18.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/jump_pad.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 211,
+        "type": 3,
+        "colliderType": 1,
+        "width": 36.0,
+        "height": 16.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 212,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 213,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/bounce.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 4
+      },
+      {
+        "id": 214,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelJumpPad",
+            "bounceFactor": 1.55,
+            "burstFxTemplate": "assets/templates/JumpBurstFx.pttemplate",
+            "bounceSound": "assets/audio/bounce.wav"
+          }
+        ],
+        "templateComponentId": 5
+      }
+    ],
+    "id": 209,
+    "name": "CavernJump_1",
+    "parentId": -1,
+    "position": {
+      "x": 910.0,
+      "y": 408.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "jumppad",
+    "template": "templates/JumpPad.pttemplate",
+    "templateNodeId": 6
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 216,
+        "type": 6,
+        "flip": 0,
+        "width": 48.0,
+        "height": 20.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/spike_hazard.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 217,
+        "type": 3,
+        "colliderType": 1,
+        "width": 44.0,
+        "height": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 2.0
+        },
+        "trigger": true,
+        "collisionGroup": 64,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 218,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 215,
+    "name": "CavernSpikes_0",
+    "parentId": -1,
+    "position": {
+      "x": 1024.0,
+      "y": 408.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "hazard",
+    "template": "templates/SpikeHazard.pttemplate",
+    "templateNodeId": 4
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 220,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/crawler_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 221,
+        "type": 3,
+        "colliderType": 1,
+        "width": 28.0,
+        "height": 24.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27,
+        "templateComponentId": 2
+      },
+      {
+        "id": 222,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 223,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/crawler_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 224,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/enemy_hit.wav",
+        "gain": 0.5,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 225,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelPatrolEnemy",
+            "walkSpeed": 65.0,
+            "minX": 240.0,
+            "maxX": 520.0,
+            "direction": -1.0,
+            "hp": 2,
+            "dropTemplate": "assets/templates/CrystalGem.pttemplate",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/crawler_walk.animset",
+            "squashAnim": "assets/animations/crawler_squash.animset",
+            "hitSound": "assets/audio/enemy_hit.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 219,
+    "name": "CavernCrawler_0",
+    "parentId": -1,
+    "position": {
+      "x": 360.0,
+      "y": 400.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy",
+    "template": "templates/CaveCrawler.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 227,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/slime_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 228,
+        "type": 3,
+        "colliderType": 1,
+        "width": 26.0,
+        "height": 22.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27,
+        "templateComponentId": 2
+      },
+      {
+        "id": 229,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.9,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 230,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/slime_bounce.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 231,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/slime_split.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 232,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelSplittingSlime",
+            "generation": 1,
+            "maxGeneration": 2,
+            "hp": 1,
+            "walkSpeed": 75.0,
+            "minX": 780.0,
+            "maxX": 980.0,
+            "direction": -1.0,
+            "selfTemplate": "assets/templates/Slime.pttemplate",
+            "gemTemplate": "assets/templates/CrystalGem.pttemplate",
+            "splitFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "bounceAnim": "assets/animations/slime_bounce.animset",
+            "splitSound": "assets/audio/slime_split.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 226,
+    "name": "CavernSlime_0",
+    "parentId": -1,
+    "position": {
+      "x": 860.0,
+      "y": 400.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy",
+    "template": "templates/Slime.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 234,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/slime_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 235,
+        "type": 3,
+        "colliderType": 1,
+        "width": 26.0,
+        "height": 22.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 27,
+        "templateComponentId": 2
+      },
+      {
+        "id": 236,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.9,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 237,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/slime_bounce.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 238,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/slime_split.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 239,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelSplittingSlime",
+            "generation": 1,
+            "maxGeneration": 2,
+            "hp": 1,
+            "walkSpeed": 75.0,
+            "minX": 1440.0,
+            "maxX": 1720.0,
+            "direction": -1.0,
+            "selfTemplate": "assets/templates/Slime.pttemplate",
+            "gemTemplate": "assets/templates/CrystalGem.pttemplate",
+            "splitFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "bounceAnim": "assets/animations/slime_bounce.animset",
+            "splitSound": "assets/audio/slime_split.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 233,
+    "name": "CavernSlime_1",
+    "parentId": -1,
+    "position": {
+      "x": 1560.0,
+      "y": 400.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "enemy",
+    "template": "templates/Slime.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 241,
+        "type": 6,
+        "flip": 0,
+        "width": 36.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/spawner.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 242,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelWaveSpawner",
+            "primaryEnemyTemplate": "assets/templates/Slime.pttemplate",
+            "secondaryEnemyTemplate": "assets/templates/CaveCrawler.pttemplate",
+            "spawnFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "spawnInterval": 4.5,
+            "activationRange": 620.0,
+            "maxSpawns": 3,
+            "spawnedCount": 0,
+            "spawnOnStart": true
+          }
+        ],
+        "templateComponentId": 2
+      }
+    ],
+    "id": 240,
+    "name": "CavernSpawner",
+    "parentId": -1,
+    "position": {
+      "x": 1160.0,
+      "y": 402.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "spawner",
+    "template": "templates/WaveSpawner.pttemplate",
+    "templateNodeId": 3
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 244,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/crate.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 245,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 246,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 247,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/crate_break.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 4
+      },
+      {
+        "id": 248,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelBreakableCrate",
+            "hitPoints": 1,
+            "dropCount": 2,
+            "lootTemplate": "assets/templates/CrystalGem.pttemplate",
+            "bonusLootTemplate": "assets/templates/ShieldCore.pttemplate",
+            "breakFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "breakSound": "assets/audio/crate_break.wav"
+          }
+        ],
+        "templateComponentId": 5
+      }
+    ],
+    "id": 243,
+    "name": "CavernCrate_0",
+    "parentId": -1,
+    "position": {
+      "x": 384.0,
+      "y": 310.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "crate",
+    "template": "templates/BreakableCrate.pttemplate",
+    "templateNodeId": 6
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 250,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 32.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/crate.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 251,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 1,
+        "collisionMask": 4294967295,
+        "templateComponentId": 2
+      },
+      {
+        "id": 252,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 253,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/crate_break.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 4
+      },
+      {
+        "id": 254,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelBreakableCrate",
+            "hitPoints": 1,
+            "dropCount": 2,
+            "lootTemplate": "assets/templates/CrystalGem.pttemplate",
+            "bonusLootTemplate": "assets/templates/ShieldCore.pttemplate",
+            "breakFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "breakSound": "assets/audio/crate_break.wav"
+          }
+        ],
+        "templateComponentId": 5
+      }
+    ],
+    "id": 249,
+    "name": "CavernCrate_1",
+    "parentId": -1,
+    "position": {
+      "x": 1088.0,
+      "y": 278.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "crate",
+    "template": "templates/BreakableCrate.pttemplate",
+    "templateNodeId": 6
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 256,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 257,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 258,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 259,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 260,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 261,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 255,
+    "name": "CavernGem_0",
+    "parentId": -1,
+    "position": {
+      "x": 260.0,
+      "y": 392.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 263,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 264,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 265,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 266,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 267,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 268,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 262,
+    "name": "CavernGem_1",
+    "parentId": -1,
+    "position": {
+      "x": 350.0,
+      "y": 300.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 270,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 271,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 272,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 273,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 274,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 275,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 269,
+    "name": "CavernGem_2",
+    "parentId": -1,
+    "position": {
+      "x": 640.0,
+      "y": 340.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 277,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 278,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 279,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 280,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 281,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 282,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 276,
+    "name": "CavernGem_3",
+    "parentId": -1,
+    "position": {
+      "x": 1024.0,
+      "y": 268.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 284,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 285,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 286,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 287,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 288,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 289,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 283,
+    "name": "CavernGem_4",
+    "parentId": -1,
+    "position": {
+      "x": 1500.0,
+      "y": 392.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 291,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/gem_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 292,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 11.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 293,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 294,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/gem_spin.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 295,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.55,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 296,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 1,
+            "healAmount": 0,
+            "grantsShield": false,
+            "idleAnim": "assets/animations/gem_spin.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 290,
+    "name": "CavernGem_5",
+    "parentId": -1,
+    "position": {
+      "x": 1650.0,
+      "y": 392.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/CrystalGem.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 298,
+        "type": 6,
+        "flip": 0,
+        "width": 24.0,
+        "height": 24.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/shield_core_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 299,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 12.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 300,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 0.1,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 301,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/shield_pulse.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 302,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/gem.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 303,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelCollectible",
+            "gemValue": 0,
+            "healAmount": 1,
+            "grantsShield": true,
+            "idleAnim": "assets/animations/shield_pulse.animset",
+            "pickupFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pickupSound": "assets/audio/gem.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 297,
+    "name": "CavernShield",
+    "parentId": -1,
+    "position": {
+      "x": 1120.0,
+      "y": 268.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "collectible",
+    "template": "templates/ShieldCore.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 305,
+        "type": 6,
+        "flip": 0,
+        "width": 40.0,
+        "height": 56.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/portal_0.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 306,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 1,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 307,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      },
+      {
+        "id": 308,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/portal_swirl.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true,
+        "templateComponentId": 4
+      },
+      {
+        "id": 309,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/warp.wav",
+        "gain": 0.65,
+        "loopCount": 0,
+        "templateComponentId": 5
+      },
+      {
+        "id": 310,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelLevelPortal",
+            "targetScenePath": "assets/scenes/level2_foundry.scene",
+            "requiredGems": 3,
+            "portalAnim": "assets/animations/portal_swirl.animset",
+            "warpFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "warpSound": "assets/audio/warp.wav"
+          }
+        ],
+        "templateComponentId": 6
+      }
+    ],
+    "id": 304,
+    "name": "ExitPortal",
+    "parentId": -1,
+    "position": {
+      "x": 1770.0,
+      "y": 388.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "portal",
+    "template": "templates/LevelPortal.pttemplate",
+    "templateNodeId": 7
+  },
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 312,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 16.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/tiles/death_zone.png",
+        "templateComponentId": 1
+      },
+      {
+        "id": 313,
+        "type": 3,
+        "colliderType": 1,
+        "width": 2600.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 64,
+        "collisionMask": 2,
+        "templateComponentId": 2
+      },
+      {
+        "id": 314,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "templateComponentId": 3
+      }
+    ],
+    "id": 311,
+    "name": "Abyss",
+    "parentId": -1,
+    "position": {
+      "x": 900.0,
+      "y": 560.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "death",
+    "template": "templates/DeathZone.pttemplate",
+    "templateNodeId": 4
+  }
+]

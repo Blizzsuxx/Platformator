@@ -1,0 +1,51 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "WaveSpawner",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 36.0,
+        "height": 28.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/spawner.png"
+      },
+      {
+        "id": 2,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelWaveSpawner",
+            "primaryEnemyTemplate": "assets/templates/Slime.pttemplate",
+            "secondaryEnemyTemplate": "assets/templates/CaveCrawler.pttemplate",
+            "spawnFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "spawnInterval": 4.2,
+            "activationRange": 620.0,
+            "maxSpawns": 3,
+            "spawnedCount": 0,
+            "spawnOnStart": true
+          }
+        ]
+      }
+    ],
+    "id": 3,
+    "name": "WaveSpawner",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "spawner"
+  }
+}

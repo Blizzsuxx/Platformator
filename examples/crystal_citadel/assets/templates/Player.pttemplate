@@ -1,0 +1,108 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "Player",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 40.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/player/wizard_idle_0.png"
+      },
+      {
+        "id": 2,
+        "type": 3,
+        "colliderType": 1,
+        "width": 24.0,
+        "height": 38.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 3,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 4,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/player_idle.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 5,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.6,
+        "loopCount": 0
+      },
+      {
+        "id": 6,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelPlayer",
+            "walkSpeed": 195.0,
+            "jumpSpeed": 275.0,
+            "gravity": 412.02,
+            "maxHp": 5,
+            "hp": 5,
+            "fireCooldown": 0.28,
+            "boltTemplate": "assets/templates/PlayerBolt.pttemplate",
+            "jumpFxTemplate": "assets/templates/JumpBurstFx.pttemplate",
+            "shieldTemplate": "assets/templates/OrbitShield.pttemplate",
+            "idleAnim": "assets/animations/player_idle.animset",
+            "runAnim": "assets/animations/player_run.animset",
+            "jumpAnim": "assets/animations/player_jump.animset",
+            "fallAnim": "assets/animations/player_fall.animset",
+            "jumpSound": "assets/audio/jump.wav",
+            "shootSound": "assets/audio/shoot.wav",
+            "hurtSound": "assets/audio/hurt.wav"
+          }
+        ]
+      }
+    ],
+    "id": 7,
+    "name": "Player",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "player"
+  }
+}

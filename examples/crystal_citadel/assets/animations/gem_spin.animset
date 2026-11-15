@@ -1,0 +1,50 @@
+{
+  "filePath": "assets/animations/gem_spin.animset",
+  "loop": true,
+  "frames": [
+    {
+      "duration": 0.12,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/items/gem_0.png"
+    },
+    {
+      "duration": 0.12,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/items/gem_1.png"
+    },
+    {
+      "duration": 0.12,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/items/gem_2.png"
+    },
+    {
+      "duration": 0.12,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/items/gem_3.png"
+    }
+  ]
+}

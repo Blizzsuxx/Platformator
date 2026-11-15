@@ -1,0 +1,97 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "LevelPortal",
+  "root": {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "id": 1,
+        "type": 6,
+        "flip": 0,
+        "width": 40.0,
+        "height": 56.0,
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/portal_0.png"
+      },
+      {
+        "id": 2,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 48.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 1,
+        "collisionMask": 2
+      },
+      {
+        "id": 3,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 4,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/portal_swirl.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 5,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "assets/audio/warp.wav",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 6,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "CitadelLevelPortal",
+            "targetScenePath": "assets/scenes/hub.scene",
+            "requiredGems": 0,
+            "portalAnim": "assets/animations/portal_swirl.animset",
+            "warpFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "warpSound": "assets/audio/warp.wav"
+          }
+        ]
+      }
+    ],
+    "id": 7,
+    "name": "LevelPortal",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "portal"
+  }
+}

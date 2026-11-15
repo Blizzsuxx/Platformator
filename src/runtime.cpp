@@ -154,6 +154,11 @@ TextureWrapper *Runtime::loadTexture(const std::string &filePath) const
     return gameManager->loadTexture(filePath);
 }
 
+Template *Runtime::loadTemplate(const std::string &filePath) const
+{
+    return gameManager->loadTemplate(filePath);
+}
+
 void Runtime::saveScene(Scene &scene)
 {
     gameManager->saveScene(scene);

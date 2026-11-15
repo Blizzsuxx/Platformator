@@ -28,6 +28,21 @@ Rigidbody::~Rigidbody()
 {
 }
 
+Component *Rigidbody::clone() const
+{
+    auto cloned = std::make_unique<Rigidbody>();
+    cloned->setBodyType(bodyType);
+    cloned->setGravity(gravity);
+    cloned->setVelocity(velocity);
+    cloned->setForce(force);
+    cloned->setMass(mass);
+    cloned->setAngularVelocity(angularVelocity);
+    cloned->setTorque(torque);
+    cloned->setFriction(friction);
+    cloned->setRestitution(restitution);
+    return cloned.release();
+}
+
 void Rigidbody::initialize()
 {
     if (bodyType < DYNAMIC || bodyType > KINEMATIC)

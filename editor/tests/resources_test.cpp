@@ -1,4 +1,6 @@
 #include "imagepreflight.h"
+#include "assetformats.h"
+#include "resourceindex.h"
 #include "thumbnailcache.h"
 #include "test_support.h"
 
@@ -653,6 +655,20 @@ int main()
         test_distinct_invalidations_supersede_paused_thumbnail_preparation(temporary.path());
         test_thumbnail_cache_limits_pins_eviction_and_negative_results(temporary.path());
         test_thumbnail_pixel_budget_accounts_for_full_size_outputs(temporary.path());
+        {
+            const auto tplAssets = temporary.path() / "template_resources_assets";
+            std::filesystem::create_directories(tplAssets / "Templates");
+            std::ofstream(tplAssets / "Templates" / "Goomba.pttemplate", std::ios::binary) << "{}";
+            ResourceIndex tplIndex;
+            tplIndex.set_project(ProjectGeneration{1}, tplAssets);
+            const auto resolved = tplIndex.resolve("assets/Templates/Goomba.pttemplate", ResourceKind::Template);
+            const auto missing = tplIndex.resolve("assets/Templates/Missing.pttemplate", ResourceKind::Template);
+            platformator_editor_test::require(
+                resolved.status == ResourceStatus::Resolved && missing.status == ResourceStatus::Missing &&
+                    asset_reference_extension_matches("Template", "assets/Templates/Goomba.pttemplate") &&
+                    !asset_reference_extension_matches("Template", "assets/Textures/Hero.png"),
+                "ResourceKind::Template must resolve .pttemplate assets and enforce .pttemplate extension matching");
+        }
         SDL_Quit();
         std::cout << "Resource image preflight cases passed\n";
         return 0;

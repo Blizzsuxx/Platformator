@@ -17,6 +17,7 @@ class Animator : public Component
     Animator(GameObject *gameObject);
     Animator();
     ~Animator() override;
+    Component *clone() const override;
 
     size_t getCurrentFrameIndex() const;
     float getPlaybackSpeed() const;

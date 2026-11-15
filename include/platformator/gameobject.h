@@ -41,11 +41,13 @@ enum GameObjectFlags : uint8_t
 class Component : public BaseObject
 {
     friend class GameManager;
+    friend class Template;
 
   public:
     Component(GameObject *gameObject, ComponentType type);
     Component(ComponentType type);
     virtual ~Component() = default;
+    virtual Component *clone() const = 0;
 
     GameObject *getGameObject() const;
     ComponentType getType() const;
@@ -69,6 +71,7 @@ class GameObject : public BaseObject
     friend class GameManager;
     friend class Scene;
     friend class SceneBuildContext;
+    friend class Template;
     friend class Rigidbody;
     friend class PhysicsManager;
     friend class Collider;

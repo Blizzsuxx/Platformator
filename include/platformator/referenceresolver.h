@@ -6,6 +6,7 @@
 class TextureWrapper;
 class AudioWrapper;
 class AnimationClip;
+class Template;
 
 namespace platformator
 {
@@ -18,6 +19,23 @@ class ReferenceResolver
     virtual TextureWrapper *loadTexture(const std::string &path) = 0;
     virtual AudioWrapper *loadAudio(const std::string &path) = 0;
     virtual AnimationClip *loadAnimationClip(const std::string &path) = 0;
+    virtual Template *loadTemplate(const std::string &path) = 0;
+    virtual bool allowDeferredTemplate(const std::string &)
+    {
+        return false;
+    }
+    virtual bool allowDeferredInternalReferenceError() const
+    {
+        return false;
+    }
+    virtual bool shouldResolveObjectReferences() const
+    {
+        return true;
+    }
+    virtual bool isExternalObjectId(int) const
+    {
+        return false;
+    }
 
     template <typename T> void resolve(T &field)
     {

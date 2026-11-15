@@ -632,6 +632,7 @@ void GameManager::notifyRuntimeOfComponentAdded(Component *component)
     else if (component->getType() == ComponentType::AUDIO)
     {
         auto *audio = static_cast<Audio *>(component);
+        audio->ensureTrack();
         if (audio->getAutoPlay())
         {
             audio->play();
@@ -987,6 +988,119 @@ void GameManager::freeAllAnimationClips()
     animationAliases.clear();
     animationClipCache.clear();
     retiredAnimationCache.clear();
+}
+
+Template *GameManager::loadTemplate(const std::string &filePath, bool required, bool *deferredCyclic)
+{
+    if (filePath.empty())
+    {
+        if (required)
+        {
+            throw std::invalid_argument("Required template path is empty");
+        }
+        return nullptr;
+    }
+    if (const auto *canonical = templateAliases.find(filePath))
+    {
+        auto found = templateCache.find(*canonical);
+        if (found != templateCache.end())
+        {
+            return found->second.get();
+        }
+        throw std::logic_error("Stale asset request alias");
+    }
+    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    if (auto found = templateCache.find(resolved.canonicalPath); found != templateCache.end())
+    {
+        templateAliases.add(filePath, resolved.canonicalPath);
+        return found->second.get();
+    }
+    if (activeTemplateLoads.contains(resolved.canonicalPath))
+    {
+        if (deferredCyclic != nullptr)
+        {
+            *deferredCyclic = true;
+            return nullptr;
+        }
+        throw std::runtime_error("Cyclic template dependency: " + filePath);
+    }
+    std::ifstream file(resolved.absolutePath);
+    if (!file)
+    {
+        throw std::runtime_error("Cannot open template: " + filePath);
+    }
+    struct ActiveLoadGuard
+    {
+        std::unordered_set<std::string> &active;
+        std::string key;
+        ~ActiveLoadGuard()
+        {
+            active.erase(key);
+        }
+    };
+    activeTemplateLoads.insert(resolved.canonicalPath);
+    ActiveLoadGuard activeGuard{activeTemplateLoads, resolved.canonicalPath};
+
+    auto tpl = std::make_unique<Template>();
+    try
+    {
+        tpl->loadFromJsonDocument(nlohmann::json::parse(file), *this);
+    }
+    catch (const std::exception &error)
+    {
+        throw std::runtime_error("Template '" + filePath + "': " + error.what());
+    }
+    tpl->setFilePath(resolved.canonicalPath);
+    tpl->runtimeSerial = registry.serial();
+    return platformator_detail::publishAsset(templateCache, templateAliases, filePath, resolved.canonicalPath,
+                                             std::move(tpl));
+}
+
+Template *GameManager::findTemplate(const std::string &filePath)
+{
+    if (filePath.empty())
+        return nullptr;
+    if (const auto *canonical = templateAliases.find(filePath))
+    {
+        const auto found = templateCache.find(*canonical);
+        return found == templateCache.end() ? nullptr : found->second.get();
+    }
+    try
+    {
+        const auto canonical = PathManager::getInstance().canonicalizeAssetPath(filePath);
+        const auto found = templateCache.find(canonical);
+        if (found == templateCache.end())
+            return nullptr;
+        templateAliases.add(filePath, canonical);
+        return found->second.get();
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+void GameManager::freeTemplate(Template *tpl)
+{
+    auto it = templateCache.find(tpl->getFilePath());
+    if (it != templateCache.end() && it->second.get() == tpl)
+    {
+        templateAliases.remove(it->first);
+        templateCache.erase(it);
+        return;
+    }
+    std::erase_if(retiredTemplateCache, [&](const auto &resource) {
+        return resource.get() == tpl;
+    });
+}
+
+void GameManager::freeAllTemplates()
+{
+    templateAliases.clear();
+    auto cached = std::move(templateCache);
+    auto retired = std::move(retiredTemplateCache);
+    cached.clear();
+    retired.clear();
 }
 
 void GameManager::queueScriptStart(ScriptComponent *script)
@@ -1477,6 +1591,7 @@ void GameManager::shutdown()
     }
     window->releaseRenderCullingStorage();
     window->clearTransientAudio();
+    freeAllTemplates();
     freeAllAnimationClips();
     freeAllTextures();
     freeAllAudio();

@@ -1,6 +1,7 @@
 #include "platformator/behavior.h"
 
 #include <filesystem>
+#include <stdexcept>
 
 #include "platformator/runtime.h"
 
@@ -11,6 +12,15 @@
 
 Behavior::Behavior() : gameObject(nullptr)
 {
+}
+
+Behavior::Behavior(const Behavior &) : scriptComponent(nullptr), gameObject(nullptr)
+{
+}
+
+Behavior *Behavior::clone() const
+{
+    throw std::logic_error("Behavior subclass does not implement clone(): " + getTypeName());
 }
 
 GameObject *Behavior::getGameObject() const

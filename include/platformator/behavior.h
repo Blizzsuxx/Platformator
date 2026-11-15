@@ -19,10 +19,13 @@ class Behavior
 {
     friend class GameManager;
     friend class ScriptComponent;
+    friend class Template;
 
   public:
     Behavior();
+    Behavior(const Behavior &);
     virtual ~Behavior() = default;
+    virtual Behavior *clone() const;
 
     GameObject *getGameObject() const;
     platformator::Runtime &getRuntime() const;
@@ -42,6 +45,7 @@ class Behavior
     virtual std::string getTypeName() const = 0;
     virtual void serialize(nlohmann::json &j) const = 0;
     virtual void deserialize(const nlohmann::json &j) = 0;
+    virtual void resolveTemplateAssets(platformator::ReferenceResolver &) {}
     virtual void resolveReferences(platformator::ReferenceResolver &resolver) = 0;
 
   private:

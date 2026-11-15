@@ -410,6 +410,26 @@ Json make_template_reference_path_declaration(int ownerId, int componentId,
                 {"target_kind", targetKind}};
 }
 
+namespace
+{
+ResourceKind resource_kind_for_asset_type(std::string_view expectedAssetType)
+{
+    if (expectedAssetType == "Texture")
+        return ResourceKind::Texture;
+    if (expectedAssetType == "AnimationClip")
+        return ResourceKind::Animation;
+    if (expectedAssetType == "Audio")
+        return ResourceKind::Audio;
+    if (expectedAssetType == "Script")
+        return ResourceKind::Script;
+    if (expectedAssetType == "Scene")
+        return ResourceKind::Scene;
+    if (expectedAssetType == "Template")
+        return ResourceKind::Template;
+    return ResourceKind::Unknown;
+}
+} // namespace
+
 AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, const Json &value,
                                            std::string_view expectedAssetType,
                                            ResourceIndex *resourceIndex)
@@ -433,12 +453,7 @@ AssetReferenceInfo inspect_asset_reference(const DocumentSession &document, cons
 
     if (resourceIndex != nullptr)
     {
-        const ResourceKind kind = expectedAssetType == "Texture" ? ResourceKind::Texture
-            : expectedAssetType == "AnimationClip" ? ResourceKind::Animation
-            : expectedAssetType == "Audio" ? ResourceKind::Audio
-            : expectedAssetType == "Script" ? ResourceKind::Script
-            : expectedAssetType == "Scene" ? ResourceKind::Scene
-            : ResourceKind::Unknown;
+        const ResourceKind kind = resource_kind_for_asset_type(expectedAssetType);
         const auto resolution = resourceIndex->resolve(path, kind);
         if (resolution.status == ResourceStatus::Resolved)
         {
@@ -726,12 +741,7 @@ void draw_asset_reference_field(DocumentSession &document, EditCommandService &c
     const auto info = inspect_asset_reference(document, currentValue, expectedAssetType, resourceIndex);
     if (resourceIndex != nullptr && info.state != ReferenceState::Invalid && !info.path.empty())
     {
-        const ResourceKind kind = expectedAssetType == "Texture" ? ResourceKind::Texture
-            : expectedAssetType == "AnimationClip" ? ResourceKind::Animation
-            : expectedAssetType == "Audio" ? ResourceKind::Audio
-            : expectedAssetType == "Script" ? ResourceKind::Script
-            : expectedAssetType == "Scene" ? ResourceKind::Scene
-            : ResourceKind::Unknown;
+        const ResourceKind kind = resource_kind_for_asset_type(expectedAssetType);
         std::string role = "inspector-asset:" + std::string(expectedAssetType) + ":";
         if (behaviorOrdinal)
             role += "behavior:" + std::to_string(*behaviorOrdinal) + ":";

@@ -18,6 +18,7 @@ class Scene;
 class SDLWindow;
 class AnimationClip;
 class AudioWrapper;
+class Template;
 class TextureWrapper;
 class PathManager;
 
@@ -57,6 +58,7 @@ class Runtime
     // A retained cached resource is reused without rechecking its filesystem path.
     AnimationClip *loadAnimationClip(const std::string &filePath) const;
     AudioWrapper *loadAudio(const std::string &filePath) const;
+    Template *loadTemplate(const std::string &filePath) const;
     void loadScene(Scene &scene);
     void loadScene(const std::string &sceneFilePath);
     TextureWrapper *loadTexture(const std::string &filePath) const;

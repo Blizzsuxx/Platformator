@@ -57,6 +57,11 @@ AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, c
     return runtime.loadAnimationClip(assetPath);
 }
 
+Template *loadTemplateAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
+{
+    return runtime.loadTemplate(assetPath);
+}
+
 BaseObject *resolveObjectReference(platformator::Runtime &runtime, int objectId)
 {
     return runtime.getObjectById(objectId);

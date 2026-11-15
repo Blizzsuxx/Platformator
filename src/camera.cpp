@@ -30,6 +30,14 @@ Camera::~Camera()
 {
 }
 
+Component *Camera::clone() const
+{
+    auto cloned = std::make_unique<Camera>();
+    cloned->setWidth(width);
+    cloned->setHeight(height);
+    return cloned.release();
+}
+
 void Camera::render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight)
 {
     const auto view = prepareRenderView(outputWidth, outputHeight, false);

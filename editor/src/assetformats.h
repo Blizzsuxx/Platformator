@@ -32,6 +32,7 @@ struct EditorAssetFormat
     bool audioReference = false;
     bool animationReference = false;
     bool behaviorHeader = false;
+    bool templateReference = false;
 };
 
 struct AssetFormatMapping
@@ -42,7 +43,7 @@ struct AssetFormatMapping
 
 inline constexpr std::array<AssetFormatMapping, 31> EditorAssetFormats{{
     {".animset", {EditorAssetKind::Animation, false, false, true, false}},
-    {".pttemplate", {EditorAssetKind::Template}},
+    {".pttemplate", {EditorAssetKind::Template, false, false, false, false, true}},
     {".png", {EditorAssetKind::Image, true}},
     {".jpg", {EditorAssetKind::Image, true}},
     {".jpeg", {EditorAssetKind::Image, true}},
@@ -108,6 +109,8 @@ inline bool asset_reference_extension_matches(std::string_view expectedType,
         return format.audioReference;
     if (expectedType == "AnimationClip")
         return format.animationReference;
+    if (expectedType == "Template")
+        return format.templateReference;
     return false;
 }
 } // namespace platformator_editor

@@ -22,6 +22,18 @@ BoxCollider::~BoxCollider()
 {
 }
 
+Component *BoxCollider::clone() const
+{
+    auto cloned = std::make_unique<BoxCollider>();
+    cloned->setWidth(width);
+    cloned->setHeight(height);
+    cloned->setOffset(offset);
+    cloned->setIsTrigger(getIsTrigger());
+    cloned->setCollisionGroup(collisionGroup);
+    cloned->setCollisionMask(collisionMask);
+    return cloned.release();
+}
+
 const std::array<Eigen::Vector2f, 4> &BoxCollider::getVertices() const
 {
     return vertices;

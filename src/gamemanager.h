@@ -15,11 +15,13 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "platformator/animationclip.h"
 #include "platformator/audiowrapper.h"
 #include "platformator/scene.h"
+#include "platformator/template.h"
 #include "platformator/texturewrapper.h"
 
 class Animator;
@@ -45,6 +47,7 @@ class EditorPreviewAccess;
 class GameManager
 {
     friend class SceneBuildContext;
+    friend class Template;
     friend class platformator::Runtime;
     friend class platformator_detail::RuntimeAccess;
     friend class GameObject;
@@ -143,6 +146,10 @@ class GameManager
     AnimationClip *reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument);
     void freeAnimationClip(AnimationClip *animationClip);
     void freeAllAnimationClips();
+    Template *loadTemplate(const std::string &filePath, bool required = false, bool *deferredCyclic = nullptr);
+    Template *findTemplate(const std::string &filePath);
+    void freeTemplate(Template *tpl);
+    void freeAllTemplates();
 
     void loadScene(Scene &scene);
     void saveScene(const Scene &scene);
@@ -192,13 +199,16 @@ class GameManager
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> scriptComponents;
-    platformator_detail::AssetRequestAliases textureAliases, audioAliases, animationAliases;
+    platformator_detail::AssetRequestAliases textureAliases, audioAliases, animationAliases, templateAliases;
     std::unordered_map<std::string, std::unique_ptr<TextureWrapper>> textureCache;
     std::unordered_map<std::string, std::unique_ptr<AudioWrapper>> audioCache;
     std::unordered_map<std::string, std::unique_ptr<AnimationClip>> animationClipCache;
+    std::unordered_map<std::string, std::unique_ptr<Template>> templateCache;
     std::vector<std::unique_ptr<TextureWrapper>> retiredTextureCache;
     std::vector<std::unique_ptr<AudioWrapper>> retiredAudioCache;
     std::vector<std::unique_ptr<AnimationClip>> retiredAnimationCache;
+    std::vector<std::unique_ptr<Template>> retiredTemplateCache;
+    std::unordered_set<std::string> activeTemplateLoads;
     std::unordered_map<int, BaseObject *> idToObjectMap;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<ScriptComponent *> pendingStartScripts;

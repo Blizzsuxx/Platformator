@@ -86,14 +86,26 @@ template <typename T> class ObjectReference
     }
     T *resolve(platformator::ReferenceResolver &resolver)
     {
+        if (!resolver.shouldResolveObjectReferences())
+            return nullptr;
         if (!handle && !objectId)
             return nullptr;
+        if (!handle && resolver.isExternalObjectId(*objectId))
+        {
+            clear();
+            return nullptr;
+        }
         auto *target = handle ? resolver.findHandle(handle, platformator_detail::objectKind<T>())
                               : resolver.findObject(*objectId, platformator_detail::objectKind<T>());
         if (!target)
+        {
+            if (resolver.allowDeferredInternalReferenceError())
+                return nullptr;
             throw std::runtime_error("Missing reference target or wrong kind for ID " +
                                      std::to_string(objectId.value_or(-1)));
+        }
         handle = target->getHandle();
+        objectId = target->getId();
         return static_cast<T *>(target);
     }
     T *operator->() const

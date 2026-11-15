@@ -10,6 +10,7 @@ class AudioWrapper;
 class GameManager;
 class PhysicsManager;
 class SDLWindow;
+class Template;
 class TextureWrapper;
 class PathManager;
 struct SDL_Surface;
@@ -44,6 +45,7 @@ class RuntimeAccess
     static void freeTexture(TextureWrapper *textureWrapper);
     static void freeAudio(AudioWrapper *audioWrapper);
     static void freeAnimationClip(AnimationClip *animationClip);
+    static void freeTemplate(Template *tpl);
     static bool playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount);
 };
 } // namespace platformator_detail

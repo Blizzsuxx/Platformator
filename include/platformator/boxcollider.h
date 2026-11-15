@@ -12,6 +12,7 @@ class BoxCollider : public Collider
     BoxCollider(GameObject *gameObject, float width, float height);
     BoxCollider();
     ~BoxCollider();
+    Component *clone() const override;
 
     Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const override;
 

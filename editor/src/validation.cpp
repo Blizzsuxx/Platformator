@@ -1,5 +1,6 @@
 #include "validation.h"
 
+#include "assetformats.h"
 #include "camerainterpretation.h"
 #include "editorwork.h"
 
@@ -549,7 +550,7 @@ bool behavior_value_matches(const Json &value, const Json &descriptor, std::stri
     return false;
 }
 
-void validate_script(const Json &component, int objectId, int componentId,
+void validate_script(const DocumentSession &document, const Json &component, int objectId, int componentId,
                      const Json &behaviorCatalog, ValidationResult &result)
 {
     const Json *behaviors = member(component, "behaviors");
@@ -592,9 +593,30 @@ void validate_script(const Json &component, int objectId, int componentId,
                 continue;
             std::string reason;
             if (!behavior_value_matches(*value, field, reason))
+            {
                 add_issue(result, ValidationSeverity::Error, objectId, componentId,
                           prefix + "." + fieldName,
                           "Saved value does not match the behavior field schema: " + reason, true);
+                continue;
+            }
+            if (field.value("kind", std::string{}) == "asset_reference" && value->is_string() &&
+                !value->get_ref<const std::string &>().empty() && !document.assetRoot.empty())
+            {
+                const std::string target = field.value("target", std::string("Asset"));
+                const ResourceKind assetKind = target == "Template" ? ResourceKind::Template
+                    : target == "Texture" ? ResourceKind::Texture
+                    : target == "AnimationClip" ? ResourceKind::Animation
+                    : target == "Audio" ? ResourceKind::Audio
+                    : ResourceKind::Unknown;
+                const std::size_t issueCountBefore = result.issues.size();
+                validate_asset_reference(document, record, fieldName.c_str(), prefix + "." + fieldName,
+                                         objectId, componentId, assetKind, result);
+                if (result.issues.size() == issueCountBefore &&
+                    !asset_reference_extension_matches(target, value->get_ref<const std::string &>()))
+                    add_issue(result, ValidationSeverity::Error, objectId, componentId,
+                              prefix + "." + fieldName,
+                              "The asset file type does not match this reference.", true);
+            }
         }
     }
 }
@@ -628,7 +650,7 @@ void validate_component(const DocumentSession &document, const Json &component,
         validate_body(component, objectId, componentId, result);
         break;
     case SCRIPT:
-        validate_script(component, objectId, componentId, behaviorCatalog, result);
+        validate_script(document, component, objectId, componentId, behaviorCatalog, result);
         break;
     case SPRITE:
         validate_sprite(document, component, objectId, componentId, result);

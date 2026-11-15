@@ -19,13 +19,32 @@
 #include "platformator/circlecollider.h"
 #include "platformator/scriptcomponent.h"
 #include "platformator/sprite.h"
+#include "platformator/template.h"
 
 namespace
 {
 using Json = nlohmann::json;
 using Kind = platformator_detail::ObjectKind;
 using platformator_detail::positive;
-void validateIds(const Json &record, std::unordered_set<int> &ids, int64_t &next)
+template <typename T> T *retainAcquisition(std::vector<T *> &ledger, T *asset)
+{
+    asset->addReference();
+    try
+    {
+        ledger.push_back(asset);
+    }
+    catch (...)
+    {
+        asset->removeReferenceAndFreeIfNoReferences();
+        throw;
+    }
+    return asset;
+}
+} // namespace
+
+namespace platformator_detail
+{
+void validateObjectSubtreeIds(const Json &record, std::unordered_set<int> &ids, int64_t &next)
 {
     auto add = [&](const Json &value) {
         const int id = value.at("id").get<int>();
@@ -46,69 +65,18 @@ void validateIds(const Json &record, std::unordered_set<int> &ids, int64_t &next
         slots |= 1u << type;
     }
     for (const auto &child : record.at("children"))
-        validateIds(child, ids, next);
-}
-template <typename T> T *retainAcquisition(std::vector<T *> &ledger, T *asset)
-{
-    asset->addReference();
-    try
-    {
-        ledger.push_back(asset);
-    }
-    catch (...)
-    {
-        asset->removeReferenceAndFreeIfNoReferences();
-        throw;
-    }
-    return asset;
-}
-} // namespace
-
-SceneBuildContext::SceneBuildContext(GameManager &manager) : manager(manager)
-{
+        validateObjectSubtreeIds(child, ids, next);
 }
 
-SceneBuildContext::~SceneBuildContext()
+GameObject *buildObjectSubtree(const Json &record, platformator::ReferenceResolver &resolver,
+                               const SubtreeBuildSink &sink, GameObject *parent)
 {
-    for (auto *object : objects)
-    {
-        for (auto *component : object->components)
-            if (component && component->getHandle())
-                manager.registry.erase(*component);
-        if (object->getHandle())
-            manager.registry.erase(*object);
-        delete object;
-    }
-    for (auto *clip : clips)
-        clip->removeReferenceAndFreeIfNoReferences();
-    for (auto *asset : audio)
-        asset->removeReferenceAndFreeIfNoReferences();
-    for (auto *texture : textures)
-        texture->removeReferenceAndFreeIfNoReferences();
-}
-
-void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
-{
-    manager.registry.add(object, kind, false);
-    ids.emplace(object.getId(), &object);
-}
-
-GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *parent)
-{
-    auto *object = new GameObject();
-    try
-    {
-        objects.push_back(object);
-    }
-    catch (...)
-    {
-        delete object;
-        throw;
-    }
+    auto *object = sink.allocateObject(sink.context);
     object->setId(record.at("id").get<int>());
     object->setName(record.at("name").get<std::string>());
     object->setTag(record.at("tag").get<std::string>());
-    addIdentity(*object, Kind::GameObject);
+    if (sink.onIdentity)
+        sink.onIdentity(sink.context, *object, Kind::GameObject);
     if (parent != nullptr)
         parent->addChild(object);
     const auto position = record.at("position").get<Eigen::Vector2f>();
@@ -126,14 +94,14 @@ GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *paren
         {
         case ANIMATOR: {
             auto value = std::make_unique<Animator>();
-            deserialize(entry, *value, *this);
+            deserialize(entry, *value, resolver);
             kind = Kind::Animator;
             component = std::move(value);
             break;
         }
         case AUDIO: {
             auto value = std::make_unique<Audio>();
-            deserialize(entry, *value, *this);
+            deserialize(entry, *value, resolver);
             kind = Kind::Audio;
             component = std::move(value);
             break;
@@ -181,7 +149,7 @@ GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *paren
         }
         case SPRITE: {
             auto value = std::make_unique<Sprite>();
-            deserialize(entry, *value, *this);
+            deserialize(entry, *value, resolver);
             kind = Kind::Sprite;
             component = std::move(value);
             break;
@@ -192,11 +160,68 @@ GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *paren
         auto *raw = component.get();
         object->addComponent(raw);
         component.release();
-        addIdentity(*raw, kind);
+        if (sink.onIdentity)
+            sink.onIdentity(sink.context, *raw, kind);
     }
     for (const auto &child : record.at("children"))
-        buildObject(child, object);
+        buildObjectSubtree(child, resolver, sink, object);
     return object;
+}
+} // namespace platformator_detail
+
+SceneBuildContext::SceneBuildContext(GameManager &manager) : manager(manager)
+{
+}
+
+SceneBuildContext::~SceneBuildContext()
+{
+    for (auto *object : objects)
+    {
+        for (auto *component : object->components)
+            if (component && component->getHandle())
+                manager.registry.erase(*component);
+        if (object->getHandle())
+            manager.registry.erase(*object);
+        delete object;
+    }
+    for (auto *clip : clips)
+        clip->removeReferenceAndFreeIfNoReferences();
+    for (auto *asset : audio)
+        asset->removeReferenceAndFreeIfNoReferences();
+    for (auto *texture : textures)
+        texture->removeReferenceAndFreeIfNoReferences();
+    for (auto *tpl : templates)
+        tpl->removeReferenceAndFreeIfNoReferences();
+}
+
+void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
+{
+    manager.registry.add(object, kind, false);
+    ids.emplace(object.getId(), &object);
+}
+
+GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *parent)
+{
+    const platformator_detail::SubtreeBuildSink sink{
+        this,
+        [](void *context) -> GameObject * {
+            auto *self = static_cast<SceneBuildContext *>(context);
+            auto *object = new GameObject();
+            try
+            {
+                self->objects.push_back(object);
+            }
+            catch (...)
+            {
+                delete object;
+                throw;
+            }
+            return object;
+        },
+        [](void *context, BaseObject &obj, Kind kind) {
+            static_cast<SceneBuildContext *>(context)->addIdentity(obj, kind);
+        }};
+    return platformator_detail::buildObjectSubtree(record, *this, sink, parent);
 }
 
 void SceneBuildContext::prepare(const Scene &scene)
@@ -212,7 +237,7 @@ void SceneBuildContext::prepare(const Scene &scene)
             throw std::invalid_argument("Scene root must be an array");
         std::unordered_set<int> fileIds;
         for (const auto &record : document)
-            validateIds(record, fileIds, nextFileId);
+            platformator_detail::validateObjectSubtreeIds(record, fileIds, nextFileId);
         ids.reserve(fileIds.size() + 2);
         objects.reserve(fileIds.size());
         for (const auto &record : document)
@@ -239,6 +264,14 @@ void SceneBuildContext::prepare(const Scene &scene)
             object->getComponent<Camera>()->setId(static_cast<int>(nextFileId++));
             addIdentity(*object, Kind::GameObject);
             addIdentity(*object->getComponent<Camera>(), Kind::Camera);
+        }
+        for (auto *object : objects)
+        {
+            if (auto *script = object->getComponent<ScriptComponent>())
+            {
+                for (Behavior *behavior : script->getPendingBehaviors())
+                    behavior->resolveTemplateAssets(*this);
+            }
         }
     }
     catch (const std::exception &error)
@@ -268,4 +301,8 @@ AudioWrapper *SceneBuildContext::loadAudio(const std::string &path)
 AnimationClip *SceneBuildContext::loadAnimationClip(const std::string &path)
 {
     return retainAcquisition(clips, manager.loadAnimationClip(path, *this, true));
+}
+Template *SceneBuildContext::loadTemplate(const std::string &path)
+{
+    return retainAcquisition(templates, manager.loadTemplate(path, true));
 }

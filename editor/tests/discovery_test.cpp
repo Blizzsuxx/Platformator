@@ -319,6 +319,12 @@ void run_assignment_preserves_previous_value()
     };
     require(assign_if_valid("assets/Textures/Valid.png"),
             "a contained asset path must remain assignable through the shared validator");
+    std::filesystem::create_directories(assets / "Templates");
+    std::ofstream(assets / "Templates" / "Unit.pttemplate", std::ios::binary) << "{}";
+    require(validate_asset_reference_assignment(document, "assets/Templates/Unit.pttemplate", "Template", true, error) &&
+                !validate_asset_reference_assignment(document, "assets/Textures/Valid.png", "Template", true, error) &&
+                !validate_asset_reference_assignment(document, "assets/../Outside.png", "Template", true, error),
+            "Template references must accept contained .pttemplate paths and reject wrong kinds or escapes");
     const Json previous = document.root[0]["components"][0]["textureFilePath"];
     require(!assign_if_valid("assets/../Outside.png") &&
                 document.root[0]["components"][0]["textureFilePath"] == previous &&

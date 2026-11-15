@@ -41,6 +41,16 @@ Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipM
     setTextureWrapper(textureWrapper);
 }
 
+Component *Sprite::clone() const
+{
+    auto cloned = std::make_unique<Sprite>();
+    cloned->setTextureRegion(region);
+    cloned->setFlip(flip);
+    cloned->setWidth(width);
+    cloned->setHeight(height);
+    return cloned.release();
+}
+
 SDL_Texture *Sprite::getTexture() const
 {
     const TextureWrapper *wrapper = region.getTextureWrapper();

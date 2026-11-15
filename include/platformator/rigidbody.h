@@ -23,6 +23,7 @@ class Rigidbody : public Component
     Rigidbody(GameObject *gameObject);
     Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity);
     ~Rigidbody();
+    Component *clone() const override;
 
     Rigidbody *move(double timeDelta);
     Rigidbody *applyForces(double timeDelta, const Eigen::Vector2f &gravityVector);

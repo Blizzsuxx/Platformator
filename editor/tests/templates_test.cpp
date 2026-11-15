@@ -2238,6 +2238,103 @@ void test_component_subtype_bindings_and_mario_manager_export()
 
     std::filesystem::remove_all(tempDir, ec);
 }
+
+void test_template_asset_ref_preserved_across_export_duplicate_and_revert()
+{
+    const auto tempDir = std::filesystem::temp_directory_path() / "platformator_template_asset_ref_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempDir, ec);
+    const auto assets = tempDir / "assets";
+    const auto tmplDir = assets / "Templates";
+    std::filesystem::create_directories(tmplDir);
+    std::ofstream(tmplDir / "Child.pttemplate", std::ios::binary) << "{}";
+
+    const Json catalog{{"schema_version", 1}, {"behaviors", Json::array({
+        Json{{"name", "PrefabSpawner"}, {"field_schema_available", true},
+             {"fields", Json::array({
+                 Json{{"name", "childPrefab"}, {"kind", "asset_reference"},
+                      {"target", "Template"}, {"nullable", true}},
+                 Json{{"name", "targetObj"}, {"kind", "object_reference"},
+                      {"target", "GameObject"}, {"nullable", true}}})}}})}};
+
+    const Json spawnerObj = object(
+        20, "Spawner",
+        Json::array({
+            component(21, 5, Json{{"behaviors", Json::array({
+                Json{{"type", "PrefabSpawner"},
+                     {"childPrefab", "assets/Templates/Child.pttemplate"},
+                     {"targetObj", 20}}})}})}));
+
+    auto parsed = parse_document(scene({spawnerObj}));
+    require(static_cast<bool>(parsed), "source scene must parse");
+    DocumentSession &srcDoc = *parsed.document;
+    srcDoc.sourcePath = tempDir / "src.scene";
+
+    const auto &spawner = *find_document_object_by_id(srcDoc, 20);
+    const auto collected = collect_template_bindings(srcDoc, spawner, template_scene_identity(srcDoc), catalog);
+    require(static_cast<bool>(collected) && collected.assured &&
+                collected.bindings.size() == 1 &&
+                collected.bindings[0].value("path", std::string{}) == "/behaviors/0/targetObj",
+            "TemplateAssetRef must be preserved as an asset path, NOT collected as an object_reference binding");
+
+    EditCommandService cmds;
+    const auto exported = export_object_as_template(srcDoc, cmds, 20, tmplDir, catalog);
+    require(exported.succeeded && std::filesystem::exists(exported.outputPath),
+            "Exporting object with TemplateAssetRef must succeed: " + exported.message);
+
+    std::ifstream in(exported.outputPath);
+    const Json savedJson = Json::parse(in);
+    const auto loaded = load_template_envelope(savedJson);
+    require(static_cast<bool>(loaded), "Exported template must load cleanly: " + loaded.error);
+    require(loaded.asset->root().at("components").at(0).at("behaviors").at(0).at("childPrefab") ==
+                "assets/Templates/Child.pttemplate",
+            "Exported template must preserve childPrefab asset path");
+
+    const std::string spawnerRef = "assets/Templates/" + exported.outputPath.filename().string();
+    const auto coverage = template_asset_binding_coverage(*loaded.asset);
+    require(coverage.assured, "Template binding coverage must be assured: " + coverage.error);
+
+    const auto inserted = insert_template(
+        cmds, srcDoc, *loaded.asset, template_scene_identity(srcDoc), coverage,
+        std::nullopt, std::numeric_limits<std::size_t>::max(), {}, {}, spawnerRef);
+    require(static_cast<bool>(inserted), "Inserting template instance must succeed: " + inserted.error);
+    const int instId = inserted.sourceToDestinationIds.at(20);
+    require(find_document_object_by_id(srcDoc, instId)->at("components").at(0).at("behaviors").at(0).at("childPrefab") ==
+                "assets/Templates/Child.pttemplate",
+            "Inserted template instance must preserve childPrefab asset path");
+
+    const auto dupCollected = collect_template_bindings(
+        srcDoc, *find_document_object_by_id(srcDoc, instId), template_scene_identity(srcDoc), catalog);
+    require(static_cast<bool>(dupCollected) && dupCollected.assured,
+            "Collecting bindings for duplicate must succeed: " + dupCollected.error);
+    const auto dup = cmds.duplicate_objects(
+        srcDoc, {instId}, {}, DuplicateReferencePolicy::RemapInternalTargets,
+        dupCollected.bindings, dupCollected.assured);
+    require(dup.status == CommandStatus::Changed && dup.affectedObjectIds.size() == 1,
+            "Duplicating template instance must succeed: " + dup.message);
+    const int dupId = dup.affectedObjectIds.front();
+    require(find_document_object_by_id(srcDoc, dupId)->at("components").at(0).at("behaviors").at(0).at("childPrefab") ==
+                "assets/Templates/Child.pttemplate",
+            "Duplicated template instance must preserve childPrefab asset path");
+
+    const int instCompId = find_document_object_by_id(srcDoc, instId)->at("components").at(0).at("id").get<int>();
+    const auto setCmd = cmds.set_property(
+        srcDoc, PropertyAddress{srcDoc.documentGeneration, instId, instCompId, 0, {std::string("childPrefab")}},
+        nullptr);
+    require(setCmd.status == CommandStatus::Changed &&
+                find_document_object_by_id(srcDoc, instId)->at("components").at(0).at("behaviors").at(0).at("childPrefab").is_null(),
+            "Overriding childPrefab to null must succeed");
+    mark_template_override(srcDoc, instId, "childPrefab");
+
+    std::string revertErr;
+    require(revert_template_property(srcDoc, cmds, instId, instCompId, 0, {std::string("childPrefab")}, assets, revertErr),
+            "Reverting template instance must restore authored childPrefab asset path: " + revertErr);
+    require(find_document_object_by_id(srcDoc, instId)->at("components").at(0).at("behaviors").at(0).at("childPrefab") ==
+                "assets/Templates/Child.pttemplate",
+            "Reverted template instance must have authored childPrefab asset path");
+
+    std::filesystem::remove_all(tempDir, ec);
+}
 } // namespace
 
 int main()
@@ -2267,6 +2364,7 @@ int main()
         test_unsaved_inventory_covers_inactive_scene_template_and_animation_tabs();
         test_template_position_override_duplicate_revert_and_open_tab_apply_sync();
         test_component_subtype_bindings_and_mario_manager_export();
+        test_template_asset_ref_preserved_across_export_duplicate_and_revert();
         std::cout << "Template, binding, insertion, and duplicate cases passed\n";
         return 0;
     }

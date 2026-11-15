@@ -15,11 +15,13 @@ class ScriptComponent : public Component
 {
     friend class Collider;
     friend class GameManager;
+    friend class Template;
 
   public:
     ScriptComponent();
     ScriptComponent(GameObject *gameObject);
     ~ScriptComponent() override;
+    Component *clone() const override;
 
     Behavior *addBehavior(Behavior *behavior);
 
@@ -41,11 +43,16 @@ class ScriptComponent : public Component
     bool canDispatch() const;
 
   private:
+    void markPendingReferencesResolved()
+    {
+        pendingReferencesResolved = true;
+    }
     void startPendingBehaviors(platformator::ReferenceResolver &resolver);
     std::vector<Behavior *> behaviors;
     std::vector<Behavior *> pendingBehaviors;
     size_t pendingStartIndex = SIZE_MAX; // Global script startup queue.
     size_t gameManagerIndex;
+    bool pendingReferencesResolved = false;
     bool destructionDelivered = false;
 
     void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);

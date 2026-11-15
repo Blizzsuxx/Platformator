@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <stdexcept>
+#include <type_traits>
 
 #include <Eigen/Dense>
 #include <SDL3/SDL.h>
@@ -26,10 +27,16 @@ nlohmann::json exportRegisteredBehaviorCatalog();
 namespace platformator_json_detail
 {
 template <typename T>
-void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver, const char *field)
+void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver, const char *field,
+                            bool templatesOnly = false)
 {
     if constexpr (requires { value.resolve(resolver); })
     {
+        if (templatesOnly)
+        {
+            if constexpr (!(requires { value.get(); } && std::is_same_v<decltype(value.get()), Template *>))
+                return;
+        }
         try
         {
             value.resolve(resolver);
@@ -116,6 +123,8 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(count) PLATFORMATOR_CONCAT(PLATFORMATOR_SERIALIZABLE_SCRIPT_, count)
 #define PLATFORMATOR_RESOLVE_SERIALIZED_FIELD(field)                                                                   \
     platformator_json_detail::resolveSerializedField(field, resolver, #field);
+#define PLATFORMATOR_RESOLVE_TEMPLATE_FIELD(field)                                                                     \
+    platformator_json_detail::resolveSerializedField(field, resolver, #field, true);
 
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                  \
   public:                                                                                                              \
@@ -139,6 +148,10 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     void deserialize(const nlohmann::json &j) override                                                                 \
     {                                                                                                                  \
         from_json(j, *this);                                                                                           \
+    }                                                                                                                  \
+    Behavior *clone() const override                                                                                   \
+    {                                                                                                                  \
+        return new Type(*this);                                                                                        \
     }                                                                                                                  \
     static platformator::ScriptInspectionResult platformatorInspectScriptInstance(                                      \
         const Behavior &instance, const platformator::ScriptInspectionLimits &limits)                                    \
@@ -191,6 +204,10 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
         return result;                                                                                                 \
     }                                                                                                                  \
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Type, __VA_ARGS__)                                                     \
+    void resolveTemplateAssets(platformator::ReferenceResolver &resolver) override                                       \
+    {                                                                                                                  \
+        PLATFORMATOR_FOR_EACH(PLATFORMATOR_RESOLVE_TEMPLATE_FIELD, __VA_ARGS__)                                        \
+    }                                                                                                                  \
     void resolveReferences(platformator::ReferenceResolver &resolver) override                                         \
     {                                                                                                                  \
         PLATFORMATOR_FOR_EACH(PLATFORMATOR_RESOLVE_SERIALIZED_FIELD, __VA_ARGS__)                                      \

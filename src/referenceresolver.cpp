@@ -26,4 +26,8 @@ AnimationClip *ActiveReferenceResolver::loadAnimationClip(const std::string &pat
 {
     return RuntimeAccess::gameManager().loadAnimationClip(path, *this, true);
 }
+Template *ActiveReferenceResolver::loadTemplate(const std::string &path)
+{
+    return RuntimeAccess::gameManager().loadTemplate(path, true);
+}
 } // namespace platformator_detail

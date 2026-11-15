@@ -23,6 +23,18 @@ Animator::~Animator()
         const_cast<AnimationClip *>(currentAnimationClip)->removeReferenceAndFreeIfNoReferences();
 }
 
+Component *Animator::clone() const
+{
+    auto cloned = std::make_unique<Animator>();
+    if (currentAnimationClip)
+        cloned->setCurrentClip(currentAnimationClip);
+    cloned->setCurrentFrameIndex(currentFrameIndex);
+    cloned->setPlaybackSpeed(playbackSpeed);
+    if (playing && currentAnimationClip)
+        cloned->play(currentAnimationClip);
+    return cloned.release();
+}
+
 size_t Animator::getCurrentFrameIndex() const
 {
     return currentFrameIndex;

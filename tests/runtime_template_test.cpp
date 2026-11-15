@@ -1,0 +1,726 @@
+#include "test_support.h"
+
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <vector>
+
+#include <platformator/animator.h>
+#include <platformator/assetreference.h>
+#include <platformator/audio.h>
+#include <platformator/boxcollider.h>
+#include <platformator/camera.h>
+#include <platformator/circlecollider.h>
+#include <platformator/objectreference.h>
+#include <platformator/rigidbody.h>
+#include <platformator/runtime.h>
+#include <platformator/scene.h>
+#include <platformator/scriptcomponent.h>
+#include <platformator/scriptregistration.h>
+#include <platformator/sprite.h>
+#include <platformator/template.h>
+#include <platformator/texturewrapper.h>
+
+using namespace test_support;
+namespace fs = std::filesystem;
+
+namespace
+{
+std::filesystem::path findWorkspaceRelativePath(const std::filesystem::path &relativePath)
+{
+    std::filesystem::path search = std::filesystem::current_path();
+    while (true)
+    {
+        auto candidate = search / relativePath;
+        if (std::filesystem::exists(candidate))
+            return candidate;
+        if (!search.has_parent_path() || search.parent_path() == search)
+            break;
+        search = search.parent_path();
+    }
+    throw std::runtime_error("Could not locate workspace path: " + relativePath.string());
+}
+
+void writeJsonFile(const fs::path &path, const nlohmann::json &j)
+{
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.exceptions(std::ios::failbit | std::ios::badbit);
+    out << j.dump(2);
+}
+
+struct ScopedTempDir
+{
+    fs::path dir;
+    explicit ScopedTempDir(const std::string &name) : dir(fs::temp_directory_path() / name)
+    {
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+        fs::create_directories(dir / "assets" / "templates");
+        fs::create_directories(dir / "assets" / "scenes");
+        fs::copy_file(findWorkspaceRelativePath("assets/wall.png"), dir / "assets" / "wall.png",
+                      fs::copy_options::overwrite_existing);
+    }
+    ~ScopedTempDir()
+    {
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+    }
+};
+
+struct RuntimeTemplateTestState
+{
+    int compositeStartsVerified = 0;
+    int cycleSlimeSpawns = 0;
+    int midUpdateStartsVerified = 0;
+    int collisionSpawns = 0;
+    int updateSpawns = 0;
+    int wrongKindDestroys = 0;
+    void reset()
+    {
+        compositeStartsVerified = 0;
+        cycleSlimeSpawns = 0;
+        midUpdateStartsVerified = 0;
+        collisionSpawns = 0;
+        updateSpawns = 0;
+        wrongKindDestroys = 0;
+    }
+} gState;
+
+class SpawnerBehavior : public ::Behavior
+{
+  public:
+    platformator::TemplateAssetRef enemyTemplate;
+    platformator::TemplateAssetRef unsetTemplate;
+    SERIALIZABLE_SCRIPT(SpawnerBehavior, enemyTemplate, unsetTemplate)
+};
+
+class EnemyTagBehavior : public ::Behavior
+{
+  public:
+    int hp = 10;
+    platformator::TextureAssetRef badgeTexture;
+    SERIALIZABLE_SCRIPT(EnemyTagBehavior, hp, badgeTexture)
+};
+
+class CompositeRefsBehavior : public ::Behavior
+{
+  public:
+    ObjectReference<GameObject> childRef;
+    ObjectReference<Component> componentRef;
+    ObjectReference<Animator> animatorRef;
+    ObjectReference<Audio> audioRef;
+    ObjectReference<Camera> cameraRef;
+    ObjectReference<Collider> colliderRef;
+    ObjectReference<Rigidbody> rigidbodyRef;
+    ObjectReference<Sprite> spriteRef;
+    ObjectReference<ScriptComponent> scriptRef;
+    ObjectReference<GameObject> externalRef;
+    bool started = false;
+
+    void start() override
+    {
+        require(childRef && childRef.getReferencedId() == childRef->getId(),
+                "Composite childRef must resolve with new scene ID before start()");
+        require(componentRef && componentRef.getReferencedId() == componentRef->getId(),
+                "Composite componentRef must resolve with new scene ID before start()");
+        require(animatorRef && animatorRef->getGameObject() == childRef.get(),
+                "animatorRef must bind to cloned child Animator");
+        require(audioRef && audioRef.getReferencedId() == audioRef->getId(), "audioRef must bind");
+        require(cameraRef && cameraRef.getReferencedId() == cameraRef->getId(), "cameraRef must bind");
+        require(colliderRef && colliderRef.getReferencedId() == colliderRef->getId(), "colliderRef must bind");
+        require(rigidbodyRef && rigidbodyRef.getReferencedId() == rigidbodyRef->getId(), "rigidbodyRef must bind");
+        require(spriteRef && spriteRef.getReferencedId() == spriteRef->getId(), "spriteRef must bind");
+        require(scriptRef && scriptRef.get() == getGameObject()->getComponent<ScriptComponent>(),
+                "scriptRef must bind to own ScriptComponent");
+        require(!externalRef && !externalRef.getReferencedId().has_value(),
+                "External reference IDs must be cleared rather than aliasing destination scene IDs");
+        started = true;
+        ++gState.compositeStartsVerified;
+    }
+
+    SERIALIZABLE_SCRIPT(CompositeRefsBehavior, childRef, componentRef, animatorRef, audioRef, cameraRef, colliderRef,
+                        rigidbodyRef, spriteRef, scriptRef, externalRef)
+};
+
+class WrongKindBehavior : public ::Behavior
+{
+  public:
+    ObjectReference<Rigidbody> brokenBodyRef;
+    void onDestroy() override
+    {
+        ++gState.wrongKindDestroys;
+    }
+    SERIALIZABLE_SCRIPT(WrongKindBehavior, brokenBodyRef)
+};
+
+class SlimeCycleBehavior : public ::Behavior
+{
+  public:
+    int generation = 1;
+    platformator::TemplateAssetRef selfTemplate;
+    GameObject *spawnSplit(const Eigen::Vector2f &pos)
+    {
+        return platformator::instantiate(selfTemplate, pos);
+    }
+    void start() override
+    {
+        require(bool(selfTemplate), "Cloned cyclic template behavior must hold bound selfTemplate before start()");
+    }
+    SERIALIZABLE_SCRIPT(SlimeCycleBehavior, generation, selfTemplate)
+};
+
+class CycleNodeBehavior : public ::Behavior
+{
+  public:
+    std::string nodeName;
+    platformator::TemplateAssetRef otherTemplate;
+    void start() override
+    {
+        require(bool(otherTemplate), "Cloned mutual-cycle template must resolve peer template before start()");
+    }
+    SERIALIZABLE_SCRIPT(CycleNodeBehavior, nodeName, otherTemplate)
+};
+
+class StepAndCollisionSpawner : public ::Behavior
+{
+  public:
+    platformator::TemplateAssetRef unitTemplate;
+    int pendingUpdateSpawns = 0;
+    int pendingCollisionSpawns = 0;
+
+    void update(double) override
+    {
+        while (pendingUpdateSpawns > 0)
+        {
+            --pendingUpdateSpawns;
+            platformator::instantiate(unitTemplate, Eigen::Vector2f(10.0f + gState.updateSpawns, 0.0f));
+            ++gState.updateSpawns;
+        }
+    }
+
+    void onCollisionEnter(const Collision *, Collider *, double) override
+    {
+        while (pendingCollisionSpawns > 0)
+        {
+            --pendingCollisionSpawns;
+            platformator::instantiate(unitTemplate, Eigen::Vector2f(100.0f + gState.collisionSpawns, 0.0f));
+            ++gState.collisionSpawns;
+        }
+    }
+
+    SERIALIZABLE_SCRIPT(StepAndCollisionSpawner, unitTemplate)
+};
+
+class SpawnedUnitChildBehavior : public ::Behavior
+{
+  public:
+    ObjectReference<GameObject> childLink;
+    void start() override
+    {
+        require(childLink && childLink.getReferencedId() == childLink->getId() &&
+                    childLink->getParent() == getGameObject(),
+                "Mid-step spawned unit must remap internal childLink before start()");
+        ++gState.midUpdateStartsVerified;
+    }
+    SERIALIZABLE_SCRIPT(SpawnedUnitChildBehavior, childLink)
+};
+
+nlohmann::json makeAnimsetJson()
+{
+    return {{"filePath", "assets/anim.animset"},
+            {"frames",
+             nlohmann::json::array({{{"duration", 0.1},
+                                     {"sourceRect", {{"x", 0.0}, {"y", 0.0}, {"w", 4.0}, {"h", 4.0}}},
+                                     {"hasSourceRect", false},
+                                     {"textureWrapperFilePath", "assets/wall.png"}}})},
+            {"loop", true}};
+}
+
+nlohmann::json makeObjectJson(int id, const std::string &name, const Eigen::Vector2f &pos, float rot,
+                              const nlohmann::json &components, const nlohmann::json &children = nlohmann::json::array())
+{
+    return {{"id", id},
+            {"name", name},
+            {"tag", "unit"},
+            {"position", {{"x", pos.x()}, {"y", pos.y()}}},
+            {"scale", {{"x", 1.0f}, {"y", 1.0f}}},
+            {"rotation", rot},
+            {"active", true},
+            {"components", components},
+            {"children", children}};
+}
+
+nlohmann::json makeTemplateDoc(const std::string &name, const nlohmann::json &root)
+{
+    return {{"format", "platformator.object-template"},
+            {"version", 1},
+            {"name", name},
+            {"root", root},
+            {"reference_bindings", nlohmann::json::array()}};
+}
+
+void requireThrow(const std::function<void()> &fn, const std::string &message)
+{
+    bool threw = false;
+    try
+    {
+        fn();
+    }
+    catch (const std::exception &)
+    {
+        threw = true;
+    }
+    require(threw, message);
+}
+
+void testUs1PrototypeIsolationTransformsAssetsAndErrors()
+{
+    ScopedTempDir tmp("platformator_tpl_us1");
+    writeJsonFile(tmp.dir / "assets" / "anim.animset", makeAnimsetJson());
+
+    const auto childObj = makeObjectJson(
+        10, "Weapon", {2.0f, 3.0f}, 0.5f,
+        nlohmann::json::array({{{"id", 11},
+                                {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"},
+                                {"flip", 0},
+                                {"width", 8.0f},
+                                {"height", 8.0f},
+                                {"sourceRectEnabled", false}}}));
+
+    const auto enemyRoot = makeObjectJson(
+        0, "EnemyProto", {5.0f, 7.0f}, 0.25f,
+        nlohmann::json::array(
+            {{{"id", 1},
+              {"type", ComponentType::SPRITE},
+              {"textureFilePath", "assets/wall.png"},
+              {"flip", 0},
+              {"width", 16.0f},
+              {"height", 16.0f},
+              {"sourceRectEnabled", false}},
+             {{"id", 2},
+              {"type", ComponentType::ANIMATOR},
+              {"currentFrameIndex", 0},
+              {"playbackSpeed", 1.0f},
+              {"playing", true},
+              {"animationClipFilePath", "assets/anim.animset"}},
+             {{"id", 3},
+              {"type", ComponentType::COLLIDER},
+              {"colliderType", static_cast<int>(ColliderType::BoxCollider)},
+              {"width", 16.0f},
+              {"height", 16.0f},
+              {"offset", {{"x", 0.0f}, {"y", 0.0f}}},
+              {"trigger", false},
+              {"collisionGroup", 1},
+              {"collisionMask", 1}},
+             {{"id", 4},
+              {"type", ComponentType::RIGID_BODY},
+              {"velocity", {{"x", 0.0f}, {"y", 0.0f}}},
+              {"force", {{"x", 0.0f}, {"y", 0.0f}}},
+              {"mass", 2.0f},
+              {"angularVelocity", 0.0f},
+              {"torque", 0.0f},
+              {"friction", 0.5f},
+              {"restitution", 0.1f},
+              {"bodyType", static_cast<int>(BodyType::KINEMATIC)},
+              {"gravity", false}},
+             {{"id", 5},
+              {"type", ComponentType::SCRIPT},
+              {"behaviors",
+               nlohmann::json::array({{{"type", "EnemyTagBehavior"},
+                                       {"hp", 42},
+                                       {"badgeTexture", "assets/wall.png"}}})}}}),
+        nlohmann::json::array({childObj}));
+
+    writeJsonFile(tmp.dir / "assets" / "templates" / "enemy.pttemplate", makeTemplateDoc("Enemy", enemyRoot));
+
+    const auto spawnerSceneObj = makeObjectJson(
+        0, "Spawner", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "SpawnerBehavior"},
+                                                         {"enemyTemplate", "assets/templates/enemy.pttemplate"},
+                                                         {"unsetTemplate", nullptr}}})}}}));
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "us1.scene", nlohmann::json::array({spawnerSceneObj}));
+
+    RuntimeOptions opts;
+    opts.assetRoot = (tmp.dir / "assets").string();
+    platformator::Runtime runtime(opts);
+    runtime.loadScene((tmp.dir / "assets" / "scenes" / "us1.scene").string());
+
+    // Prototype isolation before any spawn: zero prototype objects exist in scene/runtime.
+    require(runtime.getGameObject("EnemyProto") == nullptr, "Prototype must not register in active GameManager");
+    require(runtime.getGameObject("Weapon") == nullptr, "Prototype children must not register before spawning");
+    const size_t initialCount = runtime.getAllGameObjects().size();
+    require(initialCount == 2, "Only Spawner and fallback Main Camera must be registered");
+
+    const auto savedBeforePath = tmp.dir / "saved_before.scene";
+    runtime.saveScene(savedBeforePath.string());
+    {
+        std::ifstream in(savedBeforePath);
+        nlohmann::json saved = nlohmann::json::parse(in);
+        require(saved.size() == initialCount, "Saved scene before spawn must omit inert template prototype");
+    }
+
+    auto *spawnerGo = runtime.getGameObject("Spawner");
+    auto *spawner = spawnerGo->getComponent<ScriptComponent>()->getBehavior<SpawnerBehavior>();
+    require(spawner && bool(spawner->enemyTemplate), "TemplateAssetRef must resolve on scene load");
+    require(!bool(spawner->unsetTemplate), "Null TemplateAssetRef must remain unset");
+
+    // Preloaded asset check: wall.png is already retained >= 2 (EnemyProto Sprite + Animator + badgeTexture).
+    TextureWrapper *wallTex = runtime.loadTexture("assets/wall.png");
+    require(wallTex->getReferenceCount() >= 2, "Template dependencies must be preloaded & retained before spawn");
+
+    // Boundary error: instantiating unset reference must throw clearly.
+    requireThrow([&] { platformator::instantiate(spawner->unsetTemplate); },
+                 "Instantiating unset TemplateAssetRef must throw");
+
+    // 1. Default instantiation (authored local pos/rot preserved).
+    GameObject *instA = platformator::instantiate(spawner->enemyTemplate);
+    require(instA != nullptr && bool(instA->getHandle()) && !instA->isRetired(),
+            "instA must be live");
+    require(instA->getLocalPosition().isApprox(Eigen::Vector2f(5.0f, 7.0f), 1e-4f),
+            "Default spawn must preserve prototype local position");
+    require(std::abs(instA->getRotation() - 0.25f) < 1e-4f, "Default spawn must preserve prototype rotation");
+    require(instA->getChildren().size() == 1 &&
+                instA->getChildren()[0]->getPosition().isApprox(Eigen::Vector2f(7.0f, 10.0f), 1e-4f),
+            "Spawned child world position must equal root + child local position");
+    require(instA->getComponent<ScriptComponent>()->getBehavior<EnemyTagBehavior>()->hp == 42,
+            "Cloned behavior fields must preserve prototype values");
+
+    // 2. Parented default instantiation (keeps authored local position relative to parent).
+    GameObject *parentGo = runtime.createGameObject()->setName("Parent")->setPosition({10.0f, 20.0f});
+    GameObject *instB = spawner->enemyTemplate->instantiate(parentGo);
+    require(instB->getParent() == parentGo, "Parented spawn must attach to parent");
+    require(instB->getLocalPosition().isApprox(Eigen::Vector2f(5.0f, 7.0f), 1e-4f),
+            "Parented default spawn must keep prototype local offset");
+    require(instB->getPosition().isApprox(Eigen::Vector2f(15.0f, 27.0f), 1e-4f),
+            "Parented default spawn world position must add parent position");
+    require(std::abs(instB->getRotation() - 0.25f) < 1e-4f,
+            "Parented default spawn must preserve prototype rotation");
+
+    // 3. Explicit world position + rotation even when parented, preserving child local offset.
+    GameObject *instC = platformator::instantiate(spawner->enemyTemplate, Eigen::Vector2f(30.0f, 40.0f), 1.25f, parentGo);
+    require(instC->getParent() == parentGo, "Parented world spawn must attach to parent");
+    require(instC->getPosition().isApprox(Eigen::Vector2f(30.0f, 40.0f), 1e-4f),
+            "Explicit world placement must set root world position even when parented");
+    require(instC->getLocalPosition().isApprox(Eigen::Vector2f(20.0f, 20.0f), 1e-4f),
+            "Parented explicit world placement must compute local position relative to parent");
+    require(std::abs(instC->getRotation() - 1.25f) < 1e-4f, "Explicit world rotation must be applied");
+    require(instC->getChildren()[0]->getPosition().isApprox(Eigen::Vector2f(32.0f, 43.0f), 1e-4f),
+            "Spawned child must preserve parent-relative local position under explicit root world placement");
+
+    // Independent IDs, mutation, and destruction.
+    require(instA->getId() != instB->getId() && instB->getId() != instC->getId(),
+            "Each spawned instance must have distinct scene IDs");
+    instA->setPosition({-50.0f, -60.0f});
+    instA->getComponent<ScriptComponent>()->getBehavior<EnemyTagBehavior>()->hp = 999;
+    require(instB->getComponent<ScriptComponent>()->getBehavior<EnemyTagBehavior>()->hp == 42,
+            "Mutating instA must not affect instB");
+    instA->destroy();
+    runtime.simulateFrame(dt);
+    require(bool(instB->getHandle()) && !instB->isRetired(),
+            "Destroying instA must leave sibling instB unaffected");
+
+    // Missing and malformed template files must fail fast cleanly.
+    requireThrow([&] { runtime.loadTemplate("assets/templates/does_not_exist.pttemplate"); },
+                 "Missing template must throw");
+    {
+        std::ofstream bad(tmp.dir / "assets" / "templates" / "corrupt.pttemplate");
+        bad << "{not valid json";
+    }
+    requireThrow([&] { runtime.loadTemplate("assets/templates/corrupt.pttemplate"); },
+                 "Corrupt template JSON must throw");
+    const auto brokenSceneObj = makeObjectJson(
+        0, "BrokenSpawner", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "SpawnerBehavior"},
+                                                         {"enemyTemplate", "assets/templates/does_not_exist.pttemplate"},
+                                                         {"unsetTemplate", nullptr}}})}}}));
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "broken.scene", nlohmann::json::array({brokenSceneObj}));
+    requireThrow([&] { runtime.loadScene((tmp.dir / "assets" / "scenes" / "broken.scene").string()); },
+                 "Scene load with missing template path must fail fast");
+}
+
+void testUs2AndUs4CompositeAndRollbackAndExternalClearing()
+{
+    gState.reset();
+    ScopedTempDir tmp("platformator_tpl_us2");
+    writeJsonFile(tmp.dir / "assets" / "anim.animset", makeAnimsetJson());
+
+    // Prototype internal IDs: root=0, script=1, rigidbody=2, box=3, camera=4, audio=5,
+    // child=10, childSprite=11, childAnimator=12; external=999 (absent from {0..12}).
+    const auto childJson = makeObjectJson(
+        10, "CompChild", {1.0f, 2.0f}, 0.0f,
+        nlohmann::json::array(
+            {{{"id", 11},
+              {"type", ComponentType::SPRITE},
+              {"textureFilePath", "assets/wall.png"},
+              {"flip", 0},
+              {"width", 4.0f},
+              {"height", 4.0f},
+              {"sourceRectEnabled", false}},
+             {{"id", 12},
+              {"type", ComponentType::ANIMATOR},
+              {"currentFrameIndex", 0},
+              {"playbackSpeed", 1.0f},
+              {"playing", false},
+              {"animationClipFilePath", "assets/anim.animset"}}}));
+
+    const auto rootJson = makeObjectJson(
+        0, "CompositeRoot", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array(
+            {{{"id", 1},
+              {"type", ComponentType::SCRIPT},
+              {"behaviors",
+               nlohmann::json::array(
+                   {{{"type", "CompositeRefsBehavior"},
+                     {"childRef", 10},
+                     {"componentRef", 11},
+                     {"animatorRef", 12},
+                     {"audioRef", 5},
+                     {"cameraRef", 4},
+                     {"colliderRef", 3},
+                     {"rigidbodyRef", 2},
+                     {"spriteRef", 11},
+                     {"scriptRef", 1},
+                     {"externalRef", 999}}})}},
+             {{"id", 2},
+              {"type", ComponentType::RIGID_BODY},
+              {"velocity", {{"x", 0.0f}, {"y", 0.0f}}},
+              {"force", {{"x", 0.0f}, {"y", 0.0f}}},
+              {"mass", 1.0f},
+              {"angularVelocity", 0.0f},
+              {"torque", 0.0f},
+              {"friction", 0.5f},
+              {"restitution", 0.0f},
+              {"bodyType", static_cast<int>(BodyType::STATIC)},
+              {"gravity", false}},
+             {{"id", 3},
+              {"type", ComponentType::COLLIDER},
+              {"colliderType", static_cast<int>(ColliderType::BoxCollider)},
+              {"width", 4.0f},
+              {"height", 4.0f},
+              {"offset", {{"x", 0.0f}, {"y", 0.0f}}},
+              {"trigger", false},
+              {"collisionGroup", 1},
+              {"collisionMask", 1}},
+             {{"id", 4}, {"type", ComponentType::CAMERA}, {"width", 640.0f}, {"height", 480.0f}},
+             {{"id", 5},
+              {"type", ComponentType::AUDIO},
+              {"filePath", ""},
+              {"gain", 1.0f},
+              {"loopCount", 0},
+              {"autoPlay", false}}}),
+        nlohmann::json::array({childJson}));
+
+    writeJsonFile(tmp.dir / "assets" / "templates" / "composite.pttemplate", makeTemplateDoc("Composite", rootJson));
+
+    // Wrong-kind internal reference template: WrongKindBehavior expects Rigidbody at id 1 (which is a Sprite).
+    const auto wrongKindRoot = makeObjectJson(
+        0, "WrongKindRoot", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array(
+            {{{"id", 1},
+              {"type", ComponentType::SPRITE},
+              {"textureFilePath", "assets/wall.png"},
+              {"flip", 0},
+              {"width", 4.0f},
+              {"height", 4.0f},
+              {"sourceRectEnabled", false}},
+             {{"id", 2},
+              {"type", ComponentType::SCRIPT},
+              {"behaviors",
+               nlohmann::json::array({{{"type", "WrongKindBehavior"}, {"brokenBodyRef", 1}}})}}}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "wrongkind.pttemplate",
+                  makeTemplateDoc("WrongKind", wrongKindRoot));
+
+    // Destination scene has an existing object with id 999 to prove externalRef clears instead of aliasing id 999!
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "dest.scene",
+                  nlohmann::json::array({makeObjectJson(999, "DestColliderDummy", {0.0f, 0.0f}, 0.0f,
+                                                        nlohmann::json::array())}));
+
+    RuntimeOptions opts;
+    opts.assetRoot = (tmp.dir / "assets").string();
+    platformator::Runtime runtime(opts);
+    runtime.loadScene((tmp.dir / "assets" / "scenes" / "dest.scene").string());
+    require(runtime.getObjectById(999) != nullptr, "Destination scene must contain object ID 999");
+
+    Template *compTpl = runtime.loadTemplate("assets/templates/composite.pttemplate");
+    GameObject *instA = compTpl->instantiate();
+    GameObject *instB = compTpl->instantiate();
+    runtime.simulateFrame(dt);
+
+    auto *behA = instA->getComponent<ScriptComponent>()->getBehavior<CompositeRefsBehavior>();
+    auto *behB = instB->getComponent<ScriptComponent>()->getBehavior<CompositeRefsBehavior>();
+    require(gState.compositeStartsVerified == 2 && behA->started && behB->started,
+            "Both spawned composite instances must remap internal refs before start() and run start()");
+    require(behA->childRef.get() == instA->getChildren()[0] && behB->childRef.get() == instB->getChildren()[0],
+            "Each instance's childRef must point only to its own cloned child");
+    require(behA->childRef.get() != behB->childRef.get() && behA->rigidbodyRef.get() != behB->rigidbodyRef.get() &&
+                behA->animatorRef.get() != behB->animatorRef.get(),
+            "Instance A and Instance B component references must be isolated");
+    require(!behA->externalRef && !behA->externalRef.getReferencedId().has_value(),
+            "External reference 999 must be cleared even when ID 999 exists in destination scene");
+
+    // Wrong internal target kind must throw & roll back atomically without leaving partial objects.
+    const size_t countBeforeFailure = runtime.getAllGameObjects().size();
+    Template *wrongTpl = runtime.loadTemplate("assets/templates/wrongkind.pttemplate");
+    requireThrow([&] { wrongTpl->instantiate(); }, "Wrong internal target kind must throw");
+    require(runtime.getAllGameObjects().size() == countBeforeFailure && gState.wrongKindDestroys == 0,
+            "Failed idle instantiation must roll back before registration and without invoking onDestroy");
+
+    bool midStepThrew = false;
+    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+        try
+        {
+            wrongTpl->instantiate();
+        }
+        catch (const std::exception &)
+        {
+            midStepThrew = true;
+        }
+        require(runtime.getAllGameObjects().size() == countBeforeFailure,
+                "Failed mid-step instantiation must leave zero partial objects during the step");
+    });
+    require(midStepThrew && runtime.getAllGameObjects().size() == countBeforeFailure && gState.wrongKindDestroys == 0,
+            "Failed mid-step instantiation must throw and avoid invoking onDestroy on partial clones");
+}
+
+void testUs4CyclesMidStepCollisionAndCleanup()
+{
+    gState.reset();
+    ScopedTempDir tmp("platformator_tpl_us4");
+
+    // Self-referential Slime -> Slime
+    const auto slimeRoot = makeObjectJson(
+        0, "Slime", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "SlimeCycleBehavior"},
+                                                         {"generation", 1},
+                                                         {"selfTemplate", "assets/templates/slime.pttemplate"}}})}}}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "slime.pttemplate", makeTemplateDoc("Slime", slimeRoot));
+
+    // Mutual cycle A -> B -> A
+    const auto cycleARoot = makeObjectJson(
+        0, "CycleA", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "CycleNodeBehavior"},
+                                                         {"nodeName", "A"},
+                                                         {"otherTemplate", "assets/templates/cycle_b.pttemplate"}}})}}}));
+    const auto cycleBRoot = makeObjectJson(
+        0, "CycleB", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "CycleNodeBehavior"},
+                                                         {"nodeName", "B"},
+                                                         {"otherTemplate", "assets/templates/cycle_a.pttemplate"}}})}}}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "cycle_a.pttemplate", makeTemplateDoc("CycleA", cycleARoot));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "cycle_b.pttemplate", makeTemplateDoc("CycleB", cycleBRoot));
+
+    // Unit template with child + ObjectReference for 100 mid-update & collision spawns.
+    const auto unitChild = makeObjectJson(10, "UnitChild", {1.0f, 0.0f}, 0.0f, nlohmann::json::array());
+    const auto unitRoot = makeObjectJson(
+        0, "SpawnedUnit", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "SpawnedUnitChildBehavior"},
+                                                         {"childLink", 10}}})}}}),
+        nlohmann::json::array({unitChild}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "unit.pttemplate", makeTemplateDoc("Unit", unitRoot));
+
+    RuntimeOptions opts;
+    opts.assetRoot = (tmp.dir / "assets").string();
+
+    {
+        platformator::Runtime runtime(opts);
+        runtime.createMainCameraIfNoMainCameraExists();
+
+        // Direct self-cycle load + live recursive spawn.
+        Template *slimeTpl = runtime.loadTemplate("assets/templates/slime.pttemplate");
+        GameObject *slime1 = slimeTpl->instantiate();
+        auto *slime1Beh = slime1->getComponent<ScriptComponent>()->getBehavior<SlimeCycleBehavior>();
+        require(bool(slime1Beh->selfTemplate), "Spawned cyclic Slime must bind selfTemplate");
+        GameObject *slime2 = slime1Beh->spawnSplit({4.0f, 0.0f});
+        require(slime2 && slime2 != slime1 &&
+                    bool(slime2->getComponent<ScriptComponent>()->getBehavior<SlimeCycleBehavior>()->selfTemplate),
+                "Second-generation split from cyclic Slime must also spawn and bind");
+
+        // Mutual cycle load + alternating spawn.
+        Template *cycleATpl = runtime.loadTemplate("assets/templates/cycle_a.pttemplate");
+        GameObject *instA = cycleATpl->instantiate();
+        auto *behA = instA->getComponent<ScriptComponent>()->getBehavior<CycleNodeBehavior>();
+        require(behA->nodeName == "A" && bool(behA->otherTemplate), "CycleA must bind CycleB");
+        GameObject *instB = platformator::instantiate(behA->otherTemplate);
+        auto *behB = instB->getComponent<ScriptComponent>()->getBehavior<CycleNodeBehavior>();
+        require(behB->nodeName == "B" && bool(behB->otherTemplate), "CycleB must bind CycleA");
+
+        // Mid-update (50) + collision-callback (50) spawns = 100 instances with internal remapping before start().
+        Template *unitTpl = runtime.loadTemplate("assets/templates/unit.pttemplate");
+        auto *spawnerGo = runtime.createGameObject()->setPosition({0.0f, 0.0f});
+        spawnerGo->addComponent<BoxCollider>(10.0f, 10.0f);
+        spawnerGo->addComponent<Rigidbody>(BodyType::DYNAMIC, false);
+        spawnerGo->addComponent<ScriptComponent>();
+        auto *stepSpawner = new StepAndCollisionSpawner();
+        stepSpawner->unitTemplate.set(unitTpl);
+        stepSpawner->pendingUpdateSpawns = 50;
+        stepSpawner->pendingCollisionSpawns = 50;
+        spawnerGo->getComponent<ScriptComponent>()->addBehavior(stepSpawner);
+
+        auto *blocker = runtime.createGameObject()->setPosition({2.0f, 0.0f});
+        blocker->addComponent<BoxCollider>(10.0f, 10.0f);
+        blocker->addComponent<Rigidbody>(BodyType::STATIC, false);
+
+        runtime.simulateFrame(dt);
+        require(gState.updateSpawns == 50 && gState.collisionSpawns == 50,
+                "All 50 mid-update and 50 collision-callback spawns must occur in frame 1");
+        runtime.simulateFrame(dt);
+        require(gState.midUpdateStartsVerified == 100,
+                "All 100 mid-update and collision-callback spawns must run start() with remapped refs on next frame");
+    }
+
+    // Repeated scene load/unload cleanup check (SC-005).
+    const auto cycleScene = nlohmann::json::array({slimeRoot});
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "cyclic.scene", cycleScene);
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "empty.scene", nlohmann::json::array());
+    {
+        platformator::Runtime runtime(opts);
+        for (int i = 0; i < 5; ++i)
+        {
+            runtime.loadScene((tmp.dir / "assets" / "scenes" / "cyclic.scene").string());
+            require(runtime.getGameObject("Slime") != nullptr, "Cyclic scene must load on iteration");
+            runtime.loadScene((tmp.dir / "assets" / "scenes" / "empty.scene").string());
+            require(runtime.getGameObject("Slime") == nullptr && runtime.getAllGameObjects().size() == 1,
+                    "Unloading scene must clear all spawned/loaded objects cleanly");
+        }
+    }
+}
+} // namespace
+
+int main()
+{
+    headlessEnvironment();
+    try
+    {
+        testUs1PrototypeIsolationTransformsAssetsAndErrors();
+        testUs2AndUs4CompositeAndRollbackAndExternalClearing();
+        testUs4CyclesMidStepCollisionAndCleanup();
+        std::cout << "Runtime template tests passed\n";
+        return 0;
+    }
+    catch (const std::exception &error)
+    {
+        std::cerr << "Runtime template tests failed: " << error.what() << '\n';
+        return 1;
+    }
+}

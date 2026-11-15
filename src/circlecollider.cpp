@@ -17,6 +17,17 @@ CircleCollider::~CircleCollider()
 {
 }
 
+Component *CircleCollider::clone() const
+{
+    auto cloned = std::make_unique<CircleCollider>();
+    cloned->setRadius(radius);
+    cloned->setOffset(offset);
+    cloned->setIsTrigger(getIsTrigger());
+    cloned->setCollisionGroup(collisionGroup);
+    cloned->setCollisionMask(collisionMask);
+    return cloned.release();
+}
+
 // Getters
 float CircleCollider::getRadius() const
 {

@@ -10,6 +10,7 @@ public:
     CircleCollider();
     CircleCollider(GameObject *gameObject, float radius);
     ~CircleCollider();
+    Component *clone() const override;
 
     std::vector<Eigen::Vector2f> getNormals(const Collider *other) const override;
     Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const override;

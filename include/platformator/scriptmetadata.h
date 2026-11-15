@@ -32,6 +32,7 @@ class Camera;
 class Collider;
 class ScriptComponent;
 class Sprite;
+class Template;
 class TextureWrapper;
 
 namespace platformator
@@ -326,6 +327,11 @@ template <> struct AssetTargetName<AudioWrapper>
 template <> struct AssetTargetName<AnimationClip>
 {
     static constexpr std::string_view value = "AnimationClip";
+};
+
+template <> struct AssetTargetName<Template>
+{
+    static constexpr std::string_view value = "Template";
 };
 
 template <typename T> struct ScriptFieldTraits<ObjectReference<T>>

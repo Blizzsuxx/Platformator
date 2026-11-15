@@ -936,7 +936,18 @@ void resolve_field_type(const std::string &rawCppType,
         out.nullable = true;
         return;
     }
-    if (const auto assetArg = extract_template_arg(t, "AssetRef"))
+    if (t == "TemplateAssetRef" || t == "platformator::TemplateAssetRef" ||
+        t == "TemplateRef" || t == "platformator::TemplateRef")
+    {
+        out.kind = "asset_reference";
+        out.targetType = "Template";
+        out.nullable = true;
+        return;
+    }
+    auto assetArg = extract_template_arg(t, "AssetReference");
+    if (!assetArg)
+        assetArg = extract_template_arg(t, "AssetRef");
+    if (assetArg)
     {
         out.kind = "asset_reference";
         out.targetType = strip_namespace_qualifiers(*assetArg);

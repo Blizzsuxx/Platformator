@@ -26,6 +26,7 @@ public:
 	Camera(GameObject *gameObject, float x, float y, float w, float h);
 	Camera(GameObject *gameObject, float w, float h);
 	~Camera();
+	Component *clone() const override;
 
 	void render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight);
 	Eigen::Vector2f worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const;

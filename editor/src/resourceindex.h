@@ -19,7 +19,8 @@ enum class ResourceKind
     Animation,
     Audio,
     Script,
-    Scene
+    Scene,
+    Template
 };
 
 enum class ResourceStatus

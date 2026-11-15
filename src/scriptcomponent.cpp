@@ -23,6 +23,21 @@ ScriptComponent::~ScriptComponent()
         delete behavior;
 }
 
+Component *ScriptComponent::clone() const
+{
+    auto cloned = std::make_unique<ScriptComponent>();
+    const auto attachClone = [&](const Behavior *behavior) {
+        std::unique_ptr<Behavior> copy(behavior->clone());
+        cloned->addBehavior(copy.get());
+        copy.release();
+    };
+    for (const auto *behavior : behaviors)
+        attachClone(behavior);
+    for (const auto *behavior : pendingBehaviors)
+        attachClone(behavior);
+    return cloned.release();
+}
+
 const std::vector<Behavior *> &ScriptComponent::getBehaviors() const
 {
     return behaviors;
@@ -50,6 +65,7 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
     }
     behavior->scriptComponent = this;
     behavior->setGameObject(getGameObject());
+    pendingReferencesResolved = false;
     return behavior;
 }
 
@@ -61,7 +77,8 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
         auto *behavior = pendingBehaviors[processed];
         try
         {
-            behavior->resolveReferences(resolver);
+            if (!pendingReferencesResolved)
+                behavior->resolveReferences(resolver);
             behavior->start();
         }
         catch (const std::exception &error)
@@ -77,6 +94,8 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
     }
     behaviors.insert(behaviors.end(), pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
     pendingBehaviors.erase(pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
+    if (pendingBehaviors.empty())
+        pendingReferencesResolved = false;
 }
 
 void ScriptComponent::update(double timeDelta)

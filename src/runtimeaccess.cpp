@@ -110,6 +110,11 @@ void RuntimeAccess::freeAnimationClip(AnimationClip *animationClip)
     gameManager().freeAnimationClip(animationClip);
 }
 
+void RuntimeAccess::freeTemplate(Template *tpl)
+{
+    gameManager().freeTemplate(tpl);
+}
+
 bool RuntimeAccess::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount)
 {
     return window()->playAndForget(audioWrapper, gain, loopCount);

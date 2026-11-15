@@ -6,6 +6,7 @@
 #include "componenttypes.h"
 #include "panels/hierarchy.h"
 #include "panels/referencefields.h"
+#include "resourceindex.h"
 #include "selection.h"
 #include "test_support.h"
 
@@ -521,11 +522,14 @@ void run_typed_reference_cases()
     std::filesystem::create_directories(assets / "Textures" / "Space Folder");
     std::filesystem::create_directories(assets / "Audio");
     std::filesystem::create_directories(assets / "Animations");
+    std::filesystem::create_directories(assets / "Templates");
     std::ofstream(assets / "Textures" / "Hero.PNG", std::ios::binary) << "texture";
     std::ofstream(assets / "Textures" / "Space Folder" / "雪 Hero.PNG", std::ios::binary) << "texture";
     std::ofstream(assets / "Audio" / "Click.WAV", std::ios::binary) << "audio";
     std::ofstream(assets / "Audio" / "Theme.AIFF", std::ios::binary) << "audio";
     std::ofstream(assets / "Animations" / "Walk.animset", std::ios::binary) << "animation";
+    std::ofstream(assets / "Templates" / "Enemy.pttemplate", std::ios::binary)
+        << R"({"format":"platformator.object-template","version":1,"name":"Enemy","root":{"id":0,"name":"Enemy"}})";
     std::ofstream(temporary.path() / "Outside.png", std::ios::binary) << "outside";
     std::filesystem::create_directory_symlink(temporary.path(), assets / "Escape");
 
@@ -576,6 +580,18 @@ void run_typed_reference_cases()
     const auto audio = inspect_asset_reference(document, audioPath, "Audio");
     const auto projectOnlyAudio = inspect_asset_reference(document, "assets/Audio/Theme.AIFF", "Audio");
     const auto animation = inspect_asset_reference(document, animationPath, "AnimationClip");
+    ResourceIndex resourceIndex;
+    resourceIndex.set_project(ProjectGeneration{1}, assets);
+    const auto templateRef = inspect_asset_reference(document, "assets/Templates/Enemy.pttemplate",
+                                                     "Template", &resourceIndex);
+    const auto wrongTemplateRef = inspect_asset_reference(document, texturePath, "Template", &resourceIndex);
+    require(templateRef.state == ReferenceState::Resolved &&
+                wrongTemplateRef.state == ReferenceState::WrongKind &&
+                validate_asset_reference_assignment(document, "assets/Templates/Enemy.pttemplate",
+                                                    "Template", true, error) &&
+                !validate_asset_reference_assignment(document, texturePath, "Template", true, error) &&
+                validate_asset_reference_assignment(document, nullptr, "Template", true, error),
+            "Template asset references must resolve .pttemplate via ResourceIndex and reject other asset kinds");
     require(texture.state == ReferenceState::Resolved && texture.path == texturePath.get<std::string>() &&
                 spacedUnicodeTexture.state == ReferenceState::Resolved &&
                 spacedUnicodeTexture.path == "assets/Textures/Space Folder/雪 Hero.PNG" &&

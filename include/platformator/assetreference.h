@@ -14,6 +14,7 @@
 #include "platformator/audiowrapper.h"
 #include "platformator/runtime.h"
 #include "platformator/referenceresolver.h"
+#include "platformator/template.h"
 #include <stdexcept>
 #include "platformator/texturewrapper.h"
 
@@ -22,6 +23,7 @@ namespace platformator_detail
 TextureWrapper *loadTextureAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
 AudioWrapper *loadAudioAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
 AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
+Template *loadTemplateAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
 } // namespace platformator_detail
 
 template <typename T> inline constexpr bool always_false_asset_reference_v = false;
@@ -190,6 +192,8 @@ template <typename T> class AssetReference
 
     T *resolve(platformator::ReferenceResolver &resolver)
     {
+        if (object != nullptr)
+            return get();
         const auto path = getFilePath();
         if (!path)
             return nullptr;
@@ -200,6 +204,12 @@ template <typename T> class AssetReference
             asset = resolver.loadAudio(*path);
         else if constexpr (std::is_same_v<T, AnimationClip>)
             asset = resolver.loadAnimationClip(*path);
+        else if constexpr (std::is_same_v<T, Template>)
+        {
+            asset = resolver.loadTemplate(*path);
+            if (!asset && resolver.allowDeferredTemplate(*path))
+                return nullptr;
+        }
         else
             static_assert(always_false_asset_reference_v<T>);
         if (!asset)
@@ -259,6 +269,10 @@ template <typename T> class AssetReference
         {
             return platformator_detail::loadAnimationClipAssetReference(runtime, assetPath);
         }
+        else if constexpr (std::is_same_v<T, Template>)
+        {
+            return platformator_detail::loadTemplateAssetReference(runtime, assetPath);
+        }
         else
         {
             static_assert(always_false_asset_reference_v<T>,
@@ -310,4 +324,35 @@ namespace platformator
 using TextureAssetRef = AssetReference<TextureWrapper>;
 using AudioAssetRef = AssetReference<AudioWrapper>;
 using AnimationClipRef = AssetReference<AnimationClip>;
+using TemplateAssetRef = AssetReference<Template>;
+
+namespace detail
+{
+inline Template *requireTemplateAsset(const AssetReference<Template> &tmpl)
+{
+    if (Template *resolved = tmpl.get())
+        return resolved;
+    const auto path = tmpl.getFilePath();
+    if (!path || path->empty())
+        throw std::invalid_argument("Cannot instantiate an unset template reference");
+    return Runtime::current().loadTemplate(*path);
+}
+} // namespace detail
+
+inline GameObject *instantiate(const AssetReference<Template> &tmpl, GameObject *parent = nullptr)
+{
+    return detail::requireTemplateAsset(tmpl)->instantiate(parent);
+}
+
+inline GameObject *instantiate(const AssetReference<Template> &tmpl, const Eigen::Vector2f &worldPosition,
+                               float worldRotation, GameObject *parent = nullptr)
+{
+    return detail::requireTemplateAsset(tmpl)->instantiate(worldPosition, worldRotation, parent);
+}
+
+inline GameObject *instantiate(const AssetReference<Template> &tmpl, const Eigen::Vector2f &worldPosition,
+                               GameObject *parent = nullptr)
+{
+    return detail::requireTemplateAsset(tmpl)->instantiate(worldPosition, parent);
+}
 } // namespace platformator

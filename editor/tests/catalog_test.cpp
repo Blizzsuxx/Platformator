@@ -358,6 +358,27 @@ void run_process_query_cases()
                 find_field(*updatedPlayer, "speed")->value("default_value", 0.0) == 9.5,
             "the incomplete behavior must retain its last-valid fields while unaffected behaviors update");
 
+    {
+        std::ofstream tplHeader(srcDir / "TemplateSpawner.h", std::ios::binary | std::ios::trunc);
+        tplHeader << "class TemplateSpawner : public Behavior {\n"
+                     "public:\n"
+                     "    platformator::TemplateAssetRef primary;\n"
+                     "    TemplateRef secondary;\n"
+                     "    AssetReference<Template> genericRef;\n"
+                     "    SERIALIZABLE_SCRIPT(TemplateSpawner, primary, secondary, genericRef)\n"
+                     "};\n";
+    }
+    const auto tplScan = scanner.scan_project(tempDir, tempDir / "assets");
+    const auto tplBeh = tplScan.behaviors.find("TemplateSpawner");
+    require(tplBeh != tplScan.behaviors.end() && tplBeh->second.fields.size() == 3,
+            "SourceBehaviorScanner must extract TemplateSpawner behavior with 3 template reference fields");
+    for (const char *name : {"primary", "secondary", "genericRef"})
+    {
+        const auto *f = field_named(tplBeh->second, name);
+        require(f != nullptr && f->kind == "asset_reference" && f->targetType == "Template" && f->nullable,
+                std::string("Template reference field '") + name + "' must scan as nullable Template asset_reference");
+    }
+
     write_braced_source("SERIALIZABLE_SCRIPT(BracedDefaults, ratio, factor)");
     const auto recoveredScan = scanner.scan_project(tempDir, tempDir / "assets");
     require(catalog.load_from_source_scan(recoveredScan),

@@ -19,6 +19,7 @@ public:
 	       float width = 0.0f, float height = 0.0f);
 	Sprite(GameObject *gameObject, const char *filePath, float width, float height);
 	~Sprite() override = default;
+	Component *clone() const override;
 
 	SDL_Texture *getTexture() const;
 	TextureWrapper *getTextureWrapper() const;

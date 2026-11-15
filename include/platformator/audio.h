@@ -19,6 +19,7 @@ class Audio : public Component
           float loopCount = 0);
     Audio();
     ~Audio() override;
+    Component *clone() const override;
 
     MIX_Track *getTrack() const;
     AudioWrapper *getAudioWrapper() const;
@@ -51,6 +52,7 @@ class Audio : public Component
 
 
   private:
+    friend class GameManager;
     friend class SDLWindow;
     AudioWrapper *audioWrapper;
     AudioWrapper *pendingReplay = nullptr;
@@ -59,6 +61,7 @@ class Audio : public Component
     int loopCount;
     bool autoPlay;
 
+    void ensureTrack();
     void freeAudio();
     void cancelPendingReplay();
     void finishPendingReplay();

@@ -16,6 +16,7 @@ class ActiveReferenceResolver : public platformator::ReferenceResolver
     TextureWrapper *loadTexture(const std::string &path) override;
     AudioWrapper *loadAudio(const std::string &path) override;
     AnimationClip *loadAnimationClip(const std::string &path) override;
+    Template *loadTemplate(const std::string &path) override;
 
   private:
     platformator::Runtime &runtime;

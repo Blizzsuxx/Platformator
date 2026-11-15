@@ -68,6 +68,40 @@ void run_script_validation_checks_behavior_schemas()
             "each behavior schema mismatch must report a non-empty, actionable reason");
     require(result.blocksRun,
             "blocking Script validation issues must mark the document as unsafe to run");
+
+    {
+        TemporaryDirectory tplTemp;
+        const auto tplProject = tplTemp.path() / "project";
+        const auto tplAssets = tplProject / "assets";
+        std::filesystem::create_directories(tplAssets / "Templates");
+        std::ofstream(tplAssets / "Templates" / "Ok.pttemplate", std::ios::binary) << "{}";
+        std::ofstream(tplAssets / "hero.png", std::ios::binary) << "png";
+
+        auto tplDoc = make_default_document(tplProject, tplAssets, 55);
+        tplDoc.root[0]["components"].push_back(component(
+            88, 5, Json{{"behaviors", Json::array({
+                Json{{"type", "Spawner"}, {"goodTpl", "assets/Templates/Ok.pttemplate"},
+                     {"missingTpl", "assets/Templates/Missing.pttemplate"},
+                     {"wrongTpl", "assets/hero.png"}}})}}));
+        ++tplDoc.structureRevision;
+        rebuild_document_indexes(tplDoc);
+
+        const Json tplCatalog{{"schema_version", 1}, {"behaviors", Json::array({
+            Json{{"name", "Spawner"}, {"field_schema_available", true},
+                 {"fields", Json::array({
+                     Json{{"name", "goodTpl"}, {"kind", "asset_reference"}, {"target", "Template"}, {"nullable", true}},
+                     Json{{"name", "missingTpl"}, {"kind", "asset_reference"}, {"target", "Template"}, {"nullable", true}},
+                     Json{{"name", "wrongTpl"}, {"kind", "asset_reference"}, {"target", "Template"}, {"nullable", true}}})}}})}};
+        const auto tplVal = validate_document(tplDoc, tplCatalog);
+        const auto hasTplIssue = [&](std::string_view fp) {
+            return std::any_of(tplVal.issues.begin(), tplVal.issues.end(), [&](const ValidationIssue &i) {
+                return i.componentId == 88 && i.fieldPath == fp && i.blocksRun;
+            });
+        };
+        require(!hasTplIssue("behaviors[0].goodTpl") && hasTplIssue("behaviors[0].missingTpl") &&
+                    hasTplIssue("behaviors[0].wrongTpl"),
+                "diagnostics must validate .pttemplate asset_reference fields for existence and extension");
+    }
 }
 
 void run_validation_rejects_stale_navigation_and_deleted_targets()

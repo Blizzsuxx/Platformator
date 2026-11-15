@@ -30,21 +30,41 @@ Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, boo
     : Component(gameObject, ComponentType::AUDIO), audioWrapper(nullptr), gain(gain), loopCount(loopCount),
       autoPlay(autoPlay)
 {
-    auto *mixer = platformator_detail::RuntimeAccess::window()->getMixer();
-    if (mixer)
-    {
-        track.reset(MIX_CreateTrack(mixer));
-        if (!track)
-            throw std::runtime_error(std::string("Failed to create audio track: ") + SDL_GetError());
-    }
+    if (gameObject != nullptr)
+        ensureTrack();
     setAudio(audioWrapper);
     setGain(gain);
+}
+
+void Audio::ensureTrack()
+{
+    if (track)
+        return;
+    auto *mixer = platformator_detail::RuntimeAccess::window()->getMixer();
+    if (!mixer)
+        return;
+    track.reset(MIX_CreateTrack(mixer));
+    if (!track)
+        throw std::runtime_error(std::string("Failed to create audio track: ") + SDL_GetError());
+    if (audioWrapper && !MIX_SetTrackAudio(track.get(), audioWrapper->getAudio()))
+        throw std::runtime_error(std::string("Failed to bind audio track: ") + SDL_GetError());
+    MIX_SetTrackGain(track.get(), gain);
 }
 
 Audio::~Audio()
 {
     cancelPendingReplay();
     freeAudio();
+}
+
+Component *Audio::clone() const
+{
+    auto cloned = std::make_unique<Audio>();
+    cloned->setAudio(audioWrapper);
+    cloned->setGain(gain);
+    cloned->setLoopCount(getLoopCount());
+    cloned->setAutoPlay(autoPlay);
+    return cloned.release();
 }
 
 void Audio::freeAudio()
@@ -60,6 +80,7 @@ void Audio::freeAudio()
 
 MIX_Track *Audio::getTrack() const
 {
+    const_cast<Audio *>(this)->ensureTrack();
     return track.get();
 }
 
@@ -90,6 +111,7 @@ bool Audio::play()
     {
         return false;
     }
+    ensureTrack();
 
     SDL_PropertiesID options = 0;
     if (loopCount != 0)
@@ -183,7 +205,7 @@ void Audio::setAudio(AudioWrapper *audio)
     cancelPendingReplay();
     if (audioWrapper == audio)
         return;
-    if (audio && !track)
+    if (audio && !track && !platformator_detail::RuntimeAccess::window()->getMixer())
         throw std::logic_error("Audio assets require an enabled audio backend");
     if (track && !MIX_SetTrackAudio(track.get(), audio ? audio->getAudio() : nullptr))
     {

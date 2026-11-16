@@ -7,9 +7,9 @@ The optional editor is a native C++20/SDL3 application built with the engine. It
 The editor is currently supported on Linux. From the repository root:
 
 ```sh
-cmake --preset editor-debug
-cmake --build --preset editor-debug --parallel 4 --target platformator_editor
-build/editor-debug/platformator_editor --project-root /path/to/project --asset-root /path/to/assets
+cmake --preset default
+cmake --build --preset default --parallel 4 --target platformator_editor
+build/default/platformator_editor --project-root /path/to/project --asset-root /path/to/assets
 ```
 
 The selected asset root must already exist. A project may omit `CMakeLists.txt` while you edit; use **Edit → Project Settings → Build & Run** to generate one before building. If `--project-root` is omitted, the editor restores the last opened workspace; if `--asset-root` is omitted, it uses `<project-root>/assets`. The workspace's last scene is opened with it. Relative CLI paths resolve against the invocation directory. `--scene FILE` overrides the restored scene, `--no-restore` skips scene restoration, and `--ui-scale 1.5` starts at 150% style scale. Run `platformator_editor --help` for the complete CLI.
@@ -17,9 +17,9 @@ The selected asset root must already exist. A project may omit `CMakeLists.txt` 
 To install the Linux editor with its SDK runtime libraries and resources:
 
 ```sh
-cmake --preset editor-debug -DPLATFORMATOR_INSTALL=ON
-cmake --build build/editor-debug --parallel 4
-cmake --install build/editor-debug --prefix /path/to/platformator-editor
+cmake --preset default
+cmake --build build/default --parallel 4
+cmake --install build/default --prefix /path/to/platformator-editor
 ```
 
 The installed editor resolves SDL and oneTBB from the prefix with a relative RUNPATH. Its default docking layout is compiled into the executable; the optional copy under `share/platformator/editor` is also installed. The installed `--help` command was verified from an unrelated working directory. A live GUI launch and Windows/macOS packaging remain unverified.
@@ -48,7 +48,7 @@ Use **File → Open Project Folder** to select another project or assets folder.
 
 Duplicate operations allocate new object/component IDs but preserve serialized numeric references to their existing targets, including targets in the duplicated subtree. These compatibility choices are deliberate and are recorded in the [parity inventory](../specs/011-add-imgui-editor/parity.md).
 
-**Edit → Project Settings → Build & Run** discovers configure/build presets, built executable targets, and executable artifacts from an existing CMake File API reply. Select a discovered executable or browse to one; advanced manual overrides remain available. The panel also configures runtime window options and debug overlays. The Production profile uses Release settings, disables debug tools, engine/benchmarks/work-probe instrumentation, tests, and unrelated Platformator targets, while keeping the selected target enabled. Runtime overlay and start-paused options are disabled in that profile. Scene collider components remain part of the game and continue to affect physics; only their debug outlines are omitted. Build and Run launches a separate game process. The editor stops only processes it owns.
+**Edit → Project Settings → Build & Run** discovers configure/build presets, built executable targets, and executable artifacts from an existing CMake File API reply. Select a discovered executable or browse to one; advanced manual overrides remain available. The panel also configures runtime window options and debug overlays. The Production profile uses Release settings. Game builds disable tests, benchmark products and their observation counters; debug tools follow the compiler mode. The selected target is built explicitly. Runtime overlay and start-paused options are disabled in that profile. Scene collider components remain part of the game and continue to affect physics; only their debug outlines are omitted. Build and Run launches a separate game process. The editor stops only processes it owns.
 
 ## Behaviors and catalog boundary
 
@@ -56,7 +56,7 @@ Behavior choices and typed fields in the Inspector come from an incremental scan
 
 ## Game panel and process ownership
 
-Embedded Game view is opt-in: configure with `-DPLATFORMATOR_ENABLE_EDITOR_SESSION=ON` and use a compatible shared-runner target. The child process advertises its session capability; unsupported targets retain the external game window path. Embedded capture uses two bounded 640×360 RGBA8 slots and requests frames only while the Game view is visible, up to 15 captures per second. Pause, Resume, one-step, read-only built-in inspection, and rebuilding before Run do not edit the authored scene. While input is captured, the editor forwards keyboard and mouse events to the child; controller input is not forwarded. Escape or clicking outside releases capture. The editor owns the foreground child it launches and stops/reaps that process tree before releasing session resources. It does not claim ownership of unrelated or daemonized processes.
+Embedded Game view uses a compatible shared-runner target. Session support is included in both Release and Debug builds. The child process advertises its session capability; unsupported targets retain the external game window path. Embedded capture uses two bounded 640×360 RGBA8 slots and requests frames only while the Game view is visible, up to 15 captures per second. Pause, Resume, one-step, read-only built-in inspection, and rebuilding before Run do not edit the authored scene. While input is captured, the editor forwards keyboard and mouse events to the child; controller input is not forwarded. Escape or clicking outside releases capture. The editor owns the foreground child it launches and stops/reaps that process tree before releasing session resources. It does not claim ownership of unrelated or daemonized processes.
 
 Linux is the only exercised editor platform. Semantic accessibility nodes and owner-thread actions have headless coverage, but a physical screen-reader walkthrough has not been completed. Windows UI Automation and macOS Accessibility provider sources are authored but have not been compiled or verified on their native platforms; keyboard navigation alone is not a screen-reader support claim.
 

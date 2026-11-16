@@ -61,13 +61,8 @@ run_checked("Linux editor configure"
     "-DCMAKE_INSTALL_PREFIX=${stage_dir}"
     -DCMAKE_INSTALL_LIBDIR=lib
     -DPLATFORMATOR_BUILD_EDITOR=ON
-    -DPLATFORMATOR_BUILD_TESTS=ON
+    -DBUILD_TESTING=ON
     -DPLATFORMATOR_INSTALL=ON
-    -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=ON
-    -DPLATFORMATOR_ENABLE_EDITOR_SESSION=ON
-    -DPLATFORMATOR_ENABLE_BENCHMARKS=OFF
-    -DPLATFORMATOR_ENABLE_WORK_PROBES=ON
-    -DPLATFORMATOR_EDITOR_WORK_COUNTERS=ON
     -DPLATFORMATOR_SANITIZER=none)
 run_checked("Linux editor build"
     "${CMAKE_COMMAND}" --build "${PLATFORMATOR_VALIDATION_BUILD_DIR}"
@@ -125,7 +120,7 @@ if(NOT source_dependency_index EQUAL -1 OR NOT build_dependency_index EQUAL -1)
     message(FATAL_ERROR "The relocated editor still resolves a dependency from its source/build tree.\n${ldd_output}")
 endif()
 
-run_checked("Linux editor-off/session-off SDK consumer validation"
+run_checked("Linux engine-only SDK consumer validation"
     "${CMAKE_COMMAND}"
     "-DPLATFORMATOR_SOURCE_DIR=${PLATFORMATOR_SOURCE_DIR}"
     "-DPLATFORMATOR_BINARY_DIR=${PLATFORMATOR_VALIDATION_BUILD_DIR}/runtime-consumer-validation"

@@ -3,10 +3,10 @@
 Rendering comparisons default to a compact exploratory pilot with a **50 MiB output / 600 second capture budget**. See the [rendering quickstart](../../specs/009-incremental-render-culling/quickstart.md). Retain reports, identities, commands and raw timings; keep builds outside artifacts. Full frame traces and exhaustive campaigns require an explicit user request. Other benchmark tools below do **not** inherit these guards: use equivalent external monitoring when running them. See [AGENTS.md](../../AGENTS.md) for the repository-wide retention policy.
 
 
-Configure `cmake --preset cleanup-benchmark`, then build `cmake --build --preset cleanup-benchmark --parallel 4`. Captures require Release without sanitizer, work probes or debug tools. Benchmark scopes themselves are timing instrumentation. Python tooling uses only the standard library except optional matplotlib plotting.
+Configure `cmake --preset benchmark`, then build `cmake --build --preset benchmark --parallel 4`. Captures require Release without sanitizer, work probes or debug tools. Benchmark scopes themselves are timing instrumentation. Python tooling uses only the standard library except optional matplotlib plotting.
 
 ```sh
-python3 engine/benchmarks/sweep_scaling.py --runner build/cleanup-benchmark/platformator_benchmark_runner \
+python3 engine/benchmarks/sweep_scaling.py --runner build/benchmark/platformator_benchmark_runner \
   --scenario broad_phase --counts 100 --workers 1 --seed 0 \
   --warmup-frames 5 --measure-frames 30 --dt 0.008333333333333333 \
   --repetitions 3 --raw-output-dir /tmp/broad-runs --output /tmp/broad.csv

@@ -463,56 +463,20 @@ bool is_platformator_source_repository(const std::filesystem::path &projectRoot,
         if (!error && !canonicalEngine.empty())
             return canonicalProject == canonicalEngine;
     }
-    return std::filesystem::is_regular_file(canonicalProject / "src" / "runner.cpp", error) &&
+    return std::filesystem::is_regular_file(canonicalProject / "engine" / "src" / "runner.cpp", error) &&
            std::filesystem::is_regular_file(
-               canonicalProject / "include" / "platformator" / "scriptregistration.h", error) &&
+               canonicalProject / "engine" / "include" / "platformator" / "scriptregistration.h", error) &&
            std::filesystem::is_regular_file(
                canonicalProject / "examples" / "mario" / "CMakeLists.txt", error);
 }
 
-std::vector<std::string> selected_target_cmake_options(const std::string &target,
-                                                     bool engineRepoBuild)
+std::vector<std::string> game_cmake_options(const std::string &target, bool engineRepoBuild)
 {
-    if (!engineRepoBuild)
-    {
-        return {"-DPLATFORMATOR_BUILD_RUNNER=OFF",
-                "-DPLATFORMATOR_BUILD_EDITOR=OFF"};
-    }
-    return {"-DPLATFORMATOR_BUILD_RUNNER=" + std::string(target == "main" ? "ON" : "OFF"),
-            "-DPLATFORMATOR_BUILD_EDITOR=" + std::string(target == "platformator_editor" ? "ON" : "OFF")};
-}
-
-std::vector<std::string> production_cmake_options(const std::string &target,
-                                                 bool enableEditorSession,
-                                                 bool engineRepoBuild)
-{
-    std::vector<std::string> options{"-DCMAKE_EXPORT_COMPILE_COMMANDS=OFF",
-                                     "-DPLATFORMATOR_SANITIZER=none",
-                                     "-DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF",
-                                     std::string("-DPLATFORMATOR_ENABLE_EDITOR_SESSION=") +
-                                         (enableEditorSession ? "ON" : "OFF"),
-                                     "-DPLATFORMATOR_ENABLE_BENCHMARKS=OFF",
-                                     "-DPLATFORMATOR_ENABLE_WORK_PROBES=OFF",
-                                     "-DPLATFORMATOR_BUILD_TESTS=OFF"};
-    const auto targetOptions = selected_target_cmake_options(target, engineRepoBuild);
-    options.insert(options.end(), targetOptions.begin(), targetOptions.end());
-    return options;
-}
-
-std::vector<std::string> development_cmake_options(const std::string &target,
-                                                  bool engineRepoBuild)
-{
-    std::vector<std::string> options{"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-                                     "-DPLATFORMATOR_SANITIZER=none",
-                                     "-DPLATFORMATOR_ENABLE_DEBUG_TOOLS=ON",
-                                     "-DPLATFORMATOR_ENABLE_EDITOR_SESSION=ON",
-                                     "-DPLATFORMATOR_ENABLE_BENCHMARKS=OFF",
-                                     "-DPLATFORMATOR_ENABLE_WORK_PROBES=OFF",
-                                     "-DPLATFORMATOR_BUILD_TESTS=" +
-                                         std::string(engineRepoBuild ? "ON" : "OFF")};
-    const auto targetOptions = selected_target_cmake_options(target, engineRepoBuild);
-    options.insert(options.end(), targetOptions.begin(), targetOptions.end());
-    return options;
+    // Game builds select a product; compiler/debug policy belongs to CMake.
+    return {"-DBUILD_TESTING=OFF", "-DPLATFORMATOR_BUILD_BENCHMARKS=OFF",
+            "-DPLATFORMATOR_SANITIZER=none",
+            "-DPLATFORMATOR_BUILD_EDITOR=" +
+                std::string(engineRepoBuild && target == "platformator_editor" ? "ON" : "OFF")};
 }
 
 ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoot,
@@ -537,14 +501,10 @@ ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoo
         if (preferences.production)
         {
             configure.emplace_back("-DCMAKE_BUILD_TYPE=Release");
-            const auto options = production_cmake_options(preferences.target,
-                                                         preferences.embeddedGameView,
-                                                         engineRepoBuild);
-            configure.insert(configure.end(), options.begin(), options.end());
             build.insert(build.end(), {"--config", "Release"});
         }
-        else
-            configure.emplace_back("-DPLATFORMATOR_ENABLE_EDITOR_SESSION=ON");
+        const auto gameOptions = game_cmake_options(preferences.target, engineRepoBuild);
+        configure.insert(configure.end(), gameOptions.begin(), gameOptions.end());
         build.insert(build.end(), {"--target", preferences.target});
         return {std::move(configure), std::move(build), {}};
     }
@@ -561,18 +521,8 @@ ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoo
     if (!platformatorSourceRoot.empty())
         configure.emplace_back("-DPLATFORMATOR_ENGINE_SOURCE_DIR=" +
                                platformatorSourceRoot.generic_string());
-    if (preferences.production)
-    {
-        const auto options = production_cmake_options(preferences.target,
-                                                     preferences.embeddedGameView,
-                                                     engineRepoBuild);
-        configure.insert(configure.end(), options.begin(), options.end());
-    }
-    else
-    {
-        const auto options = development_cmake_options(preferences.target, engineRepoBuild);
-        configure.insert(configure.end(), options.begin(), options.end());
-    }
+    const auto options = game_cmake_options(preferences.target, engineRepoBuild);
+    configure.insert(configure.end(), options.begin(), options.end());
     std::vector<std::string> build{"cmake", "--build", buildDirectory.string(),
                                    "--parallel", parallelJobs,
                                    "--target", preferences.target};

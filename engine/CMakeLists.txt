@@ -73,7 +73,7 @@ target_link_libraries(platformator_engine PUBLIC
 )
 
 if(PLATFORMATOR_BUILD_RUNNER)
-    add_executable(main "${PLATFORMATOR_MAIN_SOURCE}")
+    add_executable(main EXCLUDE_FROM_ALL "${PLATFORMATOR_MAIN_SOURCE}")
     target_link_libraries(main PRIVATE Platformator::platformator)
 
     if(DEFINED PLATFORMATOR_INSTALL_RPATH)
@@ -99,9 +99,6 @@ if(PLATFORMATOR_INSTALL)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(EXPORT PlatformatorTargets NAMESPACE Platformator::
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Platformator")
-    if(PLATFORMATOR_BUILD_RUNNER)
-        install(TARGETS main RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR})
-    endif()
     # A shared dependency may depend on another library in this same directory.
     foreach(runtime_target IN LISTS PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
         if(UNIX AND NOT APPLE)

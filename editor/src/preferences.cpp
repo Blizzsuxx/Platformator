@@ -1107,7 +1107,7 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
     {
         preferences.run.target = "main";
         if (preferences.run.buildPreset.empty())
-            preferences.run.buildPreset = preferences.run.production ? "production" : "debug";
+            preferences.run.buildPreset = preferences.run.production ? "default" : "debug";
         if (preferences.run.configurePreset.empty())
             preferences.run.configurePreset = preferences.run.buildPreset;
         if (preferences.run.executable.empty())

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 if(NOT TARGET Platformator::platformator)
     project(PlatformatorEditor LANGUAGES C CXX)
     option(PLATFORMATOR_BUILD_EDITOR "Standalone component build option" ON)
-    option(PLATFORMATOR_BUILD_TESTS "Standalone component build option" OFF)
+    option(BUILD_TESTING "Standalone component build option" OFF)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
     enable_testing()
     add_subdirectory(.. platformator)
@@ -13,7 +13,6 @@ if(NOT PLATFORMATOR_BUILD_EDITOR)
     message(FATAL_ERROR "The editor subdirectory requires PLATFORMATOR_BUILD_EDITOR=ON.")
 endif()
 
-option(PLATFORMATOR_EDITOR_WORK_COUNTERS "Enable editor work counters for focused correctness and performance probes" OFF)
 
 include(CheckSymbolExists)
 check_symbol_exists(posix_spawn_file_actions_addchdir "spawn.h"

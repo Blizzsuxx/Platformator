@@ -1,304 +1,100 @@
 {
-    "version": 3,
-    "cmakeMinimumRequired": {
-        "major": 3,
-        "minor": 16,
-        "patch": 0
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "OFF",
+        "PLATFORMATOR_BUILD_EDITOR": "ON",
+        "PLATFORMATOR_BUILD_BENCHMARKS": "OFF",
+        "PLATFORMATOR_SANITIZER": "none",
+        "PLATFORMATOR_INSTALL": "ON"
+      }
     },
-    "configurePresets": [
-        {
-            "name": "default",
-            "displayName": "Default",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/default",
-            "cacheVariables": {
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/default"
-            }
-        },
-        {
-            "name": "debug",
-            "displayName": "Debug",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/debug",
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "PLATFORMATOR_BUILD_RUNNER": "ON"
-            }
-        },
-        {
-            "name": "benchmark-debug",
-            "displayName": "Benchmark Debug",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/benchmark-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
-                "PLATFORMATOR_ENABLE_BENCHMARKS": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark-debug",
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "PLATFORMATOR_BUILD_RUNNER": "ON"
-            }
-        },
-        {
-            "name": "benchmark",
-            "displayName": "Benchmark",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/benchmark",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
-                "PLATFORMATOR_ENABLE_BENCHMARKS": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark",
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "PLATFORMATOR_BUILD_RUNNER": "ON"
-            }
-        },
-        {
-            "name": "benchmark-release",
-            "displayName": "Benchmark Release",
-            "inherits": "benchmark",
-            "binaryDir": "${sourceDir}/build/benchmark-release",
-            "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark-release"
-            }
-        },
-        {
-            "name": "production",
-            "displayName": "Production",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/production",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "OFF",
-                "PLATFORMATOR_SANITIZER": "none",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
-                "PLATFORMATOR_ENABLE_BENCHMARKS": "OFF",
-                "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "OFF",
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/production"
-            }
-        },
-        {
-            "name": "relwithdebinfo",
-            "displayName": "RelWithDebInfo",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/relwithdebinfo",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/relwithdebinfo",
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "PLATFORMATOR_BUILD_RUNNER": "ON"
-            }
-        },
-        {
-            "name": "cleanup-debug",
-            "inherits": "debug",
-            "binaryDir": "${sourceDir}/build/cleanup-debug",
-            "cacheVariables": {
-                "PLATFORMATOR_SANITIZER": "none",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-debug"
-            }
-        },
-        {
-            "name": "cleanup-asan",
-            "inherits": "debug",
-            "binaryDir": "${sourceDir}/build/cleanup-asan",
-            "cacheVariables": {
-                "PLATFORMATOR_SANITIZER": "address-undefined",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-asan"
-            }
-        },
-        {
-            "name": "cleanup-tsan",
-            "inherits": "debug",
-            "binaryDir": "${sourceDir}/build/cleanup-tsan",
-            "cacheVariables": {
-                "PLATFORMATOR_SANITIZER": "thread",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-tsan"
-            }
-        },
-        {
-            "name": "cleanup-work",
-            "inherits": "cleanup-debug",
-            "binaryDir": "${sourceDir}/build/cleanup-work",
-            "cacheVariables": {
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
-                "PLATFORMATOR_ENABLE_WORK_PROBES": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-work"
-            }
-        },
-        {
-            "name": "cleanup-benchmark",
-            "inherits": "benchmark",
-            "binaryDir": "${sourceDir}/build/cleanup-benchmark",
-            "cacheVariables": {
-                "PLATFORMATOR_SANITIZER": "none",
-                "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
-                "PLATFORMATOR_INSTALL": "OFF",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-benchmark"
-            }
-        },
-        {
-            "name": "editor-debug",
-            "displayName": "Editor Debug",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/editor-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "PLATFORMATOR_BUILD_EDITOR": "ON",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "PLATFORMATOR_BUILD_RUNNER": "OFF",
-                "PLATFORMATOR_INSTALL": "OFF",
-                "PLATFORMATOR_SANITIZER": "none",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
-                "PLATFORMATOR_ENABLE_WORK_PROBES": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-debug",
-                "PLATFORMATOR_ENABLE_EDITOR_SESSION": "ON"
-            }
-        },
-        {
-            "name": "editor-release",
-            "displayName": "Editor Release",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/editor-release",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "PLATFORMATOR_BUILD_EDITOR": "ON",
-                "PLATFORMATOR_BUILD_TESTS": "OFF",
-                "PLATFORMATOR_BUILD_RUNNER": "OFF",
-                "PLATFORMATOR_INSTALL": "OFF",
-                "PLATFORMATOR_SANITIZER": "none",
-                "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-release",
-                "PLATFORMATOR_ENABLE_EDITOR_SESSION": "ON"
-            }
-        },
-        {
-            "name": "editor-asan",
-            "displayName": "Editor Address and Undefined Sanitizers",
-            "inherits": "editor-debug",
-            "binaryDir": "${sourceDir}/build/editor-asan",
-            "cacheVariables": {
-                "PLATFORMATOR_SANITIZER": "address-undefined",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-asan",
-                "PLATFORMATOR_ENABLE_EDITOR_SESSION": "ON"
-            }
-        },
-        {
-            "name": "library",
-            "displayName": "Engine SDK only",
-            "inherits": "default",
-            "binaryDir": "${sourceDir}/build/library",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "PLATFORMATOR_BUILD_RUNNER": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "OFF",
-                "PLATFORMATOR_INSTALL": "ON"
-            }
-        },
-        {
-            "name": "tests",
-            "displayName": "Engine tests",
-            "inherits": "debug",
-            "binaryDir": "${sourceDir}/build/tests",
-            "cacheVariables": {
-                "PLATFORMATOR_BUILD_EDITOR": "OFF",
-                "PLATFORMATOR_BUILD_TESTS": "ON",
-                "PLATFORMATOR_BUILD_RUNNER": "OFF",
-                "PLATFORMATOR_INSTALL": "OFF"
-            }
+    {
+      "name": "debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "OFF",
+        "PLATFORMATOR_BUILD_EDITOR": "ON",
+        "PLATFORMATOR_BUILD_BENCHMARKS": "OFF",
+        "PLATFORMATOR_SANITIZER": "none",
+        "PLATFORMATOR_INSTALL": "ON"
+      }
+    },
+    {
+      "name": "test",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/test",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "PLATFORMATOR_BUILD_EDITOR": "ON",
+        "PLATFORMATOR_BUILD_BENCHMARKS": "OFF",
+        "PLATFORMATOR_SANITIZER": "none",
+        "PLATFORMATOR_INSTALL": "OFF"
+      }
+    },
+    {
+      "name": "benchmark",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/benchmark",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "OFF",
+        "PLATFORMATOR_BUILD_EDITOR": "ON",
+        "PLATFORMATOR_BUILD_BENCHMARKS": "ON",
+        "PLATFORMATOR_SANITIZER": "none",
+        "PLATFORMATOR_INSTALL": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "test",
+      "configurePreset": "test"
+    },
+    {
+      "name": "benchmark",
+      "configurePreset": "benchmark"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test",
+      "configurePreset": "test",
+      "filter": {
+        "exclude": {
+          "name": "platformator_package_smoke"
         }
-    ],
-    "buildPresets": [
-        {
-            "name": "default",
-            "displayName": "Default",
-            "configurePreset": "default"
-        },
-        {
-            "name": "debug",
-            "displayName": "Debug",
-            "configurePreset": "debug"
-        },
-        {
-            "name": "benchmark-debug",
-            "displayName": "Benchmark Debug",
-            "configurePreset": "benchmark-debug"
-        },
-        {
-            "name": "benchmark",
-            "displayName": "Benchmark",
-            "configurePreset": "benchmark"
-        },
-        {
-            "name": "benchmark-release",
-            "displayName": "Benchmark Release",
-            "configurePreset": "benchmark-release"
-        },
-        {
-            "name": "production",
-            "displayName": "Production",
-            "configurePreset": "production"
-        },
-        {
-            "name": "relwithdebinfo",
-            "displayName": "RelWithDebInfo",
-            "configurePreset": "relwithdebinfo"
-        },
-        {
-            "name": "cleanup-debug",
-            "configurePreset": "cleanup-debug"
-        },
-        {
-            "name": "cleanup-asan",
-            "configurePreset": "cleanup-asan"
-        },
-        {
-            "name": "cleanup-tsan",
-            "configurePreset": "cleanup-tsan"
-        },
-        {
-            "name": "cleanup-work",
-            "configurePreset": "cleanup-work"
-        },
-        {
-            "name": "cleanup-benchmark",
-            "configurePreset": "cleanup-benchmark"
-        },
-        {
-            "name": "editor-debug",
-            "displayName": "Editor Debug",
-            "configurePreset": "editor-debug"
-        },
-        {
-            "name": "editor-release",
-            "displayName": "Editor Release",
-            "configurePreset": "editor-release"
-        },
-        {
-            "name": "editor-asan",
-            "displayName": "Editor Address and Undefined Sanitizers",
-            "configurePreset": "editor-asan"
-        },
-        {
-            "name": "library",
-            "configurePreset": "library"
-        },
-        {
-            "name": "tests",
-            "configurePreset": "tests"
-        }
-    ]
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "benchmark",
+      "configurePreset": "benchmark",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
 }

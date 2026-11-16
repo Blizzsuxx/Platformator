@@ -1,4 +1,5 @@
 set(PLATFORMATOR_SANITIZER "none" CACHE STRING "none, address-undefined or thread")
+mark_as_advanced(PLATFORMATOR_SANITIZER)
 set_property(CACHE PLATFORMATOR_SANITIZER PROPERTY STRINGS none address-undefined thread)
 if(NOT PLATFORMATOR_SANITIZER MATCHES "^(none|address-undefined|thread)$")
     message(FATAL_ERROR "Unknown PLATFORMATOR_SANITIZER: ${PLATFORMATOR_SANITIZER}")

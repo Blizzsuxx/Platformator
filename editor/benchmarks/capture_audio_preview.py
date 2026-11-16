@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BINARY_CANDIDATES = (
     ROOT / "build/platformator_editor_audiopreview_test",
-    ROOT / "build/editor-debug/platformator_editor_audiopreview_test",
+    ROOT / "build/test/platformator_editor_audiopreview_test",
 )
 OUTPUT_LIMIT_BYTES = 64 * 1024
 WALL_BUDGET_SECONDS = 60

@@ -29,6 +29,11 @@ add_subdirectory(vendored/SDL3_image-3.4.8 ${platformator_dependency_exclusion})
 add_subdirectory(vendored/SDL3_ttf-3.2.2 ${platformator_dependency_exclusion})
 add_subdirectory(vendored/eigen-5.0.1 ${platformator_dependency_exclusion})
 add_subdirectory(vendored/oneTBB-2022.3.0 ${platformator_dependency_exclusion})
+# Eigen's dependent option hides BUILD_TESTING in the shared cache. Restore our
+# public selector after configuring vendors; their test switches stay off.
+set(BUILD_TESTING ${PLATFORMATOR_BUILD_TESTS} CACHE BOOL
+    "Build engine/editor correctness tests" FORCE)
+
 
 add_library(nlohmann_json INTERFACE)
 add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)

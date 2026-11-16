@@ -65,7 +65,9 @@ def read_cache(path: Path) -> dict[str, str]:
 def build_identity(build_dir: Path, work_probes: bool) -> dict:
     cache = read_cache(build_dir / "CMakeCache.txt")
     binary = build_dir / "platformator_transform_setter_probe"
-    manifest = build_dir / "generated/platformator-source-hashes.manifest"
+    manifest_paths = [build_dir / prefix / "generated/platformator-source-hashes.manifest"
+                      for prefix in ("engine", "platformator/engine", "")]
+    manifest = next((path for path in manifest_paths if path.is_file()), manifest_paths[0])
     if not binary.is_file() or not manifest.is_file():
         raise CaptureError(f"Missing probe binary or source manifest in {build_dir}")
     source_hash = next((line.split(":", 1)[1] for line in manifest.read_text().splitlines()
@@ -75,9 +77,13 @@ def build_identity(build_dir: Path, work_probes: bool) -> dict:
     expected_probes = "ON" if work_probes else "OFF"
     if cache.get("CMAKE_BUILD_TYPE") != "Release":
         raise CaptureError(f"{build_dir} is not a Release build")
-    if cache.get("PLATFORMATOR_ENABLE_WORK_PROBES") != expected_probes:
+    # Legacy captures used individual feature switches; current builds derive
+    # these from the public test selector and compiler mode.
+    probes = cache.get("PLATFORMATOR_ENABLE_WORK_PROBES", cache.get("BUILD_TESTING"))
+    debug_tools = cache.get("PLATFORMATOR_ENABLE_DEBUG_TOOLS", "OFF")
+    if probes != expected_probes:
         raise CaptureError(f"{build_dir} has unexpected work-probe configuration")
-    if cache.get("PLATFORMATOR_ENABLE_DEBUG_TOOLS") != "OFF":
+    if debug_tools != "OFF":
         raise CaptureError(f"{build_dir} has debug tools enabled")
     if cache.get("PLATFORMATOR_SANITIZER", "none") not in ("", "none"):
         raise CaptureError(f"{build_dir} has a sanitizer enabled")
@@ -90,7 +96,7 @@ def build_identity(build_dir: Path, work_probes: bool) -> dict:
         "compiler": cache.get("CMAKE_CXX_COMPILER", "unknown"),
         "compiler_flags": cache.get("CMAKE_CXX_FLAGS_RELEASE", ""),
         "work_probes": work_probes,
-        "debug_tools": cache.get("PLATFORMATOR_ENABLE_DEBUG_TOOLS") == "ON",
+        "debug_tools": debug_tools == "ON",
         "sanitizer": cache.get("PLATFORMATOR_SANITIZER", "none"),
     }
 

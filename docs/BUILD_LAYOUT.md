@@ -19,7 +19,7 @@ that link.
 | Editor | `editor/CMakeLists.txt` | `editor/resources` |
 | Engine tests | `engine/tests/CMakeLists.txt` | `engine/tests/fixtures/assets` |
 | Benchmark tools and correctness tests | `engine/benchmarks/CMakeLists.txt` | `engine/benchmarks/assets` |
-| Editor performance/GUI probes | `editor/benchmarks/CMakeLists.txt` | opt-in via `PLATFORMATOR_BUILD_EDITOR_PROBES` |
+| Editor performance/GUI probes | `editor/benchmarks/CMakeLists.txt` | selected by the `benchmark` profile |
 | Games | each `examples/*/CMakeLists.txt` | each game's own assets |
 
 Tests retain the former demonstration scenes as regression fixtures. Their WAV
@@ -53,65 +53,102 @@ cmake/
 vendored/
 ```
 
-## Root and SDK builds
+## Daily builds
+
+| Preset | Mode | Builds |
+| --- | --- | --- |
+| `default` | Release | Engine and editor |
+| `debug` | Debug | Engine and editor, with debug tools |
+| `test` | Debug | Engine, editor and correctness tests, with observation counters |
+| `benchmark` | Release | Engine/editor benchmark tools and their correctness checks, without observation counters |
 
 ```sh
-cmake -S . -B build/default
-cmake --build build/default --parallel 3
-cmake --preset library
-cmake --build --preset library --parallel 3
-cmake --install build/library --prefix /path/to/sdk
+cmake --preset default
+cmake --build --preset default --parallel 4
+build/default/platformator_editor
 ```
 
-A new default root build has tests, benchmarks, game examples and the generic
-runner disabled. Linux editor builds enable the editor play-session protocol by
-default. Existing cache choices are preserved; use a fresh build directory or
-pass options explicitly when changing profiles. The editor remains Linux-only
-under the current supported-platform policy.
+Replace `default` with `debug` for debugging. No `-DCMAKE_BUILD_TYPE` argument is
+needed. Each profile explicitly resets its component, test, sanitizer and install
+settings so that old cache values do not change its purpose. The desktop editor
+is currently Linux-only, so these editor presets require Linux.
 
-Consumers use `find_package(Platformator CONFIG REQUIRED)` and link
-`Platformator::platformator`. Adding the source checkout as a subdirectory defaults
-to the library alone and does not enable editor/test/example products or change
-the parent's runtime output directory. There is no `Platformator_ASSET_DIR` in
-the SDK: a game provides its own asset root.
+```sh
+cmake --preset test
+cmake --build --preset test --parallel 4
+ctest --preset test
+cmake --preset benchmark
+cmake --build --preset benchmark --parallel 4
+ctest --preset benchmark
+```
 
-`PLATFORMATOR_BUILD_RUNNER=ON` builds the generic `main` scene host. Pass
-`--scene /path/to/scene --asset-root /path/to/assets`; it no longer selects a
-repository demo scene automatically. `PLATFORMATOR_BUILD_EXAMPLES=ON` adds both
-games, with separate executable/asset directories to avoid collisions. Aggregate installs put
-them under `examples/mario` and `examples/crystal_citadel`; standalone installs
-keep each game's usual `bin`, `lib`, and `assets` layout.
+`ctest --preset test` excludes `platformator_package_smoke`, which builds and
+relocates a separate SDK and consumers. Run that expensive check explicitly with
+`ctest --test-dir build/test -R platformator_package_smoke --output-on-failure`.
+Benchmark correctness checks are small; building tools does not start a timing
+campaign. Captures follow the limits in `AGENTS.md`.
 
-## Standalone components
+The generic runner is an explicit target, excluded from the ordinary editor build:
 
-Use a distinct binary directory for each source entry point; CMake caches cannot
+```sh
+cmake --build --preset default --target main --parallel 4
+build/default/main --scene /path/to/game.scene --asset-root /path/to/assets
+```
+
+Games build separately with the standalone commands below and keep their own
+executable/asset directories. Root installation installs the SDK/editor;
+games have their own standalone installation workflows.
+
+## Standalone components and SDK
+
+Use a distinct build directory for each source entry point. CMake caches cannot
 be switched between root, editor, tests and benchmark source directories.
 
 ```sh
-cmake -S editor -B build/editor
-cmake --build build/editor --parallel 3
-cmake -S engine/tests -B build/tests -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/tests --parallel 3
-ctest --test-dir build/tests --output-on-failure -E package_smoke
-cmake -S engine/benchmarks -B build/benchmarks -DCMAKE_BUILD_TYPE=Release
-cmake --build build/benchmarks --parallel 3
-ctest --test-dir build/benchmarks --output-on-failure
-cmake -S examples/mario -B build/mario
-cmake --build build/mario --parallel 3
-cmake -S examples/crystal_citadel -B build/citadel
-cmake --build build/citadel --parallel 3
+cmake -S engine -B build/sdk -DCMAKE_BUILD_TYPE=Release
+cmake --build build/sdk --parallel 4
+cmake --install build/sdk --prefix /path/to/sdk
+
+cmake -S editor -B build/editor -DCMAKE_BUILD_TYPE=Release
+cmake --build build/editor --parallel 4
+
+cmake -S engine/tests -B build/engine-tests -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/engine-tests --parallel 4
+ctest --test-dir build/engine-tests --output-on-failure -E package_smoke
+
+cmake -S engine/benchmarks -B build/engine-benchmarks -DCMAKE_BUILD_TYPE=Release
+cmake --build build/engine-benchmarks --parallel 4
+ctest --test-dir build/engine-benchmarks --output-on-failure
+
+cmake -S examples/mario -B build/mario -DCMAKE_BUILD_TYPE=Release
+cmake --build build/mario --parallel 4
+cmake -S examples/crystal_citadel -B build/citadel -DCMAKE_BUILD_TYPE=Release
+cmake --build build/citadel --parallel 4
 ```
 
-Standalone benchmark builds default their own correctness tests on. Set
-`PLATFORMATOR_BUILD_BENCHMARK_TESTS=OFF` for tools alone. Engine tests, editor tests (`PLATFORMATOR_BUILD_EDITOR_TESTS`), and Python
-benchmark tests are independent; ordinary engine/editor builds do not require
-Python. Instrumentation (`PLATFORMATOR_ENABLE_BENCHMARKS`) enables benchmark
-products independently of `PLATFORMATOR_BUILD_RUNNER`.
+Consumers use `find_package(Platformator CONFIG REQUIRED)` and link
+`Platformator::platformator`. Adding the source checkout as a subdirectory defaults
+to the engine alone and does not change the parent's output directory. Games
+supply their own asset root; the SDK installs no assets.
 
-The `tests` preset offers the root-based engine-test build as an alternative.
-The existing debug, sanitizer and benchmark presets explicitly retain their
-validation settings. Benchmark captures still follow `AGENTS.md`; building
-benchmark tools does not authorize a timing campaign.
+The remaining public selectors are `BUILD_TESTING`,
+`PLATFORMATOR_BUILD_EDITOR`, and `PLATFORMATOR_BUILD_BENCHMARKS`.
+Tests enable their observation hooks together. Debug tools follow Debug or
+RelWithDebInfo. Editor-session support is always available to compatible runner
+projects, including Release builds. Installation and sanitizers remain advanced
+settings rather than additional daily presets. For example:
+
+```sh
+cmake --preset test -B build/asan -DPLATFORMATOR_SANITIZER=address-undefined
+cmake --build build/asan --parallel 4
+ctest --test-dir build/asan --output-on-failure -E package_smoke
+```
+
+The old `cleanup-*`, `editor-*`, `production`, `library`, `tests` and sanitizer
+preset names have been retired. Reconfigure using the new profile directories;
+old build trees and historical reports are not moved or rewritten. Saved custom
+editor Build & Run overrides are preserved; update overrides that name retired
+presets or old executable paths.
 
 ## Validation of this restructuring
 
@@ -156,5 +193,5 @@ After moving runtime sources, public headers, tests and benchmarks under
   smoke runs from `/tmp`; the generic runner passes an external-scene smoke run.
 - No benchmark performance campaign or physical desktop acceptance was run.
 
-Root presets and executable names remain unchanged. Standalone source entry
+At the time of that move, root presets and executable names remained unchanged. Standalone source entry
 points are now `engine/`, `engine/tests/`, `engine/benchmarks/`, and `editor/`.

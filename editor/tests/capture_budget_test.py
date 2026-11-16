@@ -161,9 +161,9 @@ class CaptureBudgetContractTest(unittest.TestCase):
     def test_frozen_baseline_identity_includes_binary_workload_host_and_harness(self):
         identity = dict(IDENTITY)
         identity.update({
-            "build_label": "editor-release",
+            "build_label": "benchmark",
             "expected_configuration": "Release",
-            "probe_path": "/repo/build/editor-release/platformator_editor_probe",
+            "probe_path": "/repo/build/benchmark/platformator_editor_probe",
             "host": {"system": "Linux", "machine": "x86_64", "release": "6.0",
                      "cpu_model": "CPU Model", "cpu_affinity": [0, 1]},
         })
@@ -171,7 +171,7 @@ class CaptureBudgetContractTest(unittest.TestCase):
             "Source SHA-256": "source",
             "Harness SHA-256": "harness",
             "Workload SHA-256": "workload",
-            "Probe build": "build/editor-release/platformator_editor_probe, Release, GNU 16, C++20",
+            "Probe build": "build/benchmark/platformator_editor_probe, Release, GNU 16, C++20",
             "Probe binary SHA-256": "binary",
             "Host": "Linux x86_64, kernel 6.0, CPU Model, CPUs 0–1",
         }

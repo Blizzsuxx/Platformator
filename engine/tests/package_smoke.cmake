@@ -12,9 +12,8 @@ set(relocated "${fixture}/relocated")
 file(MAKE_DIRECTORY "${fixture}/elsewhere")
 file(REMOVE_RECURSE "${prefix}")
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}" -B "${fixture}/core" -G Ninja
-    -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_BUILD_TESTS=OFF
-    -DPLATFORMATOR_BUILD_EDITOR=OFF -DPLATFORMATOR_ENABLE_EDITOR_SESSION=OFF
-    -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF -DPLATFORMATOR_INSTALL=ON)
+    -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+    -DPLATFORMATOR_BUILD_EDITOR=OFF -DPLATFORMATOR_INSTALL=ON)
 checked("${CMAKE_COMMAND}" --build "${fixture}/core" --parallel 3)
 checked("${CMAKE_COMMAND}" --install "${fixture}/core" --prefix "${prefix}")
 if(EXISTS "${prefix}/assets")
@@ -32,7 +31,7 @@ checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/engine/tests/consumer"
 checked("${CMAKE_COMMAND}" --build "${fixture}/relocated-consumer" --parallel 3)
 checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/relocated-consumer/consumer" "${PLATFORMATOR_SOURCE_DIR}/engine/tests/fixtures/assets")
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/engine/tests/consumer" -B "${fixture}/source-consumer"
-    -G Ninja -DCMAKE_BUILD_TYPE=Release "-DPLATFORMATOR_SOURCE_DIR=${PLATFORMATOR_SOURCE_DIR}" -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF)
+    -G Ninja -DCMAKE_BUILD_TYPE=Release "-DPLATFORMATOR_SOURCE_DIR=${PLATFORMATOR_SOURCE_DIR}")
 checked("${CMAKE_COMMAND}" --build "${fixture}/source-consumer" --parallel 3)
 checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/source-consumer/consumer" "${PLATFORMATOR_SOURCE_DIR}/engine/tests/fixtures/assets")
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/examples/mario" -B "${fixture}/mario"

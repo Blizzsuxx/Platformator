@@ -11,7 +11,8 @@ import unittest
 from unittest import mock
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPOSITORY_ROOT / "benchmark"))
+sys.path.insert(0, str(REPOSITORY_ROOT / "engine/benchmarks"))
+sys.path.insert(0, str(REPOSITORY_ROOT / "editor/benchmarks"))
 
 from capture_budget import BudgetExceeded, CaptureBudget  # noqa: E402
 import capture_editor  # noqa: E402

@@ -1726,9 +1726,9 @@ void run_project_cases()
             "oversized preset manifests must stop discovery before an unbounded read");
 
     const auto engineSource = temporary.path() / "platformator-source";
-    std::filesystem::create_directories(engineSource / "include" / "platformator");
+    std::filesystem::create_directories(engineSource / "engine" / "include" / "platformator");
     std::ofstream(engineSource / "CMakeLists.txt") << "project(platformator)\n";
-    std::ofstream(engineSource / "include" / "platformator" / "runner.h") << "// fixture\n";
+    std::ofstream(engineSource / "engine" / "include" / "platformator" / "runner.h") << "// fixture\n";
     const auto repairProjectRoot = temporary.path() / "engine-repair-project";
     const auto repairAssetRoot = repairProjectRoot / "assets";
     std::filesystem::create_directories(repairAssetRoot);

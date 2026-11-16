@@ -1,10 +1,10 @@
 function(platformator_add_test name source)
     cmake_parse_arguments(TEST "INTERNAL;PROBE" "" "LABELS" ${ARGN})
-    add_executable(${name} "${PROJECT_SOURCE_DIR}/${source}")
+    add_executable(${name} "${PLATFORMATOR_ENGINE_DIR}/${source}")
     target_link_libraries(${name} PRIVATE Platformator::platformator)
     if(TEST_INTERNAL)
         target_include_directories(${name} PRIVATE
-            "${PROJECT_SOURCE_DIR}/src" "${PROJECT_BINARY_DIR}/generated")
+            "${PLATFORMATOR_ENGINE_DIR}/src" "${PLATFORMATOR_ENGINE_BINARY_DIR}/generated")
     endif()
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES

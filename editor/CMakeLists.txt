@@ -132,8 +132,8 @@ target_compile_features(platformator_editor_core PRIVATE cxx_std_20)
 target_include_directories(platformator_editor_core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${PLATFORMATOR_EDITOR_GENERATED_DIR}"
-    "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_BINARY_DIR}/generated"
+    "${PLATFORMATOR_ENGINE_DIR}/src"
+    "${PLATFORMATOR_ENGINE_BINARY_DIR}/generated"
     "${PLATFORMATOR_IMGUI_DIR}"
     "${PLATFORMATOR_IMGUI_DIR}/backends"
 )
@@ -183,7 +183,7 @@ target_compile_features(platformator_editor PRIVATE cxx_std_20)
 target_link_libraries(platformator_editor PRIVATE platformator_editor_core)
 
 if(PLATFORMATOR_BUILD_EDITOR_PROBES)
-    add_subdirectory(benchmark)
+    add_subdirectory(benchmarks)
 endif()
 
 if(DEFINED PLATFORMATOR_INSTALL_RPATH)

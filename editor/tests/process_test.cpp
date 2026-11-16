@@ -574,7 +574,7 @@ void run_live_pipeline(const std::filesystem::path &projectRoot,
 int run_live_integrations(const std::filesystem::path &repositoryRoot)
 {
     const auto root = std::filesystem::canonical(repositoryRoot);
-    run_live_pipeline(root, root / "tests/fixtures/assets", root / "tests/fixtures/assets/scenes/default.scene",
+    run_live_pipeline(root, root / "engine/tests/fixtures/assets", root / "engine/tests/fixtures/assets/scenes/default.scene",
                       root / "build/debug/main",
                       {"cmake", "--preset", "debug"},
                       {"cmake", "--build", "--preset", "debug", "--target", "main"},

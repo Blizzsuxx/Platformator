@@ -1,5 +1,5 @@
 # Editor runtime previews use test-owned fixtures, never engine SDK assets.
-file(COPY "${PROJECT_SOURCE_DIR}/tests/fixtures/assets/"
+file(COPY "${PLATFORMATOR_ENGINE_DIR}/tests/fixtures/assets/"
     DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets")
 
 # Compile common fixture helpers once rather than once per editor executable.
@@ -126,19 +126,19 @@ endif()
 platformator_editor_add_test_if_sources(platformator_editor_sprite_region_test sprite_region_test.cpp)
 
 platformator_editor_add_test_if_sources(platformator_editor_catalog_test catalog_test.cpp catalog_fixture.cpp)
-target_include_directories(platformator_editor_catalog_test PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_include_directories(platformator_editor_catalog_test PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src")
 target_compile_definitions(platformator_editor_catalog_test PRIVATE
     PLATFORMATOR_EDITOR_CATALOG_PROCESS_FIXTURE="$<TARGET_FILE:platformator_editor_catalog_process_fixture>")
 
 platformator_editor_add_test_if_sources(platformator_editor_protocol_test editorprotocol_test.cpp)
-target_include_directories(platformator_editor_protocol_test PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_sources(platformator_editor_protocol_test PRIVATE "${PROJECT_SOURCE_DIR}/src/editorprotocol.cpp")
+target_include_directories(platformator_editor_protocol_test PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src")
+target_sources(platformator_editor_protocol_test PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src/editorprotocol.cpp")
 target_link_libraries(platformator_editor_protocol_test PRIVATE nlohmann_json::nlohmann_json)
 add_executable(platformator_editor_playsession_test playsession_test.cpp)
 target_compile_features(platformator_editor_playsession_test PRIVATE cxx_std_20)
 target_include_directories(platformator_editor_playsession_test PRIVATE
-    "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_BINARY_DIR}/generated"
+    "${PLATFORMATOR_ENGINE_DIR}/src"
+    "${PLATFORMATOR_ENGINE_BINARY_DIR}/generated"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
     "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
 if(PLATFORMATOR_ENABLE_EDITOR_SESSION)
@@ -147,7 +147,7 @@ if(PLATFORMATOR_ENABLE_EDITOR_SESSION)
 else()
     target_sources(platformator_editor_playsession_test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../src/playsession.cpp"
-        "${PROJECT_SOURCE_DIR}/src/editorprotocol.cpp")
+        "${PLATFORMATOR_ENGINE_DIR}/src/editorprotocol.cpp")
     target_link_libraries(platformator_editor_playsession_test PRIVATE
         platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
 endif()
@@ -159,7 +159,7 @@ if(NOT WIN32 AND PLATFORMATOR_ENABLE_EDITOR_SESSION)
     add_executable(platformator_editor_session_process_fixture session_process_fixture.cpp)
     target_compile_features(platformator_editor_session_process_fixture PRIVATE cxx_std_20)
     target_include_directories(platformator_editor_session_process_fixture PRIVATE
-        "${PROJECT_SOURCE_DIR}/src")
+        "${PLATFORMATOR_ENGINE_DIR}/src")
     target_link_libraries(platformator_editor_session_process_fixture PRIVATE
         Platformator::platformator nlohmann_json::nlohmann_json)
     target_compile_definitions(platformator_editor_playsession_test PRIVATE
@@ -178,7 +178,7 @@ platformator_editor_add_test_if_sources(platformator_editor_workspace_test
 
 platformator_editor_add_test_if_sources(platformator_editor_startup_test startup_test.cpp)
 target_include_directories(platformator_editor_startup_test PRIVATE
-    "${PROJECT_SOURCE_DIR}/src"
+    "${PLATFORMATOR_ENGINE_DIR}/src"
     "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
 target_link_libraries(platformator_editor_startup_test PRIVATE platformator_imgui)
 

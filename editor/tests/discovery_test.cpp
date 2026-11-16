@@ -421,9 +421,9 @@ void run_settings_semantics_cases()
             "the semantic missing-CMake action must be disabled while project work is active");
 
     const auto engineSource = temporary.path() / "engine-source";
-    std::filesystem::create_directories(engineSource / "include" / "platformator");
+    std::filesystem::create_directories(engineSource / "engine" / "include" / "platformator");
     std::ofstream(engineSource / "CMakeLists.txt") << "project(platformator)\n";
-    std::ofstream(engineSource / "include" / "platformator" / "runner.h") << "// fixture\n";
+    std::ofstream(engineSource / "engine" / "include" / "platformator" / "runner.h") << "// fixture\n";
     const auto generated = generate_project_cmakelists(temporary.path(), "SemanticProject", engineSource);
     std::ifstream generatedInput(temporary.path() / "CMakeLists.txt", std::ios::binary);
     const std::string generatedContents{std::istreambuf_iterator<char>(generatedInput),

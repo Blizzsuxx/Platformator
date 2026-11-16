@@ -240,10 +240,10 @@ namespace platformator_editor
             RuntimeOptions options;
             options.windowSettings.width = 320;
             options.windowSettings.height = 240;
-            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "tests/fixtures/assets";
+            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets";
             platformator::Runtime runtime(options);
             DocumentSession document = make_default_document(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR,
-                                                             std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "tests/fixtures/assets", 19);
+                                                             std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets", 19);
             Json child = object(12, -25.0f, -30.0f,
                                 Json::array({sprite(13), component(14, 3, Json{{"colliderType", 1}, {"width", 20.0}, {"height", 12.0}})}),
                                 Json::array(), std::numbers::pi_v<float> * 0.5f);
@@ -476,11 +476,11 @@ namespace platformator_editor
             RuntimeOptions options;
             options.windowSettings.width = 320;
             options.windowSettings.height = 240;
-            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "tests/fixtures/assets";
+            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets";
             platformator::Runtime runtime(options);
 
             DocumentSession document = make_default_document(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR,
-                                                             std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "tests/fixtures/assets", 19);
+                                                             std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets", 19);
             document.root = Json::array({object(1, 100.0f, 100.0f, Json::array({component(10, 3, Json{{"colliderType", 1}, {"width", 40.0}, {"height", 40.0}})})),
                                          object(2, 500.0f, 500.0f, Json::array({component(20, 3, Json{{"colliderType", 1}, {"width", 40.0}, {"height", 40.0}})}))});
             document.structureRevision++;

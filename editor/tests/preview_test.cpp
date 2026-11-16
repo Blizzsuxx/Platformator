@@ -80,7 +80,7 @@ class TemporaryAssets
         std::filesystem::create_directories(root / "assets" / "textures");
         std::filesystem::create_directories(root / "assets" / "animations");
         for (const char *file : {"black_square.png", "red_circle.png"})
-            std::filesystem::copy_file(sourceRoot / "tests/fixtures/assets" / "textures" / file,
+            std::filesystem::copy_file(sourceRoot / "engine/tests/fixtures/assets" / "textures" / file,
                                        root / "assets" / "textures" / file);
         SDL_Surface *asymmetric = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
         if (asymmetric == nullptr)

@@ -1099,8 +1099,8 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
         return;
 
     const bool platformatorSourceRoot =
-        std::filesystem::is_regular_file(root / "src" / "runner.cpp") &&
-        std::filesystem::is_regular_file(root / "include" / "platformator" / "scriptregistration.h") &&
+        std::filesystem::is_regular_file(root / "engine" / "src" / "runner.cpp") &&
+        std::filesystem::is_regular_file(root / "engine" / "include" / "platformator" / "scriptregistration.h") &&
         std::filesystem::is_regular_file(root / "examples" / "mario" / "CMakeLists.txt");
     if (platformatorSourceRoot &&
         (preferences.run.target.empty() || preferences.run.target == "main"))

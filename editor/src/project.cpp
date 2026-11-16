@@ -29,7 +29,7 @@ bool should_skip_directory(std::string_view name) noexcept
         return true;
     return name == "bin" || name == "build" || name == "dist" ||
            name == "vendored" || name == "vendor" || name == "node_modules" ||
-           name == "specs" || name == "benchmark" || name == "diplomski" ||
+           name == "specs" || (name == "benchmark" || name == "benchmarks") || name == "diplomski" ||
            name == "paper" || name == "docs";
 }
 
@@ -721,7 +721,8 @@ bool is_platformator_source_root(const std::filesystem::path &candidate) noexcep
         return false;
     std::error_code ec;
     return std::filesystem::is_regular_file(candidate / "CMakeLists.txt", ec) && !ec &&
-           std::filesystem::is_regular_file(candidate / "include" / "platformator" / "runner.h", ec) && !ec;
+           (std::filesystem::is_regular_file(candidate / "engine" / "include" / "platformator" / "runner.h", ec) ||
+            std::filesystem::is_regular_file(candidate / "include" / "platformator" / "runner.h", ec)) && !ec;
 }
 
 std::filesystem::path detect_platformator_source_root(const std::filesystem::path &hint)

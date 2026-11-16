@@ -61,5 +61,5 @@ Thumbs.db
 *.tar.xz
 
 # Persistent linear-render evidence bundles are local artifacts, not source changes.
-/benchmark/artifacts/linear-render-culling/
+/engine/benchmarks/artifacts/linear-render-culling/
 .vscode/

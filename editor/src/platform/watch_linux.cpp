@@ -25,7 +25,7 @@ bool should_skip_watched_directory(std::string_view name) noexcept
         return true;
     return name == "bin" || name == "build" || name == "dist" ||
            name == "vendored" || name == "vendor" || name == "node_modules" ||
-           name == "specs" || name == "benchmark" || name == "diplomski" ||
+           name == "specs" || (name == "benchmark" || name == "benchmarks") || name == "diplomski" ||
            name == "paper" || name == "docs";
 }
 

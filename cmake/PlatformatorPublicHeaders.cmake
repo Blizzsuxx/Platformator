@@ -1,8 +1,8 @@
 file(GLOB_RECURSE platformator_public_headers CONFIGURE_DEPENDS
-    "${PROJECT_SOURCE_DIR}/include/platformator/*.h")
+    "${PLATFORMATOR_ENGINE_DIR}/include/platformator/*.h")
 set(platformator_header_checks)
 foreach(header IN LISTS platformator_public_headers)
-    file(RELATIVE_PATH relative "${PROJECT_SOURCE_DIR}/include" "${header}")
+    file(RELATIVE_PATH relative "${PLATFORMATOR_ENGINE_DIR}/include" "${header}")
     string(REPLACE "/" "_" check_name "${relative}")
     set(check "${PROJECT_BINARY_DIR}/header-checks/${check_name}.cpp")
     file(GENERATE OUTPUT "${check}" CONTENT "#include <${relative}>\n")

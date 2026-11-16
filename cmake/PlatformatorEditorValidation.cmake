@@ -129,7 +129,7 @@ run_checked("Linux editor-off/session-off SDK consumer validation"
     "${CMAKE_COMMAND}"
     "-DPLATFORMATOR_SOURCE_DIR=${PLATFORMATOR_SOURCE_DIR}"
     "-DPLATFORMATOR_BINARY_DIR=${PLATFORMATOR_VALIDATION_BUILD_DIR}/runtime-consumer-validation"
-    -P "${PLATFORMATOR_SOURCE_DIR}/tests/package_smoke.cmake")
+    -P "${PLATFORMATOR_SOURCE_DIR}/engine/tests/package_smoke.cmake")
 
 message(STATUS "LINUX_EDITOR_INSTALL_VALIDATION: PASS")
 message(STATUS "Relocated prefix: ${relocated_dir}")

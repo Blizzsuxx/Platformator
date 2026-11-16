@@ -15,17 +15,43 @@ that link.
 
 | Component | Build owner | Resources |
 | --- | --- | --- |
-| Engine SDK | root `CMakeLists.txt` | None required or installed |
+| Engine SDK | `engine/CMakeLists.txt` | None required or installed |
 | Editor | `editor/CMakeLists.txt` | `editor/resources` |
-| Engine tests | `tests/CMakeLists.txt` | `tests/fixtures/assets` |
-| Benchmark tools and correctness tests | `benchmark/CMakeLists.txt` | `benchmark/assets` |
-| Editor performance/GUI probes | `editor/benchmark/CMakeLists.txt` | opt-in via `PLATFORMATOR_BUILD_EDITOR_PROBES` |
+| Engine tests | `engine/tests/CMakeLists.txt` | `engine/tests/fixtures/assets` |
+| Benchmark tools and correctness tests | `engine/benchmarks/CMakeLists.txt` | `engine/benchmarks/assets` |
+| Editor performance/GUI probes | `editor/benchmarks/CMakeLists.txt` | opt-in via `PLATFORMATOR_BUILD_EDITOR_PROBES` |
 | Games | each `examples/*/CMakeLists.txt` | each game's own assets |
 
 Tests retain the former demonstration scenes as regression fixtures. Their WAV
 fixture is local too; tests no longer copy audio out of Mario at configure time.
 Benchmark rendering owns its PNG fixtures and the two scene profiles used by its capture driver. Neither set is an SDK asset
 bundle. The root `assets/` directory is no longer needed.
+
+The root `CMakeLists.txt` configures shared dependencies and selects components;
+`engine/CMakeLists.txt` owns the library, runner and SDK installation. The editor
+continues to link the engine for previews. Public include spellings such as
+`<platformator/runtime.h>` and the exported CMake target are unchanged.
+
+The component layout is:
+
+```text
+CMakeLists.txt             # workspace composition
+engine/
+  CMakeLists.txt           # library, runner, SDK
+  include/platformator/    # public API
+  src/
+  tests/
+  benchmarks/
+editor/
+  CMakeLists.txt
+  src/
+  tests/
+  benchmarks/
+  resources/
+examples/
+cmake/
+vendored/
+```
 
 ## Root and SDK builds
 
@@ -64,10 +90,10 @@ be switched between root, editor, tests and benchmark source directories.
 ```sh
 cmake -S editor -B build/editor
 cmake --build build/editor --parallel 3
-cmake -S tests -B build/tests -DCMAKE_BUILD_TYPE=Debug
+cmake -S engine/tests -B build/tests -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/tests --parallel 3
 ctest --test-dir build/tests --output-on-failure -E package_smoke
-cmake -S benchmark -B build/benchmarks -DCMAKE_BUILD_TYPE=Release
+cmake -S engine/benchmarks -B build/benchmarks -DCMAKE_BUILD_TYPE=Release
 cmake --build build/benchmarks --parallel 3
 ctest --test-dir build/benchmarks --output-on-failure
 cmake -S examples/mario -B build/mario
@@ -89,7 +115,7 @@ benchmark tools does not authorize a timing campaign.
 
 ## Validation of this restructuring
 
-On 2026-11-16, with the root `assets/` directory absent:
+The earlier build decoupling was validated on 2026-11-16, with the root `assets/` directory absent:
 
 - Full engine/editor build and public-header compilation succeeded. Shared editor
   test helpers now compile once instead of once per test executable.
@@ -113,3 +139,22 @@ installation/relocation/consumer/game checks above. Standalone editor and test
 entry points were configuration-checked; their code was built through the root
 validation build. Physical desktop interaction and other operating systems were
 not tested by this restructuring.
+
+## Component-directory move validation
+
+After moving runtime sources, public headers, tests and benchmarks under
+`engine/`, and editor probes/capture drivers under `editor/benchmarks/`:
+
+- Full C++ build and public-header checks succeed; non-package CTest reports
+  **66 passed, 6 skipped, 0 failed**. The skips remain the five work-probe
+  tests and the restricted D-Bus accessibility check.
+- Standalone engine benchmarks build and pass all **4 correctness suites**.
+  Engine/editor Python tooling passes **76 tests** in total.
+- Standalone engine, engine tests, editor and benchmark configurations succeed.
+- SDK installation and a separately built installed consumer run without assets.
+  Both game examples build against that SDK and pass five-step dummy-backend
+  smoke runs from `/tmp`; the generic runner passes an external-scene smoke run.
+- No benchmark performance campaign or physical desktop acceptance was run.
+
+Root presets and executable names remain unchanged. Standalone source entry
+points are now `engine/`, `engine/tests/`, `engine/benchmarks/`, and `editor/`.

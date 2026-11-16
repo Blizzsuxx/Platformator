@@ -9,22 +9,24 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
     endif()
     file(GLOB_RECURSE platformator_fingerprint_inputs CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*" "${CMAKE_CURRENT_SOURCE_DIR}/include/platformator/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*")
-    list(APPEND platformator_fingerprint_inputs "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+        "${PLATFORMATOR_ROOT_DIR}/cmake/*")
+    list(APPEND platformator_fingerprint_inputs "${PLATFORMATOR_ROOT_DIR}/CMakeLists.txt"
+        "${PLATFORMATOR_ROOT_DIR}/CMakePresets.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/linear_render_probe.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_linear_render.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_budget.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/sweep_scaling.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/transform_setter_probe.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_transform_setter.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/tests/test_linear_render.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/CMakeLists.txt"
+        "${PLATFORMATOR_ROOT_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/linear_render_probe.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/capture_linear_render.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/capture_budget.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/sweep_scaling.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/transform_setter_probe.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/capture_transform_setter.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/tests/test_linear_render.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/render_culling_fixture.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_work_probe.h")
     file(GLOB_RECURSE platformator_loaded_asset_inputs CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/assets/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/assets/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/assets/*")
     list(APPEND platformator_fingerprint_inputs ${platformator_loaded_asset_inputs})
     set(platformator_unique_fingerprint_inputs "")
@@ -43,7 +45,7 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
     foreach(source_file IN LISTS platformator_fingerprint_inputs)
         if(NOT IS_DIRECTORY "${source_file}")
             file(SHA256 "${source_file}" source_hash)
-            file(RELATIVE_PATH source_name "${CMAKE_CURRENT_SOURCE_DIR}" "${source_file}")
+            file(RELATIVE_PATH source_name "${PLATFORMATOR_ROOT_DIR}" "${source_file}")
             string(APPEND platformator_source_hashes "${source_name}:${source_hash}\n")
             file(APPEND "${platformator_source_hash_manifest}" "${source_name}:${source_hash}\n")
         endif()
@@ -52,8 +54,8 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
     file(APPEND "${platformator_source_hash_manifest}"
         "aggregate:${PLATFORMATOR_BENCH_SOURCE_SHA256}\n")
     file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/tests/render_culling_fixture.h" PLATFORMATOR_LINEAR_FIXTURE_SHA256)
-    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/linear_render_probe.cpp" platformator_probe_sha)
-    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/capture_linear_render.py" platformator_capture_driver_sha)
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/linear_render_probe.cpp" platformator_probe_sha)
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/capture_linear_render.py" platformator_capture_driver_sha)
     file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_work_probe.h" platformator_work_probe_sha)
     string(SHA256 PLATFORMATOR_LINEAR_HARNESS_SHA256
         "fixture:${PLATFORMATOR_LINEAR_FIXTURE_SHA256}\nprobe:${platformator_probe_sha}\ndriver:${platformator_capture_driver_sha}\nwork:${platformator_work_probe_sha}")

@@ -24,6 +24,8 @@ bin/cleanup-debug/main --headless --scene /tmp/platformator-empty.scene --smoke-
 
 Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. The core assets include example placeholder files; nonempty asset requests must resolve successfully and do not automatically fall back. Examples are configured and built separately as standalone projects; see [Mario](examples/mario/CMakeLists.txt) (e.g. `cmake -S examples/mario -B bin/mario && cmake --build bin/mario`). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
 
+Game pause (F5 in debug builds, or the editor's Pause control) freezes game audio along with simulation. Playback positions and fades resume from where they stopped; sounds requested while paused wait for resume. Single-stepping keeps audio suspended. Individually paused sounds retain their state, and editor asset previews remain independent.
+
 ## Embed or install
 
 ```cmake

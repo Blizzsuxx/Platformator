@@ -137,9 +137,10 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
                 debugDraw.toggleShowGridCells();
                 break;
             case SDLK_F5:
-                paused = !paused;
-                advanceFrameRequested = false;
-                PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
+                if (setPaused(!paused))
+                    PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
+                else
+                    PLATFORMATOR_LOG("Could not change game pause state: %s\n", SDL_GetError());
                 break;
             case SDLK_F6:
                 if (paused)
@@ -197,6 +198,9 @@ bool SDLWindow::init()
         printf("SDL_mixer could not create a mixer device! SDL_mixer Error: %s", SDL_GetError());
         return false;
     }
+
+    if (!setPaused(paused))
+        return false;
 
     if (!TTF_Init())
     {
@@ -595,15 +599,41 @@ void SDLWindow::clearAdvanceFrameRequest()
 #endif
 }
 
-void SDLWindow::enableEditorSessionControls() noexcept
+bool SDLWindow::enableEditorSessionControls() noexcept
 {
     editorSessionControlsEnabled = true;
+    if (!setPaused(paused))
+    {
+        editorSessionControlsEnabled = false;
+        return false;
+    }
+    return true;
 }
 
 bool SDLWindow::setEditorSessionPaused(bool value) noexcept
 {
     if (!editorSessionControlsEnabled)
         return false;
+    return setPaused(value);
+}
+
+bool SDLWindow::setPaused(bool value) noexcept
+{
+    bool pauseAudio = value;
+#if !PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    pauseAudio = editorSessionControlsEnabled && value;
+#endif
+    if (mixer != nullptr)
+    {
+        const auto device = static_cast<SDL_AudioDeviceID>(SDL_GetNumberProperty(
+            MIX_GetMixerProperties(mixer), MIX_PROP_MIXER_DEVICE_NUMBER, 0));
+        // Suspend this mixer's logical device, keeping individual track states
+        // intact. This also freezes fades and tracks started during game pause.
+        if (device == 0)
+            return SDL_SetError("Game mixer has no audio playback device");
+        if (!(pauseAudio ? SDL_PauseAudioDevice(device) : SDL_ResumeAudioDevice(device)))
+            return false;
+    }
     paused = value;
     advanceFrameRequested = false;
     return true;
@@ -797,7 +827,7 @@ void SDLWindow::updateAudio()
             audio->cancelPendingReplay();
             continue;
         }
-        if (audio->isPlaying() || audio->isPaused())
+        if (shouldUseFixedStepDelta() || audio->isPlaying() || audio->isPaused())
         {
             ++index;
             continue;

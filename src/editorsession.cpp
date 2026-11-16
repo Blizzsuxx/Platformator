@@ -788,7 +788,11 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         }
         if (window != nullptr)
         {
-            window->enableEditorSessionControls();
+            if (!window->enableEditorSessionControls())
+            {
+                fail("could not initialize editor-session pause controls", runtimeSerial);
+                return false;
+            }
             if (capabilities_.frameStream)
             {
                 window->setEditorSessionFrameCapture(

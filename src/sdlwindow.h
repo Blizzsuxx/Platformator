@@ -74,7 +74,7 @@ class SDLWindow
     bool shouldSimulateFrame() const;
     bool shouldUseFixedStepDelta() const;
     void clearAdvanceFrameRequest();
-    void enableEditorSessionControls() noexcept;
+    bool enableEditorSessionControls() noexcept;
     bool setEditorSessionPaused(bool paused) noexcept;
     bool requestEditorSessionStep() noexcept;
     bool isEditorSessionPaused() const noexcept;
@@ -124,6 +124,7 @@ class SDLWindow
     std::vector<Audio *> pendingAudioReplays;
 
     bool init();
+    bool setPaused(bool value) noexcept;
     void close();
     void updateRenderSize();
     bool prepareCachedLinear(Camera *camera, const platformator_detail::SpriteRenderView &view);

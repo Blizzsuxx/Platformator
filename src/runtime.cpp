@@ -32,6 +32,10 @@ Runtime::Runtime(const RuntimeOptions &runtimeOptions)
         windowSettings.highPixelDensity = false;
     }
     gameManager = std::make_unique<GameManager>(windowSettings, runtimeOptions.debugSettings);
+    // Apply editor pause before loading scene autoplay, including builds with
+    // standalone debug controls disabled.
+    if (runtimeOptions.editorSession && !gameManager->getWindow()->enableEditorSessionControls())
+        throw std::runtime_error(std::string("Cannot initialize editor pause controls: ") + SDL_GetError());
     activeRuntime() = this;
     if (!runtimeOptions.sceneFilePath.empty())
     {

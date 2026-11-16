@@ -1,5 +1,6 @@
 #include "runtimeaccess.h"
 #include "buildconfig.h"
+#include "sdlwindow.h"
 #include "test_support.h"
 
 #include <filesystem>
@@ -336,15 +337,26 @@ void audioRetention()
 
 void audioTransientCleanup()
 {
-    RuntimeOptions options;
-    options.debugSettings.startPaused = true;
-    Runtime runtime(options);
+    Runtime runtime;
+    auto *window = platformator_detail::RuntimeAccess::window();
+    require(window->enableEditorSessionControls() && window->setEditorSessionPaused(true),
+            "Transient audio fixture must pause the game");
     auto *cached = runtime.loadAudio(audioPath);
     cached->addReference();
     auto *owner = runtime.createGameObject()->addComponent<Audio>(cached);
     require(owner->getComponent<Audio>()->playAndForget(), "Finite transient playback must start");
     owner->destroy();
     int steps = 0;
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        runtime.simulateAndRenderFrameWithCustomCallback(dt, [&](double) { ++steps; });
+        SDL_Delay(20);
+        require(!cached->removeReferenceAndFreeIfNoReferences(),
+                "Paused transient playback must retain its asset even after its original owner is destroyed");
+        cached->addReference();
+    }
+    require(steps == 0, "Paused transient playback must not advance simulation");
+    require(window->setEditorSessionPaused(false), "Transient playback must resume with the game");
     require(waitForAudio([&] {
         runtime.simulateAndRenderFrameWithCustomCallback(dt, [&](double) { ++steps; });
         // Release our probe reference, restoring it while playback still retains the asset.
@@ -353,9 +365,126 @@ void audioTransientCleanup()
         cached->addReference();
         return false;
     }), "Runtime frames must release completed transient audio");
+}
+
+SDL_AudioDeviceID mixerDevice(MIX_Mixer *mixer)
+{
+    return static_cast<SDL_AudioDeviceID>(SDL_GetNumberProperty(
+        MIX_GetMixerProperties(mixer), MIX_PROP_MIXER_DEVICE_NUMBER, 0));
+}
+
+void checkAudioPauseControls(bool editorControls)
+{
+    Runtime runtime;
+    auto *window = platformator_detail::RuntimeAccess::window();
+    if (editorControls)
+        require(window->enableEditorSessionControls(), "Editor pause controls must initialize");
+    const auto device = mixerDevice(window->getMixer());
+    require(device != 0 && !SDL_AudioDevicePaused(device), "Game audio must initially run");
+    auto setPaused = [&](bool value) {
+        if (editorControls)
+            require(window->setEditorSessionPaused(value), "Editor pause transition must succeed");
+        else
+        {
+            SDL_Event event{};
+            event.type = SDL_EVENT_KEY_DOWN;
+            event.key.key = SDLK_F5;
+            require(SDL_PushEvent(&event), "F5 pause event must queue");
+            window->handleSDLEvents(dt);
+        }
+        require(SDL_AudioDevicePaused(device) == value, "Audio device must follow game pause");
+    };
+    auto *running = runtime.createGameObject()->addComponent<Audio>(runtime.loadAudio(audioPath), 1.0f, true, -1)
+                        ->getComponent<Audio>();
+    auto *individual = runtime.createGameObject()->addComponent<Audio>(runtime.loadAudio(audioPath), 1.0f, true, -1)
+                           ->getComponent<Audio>();
+    require(individual->pause(), "A track can be individually paused before game pause");
+    require(waitForAudio([&] { return MIX_GetTrackPlaybackPosition(running->getTrack()) > 0; }),
+            "Running track must advance before pause");
+    setPaused(true);
+    const auto position = MIX_GetTrackPlaybackPosition(running->getTrack());
+    auto *queued = runtime.createGameObject()->addComponent<Audio>(runtime.loadAudio(otherAudioPath), 1.0f, true)
+                       ->getComponent<Audio>();
+    auto *explicitPlay = runtime.createGameObject()->addComponent<Audio>(runtime.loadAudio(otherAudioPath))
+                             ->getComponent<Audio>();
+    require(explicitPlay->play(), "New playback can be requested while paused");
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        runtime.simulateAndRenderFrame(dt);
+        SDL_Delay(20);
+        require(MIX_GetTrackPlaybackPosition(running->getTrack()) == position,
+                "Game pause must preserve an existing sound's playback position");
+        require(queued->isPlaying() && MIX_GetTrackPlaybackPosition(queued->getTrack()) == 0 &&
+                    explicitPlay->isPlaying() && MIX_GetTrackPlaybackPosition(explicitPlay->getTrack()) == 0,
+                "Autoplay and explicit playback requested while paused must not consume audio");
+    }
+    if (editorControls)
+    {
+        require(window->requestEditorSessionStep(), "One simulation step must be available while paused");
+        runtime.simulateAndRenderFrame(dt);
+        require(SDL_AudioDevicePaused(device) && MIX_GetTrackPlaybackPosition(running->getTrack()) == position,
+                "Single-stepping must keep continuous audio suspended");
+    }
+
+    // A second mixer models the editor's independent preview output.
+    std::unique_ptr<MIX_Mixer, decltype(&MIX_DestroyMixer)> preview(
+        MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr), MIX_DestroyMixer);
+    require(preview != nullptr && !SDL_AudioDevicePaused(mixerDevice(preview.get())),
+            "Game pause must not pause a separate audio device");
+    std::unique_ptr<MIX_Track, decltype(&MIX_DestroyTrack)> previewTrack(MIX_CreateTrack(preview.get()), MIX_DestroyTrack);
+    require(previewTrack && MIX_SetTrackAudio(previewTrack.get(), queued->getAudioWrapper()->getAudio()) &&
+                MIX_PlayTrack(previewTrack.get(), 0), "Independent preview must start");
+    require(waitForAudio([&] { return !MIX_TrackPlaying(previewTrack.get()); }),
+            "Independent preview audio must finish while the game is paused");
+    require(queued->isPlaying(), "Game playback must remain frozen while the preview plays");
+
+    setPaused(false);
+    require(individual->isPaused(), "Game resume must preserve a track's individual pause state");
+    require(waitForAudio([&] { return !queued->isPlaying() && !explicitPlay->isPlaying(); }),
+            "Sounds requested while paused must play and finish after resume");
+    setPaused(true);
+    setPaused(false);
+    require(individual->isPaused() && running->isPlaying(), "Repeated pause cycles must preserve track states");
+}
+
+void audioPauseControls()
+{
+    checkAudioPauseControls(true);
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    require(steps == 0, "Paused audio cleanup must not advance simulation");
+    checkAudioPauseControls(false);
 #endif
+}
+
+void audioPausedStartup()
+{
+    {
+        RuntimeOptions embedded;
+        embedded.editorSession = EditorSessionLaunchOptions{};
+        embedded.debugSettings.startPaused = true;
+        Runtime runtime(embedded);
+        auto *window = platformator_detail::RuntimeAccess::window();
+        require(window->isEditorSessionPaused() && SDL_AudioDevicePaused(mixerDevice(window->getMixer())),
+                "Embedded startup must suspend audio before loading scene autoplay in every build profile");
+    }
+    RuntimeOptions options;
+    options.debugSettings.startPaused = true;
+    Runtime runtime(options);
+    auto *window = platformator_detail::RuntimeAccess::window();
+    const auto device = mixerDevice(window->getMixer());
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    require(SDL_AudioDevicePaused(device), "Paused startup must suspend audio before scene autoplay");
+#else
+    require(!SDL_AudioDevicePaused(device), "Standalone production builds must ignore debug-only pause");
+#endif
+    require(window->enableEditorSessionControls() && SDL_AudioDevicePaused(device),
+            "Editor controls must synchronize a stored paused startup state, including without debug tools");
+    auto *audio = runtime.createGameObject()->addComponent<Audio>(runtime.loadAudio(otherAudioPath), 1.0f, true)
+                      ->getComponent<Audio>();
+    SDL_Delay(100);
+    require(audio->isPlaying() && MIX_GetTrackPlaybackPosition(audio->getTrack()) == 0,
+            "Autoplay must wait at its initial position on paused startup");
+    require(window->setEditorSessionPaused(false), "Paused startup must be resumable");
+    require(waitForAudio([&] { return !audio->isPlaying(); }), "Startup autoplay must finish after resume");
 }
 
 void audioAutoplay()
@@ -383,6 +512,10 @@ void checkAudioReplayCompletion(bool paused)
     RuntimeOptions options;
     options.debugSettings.startPaused = paused;
     Runtime runtime(options);
+    auto *window = platformator_detail::RuntimeAccess::window();
+    if (paused)
+        require(window->enableEditorSessionControls() && window->setEditorSessionPaused(true),
+                "Replay fixture must pause the game");
     auto *original = runtime.loadAudio(audioPath);
     auto *next = runtime.loadAudio(otherAudioPath);
     require(original && next && original != next, "Replay requires two distinct audio assets");
@@ -391,6 +524,21 @@ void checkAudioReplayCompletion(bool paused)
     require(audio->replay(next, 800), "Replay must schedule a fade-out");
     require(audio->getAudioWrapper() == original, "The original sound stays bound until the fade finishes");
     int steps = 0;
+    if (paused)
+    {
+        const auto position = MIX_GetTrackPlaybackPosition(audio->getTrack());
+        const auto fade = MIX_GetTrackFadeFrames(audio->getTrack());
+        for (int frame = 0; frame < 8; ++frame)
+        {
+            runtime.simulateAndRenderFrameWithCustomCallback(dt, [&](double) { ++steps; });
+            SDL_Delay(20);
+            require(audio->getAudioWrapper() == original && MIX_GetTrackPlaybackPosition(audio->getTrack()) == position &&
+                        MIX_GetTrackFadeFrames(audio->getTrack()) == fade,
+                    "Game pause must freeze the fade, playhead and pending replacement");
+        }
+        require(steps == 0, "Paused replay must not advance simulation");
+        require(window->setEditorSessionPaused(false), "Replay must resume with the game");
+    }
     require(waitForAudio([&] {
         if (paused)
             runtime.simulateAndRenderFrameWithCustomCallback(dt, [&](double) { ++steps; });
@@ -400,10 +548,6 @@ void checkAudioReplayCompletion(bool paused)
     }), "Replay must start the distinct target after fading");
     require(MIX_GetTrackAudio(audio->getTrack()) == next->getAudio(), "The mixer must use the replacement asset");
     require(MIX_GetTrackFadeFrames(audio->getTrack()) == 0, "The restarted track is no longer fading");
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    if (paused)
-        require(steps == 0, "Paused replay must advance without a simulation step");
-#endif
 }
 
 void audioReplayCompletion()
@@ -521,6 +665,8 @@ int main(int argc, char **argv)
                                                          {"callback_failure", callbackFailure},
                                                          {"audio_resources", audioRetention},
                                                          {"audio_transient_cleanup", audioTransientCleanup},
+                                                         {"audio_pause_controls", audioPauseControls},
+                                                         {"audio_paused_startup", audioPausedStartup},
                                                          {"audio_autoplay", audioAutoplay},
                                                          {"audio_replay_completion", audioReplayCompletion},
                                                          {"audio_replay_paused", audioReplayWhilePaused},

@@ -1,0 +1,51 @@
+Date: 2026-11-16
+HEAD: 7efaccbcbf6aec0e21ef8dbcc33d5c47e838b2d2
+
+SHA-256 identities:
+80535b056ee1aac06bebf116f3a7d349977665c76650d955293b8cc8967b3f63  docs/pause-investigation/probe.cpp
+bc8d67a55042fd261d7b9535bd805114636fe9c26acba9f33ec38caecdcf3691  src/audio.cpp
+0e3a57b35936cc25e7cec8a8866b3e246a52634c39b5e09f6ab58fc0912493c2  src/sdlwindow.cpp
+1c2f677449700a5b73512069761bc03cc1e0eda07412bae5f384df7bcca9a647  src/gamemanager.cpp
+5271fd4dbb37f695c00cf1f1715257823608a438f925d7ec9746d11daf0f2902  src/simulationclock.h
+9d10f4e2489a39a0a273a70c221e9b82ac81a8b3fa1feb2a6c9f79986e9bc773  src/editorsession.cpp
+1a905a83ec1c742c7bf2c8a399e602192e3faf48d51e4bfe75e155547774819c  build/libplatformator.a
+40d6730575575a7d6bd248a267332b65f5a2f7d41c6046c4aacdb010876dd555  build/pause-investigation/probe
+
+Build: cmake --build build --target platformator_runtime_foundation_test platformator_runtime_step_test --parallel 3
+Exit: 0
+
+Probe compile (exit 0):
+c++ -DPLATFORMATOR_ENABLE_EDITOR_SESSION=1 -DPLATFORMATOR_ENABLE_WORK_PROBES=1 -O2 -g -DNDEBUG -std=c++20 -fPIE -I/home/user/Projects/Platformator/src -I/home/user/Projects/Platformator/build/generated -I/home/user/Projects/Platformator/include -I/home/user/Projects/Platformator/build/vendored/SDL3-3.4.18/include-revision -I/home/user/Projects/Platformator/vendored/SDL3-3.4.18/include -I/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/include -I/home/user/Projects/Platformator/vendored/SDL3_image-3.4.8/include -I/home/user/Projects/Platformator/vendored/SDL3_ttf-3.2.2/include -I/home/user/Projects/Platformator/vendored/eigen-5.0.1 -I/home/user/Projects/Platformator/vendored/oneTBB-2022.3.0/src/tbb/../../include -I/home/user/Projects/Platformator/vendored/json -I/home/user/Projects/Platformator/tests /home/user/Projects/Platformator/docs/pause-investigation/probe.cpp -L/home/user/Projects/Platformator/build -lplatformator -lSDL3_mixer -lSDL3_image -lSDL3_ttf -lSDL3 -L/home/user/Projects/Platformator/build/gnu_16.2_cxx20_64_relwithdebinfo -ltbb -Wl,-rpath,/home/user/Projects/Platformator/build:/home/user/Projects/Platformator/build/gnu_16.2_cxx20_64_relwithdebinfo -o /home/user/Projects/Platformator/build/pause-investigation/probe
+
+=== audio_replay_paused (exit 0, timeout 15s) ===
+Renderer Used: software
+Freeing audio: assets/audio/jump.wav
+Freeing audio: assets/audio/missing.wav
+[PASS] audio_replay_paused
+
+=== audio_transient_cleanup (exit 0, timeout 15s) ===
+Renderer Used: software
+Freeing audio: assets/audio/jump.wav
+[PASS] audio_transient_cleanup
+
+=== runtime_step (exit 0, timeout 15s) ===
+Renderer Used: software
+Advancing one frame
+Freeing texture: assets/textures/black_square.png
+Renderer Used: software
+[PASS] simulation step and clock contracts
+
+=== probe (exit 0, timeout 15s) ===
+Renderer Used: software
+editor pause: physics/scripts/animation frozen; audio started and finished; events=1, renders=12, service calls=7
+explicit simulateFrame: advances scripts, physics and animation while pause remains set
+Freeing audio: assets/audio/missing.wav
+Freeing animation clip: assets/animations/missing.animset
+Freeing texture: assets/textures/missing.png
+Renderer Used: software
+Simulation: paused
+F5 pause: physics/scripts/animation frozen; audio started and finished; events=1, renders=12, service calls=7
+explicit simulateFrame: advances scripts, physics and animation while pause remains set
+Freeing audio: assets/audio/missing.wav
+Freeing animation clip: assets/animations/missing.animset
+Freeing texture: assets/textures/missing.png

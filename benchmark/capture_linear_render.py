@@ -330,7 +330,7 @@ def incremental_matrix(multiworker_count: int, singleworker_count: int = 1,
             camera="continuous-pan-240" if profile == "camera-pan" else "fixed")
     for workers in sorted(set((singleworker_count, multiworker_count))):
         add("crossing", 1000, changed=1.0, workers=workers, headless=True, layout="continuous-crossing")
-    scene_assets = asset_root or (Path.cwd() / "assets")
+    scene_assets = asset_root or (Path(__file__).resolve().parent / "assets")
     for profile, scene in (("scene-default", "assets/scenes/default.scene"),
                            ("scene-stacking", "assets/scenes/stacking.scene")):
         population = _scene_sprite_population(scene_assets, scene)
@@ -1349,7 +1349,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--measure-frames", type=int, default=30)
     command.add_argument("--repetitions", type=int, default=3)
     command.add_argument("--dt", type=float, default=0.008333333333333333)
-    command.add_argument("--asset-root", type=Path)
+    command.add_argument("--asset-root", type=Path, default=Path(__file__).resolve().parent / "assets")
     command.add_argument("--comparison", choices=("legacy", "incremental"), default="incremental")
     command.add_argument("--phase", choices=INCREMENTAL_PHASES,
                          help="Defaults to compact pilot for incremental comparisons")
@@ -1498,7 +1498,7 @@ def _run_incremental_pilot(args, selection: str) -> dict:
     binaries = (args.candidate_probe, args.candidate_validation_probe)
     if any(not path.is_file() or not os.access(path, os.X_OK) for path in binaries):
         raise CaptureError("Pilot timing and validation probe paths must be executable files")
-    asset_root = args.asset_root or (Path.cwd() / "assets")
+    asset_root = args.asset_root or (Path(__file__).resolve().parent / "assets")
     if not asset_root.is_dir():
         raise CaptureError(f"Asset root does not exist: {asset_root}")
     cases = focused_incremental_cases(args.focused_cases or selection, args.multiworker_count)
@@ -2012,7 +2012,7 @@ def run_incremental_capture(args, strategy_selection: str) -> dict:
         raise CaptureError("Every explicit probe/stock-runner path must be an executable file")
     validate_incremental_phase_roots(args.phase, args.validation_root, args.resource_root, args.output)
 
-    asset_root = args.asset_root or (Path.cwd() / "assets")
+    asset_root = args.asset_root or (Path(__file__).resolve().parent / "assets")
     all_cases = incremental_matrix(args.multiworker_count, args.workers, asset_root)
     cases = all_cases[:args.case_limit] if args.case_limit is not None else all_cases
     control_ids = frozen_control_case_ids(cases)

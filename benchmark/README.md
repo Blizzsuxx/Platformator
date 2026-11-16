@@ -61,7 +61,7 @@ SDL_RENDER_DRIVER=software python3 benchmark/capture_linear_render.py \
   --focused-cases mostly-offscreen \
   --candidate-validation-probe "$BUILD_ROOT/candidate-validation/platformator_linear_render_probe" \
   --candidate-probe "$BUILD_ROOT/candidate-timing/platformator_linear_render_probe" \
-  --asset-root "$PWD/assets" --workers 1 --multiworker-count 6 --seed 0 \
+  --asset-root "$PWD/benchmark/assets" --workers 1 --multiworker-count 6 --seed 0 \
   --repetitions 3 --warmup-frames 5 --measure-frames 30 \
   --dt 0.008333333333333333 --output "$REPORT_ROOT/captures/pilot"
 ```

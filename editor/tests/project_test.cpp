@@ -1383,10 +1383,13 @@ void test_project_change_owner_commit_budget()
                 "deferred watcher paths must continue within the same per-frame commit budget");
         ++framesUsed;
     }
+    require(panel.pending_change_paths() == 0 && committed.size() == totalPaths,
+            "every deferred Project and Scene invalidation path must be committed");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     const auto counts = work::snapshot();
-    require(panel.pending_change_paths() == 0 && committed.size() == totalPaths &&
-                counts[static_cast<std::size_t>(work::Counter::OwnerAssetChangePaths)] == totalPaths,
+    require(counts[static_cast<std::size_t>(work::Counter::OwnerAssetChangePaths)] == totalPaths,
             "the owner path counter must account for every deferred Project and Scene invalidation commit");
+#endif
 }
 
 void test_project_browser_context_menu_operations_and_two_column_view()

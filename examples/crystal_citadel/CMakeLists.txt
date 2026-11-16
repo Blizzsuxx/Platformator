@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 project(crystal_citadel LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(PLATFORMATOR_ENGINE_SOURCE_DIR "/home/user/Projects/Platformator" CACHE PATH
+set(PLATFORMATOR_ENGINE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE PATH
     "Fallback path to local Platformator source tree when Platformator CONFIG package is not installed")
 
 if(NOT TARGET Platformator::platformator)
@@ -39,6 +39,7 @@ target_include_directories(crystal_citadel PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 target_link_libraries(crystal_citadel PRIVATE Platformator::platformator)
+set_target_properties(crystal_citadel PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
 if(WIN32)
     add_custom_command(TARGET crystal_citadel POST_BUILD
@@ -74,9 +75,15 @@ if(DEFINED PLATFORMATOR_INSTALL_RPATH)
     )
 endif()
 
+# Aggregate builds install each game separately to avoid overlapping assets.
+set(game_install_root "")
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(game_install_root "examples/crystal_citadel/")
+endif()
+
 install(TARGETS crystal_citadel
-    RUNTIME DESTINATION bin
-    BUNDLE DESTINATION bin
+    RUNTIME DESTINATION "${game_install_root}bin"
+    BUNDLE DESTINATION "${game_install_root}bin"
 )
 
 set(PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS)
@@ -91,14 +98,14 @@ endforeach()
 
 if(PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS)
     install(TARGETS ${PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS}
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION "${game_install_root}bin"
+        LIBRARY DESTINATION "${game_install_root}lib"
     )
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/"
-        DESTINATION assets
+        DESTINATION "${game_install_root}assets"
         PATTERN "behaviors" EXCLUDE
     )
 endif()

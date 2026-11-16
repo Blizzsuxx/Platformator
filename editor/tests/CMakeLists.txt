@@ -1,6 +1,20 @@
+# Editor runtime previews use test-owned fixtures, never engine SDK assets.
+file(COPY "${PROJECT_SOURCE_DIR}/tests/fixtures/assets/"
+    DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets")
+
+# Compile common fixture helpers once rather than once per editor executable.
+add_library(platformator_editor_test_support STATIC gui_fixtures.cpp)
+target_compile_features(platformator_editor_test_support PRIVATE cxx_std_20)
+target_include_directories(platformator_editor_test_support PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
+target_link_libraries(platformator_editor_test_support PRIVATE
+    platformator_editor_core Platformator::platformator)
+
 function(platformator_editor_add_test name)
     add_executable(${name} ${ARGN})
-    target_sources(${name} PRIVATE gui_fixtures.cpp)
+    target_link_libraries(${name} PRIVATE platformator_editor_test_support)
     target_compile_features(${name} PRIVATE cxx_std_20)
     target_include_directories(${name} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -28,7 +42,7 @@ endfunction()
 
 function(platformator_editor_add_desktop_test name)
     add_executable(${name} ${ARGN})
-    target_sources(${name} PRIVATE gui_fixtures.cpp)
+    target_link_libraries(${name} PRIVATE platformator_editor_test_support)
     target_compile_features(${name} PRIVATE cxx_std_20)
     target_include_directories(${name} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"

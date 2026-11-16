@@ -8,6 +8,7 @@ function(platformator_add_test name source)
     endif()
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_BINARY_DIR}"
         LABELS "platformator;${TEST_LABELS}"
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
     if(TEST_PROBE)

@@ -1035,7 +1035,7 @@ ProjectScaffoldResult generate_project_cmakelists(
     }
 
     std::ostringstream out;
-    out << "cmake_minimum_required(VERSION 3.20)\n"
+    out << "cmake_minimum_required(VERSION 3.21)\n"
         << "project(" << cmakeProjectName << " LANGUAGES CXX)\n\n"
         << "set(CMAKE_CXX_STANDARD 20)\n"
         << "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n"

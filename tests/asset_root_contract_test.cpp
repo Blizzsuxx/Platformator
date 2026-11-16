@@ -29,7 +29,7 @@ int main()
         fs::create_directories(root / "scenes");
         fs::create_directories(root / "audio");
         fs::create_directories(root / "animations/nested");
-        const auto source = fs::path(__FILE__).parent_path().parent_path() / "assets";
+        const auto source = fs::path(__FILE__).parent_path() / "fixtures/assets";
         for (const auto &name : {"MiXeD.PNG", "missing.png"})
             fs::copy_file(source / "textures/missing.png", root / "textures" / name,
                           fs::copy_options::overwrite_existing);

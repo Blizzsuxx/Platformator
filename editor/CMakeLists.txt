@@ -1,3 +1,14 @@
+cmake_minimum_required(VERSION 3.16)
+if(NOT TARGET Platformator::platformator)
+    project(PlatformatorEditor LANGUAGES C CXX)
+    option(PLATFORMATOR_BUILD_EDITOR "Standalone component build option" ON)
+    option(PLATFORMATOR_BUILD_TESTS "Standalone component build option" OFF)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    enable_testing()
+    add_subdirectory(.. platformator)
+    return()
+endif()
+
 if(NOT PLATFORMATOR_BUILD_EDITOR)
     message(FATAL_ERROR "The editor subdirectory requires PLATFORMATOR_BUILD_EDITOR=ON.")
 endif()
@@ -171,21 +182,9 @@ add_executable(platformator_editor src/main.cpp)
 target_compile_features(platformator_editor PRIVATE cxx_std_20)
 target_link_libraries(platformator_editor PRIVATE platformator_editor_core)
 
-add_executable(platformator_editor_probe benchmark/editor_probe.cpp)
-target_compile_features(platformator_editor_probe PRIVATE cxx_std_20)
-target_include_directories(platformator_editor_probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(platformator_editor_probe PRIVATE platformator_editor_core Platformator::platformator)
-target_compile_definitions(platformator_editor_probe PRIVATE
-    PLATFORMATOR_EDITOR_PROBE_CONFIGURATION="$<CONFIG>"
-    PLATFORMATOR_EDITOR_PROBE_COMPILER="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
-
-add_executable(platformator_editor_gui_probe benchmark/gui_probe.cpp)
-target_compile_features(platformator_editor_gui_probe PRIVATE cxx_std_20)
-target_include_directories(platformator_editor_gui_probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(platformator_editor_gui_probe PRIVATE platformator_editor_core Platformator::platformator)
-target_compile_definitions(platformator_editor_gui_probe PRIVATE
-    PLATFORMATOR_EDITOR_PROBE_CONFIGURATION="$<CONFIG>"
-    PLATFORMATOR_EDITOR_PROBE_COMPILER="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
+if(PLATFORMATOR_BUILD_EDITOR_PROBES)
+    add_subdirectory(benchmark)
+endif()
 
 if(DEFINED PLATFORMATOR_INSTALL_RPATH)
     set_target_properties(platformator_editor PROPERTIES

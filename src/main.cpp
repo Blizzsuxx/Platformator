@@ -2,5 +2,5 @@
 
 int main(int argc, char *args[])
 {
-    return platformator::run(argc, args, "assets/scenes/default.scene");
+    return platformator::run(argc, args, "");
 }

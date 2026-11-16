@@ -787,7 +787,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 capture.read_incremental_timing_samples(raw, paired, 2, 2, False)
 
     def test_incremental_matrix_contains_loaded_scenes_and_giant_motion_contract(self):
-        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[2] / "assets")
+        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[1] / "assets")
         scenes = {(case["profile"], case["workers"], case["sprite_count"]) for case in cases
                   if case["profile"].startswith("scene-")}
         self.assertEqual(scenes, {("scene-default", 1, 6), ("scene-default", 6, 6),
@@ -798,7 +798,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
         self.assertEqual(len(capture.frozen_control_case_ids(cases)), 4)
 
     def test_incremental_matrix_covers_required_population_fraction_and_inactive_controls(self):
-        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[2] / "assets")
+        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[1] / "assets")
         def selected(profile, workers=1, headless=False):
             return {(case["sprite_count"], case["changed_percent"], case["layout"])
                     for case in cases if case["profile"] == profile and case["workers"] == workers and
@@ -869,7 +869,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 capture.validate_incremental_phase_roots("time", validation, resources, output)
 
     def test_incremental_phase_inventory_rejects_stale_cases_and_missing_frozen_controls(self):
-        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[2] / "assets")
+        cases = capture.incremental_matrix(6, 1, Path(__file__).resolve().parents[1] / "assets")
         control_ids = capture.frozen_control_case_ids(cases)
         entries = []
         for case in cases:
@@ -916,7 +916,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
 
     def test_incremental_mismatch_recovery_uses_matching_candidate_and_frozen_probes(self):
         case = next(case for case in capture.incremental_matrix(
-            2, 1, Path(__file__).resolve().parents[2] / "assets")
+            2, 1, Path(__file__).resolve().parents[1] / "assets")
                     if case["profile"] == "crossing" and case["sprite_count"] == 10000 and
                     case["workers"] == 1 and not case["headless"])
         candidate = {"fixture_sha256": "a" * 64, "harness_sha256": "b" * 64,

@@ -80,7 +80,7 @@ class TemporaryAssets
         std::filesystem::create_directories(root / "assets" / "textures");
         std::filesystem::create_directories(root / "assets" / "animations");
         for (const char *file : {"black_square.png", "red_circle.png"})
-            std::filesystem::copy_file(sourceRoot / "assets" / "textures" / file,
+            std::filesystem::copy_file(sourceRoot / "tests/fixtures/assets" / "textures" / file,
                                        root / "assets" / "textures" / file);
         SDL_Surface *asymmetric = SDL_CreateSurface(2, 1, SDL_PIXELFORMAT_RGBA32);
         if (asymmetric == nullptr)
@@ -1047,7 +1047,9 @@ void check_shared_animation_dependency_reload()
     require(oldA != nullptr && oldB != nullptr,
             "both last-good animation wrappers must be loaded before their shared dependency changes");
 
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     const auto countersBeforeReload = work::snapshot();
+#endif
     write_animation(clipAPath, animation_asset("assets/textures/shared-frame.png", logicalA, "Shared A"));
     write_animation(clipBPath, animation_asset(sharedLogicalB, logicalB, "Shared B"));
     resources.invalidate(clipAPath);
@@ -1074,12 +1076,14 @@ void check_shared_animation_dependency_reload()
                 resources.resolve(sharedTexture, ResourceKind::Texture).preparation == ResourcePreparationState::Ready,
             "two clips and a direct sprite must complete together when they share one texture version");
     wait_for_asset_preparation(preview, document);
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     const auto counts = work::snapshot();
     const auto sharedDecodeCount = counts[static_cast<std::size_t>(work::Counter::ImageDecodes)] -
         countersBeforeReload[static_cast<std::size_t>(work::Counter::ImageDecodes)];
     require(sharedDecodeCount == 1,
             "shared sprite and clip demand must decode the same texture content version only once (observed " +
                 std::to_string(sharedDecodeCount) + ")");
+#endif
     require(runtime.loadAnimationClip(logicalA) != oldA && runtime.loadAnimationClip(logicalB) != oldB &&
                 runtime.loadAnimationClip(logicalA)->getFrames().front().getTextureWrapper() != nullptr &&
                 runtime.loadAnimationClip(logicalB)->getFrames().front().getTextureWrapper() != nullptr,

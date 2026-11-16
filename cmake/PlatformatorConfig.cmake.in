@@ -8,5 +8,4 @@ find_dependency(SDL3_ttf CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LI
 find_dependency(TBB CONFIG HINTS "${_platformator_prefix}/@CMAKE_INSTALL_LIBDIR@/cmake/TBB")
 find_dependency(Eigen3 CONFIG HINTS "${_platformator_prefix}/share/eigen3/cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/PlatformatorTargets.cmake")
-set(Platformator_ASSET_DIR "${_platformator_prefix}/assets")
 check_required_components(Platformator)

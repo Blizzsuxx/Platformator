@@ -10,12 +10,16 @@ set(fixture "${PLATFORMATOR_BINARY_DIR}/package-smoke")
 set(prefix "${fixture}/prefix")
 set(relocated "${fixture}/relocated")
 file(MAKE_DIRECTORY "${fixture}/elsewhere")
+file(REMOVE_RECURSE "${prefix}")
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}" -B "${fixture}/core" -G Ninja
     -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_BUILD_TESTS=OFF
     -DPLATFORMATOR_BUILD_EDITOR=OFF -DPLATFORMATOR_ENABLE_EDITOR_SESSION=OFF
     -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF -DPLATFORMATOR_INSTALL=ON)
 checked("${CMAKE_COMMAND}" --build "${fixture}/core" --parallel 3)
 checked("${CMAKE_COMMAND}" --install "${fixture}/core" --prefix "${prefix}")
+if(EXISTS "${prefix}/assets")
+    message(FATAL_ERROR "The engine SDK must not install game or test assets")
+endif()
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/tests/consumer" -B "${fixture}/consumer"
     -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=${prefix}")
 checked("${CMAKE_COMMAND}" --build "${fixture}/consumer" --parallel 3)
@@ -26,11 +30,11 @@ checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${relocated}/bin/con
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/tests/consumer" -B "${fixture}/relocated-consumer"
     -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=${relocated}")
 checked("${CMAKE_COMMAND}" --build "${fixture}/relocated-consumer" --parallel 3)
-checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/relocated-consumer/consumer" "${relocated}/assets")
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/relocated-consumer/consumer" "${PLATFORMATOR_SOURCE_DIR}/tests/fixtures/assets")
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/tests/consumer" -B "${fixture}/source-consumer"
     -G Ninja -DCMAKE_BUILD_TYPE=Release "-DPLATFORMATOR_SOURCE_DIR=${PLATFORMATOR_SOURCE_DIR}" -DPLATFORMATOR_ENABLE_DEBUG_TOOLS=OFF)
 checked("${CMAKE_COMMAND}" --build "${fixture}/source-consumer" --parallel 3)
-checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/source-consumer/consumer" "${relocated}/assets")
+checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${fixture}/source-consumer/consumer" "${PLATFORMATOR_SOURCE_DIR}/tests/fixtures/assets")
 checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/examples/mario" -B "${fixture}/mario"
     -G Ninja -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_MARIO_USE_INSTALLED=ON "-DCMAKE_PREFIX_PATH=${relocated}")
 checked("${CMAKE_COMMAND}" --build "${fixture}/mario" --parallel 3)

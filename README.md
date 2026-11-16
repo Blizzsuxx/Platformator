@@ -1,10 +1,19 @@
 # Platformator
 
-A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The native scene editor is optional; Linux is the only exercised editor platform, and its native desktop, accessibility and performance acceptance remains in progress.
+A C++20 2D game engine using SDL3, Eigen and oneTBB, with component-based objects, script behaviors, scene serialization and parallel collision detection. The C++ runtime can be embedded or run through the desktop runner. The native scene editor builds by default on Linux and can be disabled; Linux is the only exercised editor platform, and its native desktop, accessibility and performance acceptance remains in progress.
 
 ## Build and test
 
 Use a C++20 compiler, CMake 3.21+ with presets, Ninja, and SDL system development prerequisites. Dependencies are bundled. Python 3 is used by benchmark tooling/tests; the Python GUI is unnecessary.
+
+The default build includes the engine and editor:
+
+```sh
+cmake -S . -B build/default
+cmake --build build/default --parallel 3
+```
+
+For engine tests:
 
 ```sh
 cmake --preset cleanup-debug
@@ -14,7 +23,7 @@ ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke
 
 Work-probe oracle tests report `Skipped` in this configuration; build the `cleanup-work` preset to exercise them.
 
-The standalone runner is `bin/cleanup-debug/main`. Supply a scene and its asset root explicitly:
+The standalone runner is `bin/cleanup-debug/main`. Supply a scene and its asset root explicitly (the runner has no bundled default scene):
 
 ```sh
 bin/cleanup-debug/main --scene /path/to/game.scene --asset-root /path/to/assets
@@ -22,7 +31,9 @@ printf '[]\n' > /tmp/platformator-empty.scene
 bin/cleanup-debug/main --headless --scene /tmp/platformator-empty.scene --smoke-steps 10 --asset-root assets
 ```
 
-Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. The core assets include example placeholder files; nonempty asset requests must resolve successfully and do not automatically fall back. Examples are configured and built separately as standalone projects; see [Mario](examples/mario/CMakeLists.txt) (e.g. `cmake -S examples/mario -B bin/mario && cmake --build bin/mario`). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
+Build structure and standalone component commands are documented in [BUILD_LAYOUT.md](docs/BUILD_LAYOUT.md). The default root build includes the engine and editor; tests and benchmarks are opt-in.
+
+Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. Tests own their fixture assets under `tests/fixtures/assets`; nonempty asset requests must resolve successfully and do not automatically fall back. Examples are configured and built separately as standalone projects; see [Mario](examples/mario/CMakeLists.txt) (e.g. `cmake -S examples/mario -B bin/mario && cmake --build bin/mario`). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
 
 Game pause (F5 in debug builds, or the editor's Pause control) freezes game audio along with simulation. Playback positions and fades resume from where they stopped; sounds requested while paused wait for resume. Single-stepping keeps audio suspended. Individually paused sounds retain their state, and editor asset previews remain independent.
 

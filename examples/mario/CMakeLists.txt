@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.17)
 project(PlatformatorMarioExample LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -11,9 +11,9 @@ if(PLATFORMATOR_MARIO_USE_INSTALLED)
     find_package(Platformator CONFIG REQUIRED)
 elseif(NOT TARGET Platformator::platformator)
     set(PLATFORMATOR_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE PATH "Path to the Platformator source tree.")
-    set(PLATFORMATOR_BUILD_RUNNER OFF CACHE BOOL "" FORCE)
-    set(PLATFORMATOR_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(PLATFORMATOR_INSTALL OFF CACHE BOOL "" FORCE)
+    set(PLATFORMATOR_BUILD_RUNNER OFF)
+    set(PLATFORMATOR_BUILD_TESTS OFF)
+    set(PLATFORMATOR_INSTALL OFF)
     add_subdirectory("${PLATFORMATOR_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/platformator")
 endif()
 
@@ -33,6 +33,7 @@ target_include_directories(mario_example PRIVATE
 )
 
 target_link_libraries(mario_example PRIVATE Platformator::platformator)
+set_target_properties(mario_example PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR "$<TARGET_FILE_DIR:mario_example>/assets")
 add_custom_command(TARGET mario_example POST_BUILD
@@ -63,24 +64,30 @@ foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-sha
     endif()
 endforeach()
 
+# Aggregate builds install each game separately to avoid overlapping assets.
+set(game_install_root "")
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(game_install_root "examples/mario/")
+endif()
+
 install(TARGETS mario_example
-    RUNTIME DESTINATION bin
-    BUNDLE DESTINATION bin
+    RUNTIME DESTINATION "${game_install_root}bin"
+    BUNDLE DESTINATION "${game_install_root}bin"
 )
 
 if(PLATFORMATOR_MARIO_RUNTIME_LIBRARY_TARGETS)
     install(TARGETS ${PLATFORMATOR_MARIO_RUNTIME_LIBRARY_TARGETS}
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION "${game_install_root}bin"
+        LIBRARY DESTINATION "${game_install_root}lib"
     )
 endif()
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/"
-    DESTINATION assets
+    DESTINATION "${game_install_root}assets"
     PATTERN "behaviors" EXCLUDE
 )
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/level1.scene"
-    DESTINATION assets/scenes
+    DESTINATION "${game_install_root}assets/scenes"
     RENAME mario_example.scene
 )

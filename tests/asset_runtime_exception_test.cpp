@@ -272,7 +272,7 @@ void exerciseScenePreparation(platformator::Runtime &runtime, const fs::path &sc
         try { runtime.loadTexture("assets/textures/missing.png"); }
         catch (const std::exception &) { rejected = true; }
         require(rejected, "Discarded scene preparation must release its nested texture");
-        const auto source = fs::path(__FILE__).parent_path().parent_path() / "assets/textures/missing.png";
+        const auto source = fs::path(__FILE__).parent_path() / "fixtures/assets/textures/missing.png";
         fs::copy_file(source, textureFile);
         { SceneBuildContext retry(manager); retry.prepare(scene); }
     }
@@ -291,7 +291,7 @@ int main()
         fs::create_directories(root / "textures");
         fs::create_directories(root / "audio");
         fs::create_directories(root / "animations");
-        const auto source = fs::path(__FILE__).parent_path().parent_path() / "assets";
+        const auto source = fs::path(__FILE__).parent_path() / "fixtures/assets";
         fs::copy_file(source / "textures/missing.png", root / "textures/missing.png", fs::copy_options::overwrite_existing);
         fs::copy_file(source / "audio/missing.wav", root / "audio/missing.wav", fs::copy_options::overwrite_existing);
         fs::copy_file(source / "animations/missing.animset", root / "animations/missing.animset", fs::copy_options::overwrite_existing);

@@ -15,8 +15,6 @@ int main(int argc, char **argv)
         if (argc > 1)
             options.assetRoot = argv[1];
         platformator::Runtime runtime(options);
-        if (!std::filesystem::is_regular_file(runtime.getAssetRoot() / "textures/missing.png"))
-            return 3;
         auto *object = runtime.createGameObject()->addComponent<BoxCollider>(10, 10);
         ObjectReference<GameObject> reference(object);
         runtime.createMainCameraIfNoMainCameraExists();

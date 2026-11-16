@@ -1256,6 +1256,7 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
             }
 
             options.scenario = parseScenario(requireArgumentValue(argc, args, index, argument));
+            options.runtimeOptions.sceneFilePath.clear();
             continue;
         }
 
@@ -1619,9 +1620,7 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
     AddRemoveScenarioState addRemoveState;
     BroadPhaseStressScenarioState broadPhaseStressState;
     std::function<void(double)> callback;
-    if (options.scenario == BenchmarkScenario::None)
-        runtime.loadScene(options.runtimeOptions.sceneFilePath);
-    else
+    if (options.scenario != BenchmarkScenario::None)
         buildScenario(runtime, options,
                       options.scenario == BenchmarkScenario::BroadPhaseStress ? &broadPhaseStressState : nullptr,
                       isAddRemoveScenario(options.scenario) ? &addRemoveState : nullptr);

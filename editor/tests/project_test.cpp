@@ -1767,8 +1767,11 @@ void run_project_cases()
     require(regenerated.succeeded &&
                 regeneratedContents.find("if(NOT TARGET Platformator::platformator)") != std::string::npos &&
                 regeneratedContents.find("find_package(Platformator CONFIG QUIET)") != std::string::npos &&
+                regeneratedContents.find("copy_directory") != std::string::npos &&
+                regeneratedContents.find("INSTALL_RPATH") != std::string::npos &&
+                regeneratedContents.find("PATTERN \"behaviors\" EXCLUDE") != std::string::npos &&
                 std::filesystem::is_regular_file(authoredAsset),
-            "confirmed CMake regeneration must guard existing Platformator targets, use the package-aware scaffold, and preserve authored assets");
+            "confirmed CMake regeneration must guard existing Platformator targets, use the package-aware scaffold, include post-build assets/install rules, and preserve authored assets");
 
     const auto validCandidate = validate_project_folder(projectRoot);
     require(validCandidate.projectRoot == std::filesystem::canonical(projectRoot) &&

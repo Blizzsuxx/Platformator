@@ -33,6 +33,20 @@ Runtime::Runtime(const RuntimeOptions &runtimeOptions)
     }
     gameManager = std::make_unique<GameManager>(windowSettings, runtimeOptions.debugSettings);
     activeRuntime() = this;
+    if (!runtimeOptions.sceneFilePath.empty())
+    {
+        try
+        {
+            loadScene(runtimeOptions.sceneFilePath);
+        }
+        catch (...)
+        {
+            gameManager->shutdown();
+            gameManager.reset();
+            activeRuntime() = nullptr;
+            throw;
+        }
+    }
 }
 
 Runtime::~Runtime()

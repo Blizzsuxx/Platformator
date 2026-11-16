@@ -3,8 +3,8 @@
 struct DebugSettings
 {
     bool startPaused = false;
-    bool showColliders = true;
-    bool showCollisionPoints = true;
-    bool showCollisionNormals = true;
-    bool showGridCells = true;
+    bool showColliders = false;
+    bool showCollisionPoints = false;
+    bool showCollisionNormals = false;
+    bool showGridCells = false;
 };

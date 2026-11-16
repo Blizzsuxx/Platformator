@@ -19,9 +19,17 @@ Crystal Citadel is a multi-scene, template-driven 2D action-platformer example b
 ## Build & Run
 
 ```sh
-cmake -S examples/crystal_citadel -B bin/crystal_citadel -GNinja
+cmake -S examples/crystal_citadel -B bin/crystal_citadel -GNinja -DCMAKE_BUILD_TYPE=Release
 cmake --build bin/crystal_citadel --parallel 4
 bin/crystal_citadel/crystal_citadel
+```
+
+`POST_BUILD` copies `assets/` next to the binary (excluding `assets/behaviors/`) and `Release` builds disable `PLATFORMATOR_ENABLE_DEBUG_TOOLS` automatically.
+
+Install a stripped, relocatable standalone bundle (`$ORIGIN/../lib` on Linux, `@loader_path/../lib` on macOS):
+
+```sh
+cmake --install bin/crystal_citadel --prefix bin/dist/CrystalCitadel --strip
 ```
 
 Run the automated headless/software self-test covering all 4 scenes and template instantiation flows:

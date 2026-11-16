@@ -38,6 +38,11 @@ Strict UBSan fails `platformator_regression_tests` and `platformator_scene_scrip
 
 ### Leaks persist without engine code
 
+Follow-up (2026-11-16): [standalone dependency isolation](sdl-leak-investigation/README.md)
+reproduces the full 200-byte-per-cycle leak with only FluidSynth load/unload,
+then isolates 96 bytes to system JACK and 104 bytes to system libgomp. A separate
+SDL_image PNG load/free control passes leak detection. No runtime fix is applied.
+
 All 14 leak-failing processes have allocation stacks through `LoadModule_fluidsynth → FLUIDSYNTH_init → MIX_Init`: **8,200 bytes / 164 allocations**, the same prior signature. No engine-owned allocation leak or alternative allocation path was reported. This is not a universal guarantee of leak freedom.
 
 The [standalone probe](sdl-update-evidence/mixer-probe.cpp) links only instrumented SDL3/SDL3_mixer. It prints actual runtime versions SDL `3004018`, mixer `3002004`, then performs init/quit cycles:

@@ -4,13 +4,11 @@
 #include <string>
 #include <vector>
 
-#include <SDL3/SDL_filesystem.h>
-
+#include "platformator/behaviorquery.h"
 #include "platformator/gameobject.h"
 #include "platformator/runner.h"
 #include "platformator/runtime.h"
 #include "platformator/runtimeoptions.h"
-#include "platformator/scriptcomponent.h"
 
 #include "assets/behaviors/citadel_boss.h"
 #include "assets/behaviors/citadel_collectible.h"
@@ -42,23 +40,12 @@ namespace
     }
 
     template <typename T>
-    T *queryBehavior(GameObject *obj)
-    {
-        if (obj == nullptr)
-        {
-            return nullptr;
-        }
-        auto *script = obj->getComponent<ScriptComponent>();
-        return script != nullptr ? script->getBehavior<T>() : nullptr;
-    }
-
-    template <typename T>
     std::vector<T *> findBehaviors(platformator::Runtime &runtime)
     {
         std::vector<T *> result;
         for (GameObject *obj : runtime.getAllGameObjects())
         {
-            if (auto *beh = queryBehavior<T>(obj))
+            if (auto *beh = platformator::getBehavior<T>(obj))
             {
                 result.push_back(beh);
             }
@@ -66,7 +53,7 @@ namespace
         return result;
     }
 
-    int runSelfTest()
+    int runSelfTest(const std::string &assetRootOverride)
     {
         setenv("SDL_VIDEODRIVER", "dummy", 0);
         setenv("SDL_AUDIODRIVER", "dummy", 0);
@@ -74,20 +61,11 @@ namespace
 
         RuntimeOptions options;
         options.sceneFilePath = "assets/scenes/hub.scene";
-        if (const char *basePath = SDL_GetBasePath())
-        {
-            std::string root(basePath);
-            if (!root.empty() && root.back() != '/' && root.back() != '\\')
-            {
-                root.push_back('/');
-            }
-            options.assetRoot = root + "assets";
-        }
+        options.assetRoot = assetRootOverride;
         options.windowSettings.hidden = true;
         options.windowSettings.headless = false;
 
         platformator::Runtime runtime(options);
-        runtime.loadScene(options.sceneFilePath);
         stepFrames(runtime, 15);
 
         // 1. Sanctuary Hub verification
@@ -109,7 +87,7 @@ namespace
         // Break TrainingCrate -> drops CrystalGem + ShieldCore templates
         GameObject *crateObj = runtime.getGameObject("TrainingCrate");
         require(crateObj != nullptr, "TrainingCrate missing in hub.scene");
-        auto *crate = queryBehavior<citadel::CitadelBreakableCrate>(crateObj);
+        auto *crate = platformator::getBehavior<citadel::CitadelBreakableCrate>(crateObj);
         require(crate != nullptr, "TrainingCrate missing CitadelBreakableCrate");
         crate->takeDamage(1);
         require(crate->isBroken(), "TrainingCrate should report broken");
@@ -134,7 +112,7 @@ namespace
         // Transition Hub -> Level 1 (Echoing Caverns)
         GameObject *cavernPortalObj = runtime.getGameObject("PortalToCavern");
         require(cavernPortalObj != nullptr, "PortalToCavern missing in hub.scene");
-        auto *cavernPortal = queryBehavior<citadel::CitadelLevelPortal>(cavernPortalObj);
+        auto *cavernPortal = platformator::getBehavior<citadel::CitadelLevelPortal>(cavernPortalObj);
         require(cavernPortal != nullptr && cavernPortal->activatePortal(), "Failed to trigger hub -> cavern portal");
         stepFrames(runtime, 5);
 
@@ -147,7 +125,7 @@ namespace
         stepFrames(runtime, 20);
         GameObject *spawnerObj = runtime.getGameObject("CavernSpawner");
         require(spawnerObj != nullptr, "CavernSpawner missing in level1_cavern");
-        auto *spawner = queryBehavior<citadel::CitadelWaveSpawner>(spawnerObj);
+        auto *spawner = platformator::getBehavior<citadel::CitadelWaveSpawner>(spawnerObj);
         require(spawner != nullptr, "CavernSpawner missing behavior");
         int beforeSpawn = spawner->getSpawnedCount();
         GameObject *spawnedEnemy = spawner->spawnNextNow();
@@ -156,7 +134,7 @@ namespace
         // Split Slime.pttemplate (self-referential template instantiation)
         GameObject *slimeObj = runtime.getGameObject("CavernSlime_0");
         require(slimeObj != nullptr, "CavernSlime_0 missing in level1_cavern");
-        auto *slime = queryBehavior<citadel::CitadelSplittingSlime>(slimeObj);
+        auto *slime = platformator::getBehavior<citadel::CitadelSplittingSlime>(slimeObj);
         require(slime != nullptr && slime->getGeneration() == 1, "CavernSlime_0 should be generation 1");
         int gen2Before = 0;
         for (auto *s : findBehaviors<citadel::CitadelSplittingSlime>(runtime))
@@ -184,7 +162,7 @@ namespace
         {
             GameObject *gemObj = runtime.getGameObject("CavernGem_" + std::to_string(i));
             require(gemObj != nullptr, "Missing CavernGem_" + std::to_string(i));
-            auto *gem = queryBehavior<citadel::CitadelCollectible>(gemObj);
+            auto *gem = platformator::getBehavior<citadel::CitadelCollectible>(gemObj);
             require(gem != nullptr && gem->collect(player), "Failed collecting cavern gem");
         }
         stepFrames(runtime, 4);
@@ -192,7 +170,7 @@ namespace
 
         GameObject *exitPortal1 = runtime.getGameObject("ExitPortal");
         require(exitPortal1 != nullptr, "ExitPortal missing in level1_cavern");
-        auto *portal1 = queryBehavior<citadel::CitadelLevelPortal>(exitPortal1);
+        auto *portal1 = platformator::getBehavior<citadel::CitadelLevelPortal>(exitPortal1);
         require(portal1 != nullptr && portal1->activatePortal(), "Failed to trigger cavern -> foundry portal");
         stepFrames(runtime, 5);
 
@@ -205,7 +183,7 @@ namespace
 
         GameObject *turretObj = runtime.getGameObject("FoundryTurret_0");
         require(turretObj != nullptr, "FoundryTurret_0 missing in level2_foundry");
-        auto *turret = queryBehavior<citadel::CitadelArcaneTurret>(turretObj);
+        auto *turret = platformator::getBehavior<citadel::CitadelArcaneTurret>(turretObj);
         require(turret != nullptr && turret->hasResolvedChildren(), "ArcaneTurret failed to resolve child barrel references");
         require(turret->fireShotNow(), "ArcaneTurret failed to fire EnemyBolt.pttemplate");
         stepFrames(runtime, 3);
@@ -225,13 +203,13 @@ namespace
         {
             GameObject *gemObj = runtime.getGameObject("FoundryGem_" + std::to_string(i));
             require(gemObj != nullptr, "Missing FoundryGem_" + std::to_string(i));
-            auto *gem = queryBehavior<citadel::CitadelCollectible>(gemObj);
+            auto *gem = platformator::getBehavior<citadel::CitadelCollectible>(gemObj);
             require(gem != nullptr && gem->collect(player), "Failed collecting foundry gem");
         }
         stepFrames(runtime, 4);
         GameObject *exitPortal2 = runtime.getGameObject("ExitPortal");
         require(exitPortal2 != nullptr, "ExitPortal missing in level2_foundry");
-        auto *portal2 = queryBehavior<citadel::CitadelLevelPortal>(exitPortal2);
+        auto *portal2 = platformator::getBehavior<citadel::CitadelLevelPortal>(exitPortal2);
         require(portal2 != nullptr && portal2->activatePortal(), "Failed to trigger foundry -> sanctum portal");
         stepFrames(runtime, 5);
 
@@ -242,7 +220,7 @@ namespace
 
         GameObject *bossObj = runtime.getGameObject("CrystalArchon");
         require(bossObj != nullptr, "CrystalArchon missing in level3_sanctum");
-        auto *boss = queryBehavior<citadel::CitadelArchonBoss>(bossObj);
+        auto *boss = platformator::getBehavior<citadel::CitadelArchonBoss>(bossObj);
         require(boss != nullptr && boss->hasResolvedChildren(), "CrystalArchonBoss failed to resolve crown/orb children");
         require(boss->fireVolleyNow(), "CrystalArchonBoss volley failed");
         require(boss->summonMinionNow(), "CrystalArchonBoss minion summon failed");
@@ -277,19 +255,34 @@ namespace
 
 int main(int argc, char *args[])
 {
+    bool selfTest = false;
+    std::string assetRootOverride;
     for (int i = 1; i < argc; ++i)
     {
-        if (std::string(args[i]) == "--self-test")
+        const std::string arg(args[i]);
+        if (arg == "--self-test")
         {
-            try
-            {
-                return runSelfTest();
-            }
-            catch (const std::exception &ex)
-            {
-                std::cerr << ex.what() << '\n';
-                return 1;
-            }
+            selfTest = true;
+        }
+        else if (arg == "--asset-root" && i + 1 < argc)
+        {
+            assetRootOverride = args[++i];
+        }
+        else if (arg.rfind("--asset-root=", 0) == 0)
+        {
+            assetRootOverride = arg.substr(std::string("--asset-root=").size());
+        }
+    }
+    if (selfTest)
+    {
+        try
+        {
+            return runSelfTest(assetRootOverride);
+        }
+        catch (const std::exception &ex)
+        {
+            std::cerr << ex.what() << '\n';
+            return 1;
         }
     }
     return platformator::run(argc, args, "assets/scenes/hub.scene");

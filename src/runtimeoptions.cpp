@@ -96,14 +96,14 @@ void applyDebugDrawToken(DebugSettings &debugSettings, const std::string &token)
 DebugSettings parseDebugDrawSettings(const std::string &value)
 {
     const std::string normalizedValue = normalizeArgumentValue(value);
-    if (normalizedValue == "all" || normalizedValue == "default")
+    if (normalizedValue == "all")
     {
-        return {};
+        return {false, true, true, true, true};
     }
 
-    if (normalizedValue == "none")
+    if (normalizedValue == "none" || normalizedValue == "default")
     {
-        return {false, false, false, false, false};
+        return {};
     }
 
     DebugSettings debugSettings{false, false, false, false, false};

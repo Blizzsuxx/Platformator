@@ -729,6 +729,16 @@ void run_preference_cases()
                 assetOnlyDefaults.recentScene == authoredScene &&
                 assetOnlyDefaults.activeTabPath == authoredScene,
             "asset-only generation must add a runnable entry point, select an authored scene, and preserve it");
+    {
+        std::ifstream assetOnlyCmake(assetOnlyDir / "CMakeLists.txt", std::ios::binary);
+        const std::string assetOnlyCmakeText((std::istreambuf_iterator<char>(assetOnlyCmake)),
+                                             std::istreambuf_iterator<char>());
+        require(assetOnlyCmakeText.find("copy_directory") != std::string::npos &&
+                    assetOnlyCmakeText.find("install(TARGETS AssetOnlyProject") != std::string::npos &&
+                    assetOnlyCmakeText.find("INSTALL_RPATH") != std::string::npos &&
+                    assetOnlyCmakeText.find("PATTERN \"behaviors\" EXCLUDE") != std::string::npos,
+                "generated CMakeLists.txt must include post-build asset copy, relocatable RPATH, and install rules");
+    }
 }
 
 void test_editor_wait_uses_earliest_deadline_and_bounded_polling()

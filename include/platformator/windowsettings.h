@@ -7,6 +7,7 @@ struct WindowSettings
     bool fullscreen = false;
     bool maximizeOnStartup = false;
     bool keepAspectRatio = false;
+    // Strict physics-only mode (never initializes SDL video/audio). For full-scene tests, use hidden = true with SDL dummy drivers.
     bool headless = false;
     bool hidden = false;
     bool enableRenderCulling = true;

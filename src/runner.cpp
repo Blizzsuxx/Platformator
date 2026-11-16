@@ -37,8 +37,6 @@ int run(const RuntimeOptions &runtimeOptions)
         }
 #endif
         Runtime runtime(effectiveOptions);
-        if (!runtimeOptions.sceneFilePath.empty())
-            runtime.loadScene(runtimeOptions.sceneFilePath);
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (editorSession)
         {

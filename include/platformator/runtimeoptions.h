@@ -16,9 +16,11 @@ struct EditorSessionLaunchOptions
 
 struct RuntimeOptions
 {
+    // Loaded automatically by Runtime(options) when non-empty.
     std::string sceneFilePath;
     WindowSettings windowSettings;
     DebugSettings debugSettings;
+    // Must point to the assets/ directory itself; leave empty to auto-discover <exe_dir>/assets or ../assets.
     std::string assetRoot;
     uint64_t smokeSteps = 0;
     std::optional<EditorSessionLaunchOptions> editorSession;

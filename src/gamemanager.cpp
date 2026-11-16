@@ -1000,6 +1000,10 @@ Template *GameManager::loadTemplate(const std::string &filePath, bool required, 
         }
         return nullptr;
     }
+    const std::string normalizedRequest =
+        (filePath.starts_with("templates/") || filePath.starts_with("templates\\"))
+            ? "assets/" + filePath
+            : filePath;
     if (const auto *canonical = templateAliases.find(filePath))
     {
         auto found = templateCache.find(*canonical);
@@ -1009,7 +1013,7 @@ Template *GameManager::loadTemplate(const std::string &filePath, bool required, 
         }
         throw std::logic_error("Stale asset request alias");
     }
-    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
+    const auto resolved = PathManager::getInstance().resolveAssetPath(normalizedRequest);
     if (auto found = templateCache.find(resolved.canonicalPath); found != templateCache.end())
     {
         templateAliases.add(filePath, resolved.canonicalPath);
@@ -1065,9 +1069,13 @@ Template *GameManager::findTemplate(const std::string &filePath)
         const auto found = templateCache.find(*canonical);
         return found == templateCache.end() ? nullptr : found->second.get();
     }
+    const std::string normalizedRequest =
+        (filePath.starts_with("templates/") || filePath.starts_with("templates\\"))
+            ? "assets/" + filePath
+            : filePath;
     try
     {
-        const auto canonical = PathManager::getInstance().canonicalizeAssetPath(filePath);
+        const auto canonical = PathManager::getInstance().canonicalizeAssetPath(normalizedRequest);
         const auto found = templateCache.find(canonical);
         if (found == templateCache.end())
             return nullptr;

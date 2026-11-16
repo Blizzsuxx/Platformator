@@ -67,60 +67,46 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 #define PLATFORMATOR_FOR_EACH_14(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_13(macro, __VA_ARGS__)
 #define PLATFORMATOR_FOR_EACH_15(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_14(macro, __VA_ARGS__)
 #define PLATFORMATOR_FOR_EACH_16(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_15(macro, __VA_ARGS__)
-#define PLATFORMATOR_FOR_EACH_COUNT(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, count, ...) \
+#define PLATFORMATOR_FOR_EACH_17(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_16(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_18(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_17(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_19(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_18(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_20(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_19(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_21(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_20(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_22(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_21(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_23(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_22(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_24(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_23(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_25(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_24(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_26(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_25(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_27(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_26(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_28(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_27(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_29(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_28(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_30(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_29(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_31(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_30(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_32(macro, value1, ...) macro(value1) PLATFORMATOR_FOR_EACH_31(macro, __VA_ARGS__)
+#define PLATFORMATOR_FOR_EACH_COUNT(                                                                                   \
+    _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16,                                             \
+    _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, count, ...)                        \
     count
 #define PLATFORMATOR_FOR_EACH_SELECT(...)                                                                              \
-    PLATFORMATOR_FOR_EACH_COUNT(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+    PLATFORMATOR_FOR_EACH_COUNT(                                                                                       \
+        __VA_ARGS__, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,                                   \
+        16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 #define PLATFORMATOR_FOR_EACH(macro, ...)                                                                              \
     PLATFORMATOR_CONCAT(PLATFORMATOR_FOR_EACH_, PLATFORMATOR_FOR_EACH_SELECT(__VA_ARGS__))(macro, __VA_ARGS__)
 
-#define PLATFORMATOR_METADATA_FIELDS_1(macro, Type, field1) macro(Type, field1)
-#define PLATFORMATOR_METADATA_FIELDS_2(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_1(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_3(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_2(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_4(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_3(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_5(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_4(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_6(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_5(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_7(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_6(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_8(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_7(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_9(macro, Type, field1, ...)                                                        \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_8(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_10(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_9(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_11(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_10(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_12(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_11(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_13(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_12(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_14(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_13(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_15(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_14(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_16(macro, Type, field1, ...)                                                       \
-    macro(Type, field1), PLATFORMATOR_METADATA_FIELDS_15(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELDS_COUNT(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, count, ...) \
-    count
-#define PLATFORMATOR_METADATA_FIELDS_SELECT(...)                                                                        \
-    PLATFORMATOR_METADATA_FIELDS_COUNT(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define PLATFORMATOR_METADATA_FIELDS(macro, Type, ...)                                                                  \
-    PLATFORMATOR_CONCAT(PLATFORMATOR_METADATA_FIELDS_, PLATFORMATOR_METADATA_FIELDS_SELECT(__VA_ARGS__))(macro, Type, __VA_ARGS__)
-#define PLATFORMATOR_METADATA_FIELD(Type, field) platformator::describe_script_field(#field, &Type::field)
+#define PLATFORMATOR_METADATA_FIELD_ITEM(field) platformator::describe_script_field(#field, &SelfType::field),
 #define PLATFORMATOR_INSPECT_SCRIPT_FIELD(field)                                                                       \
     platformator::metadata_detail::append_script_field(result, #field, instance.field, limits);
-#define PLATFORMATOR_ARGUMENT_COUNT_IMPL(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16,    \
-                                         count, ...)                                                                   \
-    count
-#define PLATFORMATOR_ARGUMENT_COUNT(...)                                                                               \
-    PLATFORMATOR_ARGUMENT_COUNT_IMPL(0 __VA_OPT__(, __VA_ARGS__), 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2,  \
-                                     1, 0)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(count) PLATFORMATOR_CONCAT(PLATFORMATOR_SERIALIZABLE_SCRIPT_, count)
+#define PLATFORMATOR_HAS_FIELDS_COUNT_IMPL(                                                                            \
+    _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16,                                        \
+    _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, flag, ...)                         \
+    flag
+#define PLATFORMATOR_HAS_FIELDS_FLAG(...)                                                                              \
+    PLATFORMATOR_HAS_FIELDS_COUNT_IMPL(                                                                                \
+        0 __VA_OPT__(, __VA_ARGS__),                                                                                   \
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,                                                                \
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(flag) PLATFORMATOR_CONCAT(PLATFORMATOR_SERIALIZABLE_SCRIPT_, flag)
 #define PLATFORMATOR_RESOLVE_SERIALIZED_FIELD(field)                                                                   \
     platformator_json_detail::resolveSerializedField(field, resolver, #field);
 #define PLATFORMATOR_RESOLVE_TEMPLATE_FIELD(field)                                                                     \
@@ -191,13 +177,14 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                      \
     static platformator::ScriptDescriptor platformatorDescribeScriptMetadata()                                         \
     {                                                                                                                  \
-        return platformator::ScriptDescriptor{                                                                        \
-            #Type, true, {PLATFORMATOR_METADATA_FIELDS(PLATFORMATOR_METADATA_FIELD, Type, __VA_ARGS__)}};             \
+        using SelfType = Type;                                                                                         \
+        return platformator::ScriptDescriptor{                                                                         \
+            #Type, true, {PLATFORMATOR_FOR_EACH(PLATFORMATOR_METADATA_FIELD_ITEM, __VA_ARGS__)}};                      \
     }                                                                                                                  \
     static platformator::ScriptInspectionResult platformatorInspectScriptFields(                                       \
         const Type &instance, const platformator::ScriptInspectionLimits &requestedLimits)                              \
     {                                                                                                                  \
-        platformator::ScriptInspectionResult result;                                                                  \
+        platformator::ScriptInspectionResult result;                                                                   \
         result.providerAvailable = true;                                                                               \
         const auto limits = platformator::bounded_script_inspection_limits(requestedLimits);                           \
         PLATFORMATOR_FOR_EACH(PLATFORMATOR_INSPECT_SCRIPT_FIELD, __VA_ARGS__)                                           \
@@ -214,24 +201,9 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     }
 
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_1(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_2(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_3(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_4(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_5(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_6(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_7(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_8(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_9(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_10(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_11(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_12(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_13(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_14(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_15(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_16(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
 
 #define SERIALIZABLE_SCRIPT(Type, ...)                                                                                 \
-    PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(PLATFORMATOR_ARGUMENT_COUNT(__VA_ARGS__))(Type __VA_OPT__(, __VA_ARGS__))
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(PLATFORMATOR_HAS_FIELDS_FLAG(__VA_ARGS__))(Type __VA_OPT__(, __VA_ARGS__))
 
 inline void to_json(nlohmann::json &j, const SDL_FRect &rect)
 {

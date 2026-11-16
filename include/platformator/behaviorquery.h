@@ -4,7 +4,7 @@
 #include "platformator/scriptcomponent.h"
 
 template <typename T>
-T *Behavior::getBehavior(GameObject *gameObject) const
+T *getBehavior(GameObject *gameObject)
 {
     ScriptComponent *scriptComponent = gameObject != nullptr ? gameObject->getComponent<ScriptComponent>() : nullptr;
     if (scriptComponent == nullptr)
@@ -13,4 +13,15 @@ T *Behavior::getBehavior(GameObject *gameObject) const
     }
 
     return scriptComponent->getBehavior<T>();
+}
+
+namespace platformator
+{
+using ::getBehavior;
+} // namespace platformator
+
+template <typename T>
+T *Behavior::getBehavior(GameObject *gameObject) const
+{
+    return ::getBehavior<T>(gameObject);
 }

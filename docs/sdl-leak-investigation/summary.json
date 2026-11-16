@@ -1,0 +1,108 @@
+{
+  "date": "2026-11-16",
+  "repository_head": "680e8e4246830177d832973b7cddeb508917277e",
+  "instrumentation": "Probes: GCC ASan; SDL probes also UBSan. Reused bin/cleanup-asan SDL libraries. detect_leaks=1, halt_on_error=1; outside sandbox.",
+  "results": [
+    {
+      "case": "mixer-zero",
+      "exit": 0,
+      "leaked_bytes": 0,
+      "leaked_allocations": 0
+    },
+    {
+      "case": "mixer-one",
+      "exit": 1,
+      "leaked_bytes": 200,
+      "leaked_allocations": 4
+    },
+    {
+      "case": "mixer-ten",
+      "exit": 1,
+      "leaked_bytes": 2000,
+      "leaked_allocations": 40
+    },
+    {
+      "case": "dlopen-fluidsynth-one",
+      "exit": 1,
+      "leaked_bytes": 200,
+      "leaked_allocations": 4
+    },
+    {
+      "case": "dlopen-gomp-one",
+      "exit": 1,
+      "leaked_bytes": 104,
+      "leaked_allocations": 2
+    },
+    {
+      "case": "dlopen-gomp-ten",
+      "exit": 1,
+      "leaked_bytes": 1040,
+      "leaked_allocations": 20
+    },
+    {
+      "case": "dlopen-jack-one",
+      "exit": 1,
+      "leaked_bytes": 96,
+      "leaked_allocations": 2
+    },
+    {
+      "case": "dlopen-jack-ten",
+      "exit": 1,
+      "leaked_bytes": 960,
+      "leaked_allocations": 20
+    },
+    {
+      "case": "image-ten",
+      "exit": 0,
+      "leaked_bytes": 0,
+      "leaked_allocations": 0
+    }
+  ],
+  "identities": {
+    "/usr/lib/libfluidsynth.so.3": {
+      "resolved_path": "/usr/lib/libfluidsynth.so.3.6.1",
+      "sha256": "9b676b40a1f3b57319abf383c4ae1e6c573476c34ae6dca279febe895a0a565b"
+    },
+    "/usr/lib/libjack.so.0": {
+      "resolved_path": "/usr/lib/libjack.so.0.1.0",
+      "sha256": "342ce13e3c7baa2c8bf94bb137f86819ed56787ec32713504a5120006da51f02"
+    },
+    "/usr/lib/libgomp.so.1": {
+      "resolved_path": "/usr/lib/libgomp.so.1.0.0",
+      "sha256": "d6c6309ee83dbe9b50bf38342489799a4822ee22451677730ff5542aa74bdefc"
+    },
+    "bin/cleanup-asan/libSDL3.so": {
+      "resolved_path": "/home/user/Projects/Platformator/bin/cleanup-asan/libSDL3.so.0.4.18",
+      "sha256": "c6d23deaa13c9da42827eacddcbf15183c837512744880df42be57b2657ffcf0"
+    },
+    "bin/cleanup-asan/libSDL3_mixer.so": {
+      "resolved_path": "/home/user/Projects/Platformator/bin/cleanup-asan/libSDL3_mixer.so.0.2.4",
+      "sha256": "e3c877f26a32bb853fd2a75db813e3e76d6b16670a671175309d39348e0ba2db"
+    },
+    "bin/cleanup-asan/libSDL3_image.so": {
+      "resolved_path": "/home/user/Projects/Platformator/bin/cleanup-asan/libSDL3_image.so.0.4.8",
+      "sha256": "0a7b5e3822a4aaeb6607703ea2c5ff77e1070b1a5bdf7a61bc7072fcf19bd48c"
+    },
+    "docs/sdl-update-evidence/mixer-probe.cpp": {
+      "resolved_path": "/home/user/Projects/Platformator/docs/sdl-update-evidence/mixer-probe.cpp",
+      "sha256": "603cd4e5e48555b92c5b3e70e33509bdd14f4617f80a915915bd9b14d4616ad0"
+    },
+    "docs/sdl-leak-investigation/dlopen-probe.cpp": {
+      "resolved_path": "/home/user/Projects/Platformator/docs/sdl-leak-investigation/dlopen-probe.cpp",
+      "sha256": "2c849df573c38c4a8aa9b2f671299e9295c9d73dcae7b9b44527c02efcec52d8"
+    },
+    "docs/sdl-leak-investigation/image-probe.cpp": {
+      "resolved_path": "/home/user/Projects/Platformator/docs/sdl-leak-investigation/image-probe.cpp",
+      "sha256": "89bab247ea9ee7a682ed0e0831d97b0fc74e97c418dbd7f6bb942934d9962e93"
+    },
+    "assets/textures/missing.png": {
+      "resolved_path": "/home/user/Projects/Platformator/assets/textures/missing.png",
+      "sha256": "14c9b88be3a9f6b27c61404e438ae6afe5bdb4367bc1c34d67dce7580fe9eac3"
+    }
+  },
+  "packages": [
+    "gcc-libs 16.2.1+r23+gd564253eb6c8-1",
+    "jack2 1.9.22-2",
+    "fluidsynth 2.6.1-1"
+  ]
+}

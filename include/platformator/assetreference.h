@@ -56,7 +56,9 @@ template <typename T> class AssetReference
         set(object);
     }
 
-    explicit AssetReference(const std::string &filePath) : object(nullptr), filePath(filePath)
+    explicit AssetReference(const std::string &filePath)
+        : object(nullptr),
+          filePath(filePath.empty() ? std::nullopt : std::optional<std::string>(filePath))
     {
     }
 
@@ -161,6 +163,11 @@ template <typename T> class AssetReference
 
     void setFilePath(const std::string &value)
     {
+        if (value.empty())
+        {
+            clear();
+            return;
+        }
         std::optional<std::string> newPath(value);
         releaseObject();
         filePath = std::move(newPath);

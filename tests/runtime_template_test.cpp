@@ -9,6 +9,7 @@
 #include <platformator/animator.h>
 #include <platformator/assetreference.h>
 #include <platformator/audio.h>
+#include <platformator/behaviorquery.h>
 #include <platformator/boxcollider.h>
 #include <platformator/camera.h>
 #include <platformator/circlecollider.h>
@@ -102,6 +103,16 @@ class EnemyTagBehavior : public ::Behavior
     int hp = 10;
     platformator::TextureAssetRef badgeTexture;
     SERIALIZABLE_SCRIPT(EnemyTagBehavior, hp, badgeTexture)
+};
+
+class LargeSerializedBehavior : public ::Behavior
+{
+  public:
+    int f1 = 1, f2 = 2, f3 = 3, f4 = 4, f5 = 5, f6 = 6, f7 = 7, f8 = 8;
+    int f9 = 9, f10 = 10, f11 = 11, f12 = 12, f13 = 13, f14 = 14, f15 = 15, f16 = 16;
+    int f17 = 17, f18 = 18, f19 = 19, f20 = 20, f21 = 21, f22 = 22, f23 = 23, f24 = 24;
+    SERIALIZABLE_SCRIPT(LargeSerializedBehavior, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16,
+                        f17, f18, f19, f20, f21, f22, f23, f24)
 };
 
 class CompositeRefsBehavior : public ::Behavior
@@ -705,6 +716,74 @@ void testUs4CyclesMidStepCollisionAndCleanup()
         }
     }
 }
+
+void testEngineCleanupContracts()
+{
+    ScopedTempDir tmp("platformator_cleanup_contracts");
+    const auto unitJson = makeObjectJson(
+        1, "Unit", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 2},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "LargeSerializedBehavior"},
+                                                         {"f1", 101},
+                                                         {"f17", 217},
+                                                         {"f24", 324}}})}}}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "unit.pttemplate", makeTemplateDoc("Unit", unitJson));
+
+    const auto spawnerScene = nlohmann::json::array({makeObjectJson(
+        10, "Spawner", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 11},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "SpawnerBehavior"},
+                                                         {"enemyTemplate", "templates/unit.pttemplate"},
+                                                         {"unsetTemplate", ""}}})}}}))});
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "cleanup.scene", spawnerScene);
+
+    RuntimeOptions opts;
+    opts.windowSettings.headless = true;
+    opts.assetRoot = (tmp.dir / "assets").string();
+    opts.sceneFilePath = (tmp.dir / "assets" / "scenes" / "cleanup.scene").string();
+
+    platformator::Runtime runtime(opts);
+    runtime.simulateFrame(dt);
+
+    // Optional "" AssetReference slots remain unset cleanly while "templates/..." resolves identically to "assets/templates/...".
+    auto *spawnerGo = runtime.getGameObject("Spawner");
+    require(spawnerGo != nullptr, "Startup scene must load via Runtime(opts)");
+    auto *spawner = platformator::getBehavior<SpawnerBehavior>(spawnerGo);
+    require(spawner != nullptr && ::getBehavior<SpawnerBehavior>(spawnerGo) == spawner,
+            "getBehavior free helpers must resolve script behaviors");
+    require(!spawner->unsetTemplate.hasFilePath() && spawner->unsetTemplate.resolve(runtime) == nullptr,
+            "Empty string optional AssetReference must remain unset cleanly");
+    require(bool(spawner->enemyTemplate) &&
+                spawner->enemyTemplate.get() == runtime.loadTemplate("assets/templates/unit.pttemplate") &&
+                runtime.loadTemplate("templates/unit.pttemplate") == spawner->enemyTemplate.get(),
+            "templates/... and assets/templates/... must resolve to the same canonical Template");
+
+    // Empty ctor/setFilePath clearing
+    AssetReference<TextureWrapper> texRef("");
+    require(!texRef.hasFilePath(), "Constructing AssetReference with empty string must stay unset");
+    texRef.setFilePath("assets/wall.png");
+    require(texRef.hasFilePath(), "setFilePath must store non-empty path");
+    texRef.setFilePath("");
+    require(!texRef.hasFilePath(), "setFilePath(\"\") must clear AssetReference");
+
+    // 24-field SERIALIZABLE_SCRIPT round-trip & inspection
+    GameObject *spawned = platformator::instantiate(spawner->enemyTemplate);
+    require(spawned != nullptr, "Instantiating 24-field template must succeed");
+    auto *large = platformator::getBehavior<LargeSerializedBehavior>(spawned);
+    require(large != nullptr && large->f1 == 101 && large->f17 == 217 && large->f24 == 324,
+            "SERIALIZABLE_SCRIPT with 24 fields must deserialize values beyond field 16");
+    const auto inspected = platformator::inspectRegisteredScriptFields("LargeSerializedBehavior", *large);
+    require(inspected.providerAvailable && inspected.fields.size() == 24,
+            "Script inspection must expose all 24 serialized fields");
+    nlohmann::json roundtrip;
+    large->serialize(roundtrip);
+    require(roundtrip.at("f17") == 217 && roundtrip.at("f24") == 324,
+            "SERIALIZABLE_SCRIPT with 24 fields must serialize values beyond field 16");
+}
 } // namespace
 
 int main()
@@ -715,6 +794,7 @@ int main()
         testUs1PrototypeIsolationTransformsAssetsAndErrors();
         testUs2AndUs4CompositeAndRollbackAndExternalClearing();
         testUs4CyclesMidStepCollisionAndCleanup();
+        testEngineCleanupContracts();
         std::cout << "Runtime template tests passed\n";
         return 0;
     }

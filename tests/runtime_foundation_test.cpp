@@ -10,10 +10,13 @@
 #include <platformator/animator.h>
 #include <platformator/assetreference.h>
 #include <platformator/audio.h>
+#include <platformator/behaviorquery.h>
 #include <platformator/boxcollider.h>
 #include <platformator/circlecollider.h>
+#include <platformator/debugsettings.h>
 #include <platformator/objectreference.h>
 #include <platformator/rigidbody.h>
+#include <platformator/runtimeoptions.h>
 #include <platformator/scriptcomponent.h>
 
 using platformator::Runtime;
@@ -440,6 +443,68 @@ void audioReplayCancellation()
     runtime.simulateFrameWithCustomCallback(dt, [&](double) { owner->destroy(); });
 }
 
+void runtimeStartupSceneLoading()
+{
+    namespace fs = std::filesystem;
+    const fs::path tempDir = fs::temp_directory_path() / "platformator_startup_scene_test";
+    std::error_code ec;
+    fs::remove_all(tempDir, ec);
+    fs::create_directories(tempDir);
+    const fs::path validScene = tempDir / "startup.scene";
+    {
+        std::ofstream out(validScene);
+        out << R"([{"id":1,"name":"AutoLoaded","tag":"","active":true,"position":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1},"children":[],"components":[]}])";
+    }
+    RuntimeOptions options = test_support::physicsOnly();
+    options.sceneFilePath = validScene.string();
+    {
+        Runtime runtime(options);
+        require(runtime.getGameObject("AutoLoaded") != nullptr,
+                "Runtime(options) must load non-empty sceneFilePath on construction");
+    }
+    options.sceneFilePath = (tempDir / "missing.scene").string();
+    bool threw = false;
+    try
+    {
+        Runtime runtime(options);
+    }
+    catch (const std::exception &)
+    {
+        threw = true;
+    }
+    fs::remove_all(tempDir, ec);
+    require(threw && Runtime::tryGetCurrent() == nullptr,
+            "Failed Runtime(options) startup scene load must roll back activeRuntime");
+}
+
+void debugSettingsAndBehaviorQuery()
+{
+    DebugSettings defaults;
+    require(!defaults.startPaused && !defaults.showColliders && !defaults.showCollisionPoints &&
+                !defaults.showCollisionNormals && !defaults.showGridCells,
+            "DebugSettings visual overlays must default to false");
+
+    char arg0[] = "runner";
+    char arg1[] = "--debug-draw";
+    char arg2[] = "all";
+    char *allDebugArgs[] = {arg0, arg1, arg2};
+    const RuntimeOptions parsedAll = parseRuntimeOptions(3, allDebugArgs, "");
+    require(!parsedAll.debugSettings.startPaused && parsedAll.debugSettings.showColliders &&
+                parsedAll.debugSettings.showCollisionPoints && parsedAll.debugSettings.showCollisionNormals &&
+                parsedAll.debugSettings.showGridCells,
+            "--debug-draw all must enable all four visual overlays");
+
+    Runtime runtime(test_support::physicsOnly());
+    int ticks = 0;
+    auto *obj = runtime.createGameObject();
+    obj->addComponent<ScriptComponent>();
+    auto *counter = new Counter(ticks);
+    obj->getComponent<ScriptComponent>()->addBehavior(counter);
+    require(::getBehavior<Counter>(obj) == counter && platformator::getBehavior<Counter>(obj) == counter &&
+                ::getBehavior<Counter>(nullptr) == nullptr,
+            "Free behaviorquery helpers must resolve attached behaviors outside Behavior subclasses");
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -459,7 +524,9 @@ int main(int argc, char **argv)
                                                          {"audio_autoplay", audioAutoplay},
                                                          {"audio_replay_completion", audioReplayCompletion},
                                                          {"audio_replay_paused", audioReplayWhilePaused},
-                                                         {"audio_replay_cancellation", audioReplayCancellation}};
+                                                         {"audio_replay_cancellation", audioReplayCancellation},
+                                                         {"runtime_startup_scene", runtimeStartupSceneLoading},
+                                                         {"debug_settings_and_behavior_query", debugSettingsAndBehaviorQuery}};
     int failures = 0;
     for (auto [name, run] : cases)
     {

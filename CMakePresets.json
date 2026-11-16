@@ -10,7 +10,7 @@
             "name": "default",
             "displayName": "Default",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/bin/default",
+            "binaryDir": "${sourceDir}/build/default",
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/default"
@@ -20,7 +20,7 @@
             "name": "debug",
             "displayName": "Debug",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/debug",
+            "binaryDir": "${sourceDir}/build/debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
@@ -34,7 +34,7 @@
             "name": "benchmark-debug",
             "displayName": "Benchmark Debug",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/benchmark-debug",
+            "binaryDir": "${sourceDir}/build/benchmark-debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
@@ -49,7 +49,7 @@
             "name": "benchmark",
             "displayName": "Benchmark",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/benchmark",
+            "binaryDir": "${sourceDir}/build/benchmark",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
@@ -64,7 +64,7 @@
             "name": "benchmark-release",
             "displayName": "Benchmark Release",
             "inherits": "benchmark",
-            "binaryDir": "${sourceDir}/bin/benchmark-release",
+            "binaryDir": "${sourceDir}/build/benchmark-release",
             "cacheVariables": {
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/benchmark-release"
             }
@@ -73,7 +73,7 @@
             "name": "production",
             "displayName": "Production",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/production",
+            "binaryDir": "${sourceDir}/build/production",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "OFF",
@@ -90,7 +90,7 @@
             "name": "relwithdebinfo",
             "displayName": "RelWithDebInfo",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/relwithdebinfo",
+            "binaryDir": "${sourceDir}/build/relwithdebinfo",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "ON",
@@ -103,7 +103,7 @@
         {
             "name": "cleanup-debug",
             "inherits": "debug",
-            "binaryDir": "${sourceDir}/bin/cleanup-debug",
+            "binaryDir": "${sourceDir}/build/cleanup-debug",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "none",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-debug"
@@ -112,7 +112,7 @@
         {
             "name": "cleanup-asan",
             "inherits": "debug",
-            "binaryDir": "${sourceDir}/bin/cleanup-asan",
+            "binaryDir": "${sourceDir}/build/cleanup-asan",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "address-undefined",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-asan"
@@ -121,7 +121,7 @@
         {
             "name": "cleanup-tsan",
             "inherits": "debug",
-            "binaryDir": "${sourceDir}/bin/cleanup-tsan",
+            "binaryDir": "${sourceDir}/build/cleanup-tsan",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "thread",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/cleanup-tsan"
@@ -130,7 +130,7 @@
         {
             "name": "cleanup-work",
             "inherits": "cleanup-debug",
-            "binaryDir": "${sourceDir}/bin/cleanup-work",
+            "binaryDir": "${sourceDir}/build/cleanup-work",
             "cacheVariables": {
                 "PLATFORMATOR_ENABLE_DEBUG_TOOLS": "OFF",
                 "PLATFORMATOR_ENABLE_WORK_PROBES": "ON",
@@ -140,7 +140,7 @@
         {
             "name": "cleanup-benchmark",
             "inherits": "benchmark",
-            "binaryDir": "${sourceDir}/bin/cleanup-benchmark",
+            "binaryDir": "${sourceDir}/build/cleanup-benchmark",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "none",
                 "PLATFORMATOR_ENABLE_WORK_PROBES": "OFF",
@@ -152,7 +152,7 @@
             "name": "editor-debug",
             "displayName": "Editor Debug",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/editor-debug",
+            "binaryDir": "${sourceDir}/build/editor-debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "PLATFORMATOR_BUILD_EDITOR": "ON",
@@ -170,7 +170,7 @@
             "name": "editor-release",
             "displayName": "Editor Release",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/editor-release",
+            "binaryDir": "${sourceDir}/build/editor-release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "PLATFORMATOR_BUILD_EDITOR": "ON",
@@ -187,7 +187,7 @@
             "name": "editor-asan",
             "displayName": "Editor Address and Undefined Sanitizers",
             "inherits": "editor-debug",
-            "binaryDir": "${sourceDir}/bin/editor-asan",
+            "binaryDir": "${sourceDir}/build/editor-asan",
             "cacheVariables": {
                 "PLATFORMATOR_SANITIZER": "address-undefined",
                 "PLATFORMATOR_BUILD_TESTS": "ON",
@@ -199,7 +199,7 @@
             "name": "library",
             "displayName": "Engine SDK only",
             "inherits": "default",
-            "binaryDir": "${sourceDir}/bin/library",
+            "binaryDir": "${sourceDir}/build/library",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "PLATFORMATOR_BUILD_EDITOR": "OFF",
@@ -212,7 +212,7 @@
             "name": "tests",
             "displayName": "Engine tests",
             "inherits": "debug",
-            "binaryDir": "${sourceDir}/bin/tests",
+            "binaryDir": "${sourceDir}/build/tests",
             "cacheVariables": {
                 "PLATFORMATOR_BUILD_EDITOR": "OFF",
                 "PLATFORMATOR_BUILD_TESTS": "ON",

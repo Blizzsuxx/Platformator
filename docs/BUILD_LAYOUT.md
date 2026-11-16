@@ -1,5 +1,12 @@
 # Build layout
 
+All generated build trees belong under `build/<profile>/`. Installed SDKs and
+games retain their conventional `<prefix>/bin` executable directory. Historical
+reports retain the paths used when their measurements were captured. CMake build
+trees embed absolute paths: regenerate an old `bin/` build using its preset
+instead of moving the tree. Existing saved editor executable overrides are
+preserved; update those explicitly if they refer to an old build directory.
+
 The root project assembles the engine and, on Linux, the editor. The engine
 library never depends on the editor. The editor links the engine because its
 scene previews and resource management execute runtime code; building game
@@ -27,7 +34,7 @@ cmake -S . -B build/default
 cmake --build build/default --parallel 3
 cmake --preset library
 cmake --build --preset library --parallel 3
-cmake --install bin/library --prefix /path/to/sdk
+cmake --install build/library --prefix /path/to/sdk
 ```
 
 A new default root build has tests, benchmarks, game examples and the generic

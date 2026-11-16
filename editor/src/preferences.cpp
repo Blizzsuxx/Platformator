@@ -1111,7 +1111,7 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
         if (preferences.run.configurePreset.empty())
             preferences.run.configurePreset = preferences.run.buildPreset;
         if (preferences.run.executable.empty())
-            preferences.run.executable = "bin/" + preferences.run.buildPreset + "/main";
+            preferences.run.executable = "build/" + preferences.run.buildPreset + "/main";
         return;
     }
 
@@ -1126,7 +1126,7 @@ void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
         preferences.run.configurePreset.clear();
         preferences.run.buildPreset.clear();
         if (preferences.run.executable.empty())
-            preferences.run.executable = "bin/editor-game/mario_example";
+            preferences.run.executable = "build/editor-game/mario_example";
     }
 }
 
@@ -1154,7 +1154,7 @@ void apply_generated_project_run_defaults(WorkspacePreferences &preferences,
         const std::string executableTarget = preferences.run.target.empty()
             ? generatedTarget : preferences.run.target;
         std::filesystem::path executable =
-            std::filesystem::path("bin") / "debug" / executableTarget;
+            std::filesystem::path("build") / "debug" / executableTarget;
 #if defined(_WIN32)
         executable += ".exe";
 #endif

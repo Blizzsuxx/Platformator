@@ -263,7 +263,8 @@ def validate_frozen_identity(identity: dict[str, Any], baseline_path: Path) -> N
     build_row = values.get("Probe build", "")
     if (probe_path.name != "platformator_editor_probe" or identity.get("build_label") != "editor-release" or
             identity.get("expected_configuration") != "Release" or
-            not build_row.startswith("bin/editor-release/platformator_editor_probe, Release,")):
+            not build_row.startswith(("build/editor-release/platformator_editor_probe, Release,",
+                                      "bin/editor-release/platformator_editor_probe, Release,"))):
         raise CaptureError("Current probe build does not match the frozen Release build identity")
     host = identity.get("host")
     if not isinstance(host, dict):
@@ -528,7 +529,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--baseline", type=Path,
                          default=Path("specs/011-add-imgui-editor/evidence/BASELINE.md"),
                          help="Identity freeze for a new resource session (must already exist)")
-    command.add_argument("--probe", type=Path, default=Path("bin/editor-release/platformator_editor_probe"))
+    command.add_argument("--probe", type=Path, default=Path("build/editor-release/platformator_editor_probe"))
     command.add_argument("--build-label", default="editor-release")
     command.add_argument("--expected-configuration", default="Release")
     command.add_argument("--max-output-mib", type=float, default=DEFAULT_MAX_OUTPUT_MIB)

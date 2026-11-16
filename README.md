@@ -18,22 +18,22 @@ For engine tests:
 ```sh
 cmake --preset cleanup-debug
 cmake --build --preset cleanup-debug --parallel 4
-ctest --test-dir bin/cleanup-debug --output-on-failure -E package_smoke
+ctest --test-dir build/cleanup-debug --output-on-failure -E package_smoke
 ```
 
 Work-probe oracle tests report `Skipped` in this configuration; build the `cleanup-work` preset to exercise them.
 
-The standalone runner is `bin/cleanup-debug/main`. Supply a scene and its asset root explicitly (the runner has no bundled default scene):
+The standalone runner is `build/cleanup-debug/main`. Supply a scene and its asset root explicitly (the runner has no bundled default scene):
 
 ```sh
-bin/cleanup-debug/main --scene /path/to/game.scene --asset-root /path/to/assets
+build/cleanup-debug/main --scene /path/to/game.scene --asset-root /path/to/assets
 printf '[]\n' > /tmp/platformator-empty.scene
-bin/cleanup-debug/main --headless --scene /tmp/platformator-empty.scene --smoke-steps 10 --asset-root assets
+build/cleanup-debug/main --headless --scene /tmp/platformator-empty.scene --smoke-steps 10 --asset-root assets
 ```
 
 Build structure and standalone component commands are documented in [BUILD_LAYOUT.md](docs/BUILD_LAYOUT.md). The default root build includes the engine and editor; tests and benchmarks are opt-in.
 
-Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. Tests own their fixture assets under `tests/fixtures/assets`; nonempty asset requests must resolve successfully and do not automatically fall back. Examples are configured and built separately as standalone projects; see [Mario](examples/mario/CMakeLists.txt) (e.g. `cmake -S examples/mario -B bin/mario && cmake --build bin/mario`). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
+Headless scenes must use physics-compatible resources; texture/audio asset loading requires the corresponding desktop backend. Tests own their fixture assets under `tests/fixtures/assets`; nonempty asset requests must resolve successfully and do not automatically fall back. Examples are configured and built separately as standalone projects; see [Mario](examples/mario/CMakeLists.txt) (e.g. `cmake -S examples/mario -B build/mario && cmake --build build/mario`). Desktop options include `--window-width`, `--window-height`, `--fullscreen`, `--maximized`, `--keep-aspect-ratio`, `--debug-draw` and `--start-paused`.
 
 Game pause (F5 in debug builds, or the editor's Pause control) freezes game audio along with simulation. Playback positions and fades resume from where they stopped; sounds requested while paused wait for resume. Single-stepping keeps audio suspended. Individually paused sounds retain their state, and editor asset previews remain independent.
 
@@ -44,7 +44,7 @@ add_subdirectory(path/to/Platformator platformator)
 target_link_libraries(my_game PRIVATE Platformator::platformator)
 ```
 
-Or configure `-DPLATFORMATOR_INSTALL=ON`, build, and `cmake --install bin/cleanup-debug --prefix /path/to/sdk`. Consumers use `find_package(Platformator CONFIG REQUIRED)` with that prefix in `CMAKE_PREFIX_PATH`, then the same target. Public headers are under `include/platformator`; consumers do not need private source paths or hand-written dependency link lists. The installed SDK and example support prefix relocation.
+Or configure `-DPLATFORMATOR_INSTALL=ON`, build, and `cmake --install build/cleanup-debug --prefix /path/to/sdk`. Consumers use `find_package(Platformator CONFIG REQUIRED)` with that prefix in `CMAKE_PREFIX_PATH`, then the same target. Public headers are under `include/platformator`; consumers do not need private source paths or hand-written dependency link lists. The installed SDK and example support prefix relocation.
 
 On Linux, configure the editor preset with `-DPLATFORMATOR_INSTALL=ON`, build, and install to add `bin/platformator_editor` plus its SDK runtime libraries, editor resources and license notices. The default docking layout is compiled into the editor. See [editor installation instructions](editor/README.md#build-and-launch). A relocated CLI launch is covered; a live installed GUI launch and Windows/macOS packaging remain unverified.
 
@@ -72,7 +72,7 @@ The editor's current Linux workflow includes `W/E/R` Scene tools, Hierarchy rena
 ```sh
 cmake --preset cleanup-benchmark
 cmake --build --preset cleanup-benchmark --target platformator_benchmark_runner --parallel 4
-python3 benchmark/sweep_scaling.py --runner bin/cleanup-benchmark/platformator_benchmark_runner \
+python3 benchmark/sweep_scaling.py --runner build/cleanup-benchmark/platformator_benchmark_runner \
   --scenario broad_phase --counts 100 --workers 1 --seed 0 --warmup-frames 5 \
   --measure-frames 30 --repetitions 3 --raw-output-dir /tmp/broad-runs --output /tmp/broad.csv
 ```

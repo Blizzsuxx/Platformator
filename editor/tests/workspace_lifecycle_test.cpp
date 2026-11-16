@@ -642,7 +642,7 @@ void run_preference_cases()
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path());
     apply_known_bundled_run_defaults(bundledDefaults, sourceRoot);
     require(bundledDefaults.run.target == "main" &&
-                bundledDefaults.run.executable == "bin/debug/main",
+                bundledDefaults.run.executable == "build/debug/main",
             "bundled defaults should configure main target and executable");
 
     // GlobalPreferences recent projects & create_new_project / generate_project_cmakelists
@@ -672,7 +672,7 @@ void run_preference_cases()
     WorkspacePreferences generatedDefaults;
     apply_generated_project_run_defaults(generatedDefaults, scaffoldRes.projectRoot);
     require(generatedDefaults.run.target == "SampleGame" &&
-                generatedDefaults.run.executable == "bin/debug/SampleGame" &&
+                generatedDefaults.run.executable == "build/debug/SampleGame" &&
                 generatedDefaults.run.configurePreset.empty() && generatedDefaults.run.buildPreset.empty() &&
                 generatedDefaults.recentScene == scaffoldRes.projectRoot / "assets" / "scenes" / "main.scene" &&
                 generatedDefaults.activeTabPath == generatedDefaults.recentScene,
@@ -725,7 +725,7 @@ void run_preference_cases()
                 generatedMainText.find("assets/scenes/intro.scene") != std::string::npos &&
                 preservedSceneText == "[]" && !std::filesystem::exists(assetOnlyDir / "assets" / "scenes" / "main.scene") &&
                 assetOnlyDefaults.run.target == "AssetOnlyProject" &&
-                assetOnlyDefaults.run.executable == "bin/debug/AssetOnlyProject" &&
+                assetOnlyDefaults.run.executable == "build/debug/AssetOnlyProject" &&
                 assetOnlyDefaults.recentScene == authoredScene &&
                 assetOnlyDefaults.activeTabPath == authoredScene,
             "asset-only generation must add a runnable entry point, select an authored scene, and preserve it");

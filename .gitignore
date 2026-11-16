@@ -32,8 +32,7 @@
 *.app
 
 # CMake build tree
-/build/
-/bin/
+build/
 /CMakeFiles/
 /CMakeCache.txt
 /cmake_install.cmake
@@ -63,5 +62,4 @@ Thumbs.db
 
 # Persistent linear-render evidence bundles are local artifacts, not source changes.
 /benchmark/artifacts/linear-render-culling/
-/examples/mario/bin/*
 .vscode/

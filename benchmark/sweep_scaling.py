@@ -181,7 +181,7 @@ def build_result_row(args, count, metrics):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runner", default="../bin/cleanup-benchmark/platformator_benchmark_runner")
+    parser.add_argument("--runner", default="build/cleanup-benchmark/platformator_benchmark_runner")
     parser.add_argument("--scenario", required=True, choices=SCENARIOS)
     parser.add_argument("--counts")
     parser.add_argument("--scripted-endpoints", type=int, choices=(0, 1, 2), default=2)

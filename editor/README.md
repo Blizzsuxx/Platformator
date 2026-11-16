@@ -9,7 +9,7 @@ The editor is currently supported on Linux. From the repository root:
 ```sh
 cmake --preset editor-debug
 cmake --build --preset editor-debug --parallel 4 --target platformator_editor
-bin/editor-debug/platformator_editor --project-root /path/to/project --asset-root /path/to/assets
+build/editor-debug/platformator_editor --project-root /path/to/project --asset-root /path/to/assets
 ```
 
 The selected asset root must already exist. A project may omit `CMakeLists.txt` while you edit; use **Edit → Project Settings → Build & Run** to generate one before building. If `--project-root` is omitted, the editor restores the last opened workspace; if `--asset-root` is omitted, it uses `<project-root>/assets`. The workspace's last scene is opened with it. Relative CLI paths resolve against the invocation directory. `--scene FILE` overrides the restored scene, `--no-restore` skips scene restoration, and `--ui-scale 1.5` starts at 150% style scale. Run `platformator_editor --help` for the complete CLI.
@@ -18,8 +18,8 @@ To install the Linux editor with its SDK runtime libraries and resources:
 
 ```sh
 cmake --preset editor-debug -DPLATFORMATOR_INSTALL=ON
-cmake --build bin/editor-debug --parallel 4
-cmake --install bin/editor-debug --prefix /path/to/platformator-editor
+cmake --build build/editor-debug --parallel 4
+cmake --install build/editor-debug --prefix /path/to/platformator-editor
 ```
 
 The installed editor resolves SDL and oneTBB from the prefix with a relative RUNPATH. Its default docking layout is compiled into the executable; the optional copy under `share/platformator/editor` is also installed. The installed `--help` command was verified from an unrelated working directory. A live GUI launch and Windows/macOS packaging remain unverified.

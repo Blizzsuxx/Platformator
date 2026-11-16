@@ -6,7 +6,7 @@ Rendering comparisons default to a compact exploratory pilot with a **50 MiB out
 Configure `cmake --preset cleanup-benchmark`, then build `cmake --build --preset cleanup-benchmark --parallel 4`. Captures require Release without sanitizer, work probes or debug tools. Benchmark scopes themselves are timing instrumentation. Python tooling uses only the standard library except optional matplotlib plotting.
 
 ```sh
-python3 benchmark/sweep_scaling.py --runner bin/cleanup-benchmark/platformator_benchmark_runner \
+python3 benchmark/sweep_scaling.py --runner build/cleanup-benchmark/platformator_benchmark_runner \
   --scenario broad_phase --counts 100 --workers 1 --seed 0 \
   --warmup-frames 5 --measure-frames 30 --dt 0.008333333333333333 \
   --repetitions 3 --raw-output-dir /tmp/broad-runs --output /tmp/broad.csv
@@ -53,7 +53,7 @@ Start with a fresh ignored output directory and selected cases. A pilot needs a 
 
 ```sh
 RUN_ID=replace-with-unique-run-id
-BUILD_ROOT="$PWD/bin/linear-render-$RUN_ID"
+BUILD_ROOT="$PWD/build/linear-render-$RUN_ID"
 REPORT_ROOT="$PWD/specs/009-incremental-render-culling/evidence/pilots/$RUN_ID"
 test ! -e "$REPORT_ROOT/captures/pilot"
 SDL_RENDER_DRIVER=software python3 benchmark/capture_linear_render.py \
@@ -66,7 +66,7 @@ SDL_RENDER_DRIVER=software python3 benchmark/capture_linear_render.py \
   --dt 0.008333333333333333 --output "$REPORT_ROOT/captures/pilot"
 ```
 
-Build trees stay under `bin/`; the report path holds only the compact pilot report and timing samples. Use one fresh run ID and do not reuse or replace an output directory after a failure.
+Build trees stay under `build/`; the report path holds only the compact pilot report and timing samples. Use one fresh run ID and do not reuse or replace an output directory after a failure.
 
 The driver writes a report only after every selected resource/timing run validates. It retains raw step/render/paired samples and cold/growth/reset observations. Three short repetitions screen large effects but do not support an acceptance claim. The current pilot summary is `specs/009-incremental-render-culling/evidence/RESULTS.md`.
 
@@ -74,7 +74,7 @@ The driver writes a report only after every selected resource/timing run validat
 
 The focused exploratory pilot is the default. It uses 3 repetitions, 5 warmup frames, 30 measured frames, a 50 MiB output budget and a 600 second time budget. Stop on a budget or correctness failure and report the partial result; do not automatically retry, expand the workload matrix or retain a full source/build bundle. Larger acceptance campaigns require an explicit request and a separate bounded plan.
 
-Keep builds under `build/` or `bin/`, outside report directories. Retain a compact report, workload/build identities, commands and raw timing samples. Do not retain per-frame sprite identity lists, full-frame images, source archives, executables, shared libraries or build trees by default. Use targeted correctness tests for rendering or resource checks; capture a small bounded diagnostic only for a specific failure.
+Keep builds under `build/`, outside report directories. Retain a compact report, workload/build identities, commands and raw timing samples. Do not retain per-frame sprite identity lists, full-frame images, source archives, executables, shared libraries or build trees by default. Use targeted correctness tests for rendering or resource checks; capture a small bounded diagnostic only for a specific failure.
 
 Historical reports remain historical observations when raw artifacts were deleted. Do not claim their old samples or checksums have been reverified.
 

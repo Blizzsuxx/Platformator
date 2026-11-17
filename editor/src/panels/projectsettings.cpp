@@ -351,7 +351,7 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
                 if (ImGui::Selectable(entry.targetName.c_str(), preferences.target == entry.targetName))
                 {
                     preferences.target = entry.targetName;
-                    preferences.executable = entry.executablePath.generic_string();
+                    preferences.executable.clear();
                 }
             }
             ImGui::EndCombo();
@@ -393,7 +393,10 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
         set_overlay(preferences, "contact-normals", contactNormals);
     ImGui::EndDisabled();
 
-    if (ImGui::CollapsingHeader("Advanced"))
+    const bool anyOverrideSet = !preferences.configurePreset.empty() ||
+        !preferences.buildPreset.empty() || !preferences.target.empty() ||
+        !preferences.executable.empty();
+    if (ImGui::CollapsingHeader(anyOverrideSet ? "Advanced (Overrides Active)###Advanced" : "Advanced###Advanced"))
     {
         input_text_string("Configure Preset Override", "(automatic)", preferences.configurePreset,
                           textDrafts_, committedText_, focusedControl_);
@@ -406,9 +409,6 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
         ImGui::SameLine();
         if (ImGui::Button("Browse..."))
             action = ProjectSettingsAction::BrowseExecutable;
-        const bool anyOverrideSet = !preferences.configurePreset.empty() ||
-            !preferences.buildPreset.empty() || !preferences.target.empty() ||
-            !preferences.executable.empty();
         ImGui::BeginDisabled(!anyOverrideSet);
         if (ImGui::Button("Reset Overrides"))
         {

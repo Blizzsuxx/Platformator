@@ -906,8 +906,47 @@ namespace platformator_editor
         const float toleranceWorld = tolerancePixels * std::max(
                                                            transform.world_width() / transform.content_rect().width,
                                                            transform.world_height() / transform.content_rect().height);
+        std::vector<int> visualOrderedIds;
+        const std::vector<int> *traversalIds = &orderedDocumentIds;
+        const auto &drawIds = preview.draw_document_ids();
+        if (!drawIds.empty())
+        {
+            std::unordered_set<int> spritePickSet;
+            spritePickSet.reserve(orderedDocumentIds.size());
+            std::size_t spriteSlotCount = 0;
+            for (const int objectId : orderedDocumentIds)
+            {
+                const PreviewObjectInfo *info = preview.object_info(objectId);
+                if (info != nullptr && info->hasSprite)
+                {
+                    spritePickSet.insert(objectId);
+                    ++spriteSlotCount;
+                }
+            }
+            if (spriteSlotCount > 1)
+            {
+                std::vector<int> filteredDrawIds;
+                filteredDrawIds.reserve(spriteSlotCount);
+                for (const int drawId : drawIds)
+                {
+                    if (spritePickSet.contains(drawId))
+                        filteredDrawIds.push_back(drawId);
+                }
+                if (filteredDrawIds.size() == spriteSlotCount)
+                {
+                    visualOrderedIds = orderedDocumentIds;
+                    std::size_t drawIndex = 0;
+                    for (int &objectId : visualOrderedIds)
+                    {
+                        if (spritePickSet.contains(objectId))
+                            objectId = filteredDrawIds[drawIndex++];
+                    }
+                    traversalIds = &visualOrderedIds;
+                }
+            }
+        }
         std::vector<ViewportPickCycle::Target> result;
-        for (auto iter = orderedDocumentIds.rbegin(); iter != orderedDocumentIds.rend(); ++iter)
+        for (auto iter = traversalIds->rbegin(); iter != traversalIds->rend(); ++iter)
         {
             const PreviewObjectInfo *info = preview.object_info(*iter);
             if (info == nullptr)

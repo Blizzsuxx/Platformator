@@ -51,6 +51,7 @@ struct WorkCounters
     size_t renderCullingIndexRemovals = 0;
     size_t renderCullingIndexRelinks = 0;
     size_t renderCullingQueries = 0;
+    size_t renderCullingViewQueryBuilds = 0;
     size_t renderCullingQueryStampResets = 0;
     size_t renderCullingCellVisits = 0;
     size_t renderCullingCandidateVisits = 0;
@@ -66,6 +67,20 @@ struct WorkCounters
     size_t renderCullingOwnedCellCount = 0;
     size_t renderCullingOwnedCellCapacity = 0;
     size_t renderCullingOwnedBytes = 0;
+    size_t renderCullingGridOwnedBytes = 0;
+    size_t renderCullingNumericRankSorts = 0;
+    size_t visibleMembershipChecks = 0;
+    size_t visibleMembershipChanges = 0;
+    size_t spriteOrderPreparations = 0;
+    size_t spriteOrderEntries = 0;
+    size_t spriteOrderLookupVisits = 0;
+    size_t spriteOrderComparisons = 0;
+    size_t spriteOrderSorts = 0;
+    size_t spriteOrderRepairs = 0;
+    size_t spriteOrderMoves = 0;
+    size_t spriteOrderOwnedRecords = 0;
+    size_t spriteOrderOwnedEntryCapacity = 0;
+    size_t spriteOrderOwnedBytes = 0;
 };
 inline WorkCounters work;
 

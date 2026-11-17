@@ -126,6 +126,7 @@ class EditorPreview
     SDL_Texture *target() const noexcept;
     std::uint64_t render_revision() const noexcept;
     const std::vector<int> &ordered_document_ids() const noexcept;
+    const std::vector<int> &draw_document_ids() const noexcept;
     const std::vector<int> &ordered_authoring_ids() const noexcept;
     const PreviewObjectInfo *object_info(int documentId) const noexcept;
     const std::string &last_error() const noexcept;
@@ -184,8 +185,14 @@ class EditorPreview
         float cachedScaleX = 1.0f;
         float cachedScaleY = 1.0f;
         float cachedRotation = 0.0f;
+        float cachedWorldX = 0.0f;
+        float cachedWorldY = 0.0f;
+        std::int32_t cachedZOrder = 0;
+        int cachedSpriteComponentId = -1;
+        std::uint64_t registrationSequence = 0;
         bool cachedActive = true;
         bool hasCachedDocumentState = false;
+        bool hasPublishedTransform = false;
         std::string failedAssetIdentity;
         std::string failedAssetMessage;
         std::string registeredSpritePath;
@@ -196,6 +203,7 @@ class EditorPreview
         std::vector<std::pair<std::filesystem::path, ResourceConsumer>> frameConsumers;
     };
     void rebuild(const DocumentSession &document);
+    void ensure_draw_order();
     void rebuild_authoring_info(const DocumentSession &document);
     void update_authoring_info(const DocumentSession &document,
                                const std::vector<int> &updatedObjectIds);
@@ -225,6 +233,9 @@ class EditorPreview
     std::unordered_map<int, PreviewObjectInfo> authoringInfos_;
     std::vector<int> authoringUpdateIds_;
     std::vector<int> orderedDocumentIds_;
+    std::vector<int> drawDocumentIds_;
+    bool drawOrderDirty_ = true;
+    std::uint64_t nextRegistrationSequence_ = 1;
     std::string lastError_;
     std::uint64_t proxyTextureBudgetBytes_ = ScenePreviewMaxProxyTextureBytes;
     bool sceneImageDirty_ = true;

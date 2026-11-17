@@ -102,7 +102,10 @@ bool live_input_double(const char *widgetLabel, double &value, bool mixed,
 bool live_input_int64(const char *widgetLabel, std::int64_t &value,
                       const std::int64_t *step, const std::int64_t *stepFast,
                       LiveEditContext &ctx, const std::vector<PropertyAddress> &targets,
-                      const std::function<void()> &afterWidget = {});
+                      const std::function<void()> &afterWidget = {},
+                      std::optional<std::int64_t> minimum = std::nullopt,
+                      std::optional<std::int64_t> maximum = std::nullopt,
+                      const char *rangeErrorMessage = nullptr);
 
 bool live_input_uint64(const char *widgetLabel, std::uint64_t &value,
                        const std::uint64_t *step, const std::uint64_t *stepFast,

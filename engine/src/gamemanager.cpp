@@ -1533,7 +1533,7 @@ void GameManager::commitMutations()
     drainRetirements(error);
 
     if (clearing || prepared)
-        window->releaseRenderCullingStorage();
+        window->releaseRenderingStorage();
 
     if (clearing)
     {
@@ -1597,7 +1597,7 @@ void GameManager::shutdown()
     {
         std::fprintf(stderr, "Runtime shutdown callback failed\n");
     }
-    window->releaseRenderCullingStorage();
+    window->releaseRenderingStorage();
     window->clearTransientAudio();
     freeAllTemplates();
     freeAllAnimationClips();

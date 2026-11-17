@@ -7,6 +7,10 @@
 #include "runtimeaccess.h"
 #include "platformator/texturewrapper.h"
 
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+
 void to_json(nlohmann::json &j, const Sprite &sprite)
 {
     j["id"] = sprite.getId();
@@ -14,6 +18,7 @@ void to_json(nlohmann::json &j, const Sprite &sprite)
     j["flip"] = sprite.getFlip();
     j["width"] = sprite.getWidthWithoutScale();
     j["height"] = sprite.getHeightWithoutScale();
+    j["zOrder"] = sprite.getZOrder();
     j["sourceRectEnabled"] = sprite.hasSourceRect();
     if (sprite.hasSourceRect())
     {
@@ -24,6 +29,34 @@ void to_json(nlohmann::json &j, const Sprite &sprite)
 
 void deserialize(const nlohmann::json &j, Sprite &sprite, platformator::ReferenceResolver &resolver)
 {
+    std::int32_t zOrder = 0;
+    if (const auto found = j.find("zOrder"); found != j.end())
+    {
+        if (found->is_boolean() || !found->is_number_integer())
+        {
+            throw std::invalid_argument("Sprite zOrder must be an integer in [-2147483648, 2147483647]");
+        }
+        if (found->is_number_unsigned())
+        {
+            const auto unsignedValue = found->get<std::uint64_t>();
+            if (unsignedValue > static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()))
+            {
+                throw std::out_of_range("Sprite zOrder is outside [-2147483648, 2147483647]");
+            }
+            zOrder = static_cast<std::int32_t>(unsignedValue);
+        }
+        else
+        {
+            const auto signedValue = found->get<std::int64_t>();
+            if (signedValue < std::numeric_limits<std::int32_t>::min() ||
+                signedValue > std::numeric_limits<std::int32_t>::max())
+            {
+                throw std::out_of_range("Sprite zOrder is outside [-2147483648, 2147483647]");
+            }
+            zOrder = static_cast<std::int32_t>(signedValue);
+        }
+    }
+
     sprite.setId(j.at("id").get<int>());
 
     std::string filePath = j.at("textureFilePath").get<std::string>();
@@ -39,6 +72,7 @@ void deserialize(const nlohmann::json &j, Sprite &sprite, platformator::Referenc
     {
         sprite.setSourceRect(j.at("sourceRect").get<SDL_FRect>());
     }
+    sprite.setZOrder(zOrder);
 }
 void from_json(const nlohmann::json &j, Sprite &sprite)
 {

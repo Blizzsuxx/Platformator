@@ -70,6 +70,26 @@ Build trees stay under `build/`; the report path holds only the compact pilot re
 
 The driver writes a report only after every selected resource/timing run validates. It retains raw step/render/paired samples and cold/growth/reset observations. Three short repetitions screen large effects but do not support an acceptance claim. The current pilot summary is `specs/009-incremental-render-culling/evidence/RESULTS.md`.
 
+### Render Z ordering & culling comparison (`render-order-culling`)
+
+Use `--comparison render-order-culling` with `--focused-cases authored-static,sparse-camera-pan,dense-z-edit` to run the combined compact pilot (defaults: 3 repetitions, 5 warmup frames, 30 measured frames, 50 MiB output limit, 600 s wall-clock limit):
+
+```sh
+SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
+  --comparison render-order-culling \
+  --focused-cases authored-static,sparse-camera-pan,dense-z-edit \
+  --baseline-probe "$PWD/build/render-order-baseline/platformator_linear_render_probe" \
+  --candidate-validation-probe "$PWD/build/render-order-validation/platformator_linear_render_probe" \
+  --candidate-probe "$PWD/build/render-order-timing/platformator_linear_render_probe" \
+  --asset-root "$PWD/engine/benchmarks/assets" \
+  --workers 1 --multiworker-count 4 --seed 0 \
+  --output "$PWD/specs/019-sprite-z-ordering/evidence/<run-id>"
+```
+
+- **Effective-policy metadata**: `linear_render_culling` reports `requested_selector`, `resolved_startup_strategy`, `requested_mode`, `headless`, `disabled`, `effective_policy`, `observed_mapping_fallbacks`, `observed_numeric_fallbacks`, and `observed_frame_fallbacks` separately while preserving reader compatibility for schema-3 historical manifests.
+- **Timed cases vs. work/resource controls**: `authored-static` (64 visible, Z=0) and `sparse-camera-pan` (10,000 sparse pan, Z=0) time `baseline-indexed`, `candidate-indexed`, and `candidate-cached-linear`; `dense-z-edit` (10,000 retained 1x1 mixed-Z sprites, alternating clean and peer-crossing 1-edit frames) times `rebuild`, `forced-sort`, `repair` at 1 worker and `rebuild` at `--multiworker-count` under `cached-linear`, separating `clean_frames`, `edit_frames`, and `combined` samples. `rejected-z-edit` and 10,000-sprite `fully-moving-crossing` (`current-linear`, `cached-linear`, `indexed`) run only under `--validate-resources` as work/resource controls—never infer timing speedups from work-only controls.
+- **Bounded outputs**: Per-frame `.frames.jsonl` traces and `.ppm` images are deleted immediately after validation parity checks so only compact reports (`report.json`, `report.md`), build/workload identities, commands, resource summaries, and raw timing CSVs/samples remain. Historical reports whose raw artifacts were deleted remain historical observations.
+
 ## Capture limits and retention
 
 The focused exploratory pilot is the default. It uses 3 repetitions, 5 warmup frames, 30 measured frames, a 50 MiB output budget and a 600 second time budget. Stop on a budget or correctness failure and report the partial result; do not automatically retry, expand the workload matrix or retain a full source/build bundle. Larger acceptance campaigns require an explicit request and a separate bounded plan.

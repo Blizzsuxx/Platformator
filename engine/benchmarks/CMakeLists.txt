@@ -39,6 +39,10 @@ if(PLATFORMATOR_BUILD_BENCHMARK_TESTS)
             COMMAND platformator_linear_render_probe --allocation-observer-self-test)
         set_tests_properties(platformator_linear_render_allocation_observer_test
             PROPERTIES LABELS "platformator;benchmark;allocation")
+        add_test(NAME platformator_linear_render_z_oracle_test
+            COMMAND platformator_linear_render_probe --z-edit-oracle-self-test)
+        set_tests_properties(platformator_linear_render_z_oracle_test
+            PROPERTIES LABELS "platformator;benchmark;rendering")
     endif()
     if(PLATFORMATOR_ENABLE_BENCHMARKS)
         add_executable(platformator_focused_cleanup_probe ${CMAKE_CURRENT_SOURCE_DIR}/focused_cleanup_probe.cpp)

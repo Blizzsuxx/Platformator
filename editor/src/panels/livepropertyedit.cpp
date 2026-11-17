@@ -75,7 +75,10 @@ template <typename T>
 bool draw_live_integer_scalar(const char *widgetLabel, ImGuiDataType dataType, const char *formatStr,
                               T &value, const T *step, const T *stepFast,
                               LiveEditContext &ctx, const std::vector<PropertyAddress> &targets,
-                              const std::function<void()> &afterWidget)
+                              const std::function<void()> &afterWidget,
+                              std::optional<T> minimum = std::nullopt,
+                              std::optional<T> maximum = std::nullopt,
+                              const char *rangeErrorMessage = nullptr)
 {
     const T originalValue = value;
     const ImGuiID valueId = ImGui::GetID(widgetLabel);
@@ -95,9 +98,17 @@ bool draw_live_integer_scalar(const char *widgetLabel, ImGuiDataType dataType, c
     bool updated = false;
     if (!cancel && changed && value != originalValue)
     {
-        updated = ctx.state.update_targets(ctx.document, ctx.commands, targets, ctx.selection,
-                                           widgetKey, ctx.hostGeneration, ctx.orderedSelection,
-                                           Json(value), ctx.feedback);
+        if ((minimum && value < *minimum) || (maximum && value > *maximum))
+        {
+            if (rangeErrorMessage != nullptr)
+                ctx.feedback = rangeErrorMessage;
+        }
+        else
+        {
+            updated = ctx.state.update_targets(ctx.document, ctx.commands, targets, ctx.selection,
+                                               widgetKey, ctx.hostGeneration, ctx.orderedSelection,
+                                               Json(value), ctx.feedback);
+        }
     }
     ctx.state.finish_widget(widgetKey, &ctx.document, itemActive, cancel);
     return updated;
@@ -356,11 +367,14 @@ bool live_input_double(const char *widgetLabel, double &value, bool mixed,
 bool live_input_int64(const char *widgetLabel, std::int64_t &value,
                       const std::int64_t *step, const std::int64_t *stepFast,
                       LiveEditContext &ctx, const std::vector<PropertyAddress> &targets,
-                      const std::function<void()> &afterWidget)
+                      const std::function<void()> &afterWidget,
+                      std::optional<std::int64_t> minimum,
+                      std::optional<std::int64_t> maximum,
+                      const char *rangeErrorMessage)
 {
     return draw_live_integer_scalar<std::int64_t>(
         widgetLabel, ImGuiDataType_S64, "%lld", value, step, stepFast,
-        ctx, targets, afterWidget);
+        ctx, targets, afterWidget, minimum, maximum, rangeErrorMessage);
 }
 
 bool live_input_uint64(const char *widgetLabel, std::uint64_t &value,

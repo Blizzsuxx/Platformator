@@ -32,6 +32,8 @@ enum class Counter : std::size_t
     ValidationMergedObjects,             // Local validation records merged into cached results.
     SceneCullTests,                       // Scene sprites tested against the visible viewport.
     SceneCulledSprites,                   // Scene sprites rejected by viewport culling.
+    SceneDrawOrderSorts,                  // Scene preview draw-ID list sorts.
+    SceneProxyTransformPublications,      // Scene proxy world-transform publications and syncs.
     HierarchyConnectors,                  // Hierarchy connector line segments submitted.
     ProjectTiles,                         // Visible Project entries submitted as tiles.
     AssetChanges,                         // Asset change events accepted by the Project panel.

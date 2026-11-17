@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 #include <SDL3/SDL.h>
 #include <json.hpp>
@@ -31,6 +32,7 @@ public:
 	const SDL_FRect *getSourceRect() const;
 	float getWidthWithoutScale() const;
 	float getHeightWithoutScale() const;
+	std::int32_t getZOrder() const;
 
 	void setTextureWrapper(TextureWrapper *textureWrapper);
 	void setTextureRegion(const TextureRegion &region);
@@ -39,6 +41,7 @@ public:
 	void setHeight(float height);
 	void setSourceRect(const SDL_FRect &sourceRect);
 	void clearSourceRect();
+	void setZOrder(std::int32_t zOrder);
 
 	bool getIsRegisteredInWindow() const;
 	void setIsRegisteredInWindow(bool isRegisteredInWindow);
@@ -50,6 +53,7 @@ private:
 	SDL_FlipMode flip;
 	float width;
 	float height;
+	std::int32_t zOrder = 0;
 	bool isRegisteredInWindow;
 	size_t windowIndex;
 };

@@ -102,10 +102,17 @@ float nested_number(const Json &record, const char *outer, const char *inner, fl
 int integer_value(const Json &record, const char *key, int fallback)
 {
     const auto found = record.find(key);
-    if (found == record.end() || !found->is_number_integer())
+    if (found == record.end() || found->is_boolean() || !found->is_number_integer())
         return fallback;
     try
     {
+        if (found->is_number_unsigned())
+        {
+            const auto value = found->get<std::uint64_t>();
+            return value <= static_cast<std::uint64_t>(std::numeric_limits<int>::max())
+                       ? static_cast<int>(value)
+                       : fallback;
+        }
         const auto value = found->get<std::int64_t>();
         return value >= std::numeric_limits<int>::min() && value <= std::numeric_limits<int>::max()
                    ? static_cast<int>(value)
@@ -681,6 +688,7 @@ void EditorPreview::reconcile(const DocumentSession &document, bool structureCha
                 pending.push_back({&(*children)[index - 1], worldX, worldY});
         }
     }
+    ensure_draw_order();
 }
 
 void EditorPreview::refresh_asset(const DocumentSession &document,
@@ -1339,6 +1347,8 @@ void EditorPreview::rebuild(const DocumentSession &document)
     {
         if (!desired.contains(it->first))
         {
+            drawDocumentIds_.clear();
+            drawOrderDirty_ = true;
             destroy_proxy(it->second);
             it = proxies_.erase(it);
         }
@@ -1355,6 +1365,32 @@ void EditorPreview::rebuild(const DocumentSession &document)
         if (object != nullptr)
             update_proxy(document, documentId, *object);
     }
+    ensure_draw_order();
+}
+
+void EditorPreview::ensure_draw_order()
+{
+    if (!drawOrderDirty_)
+        return;
+    drawDocumentIds_.clear();
+    drawDocumentIds_.reserve(proxies_.size());
+    for (const int documentId : orderedDocumentIds_)
+    {
+        if (proxies_.contains(documentId))
+            drawDocumentIds_.push_back(documentId);
+    }
+    if (drawDocumentIds_.size() > 1)
+    {
+        work::record(work::Counter::SceneDrawOrderSorts);
+        std::sort(drawDocumentIds_.begin(), drawDocumentIds_.end(), [&](int leftId, int rightId) {
+            const Proxy &left = proxies_.at(leftId);
+            const Proxy &right = proxies_.at(rightId);
+            if (left.cachedZOrder != right.cachedZOrder)
+                return left.cachedZOrder < right.cachedZOrder;
+            return left.registrationSequence < right.registrationSequence;
+        });
+    }
+    drawOrderDirty_ = false;
 }
 
 void EditorPreview::rebuild_authoring_info(const DocumentSession &document)
@@ -1436,6 +1472,8 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     {
         if (auto found = proxies_.find(documentId); found != proxies_.end())
         {
+            drawDocumentIds_.clear();
+            drawOrderDirty_ = true;
             destroy_proxy(found->second);
             proxies_.erase(found);
             orderedDocumentIds_.erase(std::remove(orderedDocumentIds_.begin(), orderedDocumentIds_.end(), documentId),
@@ -1445,6 +1483,9 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     }
 
     Proxy &proxy = proxies_[documentId];
+    const bool newProxy = proxy.registrationSequence == 0;
+    const int spriteComponentId = integer_value(*spriteData, "id", -1);
+    const std::int32_t zOrder = integer_value(*spriteData, "zOrder", 0);
     const Json emptyAnimatorData = Json::object();
     const Json *animatorDataPointer = component_of_type(objectData, 0);
     const Json &animatorData = animatorDataPointer == nullptr ? emptyAnimatorData : *animatorDataPointer;
@@ -1487,6 +1528,21 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     const float scaleY = nested_number(objectData, "scale", "y", 1.0f);
     const float rotation = finite_number(objectData, "rotation", 0.0f);
     const bool active = boolean_value(objectData, "active", true);
+    const bool reactivated = !newProxy && proxy.hasCachedDocumentState && !proxy.cachedActive && active;
+    const bool spriteReplaced =
+        !newProxy && proxy.hasCachedDocumentState && proxy.cachedSpriteComponentId != spriteComponentId;
+    if (newProxy || reactivated || spriteReplaced)
+    {
+        proxy.registrationSequence = nextRegistrationSequence_++;
+        drawOrderDirty_ = true;
+    }
+    if (!proxy.hasCachedDocumentState || proxy.cachedZOrder != zOrder)
+    {
+        proxy.cachedZOrder = zOrder;
+        drawOrderDirty_ = true;
+    }
+    if (!proxy.hasCachedDocumentState || proxy.cachedSpriteComponentId != spriteComponentId)
+        proxy.cachedSpriteComponentId = spriteComponentId;
     const bool documentStateUnchanged = proxy.hasCachedDocumentState &&
         proxy.cachedPositionX == positionX && proxy.cachedPositionY == positionY &&
         proxy.cachedScaleX == scaleX && proxy.cachedScaleY == scaleY &&
@@ -1574,11 +1630,23 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
         return;
     }
 
-    proxy.object->setName("Preview object " + std::to_string(documentId));
-    proxy.object->setActive(proxy.info.active);
-    proxy.object->setScale(Eigen::Vector2f(proxy.info.localScaleX, proxy.info.localScaleY));
-    proxy.object->setRotation(rotation);
-    platformator_editor_detail::EditorPreviewAccess::publish_proxy_position(*proxy.object, worldX, worldY);
+    if (newProxy || !proxy.hasPublishedTransform)
+        proxy.object->setName("Preview object " + std::to_string(documentId));
+    if (!proxy.hasPublishedTransform || proxy.cachedActive != proxy.info.active)
+        proxy.object->setActive(proxy.info.active);
+    if (!proxy.hasPublishedTransform || proxy.cachedScaleX != scaleX || proxy.cachedScaleY != scaleY)
+        proxy.object->setScale(Eigen::Vector2f(proxy.info.localScaleX, proxy.info.localScaleY));
+    if (!proxy.hasPublishedTransform || proxy.cachedRotation != rotation)
+        proxy.object->setRotation(rotation);
+    if (proxy.sprite->getZOrder() != zOrder)
+        proxy.sprite->setZOrder(zOrder);
+    if (!proxy.hasPublishedTransform || proxy.cachedWorldX != worldX || proxy.cachedWorldY != worldY)
+    {
+        platformator_editor_detail::EditorPreviewAccess::publish_proxy_position(*proxy.object, worldX, worldY);
+        proxy.cachedWorldX = worldX;
+        proxy.cachedWorldY = worldY;
+    }
+    proxy.hasPublishedTransform = true;
 
     const bool pendingSpriteReady = !proxy.info.textureAvailable && proxy.failedAssetIdentity.empty() &&
         ((!spriteInputs.texturePath.empty() &&
@@ -1953,9 +2021,10 @@ bool EditorPreview::render(float cameraX, float cameraY, float worldWidth, float
     // rejects only sprites whose conservative rotated bounds are wholly outside it;
     // retain this ordered pass until matched mostly-offscreen measurements justify
     // a spatial index with overlap, parenting, resize, and asset-change regressions.
+    ensure_draw_order();
     const float viewRight = cameraX + worldWidth;
     const float viewBottom = cameraY + worldHeight;
-    for (const int documentId : orderedDocumentIds_)
+    for (const int documentId : drawDocumentIds_)
     {
         if (hidden.contains(documentId))
             continue;
@@ -2019,6 +2088,11 @@ const std::vector<int> &EditorPreview::ordered_document_ids() const noexcept
     return orderedDocumentIds_;
 }
 
+const std::vector<int> &EditorPreview::draw_document_ids() const noexcept
+{
+    return drawDocumentIds_;
+}
+
 const std::vector<int> &EditorPreview::ordered_authoring_ids() const noexcept
 {
     return authoringIndex_.ordered_ids();
@@ -2067,6 +2141,9 @@ void EditorPreview::release() noexcept
     renderedRenderer_ = nullptr;
     renderedTarget_ = nullptr;
     renderedHiddenObjectIds_.clear();
+    drawDocumentIds_.clear();
+    drawOrderDirty_ = true;
+    nextRegistrationSequence_ = 1;
     for (auto &[id, proxy] : proxies_)
     {
         (void)id;
@@ -2118,6 +2195,7 @@ void EditorPreviewAccess::publish_proxy_position(GameObject &object, float x, fl
         throw std::logic_error("preview proxy transforms must be published on the idle Runtime owner thread");
     object.setPosition(Eigen::Vector2f(x, y));
     manager.synchronizeTransforms();
+    platformator_editor::work::record(platformator_editor::work::Counter::SceneProxyTransformPublications);
 }
 
 void EditorPreviewAccess::render_sprite(Camera &camera, Sprite &sprite, SDL_Renderer *renderer,

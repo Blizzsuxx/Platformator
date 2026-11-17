@@ -43,19 +43,7 @@ class RenderCullingState
         SpriteRenderBounds bounds{};
         bool boundsValid = false;
         bool hasTexture = false;
-        // IDs and backlinks are active only in indexed mode; cached-linear
-        // state never allocates or traverses the spatial pools.
-        std::array<RecordIndex, 4> cellLinks{absentIndex, absentIndex, absentIndex, absentIndex};
-        RecordIndex cellLinkCount = 0;
-        RecordIndex sideListPosition = absentIndex;
-        uint32_t lastQueryStamp = 0;
-        RenderCullingSpatialKind spatialKind = RenderCullingSpatialKind::Uncertifiable;
-    };
-
-    struct VisibleRankChange
-    {
-        RecordIndex rank = absentIndex;
-        bool visible = false;
+        RecordIndex visiblePosition = absentIndex;
     };
 
     explicit RenderCullingState(RenderCullingMode mode);
@@ -73,20 +61,23 @@ class RenderCullingState
     void releaseStorage() noexcept;
     const std::vector<RecordIndex> &visibleRanks() const;
     bool selectionValid() const;
+    uint64_t visibleMembershipRevision() const noexcept;
+    bool isRankVisible(RecordIndex rank) const noexcept;
     const SpriteRenderProjectionKey &projectionKey() const;
     const SpriteRenderViewKey &viewKey() const;
-    void beginVisibleSelection();
-    void appendVisibleRank(RecordIndex rank);
-    void sortVisibleRanks();
-    void beginVisibleRankChanges();
-    void queueVisibleRankChange(RecordIndex rank, bool visible);
-    void applyVisibleRankChanges();
+    void beginVisibleSelectionScratch();
+    void appendVisibleSelectionScratch(RecordIndex rank);
+    void publishVisibleSelectionScratch();
+    void beginVisibleDelta();
+    void updateVisibleRank(RecordIndex rank, bool visible);
+    bool finishVisibleDelta();
     void setPreparedKeys(const SpriteRenderProjectionKey &projection, const SpriteRenderViewKey &view);
     void setSpatialCellSize(double width, double height);
     RenderCullingSpatialKind updateSpatialBounds(RecordIndex index, const SpriteRenderBounds &bounds,
                                                 bool certifiable);
     const std::vector<RecordIndex> &querySpatial(const SpriteRenderBounds &query);
     bool validateSpatialInvariants() const;
+    bool validateMembershipInvariants() const;
     bool hasSpatialIndex() const;
     RecordIndex spatialCellCount() const;
     RecordIndex spatialCellCapacity() const;
@@ -115,10 +106,11 @@ class RenderCullingState
     std::vector<RecordIndex> dirtyQueuePosition;
     std::vector<RecordIndex> currentVisibleRanks;
     std::vector<RecordIndex> visibleRankMerge;
-    std::vector<VisibleRankChange> visibleRankChanges;
     SpriteRenderProjectionKey currentProjectionKey{};
     SpriteRenderViewKey cachedViewKey{};
+    uint64_t visibleMembershipRevision_ = 0;
     bool visibleSelectionValid = false;
+    bool deltaMembershipChanged = false;
     std::unique_ptr<SpatialIndex> spatialIndex;
 };
 } // namespace platformator_detail

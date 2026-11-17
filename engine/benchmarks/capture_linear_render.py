@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 
-from capture_budget import BudgetExceeded, CaptureBudget, capture_budget, check_budget, wait_for_process
+from capture_budget import BudgetExceeded, CaptureBudget, active_budget_max_bytes, capture_budget, check_budget, wait_for_process
 
 from sweep_scaling import COUNTERS as INCREMENTAL_BENCHMARK_COUNTERS
 from sweep_scaling import SCOPES as INCREMENTAL_BENCHMARK_SCOPES
@@ -39,6 +39,18 @@ INCREMENTAL_STRATEGIES = ("current-linear", "cached-linear", "indexed")
 INCREMENTAL_PHASES = ("validate", "resources", "time", "pilot")
 FOCUSED_CASE_NAMES = ("mostly-offscreen", "camera-motion", "small-moving-subset",
                       "fully-moving-crossing", "all-visible", "crossing-multiworker")
+RENDER_ORDER_CASE_NAMES = ("authored-static", "sparse-camera-pan", "dense-z-edit")
+RENDER_ORDER_VARIANTS = ("rebuild", "forced-sort", "repair")
+RECORDED_FROZEN_BASELINE_IDENTITY = {
+    "configuration": "Release",
+    "sanitizer": "none",
+    "work_probes": False,
+    "debug_tools": False,
+    "source_sha256": "ae1f6003dc402c7243fb91d9cb91e161c86b9b376a73b3572fbe8881759c021e",
+    "fixture_sha256": "170c6203834cd331174fdd004ffda0f23d1508bb1c722599266b6759337b5eb6",
+    "harness_sha256": "c1345c9ec9de4e08d1942b904cd293d1d930b73fa384bd49990001a048f1d62a",
+}
+PARTIAL_SUMMARY_RESERVE_BYTES = 8192
 
 
 class CaptureError(RuntimeError):
@@ -55,13 +67,16 @@ class ImageMismatch(CaptureError):
 
 
 def validate_incremental_options(comparison: str, phase: str | None, strategy: str | None) -> tuple[str, str | None, str | None]:
-    if comparison not in ("legacy", "incremental"):
+    if comparison not in ("legacy", "incremental", "render-order-culling"):
         raise CaptureError(f"Unknown comparison: {comparison}")
     if comparison == "incremental":
         if phase not in INCREMENTAL_PHASES:
             raise CaptureError(f"Unknown incremental phase: {phase}")
         if strategy not in (*INCREMENTAL_STRATEGIES, "all"):
             raise CaptureError(f"Unknown render strategy: {strategy}")
+    elif comparison == "render-order-culling":
+        if phase is not None or strategy is not None:
+            raise CaptureError("--phase and --strategy are not supported with --comparison render-order-culling")
     elif phase is not None or strategy is not None:
         raise CaptureError("--phase and --strategy require --comparison incremental")
     return comparison, phase, strategy
@@ -159,19 +174,24 @@ def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expec
         if row["render"] != 0.0:
             raise CaptureError("Incremental step samples contain duration attributed to the render scope")
     paired_values = []
+    prepare_values: list[float | None] = []
     with paired_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if reader.fieldnames != ["step", "paired_step_render_ns"]:
+        if reader.fieldnames not in (["step", "paired_step_render_ns"],
+                                     ["step", "paired_step_render_ns", "draw_order_prepare_ns"]):
             raise CaptureError("Incremental paired timing columns are invalid")
+        has_prepare = "draw_order_prepare_ns" in reader.fieldnames
         for index, row in enumerate(reader):
             try:
                 sample_index = int(row["step"])
                 nanoseconds = int(row["paired_step_render_ns"])
+                prepare_ns = int(row["draw_order_prepare_ns"]) if has_prepare else None
             except (TypeError, ValueError) as error:
                 raise CaptureError("Incremental paired timing sample is invalid") from error
-            if sample_index != index or nanoseconds < 0:
+            if sample_index != index or nanoseconds < 0 or (prepare_ns is not None and prepare_ns < 0):
                 raise CaptureError("Incremental paired timing samples are negative, truncated, or reordered")
             paired_values.append(nanoseconds / 1_000_000)
+            prepare_values.append((prepare_ns / 1_000_000) if prepare_ns is not None else None)
     if len(paired_values) != expected_steps:
         raise CaptureError("Incremental paired timing sample count differs from the requested run")
     for row in render_rows:
@@ -181,7 +201,8 @@ def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expec
     for index, row in enumerate(step_rows):
         rows.append({"sample_index": index, "complete_step_ms": row["complete_step"],
                      "render_ms": by_render_index[index]["render"] if index in by_render_index else 0.0,
-                     "paired_step_render_ms": paired_values[index]})
+                     "paired_step_render_ms": paired_values[index],
+                     "draw_order_prepare_ms": prepare_values[index]})
     return rows, paired_values
 
 
@@ -765,10 +786,12 @@ def validate_timing_manifest(csv_path: Path, case: dict, args, mode: str,
     if manifest.get("resolved_parameters") != render_proof.get("trajectory_parameters"):
         raise CaptureError("Timing trajectory parameters differ from the checked validation proof")
     culling = manifest.get("linear_render_culling", {})
-    expected_policy = "headless-no-rendering" if case.get("headless") else mode
+    expected_policies = ({"headless-no-rendering"} if case.get("headless")
+                         else ({mode, "submit-all"} if mode == "disabled" else {mode}))
+    expected_enabled = mode in ("linear", "cached-linear", "indexed", "current-linear") and not case.get("headless")
     if (culling.get("mode") != mode or culling.get("requested_mode") != mode or
-            culling.get("effective_policy") != expected_policy or
-            culling.get("enabled") != (mode == "linear" and not case.get("headless"))):
+            culling.get("effective_policy") not in expected_policies or
+            culling.get("enabled") != expected_enabled):
         raise CaptureError("Timing requested/effective culling policy does not match the comparison arm")
     expected_render_samples = 0 if case.get("headless") else args.measure_frames
     if (manifest.get("rendering") is not (not case.get("headless")) or
@@ -1265,10 +1288,12 @@ def validate_engine_control_manifest(manifest: dict, control: dict, args, mode: 
             raise CaptureError(f"Engine control has wrong resolved {field}")
     culling = manifest.get("linear_render_culling")
     if mode == "linear":
-        expected_policy = "linear-filtering" if rendered else "headless-no-rendering"
-        if (not isinstance(culling, dict) or culling.get("requested_mode") != "linear" or
+        expected_policies = ({"linear-filtering", "cached-linear", "indexed", "current-linear"}
+                             if rendered else {"headless-no-rendering"})
+        if (not isinstance(culling, dict) or
+                culling.get("requested_mode") not in ("linear", "cached-linear", "indexed", "current-linear") or
                 culling.get("requested_enabled") is not True or culling.get("effective_enabled") is not rendered or
-                culling.get("effective_policy") != expected_policy):
+                culling.get("effective_policy") not in expected_policies):
             raise CaptureError("Candidate engine control did not request and apply the expected culling policy")
     elif culling is not None:
         raise CaptureError("Pre-feature engine control unexpectedly reports candidate culling metadata")
@@ -1336,6 +1361,652 @@ def run_engine_controls(args, logs: Path, raw: Path, env: dict, rng: random.Rand
     return rows
 
 
+def render_order_cases(selection: str | list[str], workers: int, multiworker_count: int) -> list[dict]:
+    names = [item.strip() for item in selection.split(",")] if isinstance(selection, str) else list(selection)
+    if not names or any(not name for name in names):
+        raise CaptureError("render-order-culling requires one or more named cases")
+    if len(names) != len(set(names)):
+        raise CaptureError("Focused case selection contains duplicates")
+    unknown = [name for name in names if name not in RENDER_ORDER_CASE_NAMES]
+    if unknown:
+        raise CaptureError("Unknown render-order-culling case name: " + ", ".join(unknown))
+    if workers <= 0 or multiworker_count <= 0:
+        raise CaptureError("Worker counts must be positive")
+    specs = {
+        "authored-static": {"case_name": "authored-static", "profile": "visible", "sprite_count": 64,
+                            "layout": "fixed-area", "changed_percent": 0, "size_distribution": "standard",
+                            "workers": workers, "all_zero": True, "headless": False},
+        "sparse-camera-pan": {"case_name": "sparse-camera-pan", "profile": "camera-pan", "sprite_count": 10000,
+                              "layout": "constant-density-spread", "changed_percent": 0,
+                              "size_distribution": "standard", "workers": workers, "all_zero": True,
+                              "headless": False},
+        "dense-z-edit": {"case_name": "dense-z-edit", "profile": "dense-z-edit", "sprite_count": 10000,
+                         "layout": "profile-defined", "changed_percent": 0, "size_distribution": "standard",
+                         "workers": workers, "multiworker_count": multiworker_count, "all_zero": False,
+                         "headless": False},
+    }
+    return [dict(specs[name]) for name in names]
+
+
+def render_order_arms(case: dict) -> list[dict]:
+    if case["all_zero"]:
+        return [
+            {"arm": "baseline-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
+             "workers": case["workers"], "is_baseline": True},
+            {"arm": "candidate-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
+             "workers": case["workers"], "is_baseline": False},
+            {"arm": "candidate-cached-linear", "strategy": "cached-linear", "ordering_variant": "rebuild",
+             "workers": case["workers"], "is_baseline": False},
+        ]
+    arms = [
+        {"arm": "candidate-rebuild-w1", "strategy": "cached-linear", "ordering_variant": "rebuild",
+         "workers": case["workers"], "is_baseline": False},
+        {"arm": "candidate-forced-sort-w1", "strategy": "cached-linear", "ordering_variant": "forced-sort",
+         "workers": case["workers"], "is_baseline": False},
+        {"arm": "candidate-repair-w1", "strategy": "cached-linear", "ordering_variant": "repair",
+         "workers": case["workers"], "is_baseline": False},
+    ]
+    if case["multiworker_count"] != case["workers"]:
+        arms.append({"arm": f"candidate-rebuild-w{case['multiworker_count']}", "strategy": "cached-linear",
+                     "ordering_variant": "rebuild", "workers": case["multiworker_count"], "is_baseline": False})
+    return arms
+
+
+def _render_order_control_specs() -> list[dict]:
+    return [
+        {"control_name": "rejected-z-edit", "profile": "rejected-z-edit", "sprite_count": 10000,
+         "layout": "profile-defined", "changed_percent": 0, "size_distribution": "standard",
+         "strategies": ("indexed", "cached-linear")},
+        {"control_name": "fully-moving-crossing", "profile": "crossing", "sprite_count": 10000,
+         "layout": "continuous-crossing", "changed_percent": 100, "size_distribution": "standard",
+         "strategies": ("current-linear", "cached-linear", "indexed")},
+    ]
+
+
+def _build_render_order_command(binary: Path, case: dict, arm: dict, args, *, phase: str,
+                                csv_path: Path, run_index: int = 0,
+                                evidence_prefix: Path | None = None,
+                                validation_path: Path | None = None,
+                                resource_path: Path | None = None) -> list[str]:
+    command = [str(binary), "--profile", case["profile"], "--sprite-count", str(case["sprite_count"]),
+               "--workers", str(arm["workers"]), "--seed", str(args.seed),
+               "--warmup-frames", str(args.warmup_frames), "--measure-frames", str(args.measure_frames),
+               "--dt", repr(args.dt), "--repetitions", str(args.repetitions), "--run-index", str(run_index),
+               "--csv-output", str(csv_path), "--render-strategy", arm["strategy"],
+               "--layout", case["layout"], "--changed-percent", str(case["changed_percent"]),
+               "--size-distribution", case["size_distribution"]]
+    if not arm["is_baseline"]:
+        command += ["--ordering-variant", arm["ordering_variant"]]
+    if phase == "validate":
+        if evidence_prefix is None:
+            raise CaptureError("Validation command requires evidence_prefix")
+        command += ["--evidence-output", str(evidence_prefix), "--validate-rendering"]
+    elif phase == "resources":
+        if evidence_prefix is None:
+            raise CaptureError("Resource command requires evidence_prefix")
+        command += ["--evidence-output", str(evidence_prefix), "--validate-resources"]
+    elif phase == "time":
+        if not arm["is_baseline"]:
+            if validation_path is None or resource_path is None:
+                raise CaptureError("Candidate timing run requires validation and resource proofs")
+            command += ["--validation-proof", str(validation_path), "--resource-proof", str(resource_path)]
+    else:
+        raise CaptureError(f"Unknown render-order phase: {phase}")
+    if args.asset_root:
+        command += ["--asset-root", str(args.asset_root)]
+    return command
+
+
+def _validate_render_order_probe_identities(validation_id: dict, timing_id: dict,
+                                            baseline_id: dict | None, needs_baseline: bool,
+                                            candidate_path: Path | None = None,
+                                            baseline_path: Path | None = None,
+                                            expected_baseline_identity: dict | None = None) -> None:
+    if (validation_id.get("work_probes") is not True or
+            validation_id.get("configuration", "").lower() != "release" or
+            validation_id.get("sanitizer") not in ("none", "")):
+        raise CaptureError("Candidate validation probe must be an un-sanitized Release work-probe build")
+    if (timing_id.get("work_probes") is not False or timing_id.get("debug_tools") is not False or
+            timing_id.get("configuration", "").lower() != "release" or
+            timing_id.get("sanitizer") not in ("none", "")):
+        raise CaptureError("Candidate timing probe must be an uninstrumented Release build")
+    for field in ("source_sha256", "fixture_sha256", "harness_sha256"):
+        if not validation_id.get(field) or validation_id.get(field) != timing_id.get(field):
+            raise CaptureError(f"Candidate timing and validation builds differ for {field}")
+    if needs_baseline:
+        if baseline_id is None:
+            raise CaptureError("Selected all-zero cases require --baseline-probe")
+        if candidate_path is not None and baseline_path is not None and baseline_path.resolve() == candidate_path.resolve():
+            raise CaptureError("Pre-change baseline probe path aliases the candidate timing probe")
+        if (baseline_id.get("work_probes") is not False or baseline_id.get("debug_tools") is not False or
+                baseline_id.get("configuration", "").lower() != "release" or
+                baseline_id.get("sanitizer") not in ("none", "")):
+            raise CaptureError("Pre-change baseline probe must be an uninstrumented Release build")
+        if baseline_id.get("source_sha256") == timing_id.get("source_sha256"):
+            raise CaptureError("Candidate timing binary was reused as its own frozen baseline")
+        expected_frozen = (expected_baseline_identity if expected_baseline_identity is not None
+                           else RECORDED_FROZEN_BASELINE_IDENTITY)
+        for field in ("source_sha256", "fixture_sha256", "harness_sha256"):
+            if baseline_id.get(field) != expected_frozen.get(field):
+                raise CaptureError(
+                    f"Supplied baseline {field} does not match recorded pre-change identity")
+        if baseline_id.get("fixture_sha256") != timing_id.get("fixture_sha256"):
+            raise CaptureError("Pre-change baseline and candidate differ for fixture_sha256")
+
+
+def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure_frames: int) -> dict:
+    arms = list(proofs_by_arm.keys())
+    if not arms:
+        raise CaptureError("No validation proofs supplied for parity check")
+    streams = {}
+    summary_hashes = {}
+    for arm, proof in proofs_by_arm.items():
+        frames_path = Path(proof["_frames_path"])
+        streams[arm] = frames_path.open("r", encoding="utf-8")
+        summary_hashes[arm] = []
+    try:
+        count = 0
+        for frame_index, lines in enumerate(itertools.zip_longest(*streams.values())):
+            if any(line is None for line in lines):
+                raise CaptureError(f"{case['case_name']}: validation frame counts differ across arms")
+            parsed = [json.loads(line) for line in lines]
+            ref = parsed[0]
+            ref_arm = arms[0]
+            ref_subs = ref.get("submissions", [])
+            if ref.get("unresolved", 0) != 0 or ref.get("overflow", 0) != 0:
+                raise CaptureError(f"{case['case_name']} {ref_arm} frame {frame_index}: unresolved or overflowed trace")
+            if len(set(tuple(item) for item in ref_subs)) != len(ref_subs):
+                raise CaptureError(f"{case['case_name']} {ref_arm} frame {frame_index}: duplicate submission")
+            if case["case_name"] == "dense-z-edit":
+                if ref_subs != ref.get("oracle_visible") or len(ref_subs) != case["sprite_count"]:
+                    raise CaptureError(f"dense-z-edit {ref_arm} frame {frame_index}: exact sorted 10,000-sprite oracle mismatch")
+            for arm, row in zip(arms, parsed):
+                if (row.get("image_fnv64") != ref.get("image_fnv64") or
+                        row.get("output_width") != ref.get("output_width") or
+                        row.get("output_height") != ref.get("output_height") or
+                        row.get("submissions") != ref_subs or
+                        row.get("unresolved", 0) != 0 or row.get("overflow", 0) != 0):
+                    raise CaptureError(f"{case['case_name']}: parity mismatch between {ref_arm} and {arm} at frame {frame_index}")
+                summary_hashes[arm].append(row.get("image_fnv64"))
+            count += 1
+        if count != measure_frames:
+            raise CaptureError(f"{case['case_name']}: expected {measure_frames} validated frames, got {count}")
+    finally:
+        for stream in streams.values():
+            stream.close()
+    return {"frames_checked": measure_frames, "arms_checked": arms,
+            "image_fnv64_by_frame": summary_hashes[arms[0]]}
+
+
+def validate_render_order_timing_manifest(csv_path: Path, case: dict, arm: dict, args, run_index: int,
+                                          build_identity: dict, metrics: dict,
+                                          render_proof: dict | None = None,
+                                          resource_proof: dict | None = None,
+                                          expected_mapping: dict | None = None) -> dict:
+    manifest = json.loads(csv_path.with_suffix(".manifest.json").read_text(encoding="utf-8"))
+    build = manifest.get("build", {})
+    if (build.get("configuration", "").lower() != "release" or
+            build.get("sanitizer") not in ("none", "") or build.get("work_probes") is not False or
+            build.get("debug_tools") is not False):
+        raise CaptureError("Timing binary must be an uninstrumented Release build")
+    expected = {"scenario": "linear_render_culling", "workers": arm["workers"],
+                "seed": args.seed, "dt": args.dt, "warmup_steps": args.warmup_frames,
+                "measured_steps": args.measure_frames, "requested_measured_steps": args.measure_frames,
+                "repetitions": args.repetitions, "repetition_index": run_index}
+    for field, value in expected.items():
+        if manifest.get(field) != value:
+            raise CaptureError(f"{case['case_name']} {arm['arm']} timing manifest has wrong {field}")
+    if (manifest.get("timing_eligible") is not True or manifest.get("validation_mode") != "boundary-only" or
+            manifest.get("stopped_on_quit") is not False or manifest.get("complete_capture") is not True or
+            manifest.get("total_steps") != args.measure_frames or
+            manifest.get("rendering") is not True or manifest.get("render_samples") != args.measure_frames or
+            manifest.get("total_render_samples") != args.measure_frames):
+        raise CaptureError(f"{case['case_name']} {arm['arm']} timing manifest is incomplete or ineligible")
+    culling = manifest.get("linear_render_culling", {})
+    if (culling.get("mode") != arm["strategy"] or culling.get("requested_mode") != arm["strategy"] or
+            culling.get("effective_policy") != arm["strategy"] or culling.get("enabled") is not True):
+        raise CaptureError(f"{case['case_name']} {arm['arm']} culling policy mismatch")
+    resolved = manifest.get("resolved_parameters", {})
+    if resolved.get("profile") != case["profile"] or resolved.get("sprite_count") != case["sprite_count"]:
+        raise CaptureError(f"{case['case_name']} {arm['arm']} workload identity mismatch")
+    if build.get("source_sha256") != build_identity.get("source_sha256"):
+        raise CaptureError(f"{case['case_name']} {arm['arm']} source_sha256 mismatch")
+    for field in ("fixture_sha256", "harness_sha256"):
+        if manifest.get(field) != build_identity.get(field):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} {field} mismatch")
+    if expected_mapping is not None and manifest.get("renderer_mapping") != expected_mapping:
+        raise CaptureError(f"{case['case_name']} {arm['arm']} renderer backend/mapping mismatch")
+    if int(culling.get("observed_frame_fallbacks", 0)) != 0:
+        raise CaptureError(f"{case['case_name']} {arm['arm']} unexpectedly observed frame fallbacks")
+    if arm["is_baseline"]:
+        if render_proof is None or resource_proof is None:
+            raise CaptureError("Baseline timing check requires candidate indexed proofs to compare trajectory and fixture")
+        if (resolved != render_proof.get("trajectory_parameters") or
+                resolved != resource_proof.get("trajectory_parameters")):
+            raise CaptureError(
+                f"{case['case_name']} {arm['arm']} resolved all-zero trajectory differs from candidate indexed control")
+        if manifest.get("fixture_sha256") != render_proof.get("fixture_sha256"):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} fixture_sha256 differs from candidate indexed control")
+        if manifest.get("renderer_mapping") != render_proof.get("renderer_mapping"):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} renderer mapping differs from candidate indexed control")
+    else:
+        if manifest.get("ordering_variant", "rebuild") != arm["ordering_variant"]:
+            raise CaptureError(f"{case['case_name']} {arm['arm']} ordering_variant mismatch")
+        if render_proof is None or resource_proof is None:
+            raise CaptureError("Candidate timing manifest check requires render and resource proofs")
+        if resolved != render_proof.get("trajectory_parameters") or resolved != resource_proof.get("trajectory_parameters"):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} trajectory differs from candidate proofs")
+        if manifest.get("validation_proof", {}).get("sha256") != render_proof.get("_sha256"):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} missing matching validation_proof checksum")
+        if manifest.get("resource_observation", {}).get("sha256") != resource_proof.get("_sha256"):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} missing matching resource_observation checksum")
+        if manifest.get("renderer_mapping") != render_proof.get("renderer_mapping"):
+            raise CaptureError(f"{case['case_name']} {arm['arm']} renderer differs from candidate proof")
+    if metrics.get("scope.render.avg", -1) < 0 or metrics.get("scope.complete_step.avg", -1) < 0:
+        raise CaptureError(f"{case['case_name']} {arm['arm']} timing metrics are negative")
+    return manifest
+
+
+def _process_spread(values: list[float]) -> dict:
+    if not values:
+        return {"mean_ms": 0.0, "median_ms": 0.0, "min_ms": 0.0, "max_ms": 0.0, "stdev_ms": 0.0, "values_ms": []}
+    return {"mean_ms": statistics.fmean(values), "median_ms": statistics.median(values),
+            "min_ms": min(values), "max_ms": max(values),
+            "stdev_ms": statistics.stdev(values) if len(values) > 1 else 0.0,
+            "values_ms": list(values)}
+
+
+def _delta_spread(left_values: list[float], right_values: list[float]) -> dict:
+    deltas = [left - right for left, right in zip(left_values, right_values)]
+    ratios = [left / right if right > 0 else 0.0 for left, right in zip(left_values, right_values)]
+    return {"delta_ms": _process_spread(deltas),
+            "ratio_left_over_right": {"values": ratios, "mean": statistics.fmean(ratios) if ratios else 0.0}}
+
+
+def _slice_stats(rows_by_rep: list[list[dict]], predicate) -> dict:
+    rep_paired_means = []
+    rep_render_means = []
+    rep_step_means = []
+    rep_prepare_means = []
+    all_paired = []
+    all_render = []
+    all_step = []
+    all_prepare = []
+    prepare_complete = True
+    for rep_rows in rows_by_rep:
+        filtered = [row for row in rep_rows if predicate(row)]
+        p = [row["paired_step_render_ms"] for row in filtered]
+        r = [row["render_ms"] for row in filtered]
+        s = [row["complete_step_ms"] for row in filtered]
+        prep = [row.get("draw_order_prepare_ms") for row in filtered]
+        if not filtered or any(val is None for val in prep):
+            prepare_complete = False
+        else:
+            rep_prepare_means.append(statistics.fmean(prep))
+            all_prepare.extend(prep)
+        rep_paired_means.append(statistics.fmean(p) if p else 0.0)
+        rep_render_means.append(statistics.fmean(r) if r else 0.0)
+        rep_step_means.append(statistics.fmean(s) if s else 0.0)
+        all_paired.extend(p)
+        all_render.extend(r)
+        all_step.extend(s)
+    prepare_entry = (
+        {"available": True, **_timing_summary(all_prepare), "process_spread": _process_spread(rep_prepare_means)}
+        if prepare_complete and all_prepare
+        else {"available": False, "reason": "unavailable in frozen pre-change baseline binary (uninstrumented)"}
+    )
+    return {
+        "paired_step_render_ms": {**_timing_summary(all_paired), "process_spread": _process_spread(rep_paired_means)},
+        "render_ms": {**_timing_summary(all_render), "process_spread": _process_spread(rep_render_means)},
+        "complete_step_ms": {**_timing_summary(all_step), "process_spread": _process_spread(rep_step_means)},
+        "draw_order_prepare_ms": prepare_entry,
+        "samples_per_run": len(rows_by_rep[0]) if predicate == (lambda _r: True) else len([r for r in rows_by_rep[0] if predicate(r)]),
+    }
+
+
+def _cleanup_transient_render_order_files(output_dir: Path) -> None:
+    for pattern in ("*.frames.jsonl", "*.ppm"):
+        for path in output_dir.rglob(pattern):
+            path.unlink(missing_ok=True)
+    proofs_dir = output_dir / "proofs"
+    if proofs_dir.is_dir():
+        for suffix in (".csv", ".samples.csv", ".manifest.json"):
+            for path in proofs_dir.glob(f"*{suffix}"):
+                path.unlink(missing_ok=True)
+
+
+def run_render_order_culling(args) -> dict:
+    if args.repetitions <= 0 or args.workers <= 0 or args.multiworker_count <= 0 or args.seed < 0 or args.warmup_frames < 0 or args.measure_frames <= 0 or not math.isfinite(args.dt) or args.dt <= 0:
+        raise CaptureError("Invalid repetition, worker, seed, frame, or dt arguments")
+    asset_root = args.asset_root or (Path(__file__).resolve().parent / "assets")
+    if not asset_root.is_dir():
+        raise CaptureError(f"Asset root does not exist: {asset_root}")
+    if not args.candidate_probe or not args.candidate_validation_probe:
+        raise CaptureError("render-order-culling requires --candidate-probe and --candidate-validation-probe")
+    cases = render_order_cases(args.focused_cases, args.workers, args.multiworker_count)
+    needs_baseline = any(case["all_zero"] for case in cases)
+    if not args.candidate_probe.is_file() or not os.access(args.candidate_probe, os.X_OK):
+        raise CaptureError(f"Candidate timing probe is not executable: {args.candidate_probe}")
+    if not args.candidate_validation_probe.is_file() or not os.access(args.candidate_validation_probe, os.X_OK):
+        raise CaptureError(f"Candidate validation probe is not executable: {args.candidate_validation_probe}")
+    if needs_baseline and (args.baseline_probe is None or not args.baseline_probe.is_file() or not os.access(args.baseline_probe, os.X_OK)):
+        raise CaptureError("All-zero cases require an executable --baseline-probe")
+
+    args.output.mkdir(parents=True)
+    logs = args.output / "logs"; logs.mkdir()
+    proofs_root = args.output / "proofs"; proofs_root.mkdir()
+    resources_root = args.output / "resources"; resources_root.mkdir()
+    raw_root = args.output / "raw"; raw_root.mkdir()
+    env = os.environ.copy()
+    env.update({"SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy", "SDL_RENDER_DRIVER": "software"})
+    commands_log: list[dict] = []
+    completed_arms: list[dict] = []
+    current_stage = "identity"
+    expected_comparisons = {
+        "implementation_overhead": [c["case_name"] for c in cases if c["all_zero"]],
+        "culling_strategy": [c["case_name"] for c in cases if c["all_zero"]],
+        "default_policy": [c["case_name"] for c in cases if c["all_zero"]],
+        "dense_z_ordering": (["dense-z-edit"] if any(c["case_name"] == "dense-z-edit" for c in cases) else []),
+    }
+
+    def run_logged(stage: str, command: list[str], log_path: Path) -> None:
+        nonlocal current_stage
+        current_stage = stage
+        max_bytes = active_budget_max_bytes()
+        reserve = PARTIAL_SUMMARY_RESERVE_BYTES if (max_bytes is not None and max_bytes > PARTIAL_SUMMARY_RESERVE_BYTES) else 0
+        check_budget(reserve_bytes=reserve)
+        commands_log.append({"stage": stage, "command": command})
+        _run(command, log_path, env)
+        check_budget(reserve_bytes=reserve)
+
+    validation_proofs: dict[str, dict[str, dict]] = {}
+    resource_proofs: dict[str, dict[str, dict]] = {}
+    parity_summaries: dict[str, dict] = {}
+    expected_mapping: dict | None = None
+    controls_summary: dict[str, dict] = {}
+    rows_by_case_arm: dict[tuple[str, str], list[dict]] = {}
+    samples_by_case_arm: dict[tuple[str, str], list[list[dict]]] = {}
+    host_env = None
+
+    try:
+        current_stage = "identity"
+        val_id = _read_probe_identity(args.candidate_validation_probe, logs / "candidate-validation-identity.log", env)
+        tim_id = _read_probe_identity(args.candidate_probe, logs / "candidate-timing-identity.log", env)
+        base_id = (_read_probe_identity(args.baseline_probe, logs / "baseline-timing-identity.log", env)
+                   if args.baseline_probe is not None else None)
+        _validate_render_order_probe_identities(
+            val_id, tim_id, base_id, needs_baseline,
+            candidate_path=args.candidate_probe, baseline_path=args.baseline_probe)
+
+        # 1. Validation & resource pass on candidate probes (before any timing runs)
+        for case in cases:
+            cname = case["case_name"]
+            validation_proofs[cname] = {}
+            resource_proofs[cname] = {}
+            try:
+                for arm in render_order_arms(case):
+                    if arm["is_baseline"]:
+                        continue
+                    aname = arm["arm"]
+                    vprefix = proofs_root / f"{cname}-{aname}"
+                    vcmd = _build_render_order_command(args.candidate_validation_probe, case, arm, args,
+                                                       phase="validate", csv_path=Path(str(vprefix) + ".csv"),
+                                                       evidence_prefix=vprefix)
+                    run_logged("validate", vcmd, logs / f"validate-{cname}-{aname}.log")
+                    ev_path = Path(str(vprefix) + ".evidence.json")
+                    proof = json.loads(ev_path.read_text(encoding="utf-8"))
+                    proof["_path"] = str(ev_path)
+                    proof["_sha256"] = sha256(ev_path)
+                    proof["_frames_path"] = str(Path(str(vprefix) + ".frames.jsonl"))
+                    proof["_ppm_path"] = str(Path(str(vprefix) + ".representative.ppm"))
+                    if expected_mapping is None:
+                        expected_mapping = proof.get("renderer_mapping")
+                    validation_proofs[cname][aname] = proof
+                    completed_arms.append({"case": cname, "arm": aname, "stage": "validate"})
+
+                    rprefix = resources_root / f"{cname}-{aname}"
+                    rcmd = _build_render_order_command(args.candidate_validation_probe, case, arm, args,
+                                                       phase="resources", csv_path=Path(str(rprefix) + ".csv"),
+                                                       evidence_prefix=rprefix)
+                    run_logged("resources", rcmd, logs / f"resource-{cname}-{aname}.log")
+                    res_path = Path(str(rprefix) + ".resources.json")
+                    rproof = json.loads(res_path.read_text(encoding="utf-8"))
+                    rproof["_path"] = str(res_path)
+                    rproof["_sha256"] = sha256(res_path)
+                    resource_proofs[cname][aname] = rproof
+                    completed_arms.append({"case": cname, "arm": aname, "stage": "resources"})
+
+                current_stage = "parity"
+                parity_summaries[cname] = _validate_render_order_frame_parity(
+                    validation_proofs[cname], case, args.measure_frames)
+            finally:
+                _cleanup_transient_render_order_files(args.output)
+
+        # 2. Resource/work-only controls (rejected-z-edit & 10k fully moving crossing)
+        for ctrl in _render_order_control_specs():
+            cname = ctrl["control_name"]
+            controls_summary[cname] = {}
+            for strategy in ctrl["strategies"]:
+                arm = {"arm": f"{cname}-{strategy}", "strategy": strategy, "ordering_variant": "rebuild",
+                       "workers": args.workers, "is_baseline": False}
+                rprefix = resources_root / f"control-{cname}-{strategy}"
+                rcmd = _build_render_order_command(args.candidate_validation_probe, ctrl, arm, args,
+                                                   phase="resources", csv_path=Path(str(rprefix) + ".csv"),
+                                                   evidence_prefix=rprefix)
+                run_logged("control-resources", rcmd, logs / f"control-{cname}-{strategy}.log")
+                res_path = Path(str(rprefix) + ".resources.json")
+                rproof = json.loads(res_path.read_text(encoding="utf-8"))
+                controls_summary[cname][strategy] = {
+                    "path": str(res_path), "sha256": sha256(res_path),
+                    "allocation_calls": rproof.get("allocation_calls"),
+                    "allocated_bytes": rproof.get("allocated_bytes"),
+                    "cold_observation": rproof.get("cold_observation"),
+                    "capacity_growth_observation": rproof.get("capacity_growth_observation"),
+                    "reset_observation": rproof.get("reset_observation"),
+                    "culling_work": rproof.get("culling_work"),
+                }
+                completed_arms.append({"case": cname, "arm": arm["arm"], "stage": "control-resources"})
+                work = rproof.get("culling_work", {})
+                if cname == "rejected-z-edit":
+                    if (work.get("sprite_order_preparations", 0) != 0 or work.get("sprite_order_sorts", 0) != 0 or
+                            work.get("bounds_refreshes", 0) != 0 or work.get("index_relinks", 0) != 0 or
+                            work.get("queries", 0) != 0 or rproof.get("allocation_calls", 0) != 0):
+                        raise CaptureError(f"rejected-z-edit control ({strategy}) performed unexpected work or warm allocations")
+
+        # 3. Independent timed repetitions (uninstrumented Release probes)
+        rng = random.Random(args.seed ^ 0x9E3779B9)
+        jobs = [(case, arm) for case in cases for arm in render_order_arms(case)]
+
+        for run_index in range(args.repetitions):
+            schedule = list(jobs)
+            rng.shuffle(schedule)
+            for case, arm in schedule:
+                cname = case["case_name"]
+                aname = arm["arm"]
+                binary = args.baseline_probe if arm["is_baseline"] else args.candidate_probe
+                b_id = base_id if arm["is_baseline"] else tim_id
+                stem = f"{cname}-{aname}-r{run_index}"
+                csv_path = raw_root / f"{stem}.csv"
+                ref_arm = "candidate-indexed" if arm["is_baseline"] else aname
+                vpath = Path(validation_proofs[cname][aname]["_path"]) if not arm["is_baseline"] else None
+                rpath = Path(resource_proofs[cname][aname]["_path"]) if not arm["is_baseline"] else None
+                tcmd = _build_render_order_command(binary, case, arm, args, phase="time", csv_path=csv_path,
+                                                   run_index=run_index, validation_path=vpath, resource_path=rpath)
+                run_logged("time", tcmd, logs / f"time-{stem}.log")
+                metrics = parse_benchmark_csv(csv_path)
+                manifest = validate_render_order_timing_manifest(
+                    csv_path, case, arm, args, run_index, b_id, metrics,
+                    validation_proofs[cname].get(ref_arm), resource_proofs[cname].get(ref_arm), expected_mapping)
+                obs_env = {"machine": manifest.get("machine"), "cpu_affinity": manifest.get("affinity")}
+                if host_env is None:
+                    host_env = obs_env
+                elif obs_env != host_env:
+                    raise CaptureError("Timing runs used inconsistent machine or CPU affinity identities")
+                samples, _paired = read_incremental_timing_samples(
+                    csv_path.with_suffix(".samples.csv"), csv_path.with_suffix(".paired.csv"),
+                    args.measure_frames, args.measure_frames, False)
+                key = (cname, aname)
+                rows_by_case_arm.setdefault(key, []).append({
+                    "run_index": run_index, "workers": arm["workers"],
+                    "render_mean_ms": metrics["scope.render.avg"],
+                    "complete_step_mean_ms": metrics["scope.complete_step.avg"],
+                    "paired_step_render_mean_ms": statistics.fmean([row["paired_step_render_ms"] for row in samples]),
+                    "draw_order_prepare_mean_ms": (
+                        statistics.fmean([row["draw_order_prepare_ms"] for row in samples])
+                        if all(row.get("draw_order_prepare_ms") is not None for row in samples)
+                        else None),
+                    "samples": samples,
+                    "csv": str(csv_path), "manifest": str(csv_path.with_suffix(".manifest.json")),
+                })
+                samples_by_case_arm.setdefault(key, []).append(samples)
+                completed_arms.append({"case": cname, "arm": aname, "stage": f"time-r{run_index}"})
+
+        # 4. Aggregate summaries and separated comparisons
+        current_stage = "aggregate"
+        aggregates: dict[str, dict] = {}
+        for case in cases:
+            cname = case["case_name"]
+            aggregates[cname] = {}
+            for arm in render_order_arms(case):
+                aname = arm["arm"]
+                rep_samples = samples_by_case_arm[(cname, aname)]
+                entry = {"combined": _slice_stats(rep_samples, lambda _r: True)}
+                if cname == "dense-z-edit":
+                    entry["clean_frames"] = _slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 0)
+                    entry["edit_frames"] = _slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 1)
+                aggregates[cname][aname] = entry
+
+        comparisons: dict[str, dict] = {"implementation_overhead": {}, "culling_strategy": {},
+                                        "default_policy": {}, "dense_z_ordering": {}}
+        for case in cases:
+            cname = case["case_name"]
+            if case["all_zero"]:
+                def arm_means(arm_name: str, field: str) -> list[float]:
+                    return aggregates[cname][arm_name]["combined"][field]["process_spread"]["values_ms"]
+                comparisons["implementation_overhead"][cname] = {
+                    **{field: _delta_spread(arm_means("candidate-indexed", field), arm_means("baseline-indexed", field))
+                       for field in ("paired_step_render_ms", "render_ms", "complete_step_ms")},
+                    "draw_order_prepare_ms": {"available": False, "reason": "unavailable in frozen pre-change baseline binary"},
+                }
+                comparisons["culling_strategy"][cname] = {
+                    field: _delta_spread(arm_means("candidate-cached-linear", field), arm_means("candidate-indexed", field))
+                    for field in ("paired_step_render_ms", "render_ms", "complete_step_ms", "draw_order_prepare_ms")
+                    if aggregates[cname]["candidate-cached-linear"]["combined"][field].get("available", True)
+                    and aggregates[cname]["candidate-indexed"]["combined"][field].get("available", True)
+                }
+                comparisons["default_policy"][cname] = {
+                    **{field: _delta_spread(arm_means("candidate-cached-linear", field), arm_means("baseline-indexed", field))
+                       for field in ("paired_step_render_ms", "render_ms", "complete_step_ms")},
+                    "draw_order_prepare_ms": {"available": False, "reason": "unavailable in frozen pre-change baseline binary"},
+                }
+            elif cname == "dense-z-edit":
+                for phase_name in ("combined", "clean_frames", "edit_frames"):
+                    comparisons["dense_z_ordering"][phase_name] = {}
+                    for left, right in (("candidate-rebuild-w1", "candidate-forced-sort-w1"),
+                                        ("candidate-repair-w1", "candidate-rebuild-w1"),
+                                        ("candidate-repair-w1", "candidate-forced-sort-w1")):
+                        comparisons["dense_z_ordering"][phase_name][f"{left}_vs_{right}"] = {
+                            field: _delta_spread(
+                                aggregates[cname][left][phase_name][field]["process_spread"]["values_ms"],
+                                aggregates[cname][right][phase_name][field]["process_spread"]["values_ms"])
+                            for field in ("paired_step_render_ms", "render_ms", "complete_step_ms", "draw_order_prepare_ms")
+                            if aggregates[cname][left][phase_name][field].get("available", True)
+                            and aggregates[cname][right][phase_name][field].get("available", True)
+                        }
+
+        resource_summary = {
+            cname: {aname: {"allocation_calls": rp.get("allocation_calls"), "allocated_bytes": rp.get("allocated_bytes"),
+                            "cold_observation": rp.get("cold_observation"),
+                            "capacity_growth_observation": rp.get("capacity_growth_observation"),
+                            "reset_observation": rp.get("reset_observation"),
+                            "culling_work": rp.get("culling_work")}
+                    for aname, rp in arms_map.items()}
+            for cname, arms_map in resource_proofs.items()
+        }
+        report = {
+            "proof_kind": "platformator.render-order-culling-pilot", "proof_version": 1,
+            "comparison": "render-order-culling", "exploratory": True, "complete": True,
+            "scope": {"cases": [case["case_name"] for case in cases],
+                      "repetitions": args.repetitions, "warmup_steps": args.warmup_frames,
+                      "measured_steps": args.measure_frames, "seed": args.seed, "dt": args.dt,
+                      "workers": args.workers, "multiworker_count": args.multiworker_count,
+                      "assets_sha256": _directory_sha256(asset_root),
+                      "baseline_build_identity": base_id,
+                      "candidate_timing_identity": tim_id,
+                      "candidate_validation_identity": val_id,
+                      "renderer_mapping": expected_mapping, "host_environment": host_env,
+                      "timing_boundaries": {
+                          "paired_step_render_ms": "Wall time around simulateAndRenderFrame / step",
+                          "render_ms": "Benchmark render scope including present and VSync pacing",
+                          "complete_step_ms": "Benchmark simulation step scope including setters",
+                          "draw_order_prepare_ms": "Benchmark-only std::chrono::steady_clock CPU elapsed time around candidate SDLWindow::prepareDrawOrder (unavailable in frozen baseline binary)",
+                      }},
+            "parity_checks": parity_summaries,
+            "aggregates_by_case": aggregates,
+            "comparisons": comparisons,
+            "resource_summary": resource_summary,
+            "work_resource_controls": controls_summary,
+            "raw_timing_samples": {f"{c}:{a}": rows for (c, a), rows in rows_by_case_arm.items()},
+            "commands": commands_log,
+        }
+        (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+        lines = ["# Render Order & Culling Pilot Report", "",
+                 f"- Repetitions: {args.repetitions}, Warmup: {args.warmup_frames}, Measured: {args.measure_frames}",
+                 f"- Baseline binary: `{args.baseline_probe}`",
+                 f"- Candidate timing: `{args.candidate_probe}`",
+                 f"- Candidate validation: `{args.candidate_validation_probe}`", ""]
+        if expected_mapping:
+            lines.append(
+                f"- Renderer mapping: backend=`{expected_mapping.get('renderer')}`, "
+                f"vsync=`{expected_mapping.get('vsync')}`, "
+                f"output={expected_mapping.get('output_width')}x{expected_mapping.get('output_height')}")
+            lines.append("")
+        for case in cases:
+            cname = case["case_name"]
+            lines += [f"## Case: {cname}", "",
+                      "| Arm | Slice | Order Prep Mean (ms) | Paired Mean (ms) | Render Mean (ms) | Step Mean (ms) | Paired p95 (ms) |",
+                      "|---|---|---:|---:|---:|---:|---:|"]
+            for arm in render_order_arms(case):
+                aname = arm["arm"]
+                slices = ("combined", "clean_frames", "edit_frames") if cname == "dense-z-edit" else ("combined",)
+                for sl in slices:
+                    st = aggregates[cname][aname][sl]
+                    prep = st["draw_order_prepare_ms"]
+                    prep_cell = f"{prep['mean_ms']:.4f}" if prep.get("available") else "unavailable (frozen baseline)"
+                    lines.append(
+                        f"| {aname} | {sl} | {prep_cell} | {st['paired_step_render_ms']['mean_ms']:.4f} | "
+                        f"{st['render_ms']['mean_ms']:.4f} | {st['complete_step_ms']['mean_ms']:.4f} | "
+                        f"{st['paired_step_render_ms']['p95_ms']:.4f} |")
+            lines.append("")
+        (args.output / "report.md").write_text("\n".join(lines), encoding="utf-8")
+        return report
+    except (BudgetExceeded, CaptureError, subprocess.CalledProcessError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        _cleanup_transient_render_order_files(args.output)
+        partial = {
+            "proof_kind": "platformator.render-order-culling-pilot", "proof_version": 1,
+            "comparison": "render-order-culling", "exploratory": True, "complete": False,
+            "failure_stage": current_stage, "failure_reason": str(error),
+            "completed_arms": completed_arms,
+            "unavailable_comparisons": expected_comparisons,
+            "completed_parity_checks": sorted(parity_summaries.keys()),
+        }
+        max_bytes = active_budget_max_bytes()
+        partial_path = args.output / "partial-report.json"
+        payload = json.dumps(partial, indent=2) + "\n"
+        if max_bytes is None or len(payload.encode("utf-8")) <= max_bytes:
+            partial_path.write_text(payload, encoding="utf-8")
+        else:
+            compact_partial = json.dumps({
+                "complete": False, "failure_stage": current_stage,
+                "failure_reason": str(error)[:120],
+                "completed_count": len(completed_arms),
+                "unavailable_comparisons": expected_comparisons,
+            }) + "\n"
+            partial_path.write_text(compact_partial, encoding="utf-8")
+        raise
+
+
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(description=__doc__)
     for name in ("baseline-probe", "candidate-probe", "baseline-runner", "candidate-runner",
@@ -1350,11 +2021,11 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--repetitions", type=int, default=3)
     command.add_argument("--dt", type=float, default=0.008333333333333333)
     command.add_argument("--asset-root", type=Path, default=Path(__file__).resolve().parent / "assets")
-    command.add_argument("--comparison", choices=("legacy", "incremental"), default="incremental")
+    command.add_argument("--comparison", choices=("legacy", "incremental", "render-order-culling"), default="incremental")
     command.add_argument("--phase", choices=INCREMENTAL_PHASES,
                          help="Defaults to compact pilot for incremental comparisons")
     command.add_argument("--strategy", choices=(*INCREMENTAL_STRATEGIES, "all"))
-    command.add_argument("--focused-cases", default=",".join(FOCUSED_CASE_NAMES[:5]),
+    command.add_argument("--focused-cases", default=None,
                          help="Comma-separated exploratory pilot cases")
     command.add_argument("--exploratory", action="store_true",
                          help="Compatibility flag; pilots are always labeled exploratory, not acceptance evidence")
@@ -2376,8 +3047,13 @@ def main(argv=None) -> int:
         comparison = args.comparison
         if comparison == "incremental" and args.phase is None:
             args.phase = "pilot"
-        if (comparison != "incremental" or args.phase != "pilot") and not args.allow_full_campaign:
-            raise CaptureError("Non-pilot campaigns require --allow-full-campaign; use the compact pilot by default")
+        if args.focused_cases is None:
+            args.focused_cases = (",".join(RENDER_ORDER_CASE_NAMES)
+                                  if comparison == "render-order-culling"
+                                  else ",".join(FOCUSED_CASE_NAMES[:5]))
+        if comparison == "legacy" or (comparison == "incremental" and args.phase != "pilot"):
+            if not args.allow_full_campaign:
+                raise CaptureError("Non-pilot campaigns require --allow-full-campaign; use the compact pilot by default")
         strategy = args.strategy
         if comparison == "incremental" and strategy is None:
             strategy = "all"
@@ -2395,14 +3071,16 @@ def main(argv=None) -> int:
         budget = CaptureBudget(roots, args.max_output_mib, args.max_seconds)
         try:
             with capture_budget(budget):
-                if comparison == "incremental":
+                if comparison == "render-order-culling":
+                    run_render_order_culling(args)
+                elif comparison == "incremental":
                     run_incremental_capture(args, strategy)
                 else:
                     run_capture(args)
-        except BudgetExceeded:
-            # Completion markers cannot survive a failed final size/time check.
+        except (BudgetExceeded, Exception):
+            # Completion markers cannot survive a failed size/time/validation check.
             for root in roots:
-                for name in ("report.json", "phase.json", "case-index.json"):
+                for name in ("report.json", "report.md", "phase.json", "case-index.json"):
                     (root / name).unlink(missing_ok=True)
             raise
         return 0

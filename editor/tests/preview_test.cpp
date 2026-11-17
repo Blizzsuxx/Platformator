@@ -4,6 +4,7 @@
 #include "preview.h"
 #include "test_support.h"
 #include "validation.h"
+#include "viewport.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
@@ -1780,6 +1781,237 @@ void check_shared_texture_and_animation_consumers_after_rebuild()
             "removing the first animation consumer while loading must still commit the clip to remaining consumers");
     preview.release();
 }
+void check_preview_z_ordering_and_paused_order_only_edits()
+{
+    TemporaryAssets assets;
+    write_solid_png(assets.root / "assets" / "textures" / "solid_green.png", 0, 220, 0);
+    write_solid_png(assets.root / "assets" / "textures" / "solid_blue.png", 0, 0, 220);
+
+    RuntimeOptions options;
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.assetRoot = (assets.root / "assets").string();
+    platformator::Runtime runtime(options);
+    SDL_Renderer *renderer = runtime.getRenderer();
+    require(renderer != nullptr, "preview Z ordering check requires software SDL renderer");
+
+    DocumentSession document = make_default_document(assets.root.parent_path(), assets.root / "assets", 99);
+    document.tabId = TabId{9};
+    Json greenSprite = sprite_component(101, "assets/textures/solid_green.png");
+    greenSprite["zOrder"] = 5;
+    Json blueSprite = sprite_component(201, "assets/textures/solid_blue.png");
+    blueSprite["zOrder"] = -2;
+    document.root.push_back(object_record(100, "Green", 160.0f, 120.0f, Json::array({greenSprite})));
+    document.root.push_back(object_record(200, "Blue", 160.0f, 120.0f, Json::array({blueSprite})));
+    document.structureRevision++;
+    rebuild_document_indexes(document);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{document.projectGeneration}, document.assetRoot);
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+    preview.reconcile(document, true);
+    wait_for_asset_preparation(preview, document);
+
+    require(preview.ordered_document_ids() == std::vector<int>({100, 200}),
+            "Document traversal order must remain unchanged");
+    require(preview.draw_document_ids() == std::vector<int>({200, 100}),
+            "Preview draw order must place lower zOrder (-2) before higher zOrder (5)");
+
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240), "initial Z render must succeed");
+    SDL_Surface *initial = read_target(renderer, preview.target());
+    const auto initialCenter = pixel(initial, 160, 120);
+    SDL_DestroySurface(initial);
+    require(initialCenter[1] > 180 && initialCenter[2] < 30,
+            "Higher zOrder green sprite must appear in front initially");
+
+    // Repeated unchanged view/render must perform zero draw-order sorts.
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    const auto beforePanCounts = work::snapshot();
+#endif
+    require(preview.render(10.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+            "unchanged-order camera pan must render");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    {
+        const auto panCounts = work::snapshot();
+        require(panCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] ==
+                    beforePanCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)],
+                "Camera pan with unchanged order must perform zero repeat draw-order sorts");
+    }
+    const auto beforeOrderEditCounts = work::snapshot();
+#endif
+
+    // Paused order-only edit: flip Blue (document.root[2]) above Green without reloading assets.
+    document.root[2]["components"][0]["zOrder"] = 10;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200}, false);
+    require(preview.ordered_document_ids() == std::vector<int>({100, 200}),
+            "Document order must remain unchanged after Z edit");
+    require(preview.draw_document_ids() == std::vector<int>({100, 200}),
+            "Paused order-only edit must update draw_document_ids immediately");
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+            "render after paused order-only edit must succeed");
+    SDL_Surface *flipped = read_target(renderer, preview.target());
+    const auto flippedCenter = pixel(flipped, 160, 120);
+    SDL_DestroySurface(flipped);
+    require(flippedCenter[2] > 180 && flippedCenter[1] < 30,
+            "After Z edit Blue (10) must draw over Green (5)");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    {
+        const auto editCounts = work::snapshot();
+        require(editCounts[static_cast<std::size_t>(work::Counter::ImageDecodes)] ==
+                        beforeOrderEditCounts[static_cast<std::size_t>(work::Counter::ImageDecodes)] &&
+                    editCounts[static_cast<std::size_t>(work::Counter::TextureUploads)] ==
+                        beforeOrderEditCounts[static_cast<std::size_t>(work::Counter::TextureUploads)] &&
+                    editCounts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)] ==
+                        beforeOrderEditCounts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)] &&
+                    editCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] ==
+                        beforeOrderEditCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] + 1,
+                "Paused Z-only edit must reload zero assets, publish zero transforms, and sort draw order once");
+    }
+#endif
+
+    // Tie restoration and reactivation precedence renewal.
+    document.root[2]["components"][0]["zOrder"] = 5;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200}, false);
+    require(preview.draw_document_ids() == std::vector<int>({100, 200}),
+            "Restoring equal Z=5 must preserve original registration precedence (100 before 200)");
+
+    // T050: Authored Sprite component ID replacement renews tie precedence without full rebuild;
+    // same-component edits (flip/texture) preserve existing tie precedence.
+    document.root[1]["components"][0]["id"] = 102;
+    ++document.structureRevision;
+    ++document.valueRevision;
+    rebuild_document_indexes(document);
+    // Keep same proxy entry by reconciling with structureChanged=false, value edit on 100
+    preview.reconcile(document, false, {100}, false);
+    require(preview.draw_document_ids() == std::vector<int>({200, 100}),
+            "Replacing object 100's Sprite component ID at tied Z must renew its precedence after 200");
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+            "render after Sprite component replacement must succeed");
+    {
+        SDL_Surface *replaced = read_target(renderer, preview.target());
+        const auto center = pixel(replaced, 160, 120);
+        SDL_DestroySurface(replaced);
+        require(center[1] > 180 && center[2] < 30,
+                "Replacing A's (100) Sprite component must draw B then A so A appears on top");
+    }
+    {
+        ViewportTransform pickTransform;
+        require(pickTransform.configure({0.0f, 0.0f, 320.0f, 240.0f}, 1.0f, 1.0f,
+                                        320.0f, 240.0f, 160.0f, 120.0f),
+                "Viewport pick transform must configure");
+        const auto candidates = viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                                         preview, {160.0f, 120.0f}, 0.0f);
+        require(candidates.size() >= 2 && candidates[0] == 100 && candidates[1] == 200,
+                "Replacing A's (100) Sprite component at tied Z must pick A before B");
+    }
+    // Same-component texture edit on 200 must preserve tie order {200, 100}.
+    document.root[2]["components"][0]["textureFilePath"] = "assets/textures/solid_green.png";
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200}, false);
+    require(preview.draw_document_ids() == std::vector<int>({200, 100}),
+            "Same-component texture edit at tied Z must preserve existing tie precedence");
+
+    document.root[2]["active"] = false;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200}, false);
+    document.root[2]["active"] = true;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200}, false);
+    require(preview.draw_document_ids() == std::vector<int>({100, 200}),
+            "Actual deactivation/reactivation must renew registration precedence (100 before 200)");
+
+    // T056: Paused Z-only edit with attached child skips transform sync, then moving parent updates child.
+    {
+        Json childSprite = sprite_component(301, "assets/textures/solid_blue.png");
+        childSprite["zOrder"] = 5;
+        document.root[2]["children"].push_back(object_record(300, "BlueChild", 10.0f, 15.0f,
+                                                             Json::array({childSprite})));
+        ++document.structureRevision;
+        rebuild_document_indexes(document);
+        preview.reconcile(document, true);
+        wait_for_asset_preparation(preview, document);
+
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+        const auto beforeChildZCounts = work::snapshot();
+#endif
+        document.root[2]["components"][0]["zOrder"] = 12;
+        ++document.valueRevision;
+        preview.reconcile(document, false, {200}, false);
+        require(preview.draw_document_ids() == std::vector<int>({100, 300, 200}),
+                "Paused Z edit on parent must update ordering immediately");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+        {
+            const auto afterZCounts = work::snapshot();
+            require(afterZCounts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)] ==
+                            beforeChildZCounts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)] &&
+                        afterZCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] ==
+                            beforeChildZCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] + 1,
+                    "Paused Z edit on parent must publish zero transforms and perform one ordering update");
+        }
+#endif
+        const float childWorldXBefore = preview.object_info(300)->worldX;
+        const float childWorldYBefore = preview.object_info(300)->worldY;
+        document.root[2]["position"]["x"] = 200.0f;
+        document.root[2]["position"]["y"] = 140.0f;
+        ++document.valueRevision;
+        preview.reconcile(document, false, {200}, true);
+        require(std::abs(preview.object_info(300)->worldX - (childWorldXBefore + 40.0f)) < 1e-4f &&
+                    std::abs(preview.object_info(300)->worldY - (childWorldYBefore + 20.0f)) < 1e-4f,
+                "Moving parent after Z-only edit must still propagate world transform to child proxy");
+    }
+
+    // T049: Preview signed-32 Z reads & validation diagnostics (omitted, INT32_MIN, INT32_MAX, 2147483648, UINT64_MAX).
+    {
+        DocumentSession boundsDoc = make_default_document(assets.root.parent_path(), assets.root / "assets", 199);
+        Json sNegOne = sprite_component(501, "");
+        sNegOne["zOrder"] = -1;
+        Json sOmitted = sprite_component(502, "");
+        sOmitted.erase("zOrder");
+        Json sMin = sprite_component(503, "");
+        sMin["zOrder"] = std::numeric_limits<std::int32_t>::min();
+        Json sMax = sprite_component(504, "");
+        sMax["zOrder"] = std::numeric_limits<std::int32_t>::max();
+        Json sOverflow = sprite_component(505, "");
+        sOverflow["zOrder"] = std::int64_t(2147483648LL);
+        Json sUint64Max = sprite_component(506, "");
+        sUint64Max["zOrder"] = std::numeric_limits<std::uint64_t>::max();
+
+        boundsDoc.root.push_back(object_record(51, "NegOne", 0.0f, 0.0f, Json::array({sNegOne})));
+        boundsDoc.root.push_back(object_record(52, "Omitted", 0.0f, 0.0f, Json::array({sOmitted})));
+        boundsDoc.root.push_back(object_record(53, "Min", 0.0f, 0.0f, Json::array({sMin})));
+        boundsDoc.root.push_back(object_record(54, "Max", 0.0f, 0.0f, Json::array({sMax})));
+        boundsDoc.root.push_back(object_record(55, "Overflow", 0.0f, 0.0f, Json::array({sOverflow})));
+        boundsDoc.root.push_back(object_record(56, "Uint64Max", 0.0f, 0.0f, Json::array({sUint64Max})));
+        ++boundsDoc.structureRevision;
+        rebuild_document_indexes(boundsDoc);
+
+        const ValidationResult diag = validate_document(boundsDoc, nullptr);
+        int zErrorCount = 0;
+        for (const auto &issue : diag.issues)
+        {
+            if (issue.fieldPath == "zOrder" && issue.severity == ValidationSeverity::Error)
+            {
+                ++zErrorCount;
+                require(issue.objectId == 55 || issue.objectId == 56,
+                        "Only out-of-range zOrder objects (2147483648 and UINT64_MAX) should report zOrder errors");
+            }
+        }
+        require(zErrorCount == 2,
+                "validate_document must accept omitted/INT32_MIN/INT32_MAX and reject 2147483648 & UINT64_MAX");
+
+        EditorPreview boundsPreview(runtime);
+        boundsPreview.reconcile(boundsDoc, true);
+        // Min (-2^31) < NegOne (-1) < Omitted (0), Overflow (->0), Uint64Max (->0) in reg order < Max (2^31-1)
+        require(boundsPreview.draw_document_ids() == std::vector<int>({53, 51, 52, 55, 56, 54}),
+                "Preview must read INT32_MIN/INT32_MAX/omitted accurately and fall back UINT64_MAX/2147483648 to 0 without wrapping negative");
+        boundsPreview.release();
+    }
+
+    preview.release();
+}
 } // namespace
 
 int main()
@@ -1799,6 +2031,7 @@ int main()
         check_shared_animation_dependency_reload();
         check_animation_dependency_queue_recovery_and_stale_generation();
         check_shared_texture_and_animation_consumers_after_rebuild();
+        check_preview_z_ordering_and_paused_order_only_edits();
         platformator_editor::run_viewport_cases();
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
         const auto counts = work::snapshot();

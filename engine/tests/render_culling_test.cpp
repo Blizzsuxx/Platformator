@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <platformator/boxcollider.h>
 #include <platformator/runtimeoptions.h>
 
 #include "test_support.h"
@@ -449,7 +450,12 @@ class ScopedRenderCullingMode
             hadPrevious_ = true;
             previous_ = previous;
         }
-        if (setenv("PLATFORMATOR_RENDER_CULLING_MODE", mode, 1) != 0)
+        if (mode == nullptr)
+        {
+            if (unsetenv("PLATFORMATOR_RENDER_CULLING_MODE") != 0)
+                throw std::runtime_error("Could not unset the internal render-culling comparison mode");
+        }
+        else if (setenv("PLATFORMATOR_RENDER_CULLING_MODE", mode, 1) != 0)
             throw std::runtime_error("Could not select the internal render-culling comparison mode");
     }
 
@@ -559,16 +565,29 @@ void checkStaticCacheReuse()
         {
             compareFixtureFrames(std::string(testCase.name) + " cached frame " + std::to_string(frameIndex),
                                  linear.frames.front(), cached.frames[frameIndex]);
-            if (frameIndex == 0)
-                continue;
             const auto &work = cached.frames[frameIndex].work;
-            test_support::require(work.renderCullingBoundsRefreshes == 0 &&
+            if (frameIndex == 0)
+            {
+                test_support::require(work.renderCullingViewQueryBuilds == 1 &&
+                                          work.renderCullingProjectionRebuilds == 1 &&
+                                          work.renderCullingCacheHits == 0,
+                                      std::string(testCase.name) +
+                                          ": initial cached-linear preparation must certify and build view query once");
+                continue;
+            }
+            test_support::require(work.renderCullingViewQueryBuilds == 0 &&
+                                      work.renderCullingProjectionRebuilds == 0 &&
+                                      work.renderCullingBoundsRefreshes == 0 &&
                                       work.renderCullingQueries == 0 &&
                                       work.renderCullingFullPopulationVisits == 0 &&
-                                      work.renderCullingOrderWork == 0 &&
+                                      work.renderCullingNumericRankSorts == 0 &&
+                                      work.visibleMembershipChanges == 0 &&
+                                      work.spriteOrderPreparations == 0 &&
+                                      work.spriteOrderSorts == 0 &&
+                                      work.spriteOrderComparisons == 0 &&
                                       work.renderCullingCacheHits == 1,
                                   std::string(testCase.name) +
-                                      ": an unchanged prepared frame must reuse the ordered result without selection work");
+                                      ": an unchanged prepared frame must short-circuit without query construction");
         }
         for (size_t frameIndex = 0; frameIndex < indexed.frames.size(); ++frameIndex)
         {
@@ -576,18 +595,30 @@ void checkStaticCacheReuse()
                                  linear.frames.front(), indexed.frames[frameIndex]);
             const auto &work = indexed.frames[frameIndex].work;
             if (frameIndex == 0)
-                test_support::require(work.renderCullingQueries == 1 && work.renderCullingProjectionRebuilds == 1,
-                                      std::string(testCase.name) + ": initial indexed preparation must query once");
+            {
+                test_support::require(work.renderCullingViewQueryBuilds == 1 &&
+                                          work.renderCullingQueries == 1 &&
+                                          work.renderCullingProjectionRebuilds == 1 &&
+                                          work.renderCullingNumericRankSorts == 0 && work.spriteOrderSorts <= 1,
+                                      std::string(testCase.name) +
+                                          ": initial indexed preparation must build view query and query once without numeric rank sorts");
+            }
             else
-                test_support::require(work.renderCullingBoundsRefreshes == 0 &&
+                test_support::require(work.renderCullingViewQueryBuilds == 0 &&
+                                          work.renderCullingProjectionRebuilds == 0 &&
+                                          work.renderCullingBoundsRefreshes == 0 &&
                                           work.renderCullingQueries == 0 &&
                                           work.renderCullingCellVisits == 0 &&
                                           work.renderCullingCandidateVisits == 0 &&
                                           work.renderCullingFullPopulationVisits == 0 &&
-                                          work.renderCullingOrderWork == 0 &&
+                                          work.renderCullingNumericRankSorts == 0 &&
+                                          work.visibleMembershipChanges == 0 &&
+                                          work.spriteOrderPreparations == 0 &&
+                                          work.spriteOrderSorts == 0 &&
+                                          work.spriteOrderComparisons == 0 &&
                                           work.renderCullingCacheHits == 1,
                                       std::string(testCase.name) +
-                                          ": an unchanged indexed frame must reuse selection without querying");
+                                          ": an unchanged indexed frame must short-circuit without query construction");
         }
     }
 }
@@ -799,9 +830,11 @@ void checkSimultaneousCrossingOrderWork()
         test_support::require(work.renderCullingDirtyEnqueues == population &&
                                   work.renderCullingBoundsRefreshes == population,
                               "Every crossing sprite must publish and refresh exactly once");
-        test_support::require(work.renderCullingOrderWork <= population * 2 &&
-                                  work.renderCullingOrderWork > 0,
-                              "Simultaneous visibility changes must use bounded batch order work");
+        test_support::require(work.renderCullingNumericRankSorts == 0 &&
+                                  work.visibleMembershipChanges == population &&
+                                  work.spriteOrderPreparations == 1 &&
+                                  work.spriteOrderSorts <= 1,
+                              "Simultaneous visibility changes must use bounded delta membership updates and at most one draw sort");
         test_support::require((*frames)[1].submissions.size() == half,
                               "The simultaneous crossing must replace the visible half without duplicates");
         test_support::require(work.renderCullingOwnedRecordCapacity == population,
@@ -871,7 +904,9 @@ void checkIndexedPanSelection()
                                   work.renderCullingFullPopulationVisits == 0,
                               "Camera-only pans must reuse bounds and avoid a population-wide selection pass");
         test_support::require(work.renderCullingCandidateVisits < population / 4 &&
-                                  work.renderCullingOrderWork < population,
+                                  work.renderCullingNumericRankSorts == 0 &&
+                                  work.spriteOrderEntries < population &&
+                                  work.spriteOrderSorts <= 1,
                               "Spread-scene pan must visit and order a spatially selective candidate set");
     }
 
@@ -883,7 +918,9 @@ void checkIndexedPanSelection()
     std::cout << "[WORK] indexed-pan queries=" << panWork.renderCullingQueries
               << " cells=" << panWork.renderCullingCellVisits
               << " candidates=" << panWork.renderCullingCandidateVisits
-              << " order=" << panWork.renderCullingOrderWork
+              << " orderEntries=" << panWork.spriteOrderEntries
+              << " orderSorts=" << panWork.spriteOrderSorts
+              << " membershipChanges=" << panWork.visibleMembershipChanges
               << " refresh=" << panWork.renderCullingBoundsRefreshes
               << " relinks=" << panWork.renderCullingIndexRelinks
               << " full=" << panWork.renderCullingFullPopulationVisits
@@ -893,7 +930,8 @@ void checkIndexedPanSelection()
     std::cout << "[WORK] indexed-projection refresh=" << projectionWork.renderCullingBoundsRefreshes
               << " relinks=" << projectionWork.renderCullingIndexRelinks
               << " queries=" << projectionWork.renderCullingQueries
-              << " order=" << projectionWork.renderCullingOrderWork << '\n';
+              << " orderEntries=" << projectionWork.spriteOrderEntries
+              << " orderSorts=" << projectionWork.spriteOrderSorts << '\n';
 }
 
 void checkRenderedDynamicSequence()
@@ -1824,6 +1862,203 @@ void checkConsecutiveMutationStrategies()
     std::cout << "consecutive-mutations frames=" << current.size()
               << " cached-linear=indexed=current-linear submit-all=verified resize=400x300 fallback-return=verified\n";
 }
+
+void checkDefaultCachedLinearAndMixedZCompositingParity()
+{
+    struct ModeRun
+    {
+        std::vector<FrameResult> frames;
+        platformator_test::WorkCounters setupWork;
+    };
+    const auto captureMixedZSequence = [](const char *mode, bool enableCulling) {
+        ScopedRenderCullingMode strategy(mode);
+        test_support::headlessEnvironment();
+        platformator_test::work = {};
+        RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, enableCulling);
+        fixture.reserveSprites(6);
+
+        // 0: No collider, positive Z
+        auto &s0 = fixture.addSprite(0, 0, 120.0f, 100.0f, 64.0f, 64.0f, FixtureTexture::RedCircle);
+        s0.sprite->setZOrder(5);
+
+        // 1: Visual sprite extends into camera [0, 320] while BoxCollider (4x4 at x=345) stays strictly offscreen
+        auto &s1 = fixture.addSprite(1, 0, 345.0f, 100.0f, 70.0f, 70.0f, FixtureTexture::BlackSquare);
+        s1.object->addComponent<BoxCollider>(4.0f, 4.0f);
+        s1.sprite->setZOrder(-1);
+
+        // 2: Negative Z overlapping 0 and 3
+        auto &s2 = fixture.addSprite(2, 0, 120.0f, 100.0f, 64.0f, 64.0f, FixtureTexture::BlackSquare);
+        s2.sprite->setZOrder(-2);
+
+        // 3: Undersized collider + tie at Z = 5 after s0
+        auto &s3 = fixture.addSprite(3, 0, 130.0f, 108.0f, 52.0f, 52.0f, FixtureTexture::RedCircle);
+        s3.object->addComponent<BoxCollider>(8.0f, 8.0f);
+        s3.sprite->setZOrder(5);
+
+        // 4: Purely offscreen negative Z (must not appear in culled modes, must participate cleanly under fallback)
+        auto &s4 = fixture.addSprite(4, 0, -400.0f, 90.0f, 24.0f, 24.0f, FixtureTexture::BlackSquare);
+        s4.sprite->setZOrder(-10);
+
+        ModeRun run;
+        run.setupWork = platformator_test::work;
+
+        // Frame 0: Normal finite mixed-Z compositing
+        {
+            FrameResult frame = captureFrame(fixture, 6);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 1: Custom mapping fallback + pending geometry edit during fallback
+        {
+            const auto setScaleAndEditGeometry = [&fixture](double) {
+                test_support::require(SDL_SetRenderScale(fixture.runtime().getRenderer(), 1.25f, 1.0f),
+                                      "Failed to apply custom SDL render scale");
+                fixture.record(3).object->setPosition({140.0f, 114.0f});
+                fixture.record(4).object->setPosition({125.0f, 102.0f});
+                fixture.record(4).sprite->setZOrder(12);
+            };
+            FrameResult frame = captureFrame(fixture, 6, setScaleAndEditGeometry);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 2: Restored default mapping must drain pending geometry changes (4 moved inside view, 3 shifted)
+        {
+            const auto restoreAndDrain = [&fixture](double) {
+                restoreDefaultRenderMapping(fixture.runtime().getRenderer());
+            };
+            FrameResult frame = captureFrame(fixture, 6, restoreAndDrain);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 3: Add uncertifiable extreme-coordinate sprite (conservatively retained with mixed Z)
+        auto &s5 = fixture.addSprite(5, 0, 1e30f, 100.0f, 24.0f, 24.0f, FixtureTexture::BlackSquare);
+        s5.sprite->setZOrder(-20);
+        {
+            FrameResult frame = captureFrame(fixture, 6);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 4: Uncertifiable camera view triggers numeric fallback cleanly across modes with mixed Z
+        fixture.camera()->getGameObject()->setPosition({std::numeric_limits<float>::max(), 0.0f});
+        {
+            FrameResult frame = captureFrame(fixture, 6);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 5: Restoring certified camera recovers warm cached selection without query reconstruction
+        fixture.camera()->getGameObject()->setPosition({0.0f, 0.0f});
+        {
+            FrameResult frame = captureFrame(fixture, 6);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 6: Single sprite translation constructs query / updates dirty entry without cache hit
+        fixture.record(0).object->setPosition({122.0f, 100.0f});
+        {
+            FrameResult frame = captureFrame(fixture, 6);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+
+        // Frame 7: Subsequent clean frame short-circuits again as warm cache hit
+        {
+            FrameResult frame = captureFrame(fixture, 6);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            run.frames.push_back(std::move(frame));
+        }
+        return run;
+    };
+
+    const ModeRun defaultMode = captureMixedZSequence(nullptr, true);
+    const ModeRun cachedLinear = captureMixedZSequence("cached-linear", true);
+    const ModeRun indexed = captureMixedZSequence("indexed", true);
+    const ModeRun currentLinear = captureMixedZSequence("current-linear", true);
+    const ModeRun submitAll = captureMixedZSequence("cached-linear", false);
+
+    test_support::require(defaultMode.setupWork.renderCullingStateCreations == 1 &&
+                              defaultMode.setupWork.renderCullingGridOwnedBytes == 0 &&
+                              cachedLinear.setupWork.renderCullingGridOwnedBytes == 0 &&
+                              indexed.setupWork.renderCullingGridOwnedBytes > 0,
+                          "Unset default mode must create cached-linear state with zero grid bytes");
+
+    for (size_t step = 0; step < 8; ++step)
+    {
+        requireGoodReadback(defaultMode.frames[step], "default mixed-Z step " + std::to_string(step));
+        requireGoodReadback(cachedLinear.frames[step], "cached-linear mixed-Z step " + std::to_string(step));
+        requireGoodReadback(indexed.frames[step], "indexed mixed-Z step " + std::to_string(step));
+        requireGoodReadback(currentLinear.frames[step], "current-linear mixed-Z step " + std::to_string(step));
+        requireGoodReadback(submitAll.frames[step], "submit-all mixed-Z step " + std::to_string(step));
+
+        test_support::require(defaultMode.frames[step].image.rgba == cachedLinear.frames[step].image.rgba &&
+                                  defaultMode.frames[step].submissions == cachedLinear.frames[step].submissions &&
+                                  defaultMode.frames[step].image.rgba == indexed.frames[step].image.rgba &&
+                                  defaultMode.frames[step].submissions == indexed.frames[step].submissions &&
+                                  defaultMode.frames[step].image.rgba == currentLinear.frames[step].image.rgba &&
+                                  defaultMode.frames[step].submissions == currentLinear.frames[step].submissions &&
+                                  defaultMode.frames[step].image.rgba == submitAll.frames[step].image.rgba,
+                              "Mixed-Z compositing pixels and ordered submissions must match across default, cached-linear, indexed, and current-linear");
+    }
+
+    // Frame 0: sprite 1 (undersized offscreen collider, visible sprite) MUST be retained before 2/0/3
+    test_support::require(defaultMode.frames[0].submissions ==
+                              (std::vector<SpriteIdentity>{{2, 0}, {1, 0}, {0, 0}, {3, 0}}),
+                          "Mixed-Z visible ordering violated for overlapping/no-collider/undersized-collider sprites");
+    // Frame 1: custom mapping fallback submits all including offscreen 4 in full mixed-Z order
+    test_support::require(defaultMode.frames[1].submissions ==
+                              (std::vector<SpriteIdentity>{{2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
+                              defaultMode.frames[1].work.renderCullingMappingFallbacks == 1 &&
+                              defaultMode.frames[1].work.renderCullingBoundsRefreshes == 0,
+                          "Custom mapping fallback must submit all mixed-Z sprites without draining bounds");
+    // Frame 2: restored mapping drains both pending geometry edits without full rebuild
+    test_support::require(defaultMode.frames[2].submissions ==
+                              (std::vector<SpriteIdentity>{{2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
+                              defaultMode.frames[2].work.renderCullingBoundsRefreshes == 2 &&
+                              defaultMode.frames[2].work.renderCullingProjectionRebuilds == 0 &&
+                              defaultMode.frames[2].work.renderCullingGridOwnedBytes == 0,
+                          "Restored default cached-linear selection must drain pending geometry changes cleanly");
+    // Frame 3: uncertifiable sprite is conservatively retained with mixed-Z order
+    test_support::require(defaultMode.frames[3].submissions ==
+                              (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
+                              defaultMode.frames[3].work.renderCullingGridOwnedBytes == 0,
+                          "Uncertifiable sprite must be conservatively retained in mixed-Z order");
+    // Frame 4: uncertifiable camera triggers numeric fallback cleanly under both cached-linear and indexed
+    test_support::require(defaultMode.frames[4].submissions ==
+                              (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
+                              defaultMode.frames[4].work.renderCullingNumericFallbacks == 1 &&
+                              defaultMode.frames[4].work.renderCullingViewQueryBuilds == 1 &&
+                              cachedLinear.frames[4].work.renderCullingNumericFallbacks == 1 &&
+                              indexed.frames[4].work.renderCullingNumericFallbacks == 1 &&
+                              indexed.frames[4].work.renderCullingViewQueryBuilds == 1 &&
+                              defaultMode.frames[4].work.renderCullingGridOwnedBytes == 0,
+                          "Numeric fallback must preserve mixed-Z ordering across default cached-linear and indexed");
+    // Frame 5: restoring certified view recovers fixed-view cache hit without query construction
+    for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
+        test_support::require(modeRun->frames[5].submissions ==
+                                      (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
+                                  modeRun->frames[5].work.renderCullingNumericFallbacks == 0 &&
+                                  modeRun->frames[5].work.renderCullingViewQueryBuilds == 0 &&
+                                  modeRun->frames[5].work.renderCullingCacheHits == 1,
+                              "Restored certified view after numeric fallback must resume fixed-view cache hit cleanly");
+    // Frame 6: dirty sprite edit constructs view query once without triggering a warm hit
+    for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
+        test_support::require(modeRun->frames[6].work.renderCullingNumericFallbacks == 0 &&
+                                  modeRun->frames[6].work.renderCullingViewQueryBuilds == 1 &&
+                                  modeRun->frames[6].work.renderCullingBoundsRefreshes == 1 &&
+                                  modeRun->frames[6].work.renderCullingCacheHits == 0 &&
+                                  modeRun->frames[6].work.renderCullingProjectionRebuilds == 0,
+                              "Dirty sprite frame must build query once without warm cache hit");
+    // Frame 7: clean frame after dirty drain short-circuits again
+    for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
+        test_support::require(modeRun->frames[7].work.renderCullingViewQueryBuilds == 0 &&
+                                  modeRun->frames[7].work.renderCullingCacheHits == 1,
+                              "Post-edit clean frame must short-circuit fixed-view cache hit in both cached modes");
+}
 #endif
 
 void checkPublicOption()
@@ -1884,6 +2119,7 @@ void run()
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     checkCustomMappingFallbacksAndDirectCamera();
     checkConsecutiveMutationStrategies();
+    checkDefaultCachedLinearAndMixedZCompositingParity();
 #endif
 }
 } // namespace

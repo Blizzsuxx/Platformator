@@ -7,6 +7,7 @@
 #include <platformator/objectreference.h>
 #include <platformator/scriptcomponent.h>
 #include <platformator/scriptregistration.h>
+#include <platformator/sprite.h>
 
 using namespace test_support;
 namespace
@@ -271,6 +272,83 @@ int main()
         for (const auto &entry : std::filesystem::directory_iterator(directory))
             require(entry.path().filename().string().find(".tmp.") == std::string::npos,
                     "Failed saves must clean temporary files");
+
+        // Sprite zOrder serialization boundaries (T014).
+        {
+            Sprite directSprite;
+            directSprite.setZOrder(42);
+            const Json legacyJson{{"id", 7},
+                                  {"type", SPRITE},
+                                  {"textureFilePath", ""},
+                                  {"flip", 0},
+                                  {"width", 16.0f},
+                                  {"height", 16.0f},
+                                  {"sourceRectEnabled", false}};
+            from_json(legacyJson, directSprite);
+            require(directSprite.getZOrder() == 0,
+                    "Omitted zOrder must reset an already nonzero Sprite to zero");
+
+            for (const std::int32_t endpoint :
+                 {std::numeric_limits<std::int32_t>::min(), std::numeric_limits<std::int32_t>::max()})
+            {
+                Sprite outSprite;
+                outSprite.setId(8);
+                outSprite.setWidth(12.0f);
+                outSprite.setHeight(10.0f);
+                outSprite.setZOrder(endpoint);
+                Json serialized;
+                to_json(serialized, outSprite);
+                require(serialized.at("zOrder") == endpoint,
+                        "to_json must write exact signed 32-bit zOrder");
+
+                Sprite inSprite;
+                from_json(serialized, inSprite);
+                require(inSprite.getZOrder() == endpoint,
+                        "from_json must preserve signed 32-bit zOrder endpoints");
+            }
+
+            const std::vector<Json> invalidZValues{
+                Json(static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()) + 1ULL),
+                Json(static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()) - 1LL),
+                Json(nullptr),
+                Json(true),
+                Json(false),
+                Json(1.0),
+                Json(0.5),
+                Json("10"),
+                Json::array({0}),
+                Json::object({{"value", 0}})};
+            for (const Json &badZ : invalidZValues)
+            {
+                Sprite guardSprite;
+                guardSprite.setZOrder(19);
+                Json badSpriteJson = legacyJson;
+                badSpriteJson["zOrder"] = badZ;
+                failure([&] { from_json(badSpriteJson, guardSprite); });
+                require(guardSprite.getZOrder() == 19,
+                        "Rejected zOrder input must leave Sprite unchanged");
+
+                auto badSceneObj = base;
+                badSceneObj["components"] = Json::array({badSpriteJson});
+                rejects(Json::array({badSceneObj}));
+            }
+
+            // Round-trip negative/extreme zOrder through scene save/load.
+            runtime.loadScene(original.string());
+            auto *zObj = runtime.createGameObject()->setName("z-order-object");
+            zObj->addComponent<Sprite>(static_cast<TextureWrapper *>(nullptr), 8.0f, 8.0f);
+            zObj->getComponent<Sprite>()->setZOrder(std::numeric_limits<std::int32_t>::min());
+            const auto zScenePath = directory / "zorder-roundtrip.scene";
+            runtime.saveScene(zScenePath.string());
+            runtime.clearScene();
+            runtime.loadScene(zScenePath.string());
+            auto *reloadedZ = runtime.getGameObject("z-order-object");
+            require(reloadedZ != nullptr && reloadedZ->getComponent<Sprite>() != nullptr &&
+                        reloadedZ->getComponent<Sprite>()->getZOrder() ==
+                            std::numeric_limits<std::int32_t>::min(),
+                    "Scene save/load must preserve extreme signed zOrder");
+        }
+
         std::filesystem::remove_all(directory);
         std::cout << "[PASS] scene I/O contracts\n";
         return 0;

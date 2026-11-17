@@ -249,10 +249,17 @@ Json *mutable_address_value(DocumentSession &document, int objectId,
 
 int json_integer(const Json *value, int fallback)
 {
-    if (value == nullptr || (!value->is_number_integer() && !value->is_number_unsigned()))
+    if (value == nullptr || value->is_boolean() || !value->is_number_integer())
         return fallback;
     try
     {
+        if (value->is_number_unsigned())
+        {
+            const auto parsed = value->get<std::uint64_t>();
+            if (parsed > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
+                return fallback;
+            return static_cast<int>(parsed);
+        }
         const auto parsed = value->get<std::int64_t>();
         if (parsed < std::numeric_limits<int>::min() || parsed > std::numeric_limits<int>::max())
             return fallback;
@@ -1189,6 +1196,7 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
             add("flip", "Flip", "0");
             add("width", "Width", "16");
             add("height", "Height", "16");
+            add("zOrder", "Z Order", "0");
             add("sourceRectEnabled", "Use source rectangle", "false");
             if (component.contains("sourceRect"))
             {
@@ -1772,7 +1780,7 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
     if (!field_matches_search(document, objectId, componentId, path, label))
         return false;
     const Json *stored = address_value(document, objectId, componentId, path);
-    const int storedValue = json_integer(stored, defaultValue);
+    const std::int64_t storedValue = json_integer(stored, defaultValue);
     const bool reveal = consume_reveal_target(objectId, componentId, path);
     const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
 
@@ -1830,7 +1838,7 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
         scrubState_.path = path;
         const Json *origPtr = address_value(document, objectId, componentId, path);
         scrubState_.singleHadValue = origPtr != nullptr;
-        scrubState_.originalSingleJson = origPtr != nullptr ? *origPtr : Json(storedValue);
+        scrubState_.originalSingleJson = origPtr != nullptr ? *origPtr : Json(static_cast<int>(storedValue));
         scrubState_.baseStep = baseStep;
         scrubState_.snapIncrement = snapIncrement;
         scrubState_.minimum = minimum ? std::optional<double>(static_cast<double>(*minimum)) : std::nullopt;
@@ -1896,8 +1904,8 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
         const Json previewJson = apply_numeric_delta(
             scrubState_.originalSingleJson, scrubState_.accumDelta,
             scrubState_.minimum, scrubState_.maximum);
-        if (previewJson.is_number())
-            draftIt->second.value = previewJson.get<int>();
+        if (previewJson.is_number_integer())
+            draftIt->second.value = previewJson.get<std::int64_t>();
     }
     else if (!inserted && !draftIt->second.wasActive && ImGui::GetActiveID() != widgetId)
         draftIt->second.value = storedValue;
@@ -1910,8 +1918,11 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.32f, 0.28f, 0.18f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.37f, 0.32f, 0.20f, 1.0f));
     }
+    const std::int64_t step = 1;
+    const std::int64_t stepFast = 100;
     ImGui::PushItemFlag(ImGuiItemFlags_LiveEditOnInputScalar, true);
-    const bool changed = ImGui::InputInt("##value", &draftIt->second.value, 1, 100);
+    const bool changed = ImGui::InputScalar("##value", ImGuiDataType_S64, &draftIt->second.value,
+                                            &step, &stepFast, "%lld");
     ImGui::PopItemFlag();
     if (overridden)
     {
@@ -1924,19 +1935,23 @@ bool InspectorPanel::draw_integer(DocumentSession &document, EditCommandService 
         ImGui::SetScrollHereY(0.5f);
     const bool itemActive = ImGui::IsItemActive();
     const bool cancel = (wasActive || itemActive) && ImGui::IsKeyPressed(ImGuiKey_Escape);
-    const int value = draftIt->second.value;
+    const std::int64_t value = draftIt->second.value;
     draftIt->second.wasActive = itemActive;
     bool updated = false;
     if (!scrubCommitted && !cancel && changed)
     {
-        if ((minimum && value < *minimum) || (maximum && value > *maximum))
+        const std::int64_t effectiveMin = minimum ? static_cast<std::int64_t>(*minimum)
+                                                  : static_cast<std::int64_t>(std::numeric_limits<int>::min());
+        const std::int64_t effectiveMax = maximum ? static_cast<std::int64_t>(*maximum)
+                                                  : static_cast<std::int64_t>(std::numeric_limits<int>::max());
+        if (value < effectiveMin || value > effectiveMax)
             feedback_ = std::string(label) + " is outside the supported range.";
         else
             updated = liveEdit_.update_single(
                 document, commands,
                 address_for_document(document, objectId, componentId, std::nullopt, path),
                 currentSelection_, widgetId, hostGeneration_, currentOrderedSelection_,
-                value, feedback_);
+                static_cast<int>(value), feedback_);
     }
     liveEdit_.finish_widget(widgetId, &document, itemActive, cancel);
     if (cancel || scrubCommitted)
@@ -3684,6 +3699,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                         std::numeric_limits<float>::min());
             draw_number(document, commands, objectId, componentId, {std::string("height")}, "Height", 16.0f,
                         std::numeric_limits<float>::min());
+            draw_integer(document, commands, objectId, componentId, {std::string("zOrder")}, "Z Order", 0,
+                         std::numeric_limits<std::int32_t>::min(),
+                         std::numeric_limits<std::int32_t>::max());
             draw_boolean(document, commands, objectId, componentId,
                          {std::string("sourceRectEnabled")}, "Use Source Rectangle");
             const Json *sourceRectEnabledJson = address_value(document, objectId, componentId, {std::string("sourceRectEnabled")});
@@ -4415,12 +4433,97 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         ImGui::Checkbox("Apply to children", &applyColliderLayerToDescendants_);
                     }
                 }
+                const std::vector<FieldPathSegment> spriteZOrderPath{std::string("zOrder")};
+                if (type == 6 && matches_any_component_search(matching, spriteZOrderPath, "Z Order"))
+                {
+                    std::vector<std::int32_t> zValues;
+                    zValues.reserve(matching.size());
+                    bool zCompatible = true;
+                    for (const auto &component : matching)
+                    {
+                        const auto found = component.second->find("zOrder");
+                        if (found == component.second->end())
+                        {
+                            zValues.push_back(0);
+                            continue;
+                        }
+                        if (found->is_boolean() || !found->is_number_integer())
+                        {
+                            zCompatible = false;
+                            break;
+                        }
+                        if (found->is_number_unsigned())
+                        {
+                            const auto unsignedVal = found->get<std::uint64_t>();
+                            if (unsignedVal > static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()))
+                            {
+                                zCompatible = false;
+                                break;
+                            }
+                            zValues.push_back(static_cast<std::int32_t>(unsignedVal));
+                        }
+                        else
+                        {
+                            const auto signedVal = found->get<std::int64_t>();
+                            if (signedVal < std::numeric_limits<std::int32_t>::min() ||
+                                signedVal > std::numeric_limits<std::int32_t>::max())
+                            {
+                                zCompatible = false;
+                                break;
+                            }
+                            zValues.push_back(static_cast<std::int32_t>(signedVal));
+                        }
+                    }
+                    if (zCompatible && !zValues.empty())
+                    {
+                        const bool zMixed = std::any_of(zValues.begin() + 1, zValues.end(),
+                                                        [&](std::int32_t v) { return v != zValues.front(); });
+                        std::vector<std::pair<int, int>> zOverrideTargets;
+                        zOverrideTargets.reserve(matching.size());
+                        for (std::size_t index = 0; index < matching.size(); ++index)
+                        {
+                            if (template_field_is_overridden(document, objectIds[index],
+                                                             matching[index].first, spriteZOrderPath))
+                                zOverrideTargets.emplace_back(objectIds[index], matching[index].first);
+                        }
+                        std::vector<PropertyAddress> zTargets;
+                        zTargets.reserve(matching.size());
+                        for (std::size_t index = 0; index < matching.size(); ++index)
+                            zTargets.push_back(address_for_document(document, objectIds[index],
+                                                                    matching[index].first, std::nullopt,
+                                                                    spriteZOrderPath));
+                        begin_field("Z Order", spriteZOrderPath, !zOverrideTargets.empty(), false, [&] {
+                            draw_template_revert_context(document, commands, zOverrideTargets,
+                                                         {spriteZOrderPath}, feedback_);
+                        });
+                        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, zMixed);
+                        std::int64_t zValue = zValues.front();
+                        LiveEditContext zLiveCtx{document, commands, liveEdit_, selection.current(),
+                                                 hostGeneration_, currentOrderedSelection_, feedback_};
+                        live_input_int64("##value", zValue, nullptr, nullptr, zLiveCtx, zTargets,
+                                         [&]() {
+                                             if (!zOverrideTargets.empty() && ImGui::IsItemHovered())
+                                                 ImGui::SetItemTooltip("This field overrides its linked template value.");
+                                             draw_template_revert_context(document, commands,
+                                                                          zOverrideTargets,
+                                                                          {spriteZOrderPath},
+                                                                          feedback_);
+                                         },
+                                         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+                                         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
+                                         "Z Order is outside the supported range.");
+                        ImGui::PopItemFlag();
+                        end_field();
+                    }
+                }
                 for (auto it = matching.front().second->begin(); it != matching.front().second->end(); ++it)
                 {
                     const std::string key = it.key();
                     if (key == "id" || key == "type" || key == "behaviors")
                         continue;
                     if (type == 3 && (key == "collisionGroup" || key == "collisionMask"))
+                        continue;
+                    if (type == 6 && key == "zOrder")
                         continue;
                     std::vector<Json> values;
                     values.reserve(matching.size());

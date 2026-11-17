@@ -342,6 +342,25 @@ void validate_sprite(const DocumentSession &document, const Json &component,
             add_issue(result, ValidationSeverity::Warning, objectId, componentId, field,
                       "The sprite has no positive finite render extent.", false);
     }
+    if (const auto *zOrder = member(component, "zOrder"))
+    {
+        bool valid = !zOrder->is_boolean() && zOrder->is_number_integer();
+        if (valid)
+        {
+            if (zOrder->is_number_unsigned())
+                valid = zOrder->get<std::uint64_t>() <=
+                        static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max());
+            else
+            {
+                const auto parsed = zOrder->get<std::int64_t>();
+                valid = parsed >= std::numeric_limits<std::int32_t>::min() &&
+                        parsed <= std::numeric_limits<std::int32_t>::max();
+            }
+        }
+        if (!valid)
+            add_issue(result, ValidationSeverity::Error, objectId, componentId, "zOrder",
+                      "Sprite Z Order must be an integer in [-2147483648, 2147483647].", true);
+    }
     const auto *enabled = member(component, "sourceRectEnabled");
     if (enabled == nullptr || !enabled->is_boolean())
         add_issue(result, ValidationSeverity::Error, objectId, componentId, "sourceRectEnabled",
@@ -794,7 +813,7 @@ bool copy_validation_component(const Json &source, Json &destination,
     else if (type == SPRITE)
     {
         const char *selected[] = {"textureFilePath", "flip", "width", "height",
-                                  "sourceRectEnabled", "sourceRect"};
+                                  "zOrder", "sourceRectEnabled", "sourceRect"};
         std::copy(std::begin(selected), std::end(selected), fields);
         fieldCount = std::size(selected);
     }

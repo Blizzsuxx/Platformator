@@ -716,6 +716,68 @@ void run_external_scene_identity_requires_a_run_decision()
                 source_file_allows_run(workspace.source_file_status()),
             "Reload must adopt the disk version and clear the conflict before Run continues");
 }
+void run_sprite_z_order_validation_and_fingerprint()
+{
+    TemporaryDirectory temporary;
+    const auto project = temporary.path() / "project";
+    const auto assets = project / "assets";
+    std::filesystem::create_directories(assets);
+    auto document = make_default_document(project, assets, 1);
+    document.root[0]["components"].push_back(component(
+        92, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 16.0},
+                    {"height", 16.0}, {"sourceRectEnabled", false}}));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    ValidationService service;
+    const auto wait_for_current = [&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        std::optional<ValidationCompletion> completion;
+        while (!completion && std::chrono::steady_clock::now() < deadline)
+        {
+            completion = service.take_current(document);
+            if (!completion)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        require(completion.has_value(), "zOrder validation must settle within three seconds");
+        return std::move(completion->result);
+    };
+
+    service.request(document);
+    const auto legacy = wait_for_current();
+    require(!legacy.blocksRun, "Legacy Sprite omitting zOrder must validate cleanly");
+
+    for (const Json badZ : {Json(2147483648ULL), Json(-2147483649LL), Json(true), Json(1.0),
+                            Json("10"), Json(nullptr), Json::object({{"v", 1}})})
+    {
+        document.root[0]["components"][1]["zOrder"] = badZ;
+        ++document.valueRevision;
+        service.request_changed(document, {0});
+        const auto invalid = wait_for_current();
+        require(invalid.blocksRun &&
+                    std::any_of(invalid.issues.begin(), invalid.issues.end(),
+                                [](const ValidationIssue &issue) {
+                                    return issue.componentId == 92 && issue.fieldPath == "zOrder" &&
+                                           issue.blocksRun;
+                                }),
+                "Invalid Sprite zOrder must block Run after editing only zOrder");
+    }
+
+    for (const std::int32_t validZ :
+         {std::numeric_limits<std::int32_t>::min(), -10, 0, std::numeric_limits<std::int32_t>::max()})
+    {
+        document.root[0]["components"][1]["zOrder"] = validZ;
+        ++document.valueRevision;
+        service.request_changed(document, {0});
+        const auto valid = wait_for_current();
+        require(!valid.blocksRun &&
+                    std::none_of(valid.issues.begin(), valid.issues.end(),
+                                 [](const ValidationIssue &issue) {
+                                     return issue.componentId == 92 && issue.fieldPath == "zOrder";
+                                 }),
+                "Valid Sprite zOrder must clear previous zOrder diagnostic");
+    }
+}
 } // namespace
 
 int main()
@@ -733,6 +795,7 @@ int main()
         run_hidden_audio_validation_dependencies_recover_from_events_and_fallback();
         run_deleted_field_issue_is_removed_from_local_publication();
         run_external_scene_identity_requires_a_run_decision();
+        run_sprite_z_order_validation_and_fingerprint();
         std::cout << "diagnostics tests passed\n";
         return 0;
     }

@@ -650,6 +650,71 @@ namespace platformator_editor
             preview.release();
             ImGui::DestroyContext();
         }
+        void check_z_order_picking_and_non_sprite_slots()
+        {
+            RuntimeOptions options;
+            options.windowSettings.width = 320;
+            options.windowSettings.height = 240;
+            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) /
+                                "engine/tests/fixtures/assets";
+            platformator::Runtime runtime(options);
+
+            DocumentSession document;
+            // Document order:
+            // 0: camera-only object (non-sprite)
+            // 10: sprite zOrder=20 (frontmost sprite)
+            // 20: empty marker (non-sprite)
+            // 30: sprite zOrder=10 (hidden/locked in filtered check)
+            // 40: sprite zOrder=-5 (lowest sprite)
+            auto spriteWithZ = [](int compId, std::int32_t z) {
+                Json s = sprite(compId);
+                s["zOrder"] = z;
+                return s;
+            };
+            document.root = Json::array({
+                object(0, 0.0f, 0.0f, Json::array({component(1, 2, Json{{"width", 20.0f}, {"height", 20.0f}})})),
+                object(10, 0.0f, 0.0f, Json::array({spriteWithZ(11, 20)})),
+                object(20, 0.0f, 0.0f, Json::array()),
+                object(30, 0.0f, 0.0f, Json::array({spriteWithZ(31, 10)})),
+                object(40, 0.0f, 0.0f, Json::array({spriteWithZ(41, -5)}))});
+            document.structureRevision = 1;
+            rebuild_document_indexes(document);
+
+            EditorPreview preview(runtime);
+            preview.reconcile(document, true);
+            require_case(preview.draw_document_ids() == std::vector<int>({40, 30, 10}),
+                         "Preview draw order must sort sprites ascending by zOrder");
+
+            ViewportTransform transform;
+            require_case(transform.configure({100.0f, 50.0f, 640.0f, 480.0f}, 1.0f, 1.0f,
+                                             320.0f, 240.0f, 0.0f, 0.0f),
+                         "zOrder picking transform must configure");
+
+            // Non-sprite slots (0 at index 0, 20 at index 2) stay fixed; sprite slots use visual order (40, 30, 10).
+            // Reversed traversal visits: 10 (sprite), 30 (sprite), 20 (empty), 40 (sprite), 0 (camera outline corner at 0,0).
+            const auto candidates = viewport_pick_candidates(transform, preview.ordered_authoring_ids(),
+                                                             preview, {420.0f, 290.0f}, 0.0f);
+            require_case(candidates == std::vector<int>({10, 30, 20, 40, 0}),
+                         "Picking must traverse sprite targets in reverse visual Z order while preserving non-sprite slots");
+
+            ViewportPickCycle cycle;
+            require_case(cycle.choose(candidates, {420.0f, 290.0f}) == 10 &&
+                             cycle.choose(candidates, {420.0f, 290.0f}) == 30 &&
+                             cycle.choose(candidates, {420.0f, 290.0f}) == 20 &&
+                             cycle.choose(candidates, {420.0f, 290.0f}) == 40 &&
+                             cycle.choose(candidates, {420.0f, 290.0f}) == 0,
+                         "Repeated clicks must cycle through Z-ordered sprites and non-sprite slots");
+
+            // Filtered hidden (30) and locked (20) objects must be excluded while keeping Z order (10 then 40).
+            const auto pickable = viewport_pickable_ids(preview.ordered_authoring_ids(), {30}, {20});
+            const auto filteredTargets = viewport_pick_targets(transform, pickable, preview,
+                                                               {420.0f, 290.0f}, 0.0f);
+            const std::vector<ViewportPickCycle::Target> expectedFiltered{{10, 11}, {40, 41}, {0, 1}};
+            require_case(filteredTargets == expectedFiltered,
+                         "Hidden/locked filtering must exclude hidden/locked targets and preserve Z order");
+
+            preview.release();
+        }
     } // namespace
 
     void run_viewport_cases()
@@ -659,5 +724,6 @@ namespace platformator_editor
         transform_cases();
         picking_and_gesture_cases();
         run_unity_ergonomics_viewport_tests();
+        check_z_order_picking_and_non_sprite_slots();
     }
 } // namespace platformator_editor

@@ -22,10 +22,10 @@ class CaptureBudget:
         self.deadline = time.monotonic() + max_seconds
         self.max_seconds = max_seconds
 
-    def check(self):
+    def check(self, reserve_bytes=0):
         if time.monotonic() >= self.deadline:
             raise BudgetExceeded(f"Capture exceeded {self.max_seconds:g} seconds; stopped without a success report")
-        size = 0
+        size = reserve_bytes
         for root in self.roots:
             if not root.exists():
                 continue
@@ -71,9 +71,13 @@ def capture_budget(budget):
         _active_budget = previous
 
 
-def check_budget():
+def check_budget(reserve_bytes=0):
     if _active_budget is not None:
-        _active_budget.check()
+        _active_budget.check(reserve_bytes=reserve_bytes)
+
+
+def active_budget_max_bytes():
+    return _active_budget.max_bytes if _active_budget is not None else None
 
 
 def wait_for_process(process):

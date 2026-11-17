@@ -6,7 +6,9 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include <array>
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "platformator/camera.h"
@@ -15,6 +17,10 @@
 #include "renderculling.h"
 #include "platformator/windowsettings.h"
 
+#ifndef PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+#define PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES 0
+#endif
+
 class Audio;
 class AudioWrapper;
 class Sprite;
@@ -22,8 +28,45 @@ class Sprite;
 class SDLWindow
 {
   public:
+    struct RenderCullingPolicy
+    {
+        platformator_detail::RenderCullingMode requestedMode = platformator_detail::RenderCullingMode::CachedLinear;
+        platformator_detail::RenderCullingMode effectiveMode = platformator_detail::RenderCullingMode::CachedLinear;
+        bool cullingEnabled = true;
+        bool headless = false;
+    };
+
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+    enum class BenchmarkSpriteOrderMode
+    {
+        DefaultRebuild,
+        ForcedFullSort,
+        SingleEntryRepair
+    };
+
+    struct BenchmarkOrderTiming
+    {
+        std::uint64_t calls = 0;
+        std::uint64_t totalNs = 0;
+        std::uint64_t lastNs = 0;
+    };
+#endif
+
+    struct RenderFallbackCounts
+    {
+        std::size_t mappingFallbacks = 0;
+        std::size_t numericFallbacks = 0;
+    };
+
     SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
     ~SDLWindow();
+
+    static platformator_detail::RenderCullingMode resolveRequestedRenderCullingModeFromEnvironment();
+    static RenderCullingPolicy resolveRenderCullingPolicy(const WindowSettings &windowSettings);
+    static const char *renderCullingModeName(platformator_detail::RenderCullingMode mode) noexcept;
+    static const char *effectiveRenderPolicyName(const RenderCullingPolicy &policy) noexcept;
+    RenderCullingPolicy getRenderCullingPolicy() const noexcept;
+    RenderFallbackCounts getObservedRenderFallbackCounts() const noexcept;
 
     void handleSDLEvents(double deltaTime);
     void setEditorKey(SDL_Scancode key, bool down) noexcept
@@ -68,7 +111,12 @@ class SDLWindow
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);
     void notifySpriteGeometryChanged(Sprite *spriteComponent) noexcept;
-    void releaseRenderCullingStorage() noexcept;
+    void notifySpriteOrderChanged(size_t slot) noexcept;
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+    void setBenchmarkSpriteOrderMode(BenchmarkSpriteOrderMode mode) noexcept;
+    BenchmarkOrderTiming consumeBenchmarkOrderTiming() noexcept;
+#endif
+    void releaseRenderingStorage() noexcept;
 
     void addSdlListener(const std::function<void(SDL_Event, double)> &listener);
     bool shouldSimulateFrame() const;
@@ -89,6 +137,30 @@ class SDLWindow
     void cancelAudioReplay(Audio *audio);
 
   private:
+    struct SpriteDrawEntry
+    {
+        size_t rank = 0;
+        std::int32_t zOrder = 0;
+        uint64_t registrationSequence = 0;
+    };
+
+    struct SpriteDrawOrder
+    {
+        std::vector<uint64_t> sequenceBySlot;
+        std::vector<SpriteDrawEntry> entries;
+        uint64_t nextSequence = 1;
+        uint64_t preparedMembershipRevision = 0;
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+        BenchmarkSpriteOrderMode orderMode = BenchmarkSpriteOrderMode::DefaultRebuild;
+        size_t singleEditSlot = 0;
+        BenchmarkOrderTiming benchmarkTiming{};
+        bool singleEditCandidateValid = false;
+#endif
+        bool preparedOnce = false;
+        bool orderDirty = true;
+        bool preparedAll = false;
+    };
+
     struct TransientAudioPlayback
     {
         MIX_Track *track;
@@ -116,7 +188,9 @@ class SDLWindow
     std::function<void(SDL_Renderer *, int, int)> editorSessionFrameCapture;
     platformator_detail::RenderCullingMode requestedRenderCullingMode;
     platformator_detail::RenderCullingMode effectiveRenderCullingMode;
+    RenderFallbackCounts observedFallbackCounts{};
     std::unique_ptr<platformator_detail::RenderCullingState> renderCullingState;
+    std::optional<SpriteDrawOrder> spriteDrawOrder;
 
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event, double)>> listeners;
@@ -127,6 +201,8 @@ class SDLWindow
     bool setPaused(bool value) noexcept;
     void close();
     void updateRenderSize();
-    bool prepareCachedLinear(Camera *camera, const platformator_detail::SpriteRenderView &view);
+    bool prepareVisibleSelection(Camera *camera, const platformator_detail::SpriteRenderView &view);
+    void prepareDrawOrder(bool useCachedSelection);
+    void publishOrderCapacityObservation() const noexcept;
     void releaseTransientAudioPlayback(size_t index);
 };

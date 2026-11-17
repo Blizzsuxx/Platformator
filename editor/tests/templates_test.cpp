@@ -2335,6 +2335,66 @@ void test_template_asset_ref_preserved_across_export_duplicate_and_revert()
 
     std::filesystem::remove_all(tempDir, ec);
 }
+void test_template_sprite_z_order_override_revert_and_duplicate()
+{
+    const auto tempDir = std::filesystem::temp_directory_path() / "platformator_tmpl_zorder_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempDir, ec);
+    const auto assetRoot = tempDir / "assets";
+    const auto tmplDir = assetRoot / "templates";
+    std::filesystem::create_directories(tmplDir);
+
+    const auto tmplPath = tmplDir / "LayeredSprite.pttemplate";
+    {
+        Json root = platformator_editor_test::object(1, "LayeredSprite",
+            Json::array({component(2, 6, Json{{"textureFilePath", ""}, {"flip", 0},
+                                              {"width", 16.0}, {"height", 16.0},
+                                              {"zOrder", -12}, {"sourceRectEnabled", false}})}));
+        std::ofstream out(tmplPath);
+        out << make_template_envelope("LayeredSprite", root).dump(2);
+    }
+
+    DocumentManager manager(tempDir, assetRoot);
+    auto *sceneTab = manager.active_tab();
+    require(sceneTab != nullptr, "DocumentManager must start with a Scene tab");
+    auto &sceneDoc = sceneTab->workspace().document_for_edit();
+    auto &cmds = sceneTab->history();
+    SelectionModel sel;
+    require(instantiate_asset_drop(sceneDoc, cmds, sel, tmplPath.string(),
+                                   EditorAssetKind::Template, 0.0f, 0.0f),
+            "Template with Sprite zOrder must instantiate");
+
+    const int instId = *sel.current().objectId;
+    const Json *instObj = find_document_object_by_id(sceneDoc, instId);
+    require(instObj != nullptr && instObj->at("components").at(0).at("zOrder") == -12,
+            "Instantiated template Sprite must retain authored zOrder -12");
+    const int compId = instObj->at("components").at(0).at("id").get<int>();
+
+    const auto setCmd = cmds.set_property(
+        sceneDoc, address_for_document(sceneDoc, instId, compId, std::nullopt, {std::string("zOrder")}),
+        33);
+    require(setCmd.status == CommandStatus::Changed &&
+                find_document_object_by_id(sceneDoc, instId)->at("components").at(0).at("zOrder") == 33,
+            "Overriding Sprite zOrder on template instance must succeed");
+    mark_template_override(sceneDoc, instId, "components[0].zOrder");
+
+    const auto dup = cmds.duplicate_objects(sceneDoc, {instId}, {}, DuplicateReferencePolicy::PreserveExistingTargets,
+                                            {}, false);
+    require(dup.status == CommandStatus::Changed && dup.affectedObjectIds.size() == 1,
+            "Duplicating Sprite with zOrder must succeed");
+    const int dupId = dup.affectedObjectIds.front();
+    require(find_document_object_by_id(sceneDoc, dupId)->at("components").at(0).at("zOrder") == 33,
+            "Duplicated object must retain overridden Sprite zOrder 33");
+
+    std::string revertErr;
+    require(revert_template_property(sceneDoc, cmds, instId, compId, std::nullopt, {std::string("zOrder")},
+                                     assetRoot, revertErr),
+            "Reverting Sprite zOrder override must succeed: " + revertErr);
+    require(find_document_object_by_id(sceneDoc, instId)->at("components").at(0).at("zOrder") == -12,
+            "Reverted Sprite zOrder must restore template value -12");
+
+    std::filesystem::remove_all(tempDir, ec);
+}
 } // namespace
 
 int main()
@@ -2365,6 +2425,7 @@ int main()
         test_template_position_override_duplicate_revert_and_open_tab_apply_sync();
         test_component_subtype_bindings_and_mario_manager_export();
         test_template_asset_ref_preserved_across_export_duplicate_and_revert();
+        test_template_sprite_z_order_override_revert_and_duplicate();
         std::cout << "Template, binding, insertion, and duplicate cases passed\n";
         return 0;
     }

@@ -1,9 +1,11 @@
 #include "test_support.h"
+#include "runtime_work_probe.h"
 
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 
 #include <platformator/animator.h>
@@ -784,6 +786,139 @@ void testEngineCleanupContracts()
     require(roundtrip.at("f17") == 217 && roundtrip.at("f24") == 324,
             "SERIALIZABLE_SCRIPT with 24 fields must serialize values beyond field 16");
 }
+void testSpriteZOrderTemplateInstantiationAndClone()
+{
+    ScopedTempDir tmp("platformator_tpl_zorder");
+    const auto rootJson = makeObjectJson(
+        0, "ZOrderSprite", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1},
+                                {"type", ComponentType::SPRITE},
+                                {"textureFilePath", ""},
+                                {"flip", 0},
+                                {"width", 12.0f},
+                                {"height", 12.0f},
+                                {"zOrder", -77},
+                                {"sourceRectEnabled", false}}}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "zorder.pttemplate", makeTemplateDoc("ZOrderSprite", rootJson));
+
+    {
+        RuntimeOptions opts;
+        opts.windowSettings.headless = true;
+        opts.assetRoot = (tmp.dir / "assets").string();
+        platformator::Runtime runtime(opts);
+
+        Template *tpl = runtime.loadTemplate("assets/templates/zorder.pttemplate");
+        GameObject *inst = tpl->instantiate();
+        Sprite *sprite = inst->getComponent<Sprite>();
+        require(sprite != nullptr && sprite->getZOrder() == -77,
+                "Instantiated template Sprite must retain authored zOrder -77");
+
+        std::unique_ptr<Component> cloned(sprite->clone());
+        auto *clonedSprite = dynamic_cast<Sprite *>(cloned.get());
+        require(clonedSprite != nullptr && clonedSprite->getZOrder() == -77,
+                "Sprite::clone must copy authored zOrder");
+    }
+
+    // Repeated template instantiation with serialized children sharing equal Z and failed scene load preservation.
+    const auto childA = makeObjectJson(
+        10, "ChildA", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 11}, {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"}, {"flip", 0},
+                                {"width", 16.0f}, {"height", 16.0f}, {"zOrder", 0},
+                                {"sourceRectEnabled", false}}}));
+    const auto childB = makeObjectJson(
+        20, "ChildB", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 21}, {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"}, {"flip", 0},
+                                {"width", 16.0f}, {"height", 16.0f}, {"zOrder", 0},
+                                {"sourceRectEnabled", false}}}));
+    const auto childHigh = makeObjectJson(
+        30, "ChildHigh", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 31}, {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"}, {"flip", 0},
+                                {"width", 16.0f}, {"height", 16.0f}, {"zOrder", 5},
+                                {"sourceRectEnabled", false}}}));
+    const auto hierarchyRoot = makeObjectJson(
+        0, "HierarchyRoot", {160.0f, 120.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 1}, {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"}, {"flip", 0},
+                                {"width", 16.0f}, {"height", 16.0f}, {"zOrder", 0},
+                                {"sourceRectEnabled", false}}}),
+        nlohmann::json::array({childA, childB, childHigh}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "hierarchy_ties.pttemplate",
+                  makeTemplateDoc("HierarchyTies", hierarchyRoot));
+
+    RuntimeOptions renderOpts;
+    renderOpts.assetRoot = (tmp.dir / "assets").string();
+    renderOpts.windowSettings.width = 320;
+    renderOpts.windowSettings.height = 240;
+    platformator::Runtime renderRuntime(renderOpts);
+    GameObject *camObj = renderRuntime.createGameObject();
+    camObj->addComponent<Camera>(320.0f, 240.0f);
+    Template *hierarchyTpl = renderRuntime.loadTemplate("assets/templates/hierarchy_ties.pttemplate");
+
+    GameObject *inst1 = hierarchyTpl->instantiate();
+    GameObject *inst2 = hierarchyTpl->instantiate();
+    require(inst1 != inst2 &&
+                inst1->getChildren()[0]->getComponent<Sprite>() != inst2->getChildren()[0]->getComponent<Sprite>() &&
+                inst1->getChildren()[2]->getComponent<Sprite>()->getZOrder() == 5 &&
+                inst2->getChildren()[2]->getComponent<Sprite>()->getZOrder() == 5,
+            "Repeated template instantiation must produce distinct live sprites with authored Z values");
+
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    std::vector<const Sprite *> expectedOrder{
+        inst1->getComponent<Sprite>(),
+        inst1->getChildren()[0]->getComponent<Sprite>(),
+        inst1->getChildren()[1]->getComponent<Sprite>(),
+        inst2->getComponent<Sprite>(),
+        inst2->getChildren()[0]->getComponent<Sprite>(),
+        inst2->getChildren()[1]->getComponent<Sprite>(),
+        inst1->getChildren()[2]->getComponent<Sprite>(),
+        inst2->getChildren()[2]->getComponent<Sprite>()};
+    std::unordered_map<const Sprite *, platformator_test::SpriteIdentity> idMap;
+    for (size_t i = 0; i < expectedOrder.size(); ++i)
+        idMap.emplace(expectedOrder[i], platformator_test::SpriteIdentity{i, 0});
+
+    const auto captureOrder = [&]() {
+        std::vector<platformator_test::SpriteIdentity> submissions;
+        submissions.reserve(expectedOrder.size());
+        platformator_test::RenderObservation obs;
+        obs.identityContext = &idMap;
+        obs.resolveIdentity = [](const Sprite *s, platformator_test::SpriteIdentity &out, void *ctx) -> bool {
+            const auto *map = static_cast<const std::unordered_map<const Sprite *, platformator_test::SpriteIdentity> *>(ctx);
+            const auto it = map->find(s);
+            if (it == map->end())
+                return false;
+            out = it->second;
+            return true;
+        };
+        obs.submissions = &submissions;
+        platformator_test::ScopedRenderObservation scope(obs);
+        require(renderRuntime.simulateAndRenderFrame(dt), "Template render frame failed");
+        require(obs.unresolvedSprites == 0 && obs.submissionOverflows == 0,
+                "Template render observation had unresolved or overflowed sprites");
+        return submissions;
+    };
+
+    const std::vector<platformator_test::SpriteIdentity> expectedIds{
+        {0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0}};
+    require(captureOrder() == expectedIds,
+            "Repeated template instantiation must draw serialized equal-Z ties deterministically");
+
+    // Failed scene preparation must keep live template instances and their tie order intact.
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "invalid_z.scene",
+                  nlohmann::json::array({makeObjectJson(
+                      99, "BadZ", {0.0f, 0.0f}, 0.0f,
+                      nlohmann::json::array({{{"id", 100}, {"type", ComponentType::SPRITE},
+                                              {"textureFilePath", ""}, {"flip", 0},
+                                              {"width", 10.0f}, {"height", 10.0f},
+                                              {"zOrder", true}, {"sourceRectEnabled", false}}}))}));
+    requireThrow([&] { renderRuntime.loadScene((tmp.dir / "assets" / "scenes" / "invalid_z.scene").string()); },
+                 "Invalid scene preparation must throw");
+    require(captureOrder() == expectedIds,
+            "Failed scene preparation must preserve live template instances and their tie order");
+#endif
+}
 } // namespace
 
 int main()
@@ -795,6 +930,7 @@ int main()
         testUs2AndUs4CompositeAndRollbackAndExternalClearing();
         testUs4CyclesMidStepCollisionAndCleanup();
         testEngineCleanupContracts();
+        testSpriteZOrderTemplateInstantiationAndClone();
         std::cout << "Runtime template tests passed\n";
         return 0;
     }

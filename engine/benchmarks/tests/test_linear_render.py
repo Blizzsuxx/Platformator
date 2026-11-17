@@ -434,6 +434,22 @@ class LinearRenderCaptureTests(unittest.TestCase):
                               "sanitizer": "none", "source_sha256": "c" * 64}}
         self.assertEqual(capture.validate_engine_control_manifest(manifest, control, self.args, "linear", 0,
                                                                   "c" * 64, "c" * 64), "c" * 64)
+        new_manifest = json.loads(json.dumps(manifest))
+        new_manifest["linear_render_culling"] = {
+            "requested_selector": "cached-linear",
+            "resolved_startup_strategy": "cached-linear",
+            "requested_mode": "cached-linear",
+            "requested_enabled": True,
+            "headless": False,
+            "disabled": False,
+            "effective_policy": "cached-linear",
+            "effective_enabled": True,
+            "observed_mapping_fallbacks": 0,
+            "observed_numeric_fallbacks": 0,
+            "observed_frame_fallbacks": 0,
+        }
+        self.assertEqual(capture.validate_engine_control_manifest(new_manifest, control, self.args, "linear", 0,
+                                                                  "c" * 64, "c" * 64), "c" * 64)
         for field, value in (("scenario", "moving_add_and_remove"), ("workers", 2), ("seed", 1),
                              ("dt", 0.02), ("warmup_steps", 3), ("measured_steps", 4),
                              ("repetition_index", 1), ("render_samples", 1),
@@ -958,6 +974,432 @@ class LinearRenderCaptureTests(unittest.TestCase):
                                           "mismatch.json").read_text())
             self.assertEqual(mismatch_record["frame"], 2)
             self.assertEqual(len(mismatch_record["images"]), 6)
+
+    def test_render_order_case_selection_arms_workers_and_baseline_arguments(self):
+        cases = capture.render_order_cases("authored-static,sparse-camera-pan,dense-z-edit", 1, 4)
+        self.assertEqual([c["case_name"] for c in cases],
+                         ["authored-static", "sparse-camera-pan", "dense-z-edit"])
+        for bad in ("", "authored-static,authored-static", "authored-static,unknown-case"):
+            with self.subTest(bad=bad), self.assertRaises(capture.CaptureError):
+                capture.render_order_cases(bad, 1, 4)
+
+        static_arms = capture.render_order_arms(cases[0])
+        self.assertEqual([(a["arm"], a["strategy"], a["workers"], a["is_baseline"]) for a in static_arms],
+                         [("baseline-indexed", "indexed", 1, True),
+                          ("candidate-indexed", "indexed", 1, False),
+                          ("candidate-cached-linear", "cached-linear", 1, False)])
+        pan_arms = capture.render_order_arms(cases[1])
+        self.assertEqual([(a["arm"], a["strategy"], a["workers"], a["is_baseline"]) for a in pan_arms],
+                         [("baseline-indexed", "indexed", 1, True),
+                          ("candidate-indexed", "indexed", 1, False),
+                          ("candidate-cached-linear", "cached-linear", 1, False)])
+        dense_arms = capture.render_order_arms(cases[2])
+        self.assertEqual([(a["arm"], a["strategy"], a["ordering_variant"], a["workers"]) for a in dense_arms],
+                         [("candidate-rebuild-w1", "cached-linear", "rebuild", 1),
+                          ("candidate-forced-sort-w1", "cached-linear", "forced-sort", 1),
+                          ("candidate-repair-w1", "cached-linear", "repair", 1),
+                          ("candidate-rebuild-w4", "cached-linear", "rebuild", 4)])
+
+        args = types.SimpleNamespace(seed=0, warmup_frames=5, measure_frames=30, dt=1 / 120,
+                                     repetitions=3, asset_root=Path("/tmp/assets"))
+        base_cmd = capture._build_render_order_command(
+            Path("/tmp/base"), cases[0], static_arms[0], args, phase="time", csv_path=Path("/tmp/b.csv"))
+        self.assertNotIn("--ordering-variant", base_cmd)
+        self.assertNotIn("--validation-proof", base_cmd)
+        self.assertNotIn("--resource-proof", base_cmd)
+        self.assertEqual(base_cmd[base_cmd.index("--render-strategy") + 1], "indexed")
+        cand_cmd = capture._build_render_order_command(
+            Path("/tmp/cand"), cases[2], dense_arms[2], args, phase="time", csv_path=Path("/tmp/c.csv"),
+            validation_path=Path("/tmp/v.json"), resource_path=Path("/tmp/r.json"))
+        self.assertEqual(cand_cmd[cand_cmd.index("--ordering-variant") + 1], "repair")
+        self.assertIn("--validation-proof", cand_cmd)
+        self.assertIn("--resource-proof", cand_cmd)
+
+    def test_render_order_per_phase_samples_and_identity_rejections(self):
+        rep_samples = [
+            [{"sample_index": idx, "paired_step_render_ms": 1.0 if idx % 2 == 0 else 3.0,
+              "render_ms": 0.4 if idx % 2 == 0 else 1.4,
+              "complete_step_ms": 0.6 if idx % 2 == 0 else 1.6} for idx in range(6)]
+            for _ in range(3)
+        ]
+        clean = capture._slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 0)
+        edit = capture._slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 1)
+        combined = capture._slice_stats(rep_samples, lambda _r: True)
+        self.assertAlmostEqual(clean["paired_step_render_ms"]["mean_ms"], 1.0)
+        self.assertAlmostEqual(edit["paired_step_render_ms"]["mean_ms"], 3.0)
+        self.assertAlmostEqual(combined["paired_step_render_ms"]["mean_ms"], 2.0)
+        self.assertEqual(clean["samples_per_run"], 3)
+        self.assertEqual(edit["samples_per_run"], 3)
+
+        case = capture.render_order_cases("dense-z-edit", 1, 4)[0]
+        arm = capture.render_order_arms(case)[2]
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            csv_path = root / "dense.csv"
+            build_id = {"configuration": "Release", "sanitizer": "none", "work_probes": False,
+                        "debug_tools": False, "source_sha256": "s" * 64, "fixture_sha256": "f" * 64,
+                        "harness_sha256": "h" * 64}
+            traj = {"profile": "dense-z-edit", "sprite_count": 10000}
+            render_proof = {"trajectory_parameters": traj, "renderer_mapping": self.mapping, "_sha256": "vp"}
+            resource_proof = {"trajectory_parameters": traj, "_sha256": "rp"}
+            manifest = {"build": build_id, "scenario": "linear_render_culling", "workers": 1, "seed": 0,
+                        "dt": self.args.dt, "warmup_steps": 2, "measured_steps": 2, "requested_measured_steps": 2,
+                        "repetitions": 3, "repetition_index": 0, "timing_eligible": True,
+                        "validation_mode": "boundary-only", "stopped_on_quit": False, "complete_capture": True,
+                        "total_steps": 2, "rendering": True, "render_samples": 2, "total_render_samples": 2,
+                        "linear_render_culling": {"mode": "cached-linear", "requested_mode": "cached-linear",
+                                                   "effective_policy": "cached-linear", "enabled": True,
+                                                   "observed_frame_fallbacks": 0},
+                        "resolved_parameters": traj, "ordering_variant": "repair",
+                        "fixture_sha256": "f" * 64, "harness_sha256": "h" * 64,
+                        "renderer_mapping": self.mapping,
+                        "validation_proof": {"sha256": "vp"}, "resource_observation": {"sha256": "rp"}}
+            csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+            metrics = {"scope.render.avg": 0.5, "scope.complete_step.avg": 1.0}
+            capture.validate_render_order_timing_manifest(
+                csv_path, case, arm, types.SimpleNamespace(seed=0, dt=self.args.dt, warmup_frames=2,
+                                                           measure_frames=2, repetitions=3),
+                0, build_id, metrics, render_proof, resource_proof, self.mapping)
+            for mut_fn in (
+                lambda m: m["resolved_parameters"].update({"sprite_count": 9999}),
+                lambda m: m["build"].update({"work_probes": True}),
+                lambda m: m["build"].update({"source_sha256": "x" * 64}),
+                lambda m: m["renderer_mapping"].update({"output_width": 640}),
+                lambda m: m.update({"ordering_variant": "rebuild"}),
+                lambda m: m["linear_render_culling"].update({"observed_frame_fallbacks": 1}),
+            ):
+                bad = json.loads(json.dumps(manifest))
+                mut_fn(bad)
+                csv_path.with_suffix(".manifest.json").write_text(json.dumps(bad))
+                with self.assertRaises(capture.CaptureError):
+                    capture.validate_render_order_timing_manifest(
+                        csv_path, case, arm, types.SimpleNamespace(seed=0, dt=self.args.dt, warmup_frames=2,
+                                                                   measure_frames=2, repetitions=3),
+                        0, build_id, metrics, render_proof, resource_proof, self.mapping)
+
+    def test_render_order_synthetic_pilot_failures_and_partial_preservation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"; assets.mkdir(); (assets / "scene.json").write_text("{}")
+            bins = {}
+            for name in ("base", "cand", "val"):
+                p = root / name; p.write_text("#!/bin/sh\nexit 0\n"); p.chmod(0o755); bins[name] = p
+
+            base_id = {**capture.RECORDED_FROZEN_BASELINE_IDENTITY,
+                       "commit": "a" * 40, "dirty": False, "compiler": "g++", "flags": "-O3"}
+            cand_id = {"configuration": "Release", "sanitizer": "none", "work_probes": False, "debug_tools": False,
+                       "commit": "a" * 40, "dirty": False, "compiler": "g++", "flags": "-O3",
+                       "source_sha256": "c" * 64,
+                       "fixture_sha256": capture.RECORDED_FROZEN_BASELINE_IDENTITY["fixture_sha256"],
+                       "harness_sha256": "d" * 64}
+            val_id = {**cand_id, "work_probes": True}
+
+            def make_identity(binary, log_path, env):
+                if binary == bins["base"]: return dict(base_id)
+                if binary == bins["cand"]: return dict(cand_id)
+                return dict(val_id)
+
+            def make_fake_run(fail_parity=False, fail_mid_control=False, base_traj_override=None,
+                              extra_present_wait_ns=0, prepare_ns_by_arm=None):
+                calls = []
+                def fake_run(cmd, log_path, env):
+                    calls.append(list(cmd))
+                    Path(log_path).write_text("ok\n")
+                    profile = cmd[cmd.index("--profile") + 1]
+                    strategy = cmd[cmd.index("--render-strategy") + 1]
+                    ordering = cmd[cmd.index("--ordering-variant") + 1] if "--ordering-variant" in cmd else "rebuild"
+                    count = int(cmd[cmd.index("--sprite-count") + 1])
+                    workers = int(cmd[cmd.index("--workers") + 1])
+                    reps = int(cmd[cmd.index("--repetitions") + 1])
+                    run_idx = int(cmd[cmd.index("--run-index") + 1])
+                    meas = int(cmd[cmd.index("--measure-frames") + 1])
+                    layout = cmd[cmd.index("--layout") + 1] if "--layout" in cmd else "profile-defined"
+                    is_base = cmd[0] == str(bins["base"])
+                    traj = {"profile": profile, "sprite_count": count,
+                            "layout": layout, "camera_schedule": "fixed"}
+                    if is_base and base_traj_override:
+                        traj.update(base_traj_override)
+                    if "--validate-rendering" in cmd:
+                        ev = Path(cmd[cmd.index("--evidence-output") + 1])
+                        subs = [[i, 0] for i in range(min(count, 4))] if profile != "dense-z-edit" else [[i, 0] for i in range(count)]
+                        Path(str(ev) + ".frames.jsonl").write_text("\n".join(
+                            json.dumps({"frame": f, "image_fnv64": f"h{f}", "output_width": 320,
+                                        "output_height": 240, "submissions": subs, "oracle_visible": subs,
+                                        "unresolved": 0, "overflow": 0}) for f in range(meas)) + "\n")
+                        Path(str(ev) + ".representative.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
+                        if fail_parity and strategy == "cached-linear":
+                            subs_bad = list(reversed(subs))
+                            Path(str(ev) + ".frames.jsonl").write_text("\n".join(
+                                json.dumps({"frame": f, "image_fnv64": f"h{f}", "output_width": 320,
+                                            "output_height": 240, "submissions": subs_bad, "oracle_visible": subs_bad,
+                                            "unresolved": 0, "overflow": 0}) for f in range(meas)) + "\n")
+                            Path(str(ev) + ".mismatch.ppm").write_bytes(b"P6\n1 1\n255\n\xff\x00\x00")
+                        Path(str(ev) + ".evidence.json").write_text(json.dumps({
+                            "trajectory_parameters": traj, "renderer_mapping": self.mapping,
+                            "fixture_sha256": val_id["fixture_sha256"],
+                            "harness_sha256": val_id["harness_sha256"]}))
+                    elif "--validate-resources" in cmd:
+                        res = Path(cmd[cmd.index("--evidence-output") + 1] + ".resources.json")
+                        cw = {"sprite_order_preparations": 0 if profile == "rejected-z-edit" else 2,
+                              "sprite_order_sorts": 0 if (profile == "rejected-z-edit" or ordering == "repair") else 2,
+                              "bounds_refreshes": 0, "index_relinks": 0, "queries": 0}
+                        Path(res).write_text(json.dumps({
+                            "trajectory_parameters": traj, "allocation_calls": 0, "allocated_bytes": 0,
+                            "cold_observation": {}, "capacity_growth_observation": {}, "reset_observation": {},
+                            "culling_work": cw}))
+                    else:
+                        csv_path = Path(cmd[cmd.index("--csv-output") + 1])
+                        vp = cmd[cmd.index("--validation-proof") + 1] if "--validation-proof" in cmd else None
+                        rp = cmd[cmd.index("--resource-proof") + 1] if "--resource-proof" in cmd else None
+                        b = base_id if is_base else cand_id
+                        manifest = {
+                            "schema_version": 3, "build": b, "scenario": "linear_render_culling", "workers": workers, "seed": 0,
+                            "dt": 0.008333333333333333, "warmup_steps": 2, "measured_steps": meas,
+                            "requested_measured_steps": meas, "repetitions": reps, "repetition_index": run_idx,
+                            "timing_eligible": True, "validation_mode": "boundary-only", "stopped_on_quit": False,
+                            "complete_capture": True, "total_steps": meas, "rendering": True,
+                            "render_samples": meas, "total_render_samples": meas, "ordering_variant": ordering,
+                            "linear_render_culling": {"mode": strategy, "requested_mode": strategy,
+                                                       "effective_policy": strategy, "enabled": True,
+                                                       "observed_frame_fallbacks": 0},
+                            "resolved_parameters": traj,
+                            "fixture_sha256": b["fixture_sha256"], "harness_sha256": b["harness_sha256"],
+                            "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
+                            "dependencies": {"SDL": "3"},
+                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
+                            "validation_proof": {"sha256": capture.sha256(Path(vp))} if vp else {},
+                            "resource_observation": {"sha256": capture.sha256(Path(rp))} if rp else {},
+                        }
+                        csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+                        render_wait_ms = (extra_present_wait_ns / 1_000_000) if (not is_base) else 0.0
+                        with csv_path.open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
+                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                                val_ms = (0.5 + render_wait_ms) if sc == "render" else 1.0
+                                w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
+                            for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
+                                w.writerow([3, "counter", ct, meas, count, 0, count, count, count, count, "count"])
+                        with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "sample_kind", "index",
+                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *capture.INCREMENTAL_BENCHMARK_COUNTERS])
+                            for i in range(meas):
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                            for i in range(meas):
+                                r_ns = 500_000 + (0 if is_base else extra_present_wait_ns)
+                                w.writerow([3, "render", i, *[r_ns if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                        with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            if is_base:
+                                w.writerow(["step", "paired_step_render_ns"])
+                                for i in range(meas):
+                                    w.writerow([i, 1_500_000 if (i % 2 == 0 or profile != "dense-z-edit") else 2_500_000])
+                            else:
+                                w.writerow(["step", "paired_step_render_ns", "draw_order_prepare_ns"])
+                                for i in range(meas):
+                                    paired_ns = (1_500_000 if (i % 2 == 0 or profile != "dense-z-edit") else 2_500_000) + extra_present_wait_ns
+                                    prep_key = (profile, strategy, ordering, workers, i % 2)
+                                    prep_ns = (prepare_ns_by_arm[prep_key]
+                                               if prepare_ns_by_arm and prep_key in prepare_ns_by_arm
+                                               else (50_000 if (i % 2 == 0 or profile != "dense-z-edit") else 300_000))
+                                    w.writerow([i, paired_ns, prep_ns])
+                return fake_run, calls
+
+            # 1. Happy path removes large traces and writes separated comparisons.
+            out_ok = root / "ok"
+            fake_ok, calls_ok = make_fake_run(fail_parity=False)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_ok):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static,dense-z-edit",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_ok)])
+            self.assertEqual(rc, 0)
+            rep = json.loads((out_ok / "report.json").read_text())
+            self.assertEqual(rep["scope"]["cases"], ["authored-static", "dense-z-edit"])
+            self.assertIn("implementation_overhead", rep["comparisons"])
+            self.assertIn("culling_strategy", rep["comparisons"])
+            self.assertIn("default_policy", rep["comparisons"])
+            self.assertIn("clean_frames", rep["comparisons"]["dense_z_ordering"])
+            self.assertIn("edit_frames", rep["comparisons"]["dense_z_ordering"])
+            self.assertEqual(list((out_ok / "proofs").glob("*.frames.jsonl")), [])
+            self.assertEqual(list((out_ok / "proofs").glob("*.ppm")), [])
+
+            # 2. Correctness failure preserves partial artifacts without timing or retries.
+            out_fail = root / "fail_parity"
+            fake_bad, calls_bad = make_fake_run(fail_parity=True)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_bad):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_fail)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_fail / "report.json").exists())
+            self.assertTrue((out_fail / "logs").is_dir())
+            self.assertFalse(any("--csv-output" in c and str(out_fail / "raw") in c[c.index("--csv-output") + 1] for c in calls_bad))
+
+            # 3. Byte budget failure stops without emitting report.json and preserves partial files.
+            out_budget = root / "fail_budget"
+            fake_b, _ = make_fake_run(fail_parity=False)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_b):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4",
+                                   "--max-output-mib", "0.0005", "--output", str(out_budget)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_budget / "report.json").exists())
+            self.assertTrue(out_budget.exists())
+
+            # 4. Time budget failure stops without emitting report.json and preserves partial files.
+            out_time = root / "fail_time"
+            calls_time = []
+            def fake_slow_run(cmd, log_path, env):
+                calls_time.append(list(cmd))
+                capture.time.sleep(0.08)
+                fake_ok(cmd, log_path, env)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_slow_run):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4",
+                                   "--max-seconds", "0.02", "--output", str(out_time)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_time / "report.json").exists())
+            self.assertFalse((out_time / "report.md").exists())
+            self.assertTrue(out_time.exists())
+            self.assertEqual(len(calls_time), 1)
+            self.assertEqual(list(out_time.rglob("*.frames.jsonl")), [])
+            self.assertEqual(list(out_time.rglob("*.ppm")), [])
+            partial_time = json.loads((out_time / "partial-report.json").read_text())
+            self.assertFalse(partial_time["complete"])
+            self.assertIn("unavailable_comparisons", partial_time)
+
+            # T048 check on early validation parity failure: zero surviving traces/PPMs + compact partial report.
+            self.assertEqual(list(out_fail.rglob("*.frames.jsonl")), [])
+            self.assertEqual(list(out_fail.rglob("*.ppm")), [])
+            partial_fail = json.loads((out_fail / "partial-report.json").read_text())
+            self.assertFalse(partial_fail["complete"])
+            self.assertEqual(partial_fail["failure_stage"], "parity")
+            self.assertTrue(len(partial_fail["completed_arms"]) > 0)
+
+            # 5. T047: Reject aliased baseline path, candidate source reused as baseline, wrong frozen identity,
+            #    and changed baseline layout / camera_schedule with matching profile and sprite_count.
+            alias_path = root / "cand_alias"
+            alias_path.symlink_to(bins["cand"])
+            out_alias = root / "fail_alias_path"
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_ok):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(alias_path), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "2", "--output", str(out_alias)])
+            self.assertEqual(rc, 2)
+            self.assertIn("aliases", json.loads((out_alias / "partial-report.json").read_text())["failure_reason"])
+
+            def wrong_identity_reader(wrong_fields):
+                def reader(binary, log_path, env):
+                    if binary == bins["base"]:
+                        return {**base_id, **wrong_fields}
+                    return make_identity(binary, log_path, env)
+                return reader
+
+            for label, bad_fields in (
+                ("aliased_source", {"source_sha256": cand_id["source_sha256"]}),
+                ("wrong_frozen_source", {"source_sha256": "e" * 64}),
+                ("wrong_frozen_harness", {"harness_sha256": "e" * 64}),
+            ):
+                out_bad_id = root / f"fail_{label}"
+                with mock.patch.object(capture, "_read_probe_identity", side_effect=wrong_identity_reader(bad_fields)), \
+                        mock.patch.object(capture, "_run", side_effect=fake_ok):
+                    rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                       "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                       "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                       "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                       "--warmup-frames", "2", "--measure-frames", "2", "--output", str(out_bad_id)])
+                self.assertEqual(rc, 2, label)
+                self.assertFalse((out_bad_id / "report.json").exists())
+                self.assertEqual(json.loads((out_bad_id / "partial-report.json").read_text())["failure_stage"], "identity")
+
+            for field_name, bad_val in (("layout", "mutated-layout"), ("camera_schedule", "continuous-pan-240")):
+                out_traj = root / f"fail_traj_{field_name}"
+                fake_bad_traj, _ = make_fake_run(base_traj_override={field_name: bad_val})
+                with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                        mock.patch.object(capture, "_run", side_effect=fake_bad_traj):
+                    rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                       "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                       "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                       "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                       "--warmup-frames", "2", "--measure-frames", "2", "--output", str(out_traj)])
+                self.assertEqual(rc, 2, field_name)
+                partial_traj = json.loads((out_traj / "partial-report.json").read_text())
+                self.assertIn("resolved all-zero trajectory", partial_traj["failure_reason"])
+
+            # 6. T048: Mid-timing byte budget preserves completed compact evidence within max_output_mib.
+            out_mid_budget = root / "fail_mid_budget"
+            fake_mid, calls_mid = make_fake_run(fail_parity=False)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_mid):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4",
+                                   "--max-output-mib", "0.025", "--output", str(out_mid_budget)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_mid_budget / "report.json").exists())
+            self.assertEqual(list(out_mid_budget.rglob("*.frames.jsonl")), [])
+            self.assertEqual(list(out_mid_budget.rglob("*.ppm")), [])
+            partial_mid = json.loads((out_mid_budget / "partial-report.json").read_text())
+            self.assertFalse(partial_mid["complete"])
+            self.assertEqual(partial_mid["failure_stage"], "time")
+            self.assertTrue(len(partial_mid["completed_arms"]) > 0)
+            total_mid_bytes = sum(p.stat().st_size for p in out_mid_budget.rglob("*") if p.is_file())
+            self.assertLessEqual(total_mid_bytes, int(0.025 * 1024 * 1024))
+
+            # 7. T052: Synthetic timings varying presentation wait independently of preparation time.
+            out_prep = root / "prep_vs_present"
+            prep_map = {
+                ("dense-z-edit", "cached-linear", "rebuild", 1, 0): 120_000,
+                ("dense-z-edit", "cached-linear", "rebuild", 1, 1): 900_000,
+                ("dense-z-edit", "cached-linear", "repair", 1, 0): 120_000,
+                ("dense-z-edit", "cached-linear", "repair", 1, 1): 240_000,
+            }
+            fake_prep, _ = make_fake_run(extra_present_wait_ns=15_000_000, prepare_ns_by_arm=prep_map)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_prep):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static,dense-z-edit",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_prep)])
+            self.assertEqual(rc, 0)
+            rep_prep = json.loads((out_prep / "report.json").read_text())
+            base_prep_stat = rep_prep["aggregates_by_case"]["authored-static"]["baseline-indexed"]["combined"]["draw_order_prepare_ms"]
+            self.assertFalse(base_prep_stat["available"])
+            self.assertFalse(rep_prep["comparisons"]["implementation_overhead"]["authored-static"]["draw_order_prepare_ms"]["available"])
+            rebuild_edit_prep = rep_prep["aggregates_by_case"]["dense-z-edit"]["candidate-rebuild-w1"]["edit_frames"]["draw_order_prepare_ms"]
+            repair_edit_prep = rep_prep["aggregates_by_case"]["dense-z-edit"]["candidate-repair-w1"]["edit_frames"]["draw_order_prepare_ms"]
+            repair_edit_paired = rep_prep["aggregates_by_case"]["dense-z-edit"]["candidate-repair-w1"]["edit_frames"]["paired_step_render_ms"]
+            self.assertTrue(rebuild_edit_prep["available"] and repair_edit_prep["available"])
+            self.assertAlmostEqual(rebuild_edit_prep["mean_ms"], 0.9, places=4)
+            self.assertAlmostEqual(repair_edit_prep["mean_ms"], 0.24, places=4)
+            # Paired step+render still reflects the 15 ms presentation wait (~17.5 ms) independently.
+            self.assertGreater(repair_edit_paired["mean_ms"], 15.0)
+            self.assertIn("unavailable (frozen baseline)", (out_prep / "report.md").read_text())
 
 
 if __name__ == "__main__":

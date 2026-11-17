@@ -68,7 +68,7 @@ inline Json default_component_record(int type)
         return Json{{"type", 5}, {"behaviors", Json::array()}};
     case 6:
         return Json{{"type", 6}, {"textureFilePath", ""}, {"flip", 0},
-                    {"width", 16.0}, {"height", 16.0}, {"sourceRectEnabled", false}};
+                    {"width", 16.0}, {"height", 16.0}, {"zOrder", 0}, {"sourceRectEnabled", false}};
     default:
         return Json::object();
     }

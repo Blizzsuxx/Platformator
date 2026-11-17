@@ -8,6 +8,7 @@
 #include "resourceindex.h"
 #include "selection.h"
 #include "style.h"
+#include "validation.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -3408,6 +3409,125 @@ void run_multi_collider_layer_targets_keep_object_component_pairs()
             "multi-object Layer edits must target both owning objects and remain one undo step");
 }
 
+void run_sprite_z_order_inspector_discovery_edit_and_multiedit()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    auto document = make_default_document();
+    // Legacy Sprite (omits zOrder) at component ID kColliderId (2) so find_input locates it.
+    document.root[0]["components"].push_back(component(
+        kColliderId, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 16.0},
+                             {"height", 16.0}, {"sourceRectEnabled", false}}));
+    document.root.push_back(object(10, "Second Sprite",
+        Json::array({component(20, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 16.0},
+                                           {"height", 16.0}, {"zOrder", -7}, {"sourceRectEnabled", false}})})));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    selection.set(document, Selection{kObjectId, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    // 1. Semantic discovery of Z Order on a legacy Sprite leaves the document clean and reports "0".
+    const auto nodes = panel.semantic_nodes(document, selection.current(), "panel.inspector", &catalog);
+    const auto zSemantic = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
+        return node.name == "Z Order";
+    });
+    require(zSemantic != nodes.end() && zSemantic->value == "0",
+            "Z Order semantic node must appear with legacy default 0");
+    require(!document.root[0]["components"][1].contains("zOrder") &&
+                commands.history_status().undoCommands == 0,
+            "Inspecting a legacy Sprite must not mutate the document or create undo history");
+
+    // 2. Single-selection valid negative and signed-32 extreme edits + undo/redo.
+    ImGuiID zId = 0;
+    const ImVec2 zPoint = find_input(panel, document, selection, commands, catalog, zId, "zOrder");
+    type_integer(panel, document, selection, commands, catalog, zPoint, "-15");
+    require(document.root[0]["components"][1]["zOrder"] == -15,
+            "Negative Z Order edit must commit to the Sprite");
+    type_integer(panel, document, selection, commands, catalog, zPoint, "-2147483648");
+    require(document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::min(),
+            "Minimum signed 32-bit Z Order must commit cleanly");
+    type_integer(panel, document, selection, commands, catalog, zPoint, "2147483647");
+    require(document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::max(),
+            "Maximum signed 32-bit Z Order must commit cleanly");
+
+    // 3. Out-of-range inputs leave the committed value intact.
+    const std::size_t undoBeforeReject = commands.history_status().undoCommands;
+    type_integer(panel, document, selection, commands, catalog, zPoint, "2147483648");
+    require(document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::max() &&
+                commands.history_status().undoCommands == undoBeforeReject,
+            "Out-of-range positive Z Order must be rejected without mutating the committed value");
+    type_integer(panel, document, selection, commands, catalog, zPoint, "-2147483649");
+    require(document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::max() &&
+                commands.history_status().undoCommands == undoBeforeReject,
+            "Out-of-range negative Z Order must be rejected without mutating the committed value");
+
+    // Undo / redo back through the committed value.
+    require(commands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::min(),
+            "Undo must restore previous committed Z Order");
+    require(commands.redo(document, selection).status == CommandStatus::Changed &&
+                document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::max(),
+            "Redo must reapply committed Z Order");
+
+    // 4. Multi-selection editing across two Sprites (one legacy/reverted, one -7).
+    selection.set_objects(document, {kObjectId, 10}, kObjectId);
+    ImGuiID commonZId = 0;
+    ImVec2 commonZPoint{};
+    bool foundCommon = false;
+    for (float y = 30.0f; y < 880.0f && !foundCommon; y += 6.0f)
+    {
+        frame(panel, document, selection, commands, catalog, {500.0f, y}, false,
+              nullptr, "collisionGroup", nullptr, nullptr, "value", nullptr, "width",
+              nullptr, nullptr, "value", &commonZId, 6, 0, "zOrder");
+        if (ImGui::GetHoveredID() == commonZId)
+        {
+            commonZPoint = {500.0f, y};
+            foundCommon = true;
+        }
+    }
+    require(foundCommon, "Multi-selection Inspector must expose Z Order for matching Sprites");
+    type_integer(panel, document, selection, commands, catalog, commonZPoint, "25");
+    require(document.root[0]["components"][1]["zOrder"] == 25 &&
+                document.root[1]["components"][0]["zOrder"] == 25,
+            "Multi-edit Z Order must update all selected Sprites");
+    require(commands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[0]["components"][1]["zOrder"] == std::numeric_limits<std::int32_t>::max() &&
+                document.root[1]["components"][0]["zOrder"] == -7,
+            "Undoing multi-edit Z Order must restore each Sprite's prior value");
+
+    // 5. Authored out-of-range unsigned/signed integers (UINT64_MAX, 2147483648) must not wrap
+    //    negative in Inspector reads, must fail validation diagnostics, and must repair cleanly.
+    selection.set(document, Selection{kObjectId, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    for (const auto badValue : {Json(std::numeric_limits<std::uint64_t>::max()), Json(std::int64_t(2147483648LL))})
+    {
+        document.root[0]["components"][1]["zOrder"] = badValue;
+        ++document.valueRevision;
+        const ValidationResult validation = validate_document(document, nullptr);
+        const bool hasZError = std::any_of(validation.issues.begin(), validation.issues.end(),
+                                           [](const ValidationIssue &issue) {
+                                               return issue.fieldPath == "zOrder" &&
+                                                      issue.severity == ValidationSeverity::Error &&
+                                                      issue.blocksRun;
+                                           });
+        require(hasZError, "Validation must report an error for out-of-range Z Order JSON");
+        type_integer(panel, document, selection, commands, catalog, zPoint, "42");
+        require(document.root[0]["components"][1]["zOrder"] == 42,
+                "Inspector repair after out-of-range Z Order JSON must commit 42 cleanly");
+    }
+
+    ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main()
@@ -3438,6 +3558,7 @@ int main()
         run_proportional_layout_scaling_tests();
         run_lossless_scrub_and_context_binding_tests();
         run_multi_asset_picker_and_browse_completion_tests();
+        run_sprite_z_order_inspector_discovery_edit_and_multiedit();
         std::cout << "Inspector interaction tests passed\n";
         return 0;
     }

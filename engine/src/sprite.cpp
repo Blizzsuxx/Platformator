@@ -48,6 +48,7 @@ Component *Sprite::clone() const
     cloned->setFlip(flip);
     cloned->setWidth(width);
     cloned->setHeight(height);
+    cloned->setZOrder(zOrder);
     return cloned.release();
 }
 
@@ -80,6 +81,11 @@ float Sprite::getHeight() const
 float Sprite::getHeightWithoutScale() const
 {
     return height;
+}
+
+std::int32_t Sprite::getZOrder() const
+{
+    return zOrder;
 }
 
 bool Sprite::hasSourceRect() const
@@ -133,6 +139,15 @@ void Sprite::setSourceRect(const SDL_FRect &sourceRect)
 void Sprite::clearSourceRect()
 {
     region.clearSourceRect();
+}
+
+void Sprite::setZOrder(std::int32_t newZOrder)
+{
+    if (zOrder == newZOrder)
+        return;
+    zOrder = newZOrder;
+    if (isRegisteredInWindow)
+        platformator_detail::RuntimeAccess::window()->notifySpriteOrderChanged(windowIndex);
 }
 
 void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)

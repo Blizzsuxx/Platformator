@@ -2,6 +2,8 @@
 #include "benchmarkbuildconfig.h"
 #include "benchmark.h"
 #include "render_culling_fixture.h"
+#include "runtimeaccess.h"
+#include "sdlwindow.h"
 
 #include <SDL3/SDL_surface.h>
 
@@ -139,8 +141,11 @@ struct Options
     FixtureTrajectoryProfile profile = FixtureTrajectoryProfile::Sparse;
     std::string profileName = "sparse";
     std::string renderStrategy = "indexed";
+    std::string orderingVariant = "rebuild";
     std::string layoutName = "profile-defined";
     std::string sizeDistribution = "standard";
+    bool denseZEdit = false;
+    bool rejectedZEdit = false;
     bool renderStrategyExplicit = false;
     size_t changedPercent = 0;
     bool changedPercentExplicit = false;
@@ -215,7 +220,24 @@ Options parseOptions(int argc, char **argv)
             else if (options.profileName == "output-resize") options.profile = FixtureTrajectoryProfile::OutputResize;
             else if (options.profileName == "scene-default") options.profile = FixtureTrajectoryProfile::SceneDefault;
             else if (options.profileName == "scene-stacking") options.profile = FixtureTrajectoryProfile::SceneStacking;
+            else if (options.profileName == "dense-z-edit")
+            {
+                options.profile = FixtureTrajectoryProfile::Visible;
+                options.denseZEdit = true;
+            }
+            else if (options.profileName == "rejected-z-edit")
+            {
+                options.profile = FixtureTrajectoryProfile::Sparse;
+                options.rejectedZEdit = true;
+            }
             else throw std::invalid_argument("Unknown render culling profile: " + options.profileName);
+        }
+        else if (argument == "--ordering-variant")
+        {
+            options.orderingVariant = requireValue(argc, argv, index, argument);
+            if (options.orderingVariant != "rebuild" && options.orderingVariant != "forced-sort" &&
+                options.orderingVariant != "repair")
+                throw std::invalid_argument("Unknown ordering variant: " + options.orderingVariant);
         }
         else if (argument == "--render-strategy")
         {
@@ -304,7 +326,9 @@ std::string modeName(const Options &options)
     }
     if constexpr (!supportsCullingSetting<WindowSettings>())
         return "pre-feature";
-    return options.disableCulling ? "disabled" : "linear";
+    if (options.disableCulling)
+        return "disabled";
+    return SDLWindow::renderCullingModeName(SDLWindow::resolveRequestedRenderCullingModeFromEnvironment());
 }
 
 void setRequestedStrategy(const Options &options)
@@ -526,6 +550,36 @@ void buildFixture(RenderCullingFixture &fixture, const Options &options)
         const auto [cameraX, cameraY] = trajectory.cameraPosition(0);
         fixture.camera()->setCamera({cameraX, cameraY, 320.0f, 240.0f});
     }
+    if (options.denseZEdit)
+    {
+        for (size_t slot = 0; slot < options.population; ++slot)
+        {
+            const float x = 16.0f + static_cast<float>(slot % 100) * 2.88f;
+            const float y = 16.0f + static_cast<float>((slot / 100) % 100) * 2.08f;
+            auto &rec = fixture.addSprite(slot, 0, x, y, 1.0f, 1.0f,
+                                          slot % 3 == 0 ? FixtureTexture::RedCircle : FixtureTexture::BlackSquare,
+                                          SDL_FLIP_NONE, true, 0.0f);
+            rec.sprite->setZOrder(static_cast<std::int32_t>(slot % 257) - 128);
+        }
+        return;
+    }
+    if (options.rejectedZEdit)
+    {
+        const size_t visibleCount = std::min<size_t>(64, options.population);
+        for (size_t slot = 0; slot < options.population; ++slot)
+        {
+            const size_t offscreen = slot >= visibleCount ? (slot - visibleCount) : 0;
+            const float x = slot < visibleCount ? 16.0f + static_cast<float>(slot % 8) * 32.0f
+                                                : 500.0f + static_cast<float>(offscreen % 100) * 80.0f;
+            const float y = slot < visibleCount ? 16.0f + static_cast<float>(slot / 8) * 24.0f
+                                                : 500.0f + static_cast<float>(offscreen / 100) * 80.0f;
+            auto &rec = fixture.addSprite(slot, 0, x, y, 8.0f, 8.0f,
+                                          slot % 3 == 0 ? FixtureTexture::RedCircle : FixtureTexture::BlackSquare,
+                                          SDL_FLIP_NONE, true, 0.0f);
+            rec.sprite->setZOrder(static_cast<std::int32_t>(slot % 257) - 128);
+        }
+        return;
+    }
     const auto [spriteWidth, spriteHeight] = trajectory.spriteDimensions();
     for (size_t slot = 0; slot < options.population; ++slot)
     {
@@ -534,6 +588,93 @@ void buildFixture(RenderCullingFixture &fixture, const Options &options)
                           slot % 3 == 0 ? FixtureTexture::RedCircle : FixtureTexture::BlackSquare,
                           SDL_FLIP_NONE, true, pose.rotationRadians);
     }
+}
+
+std::vector<std::int32_t> computeDeterministicZOrders(const Options &options, size_t step)
+{
+    std::vector<std::int32_t> zOrders(options.population, 0);
+    for (size_t slot = 0; slot < options.population; ++slot)
+        zOrders[slot] = static_cast<std::int32_t>(slot % 257) - 128;
+    if (options.denseZEdit && options.population > 0)
+    {
+        for (size_t t = 0; t <= step; ++t)
+        {
+            const bool isEditStep = t < options.warmupFrames
+                                        ? (t + 1 < options.warmupFrames && (t % 2) == 0)
+                                        : (((t - options.warmupFrames) % 2) == 1);
+            if (!isEditStep)
+                continue;
+            const size_t slot = (t * 131 + 17) % options.population;
+            zOrders[slot] = zOrders[slot] >= 0 ? (-200 - static_cast<std::int32_t>(t))
+                                               : (200 + static_cast<std::int32_t>(t));
+        }
+    }
+    else if (options.rejectedZEdit && options.population > 64)
+    {
+        const size_t rejectedCount = options.population - 64;
+        const size_t batch = std::min<size_t>(100, rejectedCount);
+        for (size_t t = 0; t <= step; ++t)
+        {
+            for (size_t i = 0; i < batch; ++i)
+            {
+                const size_t slot = 64 + ((t * 100 + i) % rejectedCount);
+                zOrders[slot] = zOrders[slot] >= 0 ? (-200 - static_cast<std::int32_t>(t + i))
+                                                   : (200 + static_cast<std::int32_t>(t + i));
+            }
+        }
+    }
+    return zOrders;
+}
+
+bool crossesPeerInSortedOrder(const std::vector<std::int32_t> &beforeZ,
+                              const std::vector<std::int32_t> &afterZ,
+                              size_t changedSlot)
+{
+    const size_t n = beforeZ.size();
+    if (changedSlot >= n || afterZ.size() != n || beforeZ[changedSlot] == afterZ[changedSlot])
+        return false;
+    size_t rankBefore = 0;
+    size_t rankAfter = 0;
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (i == changedSlot)
+            continue;
+        if (beforeZ[i] < beforeZ[changedSlot] || (beforeZ[i] == beforeZ[changedSlot] && i < changedSlot))
+            ++rankBefore;
+        if (afterZ[i] < afterZ[changedSlot] || (afterZ[i] == afterZ[changedSlot] && i < changedSlot))
+            ++rankAfter;
+    }
+    return rankBefore != rankAfter;
+}
+
+void verifyDenseZEditStep(size_t frameIndex, const std::vector<std::int32_t> &beforeZ,
+                          const std::vector<std::int32_t> &afterZ, size_t poseChanges)
+{
+    if (beforeZ.size() != afterZ.size())
+        throw std::runtime_error("dense-z-edit population size changed unexpectedly");
+    if (poseChanges != 0)
+        throw std::runtime_error("dense-z-edit frame unexpectedly mutated sprite pose");
+    size_t changedCount = 0;
+    size_t changedSlot = 0;
+    for (size_t slot = 0; slot < beforeZ.size(); ++slot)
+    {
+        if (beforeZ[slot] != afterZ[slot])
+        {
+            ++changedCount;
+            changedSlot = slot;
+        }
+    }
+    const bool expectEdit = (frameIndex % 2) == 1;
+    if (!expectEdit)
+    {
+        if (changedCount != 0)
+            throw std::runtime_error("dense-z-edit clean frame unexpectedly mutated Z order");
+        return;
+    }
+    if (changedCount != 1)
+        throw std::runtime_error("dense-z-edit edit frame omitted or multiplied Z mutation");
+    if (!crossesPeerInSortedOrder(beforeZ, afterZ, changedSlot))
+        throw std::runtime_error("dense-z-edit edit frame did not cross any peer rank in sorted order");
 }
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
@@ -585,6 +726,26 @@ std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
         }
         return visible;
     }
+    if (options.denseZEdit || options.rejectedZEdit)
+    {
+        const size_t limit = options.denseZEdit ? options.population : std::min<size_t>(64, options.population);
+        const std::vector<std::int32_t> zOrders = computeDeterministicZOrders(options, step);
+        std::vector<std::pair<std::int32_t, size_t>> ordered;
+        ordered.reserve(limit);
+        for (size_t slot = 0; slot < limit; ++slot)
+            ordered.emplace_back(zOrders[slot], slot);
+        std::sort(ordered.begin(), ordered.end(), [](const auto &a, const auto &b) {
+            if (a.first != b.first)
+                return a.first < b.first;
+            return a.second < b.second;
+        });
+        for (const auto &[z, slot] : ordered)
+        {
+            (void)z;
+            visible.push_back({slot, 0});
+        }
+        return visible;
+    }
     const auto [cameraX, cameraY] = trajectory.cameraPosition(step);
     const auto [spriteWidth, spriteHeight] = trajectory.spriteDimensions();
     for (size_t slot = 0; slot < options.population; ++slot)
@@ -620,6 +781,39 @@ std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
 void updateFixture(RenderCullingFixture &fixture, const Options &options,
                    const DeterministicFixtureTrajectory &trajectory, size_t step)
 {
+    if (options.denseZEdit)
+    {
+        if (options.population == 0)
+            return;
+        const bool isEditStep = step < options.warmupFrames
+                                    ? (step + 1 < options.warmupFrames && (step % 2) == 0)
+                                    : (((step - options.warmupFrames) % 2) == 1);
+        if (!isEditStep)
+            return;
+        const size_t slot = (step * 131 + 17) % options.population;
+        Sprite *sprite = fixture.record(slot).sprite;
+        const std::int32_t oldZ = sprite->getZOrder();
+        const std::int32_t newZ =
+            oldZ >= 0 ? (-200 - static_cast<std::int32_t>(step)) : (200 + static_cast<std::int32_t>(step));
+        sprite->setZOrder(newZ);
+        return;
+    }
+    if (options.rejectedZEdit)
+    {
+        if (options.population <= 64)
+            return;
+        const size_t rejectedCount = options.population - 64;
+        const size_t batch = std::min<size_t>(100, rejectedCount);
+        for (size_t i = 0; i < batch; ++i)
+        {
+            const size_t slot = 64 + ((step * 100 + i) % rejectedCount);
+            Sprite *sprite = fixture.record(slot).sprite;
+            const std::int32_t oldZ = sprite->getZOrder();
+            sprite->setZOrder(oldZ >= 0 ? (-200 - static_cast<std::int32_t>(step + i))
+                                        : (200 + static_cast<std::int32_t>(step + i)));
+        }
+        return;
+    }
     if (!fixtureProfileUsesStepCallback(options.profile))
         return;
     if (options.profile == FixtureTrajectoryProfile::CameraPan || options.profile == FixtureTrajectoryProfile::LargeOffset)
@@ -722,8 +916,8 @@ void run(const Options &options)
         if (options.disableCulling)
             throw std::invalid_argument("--no-render-culling is unavailable in the pre-feature reference runtime");
 
-    const auto mode = modeName(options);
     setRequestedStrategy(options);
+    const auto mode = modeName(options);
     tbb::global_control workerLimit(tbb::global_control::max_allowed_parallelism, options.workers);
     float cameraWidth = options.profile == FixtureTrajectoryProfile::Rotated ||
                                 options.profile == FixtureTrajectoryProfile::SceneDefault ||
@@ -773,16 +967,37 @@ void run(const Options &options)
                                                      options.changedPercentExplicit ? options.changedPercent : 0,
                                                      options.layoutName == "constant-density-spread" ||
                                                          options.profile == FixtureTrajectoryProfile::Spread);
+    SDL_Renderer *renderer = fixture.runtime().getRenderer();
+    SDLWindow *window = platformator_detail::RuntimeAccess::window();
+    if (window != nullptr)
+    {
+        if (options.orderingVariant == "forced-sort")
+            window->setBenchmarkSpriteOrderMode(SDLWindow::BenchmarkSpriteOrderMode::ForcedFullSort);
+        else if (options.orderingVariant == "repair")
+            window->setBenchmarkSpriteOrderMode(SDLWindow::BenchmarkSpriteOrderMode::SingleEntryRepair);
+        else
+            window->setBenchmarkSpriteOrderMode(SDLWindow::BenchmarkSpriteOrderMode::DefaultRebuild);
+    }
+    struct StepContext
+    {
+        RenderCullingFixture &fixture;
+        const Options &options;
+        const DeterministicFixtureTrajectory &trajectory;
+        size_t &stepIndex;
+    };
     size_t stepIndex = 0;
+    StepContext stepCtx{fixture, options, trajectory, stepIndex};
+    std::function<void(double)> stepCallback = [&stepCtx](double) {
+        updateFixture(stepCtx.fixture, stepCtx.options, stepCtx.trajectory, stepCtx.stepIndex);
+    };
     const auto step = [&] {
-        auto callback = [&](double) { updateFixture(fixture, options, trajectory, stepIndex); };
         bool running = true;
-        if (fixtureProfileUsesStepCallback(options.profile))
+        if (fixtureProfileUsesStepCallback(options.profile) || options.denseZEdit || options.rejectedZEdit)
         {
             if (options.headless)
-                fixture.runtime().simulateFrameWithCustomCallback(options.dt, callback);
+                fixture.runtime().simulateFrameWithCustomCallback(options.dt, stepCallback);
             else
-                running = fixture.runtime().simulateAndRenderFrameWithCustomCallback(options.dt, callback);
+                running = fixture.runtime().simulateAndRenderFrameWithCustomCallback(options.dt, stepCallback);
         }
         else if (options.headless)
             fixture.runtime().simulateFrame(options.dt);
@@ -820,8 +1035,29 @@ void run(const Options &options)
 #endif
             step();
     }
-
-    SDL_Renderer *renderer = fixture.runtime().getRenderer();
+    WindowSettings fallbackSettings;
+    fallbackSettings.headless = options.headless;
+    fallbackSettings.enableRenderCulling = !options.disableCulling;
+    const auto windowPolicy = window != nullptr
+                                  ? window->getRenderCullingPolicy()
+                                  : SDLWindow::resolveRenderCullingPolicy(fallbackSettings);
+    const char *requestedSelectorName = SDLWindow::renderCullingModeName(windowPolicy.requestedMode);
+    const char *resolvedStartupStrategy = SDLWindow::effectiveRenderPolicyName(windowPolicy);
+    const auto buildCullingMetadata = [&](const SDLWindow::RenderFallbackCounts &fallbacks) {
+        return nlohmann::json{
+            {"mode", mode},
+            {"requested_mode", options.disableCulling ? "disabled" : mode},
+            {"requested_selector", requestedSelectorName},
+            {"resolved_startup_strategy", resolvedStartupStrategy},
+            {"headless", windowPolicy.headless},
+            {"disabled", !windowPolicy.cullingEnabled},
+            {"effective_policy", windowPolicy.headless ? "headless-no-rendering" : mode},
+            {"enabled", !windowPolicy.headless && windowPolicy.cullingEnabled &&
+                            mode != "disabled" && mode != "pre-feature"},
+            {"observed_mapping_fallbacks", fallbacks.mappingFallbacks},
+            {"observed_numeric_fallbacks", fallbacks.numericFallbacks},
+            {"observed_frame_fallbacks", fallbacks.mappingFallbacks + fallbacks.numericFallbacks}};
+    };
     const auto resolvedParameters = nlohmann::json{
         {"profile", options.profileName}, {"sprite_count", options.population}, {"seed", options.seed},
         {"trajectory_period_steps", (options.profile == FixtureTrajectoryProfile::Crossing ||
@@ -852,10 +1088,16 @@ void run(const Options &options)
                                  options.profile == FixtureTrajectoryProfile::Giant ? "seeded-uniform-pi" : "zero"},
         {"sprite_width", options.profile == FixtureTrajectoryProfile::SceneDefault ||
                          options.profile == FixtureTrajectoryProfile::SceneStacking
-                             ? nlohmann::json(nullptr) : nlohmann::json(trajectory.spriteDimensions().first)},
+                             ? nlohmann::json(nullptr)
+                             : (options.denseZEdit ? nlohmann::json(1.0)
+                                                   : (options.rejectedZEdit ? nlohmann::json(8.0)
+                                                                            : nlohmann::json(trajectory.spriteDimensions().first)))},
         {"sprite_height", options.profile == FixtureTrajectoryProfile::SceneDefault ||
                           options.profile == FixtureTrajectoryProfile::SceneStacking
-                              ? nlohmann::json(nullptr) : nlohmann::json(trajectory.spriteDimensions().second)},
+                              ? nlohmann::json(nullptr)
+                              : (options.denseZEdit ? nlohmann::json(1.0)
+                                                    : (options.rejectedZEdit ? nlohmann::json(8.0)
+                                                                             : nlohmann::json(trajectory.spriteDimensions().second)))},
         {"camera_schedule", options.profile == FixtureTrajectoryProfile::CameraPan ? "continuous-pan-240" :
                              options.profile == FixtureTrajectoryProfile::LargeOffset ? "large-offset-pan-240" : "fixed"},
         {"output_schedule", options.profile == FixtureTrajectoryProfile::OutputResize ? "320x240-then-400x300-at-240" : "320x240"},
@@ -871,14 +1113,14 @@ void run(const Options &options)
         {"rendering", !options.headless}, {"validation_mode", options.validateRendering || options.validateResources ? "per-step" : "boundary-only"},
         {"timing_eligible", !options.validateRendering && !options.validateResources},
         {"resolved_parameters", resolvedParameters},
+        {"ordering_variant", options.orderingVariant},
         {"requested_render_strategy", options.renderStrategyExplicit ? options.renderStrategy : mode},
-        {"linear_render_culling", {{"mode", mode}, {"requested_mode", options.disableCulling ? "disabled" : mode},
-                                    {"effective_policy", options.headless ? "headless-no-rendering" : mode},
-                                    {"enabled", !options.headless && !options.disableCulling &&
-                                                 mode != "disabled" && mode != "pre-feature"}}},
+        {"linear_render_culling", buildCullingMetadata(SDLWindow::RenderFallbackCounts{})},
         {"fixture_sha256", PLATFORMATOR_LINEAR_FIXTURE_SHA256},
         {"harness_sha256", PLATFORMATOR_LINEAR_HARNESS_SHA256},
         {"renderer_mapping", mappingMetadata(renderer, OUTPUT_WIDTH, OUTPUT_HEIGHT)},
+        {"order_prepare_clock", {{"source", "std::chrono::steady_clock"},
+                                 {"boundary", "SDLWindow::prepareDrawOrder CPU elapsed time excluding presentation and frame pacing"}}},
         {"affinity", currentAffinity()},
         {"validation_proof", nullptr}};
     if (!options.validationProof.empty())
@@ -890,6 +1132,7 @@ void run(const Options &options)
             proof.at("measure_frames") != options.measureFrames || proof.at("mode") != mode ||
             proof.value("headless", false) != options.headless || proof.value("timing_eligible", true) ||
             proof.value("validation_mode", std::string{}) != "per-step" ||
+            proof.value("ordering_variant", std::string("rebuild")) != options.orderingVariant ||
             proof.at("fixture_sha256") != PLATFORMATOR_LINEAR_FIXTURE_SHA256 ||
             proof.at("harness_sha256") != PLATFORMATOR_LINEAR_HARNESS_SHA256)
             throw std::runtime_error("Validation proof does not match this complete fixture identity");
@@ -904,6 +1147,7 @@ void run(const Options &options)
             proof.at("dt") != options.dt || proof.at("warmup_frames") != options.warmupFrames ||
             proof.at("measure_frames") != options.measureFrames || proof.at("mode") != mode ||
             proof.value("headless", false) != options.headless ||
+            proof.value("ordering_variant", std::string("rebuild")) != options.orderingVariant ||
             proof.at("fixture_sha256") != PLATFORMATOR_LINEAR_FIXTURE_SHA256 ||
             proof.at("harness_sha256") != PLATFORMATOR_LINEAR_HARNESS_SHA256 ||
             proof.value("timing_eligible", true) || proof.value("validation_mode", std::string{}) != "per-step")
@@ -915,8 +1159,12 @@ void run(const Options &options)
     auto &recorder = platformator_detail::BenchmarkRecorder::getInstance();
     recorder.configure(options.measureFrames, metadata);
     std::vector<uint64_t> pairedStepRenderNanoseconds;
+    std::vector<uint64_t> pairedOrderPrepareNanoseconds;
     if (!options.validateRendering && !options.validateResources)
+    {
         pairedStepRenderNanoseconds.reserve(options.measureFrames);
+        pairedOrderPrepareNanoseconds.reserve(options.measureFrames);
+    }
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     platformator_test::RenderObservation observation;
@@ -957,6 +1205,8 @@ void run(const Options &options)
     uint64_t resourceViews = 0, resourceEligibilityChecks = 0, resourceVisibilityChecks = 0,
              resourceSubmissions = 0;
     size_t actualChangedSpriteTotal = 0;
+    size_t actualChangedPoseTotal = 0;
+    size_t actualChangedZTotal = 0;
     size_t maximumActualChangedSpritesPerStep = 0;
     size_t initialCullingStateCreations = 0;
     size_t initialCullingRecords = 0;
@@ -965,8 +1215,13 @@ void run(const Options &options)
     nlohmann::json resourceCullingWorkJson = nlohmann::json::object();
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     platformator_test::WorkCounters resourceCullingWork{};
-    const auto accumulateCullingWork = [&](const platformator_test::WorkCounters &source) {
-#define ADD_CULLING_WORK_FIELD(field) resourceCullingWork.field += source.field
+    platformator_test::WorkCounters cleanPhaseWork{};
+    platformator_test::WorkCounters editPhaseWork{};
+    size_t cleanPhaseFrames = 0;
+    size_t editPhaseFrames = 0;
+    const auto accumulateWorkInto = [](platformator_test::WorkCounters &target,
+                                       const platformator_test::WorkCounters &source) {
+#define ADD_CULLING_WORK_FIELD(field) target.field += source.field
         ADD_CULLING_WORK_FIELD(renderCullingRecordsAdded);
         ADD_CULLING_WORK_FIELD(renderCullingRecordsRemoved);
         ADD_CULLING_WORK_FIELD(renderCullingRecordsRelocated);
@@ -986,15 +1241,46 @@ void run(const Options &options)
         ADD_CULLING_WORK_FIELD(renderCullingNumericFallbacks);
         ADD_CULLING_WORK_FIELD(renderCullingMappingFallbacks);
         ADD_CULLING_WORK_FIELD(renderCullingSideListVisits);
-        resourceCullingWork.renderCullingOwnedRecordCapacity = std::max(
-            resourceCullingWork.renderCullingOwnedRecordCapacity, source.renderCullingOwnedRecordCapacity);
-        resourceCullingWork.renderCullingOwnedCellCapacity = std::max(
-            resourceCullingWork.renderCullingOwnedCellCapacity, source.renderCullingOwnedCellCapacity);
-        resourceCullingWork.renderCullingOwnedBytes = std::max(
-            resourceCullingWork.renderCullingOwnedBytes, source.renderCullingOwnedBytes);
+        ADD_CULLING_WORK_FIELD(visibleMembershipChecks);
+        ADD_CULLING_WORK_FIELD(visibleMembershipChanges);
+        ADD_CULLING_WORK_FIELD(spriteOrderPreparations);
+        ADD_CULLING_WORK_FIELD(spriteOrderEntries);
+        ADD_CULLING_WORK_FIELD(spriteOrderLookupVisits);
+        ADD_CULLING_WORK_FIELD(spriteOrderComparisons);
+        ADD_CULLING_WORK_FIELD(spriteOrderSorts);
+        ADD_CULLING_WORK_FIELD(spriteOrderRepairs);
+        ADD_CULLING_WORK_FIELD(spriteOrderMoves);
 #undef ADD_CULLING_WORK_FIELD
     };
-    accumulateCullingWork(initializationWork);
+    const auto updatePeaksFrom = [](platformator_test::WorkCounters &target,
+                                    const platformator_test::WorkCounters &source) {
+        target.renderCullingOwnedRecords =
+            std::max(target.renderCullingOwnedRecords, source.renderCullingOwnedRecords);
+        target.renderCullingOwnedRecordCapacity =
+            std::max(target.renderCullingOwnedRecordCapacity, source.renderCullingOwnedRecordCapacity);
+        target.renderCullingOwnedCellCount =
+            std::max(target.renderCullingOwnedCellCount, source.renderCullingOwnedCellCount);
+        target.renderCullingOwnedCellCapacity =
+            std::max(target.renderCullingOwnedCellCapacity, source.renderCullingOwnedCellCapacity);
+        target.renderCullingOwnedBytes =
+            std::max(target.renderCullingOwnedBytes, source.renderCullingOwnedBytes);
+        target.renderCullingGridOwnedBytes =
+            std::max(target.renderCullingGridOwnedBytes, source.renderCullingGridOwnedBytes);
+        target.spriteOrderOwnedRecords =
+            std::max(target.spriteOrderOwnedRecords, source.spriteOrderOwnedRecords);
+        target.spriteOrderOwnedEntryCapacity =
+            std::max(target.spriteOrderOwnedEntryCapacity, source.spriteOrderOwnedEntryCapacity);
+        target.spriteOrderOwnedBytes =
+            std::max(target.spriteOrderOwnedBytes, source.spriteOrderOwnedBytes);
+    };
+    const auto accumulateCullingWork = [&](const platformator_test::WorkCounters &source) {
+        accumulateWorkInto(resourceCullingWork, source);
+        updatePeaksFrom(resourceCullingWork, source);
+    };
+    // Keep fixture construction/initialization out of measured-frame work sums while
+    // preserving peak resource/capacity observations from initial & cold setup.
+    updatePeaksFrom(resourceCullingWork, initializationWork);
+    updatePeaksFrom(resourceCullingWork, coldFirstStepWork);
     initialCullingStateCreations = initializationWork.renderCullingStateCreations;
     initialCullingRecords = initializationWork.renderCullingRecordsAdded;
 #endif
@@ -1005,10 +1291,22 @@ void run(const Options &options)
         float x = 0.0f;
         float y = 0.0f;
         float rotation = 0.0f;
+        std::int32_t zOrder = 0;
     };
     std::vector<FixturePoseSample> previousMeasuredPoses;
+    std::vector<std::int32_t> previousMeasuredZ;
+    std::vector<std::int32_t> currentMeasuredZ;
     if (options.validateResources)
+    {
         previousMeasuredPoses.reserve(options.population);
+        previousMeasuredZ.reserve(options.population);
+        currentMeasuredZ.reserve(options.population);
+    }
+    if (window != nullptr)
+        (void)window->consumeBenchmarkOrderTiming();
+    const auto fallbacksBeforeMeasured = window != nullptr
+                                             ? window->getObservedRenderFallbackCounts()
+                                             : SDLWindow::RenderFallbackCounts{};
     for (size_t frame = 0; frame < options.measureFrames; ++frame)
     {
         if (options.validateRendering)
@@ -1071,6 +1369,9 @@ void run(const Options &options)
                 if (visible.size() != observation.submissions->size() || observation.unresolvedSprites != 0 ||
                     observation.submissionOverflows != 0)
                     throw std::runtime_error("Validation trace contains a duplicate, unresolved sprite, or overflow");
+                if (options.denseZEdit &&
+                    (*observation.submissions != oracle || observation.submissions->size() != options.population))
+                    throw std::runtime_error("Dense Z validation frame did not preserve exact Z-ordered retention");
                 *framesFile << nlohmann::json{{"frame", frame}, {"image_fnv64", readback.hash},
                                              {"output_width", readback.width}, {"output_height", readback.height},
                                              {"submissions", std::move(currentVisible)},
@@ -1088,11 +1389,14 @@ void run(const Options &options)
         {
 #if PLATFORMATOR_ENABLE_WORK_PROBES
             previousMeasuredPoses.clear();
+            previousMeasuredZ.clear();
             for (const auto &record : fixture.records())
             {
                 const auto position = record.object->getPosition();
+                const std::int32_t zOrder = record.sprite->getZOrder();
                 previousMeasuredPoses.push_back({record.identity.slot, record.identity.generation,
-                                                 position.x(), position.y(), record.object->getRotation()});
+                                                 position.x(), position.y(), record.object->getRotation(), zOrder});
+                previousMeasuredZ.push_back(zOrder);
             }
             platformator_test::work = {};
             linear_render_allocation_probe::Snapshot allocationSnapshot;
@@ -1100,17 +1404,42 @@ void run(const Options &options)
                 linear_render_allocation_probe::ScopedObservation allocationObservation(allocationSnapshot);
                 step();
             }
+            size_t changedPoses = 0;
+            size_t changedZOrders = 0;
             size_t changedSprites = 0;
+            size_t minChangedZSlot = fixture.records().size();
+            currentMeasuredZ.clear();
             for (size_t index = 0; index < fixture.records().size(); ++index)
             {
                 const auto &record = fixture.records()[index];
                 const auto &previous = previousMeasuredPoses[index];
                 const auto position = record.object->getPosition();
-                if (record.identity.slot != previous.slot || record.identity.generation != previous.generation ||
-                    position.x() != previous.x || position.y() != previous.y ||
-                    record.object->getRotation() != previous.rotation)
+                const std::int32_t zOrder = record.sprite->getZOrder();
+                currentMeasuredZ.push_back(zOrder);
+                const bool poseChanged = record.identity.slot != previous.slot ||
+                                         record.identity.generation != previous.generation ||
+                                         position.x() != previous.x || position.y() != previous.y ||
+                                         record.object->getRotation() != previous.rotation;
+                const bool zChanged = zOrder != previous.zOrder;
+                if (poseChanged)
+                    ++changedPoses;
+                if (zChanged)
+                {
+                    ++changedZOrders;
+                    minChangedZSlot = std::min(minChangedZSlot, index);
+                }
+                if (poseChanged || zChanged)
                     ++changedSprites;
             }
+            if (options.denseZEdit)
+                verifyDenseZEditStep(frame, previousMeasuredZ, currentMeasuredZ, changedPoses);
+            if (options.rejectedZEdit && options.population > 64)
+            {
+                if (changedPoses != 0 || changedZOrders == 0 || minChangedZSlot < 64)
+                    throw std::runtime_error("rejected-z-edit step did not mutate rejected-only slots");
+            }
+            actualChangedPoseTotal += changedPoses;
+            actualChangedZTotal += changedZOrders;
             actualChangedSpriteTotal += changedSprites;
             maximumActualChangedSpritesPerStep = std::max(maximumActualChangedSpritesPerStep, changedSprites);
             resourceAllocationCalls += allocationSnapshot.calls;
@@ -1120,6 +1449,19 @@ void run(const Options &options)
             resourceVisibilityChecks += platformator_test::work.renderVisibilityChecks;
             resourceSubmissions += platformator_test::work.renderSubmittedSprites;
             accumulateCullingWork(platformator_test::work);
+            if (options.denseZEdit)
+            {
+                if ((frame % 2) == 0)
+                {
+                    ++cleanPhaseFrames;
+                    accumulateWorkInto(cleanPhaseWork, platformator_test::work);
+                }
+                else
+                {
+                    ++editPhaseFrames;
+                    accumulateWorkInto(editPhaseWork, platformator_test::work);
+                }
+            }
 #else
             step();
 #endif
@@ -1129,8 +1471,12 @@ void run(const Options &options)
             const auto before = std::chrono::steady_clock::now();
             step();
             const auto after = std::chrono::steady_clock::now();
+            const auto orderTiming = window != nullptr
+                                         ? window->consumeBenchmarkOrderTiming()
+                                         : SDLWindow::BenchmarkOrderTiming{};
             pairedStepRenderNanoseconds.push_back(static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count()));
+            pairedOrderPrepareNanoseconds.push_back(orderTiming.totalNs);
         }
     }
     if (framesFile) framesFile->close();
@@ -1140,9 +1486,10 @@ void run(const Options &options)
         pairedPath.replace_extension(".paired.csv");
         std::ofstream paired(pairedPath, std::ios::binary);
         paired.exceptions(std::ios::badbit | std::ios::failbit);
-        paired << "step,paired_step_render_ns\n";
+        paired << "step,paired_step_render_ns,draw_order_prepare_ns\n";
         for (size_t index = 0; index < pairedStepRenderNanoseconds.size(); ++index)
-            paired << index << ',' << pairedStepRenderNanoseconds[index] << '\n';
+            paired << index << ',' << pairedStepRenderNanoseconds[index] << ','
+                   << pairedOrderPrepareNanoseconds[index] << '\n';
     }
     if (options.validateRendering)
     {
@@ -1156,7 +1503,8 @@ void run(const Options &options)
         const auto proof = nlohmann::json{{"profile", options.profileName}, {"sprite_count", options.population},
                                          {"workers", options.workers}, {"seed", options.seed}, {"dt", options.dt},
                                          {"warmup_frames", options.warmupFrames}, {"measure_frames", options.measureFrames},
-                                         {"mode", mode}, {"fixture_sha256", PLATFORMATOR_LINEAR_FIXTURE_SHA256},
+                                         {"mode", mode}, {"ordering_variant", options.orderingVariant},
+                                         {"fixture_sha256", PLATFORMATOR_LINEAR_FIXTURE_SHA256},
                                          {"harness_sha256", PLATFORMATOR_LINEAR_HARNESS_SHA256},
                                          {"source_sha256", PLATFORMATOR_BENCH_SOURCE_SHA256},
                                          {"trajectory_parameters", resolvedParameters},
@@ -1262,7 +1610,54 @@ void run(const Options &options)
         {"side_list_visits", resourceCullingWork.renderCullingSideListVisits},
         {"peak_record_capacity", resourceCullingWork.renderCullingOwnedRecordCapacity},
         {"peak_cell_node_capacity", resourceCullingWork.renderCullingOwnedCellCapacity},
-        {"peak_owned_bytes", resourceCullingWork.renderCullingOwnedBytes}};
+        {"peak_owned_bytes", resourceCullingWork.renderCullingOwnedBytes},
+        {"peak_grid_owned_bytes", resourceCullingWork.renderCullingGridOwnedBytes},
+        {"peak_common_owned_bytes",
+         resourceCullingWork.renderCullingOwnedBytes - resourceCullingWork.renderCullingGridOwnedBytes},
+        {"visible_membership_checks", resourceCullingWork.visibleMembershipChecks},
+        {"visible_membership_changes", resourceCullingWork.visibleMembershipChanges},
+        {"sprite_order_preparations", resourceCullingWork.spriteOrderPreparations},
+        {"sprite_order_entries", resourceCullingWork.spriteOrderEntries},
+        {"sprite_order_lookup_visits", resourceCullingWork.spriteOrderLookupVisits},
+        {"sprite_order_comparisons", resourceCullingWork.spriteOrderComparisons},
+        {"sprite_order_sorts", resourceCullingWork.spriteOrderSorts},
+        {"sprite_order_repairs", resourceCullingWork.spriteOrderRepairs},
+        {"sprite_order_moves", resourceCullingWork.spriteOrderMoves},
+        {"peak_order_records", resourceCullingWork.spriteOrderOwnedRecords},
+        {"peak_order_entry_capacity", resourceCullingWork.spriteOrderOwnedEntryCapacity},
+        {"peak_order_owned_bytes", resourceCullingWork.spriteOrderOwnedBytes}};
+    if (options.denseZEdit)
+    {
+        resourceCullingWorkJson["clean_phase"] = {
+            {"frames", cleanPhaseFrames},
+            {"order_preparations", cleanPhaseWork.spriteOrderPreparations},
+            {"order_entries", cleanPhaseWork.spriteOrderEntries},
+            {"order_lookup_visits", cleanPhaseWork.spriteOrderLookupVisits},
+            {"order_comparisons", cleanPhaseWork.spriteOrderComparisons},
+            {"order_sorts", cleanPhaseWork.spriteOrderSorts},
+            {"order_repairs", cleanPhaseWork.spriteOrderRepairs},
+            {"order_moves", cleanPhaseWork.spriteOrderMoves},
+            {"cache_hits", cleanPhaseWork.renderCullingCacheHits}};
+        resourceCullingWorkJson["edit_phase"] = {
+            {"frames", editPhaseFrames},
+            {"order_preparations", editPhaseWork.spriteOrderPreparations},
+            {"order_entries", editPhaseWork.spriteOrderEntries},
+            {"order_lookup_visits", editPhaseWork.spriteOrderLookupVisits},
+            {"order_comparisons", editPhaseWork.spriteOrderComparisons},
+            {"order_sorts", editPhaseWork.spriteOrderSorts},
+            {"order_repairs", editPhaseWork.spriteOrderRepairs},
+            {"order_moves", editPhaseWork.spriteOrderMoves},
+            {"bounds_refreshes", editPhaseWork.renderCullingBoundsRefreshes},
+            {"index_relinks", editPhaseWork.renderCullingIndexRelinks},
+            {"queries", editPhaseWork.renderCullingQueries}};
+    }
+    if (options.validateResources && options.rejectedZEdit && options.population > 64)
+    {
+        if (actualChangedZTotal == 0 || resourceCullingWork.spriteOrderPreparations != 0 ||
+            resourceCullingWork.spriteOrderSorts != 0 || resourceCullingWork.renderCullingBoundsRefreshes != 0 ||
+            resourceCullingWork.renderCullingQueries != 0 || resourceCullingWork.renderCullingIndexRelinks != 0)
+            throw std::runtime_error("rejected-z-edit resource validation observed unexpected ordering/spatial work or zero Z edits");
+    }
 #endif
     if (options.validateResources)
     {
@@ -1270,6 +1665,7 @@ void run(const Options &options)
             {"profile", options.profileName}, {"sprite_count", options.population}, {"workers", options.workers},
             {"seed", options.seed}, {"dt", options.dt}, {"warmup_frames", options.warmupFrames},
             {"measure_frames", options.measureFrames}, {"mode", mode},
+            {"ordering_variant", options.orderingVariant},
             {"fixture_sha256", PLATFORMATOR_LINEAR_FIXTURE_SHA256},
             {"harness_sha256", PLATFORMATOR_LINEAR_HARNESS_SHA256},
             {"source_sha256", PLATFORMATOR_BENCH_SOURCE_SHA256},
@@ -1284,6 +1680,8 @@ void run(const Options &options)
             {"process_rss_before_kib", resourceRssBefore}, {"process_rss_after_kib", resourceRssAfter},
             {"process_rss_after_reset_kib", resourceRssAfterReset},
             {"actual_changed_sprite_total", actualChangedSpriteTotal},
+            {"actual_changed_pose_total", actualChangedPoseTotal},
+            {"actual_changed_z_total", actualChangedZTotal},
             {"actual_changed_sprites_per_step_max", maximumActualChangedSpritesPerStep},
             {"actual_changed_fraction", options.population == 0 ? 0.0 :
                 static_cast<double>(actualChangedSpriteTotal) /
@@ -1299,13 +1697,17 @@ void run(const Options &options)
                                    {"initial_record_capacity", initializationWork.renderCullingOwnedRecordCapacity},
                                    {"initial_cell_node_capacity", initializationWork.renderCullingOwnedCellCapacity},
                                    {"initial_owned_bytes", initializationWork.renderCullingOwnedBytes},
+                                   {"initial_grid_owned_bytes", initializationWork.renderCullingGridOwnedBytes},
+                                   {"initial_order_owned_bytes", initializationWork.spriteOrderOwnedBytes},
                                    {"first_warmup_step_allocation_calls", coldFirstStepAllocationCalls},
                                    {"first_warmup_step_allocated_bytes", coldFirstStepAllocatedBytes},
                                    {"dirty_enqueues", coldFirstStepWork.renderCullingDirtyEnqueues},
                                    {"bounds_refreshes", coldFirstStepWork.renderCullingBoundsRefreshes},
                                    {"index_insertions", coldFirstStepWork.renderCullingIndexInsertions},
                                    {"queries", coldFirstStepWork.renderCullingQueries},
-                                   {"owned_bytes", coldFirstStepWork.renderCullingOwnedBytes}}},
+                                   {"owned_bytes", coldFirstStepWork.renderCullingOwnedBytes},
+                                   {"grid_owned_bytes", coldFirstStepWork.renderCullingGridOwnedBytes},
+                                   {"order_owned_bytes", coldFirstStepWork.spriteOrderOwnedBytes}}},
             {"capacity_growth_observation", capacityGrowthObservation},
             {"reset_observation", cullingResetObservation},
             {"render_view_preparations", resourceViews}, {"render_eligibility_checks", resourceEligibilityChecks},
@@ -1320,8 +1722,17 @@ void run(const Options &options)
         recorder.updateMetadata({{"resource_observation", {{"path", std::filesystem::absolute(resourcePath).string()},
                                                               {"sha256", sha256File(resourcePath)}}}});
     }
-    recorder.updateMetadata({{"stopped_on_quit", false}, {"physical_invariants", {{"finite", true},
-                                      {"populations_valid", true}, {"supports_valid", true}}}});
+    const auto fallbacksAfterMeasured = window != nullptr
+                                            ? window->getObservedRenderFallbackCounts()
+                                            : SDLWindow::RenderFallbackCounts{};
+    const SDLWindow::RenderFallbackCounts observedFallbacks{
+        fallbacksAfterMeasured.mappingFallbacks - fallbacksBeforeMeasured.mappingFallbacks,
+        fallbacksAfterMeasured.numericFallbacks - fallbacksBeforeMeasured.numericFallbacks};
+    recorder.updateMetadata({{"linear_render_culling", buildCullingMetadata(observedFallbacks)},
+                             {"stopped_on_quit", false},
+                             {"physical_invariants", {{"finite", true},
+                                                      {"populations_valid", true},
+                                                      {"supports_valid", true}}}});
     recorder.writeOutputs(options.csvOutput);
     recorder.printSummary();
 }
@@ -1385,6 +1796,50 @@ void runAllocationObserverSelfTest()
         linear_render_allocation_probe::isActive())
         throw std::runtime_error("Exceptional exit did not restore allocation observation state");
 }
+
+void runZEditOracleSelfTest()
+{
+    Options opts;
+    opts.denseZEdit = true;
+    opts.population = 8;
+    opts.warmupFrames = 2;
+    const auto zStep2 = computeDeterministicZOrders(opts, 2);
+    const auto zStep3 = computeDeterministicZOrders(opts, 3);
+    // Warmup frame 0 modified slot 17%8=1 from -111 to +200; step 2 is measured clean frame (0 edits);
+    // step 3 is measured edit frame (frame=1) modifying slot (3*131+17)%8 = 2 from -126 to +203.
+    if (zStep2[2] == zStep3[2] || zStep3[2] != 203)
+        throw std::runtime_error("Deterministic Z schedule mismatch");
+
+    // Verify clean frame accepts unchanged Z and rejects mutated Z.
+    verifyDenseZEditStep(0, zStep2, zStep2, 0);
+    auto expectReject = [](auto &&fn, const char *message) {
+        bool threw = false;
+        try
+        {
+            fn();
+        }
+        catch (const std::runtime_error &)
+        {
+            threw = true;
+        }
+        if (!threw)
+            throw std::runtime_error(message);
+    };
+    expectReject([&] { verifyDenseZEditStep(0, zStep2, zStep3, 0); },
+                 "Clean frame must reject unexpected Z mutation");
+    expectReject([&] { verifyDenseZEditStep(1, zStep2, zStep2, 0); },
+                 "Edit frame must reject omitted Z mutation");
+    expectReject([&] { verifyDenseZEditStep(1, zStep2, zStep3, 1); },
+                 "Edit frame must reject unexpected pose mutation");
+
+    // Ineffective Z edit (already lowest Z=-1000 changing to -1001 crosses zero peers) must be rejected.
+    std::vector<std::int32_t> beforeLow = zStep2;
+    std::vector<std::int32_t> afterLow = zStep2;
+    beforeLow[0] = -1000;
+    afterLow[0] = -1001;
+    expectReject([&] { verifyDenseZEditStep(1, beforeLow, afterLow, 0); },
+                 "Edit frame must reject non-peer-crossing ineffective Z mutation");
+}
 #endif
 } // namespace
 
@@ -1410,6 +1865,12 @@ int main(int argc, char **argv)
         {
             runAllocationObserverSelfTest();
             std::cout << "[PASS] concurrent and exceptional allocation observer checks\n";
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--z-edit-oracle-self-test")
+        {
+            runZEditOracleSelfTest();
+            std::cout << "[PASS] deterministic dense-z-edit oracle and ineffective mutation checks\n";
             return 0;
         }
 #endif

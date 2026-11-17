@@ -38,6 +38,7 @@ platformator_add_test(platformator_runtime_step_test tests/runtime_step_test.cpp
 platformator_add_test(platformator_runtime_work_test tests/runtime_work_test.cpp INTERNAL LABELS physics work PROBE)
 platformator_add_test(platformator_render_culling_geometry_test tests/render_culling_geometry_test.cpp INTERNAL LABELS rendering geometry)
 platformator_add_test(platformator_render_culling_test tests/render_culling_test.cpp INTERNAL LABELS rendering PROBE)
+platformator_add_test(platformator_sprite_ordering_test tests/sprite_ordering_test.cpp INTERNAL LABELS rendering PROBE)
 if(EXISTS "${PLATFORMATOR_ENGINE_DIR}/src/renderculling.cpp")
     platformator_add_test(platformator_render_culling_worker_test tests/render_culling_worker_test.cpp INTERNAL LABELS rendering physics workers PROBE)
     platformator_add_test(platformator_render_culling_trajectory_test tests/render_culling_trajectory_test.cpp INTERNAL LABELS rendering determinism)

@@ -287,6 +287,41 @@ void test_script_copy_and_reset_remove_unknown_default_overrides()
                 historyAfterFailedReset.undoCommands == historyBeforeFailedReset.undoCommands,
             "failed history retention must roll back all Script override removals");
 }
+void test_sprite_z_order_copy_paste_and_reset()
+{
+    auto source = object(1, "Source");
+    source["components"] = Json::array({Json{{"id", 10}, {"type", 6}, {"textureFilePath", ""}, {"flip", 0},
+                                             {"width", 16.0}, {"height", 16.0}, {"zOrder", -42},
+                                             {"sourceRectEnabled", false}}});
+    auto target = object(2, "Target");
+    target["components"] = Json::array({Json{{"id", 20}, {"type", 6}, {"textureFilePath", ""}, {"flip", 0},
+                                             {"width", 16.0}, {"height", 16.0}, {"zOrder", 5},
+                                             {"sourceRectEnabled", false}}});
+    auto parsed = parse_document(scene({std::move(source), std::move(target)}));
+    require(static_cast<bool>(parsed), "zOrder component fixture must parse: " + parsed.error);
+    auto &document = *parsed.document;
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    BehaviorCatalog catalog;
+    std::string error;
+    const auto copied = copy_component_settings(document.root[0]["components"][0], catalog, error);
+    require(copied && error.empty(), "Sprite zOrder settings copy must succeed");
+
+    EditCommandService commands;
+    const Selection current{2, 20, std::nullopt, FocusedPanel::Inspector};
+    const auto pasted = paste_component_settings(document, commands, 2, 20, *copied, catalog,
+                                                  SelectionState{current, current});
+    require(pasted.status == CommandStatus::Changed &&
+                document.root[1]["components"][0]["zOrder"] == -42,
+            "Sprite settings paste must copy zOrder -42");
+
+    const auto reset = reset_component_settings(document, commands, 2, 20, catalog,
+                                                 SelectionState{current, current});
+    require(reset.status == CommandStatus::Changed &&
+                document.root[1]["components"][0]["zOrder"] == 0,
+            "Sprite settings reset must restore zOrder 0");
+}
 } // namespace
 
 int main()
@@ -297,6 +332,7 @@ int main()
         test_group_component_operations_share_one_undo_entry();
         test_sprite_source_rectangle_is_copied_and_reset_as_optional_data();
         test_script_copy_and_reset_remove_unknown_default_overrides();
+        test_sprite_z_order_copy_paste_and_reset();
         std::cout << "Component operation cases passed\n";
         return 0;
     }

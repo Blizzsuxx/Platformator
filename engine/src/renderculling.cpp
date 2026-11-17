@@ -49,11 +49,20 @@ struct RenderCullingState::SpatialIndex
         RecordIndex next = absentIndex;
         CellKey key{};
     };
+    struct SpatialRecord
+    {
+        std::array<RecordIndex, 4> cellLinks{absentIndex, absentIndex, absentIndex, absentIndex};
+        RecordIndex cellLinkCount = 0;
+        RecordIndex sideListPosition = absentIndex;
+        uint32_t lastQueryStamp = 0;
+        RenderCullingSpatialKind spatialKind = RenderCullingSpatialKind::Uncertifiable;
+    };
 
     CellMap cells;
     std::vector<CellMap::node_type> freeCellNodes;
     std::vector<Link> links;
     std::vector<RecordIndex> freeLinks;
+    std::vector<SpatialRecord> records;
     std::vector<RecordIndex> sideList;
     std::vector<RecordIndex> candidates;
     RecordIndex nodeSupply = 0;
@@ -110,6 +119,7 @@ RenderCullingState::~RenderCullingState()
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedRecords, 0);
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedRecordCapacity, 0);
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedBytes, 0);
+    PLATFORMATOR_RENDER_CULLING_SET(renderCullingGridOwnedBytes, 0);
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedCellCount, 0);
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedCellCapacity, 0);
 }
@@ -142,7 +152,6 @@ void RenderCullingState::reserveRecords(RecordIndex capacity)
     dirtyQueuePosition.reserve(target);
     currentVisibleRanks.reserve(target);
     visibleRankMerge.reserve(target);
-    visibleRankChanges.reserve(target);
     reserveSpatialCapacity(target);
 }
 
@@ -159,6 +168,7 @@ void RenderCullingState::reserveSpatialCapacity(RecordIndex capacity)
     grid.freeCellNodes.reserve(target);
     grid.links.reserve(target);
     grid.freeLinks.reserve(target);
+    grid.records.reserve(capacity);
     grid.sideList.reserve(capacity);
     grid.candidates.reserve(capacity);
     while (grid.links.size() < target)
@@ -197,7 +207,7 @@ void RenderCullingState::removeSpatialMembership(RecordIndex index)
     if (!spatialIndex)
         return;
     auto &grid = *spatialIndex;
-    auto &record = records[index];
+    auto &record = grid.records[index];
     for (RecordIndex item = 0; item < record.cellLinkCount; ++item)
     {
         const RecordIndex linkId = record.cellLinks[item];
@@ -226,7 +236,7 @@ void RenderCullingState::removeSpatialMembership(RecordIndex index)
         if (position != grid.sideList.size() - 1)
         {
             grid.sideList[position] = movedRecord;
-            records[movedRecord].sideListPosition = position;
+            grid.records[movedRecord].sideListPosition = position;
         }
         grid.sideList.pop_back();
         record.sideListPosition = absentIndex;
@@ -238,7 +248,7 @@ void RenderCullingState::insertSpatialMembership(RecordIndex index, const std::a
 {
     assert(spatialIndex != nullptr);
     auto &grid = *spatialIndex;
-    auto &record = records[index];
+    auto &record = grid.records[index];
     for (int64_t y = cellRange[2];; ++y)
     {
         for (int64_t x = cellRange[0];; ++x)
@@ -328,6 +338,7 @@ RenderCullingSpatialKind RenderCullingState::updateSpatialBounds(RecordIndex ind
 
     auto &grid = *spatialIndex;
     auto &record = records[index];
+    auto &spatial = grid.records[index];
     std::array<int64_t, 4> newRange{};
     RenderCullingSpatialKind newKind = RenderCullingSpatialKind::Indexed;
     const double width = bounds.maxX - bounds.minX;
@@ -359,15 +370,15 @@ RenderCullingSpatialKind RenderCullingState::updateSpatialBounds(RecordIndex ind
     const uint64_t spanX = cellSpan(newRange[0], newRange[1]);
     const uint64_t spanY = cellSpan(newRange[2], newRange[3]);
     bool sameIndexedCoverage = false;
-    if (record.spatialKind == RenderCullingSpatialKind::Indexed && newKind == RenderCullingSpatialKind::Indexed &&
+    if (spatial.spatialKind == RenderCullingSpatialKind::Indexed && newKind == RenderCullingSpatialKind::Indexed &&
         spanX <= 1 && spanY <= 1 &&
-        record.cellLinkCount == static_cast<RecordIndex>((spanX + 1) * (spanY + 1)))
+        spatial.cellLinkCount == static_cast<RecordIndex>((spanX + 1) * (spanY + 1)))
     {
         std::array<int64_t, 4> oldRange{};
         bool first = true;
-        for (RecordIndex item = 0; item < record.cellLinkCount; ++item)
+        for (RecordIndex item = 0; item < spatial.cellLinkCount; ++item)
         {
-            const auto &key = grid.links[record.cellLinks[item]].key;
+            const auto &key = grid.links[spatial.cellLinks[item]].key;
             if (first)
             {
                 oldRange = {key.x, key.x, key.y, key.y};
@@ -388,29 +399,29 @@ RenderCullingSpatialKind RenderCullingState::updateSpatialBounds(RecordIndex ind
     record.boundsValid = certifiable && finiteBounds(bounds);
     if (sameIndexedCoverage)
     {
-        record.spatialKind = RenderCullingSpatialKind::Indexed;
-        return record.spatialKind;
+        spatial.spatialKind = RenderCullingSpatialKind::Indexed;
+        return spatial.spatialKind;
     }
 
-    if ((record.spatialKind == RenderCullingSpatialKind::Indexed && newKind == RenderCullingSpatialKind::Indexed) ||
-        record.spatialKind != newKind)
+    if ((spatial.spatialKind == RenderCullingSpatialKind::Indexed && newKind == RenderCullingSpatialKind::Indexed) ||
+        spatial.spatialKind != newKind)
     {
         removeSpatialMembership(index);
-        if (record.spatialKind == RenderCullingSpatialKind::Uncertifiable && newKind == RenderCullingSpatialKind::Indexed)
+        if (spatial.spatialKind == RenderCullingSpatialKind::Uncertifiable && newKind == RenderCullingSpatialKind::Indexed)
             PLATFORMATOR_RENDER_CULLING_ADD(renderCullingIndexRelinks, 1);
     }
 
     if (newKind == RenderCullingSpatialKind::Indexed)
     {
-        if (record.cellLinkCount == 0)
+        if (spatial.cellLinkCount == 0)
             insertSpatialMembership(index, newRange);
     }
-    else if (record.sideListPosition == absentIndex)
+    else if (spatial.sideListPosition == absentIndex)
     {
-        record.sideListPosition = grid.sideList.size();
+        spatial.sideListPosition = grid.sideList.size();
         grid.sideList.push_back(index);
     }
-    record.spatialKind = newKind;
+    spatial.spatialKind = newKind;
     updateSpatialCapacityObservation();
     return newKind;
 }
@@ -426,18 +437,18 @@ RenderCullingState::querySpatial(const SpriteRenderBounds &query)
     PLATFORMATOR_RENDER_CULLING_ADD(renderCullingQueries, 1);
 
     const auto appendCandidate = [&](RecordIndex index, uint32_t stamp) {
-        auto &record = records[index];
-        if (record.lastQueryStamp == stamp)
+        auto &spatial = grid.records[index];
+        if (spatial.lastQueryStamp == stamp)
             return;
-        record.lastQueryStamp = stamp;
+        spatial.lastQueryStamp = stamp;
         grid.candidates.push_back(index);
     };
 
     uint32_t nextStamp = grid.queryStamp + 1;
     if (nextStamp == 0)
     {
-        for (auto &record : records)
-            record.lastQueryStamp = 0;
+        for (auto &spatial : grid.records)
+            spatial.lastQueryStamp = 0;
         nextStamp = 1;
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingQueryStampResets, 1);
     }
@@ -487,6 +498,8 @@ bool RenderCullingState::validateSpatialInvariants() const
     if (!spatialIndex)
         return currentMode != RenderCullingMode::Indexed;
     const auto &grid = *spatialIndex;
+    if (grid.records.size() != records.size())
+        return false;
     std::vector<uint8_t> visited(grid.links.size(), 0);
     RecordIndex linkedCount = 0;
     for (const auto &[key, cell] : grid.cells)
@@ -498,12 +511,12 @@ bool RenderCullingState::validateSpatialInvariants() const
             if (linkId >= grid.links.size() || ++steps > grid.links.size() || visited[linkId])
                 return false;
             const auto &link = grid.links[linkId];
-            if (link.key != key || link.previous != previous || link.record >= records.size() ||
-                records[link.record].spatialKind != RenderCullingSpatialKind::Indexed)
+            if (link.key != key || link.previous != previous || link.record >= grid.records.size() ||
+                grid.records[link.record].spatialKind != RenderCullingSpatialKind::Indexed)
                 return false;
-            const auto &record = records[link.record];
-            if (std::find(record.cellLinks.begin(), record.cellLinks.begin() + record.cellLinkCount, linkId) ==
-                record.cellLinks.begin() + record.cellLinkCount)
+            const auto &spatial = grid.records[link.record];
+            if (std::find(spatial.cellLinks.begin(), spatial.cellLinks.begin() + spatial.cellLinkCount, linkId) ==
+                spatial.cellLinks.begin() + spatial.cellLinkCount)
                 return false;
             visited[linkId] = 1;
             ++linkedCount;
@@ -511,34 +524,34 @@ bool RenderCullingState::validateSpatialInvariants() const
         }
     }
 
-    std::vector<uint8_t> sideSeen(records.size(), 0);
+    std::vector<uint8_t> sideSeen(grid.records.size(), 0);
     for (RecordIndex position = 0; position < grid.sideList.size(); ++position)
     {
         const RecordIndex rank = grid.sideList[position];
-        if (rank >= records.size() || sideSeen[rank] || records[rank].sideListPosition != position ||
-            records[rank].spatialKind == RenderCullingSpatialKind::Indexed)
+        if (rank >= grid.records.size() || sideSeen[rank] || grid.records[rank].sideListPosition != position ||
+            grid.records[rank].spatialKind == RenderCullingSpatialKind::Indexed)
             return false;
         sideSeen[rank] = 1;
     }
 
     RecordIndex expectedLinks = 0;
-    for (RecordIndex rank = 0; rank < records.size(); ++rank)
+    for (RecordIndex rank = 0; rank < grid.records.size(); ++rank)
     {
-        const auto &record = records[rank];
-        if (record.spatialKind == RenderCullingSpatialKind::Indexed)
+        const auto &spatial = grid.records[rank];
+        if (spatial.spatialKind == RenderCullingSpatialKind::Indexed)
         {
-            if (record.cellLinkCount == 0 || record.cellLinkCount > 4 ||
-                record.sideListPosition != absentIndex || sideSeen[rank])
+            if (spatial.cellLinkCount == 0 || spatial.cellLinkCount > 4 ||
+                spatial.sideListPosition != absentIndex || sideSeen[rank])
                 return false;
-            expectedLinks += record.cellLinkCount;
-            for (RecordIndex index = 0; index < record.cellLinkCount; ++index)
+            expectedLinks += spatial.cellLinkCount;
+            for (RecordIndex index = 0; index < spatial.cellLinkCount; ++index)
             {
-                const RecordIndex linkId = record.cellLinks[index];
+                const RecordIndex linkId = spatial.cellLinks[index];
                 if (linkId >= grid.links.size() || !visited[linkId] || grid.links[linkId].record != rank)
                     return false;
             }
         }
-        else if (record.cellLinkCount != 0 || record.sideListPosition == absentIndex || !sideSeen[rank])
+        else if (spatial.cellLinkCount != 0 || spatial.sideListPosition == absentIndex || !sideSeen[rank])
         {
             return false;
         }
@@ -547,6 +560,24 @@ bool RenderCullingState::validateSpatialInvariants() const
     return linkedCount == expectedLinks && grid.nodeSupply == grid.cells.size() + grid.freeCellNodes.size() &&
            grid.links.size() == grid.freeLinks.size() + linkedCount && indexedCapacityBounded &&
            grid.nodeSupply <= 4 * records.capacity();
+}
+
+bool RenderCullingState::validateMembershipInvariants() const
+{
+    for (RecordIndex position = 0; position < currentVisibleRanks.size(); ++position)
+    {
+        const RecordIndex rank = currentVisibleRanks[position];
+        if (rank >= records.size() || records[rank].visiblePosition != position)
+            return false;
+    }
+    for (RecordIndex rank = 0; rank < records.size(); ++rank)
+    {
+        const RecordIndex position = records[rank].visiblePosition;
+        if (position != absentIndex &&
+            (position >= currentVisibleRanks.size() || currentVisibleRanks[position] != rank))
+            return false;
+    }
+    return true;
 }
 
 bool RenderCullingState::hasSpatialIndex() const
@@ -588,12 +619,14 @@ void RenderCullingState::appendRecord(platformator::ObjectHandle spriteHandle)
     records.push_back(Record{spriteHandle});
     dirtyQueuePosition.push_back(absentIndex);
     visibleSelectionValid = false;
+    ++visibleMembershipRevision_;
     PLATFORMATOR_RENDER_CULLING_ADD(renderCullingRecordsAdded, 1);
     markDirty(required - 1, spriteHandle);
     if (spatialIndex)
     {
-        auto &record = records.back();
-        record.sideListPosition = spatialIndex->sideList.size();
+        SpatialIndex::SpatialRecord spatial{};
+        spatial.sideListPosition = spatialIndex->sideList.size();
+        spatialIndex->records.push_back(spatial);
         spatialIndex->sideList.push_back(required - 1);
     }
     publishCapacityObservation();
@@ -605,20 +638,37 @@ void RenderCullingState::removeRecord(RecordIndex index)
         throw std::out_of_range("Render-culling record index is out of range");
 
     visibleSelectionValid = false;
-    currentVisibleRanks.clear();
+    ++visibleMembershipRevision_;
+    const RecordIndex visiblePos = records[index].visiblePosition;
+    if (visiblePos != absentIndex)
+    {
+        const RecordIndex lastVisiblePos = currentVisibleRanks.size() - 1;
+        if (visiblePos != lastVisiblePos)
+        {
+            const RecordIndex movedVisibleRank = currentVisibleRanks[lastVisiblePos];
+            currentVisibleRanks[visiblePos] = movedVisibleRank;
+            records[movedVisibleRank].visiblePosition = visiblePos;
+        }
+        currentVisibleRanks.pop_back();
+        records[index].visiblePosition = absentIndex;
+    }
     removeSpatialMembership(index);
     cancelDirty(index);
     const RecordIndex lastIndex = records.size() - 1;
     if (index != lastIndex)
     {
+        const RecordIndex movedVisiblePos = records[lastIndex].visiblePosition;
+        if (movedVisiblePos != absentIndex)
+            currentVisibleRanks[movedVisiblePos] = index;
         records[index] = records[lastIndex];
         if (spatialIndex)
         {
-            auto &movedRecord = records[index];
-            for (RecordIndex item = 0; item < movedRecord.cellLinkCount; ++item)
-                spatialIndex->links[movedRecord.cellLinks[item]].record = index;
-            if (movedRecord.sideListPosition != absentIndex)
-                spatialIndex->sideList[movedRecord.sideListPosition] = index;
+            spatialIndex->records[index] = spatialIndex->records[lastIndex];
+            auto &movedSpatial = spatialIndex->records[index];
+            for (RecordIndex item = 0; item < movedSpatial.cellLinkCount; ++item)
+                spatialIndex->links[movedSpatial.cellLinks[item]].record = index;
+            if (movedSpatial.sideListPosition != absentIndex)
+                spatialIndex->sideList[movedSpatial.sideListPosition] = index;
         }
         const RecordIndex movedQueuePosition = dirtyQueuePosition[lastIndex];
         dirtyQueuePosition[index] = movedQueuePosition;
@@ -627,6 +677,8 @@ void RenderCullingState::removeRecord(RecordIndex index)
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingRecordsRelocated, 1);
     }
     records.pop_back();
+    if (spatialIndex)
+        spatialIndex->records.pop_back();
     dirtyQueuePosition.pop_back();
     PLATFORMATOR_RENDER_CULLING_ADD(renderCullingRecordsRemoved, 1);
     publishCapacityObservation();
@@ -688,7 +740,6 @@ void RenderCullingState::releaseStorage() noexcept
     std::vector<RecordIndex>().swap(dirtyQueuePosition);
     std::vector<RecordIndex>().swap(currentVisibleRanks);
     std::vector<RecordIndex>().swap(visibleRankMerge);
-    std::vector<VisibleRankChange>().swap(visibleRankChanges);
     if (spatialIndex)
     {
         auto &grid = *spatialIndex;
@@ -697,6 +748,7 @@ void RenderCullingState::releaseStorage() noexcept
         std::vector<SpatialIndex::CellMap::node_type>().swap(grid.freeCellNodes);
         std::vector<SpatialIndex::Link>().swap(grid.links);
         std::vector<RecordIndex>().swap(grid.freeLinks);
+        std::vector<SpatialIndex::SpatialRecord>().swap(grid.records);
         std::vector<RecordIndex>().swap(grid.sideList);
         std::vector<RecordIndex>().swap(grid.candidates);
         grid.nodeSupply = 0;
@@ -707,7 +759,9 @@ void RenderCullingState::releaseStorage() noexcept
     }
     currentProjectionKey = {};
     cachedViewKey = {};
+    visibleMembershipRevision_ = 0;
     visibleSelectionValid = false;
+    deltaMembershipChanged = false;
     publishCapacityObservation();
 }
 
@@ -721,6 +775,16 @@ bool RenderCullingState::selectionValid() const
     return visibleSelectionValid;
 }
 
+uint64_t RenderCullingState::visibleMembershipRevision() const noexcept
+{
+    return visibleMembershipRevision_;
+}
+
+bool RenderCullingState::isRankVisible(RecordIndex rank) const noexcept
+{
+    return rank < records.size() && records[rank].visiblePosition != absentIndex;
+}
+
 const SpriteRenderProjectionKey &RenderCullingState::projectionKey() const
 {
     return currentProjectionKey;
@@ -731,76 +795,98 @@ const SpriteRenderViewKey &RenderCullingState::viewKey() const
     return cachedViewKey;
 }
 
-void RenderCullingState::beginVisibleSelection()
+void RenderCullingState::beginVisibleSelectionScratch()
 {
-    currentVisibleRanks.clear();
+    visibleRankMerge.clear();
+}
+
+void RenderCullingState::appendVisibleSelectionScratch(RecordIndex rank)
+{
+    assert(rank < records.size());
+    visibleRankMerge.push_back(rank);
+}
+
+void RenderCullingState::publishVisibleSelectionScratch()
+{
+    if (visibleSelectionValid && visibleRankMerge.size() == currentVisibleRanks.size())
+    {
+        bool identical = true;
+        for (const RecordIndex rank : visibleRankMerge)
+        {
+            PLATFORMATOR_RENDER_CULLING_ADD(visibleMembershipChecks, 1);
+            if (records[rank].visiblePosition == absentIndex)
+            {
+                identical = false;
+                break;
+            }
+        }
+        if (identical)
+        {
+            visibleRankMerge.clear();
+            return;
+        }
+    }
+
+    for (const RecordIndex oldRank : currentVisibleRanks)
+        records[oldRank].visiblePosition = absentIndex;
+    currentVisibleRanks.swap(visibleRankMerge);
+    visibleRankMerge.clear();
+    for (RecordIndex position = 0; position < currentVisibleRanks.size(); ++position)
+    {
+        const RecordIndex rank = currentVisibleRanks[position];
+        assert(records[rank].visiblePosition == absentIndex);
+        records[rank].visiblePosition = position;
+    }
+    ++visibleMembershipRevision_;
     visibleSelectionValid = true;
+    PLATFORMATOR_RENDER_CULLING_ADD(visibleMembershipChanges, 1);
 }
 
-void RenderCullingState::appendVisibleRank(RecordIndex rank)
+void RenderCullingState::beginVisibleDelta()
 {
     assert(visibleSelectionValid);
-    currentVisibleRanks.push_back(rank);
+    deltaMembershipChanged = false;
 }
 
-void RenderCullingState::sortVisibleRanks()
-{
-    assert(visibleSelectionValid);
-    std::sort(currentVisibleRanks.begin(), currentVisibleRanks.end());
-    PLATFORMATOR_RENDER_CULLING_ADD(renderCullingOrderWork, currentVisibleRanks.size());
-}
-
-void RenderCullingState::beginVisibleRankChanges()
-{
-    assert(visibleSelectionValid);
-    visibleRankChanges.clear();
-}
-
-void RenderCullingState::queueVisibleRankChange(RecordIndex rank, bool visible)
+void RenderCullingState::updateVisibleRank(RecordIndex rank, bool visible)
 {
     assert(visibleSelectionValid);
     assert(rank < records.size());
-    const auto found = std::lower_bound(currentVisibleRanks.begin(), currentVisibleRanks.end(), rank);
-    const bool alreadyVisible = found != currentVisibleRanks.end() && *found == rank;
+    PLATFORMATOR_RENDER_CULLING_ADD(visibleMembershipChecks, 1);
+    const RecordIndex position = records[rank].visiblePosition;
+    const bool alreadyVisible = position != absentIndex;
     if (visible == alreadyVisible)
         return;
 
-    visibleRankChanges.push_back({rank, visible});
+    deltaMembershipChanged = true;
+    PLATFORMATOR_RENDER_CULLING_ADD(visibleMembershipChanges, 1);
+    if (visible)
+    {
+        records[rank].visiblePosition = currentVisibleRanks.size();
+        currentVisibleRanks.push_back(rank);
+    }
+    else
+    {
+        const RecordIndex lastPosition = currentVisibleRanks.size() - 1;
+        if (position != lastPosition)
+        {
+            const RecordIndex movedRank = currentVisibleRanks[lastPosition];
+            currentVisibleRanks[position] = movedRank;
+            records[movedRank].visiblePosition = position;
+        }
+        currentVisibleRanks.pop_back();
+        records[rank].visiblePosition = absentIndex;
+    }
 }
 
-void RenderCullingState::applyVisibleRankChanges()
+bool RenderCullingState::finishVisibleDelta()
 {
     assert(visibleSelectionValid);
-    if (visibleRankChanges.empty())
-        return;
-
-    std::sort(visibleRankChanges.begin(), visibleRankChanges.end(),
-              [](const VisibleRankChange &left, const VisibleRankChange &right) { return left.rank < right.rank; });
-    visibleRankMerge.clear();
-    RecordIndex visibleIndex = 0;
-    RecordIndex changeIndex = 0;
-    while (visibleIndex < currentVisibleRanks.size() || changeIndex < visibleRankChanges.size())
-    {
-        if (changeIndex == visibleRankChanges.size() ||
-            (visibleIndex < currentVisibleRanks.size() &&
-             currentVisibleRanks[visibleIndex] < visibleRankChanges[changeIndex].rank))
-        {
-            visibleRankMerge.push_back(currentVisibleRanks[visibleIndex++]);
-            continue;
-        }
-
-        const auto &change = visibleRankChanges[changeIndex++];
-        if (visibleIndex < currentVisibleRanks.size() && currentVisibleRanks[visibleIndex] == change.rank)
-            ++visibleIndex;
-        if (change.visible)
-            visibleRankMerge.push_back(change.rank);
-    }
-
-    const RecordIndex processed = currentVisibleRanks.size() + visibleRankChanges.size();
-    currentVisibleRanks.swap(visibleRankMerge);
-    visibleRankMerge.clear();
-    visibleRankChanges.clear();
-    PLATFORMATOR_RENDER_CULLING_ADD(renderCullingOrderWork, processed);
+    if (!deltaMembershipChanged)
+        return false;
+    ++visibleMembershipRevision_;
+    deltaMembershipChanged = false;
+    return true;
 }
 
 void RenderCullingState::setPreparedKeys(const SpriteRenderProjectionKey &projection,
@@ -840,10 +926,7 @@ void RenderCullingState::publishCapacityObservation() const
     const RecordIndex positionBytes = boundedBytes(dirtyQueuePosition.capacity(), sizeof(RecordIndex));
     const RecordIndex visibleBytes = boundedBytes(currentVisibleRanks.capacity(), sizeof(RecordIndex));
     const RecordIndex visibleMergeBytes = boundedBytes(visibleRankMerge.capacity(), sizeof(RecordIndex));
-    const RecordIndex visibleChangesBytes =
-        boundedBytes(visibleRankChanges.capacity(), sizeof(VisibleRankChange));
-    for (const RecordIndex amount : {queueBytes, positionBytes, visibleBytes, visibleMergeBytes,
-                                     visibleChangesBytes})
+    for (const RecordIndex amount : {queueBytes, positionBytes, visibleBytes, visibleMergeBytes})
     {
         if (amount > std::numeric_limits<RecordIndex>::max() - bytes)
         {
@@ -854,25 +937,29 @@ void RenderCullingState::publishCapacityObservation() const
     }
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedRecords, records.size());
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedRecordCapacity, records.capacity());
+    RecordIndex gridBytes = 0;
     if (spatialIndex)
     {
         const auto &grid = *spatialIndex;
-        const auto addBytes = [&](RecordIndex amount) {
-            if (amount > std::numeric_limits<RecordIndex>::max() - bytes)
-                bytes = std::numeric_limits<RecordIndex>::max();
+        const auto addBytes = [&](RecordIndex &target, RecordIndex amount) {
+            if (amount > std::numeric_limits<RecordIndex>::max() - target)
+                target = std::numeric_limits<RecordIndex>::max();
             else
-                bytes += amount;
+                target += amount;
         };
-        addBytes(boundedBytes(grid.links.capacity(), sizeof(SpatialIndex::Link)));
-        addBytes(boundedBytes(grid.freeLinks.capacity(), sizeof(RecordIndex)));
-        addBytes(boundedBytes(grid.sideList.capacity(), sizeof(RecordIndex)));
-        addBytes(boundedBytes(grid.candidates.capacity(), sizeof(RecordIndex)));
-        addBytes(boundedBytes(grid.freeCellNodes.capacity(), sizeof(SpatialIndex::CellMap::node_type)));
-        addBytes(boundedBytes(grid.nodeSupply,
-                              sizeof(SpatialIndex::CellMap::value_type) + 2 * sizeof(void *)));
+        addBytes(gridBytes, boundedBytes(grid.links.capacity(), sizeof(SpatialIndex::Link)));
+        addBytes(gridBytes, boundedBytes(grid.freeLinks.capacity(), sizeof(RecordIndex)));
+        addBytes(gridBytes, boundedBytes(grid.records.capacity(), sizeof(SpatialIndex::SpatialRecord)));
+        addBytes(gridBytes, boundedBytes(grid.sideList.capacity(), sizeof(RecordIndex)));
+        addBytes(gridBytes, boundedBytes(grid.candidates.capacity(), sizeof(RecordIndex)));
+        addBytes(gridBytes, boundedBytes(grid.freeCellNodes.capacity(), sizeof(SpatialIndex::CellMap::node_type)));
+        addBytes(gridBytes, boundedBytes(grid.nodeSupply,
+                                         sizeof(SpatialIndex::CellMap::value_type) + 2 * sizeof(void *)));
         if (grid.nodeSupply != 0 || !grid.cells.empty())
-            addBytes(boundedBytes(grid.cells.bucket_count(), sizeof(void *)));
+            addBytes(gridBytes, boundedBytes(grid.cells.bucket_count(), sizeof(void *)));
+        addBytes(bytes, gridBytes);
     }
+    PLATFORMATOR_RENDER_CULLING_SET(renderCullingGridOwnedBytes, gridBytes);
     PLATFORMATOR_RENDER_CULLING_SET(renderCullingOwnedBytes, bytes);
     updateSpatialCapacityObservation();
 #endif

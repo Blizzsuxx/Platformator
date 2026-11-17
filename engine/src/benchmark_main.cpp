@@ -11,6 +11,7 @@
 #include <oneapi/tbb/global_control.h>
 #include <unordered_map>
 #include "runtimeaccess.h"
+#include "sdlwindow.h"
 #include "physicsmanager.h"
 
 #include "benchmark.h"
@@ -210,15 +211,29 @@ struct BenchmarkRunnerOptions
     int contactPairCount = 100, scriptedEndpoints = 2;
 };
 
-nlohmann::json renderCullingMetadata(const BenchmarkRunnerOptions &options)
+nlohmann::json renderCullingMetadata(const BenchmarkRunnerOptions &options, const SDLWindow *window = nullptr,
+                                     const SDLWindow::RenderFallbackCounts &observedFallbacks = {})
 {
-    const bool requested = options.runtimeOptions.windowSettings.enableRenderCulling;
-    const bool rendering = options.renderFrames && !options.runtimeOptions.windowSettings.headless;
-    return {{"requested_mode", requested ? "linear" : "disabled"},
-            {"requested_enabled", requested},
-            {"effective_policy", !rendering ? "headless-no-rendering"
-                                             : requested ? "linear-filtering" : "submit-all"},
-            {"effective_enabled", rendering && requested}};
+    const auto policy = window != nullptr
+                            ? window->getRenderCullingPolicy()
+                            : SDLWindow::resolveRenderCullingPolicy(options.runtimeOptions.windowSettings);
+    const bool rendering = options.renderFrames && !policy.headless;
+    const char *selectorName = SDLWindow::renderCullingModeName(policy.requestedMode);
+    const char *startupStrategy =
+        !rendering ? "headless-no-rendering"
+                   : (!policy.cullingEnabled ? "submit-all" : SDLWindow::renderCullingModeName(policy.effectiveMode));
+    return {{"requested_selector", selectorName},
+            {"resolved_startup_strategy", startupStrategy},
+            {"requested_mode", policy.cullingEnabled ? selectorName : "disabled"},
+            {"requested_enabled", policy.cullingEnabled},
+            {"headless", !rendering},
+            {"disabled", !policy.cullingEnabled},
+            {"effective_policy", startupStrategy},
+            {"effective_enabled", rendering && policy.cullingEnabled},
+            {"observed_mapping_fallbacks", observedFallbacks.mappingFallbacks},
+            {"observed_numeric_fallbacks", observedFallbacks.numericFallbacks},
+            {"observed_frame_fallbacks",
+             observedFallbacks.mappingFallbacks + observedFallbacks.numericFallbacks}};
 }
 
 BenchmarkScenario parseScenario(const std::string &value)
@@ -1653,6 +1668,10 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
             break;
         }
     const auto initial = validatePhysicalState(runtime, options, false, warmup != 0);
+    const auto *window = platformator_detail::RuntimeAccess::window();
+    const auto fallbacksBeforeMeasured = window != nullptr
+                                             ? window->getObservedRenderFallbackCounts()
+                                             : SDLWindow::RenderFallbackCounts{};
     auto &recorder = platformator_detail::BenchmarkRecorder::getInstance();
     recorder.configure(options.measureFrameCount,
                        {{"scenario", scenarioName(options.scenario)},
@@ -1664,7 +1683,7 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                         {"repetitions", options.repetitions},
                         {"repetition_index", options.runIndex},
                         {"rendering", options.renderFrames},
-                        {"linear_render_culling", renderCullingMetadata(options)},
+                        {"linear_render_culling", renderCullingMetadata(options, window)},
                         {"validation_mode", options.validateInvariants ? "per-step" : "boundary-only"},
                         {"timing_eligible", !options.validateInvariants},
                         {"asset_root", runtime.getAssetRoot().string()},
@@ -1672,6 +1691,12 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                         {"initial_state", initial}});
     for (int i = 0; running && i < options.measureFrameCount; ++i)
         running = step();
+    const auto fallbacksAfterMeasured = window != nullptr
+                                            ? window->getObservedRenderFallbackCounts()
+                                            : SDLWindow::RenderFallbackCounts{};
+    const SDLWindow::RenderFallbackCounts observedFallbacks{
+        fallbacksAfterMeasured.mappingFallbacks - fallbacksBeforeMeasured.mappingFallbacks,
+        fallbacksAfterMeasured.numericFallbacks - fallbacksBeforeMeasured.numericFallbacks};
     const auto final = validatePhysicalState(runtime, options, options.validateInvariants);
     for (const auto &sample : recorder.samples())
         if (options.scenario != BenchmarkScenario::None &&
@@ -1683,7 +1708,9 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                 .back()
                 .counters[static_cast<size_t>(platformator_detail::BenchmarkCounterId::ActiveCollisionCount)] == 0)
         throw std::runtime_error("Narrow-phase workload produced no accepted contacts");
-    recorder.updateMetadata({{"physical_invariants", final}, {"stopped_on_quit", !running}});
+    recorder.updateMetadata({{"linear_render_culling", renderCullingMetadata(options, window, observedFallbacks)},
+                             {"physical_invariants", final},
+                             {"stopped_on_quit", !running}});
     if (!options.csvOutputPath.empty())
         recorder.writeOutputs(options.csvOutputPath);
     recorder.printSummary();

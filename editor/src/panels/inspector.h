@@ -175,7 +175,7 @@ class InspectorPanel
     bool behaviorRevealPending_ = false;
     struct IntegerDraft
     {
-        int value = 0;
+        std::int64_t value = 0;
         bool wasActive = false;
     };
     std::unordered_map<std::uint32_t, IntegerDraft> integerDrafts_;

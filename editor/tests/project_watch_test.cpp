@@ -26,8 +26,7 @@ void test_directory_exclusion_rules()
 {
     const std::vector<std::string_view> skippedDirs = {
         ".git", ".venv", ".agents", ".codex", ".specify", ".cache",
-        "bin", "build", "dist", "vendored", "vendor", "node_modules",
-        "specs", "benchmark", "diplomski", "paper", "docs"
+        "bin", "build", "dist", "vendored", "vendor", "node_modules"
     };
 
     for (const auto &dir : skippedDirs)

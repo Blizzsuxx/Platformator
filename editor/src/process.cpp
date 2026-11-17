@@ -2,6 +2,7 @@
 
 #include "behaviorcatalog.h"
 #include "process_internal.h"
+#include "project.h"
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
 #include "playsession.h"
 #if defined(_WIN32)
@@ -242,8 +243,46 @@ struct GamePipeline::Impl
         finish(PipelineOutcome::Failed, std::move(message), preserveCatalog);
     }
 
+    bool resolve_configured_target()
+    {
+        if (!request.resolveTargetAfterConfigure)
+            return true;
+        std::string error;
+        const auto targets = discover_build_directory_executables(
+            request.projectRoot, request.buildDirectory, error);
+        ProjectExecutableTarget selected;
+        if (!select_discovered_executable_target(
+                targets, request.identity.target, request.preferredTarget, selected, error))
+        {
+            fail(error);
+            return false;
+        }
+        if (request.executablePath.empty())
+            request.executablePath = selected.executablePath;
+        request.identity.target = selected.targetName;
+        request.identity.executablePath = path_to_utf8(request.executablePath);
+        currentIdentity.target = request.identity.target;
+        currentIdentity.executablePath = request.identity.executablePath;
+        if (std::find(request.buildArgv.begin(), request.buildArgv.end(), "--target") ==
+            request.buildArgv.end())
+        {
+            request.buildArgv.emplace_back("--target");
+            request.buildArgv.push_back(selected.targetName);
+        }
+        return true;
+    }
+
     void start_build()
     {
+#if PLATFORMATOR_ENABLE_EDITOR_SESSION
+        if (request.embeddedGameView && playSession.state() == PlaySessionState::Configuring &&
+            !playSession.begin_building(request.identity.target))
+        {
+            const auto message = playSession.last_error();
+            fail(message.empty() ? "play session could not begin build" : message);
+            return;
+        }
+#endif
         enter(PipelineStage::Building);
         start_process(request.buildArgv, ProcessOutputMode::Merged);
     }
@@ -422,7 +461,8 @@ struct GamePipeline::Impl
         switch (status.stage)
         {
         case PipelineStage::Configuring:
-            start_build();
+            if (resolve_configured_target())
+                start_build();
             break;
         case PipelineStage::Building:
             if (request.buildOnly)
@@ -463,11 +503,24 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
         return false;
     impl.console.clear();
     if (request.projectRoot.empty() || request.assetRoot.empty() ||
-        request.buildArgv.empty() || request.executablePath.empty())
+        request.buildArgv.empty() ||
+        (!request.resolveTargetAfterConfigure && request.executablePath.empty()) ||
+        (request.resolveTargetAfterConfigure &&
+         (request.buildDirectory.empty() || request.configureArgv.empty())))
     {
         impl.status = PipelineStatus{PipelineStage::Idle, PipelineOutcome::Failed, generation,
                                      "pipeline request is missing a root or command", {}};
         return false;
+    }
+    if (request.resolveTargetAfterConfigure)
+    {
+        std::string queryError;
+        if (!ensure_cmake_file_api_query(request.projectRoot, request.buildDirectory, queryError))
+        {
+            impl.status = PipelineStatus{PipelineStage::Idle, PipelineOutcome::Failed, generation,
+                                         std::move(queryError), {}};
+            return false;
+        }
     }
     if (!request.buildOnly && request.savedScenePath.empty())
     {
@@ -504,7 +557,7 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
     impl.status = PipelineStatus{};
     impl.status.generation = generation;
     impl.status.workingDirectory = impl.request.projectRoot;
-    impl.active = true;
+    impl.active = false;
     impl.stopRequested = false;
     impl.identityInvalidated = false;
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
@@ -513,8 +566,9 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
         const auto &identity = *impl.request.sceneDocumentIdentity;
         PlaySessionLaunchIdentity launchIdentity{identity, impl.request.sceneSavedHistoryToken,
             impl.request.sceneSavedFileIdentity, impl.request.identity};
-        if (!impl.playSession.begin_configuring(std::move(launchIdentity)) ||
-            !impl.playSession.begin_building())
+        if (!impl.playSession.begin_configuring(
+                std::move(launchIdentity), {}, impl.request.resolveTargetAfterConfigure) ||
+            (impl.request.configureArgv.empty() && !impl.playSession.begin_building()))
         {
             impl.status = PipelineStatus{PipelineStage::Idle, PipelineOutcome::Failed, generation,
                 impl.playSession.last_error().empty()
@@ -525,6 +579,7 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
         impl.mirroredSessionStderr.clear();
     }
 #endif
+    impl.active = true;
     if (impl.request.configureArgv.empty())
     {
         impl.enter(PipelineStage::Building);
@@ -632,6 +687,11 @@ void GamePipeline::update_identity(PipelineIdentity identity)
 const PipelineStatus &GamePipeline::status() const noexcept
 {
     return impl_->status;
+}
+
+const PipelineIdentity &GamePipeline::current_identity() const noexcept
+{
+    return impl_->currentIdentity;
 }
 
 BoundedConsole &GamePipeline::console() noexcept

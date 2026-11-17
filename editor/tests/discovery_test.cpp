@@ -9,6 +9,7 @@
 #include "test_support.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cmath>
@@ -446,6 +447,55 @@ void run_settings_semantics_cases()
     require(snapshots.publish(SemanticSnapshot{HostLayoutId{1}, WindowHostGeneration{1},
                                                 1, std::move(busyNodes), {}}),
             "Project Settings semantic nodes must satisfy shared snapshot identity and parent checks");
+
+    panel.set_active_scene_path(temporary.path() / "assets" / "scenes" / "main.scene");
+    require(panel.dispatch_semantic_action(preferences, SemanticAction{
+        HostLayoutId{1}, WindowHostGeneration{1}, 1,
+        "main/panel/project_settings/launch_scene", "set_value", "assets/scenes/level1.scene"}) &&
+                preferences.launchScene == "assets/scenes/level1.scene",
+            "Project Settings semantic dispatch must allow choosing an explicit Launch Scene");
+    require(panel.dispatch_semantic_action(preferences, SemanticAction{
+        HostLayoutId{1}, WindowHostGeneration{1}, 1,
+        "main/panel/project_settings/launch_scene", "set_value", ""}) &&
+                preferences.launchScene.empty(),
+            "Project Settings semantic dispatch must allow returning Launch Scene to the active scene default");
+
+    // Verify both Build & Run and Layers & Physics render cleanly in ImGui without errors
+    // and that the collision matrix does not spawn a separate nested scrolling child window.
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(900.0f, 700.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    unsigned char *pixels = nullptr;
+    int fontW = 0;
+    int fontH = 0;
+    io.Fonts->AddFontDefault();
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &fontW, &fontH);
+    io.Fonts->SetTexID(static_cast<ImTextureID>(1));
+    LayerSettings layers;
+    bool layersModified = false;
+    bool layersDirty = false;
+    for (const auto category : {ProjectSettingsCategory::BuildAndRun,
+                                ProjectSettingsCategory::LayersAndPhysics})
+    {
+        panel.set_category(category);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f));
+        if (ImGui::Begin("Project Settings"))
+            (void)panel.draw(preferences, layers, false, false, layersModified, layersDirty);
+        ImGui::End();
+        ImGui::Render();
+    }
+    const ImGuiContext *ctx = ImGui::GetCurrentContext();
+    for (int idx = 0; idx < ctx->Windows.Size; ++idx)
+    {
+        const ImGuiWindow *win = ctx->Windows[idx];
+        require(std::string(win->Name).find("##collision_matrix") == std::string::npos,
+                "collision matrix must scroll inside ##project_settings_content rather than creating a separate scrollable child window");
+    }
+    ImGui::DestroyContext();
 }
 } // namespace
 

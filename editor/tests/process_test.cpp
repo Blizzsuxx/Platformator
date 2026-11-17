@@ -519,6 +519,77 @@ void test_bounded_console()
             "console must cap retained output at one MiB with an explicit truncation marker");
 }
 
+void test_pipeline_resolves_target_after_configure()
+{
+    TemporaryDirectory temporary;
+    const auto project = temporary.path() / "auto_project";
+    const auto assets = project / "assets";
+    const auto buildDir = project / "build" / "debug";
+    const auto replyDir = buildDir / ".cmake" / "api" / "v1" / "reply";
+    std::filesystem::create_directories(assets);
+    std::filesystem::create_directories(replyDir);
+    std::ofstream(replyDir / "index-1.json")
+        << R"({"reply":{"codemodel-v2":{"jsonFile":"codemodel-v2-1.json"}}})";
+    std::ofstream(replyDir / "codemodel-v2-1.json")
+        << R"({"configurations":[{"targets":[{"name":"auto_game","jsonFile":"target-auto_game.json"}]}]})";
+    std::ofstream(replyDir / "target-auto_game.json")
+        << R"({"type":"EXECUTABLE","artifacts":[{"path":"auto_game"}]})";
+
+    const std::filesystem::path fixture(PLATFORMATOR_EDITOR_PROCESS_FIXTURE);
+    PipelineRequest request;
+    request.projectRoot = std::filesystem::canonical(project);
+    request.assetRoot = std::filesystem::canonical(assets);
+    request.buildDirectory = std::filesystem::canonical(buildDir);
+    request.resolveTargetAfterConfigure = true;
+    request.buildOnly = true;
+    request.configureArgv = {fixture.string(), "args", "configure"};
+    request.buildArgv = {fixture.string(), "args", "build"};
+    request.identity = PipelineIdentity{request.projectRoot.string(), "debug", {}, {}, {}, "source-v1"};
+
+    GamePipeline pipeline;
+    BehaviorCatalog catalog;
+    require(pipeline.start(request, catalog, 501),
+            "pipeline must start with empty target/executable when resolveTargetAfterConfigure is enabled");
+    pump_until(pipeline);
+    require(pipeline.status().outcome == PipelineOutcome::Succeeded &&
+                std::filesystem::is_regular_file(
+                    buildDir / ".cmake" / "api" / "v1" / "query" / "client-platformator" / "codemodel-v2") &&
+                pipeline.current_identity().target == "auto_game" &&
+                pipeline.console().text().find("arg:--target\narg:auto_game\n") != std::string::npos,
+            "pipeline must queue File API query, resolve the single target after configure, and pass --target to build");
+
+    // Verify embedded Game view accepts resolveTargetAfterConfigure (empty initial target),
+    // and cleanly leaves !pipeline.busy() if begin_configuring rejects an incomplete identity.
+    PipelineRequest embeddedAuto = request;
+    embeddedAuto.buildOnly = false;
+    embeddedAuto.embeddedGameView = true;
+    embeddedAuto.savedScenePath = project / "assets" / "scenes" / "main.scene";
+    std::filesystem::create_directories(embeddedAuto.savedScenePath.parent_path());
+    std::ofstream(embeddedAuto.savedScenePath) << "[]\n";
+    embeddedAuto.scene = Json::array();
+    embeddedAuto.sceneDocumentIdentity = DocumentIdentity{ProjectGeneration{1}, TabId{1}, DocumentGeneration{1}};
+    embeddedAuto.sceneSavedFileIdentity = "saved-v1";
+    const CatalogIdentity autoCatalogId{embeddedAuto.projectRoot.string(), "debug", "", "source-v1"};
+    require(catalog.set_source_catalog(Json{{"schema_version", 1}, {"behaviors", Json::array()}}, autoCatalogId),
+            "deferred-target embedded pipeline needs a current source catalog");
+    GamePipeline embeddedPipeline;
+    require(embeddedPipeline.start(embeddedAuto, catalog, 502) && embeddedPipeline.busy() &&
+                embeddedPipeline.play_session() != nullptr,
+            "embedded Game view pipeline must start cleanly even before target discovery");
+    pump_until(embeddedPipeline);
+    require(embeddedPipeline.current_identity().target == "auto_game",
+            "embedded pipeline must resolve target after configure");
+
+    PipelineRequest invalidEmbedded = embeddedAuto;
+    invalidEmbedded.resolveTargetAfterConfigure = false;
+    invalidEmbedded.executablePath = fixture;
+    invalidEmbedded.identity.target.clear();
+    GamePipeline failedPipeline;
+    require(!failedPipeline.start(invalidEmbedded, catalog, 503) && !failedPipeline.busy() &&
+                failedPipeline.status().outcome == PipelineOutcome::Failed,
+            "failed PlaySession begin_configuring must return false and not leave pipeline busy");
+}
+
 void run_live_pipeline(const std::filesystem::path &projectRoot,
                        const std::filesystem::path &assetRoot,
                        const std::filesystem::path &scenePath,
@@ -616,6 +687,7 @@ int main(int argc, char **argv)
         test_pipeline_rejects_stale_catalog_before_launch();
         test_custom_entry_boundary_and_false_protocol_declaration();
         test_bounded_console();
+        test_pipeline_resolves_target_after_configure();
     }
     catch (const std::exception &error)
     {

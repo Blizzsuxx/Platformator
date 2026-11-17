@@ -1,0 +1,26 @@
+[
+  {
+    "active": true,
+    "children": [],
+    "components": [
+      {
+        "height": 480.0,
+        "id": 1001,
+        "type": 2,
+        "width": 640.0
+      }
+    ],
+    "id": 101,
+    "name": "MainCamera",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "MainCamera"
+  }
+]

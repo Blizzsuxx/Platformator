@@ -20,13 +20,15 @@ constexpr std::size_t ReservedControlBytes = 16U * 1024U;
 constexpr std::size_t FrameSlotPayloadBytes = 640U * 360U * 4U;
 constexpr std::size_t FrameSlotStride = 640U * 4U;
 
-bool valid_document_identity(const PlaySessionLaunchIdentity &identity) noexcept
+bool valid_document_identity(const PlaySessionLaunchIdentity &identity,
+                             bool allowDeferredTarget) noexcept
 {
     return static_cast<bool>(identity.document.projectGeneration) &&
            static_cast<bool>(identity.document.tabId) &&
            static_cast<bool>(identity.document.documentGeneration) &&
            !identity.savedFileIdentity.empty() &&
-           !identity.pipeline.canonicalProjectPath.empty() && !identity.pipeline.target.empty() &&
+           !identity.pipeline.canonicalProjectPath.empty() &&
+           (allowDeferredTarget || !identity.pipeline.target.empty()) &&
            !identity.pipeline.sourceInputIdentity.empty();
 }
 
@@ -49,14 +51,15 @@ bool known_event(std::string_view type) noexcept
 
 PlaySession::PlaySession() = default;
 
-bool PlaySession::begin_configuring(PlaySessionLaunchIdentity identity, std::string nonce)
+bool PlaySession::begin_configuring(PlaySessionLaunchIdentity identity, std::string nonce,
+                                    bool allowDeferredTarget)
 {
     if (state_ != PlaySessionState::Idle && state_ != PlaySessionState::Failed)
     {
         lastError_ = "a play session is already active";
         return false;
     }
-    if (!valid_document_identity(identity))
+    if (!valid_document_identity(identity, allowDeferredTarget))
     {
         lastError_ = "play launch identity is incomplete or unsaved";
         return false;
@@ -95,10 +98,17 @@ bool PlaySession::begin_configuring(PlaySessionLaunchIdentity identity, std::str
     return true;
 }
 
-bool PlaySession::begin_building()
+bool PlaySession::begin_building(std::string resolvedTarget)
 {
     if (state_ != PlaySessionState::Configuring)
         return false;
+    if (!resolvedTarget.empty() && launchIdentity_ && launchIdentity_->pipeline.target.empty())
+        launchIdentity_->pipeline.target = std::move(resolvedTarget);
+    if (!launchIdentity_ || launchIdentity_->pipeline.target.empty())
+    {
+        lastError_ = "play launch identity is incomplete or missing a build target";
+        return false;
+    }
     state_ = PlaySessionState::Building;
     return true;
 }

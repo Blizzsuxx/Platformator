@@ -189,6 +189,7 @@ void load_run_preferences(const Json &source, RunPreferences &run,
         set_recovered(result, "invalid run preferences were reset");
         return;
     }
+    read_string(*found, "launchScene", run.launchScene, result);
     read_string(*found, "configurePreset", run.configurePreset, result);
     read_string(*found, "buildPreset", run.buildPreset, result);
     read_string(*found, "target", run.target, result);
@@ -595,7 +596,8 @@ Json serialize_preferences(const WorkspacePreferences &preferences, std::string_
     Json resourceLimits = Json::object();
     for (const auto &[name, value] : preferences.resourceLimits)
         resourceLimits[name] = value;
-    Json run = {{"configurePreset", preferences.run.configurePreset},
+    Json run = {{"launchScene", preferences.run.launchScene},
+                {"configurePreset", preferences.run.configurePreset},
                 {"buildPreset", preferences.run.buildPreset},
                 {"target", preferences.run.target},
                 {"executable", preferences.run.executable},
@@ -1090,77 +1092,16 @@ WorkspacePreferencesLoadResult load_workspace_preferences(const std::filesystem:
     return result;
 }
 
-void apply_known_bundled_run_defaults(WorkspacePreferences &preferences,
-                                     const std::filesystem::path &projectRoot)
+void apply_known_bundled_run_defaults(WorkspacePreferences & /*preferences*/,
+                                     const std::filesystem::path & /*projectRoot*/)
 {
-    std::error_code error;
-    const auto root = std::filesystem::canonical(projectRoot, error);
-    if (error || !std::filesystem::is_directory(root))
-        return;
-
-    const bool platformatorSourceRoot =
-        std::filesystem::is_regular_file(root / "engine" / "src" / "runner.cpp") &&
-        std::filesystem::is_regular_file(root / "engine" / "include" / "platformator" / "scriptregistration.h") &&
-        std::filesystem::is_regular_file(root / "examples" / "mario" / "CMakeLists.txt");
-    if (platformatorSourceRoot &&
-        (preferences.run.target.empty() || preferences.run.target == "main"))
-    {
-        preferences.run.target = "main";
-        if (preferences.run.buildPreset.empty())
-            preferences.run.buildPreset = preferences.run.production ? "default" : "debug";
-        if (preferences.run.configurePreset.empty())
-            preferences.run.configurePreset = preferences.run.buildPreset;
-        if (preferences.run.executable.empty())
-            preferences.run.executable = "build/" + preferences.run.buildPreset + "/main";
-        return;
-    }
-
-    const bool marioExampleRoot = root.filename() == "mario" &&
-        std::filesystem::is_regular_file(root / "main.cpp") &&
-        std::filesystem::is_regular_file(root / "assets" / "behaviors" / "mario_camera_rig.cpp") &&
-        std::filesystem::is_regular_file(root / "CMakeLists.txt");
-    if (marioExampleRoot &&
-        (preferences.run.target.empty() || preferences.run.target == "mario_example"))
-    {
-        preferences.run.target = "mario_example";
-        preferences.run.configurePreset.clear();
-        preferences.run.buildPreset.clear();
-        if (preferences.run.executable.empty())
-            preferences.run.executable = "build/editor-game/mario_example";
-    }
+    // Leave Advanced build/run overrides empty by default; CMake discovery
+    // resolves the active preset, target, and executable automatically.
 }
 
 void apply_generated_project_run_defaults(WorkspacePreferences &preferences,
                                           const std::filesystem::path &projectRoot)
 {
-    std::string generatedTarget = projectRoot.filename().string();
-    std::string sanitizedTarget;
-    for (const char character : generatedTarget)
-    {
-        const unsigned char value = static_cast<unsigned char>(character);
-        if (std::isalnum(value) != 0 || character == '_')
-            sanitizedTarget.push_back(character);
-        else if (character == '-' || character == ' ')
-            sanitizedTarget.push_back('_');
-    }
-    generatedTarget = std::move(sanitizedTarget);
-    if (generatedTarget.empty() ||
-        std::isdigit(static_cast<unsigned char>(generatedTarget.front())) != 0)
-        generatedTarget.insert(generatedTarget.begin(), 'p');
-    if (preferences.run.target.empty())
-        preferences.run.target = generatedTarget;
-    if (preferences.run.executable.empty())
-    {
-        const std::string executableTarget = preferences.run.target.empty()
-            ? generatedTarget : preferences.run.target;
-        std::filesystem::path executable =
-            std::filesystem::path("build") / "debug" / executableTarget;
-#if defined(_WIN32)
-        executable += ".exe";
-#endif
-        preferences.run.executable = executable.generic_string();
-    }
-
     if (!preferences.recentScene)
     {
         const auto scenesDirectory = projectRoot / "assets" / "scenes";

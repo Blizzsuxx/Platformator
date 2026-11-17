@@ -372,6 +372,24 @@ const DocumentTab *DocumentManager::find(TabId id) const noexcept
     return found == tabs_.end() ? nullptr : found->get();
 }
 
+DocumentTab *DocumentManager::find_scene_tab(const std::filesystem::path &path) noexcept
+{
+    std::error_code ec;
+    const auto targetCanonical = std::filesystem::weakly_canonical(path, ec);
+    const auto normalizedTarget = ec ? path.lexically_normal() : targetCanonical;
+    for (const auto &tab : tabs_)
+    {
+        if (tab->kind() != DocumentTabKind::Scene || !tab->workspace().document().sourcePath)
+            continue;
+        std::error_code tabEc;
+        const auto tabCanonical = std::filesystem::weakly_canonical(*tab->workspace().document().sourcePath, tabEc);
+        const auto normalizedTab = tabEc ? tab->workspace().document().sourcePath->lexically_normal() : tabCanonical;
+        if (normalizedTab == normalizedTarget)
+            return tab.get();
+    }
+    return nullptr;
+}
+
 std::vector<TabId> DocumentManager::tab_ids() const
 {
     std::vector<TabId> result;
@@ -504,27 +522,38 @@ std::optional<DocumentSourceOwner> DocumentManager::source_owner_for_destination
     return std::nullopt;
 }
 
-std::optional<SceneLaunchSnapshot> DocumentManager::capture_active_scene_launch_snapshot() const
+std::string format_saved_file_identity(const std::filesystem::path &path,
+                                       const std::optional<FileIdentity> &fileIdentity)
 {
-    const auto *tab = active_tab();
-    if (tab == nullptr || tab->kind() != DocumentTabKind::Scene)
-        return std::nullopt;
-    const auto &document = tab->workspace().document();
-    if (!document.sourcePath)
-        return std::nullopt;
-    std::string savedFileIdentity = document.sourcePath->lexically_normal().generic_string();
-    if (document.sourceIdentity)
+    std::string savedFileIdentity = path.lexically_normal().generic_string();
+    if (fileIdentity)
     {
-        const auto &identity = *document.sourceIdentity;
+        const auto &identity = *fileIdentity;
         savedFileIdentity += ":" + std::to_string(identity.device) + ":" +
             std::to_string(identity.inode) + ":" + std::to_string(identity.size) + ":" +
             std::to_string(identity.mode) + ":" +
             std::to_string(identity.modificationTimeNanoseconds) + ":" +
             std::to_string(identity.changeTimeNanoseconds);
     }
+    return savedFileIdentity;
+}
+
+std::optional<SceneLaunchSnapshot> DocumentManager::capture_scene_launch_snapshot(TabId id) const
+{
+    const auto *tab = find(id);
+    if (tab == nullptr || tab->kind() != DocumentTabKind::Scene)
+        return std::nullopt;
+    const auto &document = tab->workspace().document();
+    if (!document.sourcePath)
+        return std::nullopt;
     return SceneLaunchSnapshot{tab->identity(), *document.sourcePath, document.root,
                                tab->history().history_status().savedToken,
-                               std::move(savedFileIdentity)};
+                               format_saved_file_identity(*document.sourcePath, document.sourceIdentity)};
+}
+
+std::optional<SceneLaunchSnapshot> DocumentManager::capture_active_scene_launch_snapshot() const
+{
+    return capture_scene_launch_snapshot(activeTab_);
 }
 
 TabId DocumentManager::create_scene_tab()

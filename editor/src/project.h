@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -53,6 +55,9 @@ struct ProjectRunDiscovery
     std::vector<std::string> configurePresets;
     std::vector<std::string> buildPresets;
     std::vector<ProjectExecutableTarget> executableTargets;
+    std::vector<std::string> scenePaths;
+    std::map<std::string, std::filesystem::path> configurePresetBinaryDirs;
+    std::map<std::string, std::string> buildPresetConfigurePresets;
     std::string status;
     bool truncated = false;
 };
@@ -91,6 +96,19 @@ ProjectScaffoldResult generate_project_cmakelists(
 // it never runs CMake or creates a build directory.
 ProjectRunDiscovery discover_project_run_options(const std::filesystem::path &projectRoot,
                                                  bool requestFileApiQuery = false);
+std::string default_project_target_name(const std::filesystem::path &projectRoot);
+bool ensure_cmake_file_api_query(const std::filesystem::path &projectRoot,
+                                 const std::filesystem::path &buildDirectory,
+                                 std::string &errorMessage);
+std::vector<ProjectExecutableTarget> discover_build_directory_executables(
+    const std::filesystem::path &projectRoot,
+    const std::filesystem::path &buildDirectory,
+    std::string &errorMessage);
+bool select_discovered_executable_target(const std::vector<ProjectExecutableTarget> &targets,
+                                         std::string_view requestedTarget,
+                                         std::string_view preferredTarget,
+                                         ProjectExecutableTarget &selected,
+                                         std::string &errorMessage);
 
 class ProjectContext
 {

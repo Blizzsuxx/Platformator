@@ -56,8 +56,9 @@ class PlaySession
     PlaySession(const PlaySession &) = delete;
     PlaySession &operator=(const PlaySession &) = delete;
 
-    bool begin_configuring(PlaySessionLaunchIdentity identity, std::string nonce = {});
-    bool begin_building();
+    bool begin_configuring(PlaySessionLaunchIdentity identity, std::string nonce = {},
+                           bool allowDeferredTarget = false);
+    bool begin_building(std::string resolvedTarget = {});
     bool finalize_pipeline_identity(PipelineIdentity identity);
     bool begin_starting(std::unique_ptr<SessionChannelPair> channels,
                         platformator::editor_session::SessionCapabilities initialCapabilities = {});

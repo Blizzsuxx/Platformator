@@ -13,7 +13,7 @@ namespace platformator_editor
 {
 namespace
 {
-bool input_text_string(const char *label, std::string &value,
+bool input_text_string(const char *label, const char *hint, std::string &value,
                        std::map<std::string, std::string> &drafts,
                        std::map<std::string, std::string> &committed,
                        std::string &focusedControl)
@@ -28,7 +28,7 @@ bool input_text_string(const char *label, std::string &value,
 
     std::array<char, 512> buffer{};
     std::snprintf(buffer.data(), buffer.size(), "%s", draft.c_str());
-    const bool changed = ImGui::InputText(label, buffer.data(), buffer.size());
+    const bool changed = ImGui::InputTextWithHint(label, hint, buffer.data(), buffer.size());
     if (ImGui::IsItemActive())
         focusedControl = label;
     if (changed)
@@ -62,6 +62,32 @@ void set_overlay(RunPreferences &preferences, std::string_view name, bool enable
         preferences.overlays.emplace_back(name);
     else if (!enabled && it != preferences.overlays.end())
         preferences.overlays.erase(it);
+}
+
+std::string display_scene_label(const std::filesystem::path &projectRoot,
+                                const std::filesystem::path &scenePath)
+{
+    if (scenePath.empty())
+        return {};
+    std::error_code ec;
+    if (!projectRoot.empty())
+    {
+        const auto relative = scenePath.lexically_relative(projectRoot);
+        if (!relative.empty() && !relative.is_absolute() && *relative.begin() != "..")
+            return relative.generic_string();
+    }
+    const auto canonical = std::filesystem::weakly_canonical(scenePath, ec);
+    if (!ec && !projectRoot.empty())
+    {
+        const auto canonicalProject = std::filesystem::weakly_canonical(projectRoot, ec);
+        if (!ec)
+        {
+            const auto relative = canonical.lexically_relative(canonicalProject);
+            if (!relative.empty() && !relative.is_absolute() && *relative.begin() != "..")
+                return relative.generic_string();
+        }
+    }
+    return scenePath.generic_string();
 }
 } // namespace
 
@@ -131,7 +157,16 @@ ProjectSettingsAction ProjectSettingsPanel::draw(RunPreferences &preferences,
 
     ImGui::SameLine();
 
-    ImGui::BeginChild("##project_settings_content", ImVec2(0.0f, 0.0f), false);
+    const bool showLayerFooter = category_ == ProjectSettingsCategory::LayersAndPhysics &&
+        layerDraftDirty_;
+    const float footerHeight = showLayerFooter
+        ? (ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y * 2.0f + 2.0f)
+        : 0.0f;
+    ImGui::BeginGroup();
+    const ImGuiWindowFlags contentFlags = category_ == ProjectSettingsCategory::LayersAndPhysics
+        ? ImGuiWindowFlags_HorizontalScrollbar
+        : ImGuiWindowFlags_None;
+    ImGui::BeginChild("##project_settings_content", ImVec2(0.0f, -footerHeight), false, contentFlags);
     if (category_ == ProjectSettingsCategory::BuildAndRun)
         draw_build_and_run(preferences, missingCmake, busy, action);
     else
@@ -142,6 +177,17 @@ ProjectSettingsAction ProjectSettingsPanel::draw(RunPreferences &preferences,
         layerDraftDirty_ = layerDraft_ != layers;
     layersDirty = layerDraftDirty_;
 
+    if (category_ == ProjectSettingsCategory::LayersAndPhysics && layerDraftDirty_)
+    {
+        ImGui::Separator();
+        if (ImGui::Button("Save Layer Settings"))
+            action = ProjectSettingsAction::SaveLayerDraft;
+        ImGui::SameLine();
+        if (ImGui::Button("Discard Layer Changes"))
+            action = ProjectSettingsAction::DiscardLayerDraft;
+    }
+    ImGui::EndGroup();
+
     return action;
 }
 
@@ -150,8 +196,6 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
                                               bool busy,
                                               ProjectSettingsAction &action)
 {
-    ImGui::Separator();
-
     if (missingCmake)
     {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
@@ -168,6 +212,7 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
         const auto &enginePath = *enginePathStatus_;
         const bool pathNeedsRepair = enginePath.hasSourceDirectoryDirective &&
             !enginePath.sourceDirectoryAvailable;
+        bool drewManifestBanner = false;
         if (pathNeedsRepair)
         {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.52f, 1.0f));
@@ -177,14 +222,18 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
             if (ImGui::Button("Relink Platformator Engine Path"))
                 action = ProjectSettingsAction::RepairEnginePath;
             ImGui::EndDisabled();
+            drewManifestBanner = true;
         }
         if (enginePath.cmakeExists &&
             (!enginePath.hasSourceDirectoryDirective || !enginePath.sourceDirectoryEditable || pathNeedsRepair))
         {
+            if (pathNeedsRepair)
+                ImGui::SameLine();
             ImGui::BeginDisabled(busy);
             if (ImGui::Button("Regenerate CMakeLists.txt..."))
                 regenerateConfirmationRequested_ = true;
             ImGui::EndDisabled();
+            drewManifestBanner = true;
         }
         if (regenerateConfirmationRequested_)
         {
@@ -207,15 +256,41 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
-        if (pathNeedsRepair || !enginePath.hasSourceDirectoryDirective)
+        if (drewManifestBanner)
             ImGui::Separator();
     }
 
     ImGui::BeginDisabled(busy);
+    ImGui::TextDisabled("Launch & Build");
     int mode = preferences.embeddedGameView ? 0 : 1;
     const char *modes[] = {"Embedded Game View", "External Game Window"};
     if (ImGui::Combo("Launch Mode", &mode, modes, 2))
         preferences.embeddedGameView = (mode == 0);
+    {
+        const std::string activeLabel = activeScenePath_
+            ? display_scene_label(projectRoot_, *activeScenePath_)
+            : std::string{};
+        const std::string activeOption = activeLabel.empty()
+            ? std::string("Active Scene (unsaved)")
+            : ("Active Scene (" + activeLabel + ")");
+        const std::string &scenePreview = preferences.launchScene.empty()
+            ? activeOption
+            : preferences.launchScene;
+        if (ImGui::BeginCombo("Launch Scene", scenePreview.c_str()))
+        {
+            if (ImGui::Selectable(activeOption.c_str(), preferences.launchScene.empty()))
+                preferences.launchScene.clear();
+            for (const auto &scenePath : discovery_.scenePaths)
+            {
+                if (ImGui::Selectable(scenePath.c_str(), preferences.launchScene == scenePath))
+                    preferences.launchScene = scenePath;
+            }
+            ImGui::EndCombo();
+        }
+    }
+    ImGui::Checkbox("Production Build", &preferences.production);
+    if (preferences.production)
+        ImGui::TextDisabled("Release build: debug tools, overlays, and start-paused are disabled.");
 
     if (!discovery_.configurePresets.empty())
     {
@@ -255,7 +330,7 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
 
     if (!discovery_.executableTargets.empty())
     {
-        std::string preview = "(Select target)";
+        std::string preview = preferences.target.empty() ? "(Automatic)" : preferences.target;
         for (const auto &entry : discovery_.executableTargets)
         {
             if (entry.targetName == preferences.target)
@@ -266,6 +341,11 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
         }
         if (ImGui::BeginCombo("Game Target", preview.c_str()))
         {
+            if (ImGui::Selectable("(Automatic)", preferences.target.empty()))
+            {
+                preferences.target.clear();
+                preferences.executable.clear();
+            }
             for (const auto &entry : discovery_.executableTargets)
             {
                 if (ImGui::Selectable(entry.targetName.c_str(), preferences.target == entry.targetName))
@@ -280,6 +360,8 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
 
     ImGui::Separator();
     ImGui::TextDisabled("Game Window");
+    if (preferences.embeddedGameView)
+        ImGui::TextDisabled("Applies to External Game Window mode.");
     ImGui::BeginDisabled(preferences.embeddedGameView);
     int dimensions[2] = {preferences.width, preferences.height};
     if (ImGui::InputInt2("Window Size", dimensions))
@@ -293,10 +375,11 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
     ImGui::SameLine();
     ImGui::Checkbox("Preserve Aspect", &preferences.preserveAspect);
     ImGui::EndDisabled();
-    ImGui::Checkbox("Start Paused", &preferences.startPaused);
 
     ImGui::Separator();
     ImGui::TextDisabled("Debug Overlays");
+    ImGui::BeginDisabled(preferences.production);
+    ImGui::Checkbox("Start Paused", &preferences.startPaused);
     bool colliders = has_overlay(preferences, "colliders");
     if (ImGui::Checkbox("Colliders", &colliders))
         set_overlay(preferences, "colliders", colliders);
@@ -308,24 +391,35 @@ void ProjectSettingsPanel::draw_build_and_run(RunPreferences &preferences,
     bool contactNormals = has_overlay(preferences, "contact-normals");
     if (ImGui::Checkbox("Contact Normals", &contactNormals))
         set_overlay(preferences, "contact-normals", contactNormals);
+    ImGui::EndDisabled();
 
     if (ImGui::CollapsingHeader("Advanced"))
     {
-        input_text_string("Configure Preset Override", preferences.configurePreset,
+        input_text_string("Configure Preset Override", "(automatic)", preferences.configurePreset,
                           textDrafts_, committedText_, focusedControl_);
-        input_text_string("Build Preset Override", preferences.buildPreset,
+        input_text_string("Build Preset Override", "(automatic)", preferences.buildPreset,
                           textDrafts_, committedText_, focusedControl_);
-        input_text_string("CMake Target Override", preferences.target,
+        input_text_string("CMake Target Override", "(automatic)", preferences.target,
                           textDrafts_, committedText_, focusedControl_);
-        input_text_string("Executable Path", preferences.executable,
+        input_text_string("Executable Path", "(automatic)", preferences.executable,
                           textDrafts_, committedText_, focusedControl_);
         ImGui::SameLine();
         if (ImGui::Button("Browse..."))
             action = ProjectSettingsAction::BrowseExecutable;
-        ImGui::Checkbox("Production Build", &preferences.production);
+        const bool anyOverrideSet = !preferences.configurePreset.empty() ||
+            !preferences.buildPreset.empty() || !preferences.target.empty() ||
+            !preferences.executable.empty();
+        ImGui::BeginDisabled(!anyOverrideSet);
+        if (ImGui::Button("Reset Overrides"))
+        {
+            preferences.configurePreset.clear();
+            preferences.buildPreset.clear();
+            preferences.target.clear();
+            preferences.executable.clear();
+        }
+        ImGui::EndDisabled();
     }
     ImGui::EndDisabled();
-
 }
 
 void ProjectSettingsPanel::draw_layers_and_physics(const LayerSettings &savedLayers,
@@ -363,46 +457,60 @@ void ProjectSettingsPanel::draw_layers_and_physics(const LayerSettings &savedLay
     if (ImGui::CollapsingHeader("Layer Names (0..31)", ImGuiTreeNodeFlags_DefaultOpen))
     {
         const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
-        ImGui::BeginChild("##layer_names_scroll", ImVec2(0.0f, 220.0f * uiScale), true);
-        for (std::size_t i = 0; i < LayerCount; ++i)
+        constexpr std::size_t kHalfLayers = LayerCount / 2;
+        if (ImGui::BeginTable("##layer_names_grid", 2, ImGuiTableFlags_SizingStretchSame))
         {
-            ImGui::PushID(static_cast<int>(i));
-            char label[32];
-            std::snprintf(label, sizeof(label), "Layer %zu", i);
-            if (i == 0)
+            for (std::size_t row = 0; row < kHalfLayers; ++row)
             {
-                std::array<char, 64> fixedBuf{};
-                std::snprintf(fixedBuf.data(), fixedBuf.size(), "%s", DefaultLayerName);
-                ImGui::BeginDisabled(true);
-                ImGui::InputText(label, fixedBuf.data(), fixedBuf.size(), ImGuiInputTextFlags_ReadOnly);
-                ImGui::EndDisabled();
-            }
-            else
-            {
-                std::array<char, 64> buf{};
-                std::snprintf(buf.data(), buf.size(), "%s", layers.names[i].c_str());
-                if (ImGui::InputText(label, buf.data(), buf.size(), ImGuiInputTextFlags_EnterReturnsTrue) ||
-                    ImGui::IsItemDeactivatedAfterEdit())
+                ImGui::TableNextRow();
+                for (std::size_t col = 0; col < 2; ++col)
                 {
-                    std::string err;
-                    if (set_layer_name(layers, i, buf.data(), err))
+                    const std::size_t layerIndex = row + col * kHalfLayers;
+                    ImGui::TableSetColumnIndex(static_cast<int>(col));
+                    ImGui::PushID(static_cast<int>(layerIndex));
+                    char label[32];
+                    std::snprintf(label, sizeof(label), "Layer %zu", layerIndex);
+                    ImGui::SetNextItemWidth(-70.0f * uiScale);
+                    if (layerIndex == 0)
                     {
-                        layerValidationError_.clear();
-                        layersModified = true;
+                        std::array<char, 64> fixedBuf{};
+                        std::snprintf(fixedBuf.data(), fixedBuf.size(), "%s", DefaultLayerName);
+                        ImGui::BeginDisabled(true);
+                        ImGui::InputText(label, fixedBuf.data(), fixedBuf.size(),
+                                         ImGuiInputTextFlags_ReadOnly);
+                        ImGui::EndDisabled();
                     }
                     else
                     {
-                        layerValidationError_ = err;
+                        std::array<char, 64> buf{};
+                        std::snprintf(buf.data(), buf.size(), "%s",
+                                      layers.names[layerIndex].c_str());
+                        if (ImGui::InputText(label, buf.data(), buf.size(),
+                                             ImGuiInputTextFlags_EnterReturnsTrue) ||
+                            ImGui::IsItemDeactivatedAfterEdit())
+                        {
+                            std::string err;
+                            if (set_layer_name(layers, layerIndex, buf.data(), err))
+                            {
+                                layerValidationError_.clear();
+                                layersModified = true;
+                            }
+                            else
+                            {
+                                layerValidationError_ = err;
+                            }
+                        }
                     }
+                    ImGui::PopID();
                 }
             }
-            ImGui::PopID();
+            ImGui::EndTable();
         }
-        ImGui::EndChild();
     }
 
     ImGui::Separator();
     ImGui::TextDisabled("Layer Collision Matrix");
+    ImGui::SameLine();
     ImGui::Checkbox("Show Empty Layers", &showEmptyLayers_);
 
     std::vector<std::size_t> visibleIndices;
@@ -414,8 +522,7 @@ void ProjectSettingsPanel::draw_layers_and_physics(const LayerSettings &savedLay
     }
 
     if (ImGui::BeginTable("##collision_matrix", static_cast<int>(visibleIndices.size()) + 1,
-                          ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollX |
-                              ImGuiTableFlags_SizingFixedFit))
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit))
     {
         const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
         ImGui::TableSetupColumn("Layer", ImGuiTableColumnFlags_WidthFixed, 112.0f * uiScale);
@@ -481,16 +588,6 @@ void ProjectSettingsPanel::draw_layers_and_physics(const LayerSettings &savedLay
         }
         ImGui::EndTable();
     }
-
-    if (layerDraftDirty_ || layersModified)
-    {
-        ImGui::Separator();
-        if (ImGui::Button("Save Layer Settings"))
-            action = ProjectSettingsAction::SaveLayerDraft;
-        ImGui::SameLine();
-        if (ImGui::Button("Discard Layer Changes"))
-            action = ProjectSettingsAction::DiscardLayerDraft;
-    }
 }
 
 std::vector<SemanticNode> ProjectSettingsPanel::semantic_nodes(const RunPreferences &preferences,
@@ -514,6 +611,11 @@ std::vector<SemanticNode> ProjectSettingsPanel::semantic_nodes(const RunPreferen
     modeNode.value = preferences.embeddedGameView ? "Embedded Game View" : "External Game Window";
     modeNode.actions.push_back("set_value");
     nodes.push_back(std::move(modeNode));
+
+    auto sceneNode = make_node("launch_scene", SemanticRole::TextField, "Launch Scene");
+    sceneNode.value = preferences.launchScene;
+    sceneNode.actions.push_back("set_value");
+    nodes.push_back(std::move(sceneNode));
 
     auto targetNode = make_node("target", SemanticRole::TextField, "CMake Target");
     targetNode.value = preferences.target;
@@ -580,6 +682,12 @@ bool ProjectSettingsPanel::dispatch_semantic_action(RunPreferences &preferences,
         (action.nodeId.ends_with("/generate_cmake") ||
          action.nodeId.ends_with("/repair_engine_path")))
         return true;
+    if (action.action == "set_value" &&
+        action.nodeId.ends_with("/launch_scene"))
+    {
+        preferences.launchScene = action.value;
+        return true;
+    }
     if (action.action == "set_value" &&
         action.nodeId.ends_with("/target"))
     {

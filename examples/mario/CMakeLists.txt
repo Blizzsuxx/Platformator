@@ -1,46 +1,64 @@
-cmake_minimum_required(VERSION 3.17)
-project(PlatformatorMarioExample LANGUAGES CXX C)
+cmake_minimum_required(VERSION 3.21)
+project(mario LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(PLATFORMATOR_MARIO_USE_INSTALLED "Link against an installed Platformator package instead of the source tree." OFF)
+set(PLATFORMATOR_ENGINE_SOURCE_DIR "/home/user/Projects/Platformator" CACHE PATH
+    "Fallback path to local Platformator source tree when Platformator CONFIG package is not installed")
 
-if(PLATFORMATOR_MARIO_USE_INSTALLED)
-    find_package(Platformator CONFIG REQUIRED)
-elseif(NOT TARGET Platformator::platformator)
-    set(PLATFORMATOR_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE PATH "Path to the Platformator source tree.")
-    set(BUILD_TESTING OFF)
-    set(PLATFORMATOR_INSTALL OFF)
-    add_subdirectory("${PLATFORMATOR_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/platformator")
+if(NOT TARGET Platformator::platformator)
+    find_package(Platformator CONFIG QUIET)
+    if(NOT Platformator_FOUND)
+        if(EXISTS "${PLATFORMATOR_ENGINE_SOURCE_DIR}/CMakeLists.txt")
+            add_subdirectory("${PLATFORMATOR_ENGINE_SOURCE_DIR}"
+                             "${CMAKE_CURRENT_BINARY_DIR}/platformator"
+                             EXCLUDE_FROM_ALL)
+        else()
+            message(FATAL_ERROR
+                "Platformator package not found and fallback source directory "
+                "'${PLATFORMATOR_ENGINE_SOURCE_DIR}' does not contain CMakeLists.txt. "
+                "Pass -DPlatformator_DIR=<prefix> or -DPLATFORMATOR_ENGINE_SOURCE_DIR=<repo>.")
+        endif()
+    endif()
 endif()
 
-add_executable(mario_example
-    "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_camera_rig.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_coin.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_game.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_goal_flag.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_patrol_enemy.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/mario_player.cpp"
+file(GLOB_RECURSE PROJECT_BEHAVIOR_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors/*.hpp"
 )
 
-target_include_directories(mario_example PRIVATE
+add_executable(mario
+    main.cpp
+    ${PROJECT_BEHAVIOR_SOURCES}
+)
+
+target_include_directories(mario PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/behaviors"
 )
+target_link_libraries(mario PRIVATE Platformator::platformator)
 
-target_link_libraries(mario_example PRIVATE Platformator::platformator)
-set_target_properties(mario_example PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+if(WIN32)
+    add_custom_command(TARGET mario POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:mario>
+            $<TARGET_FILE_DIR:mario>
+        COMMAND_EXPAND_LISTS
+    )
+endif()
 
-set(PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR "$<TARGET_FILE_DIR:mario_example>/assets")
-add_custom_command(TARGET mario_example POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets" "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}"
-    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/behaviors"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/level1.scene" "${PLATFORMATOR_MARIO_RUNTIME_ASSETS_DIR}/scenes/mario_example.scene"
-    VERBATIM)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    add_custom_command(TARGET mario POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:mario>/assets"
+        COMMAND "${CMAKE_COMMAND}" -E rm -rf
+            "$<TARGET_FILE_DIR:mario>/assets/behaviors"
+        VERBATIM
+    )
+endif()
 
 if(NOT DEFINED PLATFORMATOR_INSTALL_RPATH)
     if(APPLE)
@@ -51,42 +69,36 @@ if(NOT DEFINED PLATFORMATOR_INSTALL_RPATH)
 endif()
 
 if(DEFINED PLATFORMATOR_INSTALL_RPATH)
-    set_target_properties(mario_example PROPERTIES
+    set_target_properties(mario PROPERTIES
         INSTALL_RPATH "${PLATFORMATOR_INSTALL_RPATH}"
     )
 endif()
 
-set(PLATFORMATOR_MARIO_RUNTIME_LIBRARY_TARGETS)
+install(TARGETS mario
+    RUNTIME DESTINATION bin
+    BUNDLE DESTINATION bin
+)
+
+set(PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS)
 foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-shared SDL3_ttf-shared tbb)
     if(TARGET ${platformator_runtime_target})
-        list(APPEND PLATFORMATOR_MARIO_RUNTIME_LIBRARY_TARGETS ${platformator_runtime_target})
+        get_target_property(platformator_runtime_imported ${platformator_runtime_target} IMPORTED)
+        if(NOT platformator_runtime_imported)
+            list(APPEND PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS ${platformator_runtime_target})
+        endif()
     endif()
 endforeach()
 
-# Aggregate builds install each game separately to avoid overlapping assets.
-set(game_install_root "")
-if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    set(game_install_root "examples/mario/")
-endif()
-
-install(TARGETS mario_example
-    RUNTIME DESTINATION "${game_install_root}bin"
-    BUNDLE DESTINATION "${game_install_root}bin"
-)
-
-if(PLATFORMATOR_MARIO_RUNTIME_LIBRARY_TARGETS)
-    install(TARGETS ${PLATFORMATOR_MARIO_RUNTIME_LIBRARY_TARGETS}
-        RUNTIME DESTINATION "${game_install_root}bin"
-        LIBRARY DESTINATION "${game_install_root}lib"
+if(PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS)
+    install(TARGETS ${PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS}
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
     )
 endif()
 
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/"
-    DESTINATION "${game_install_root}assets"
-    PATTERN "behaviors" EXCLUDE
-)
-
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/level1.scene"
-    DESTINATION "${game_install_root}assets/scenes"
-    RENAME mario_example.scene
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/"
+        DESTINATION assets
+        PATTERN "behaviors" EXCLUDE
+    )
+endif()

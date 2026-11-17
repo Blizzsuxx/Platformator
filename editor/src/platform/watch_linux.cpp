@@ -24,9 +24,7 @@ bool should_skip_watched_directory(std::string_view name) noexcept
     if (name.starts_with('.'))
         return true;
     return name == "bin" || name == "build" || name == "dist" ||
-           name == "vendored" || name == "vendor" || name == "node_modules" ||
-           name == "specs" || (name == "benchmark" || name == "benchmarks") || name == "diplomski" ||
-           name == "paper" || name == "docs";
+           name == "vendored" || name == "vendor" || name == "node_modules";
 }
 
 namespace

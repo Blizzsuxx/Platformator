@@ -38,6 +38,7 @@
 #include "validation.h"
 #include "viewport.h"
 #include "workspace.h"
+#include "documentio.h"
 #include "windowhost.h"
 #include "componenttypes.h"
 
@@ -447,6 +448,12 @@ struct ProjectBuildCommands
 {
     std::vector<std::string> configure;
     std::vector<std::string> build;
+    std::filesystem::path buildDirectory;
+    std::filesystem::path executablePath;
+    std::string target;
+    std::string preferredTarget;
+    std::string effectiveProfile;
+    bool resolveTargetAfterConfigure = false;
     std::string error;
 };
 
@@ -479,54 +486,134 @@ std::vector<std::string> game_cmake_options(const std::string &target, bool engi
                 std::string(engineRepoBuild && target == "platformator_editor" ? "ON" : "OFF")};
 }
 
+std::pair<std::string, std::string> resolve_automatic_presets(
+    const ProjectRunDiscovery &discovery, bool production)
+{
+    const std::string desired = production ? "default" : "debug";
+    if (std::find(discovery.configurePresets.begin(), discovery.configurePresets.end(), desired) ==
+        discovery.configurePresets.end())
+        return {};
+    if (std::find(discovery.buildPresets.begin(), discovery.buildPresets.end(), desired) !=
+        discovery.buildPresets.end())
+        return {desired, desired};
+    for (const auto &buildPreset : discovery.buildPresets)
+    {
+        const auto mapped = discovery.buildPresetConfigurePresets.find(buildPreset);
+        if (mapped != discovery.buildPresetConfigurePresets.end() && mapped->second == desired)
+            return {desired, buildPreset};
+    }
+    return {};
+}
+
 ProjectBuildCommands make_build_commands(const std::filesystem::path &projectRoot,
                                         const RunPreferences &preferences,
+                                        const ProjectRunDiscovery &discovery,
                                         const std::filesystem::path &platformatorSourceRoot = {})
 {
-    if (preferences.target.empty() || preferences.executable.empty())
-        return {{}, {}, "choose a target and executable before building"};
     if (preferences.configurePreset.empty() != preferences.buildPreset.empty())
-        return {{}, {}, "configure and build presets must both be set or both be cleared"};
-    const bool engineRepoBuild =
-        is_platformator_source_repository(projectRoot, platformatorSourceRoot);
-    const std::string parallelJobs = std::to_string(std::max(1u, std::thread::hardware_concurrency()));
-    if (!preferences.configurePreset.empty())
+        return {{}, {}, {}, {}, {}, {}, {}, false, "configure and build presets must both be set or both be cleared"};
+
+    std::string configurePreset = preferences.configurePreset;
+    std::string buildPreset = preferences.buildPreset;
+    if (configurePreset.empty() && !discovery.configurePresets.empty())
+        std::tie(configurePreset, buildPreset) = resolve_automatic_presets(discovery, preferences.production);
+
+    std::filesystem::path executablePath;
+    if (!preferences.executable.empty())
     {
-        std::vector<std::string> configure{"cmake", "--preset", preferences.configurePreset};
-        if (!platformatorSourceRoot.empty())
-            configure.emplace_back("-DPLATFORMATOR_ENGINE_SOURCE_DIR=" +
-                                   platformatorSourceRoot.generic_string());
-        std::vector<std::string> build{"cmake", "--build", "--preset", preferences.buildPreset,
-                                       "--parallel", parallelJobs};
-        if (preferences.production)
-        {
-            configure.emplace_back("-DCMAKE_BUILD_TYPE=Release");
-            build.insert(build.end(), {"--config", "Release"});
-        }
-        const auto gameOptions = game_cmake_options(preferences.target, engineRepoBuild);
-        configure.insert(configure.end(), gameOptions.begin(), gameOptions.end());
-        build.insert(build.end(), {"--target", preferences.target});
-        return {std::move(configure), std::move(build), {}};
+        const auto executable = native_path_from_utf8(preferences.executable);
+        executablePath = executable.is_absolute()
+                             ? executable.lexically_normal()
+                             : (projectRoot / executable).lexically_normal();
     }
 
-    const auto executable = native_path_from_utf8(preferences.executable);
-    const auto buildDirectory = executable.is_absolute()
-                                    ? executable.parent_path()
-                                    : projectRoot / executable.parent_path();
-    if (buildDirectory.empty())
-        return {{}, {}, "the executable path does not identify a build directory"};
-    const auto buildType = preferences.production ? "Release" : "Debug";
-    std::vector<std::string> configure{"cmake", "-S", projectRoot.string(), "-B", buildDirectory.string(),
-                                       "-DCMAKE_BUILD_TYPE=" + std::string(buildType)};
-    if (!platformatorSourceRoot.empty())
-        configure.emplace_back("-DPLATFORMATOR_ENGINE_SOURCE_DIR=" +
-                               platformatorSourceRoot.generic_string());
-    const auto options = game_cmake_options(preferences.target, engineRepoBuild);
-    configure.insert(configure.end(), options.begin(), options.end());
-    std::vector<std::string> build{"cmake", "--build", buildDirectory.string(),
-                                   "--parallel", parallelJobs,
-                                   "--target", preferences.target};
-    return {std::move(configure), std::move(build), {}};
+    std::filesystem::path buildDirectory;
+    if (!configurePreset.empty())
+    {
+        const auto mapped = discovery.configurePresetBinaryDirs.find(configurePreset);
+        buildDirectory = mapped != discovery.configurePresetBinaryDirs.end()
+                             ? mapped->second
+                             : (projectRoot / "build" / configurePreset).lexically_normal();
+    }
+    else if (!executablePath.empty())
+    {
+        buildDirectory = executablePath.parent_path();
+        if (buildDirectory.empty())
+            return {{}, {}, {}, {}, {}, {}, {}, false, "the executable path does not identify a build directory"};
+    }
+    else
+    {
+        buildDirectory = (projectRoot / "build" / (preferences.production ? "release" : "debug")).lexically_normal();
+    }
+
+    const bool engineRepoBuild =
+        is_platformator_source_repository(projectRoot, platformatorSourceRoot);
+    const std::string preferredTarget =
+        engineRepoBuild ? std::string("main") : default_project_target_name(projectRoot);
+    std::string target = preferences.target;
+    bool resolveTargetAfterConfigure = false;
+    if (target.empty() || executablePath.empty())
+    {
+        std::string discoveryError;
+        const auto discovered = discover_build_directory_executables(
+            projectRoot, buildDirectory, discoveryError);
+        if (!discovered.empty())
+        {
+            ProjectExecutableTarget selected;
+            std::string selectError;
+            if (!select_discovered_executable_target(
+                    discovered, target, preferredTarget, selected, selectError))
+                return {{}, {}, {}, {}, {}, {}, {}, false, std::move(selectError)};
+            target = selected.targetName;
+            if (executablePath.empty())
+                executablePath = selected.executablePath;
+        }
+        else
+        {
+            resolveTargetAfterConfigure = true;
+        }
+    }
+
+    const std::string parallelJobs = std::to_string(std::max(1u, std::thread::hardware_concurrency()));
+    ProjectBuildCommands commands;
+    commands.buildDirectory = buildDirectory;
+    commands.executablePath = executablePath;
+    commands.target = target;
+    commands.preferredTarget = preferredTarget;
+    commands.effectiveProfile = !buildPreset.empty()
+                                    ? buildPreset
+                                    : (preferences.production ? "production" : "debug");
+    commands.resolveTargetAfterConfigure = resolveTargetAfterConfigure;
+
+    if (!configurePreset.empty())
+    {
+        commands.configure = {"cmake", "--preset", configurePreset};
+        if (!platformatorSourceRoot.empty())
+            commands.configure.emplace_back("-DPLATFORMATOR_ENGINE_SOURCE_DIR=" +
+                                            platformatorSourceRoot.generic_string());
+        commands.build = {"cmake", "--build", "--preset", buildPreset, "--parallel", parallelJobs};
+        if (preferences.production)
+        {
+            commands.configure.emplace_back("-DCMAKE_BUILD_TYPE=Release");
+            commands.build.insert(commands.build.end(), {"--config", "Release"});
+        }
+    }
+    else
+    {
+        const auto buildType = preferences.production ? "Release" : "Debug";
+        commands.configure = {"cmake", "-S", projectRoot.string(), "-B", buildDirectory.string(),
+                              "-DCMAKE_BUILD_TYPE=" + std::string(buildType)};
+        if (!platformatorSourceRoot.empty())
+            commands.configure.emplace_back("-DPLATFORMATOR_ENGINE_SOURCE_DIR=" +
+                                            platformatorSourceRoot.generic_string());
+        commands.build = {"cmake", "--build", buildDirectory.string(), "--parallel", parallelJobs};
+    }
+
+    const auto gameOptions = game_cmake_options(target, engineRepoBuild);
+    commands.configure.insert(commands.configure.end(), gameOptions.begin(), gameOptions.end());
+    if (!target.empty() && !resolveTargetAfterConfigure)
+        commands.build.insert(commands.build.end(), {"--target", target});
+    return commands;
 }
 
 std::vector<std::string> make_run_arguments(const RunPreferences &preferences,
@@ -2186,14 +2273,56 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 : sourceStatus.message + ". Resolve it before Run.";
             return false;
         };
+        auto resolve_launch_scene_target = [&](std::filesystem::path &resolvedPath,
+                                               DocumentTab *&openTab,
+                                               std::string &errorMessage) -> bool {
+            resolvedPath.clear();
+            openTab = nullptr;
+            if (preferences.run.launchScene.empty())
+            {
+                openTab = activeDocumentTab;
+                if (openTab != nullptr && openTab->kind() == DocumentTabKind::Scene &&
+                    openTab->workspace().document().sourcePath)
+                    resolvedPath = *openTab->workspace().document().sourcePath;
+                return true;
+            }
+            const auto configuredPath = native_path_from_utf8(preferences.run.launchScene);
+            const auto candidate = configuredPath.is_absolute()
+                ? configuredPath
+                : (activeProjectRoot / configuredPath);
+            std::error_code ec;
+            const auto canonicalScene = std::filesystem::canonical(candidate, ec);
+            if (ec || !std::filesystem::is_regular_file(canonicalScene, ec) || ec)
+            {
+                errorMessage = "Configured Launch Scene is not available: " + preferences.run.launchScene;
+                return false;
+            }
+            resolvedPath = canonicalScene;
+            openTab = documentManager.find_scene_tab(canonicalScene);
+            return true;
+        };
         auto start_pipeline_now = [&](bool buildOnly) {
             commit_scene_gesture();
-            if (!buildOnly && (showExternalConflictPrompt || externalSaveAsPending))
+            const bool usingExplicitLaunchScene = !buildOnly && !preferences.run.launchScene.empty();
+            std::filesystem::path explicitLaunchScenePath;
+            DocumentTab *explicitLaunchSceneTab = nullptr;
+            if (usingExplicitLaunchScene)
+            {
+                std::string sceneError;
+                if (!resolve_launch_scene_target(explicitLaunchScenePath, explicitLaunchSceneTab, sceneError))
+                {
+                    statusMessage = sceneError;
+                    return false;
+                }
+            }
+            const bool validateActiveTabForRun = !buildOnly &&
+                (!usingExplicitLaunchScene || explicitLaunchSceneTab == activeDocumentTab);
+            if (validateActiveTabForRun && (showExternalConflictPrompt || externalSaveAsPending))
             {
                 statusMessage = "Resolve the changed scene file before Run.";
                 return false;
             }
-            if (!buildOnly && !current_scene_allows_run())
+            if (validateActiveTabForRun && !current_scene_allows_run())
                 return false;
             if (gamePipeline.busy())
             {
@@ -2216,13 +2345,15 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             const auto configureEnginePath = enginePath.hasSourceDirectoryDirective &&
                     enginePath.sourceDirectoryEditable
                 ? enginePath.configuredSourceDirectory : std::filesystem::path{};
+            const auto discovery = discover_project_run_options(activeProjectRoot, false);
             const auto buildCommands = make_build_commands(activeProjectRoot, preferences.run,
-                                                           configureEnginePath);
+                                                           discovery, configureEnginePath);
             if (!buildCommands.error.empty())
             {
                 statusMessage = buildCommands.error;
                 return false;
             }
+            std::optional<DocumentSession> unloadedLaunchScene;
             if (!buildOnly)
             {
                 if (preferences.run.width < 1 || preferences.run.width > 16384 ||
@@ -2231,51 +2362,96 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     statusMessage = "Run window dimensions must be between 1 and 16384 pixels.";
                     return false;
                 }
-                if (!validationService.is_current(workspace->document(), validation))
+                if (validateActiveTabForRun)
                 {
-                    request_current_validation(workspace->document());
-                    if (!pendingRunValidation.begin(activeDocumentTab->identity()))
+                    if (!validationService.is_current(workspace->document(), validation))
                     {
-                        statusMessage = "Run was cancelled because validation request identities are exhausted.";
+                        request_current_validation(workspace->document());
+                        if (!pendingRunValidation.begin(activeDocumentTab->identity()))
+                        {
+                            statusMessage = "Run was cancelled because validation request identities are exhausted.";
+                            return false;
+                        }
+                        statusMessage = "Waiting for current scene validation before Run...";
                         return false;
                     }
-                    statusMessage = "Waiting for current scene validation before Run...";
-                    return false;
+                    pendingRunValidation.cancel();
+                    if (!validation_allows_run(validationService, workspace->document(), validation))
+                    {
+                        statusMessage = "Run is blocked by current scene validation errors.";
+                        preferences.panelVisibility["panel.validation"] = true;
+                        return false;
+                    }
+                    if (workspace->dirty() || !workspace->document().sourcePath)
+                    {
+                        statusMessage = "Save the scene before Build and Run.";
+                        return false;
+                    }
                 }
-                pendingRunValidation.cancel();
-                if (!validation_allows_run(validationService, workspace->document(), validation))
+                else if (explicitLaunchSceneTab != nullptr)
                 {
-                    statusMessage = "Run is blocked by current scene validation errors.";
-                    preferences.panelVisibility["panel.validation"] = true;
-                    return false;
+                    const auto sourceStatus = explicitLaunchSceneTab->workspace().source_file_status();
+                    if (!explicitLaunchSceneTab->source_file_allows_run(sourceStatus))
+                    {
+                        statusMessage = sourceStatus.message.empty()
+                            ? "Resolve the Launch Scene file identity before Run."
+                            : sourceStatus.message + ". Resolve it before Run.";
+                        return false;
+                    }
+                    if (explicitLaunchSceneTab->workspace().dirty())
+                    {
+                        statusMessage = "Save '" + explicitLaunchScenePath.filename().string() +
+                                        "' before Build and Run.";
+                        return false;
+                    }
+                    const auto sceneValidation = validate_document(
+                        explicitLaunchSceneTab->workspace().document(), current_behavior_catalog());
+                    if (sceneValidation.blocksRun)
+                    {
+                        statusMessage = "Run is blocked by validation errors in " +
+                                        explicitLaunchScenePath.filename().string() + ".";
+                        return false;
+                    }
                 }
-                if (workspace->dirty() || !workspace->document().sourcePath)
+                else
                 {
-                    statusMessage = "Save the scene before Build and Run.";
-                    return false;
+                    auto loaded = load_document_file(
+                        explicitLaunchScenePath, 1, activeProjectRoot, activeAssetRoot);
+                    if (!loaded)
+                    {
+                        statusMessage = loaded.error;
+                        return false;
+                    }
+                    const auto sceneValidation = validate_document(
+                        *loaded.document, current_behavior_catalog());
+                    if (sceneValidation.blocksRun)
+                    {
+                        statusMessage = "Run is blocked by validation errors in " +
+                                        explicitLaunchScenePath.filename().string() + ".";
+                        return false;
+                    }
+                    unloadedLaunchScene = std::move(*loaded.document);
                 }
             }
 
-            const auto executable = native_path_from_utf8(preferences.run.executable);
-            const auto executablePath = executable.is_absolute()
-                                           ? executable.lexically_normal()
-                                           : (activeProjectRoot / executable).lexically_normal();
             PipelineIdentity identity;
             identity.canonicalProjectPath = activeProjectRoot.string();
-            identity.profile = preferences.run.buildPreset.empty()
-                                   ? (preferences.run.production ? "production" : "debug")
-                                   : preferences.run.buildPreset;
-            identity.target = preferences.run.target;
-            identity.executablePath = executablePath.string();
+            identity.profile = buildCommands.effectiveProfile;
+            identity.target = buildCommands.target;
+            identity.executablePath = buildCommands.executablePath.string();
             identity.sourceInputIdentity = sourceInputIdentity;
 
-            const bool skipConfigure = !buildCommands.configure.empty() &&
+            const bool skipConfigure = !buildCommands.resolveTargetAfterConfigure &&
+                                       !buildCommands.configure.empty() &&
                                        lastConfiguredProjectRoot == activeProjectRoot &&
                                        lastConfiguredArgv == buildCommands.configure;
             PipelineRequest request;
             request.projectRoot = activeProjectRoot;
             request.assetRoot = activeAssetRoot;
-            request.executablePath = executablePath;
+            request.executablePath = buildCommands.executablePath;
+            request.buildDirectory = buildCommands.buildDirectory;
+            request.preferredTarget = buildCommands.preferredTarget;
+            request.resolveTargetAfterConfigure = buildCommands.resolveTargetAfterConfigure;
             request.configureArgv = skipConfigure ? std::vector<std::string>{} : buildCommands.configure;
             request.buildArgv = buildCommands.build;
             request.runArguments = make_run_arguments(preferences.run,
@@ -2285,26 +2461,44 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             request.buildOnly = buildOnly;
             if (!buildOnly)
             {
-                const auto launchScene = documentManager.capture_active_scene_launch_snapshot();
-                if (!launchScene || launchScene->identity.tabId != activeDocumentTab->id())
+                if (unloadedLaunchScene)
                 {
-                    statusMessage = "The active scene tab no longer has a saved launch snapshot.";
-                    return false;
+                    request.savedScenePath = explicitLaunchScenePath;
+                    request.scene = unloadedLaunchScene->root;
+                    request.sceneDocumentIdentity = DocumentIdentity{
+                        projectSession.generation(),
+                        TabId{std::numeric_limits<std::uint64_t>::max()},
+                        DocumentGeneration{1}};
+                    request.sceneSavedHistoryToken = 0;
+                    request.sceneSavedFileIdentity = format_saved_file_identity(
+                        explicitLaunchScenePath, unloadedLaunchScene->sourceIdentity);
                 }
-                std::error_code sceneError;
-                const auto savedScene = std::filesystem::canonical(launchScene->sourcePath, sceneError);
-                if (sceneError || !std::filesystem::is_regular_file(savedScene))
+                else
                 {
-                    statusMessage = "The saved scene file is not available for Run.";
-                    return false;
+                    const auto launchScene = validateActiveTabForRun
+                        ? documentManager.capture_active_scene_launch_snapshot()
+                        : documentManager.capture_scene_launch_snapshot(explicitLaunchSceneTab->id());
+                    if (!launchScene ||
+                        (validateActiveTabForRun && launchScene->identity.tabId != activeDocumentTab->id()))
+                    {
+                        statusMessage = "The selected launch scene no longer has a saved launch snapshot.";
+                        return false;
+                    }
+                    std::error_code sceneError;
+                    const auto savedScene = std::filesystem::canonical(launchScene->sourcePath, sceneError);
+                    if (sceneError || !std::filesystem::is_regular_file(savedScene))
+                    {
+                        statusMessage = "The saved scene file is not available for Run.";
+                        return false;
+                    }
+                    request.savedScenePath = savedScene;
+                    request.scene = launchScene->scene;
+                    request.sceneDocumentIdentity = launchScene->identity;
+                    request.sceneSavedHistoryToken = launchScene->savedHistoryToken;
+                    request.sceneSavedFileIdentity = launchScene->savedFileIdentity;
                 }
-                request.savedScenePath = savedScene;
-                request.scene = launchScene->scene;
-                request.sceneDocumentIdentity = launchScene->identity;
-                request.sceneSavedHistoryToken = launchScene->savedHistoryToken;
-                request.sceneSavedFileIdentity = launchScene->savedFileIdentity;
             }
-            const auto launchDocumentTab = request.sceneDocumentIdentity
+            const auto launchDocumentTab = !unloadedLaunchScene && request.sceneDocumentIdentity
                 ? std::optional<TabId>{request.sceneDocumentIdentity->tabId} : std::nullopt;
             const auto launchScenePath = request.savedScenePath.empty()
                 ? std::optional<std::filesystem::path>{}
@@ -2704,6 +2898,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 return false;
             }
             missingCmakeLists = false;
+            preferences.run.configurePreset.clear();
+            preferences.run.buildPreset.clear();
+            preferences.run.target.clear();
+            preferences.run.executable.clear();
+            persist_preferences();
             lastConfiguredArgv.clear();
             lastConfiguredProjectRoot.clear();
             projectPanel.refresh();
@@ -3282,13 +3481,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = "Layer sync is pending. Retry it in Project Settings before Build.";
                 return;
             }
-            if (!current_scene_allows_run())
-                return;
-            if (showExternalConflictPrompt || externalSaveAsPending)
-            {
-                statusMessage = "Resolve the changed scene file before Run.";
-                return;
-            }
             if (applyProjectRootsAfterFrame || pendingProjectRoots)
             {
                 statusMessage = "Wait for the selected project to finish replacing the current roots.";
@@ -3297,6 +3489,82 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             if (gamePipeline.busy())
             {
                 statusMessage = "A project operation is already running.";
+                return;
+            }
+            std::filesystem::path explicitLaunchScenePath;
+            DocumentTab *launchSceneTab = activeDocumentTab;
+            if (!preferences.run.launchScene.empty())
+            {
+                std::string sceneError;
+                if (!resolve_launch_scene_target(explicitLaunchScenePath, launchSceneTab, sceneError))
+                {
+                    statusMessage = sceneError;
+                    return;
+                }
+                if (launchSceneTab != nullptr && launchSceneTab != activeDocumentTab)
+                {
+                    const auto sourceStatus = launchSceneTab->workspace().source_file_status();
+                    if (!launchSceneTab->source_file_allows_run(sourceStatus))
+                    {
+                        (void)activate_document_tab(launchSceneTab->id());
+                        statusMessage = sourceStatus.message.empty()
+                            ? "Resolve the Launch Scene file identity before Run."
+                            : sourceStatus.message + ". Resolve it before Run.";
+                        return;
+                    }
+                    if (launchSceneTab->workspace().dirty())
+                    {
+                        if (activate_document_tab(launchSceneTab->id()))
+                        {
+                            pendingAction = PendingAction::BuildAndRun;
+                            showUnsavedPrompt = true;
+                        }
+                        else
+                        {
+                            statusMessage = "Save '" + explicitLaunchScenePath.filename().string() +
+                                            "' before Build and Run.";
+                        }
+                        return;
+                    }
+                    const auto sceneValidation = validate_document(
+                        launchSceneTab->workspace().document(), current_behavior_catalog());
+                    if (sceneValidation.blocksRun)
+                    {
+                        (void)activate_document_tab(launchSceneTab->id());
+                        statusMessage = "Run is blocked by validation errors in " +
+                                        explicitLaunchScenePath.filename().string() + ".";
+                        preferences.panelVisibility["panel.validation"] = true;
+                        return;
+                    }
+                    queue_pipeline(false);
+                    return;
+                }
+                if (launchSceneTab == nullptr)
+                {
+                    auto loaded = load_document_file(
+                        explicitLaunchScenePath, 1, activeProjectRoot, activeAssetRoot);
+                    if (!loaded)
+                    {
+                        statusMessage = loaded.error;
+                        return;
+                    }
+                    const auto sceneValidation = validate_document(
+                        *loaded.document, current_behavior_catalog());
+                    if (sceneValidation.blocksRun)
+                    {
+                        statusMessage = "Run is blocked by validation errors in " +
+                                        explicitLaunchScenePath.filename().string() + ".";
+                        return;
+                    }
+                    queue_pipeline(false);
+                    return;
+                }
+            }
+            if (!current_scene_allows_run())
+                return;
+            if (showExternalConflictPrompt || externalSaveAsPending)
+            {
+                statusMessage = "Resolve the changed scene file before Run.";
                 return;
             }
             if (!validationService.is_current(workspace->document(), validation))
@@ -3339,24 +3607,27 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = "Stopping the embedded Game before restart.";
                 return;
             }
-            if (gameSessionSourceTab && documentManager.find(*gameSessionSourceTab) != nullptr)
+            if (preferences.run.launchScene.empty())
             {
-                if (!activate_document_tab(*gameSessionSourceTab))
+                if (gameSessionSourceTab && documentManager.find(*gameSessionSourceTab) != nullptr)
                 {
-                    statusMessage = "Could not activate the saved scene tab used by the embedded Game.";
-                    return;
+                    if (!activate_document_tab(*gameSessionSourceTab))
+                    {
+                        statusMessage = "Could not activate the saved scene tab used by the embedded Game.";
+                        return;
+                    }
                 }
-            }
-            else if (gameSessionSourcePath)
-            {
-                std::string error;
-                const auto reopened = documentManager.open_scene(*gameSessionSourcePath, &error);
-                if (!reopened || !activate_document_tab(*reopened))
+                else if (gameSessionSourcePath)
                 {
-                    statusMessage = "Could not reopen the saved scene used by the embedded Game: " + error;
-                    return;
+                    std::string error;
+                    const auto reopened = documentManager.open_scene(*gameSessionSourcePath, &error);
+                    if (!reopened || !activate_document_tab(*reopened))
+                    {
+                        statusMessage = "Could not reopen the saved scene used by the embedded Game: " + error;
+                        return;
+                    }
+                    gameSessionSourceTab = *reopened;
                 }
-                gameSessionSourceTab = *reopened;
             }
             request_build_and_run();
         };
@@ -3694,6 +3965,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 behaviorCatalog.invalidate("configured source inputs changed; refresh before Run");
                 if (gamePipeline.busy() && hasActivePipelineIdentity)
                 {
+                    activePipelineIdentity = gamePipeline.current_identity();
                     auto invalidIdentity = activePipelineIdentity;
                     invalidIdentity.sourceInputIdentity.clear();
                     gamePipeline.update_identity(invalidIdentity);
@@ -3766,6 +4038,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             }
             if (!gamePipeline.busy())
             {
+                if (hasActivePipelineIdentity)
+                    projectSettingsPanel.refresh_discovery(false);
                 hasActivePipelineIdentity = false;
                 const auto &pipelineStatus = gamePipeline.status();
                 const bool reachedBuilding = std::find(pipelineStatus.transitions.begin(),
@@ -3811,6 +4085,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     pendingPipelineBuildOnly.reset();
                     if (gamePipeline.busy() && hasActivePipelineIdentity)
                     {
+                        activePipelineIdentity = gamePipeline.current_identity();
                         auto invalidIdentity = activePipelineIdentity;
                         invalidIdentity.sourceInputIdentity.clear();
                         gamePipeline.update_identity(invalidIdentity);
@@ -3834,6 +4109,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     sourceInputIdentity = std::move(scanResult.sourceInputIdentity);
                     if (gamePipeline.busy() && hasActivePipelineIdentity)
                     {
+                        activePipelineIdentity = gamePipeline.current_identity();
                         auto changedIdentity = activePipelineIdentity;
                         changedIdentity.sourceInputIdentity = sourceInputIdentity;
                         if (!same_pipeline_inputs(activePipelineIdentity, changedIdentity))
@@ -5056,7 +5332,10 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     }
                     ImGui::Separator();
                     if (ImGui::MenuItem("Project Settings..."))
+                    {
                         preferences.panelVisibility["panel.project_settings"] = true;
+                        projectSettingsPanel.refresh_discovery(false);
+                    }
                     if (ImGui::MenuItem("Preferences...", "Ctrl+,"))
                         showPreferences = true;
                     ImGui::EndMenu();
@@ -5089,6 +5368,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     if (ImGui::MenuItem("Refresh"))
                     {
                         projectPanel.refresh();
+                        projectSettingsPanel.refresh_discovery(false);
                     }
                     ImGui::EndMenu();
                 }
@@ -7628,6 +7908,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 const auto previousRunPreferences = preferences.run;
                 bool layersModified = false;
                 bool layersDirty = false;
+                std::optional<std::filesystem::path> activeSceneForSettings;
+                if (activeDocumentTab != nullptr && activeDocumentTab->kind() == DocumentTabKind::Scene &&
+                    activeDocumentTab->workspace().document().sourcePath)
+                    activeSceneForSettings = *activeDocumentTab->workspace().document().sourcePath;
+                projectSettingsPanel.set_active_scene_path(std::move(activeSceneForSettings));
                 projectSettingsPanel.set_open_scene_collision_groups(
                     documentManager.collision_group_layers_in_use());
                 const auto action = projectSettingsPanel.draw(

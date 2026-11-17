@@ -34,6 +34,7 @@ class DeferredPreferenceSave
 
 struct RunPreferences
 {
+    std::string launchScene;
     std::string configurePreset;
     std::string buildPreset;
     std::string target;

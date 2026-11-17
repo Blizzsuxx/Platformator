@@ -292,6 +292,17 @@ namespace
         require(!rejected.finalize_pipeline_identity(builtIdentity) &&
                     rejected.launch_identity()->pipeline == identity.pipeline,
                 "build completion cannot replace the selected project identity");
+
+        PlaySession deferred;
+        auto deferredIdentity = launch_identity();
+        deferredIdentity.pipeline.target.clear();
+        require(!deferred.begin_configuring(deferredIdentity, "0123456789abcdef", false),
+                "strict PlaySession startup must reject empty target unless deferred");
+        require(deferred.begin_configuring(deferredIdentity, "0123456789abcdef", true) &&
+                    !deferred.begin_building("") &&
+                    deferred.begin_building("mario") &&
+                    deferred.launch_identity()->pipeline.target == "mario",
+                "deferred-target PlaySession must populate target at begin_building before launch");
     }
 
     void test_partial_nonblocking_pause_step_resume_and_stop()

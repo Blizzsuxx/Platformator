@@ -100,6 +100,8 @@ struct PipelineRequest
     std::filesystem::path assetRoot;
     std::filesystem::path savedScenePath;
     std::filesystem::path executablePath;
+    std::filesystem::path buildDirectory;
+    std::string preferredTarget;
     std::vector<std::string> configureArgv;
     std::vector<std::string> buildArgv;
     std::vector<std::string> runArguments;
@@ -108,6 +110,7 @@ struct PipelineRequest
     std::uint64_t sceneSavedHistoryToken = 0;
     std::string sceneSavedFileIdentity;
     PipelineIdentity identity;
+    bool resolveTargetAfterConfigure = false;
     bool embeddedGameView = false;
     bool buildOnly = false;
 };
@@ -170,6 +173,7 @@ class GamePipeline
     void stop();
     void update_identity(PipelineIdentity identity);
     const PipelineStatus &status() const noexcept;
+    const PipelineIdentity &current_identity() const noexcept;
     BoundedConsole &console() noexcept;
     const BoundedConsole &console() const noexcept;
     bool busy() const noexcept;

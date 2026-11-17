@@ -44,6 +44,7 @@ class ProjectSettingsPanel
                                bool &layersModified, bool &layersDirty);
     bool layer_draft_dirty() const noexcept { return layerDraftDirty_; }
     const LayerSettings &layer_draft() const noexcept { return layerDraft_; }
+    void set_active_scene_path(std::optional<std::filesystem::path> path) { activeScenePath_ = std::move(path); }
     void set_open_scene_collision_groups(std::uint32_t groups) noexcept { openSceneGroups_ = groups; }
     void commit_layer_draft(const LayerSettings &layers);
     void discard_layer_draft(const LayerSettings &layers);
@@ -80,6 +81,7 @@ class ProjectSettingsPanel
 
     ProjectSettingsCategory category_ = ProjectSettingsCategory::BuildAndRun;
     std::filesystem::path projectRoot_;
+    std::optional<std::filesystem::path> activeScenePath_;
     ProjectRunDiscovery discovery_;
     std::optional<ProjectEnginePathStatus> enginePathStatus_;
     std::map<std::string, SemanticChoice> semanticChoices_;

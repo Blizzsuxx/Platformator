@@ -54,6 +54,9 @@ struct SceneLaunchSnapshot
     std::string savedFileIdentity;
 };
 
+std::string format_saved_file_identity(const std::filesystem::path &path,
+                                       const std::optional<FileIdentity> &identity);
+
 struct SaveAllResult
 {
     WorkspaceActionResult action;
@@ -181,6 +184,7 @@ class DocumentManager
     const DocumentTab *active_tab() const noexcept;
     DocumentTab *find(TabId id) noexcept;
     const DocumentTab *find(TabId id) const noexcept;
+    DocumentTab *find_scene_tab(const std::filesystem::path &path) noexcept;
     std::vector<TabId> tab_ids() const;
     std::vector<TabId> animation_tab_ids() const;
     std::size_t tab_count() const noexcept;
@@ -196,6 +200,7 @@ class DocumentManager
         const std::filesystem::path &path, std::optional<TabId> requestingTab = std::nullopt,
         std::string *error = nullptr) const;
     std::optional<SceneLaunchSnapshot> capture_active_scene_launch_snapshot() const;
+    std::optional<SceneLaunchSnapshot> capture_scene_launch_snapshot(TabId id) const;
     TabId create_scene_tab();
     std::optional<TabId> open_scene(const std::filesystem::path &path,
                                    std::string *error = nullptr);

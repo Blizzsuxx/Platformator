@@ -1667,7 +1667,9 @@ void run_project_cases()
         "client-platformator" / "codemodel-v2";
     const auto symlinkBuildDirectory = discoveryProject / "build" / "symlinked";
     const auto externalCmakeDirectory = temporary.path() / "external-cmake";
-    std::filesystem::create_directories(discoveryAssets);
+    std::filesystem::create_directories(discoveryAssets / "scenes");
+    std::ofstream(discoveryAssets / "scenes" / "main.scene") << "[]\n";
+    std::ofstream(discoveryAssets / "scenes" / "level1.scene") << "[]\n";
     std::filesystem::create_directories(replyDirectory);
     std::filesystem::create_directories(symlinkBuildDirectory);
     std::filesystem::create_directories(externalCmakeDirectory);
@@ -1704,8 +1706,9 @@ void run_project_cases()
                 discovery.executableTargets.size() == 1 &&
                 discovery.executableTargets.front().targetName == "game" &&
                 discovery.executableTargets.front().executablePath == gameExecutable &&
+                discovery.scenePaths == std::vector<std::string>({"assets/scenes/level1.scene", "assets/scenes/main.scene"}) &&
                 discovery.truncated && !std::filesystem::exists(queryFile),
-            "bounded project discovery must preserve Unicode project/executable paths while exposing visible presets and rejecting external build roots");
+            "bounded project discovery must preserve Unicode project/executable paths while exposing visible presets and project scenes");
     const auto requestedDiscovery = discover_project_run_options(discoveryProject, true);
     const auto queuedQuerySize = std::filesystem::file_size(queryFile);
     const auto externalQuery = temporary.path() / "outside" / ".cmake" / "api" / "v1" /
@@ -1724,6 +1727,43 @@ void run_project_cases()
     require(oversizedDiscovery.configurePresets.empty() && oversizedDiscovery.truncated &&
                 oversizedDiscovery.status.find("1 MiB") != std::string::npos,
             "oversized preset manifests must stop discovery before an unbounded read");
+
+    {
+        const auto autoProject = temporary.path() / "auto-target-project";
+        const auto autoBuild = autoProject / "build" / "debug";
+        const auto autoReply = autoBuild / ".cmake" / "api" / "v1" / "reply";
+        std::filesystem::create_directories(autoProject);
+        std::string queryError;
+        require(ensure_cmake_file_api_query(autoProject, autoBuild, queryError) &&
+                    std::filesystem::is_regular_file(
+                        autoBuild / ".cmake" / "api" / "v1" / "query" / "client-platformator" / "codemodel-v2"),
+                "ensure_cmake_file_api_query must create a contained build directory and codemodel query");
+        require(!ensure_cmake_file_api_query(autoProject, temporary.path() / "outside-build", queryError),
+                "ensure_cmake_file_api_query must reject build directories outside the project root");
+        std::filesystem::create_directories(autoReply);
+        std::ofstream(autoReply / "index-1.json")
+            << R"({"objects":[{"kind":"codemodel","jsonFile":"codemodel-v2-1.json"}],"reply":{"client-platformator":{"codemodel-v2":{"jsonFile":"codemodel-v2-1.json"}}}})";
+        std::ofstream(autoReply / "codemodel-v2-1.json")
+            << R"({"configurations":[{"targets":[{"name":"auto_game","jsonFile":"target-auto_game.json"}]}]})";
+        std::ofstream(autoReply / "target-auto_game.json")
+            << R"({"type":"EXECUTABLE","artifacts":[{"path":"auto_game"}]})";
+        std::string execError;
+        const auto unbuiltTargets = discover_build_directory_executables(autoProject, autoBuild, execError);
+        ProjectExecutableTarget selected;
+        require(unbuiltTargets.size() == 1 && unbuiltTargets.front().targetName == "auto_game" &&
+                    unbuiltTargets.front().executablePath == (autoBuild / "auto_game") &&
+                    select_discovered_executable_target(unbuiltTargets, "", "", selected, execError) &&
+                    selected.targetName == "auto_game",
+                "single-target projects must resolve unbuilt executables from File API replies without manual overrides");
+        const std::vector<ProjectExecutableTarget> multiTargets{
+            {"tool", autoBuild / "tool"},
+            {"main", autoBuild / "main"},
+        };
+        require(select_discovered_executable_target(multiTargets, "", "main", selected, execError) &&
+                    selected.targetName == "main" &&
+                    !select_discovered_executable_target(multiTargets, "", "missing", selected, execError),
+                "multi-target discovery must match preferred or requested targets and reject ambiguity");
+    }
 
     const auto engineSource = temporary.path() / "platformator-source";
     std::filesystem::create_directories(engineSource / "engine" / "include" / "platformator");

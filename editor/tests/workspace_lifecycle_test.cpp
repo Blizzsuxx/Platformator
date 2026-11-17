@@ -641,9 +641,9 @@ void run_preference_cases()
     const auto sourceRoot = std::filesystem::canonical(
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path());
     apply_known_bundled_run_defaults(bundledDefaults, sourceRoot);
-    require(bundledDefaults.run.target == "main" &&
-                bundledDefaults.run.executable == "build/debug/main",
-            "bundled defaults should configure main target and executable");
+    require(bundledDefaults.run.target.empty() && bundledDefaults.run.executable.empty() &&
+                bundledDefaults.run.configurePreset.empty() && bundledDefaults.run.buildPreset.empty(),
+            "bundled defaults must leave Advanced build/run overrides empty by default");
 
     // GlobalPreferences recent projects & create_new_project / generate_project_cmakelists
     GlobalPreferences gp;
@@ -671,12 +671,12 @@ void run_preference_cases()
             "create_new_project must scaffold project CMakeLists.txt and asset directories");
     WorkspacePreferences generatedDefaults;
     apply_generated_project_run_defaults(generatedDefaults, scaffoldRes.projectRoot);
-    require(generatedDefaults.run.target == "SampleGame" &&
-                generatedDefaults.run.executable == "build/debug/SampleGame" &&
+    require(generatedDefaults.run.target.empty() &&
+                generatedDefaults.run.executable.empty() &&
                 generatedDefaults.run.configurePreset.empty() && generatedDefaults.run.buildPreset.empty() &&
                 generatedDefaults.recentScene == scaffoldRes.projectRoot / "assets" / "scenes" / "main.scene" &&
                 generatedDefaults.activeTabPath == generatedDefaults.recentScene,
-            "generated project defaults must initialize target, executable, and startup scene choices");
+            "generated project defaults must leave Advanced run overrides empty and select the startup scene");
     const auto generatedPreferences = make_project_preference_paths(
         temporary.path() / "generated-prefs", scaffoldRes.projectRoot);
     generatedDefaults.projectKey = generatedPreferences.projectKey;
@@ -724,11 +724,11 @@ void run_preference_cases()
                 std::filesystem::is_regular_file(assetOnlyDir / "main.cpp") &&
                 generatedMainText.find("assets/scenes/intro.scene") != std::string::npos &&
                 preservedSceneText == "[]" && !std::filesystem::exists(assetOnlyDir / "assets" / "scenes" / "main.scene") &&
-                assetOnlyDefaults.run.target == "AssetOnlyProject" &&
-                assetOnlyDefaults.run.executable == "build/debug/AssetOnlyProject" &&
+                assetOnlyDefaults.run.target.empty() &&
+                assetOnlyDefaults.run.executable.empty() &&
                 assetOnlyDefaults.recentScene == authoredScene &&
                 assetOnlyDefaults.activeTabPath == authoredScene,
-            "asset-only generation must add a runnable entry point, select an authored scene, and preserve it");
+            "asset-only generation must add a runnable entry point, select an authored scene, and leave Advanced overrides empty");
     {
         std::ifstream assetOnlyCmake(assetOnlyDir / "CMakeLists.txt", std::ios::binary);
         const std::string assetOnlyCmakeText((std::istreambuf_iterator<char>(assetOnlyCmake)),
@@ -994,7 +994,9 @@ void run_known_validation_cases()
 
     const auto repositoryRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
     const auto marioRoot = repositoryRoot / "examples" / "mario";
-    const auto marioScenePath = marioRoot / "level1.scene";
+    auto marioScenePath = marioRoot / "level1.scene";
+    if (!std::filesystem::is_regular_file(marioScenePath))
+        marioScenePath = marioRoot / "assets" / "scenes" / "level1.scene";
     std::ifstream marioSceneStream(marioScenePath, std::ios::binary);
     require(static_cast<bool>(marioSceneStream), "the Mario validation regression fixture must be available");
     Json marioScene;

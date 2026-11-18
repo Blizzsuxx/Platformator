@@ -171,13 +171,13 @@ void checkNumericCertificate()
                                                   std::numeric_limits<float>::infinity()),
                                   0.0f, 1.0f, 1.0f, 320, 240, true};
     require(!platformator_detail::makeCertifiedRenderViewQuery(unsafeCamera, result),
-            "A camera outside the certified domain must use the current-linear fallback");
+            "A camera outside the certified domain must trigger conservative fallback");
     unsafeCamera = SpriteRenderView{0.0f, 0.0f, std::numeric_limits<float>::denorm_min(), 1.0f, 320, 240, true};
     require(!platformator_detail::makeCertifiedRenderViewQuery(unsafeCamera, result),
-            "Subnormal projection scale must use the current-linear fallback");
+            "Subnormal projection scale must trigger conservative fallback");
     unsafeCamera = SpriteRenderView{FLT_MAX, -FLT_MAX, 1.0f, 1.0f, 320, 240, true};
     require(!platformator_detail::makeCertifiedRenderViewQuery(unsafeCamera, result),
-            "Extreme finite camera coordinates must use the current-linear fallback");
+            "Extreme finite camera coordinates must trigger conservative fallback");
 
     std::mt19937 random(0xC3111F1Eu);
     std::uniform_real_distribution<float> offset(-3000.0f, 3000.0f);

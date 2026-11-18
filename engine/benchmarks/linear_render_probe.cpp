@@ -140,7 +140,7 @@ struct Options
 {
     FixtureTrajectoryProfile profile = FixtureTrajectoryProfile::Sparse;
     std::string profileName = "sparse";
-    std::string renderStrategy = "indexed";
+    std::string renderStrategy = "cached-linear";
     std::string orderingVariant = "rebuild";
     std::string layoutName = "profile-defined";
     std::string sizeDistribution = "standard";
@@ -242,8 +242,11 @@ Options parseOptions(int argc, char **argv)
         else if (argument == "--render-strategy")
         {
             options.renderStrategy = requireValue(argc, argv, index, argument);
-            if (options.renderStrategy != "current-linear" && options.renderStrategy != "cached-linear" &&
-                options.renderStrategy != "indexed")
+            if (options.renderStrategy == "indexed" || options.renderStrategy == "current-linear")
+                throw std::invalid_argument(
+                    "Retired render strategy '" + options.renderStrategy +
+                    "': use 'cached-linear' or pass --no-render-culling");
+            if (options.renderStrategy != "cached-linear")
                 throw std::invalid_argument("Unknown render strategy: " + options.renderStrategy);
             options.renderStrategyExplicit = true;
         }
@@ -1192,6 +1195,8 @@ void run(const Options &options)
         {"renderer_mapping", mappingMetadata(renderer, OUTPUT_WIDTH, OUTPUT_HEIGHT)},
         {"order_prepare_clock", {{"source", "std::chrono::steady_clock"},
                                  {"boundary", "SDLWindow::prepareDrawOrder CPU elapsed time excluding presentation and frame pacing"}}},
+        {"visible_selection_clock", {{"source", "std::chrono::steady_clock"},
+                                     {"boundary", "SDLWindow::prepareVisibleSelection CPU elapsed time excluding draw ordering, submission, and presentation"}}},
         {"affinity", currentAffinity()},
         {"validation_proof", nullptr}};
     if (!options.validationProof.empty())
@@ -1231,10 +1236,12 @@ void run(const Options &options)
     recorder.configure(options.measureFrames, metadata);
     std::vector<uint64_t> pairedStepRenderNanoseconds;
     std::vector<uint64_t> pairedOrderPrepareNanoseconds;
+    std::vector<uint64_t> pairedVisibleSelectionNanoseconds;
     if (!options.validateRendering && !options.validateResources)
     {
         pairedStepRenderNanoseconds.reserve(options.measureFrames);
         pairedOrderPrepareNanoseconds.reserve(options.measureFrames);
+        pairedVisibleSelectionNanoseconds.reserve(options.measureFrames);
     }
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
@@ -1299,11 +1306,6 @@ void run(const Options &options)
         ADD_CULLING_WORK_FIELD(renderCullingDirtyEnqueues);
         ADD_CULLING_WORK_FIELD(renderCullingDirtyCancellations);
         ADD_CULLING_WORK_FIELD(renderCullingBoundsRefreshes);
-        ADD_CULLING_WORK_FIELD(renderCullingIndexInsertions);
-        ADD_CULLING_WORK_FIELD(renderCullingIndexRemovals);
-        ADD_CULLING_WORK_FIELD(renderCullingIndexRelinks);
-        ADD_CULLING_WORK_FIELD(renderCullingQueries);
-        ADD_CULLING_WORK_FIELD(renderCullingCellVisits);
         ADD_CULLING_WORK_FIELD(renderCullingCandidateVisits);
         ADD_CULLING_WORK_FIELD(renderCullingFullPopulationVisits);
         ADD_CULLING_WORK_FIELD(renderCullingOrderWork);
@@ -1311,7 +1313,6 @@ void run(const Options &options)
         ADD_CULLING_WORK_FIELD(renderCullingProjectionRebuilds);
         ADD_CULLING_WORK_FIELD(renderCullingNumericFallbacks);
         ADD_CULLING_WORK_FIELD(renderCullingMappingFallbacks);
-        ADD_CULLING_WORK_FIELD(renderCullingSideListVisits);
         ADD_CULLING_WORK_FIELD(visibleMembershipChecks);
         ADD_CULLING_WORK_FIELD(visibleMembershipChanges);
         ADD_CULLING_WORK_FIELD(spriteOrderPreparations);
@@ -1329,14 +1330,8 @@ void run(const Options &options)
             std::max(target.renderCullingOwnedRecords, source.renderCullingOwnedRecords);
         target.renderCullingOwnedRecordCapacity =
             std::max(target.renderCullingOwnedRecordCapacity, source.renderCullingOwnedRecordCapacity);
-        target.renderCullingOwnedCellCount =
-            std::max(target.renderCullingOwnedCellCount, source.renderCullingOwnedCellCount);
-        target.renderCullingOwnedCellCapacity =
-            std::max(target.renderCullingOwnedCellCapacity, source.renderCullingOwnedCellCapacity);
         target.renderCullingOwnedBytes =
             std::max(target.renderCullingOwnedBytes, source.renderCullingOwnedBytes);
-        target.renderCullingGridOwnedBytes =
-            std::max(target.renderCullingGridOwnedBytes, source.renderCullingGridOwnedBytes);
         target.spriteOrderOwnedRecords =
             std::max(target.spriteOrderOwnedRecords, source.spriteOrderOwnedRecords);
         target.spriteOrderOwnedEntryCapacity =
@@ -1374,7 +1369,10 @@ void run(const Options &options)
         currentMeasuredZ.reserve(options.population);
     }
     if (window != nullptr)
+    {
         (void)window->consumeBenchmarkOrderTiming();
+        (void)window->consumeBenchmarkSelectionTiming();
+    }
     const auto fallbacksBeforeMeasured = window != nullptr
                                              ? window->getObservedRenderFallbackCounts()
                                              : SDLWindow::RenderFallbackCounts{};
@@ -1433,7 +1431,7 @@ void run(const Options &options)
                 for (const auto &identity : previousOracleVisible)
                     if (!oracleVisible.contains(identity)) ++crossingExits;
                 previousOracleVisible = std::move(oracleVisible);
-                if (mode == "linear" || mode == "current-linear" || mode == "cached-linear" || mode == "indexed")
+                if (mode == "cached-linear")
                     for (const auto &identity : previousOracleVisible)
                         if (!visible.contains(identity))
                             throw std::runtime_error("Linear mode omitted a sprite retained by the independent oracle");
@@ -1555,9 +1553,13 @@ void run(const Options &options)
             const auto orderTiming = window != nullptr
                                          ? window->consumeBenchmarkOrderTiming()
                                          : SDLWindow::BenchmarkOrderTiming{};
+            const auto selectionTiming = window != nullptr
+                                             ? window->consumeBenchmarkSelectionTiming()
+                                             : SDLWindow::BenchmarkOrderTiming{};
             pairedStepRenderNanoseconds.push_back(static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count()));
             pairedOrderPrepareNanoseconds.push_back(orderTiming.totalNs);
+            pairedVisibleSelectionNanoseconds.push_back(selectionTiming.totalNs);
         }
     }
     if (framesFile) framesFile->close();
@@ -1567,10 +1569,11 @@ void run(const Options &options)
         pairedPath.replace_extension(".paired.csv");
         std::ofstream paired(pairedPath, std::ios::binary);
         paired.exceptions(std::ios::badbit | std::ios::failbit);
-        paired << "step,paired_step_render_ns,draw_order_prepare_ns\n";
+        paired << "step,paired_step_render_ns,draw_order_prepare_ns,visible_selection_ns\n";
         for (size_t index = 0; index < pairedStepRenderNanoseconds.size(); ++index)
             paired << index << ',' << pairedStepRenderNanoseconds[index] << ','
-                   << pairedOrderPrepareNanoseconds[index] << '\n';
+                   << pairedOrderPrepareNanoseconds[index] << ','
+                   << pairedVisibleSelectionNanoseconds[index] << '\n';
     }
     if (options.validateRendering)
     {
@@ -1611,7 +1614,7 @@ void run(const Options &options)
     {
         const size_t startingPopulation = fixture.records().size();
         const size_t startingRecordCapacity = platformator_test::work.renderCullingOwnedRecordCapacity;
-        if (!options.headless && (mode == "cached-linear" || mode == "indexed") &&
+        if (!options.headless && mode == "cached-linear" &&
             startingRecordCapacity >= startingPopulation && startingRecordCapacity < std::numeric_limits<size_t>::max())
         {
             const size_t requestedPopulation = startingRecordCapacity + 1;
@@ -1634,7 +1637,6 @@ void run(const Options &options)
                                                       growthEnd - growthStart).count())},
                 {"allocation_calls", growthAllocation.calls}, {"allocated_bytes", growthAllocation.bytes},
                 {"record_capacity_after", platformator_test::work.renderCullingOwnedRecordCapacity},
-                {"cell_node_capacity_after", platformator_test::work.renderCullingOwnedCellCapacity},
                 {"owned_bytes_after", platformator_test::work.renderCullingOwnedBytes},
                 {"observer", "C++ operator new/new[] during Sprite registration; aligned new, C, SDL and driver allocations are not attributed"}};
         }
@@ -1664,7 +1666,6 @@ void run(const Options &options)
             {"records_registered_after_clear", fixture.records().size()},
             {"owned_bytes_after_clear", resetWork.renderCullingOwnedBytes},
             {"record_capacity_after_clear", resetWork.renderCullingOwnedRecordCapacity},
-            {"cell_capacity_after_clear", resetWork.renderCullingOwnedCellCapacity},
             {"elapsed_ns", resetNanoseconds}, {"allocation_calls", resetAllocationCalls},
             {"allocated_bytes", resetAllocatedBytes},
             {"observer", "C++ operator new/new[] during scene clear and camera recreation; deallocation, aligned new, C, SDL and driver allocations are not attributed"}};
@@ -1676,11 +1677,6 @@ void run(const Options &options)
         {"dirty_enqueues", resourceCullingWork.renderCullingDirtyEnqueues},
         {"dirty_cancellations", resourceCullingWork.renderCullingDirtyCancellations},
         {"bounds_refreshes", resourceCullingWork.renderCullingBoundsRefreshes},
-        {"index_insertions", resourceCullingWork.renderCullingIndexInsertions},
-        {"index_removals", resourceCullingWork.renderCullingIndexRemovals},
-        {"index_relinks", resourceCullingWork.renderCullingIndexRelinks},
-        {"queries", resourceCullingWork.renderCullingQueries},
-        {"cell_visits", resourceCullingWork.renderCullingCellVisits},
         {"candidate_visits", resourceCullingWork.renderCullingCandidateVisits},
         {"full_population_visits", resourceCullingWork.renderCullingFullPopulationVisits},
         {"order_work", resourceCullingWork.renderCullingOrderWork},
@@ -1688,13 +1684,9 @@ void run(const Options &options)
         {"projection_rebuilds", resourceCullingWork.renderCullingProjectionRebuilds},
         {"numeric_fallbacks", resourceCullingWork.renderCullingNumericFallbacks},
         {"mapping_fallbacks", resourceCullingWork.renderCullingMappingFallbacks},
-        {"side_list_visits", resourceCullingWork.renderCullingSideListVisits},
         {"peak_record_capacity", resourceCullingWork.renderCullingOwnedRecordCapacity},
-        {"peak_cell_node_capacity", resourceCullingWork.renderCullingOwnedCellCapacity},
         {"peak_owned_bytes", resourceCullingWork.renderCullingOwnedBytes},
-        {"peak_grid_owned_bytes", resourceCullingWork.renderCullingGridOwnedBytes},
-        {"peak_common_owned_bytes",
-         resourceCullingWork.renderCullingOwnedBytes - resourceCullingWork.renderCullingGridOwnedBytes},
+        {"peak_common_owned_bytes", resourceCullingWork.renderCullingOwnedBytes},
         {"visible_membership_checks", resourceCullingWork.visibleMembershipChecks},
         {"visible_membership_changes", resourceCullingWork.visibleMembershipChanges},
         {"sprite_order_preparations", resourceCullingWork.spriteOrderPreparations},
@@ -1728,16 +1720,15 @@ void run(const Options &options)
             {"order_sorts", editPhaseWork.spriteOrderSorts},
             {"order_repairs", editPhaseWork.spriteOrderRepairs},
             {"order_moves", editPhaseWork.spriteOrderMoves},
-            {"bounds_refreshes", editPhaseWork.renderCullingBoundsRefreshes},
-            {"index_relinks", editPhaseWork.renderCullingIndexRelinks},
-            {"queries", editPhaseWork.renderCullingQueries}};
+            {"bounds_refreshes", editPhaseWork.renderCullingBoundsRefreshes}};
     }
     if (options.validateResources && options.rejectedZEdit && options.population > 64)
     {
         if (actualChangedZTotal == 0 || resourceCullingWork.spriteOrderPreparations != 0 ||
             resourceCullingWork.spriteOrderSorts != 0 || resourceCullingWork.renderCullingBoundsRefreshes != 0 ||
-            resourceCullingWork.renderCullingQueries != 0 || resourceCullingWork.renderCullingIndexRelinks != 0)
-            throw std::runtime_error("rejected-z-edit resource validation observed unexpected ordering/spatial work or zero Z edits");
+            resourceCullingWork.renderCullingFullPopulationVisits != 0 ||
+            resourceCullingWork.renderCullingCandidateVisits != 0)
+            throw std::runtime_error("rejected-z-edit resource validation observed unexpected ordering/culling work or zero Z edits");
     }
 #endif
     if (options.validateResources)
@@ -1776,18 +1767,13 @@ void run(const Options &options)
                                    {"initial_registered_records", initialCullingRecords},
                                    {"initial_state_creations", initialCullingStateCreations},
                                    {"initial_record_capacity", initializationWork.renderCullingOwnedRecordCapacity},
-                                   {"initial_cell_node_capacity", initializationWork.renderCullingOwnedCellCapacity},
                                    {"initial_owned_bytes", initializationWork.renderCullingOwnedBytes},
-                                   {"initial_grid_owned_bytes", initializationWork.renderCullingGridOwnedBytes},
                                    {"initial_order_owned_bytes", initializationWork.spriteOrderOwnedBytes},
                                    {"first_warmup_step_allocation_calls", coldFirstStepAllocationCalls},
                                    {"first_warmup_step_allocated_bytes", coldFirstStepAllocatedBytes},
                                    {"dirty_enqueues", coldFirstStepWork.renderCullingDirtyEnqueues},
                                    {"bounds_refreshes", coldFirstStepWork.renderCullingBoundsRefreshes},
-                                   {"index_insertions", coldFirstStepWork.renderCullingIndexInsertions},
-                                   {"queries", coldFirstStepWork.renderCullingQueries},
                                    {"owned_bytes", coldFirstStepWork.renderCullingOwnedBytes},
-                                   {"grid_owned_bytes", coldFirstStepWork.renderCullingGridOwnedBytes},
                                    {"order_owned_bytes", coldFirstStepWork.spriteOrderOwnedBytes}}},
             {"capacity_growth_observation", capacityGrowthObservation},
             {"reset_observation", cullingResetObservation},

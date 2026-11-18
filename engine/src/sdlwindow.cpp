@@ -25,6 +25,24 @@
 
 namespace
 {
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+struct ScopedBenchmarkTiming
+{
+    SDLWindow::BenchmarkOrderTiming &timing;
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    ~ScopedBenchmarkTiming() noexcept
+    {
+        const auto elapsed =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
+        const std::uint64_t ns = elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0;
+        ++timing.calls;
+        timing.lastNs = ns;
+        timing.totalNs += ns;
+    }
+};
+#endif
+
 bool hasDefaultRenderMapping(SDL_Renderer *renderer, int expectedWidth, int expectedHeight)
 {
     if (renderer == nullptr || expectedWidth <= 0 || expectedHeight <= 0)
@@ -76,11 +94,12 @@ platformator_detail::RenderCullingMode SDLWindow::resolveRequestedRenderCullingM
     const char *value = std::getenv("PLATFORMATOR_RENDER_CULLING_MODE");
     if (value == nullptr || *value == '\0' || std::string_view(value) == "cached-linear")
         return platformator_detail::RenderCullingMode::CachedLinear;
-    if (std::string_view(value) == "indexed")
-        return platformator_detail::RenderCullingMode::Indexed;
-    if (std::string_view(value) == "current-linear")
-        return platformator_detail::RenderCullingMode::CurrentLinear;
-    throw std::invalid_argument("Unknown PLATFORMATOR_RENDER_CULLING_MODE: " + std::string(value));
+    if (std::string_view(value) == "indexed" || std::string_view(value) == "current-linear")
+        throw std::invalid_argument(
+            "Retired PLATFORMATOR_RENDER_CULLING_MODE '" + std::string(value) +
+            "': render grid and stateless linear culling were removed; unset PLATFORMATOR_RENDER_CULLING_MODE or set 'cached-linear' (then use WindowSettings::enableRenderCulling=false or --no-render-culling if desired)");
+    throw std::invalid_argument("Unknown PLATFORMATOR_RENDER_CULLING_MODE: " + std::string(value) +
+                                " (expected 'cached-linear' or empty)");
 }
 
 SDLWindow::RenderCullingPolicy SDLWindow::resolveRenderCullingPolicy(const WindowSettings &windowSettings)
@@ -101,12 +120,8 @@ const char *SDLWindow::renderCullingModeName(platformator_detail::RenderCullingM
     {
     case platformator_detail::RenderCullingMode::SubmitAll:
         return "submit-all";
-    case platformator_detail::RenderCullingMode::CurrentLinear:
-        return "current-linear";
     case platformator_detail::RenderCullingMode::CachedLinear:
         return "cached-linear";
-    case platformator_detail::RenderCullingMode::Indexed:
-        return "indexed";
     }
     return "unknown";
 }
@@ -164,11 +179,9 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
         {
             spriteDrawOrder.emplace();
             publishOrderCapacityObservation();
-            if (effectiveRenderCullingMode != platformator_detail::RenderCullingMode::SubmitAll &&
-                effectiveRenderCullingMode != platformator_detail::RenderCullingMode::CurrentLinear)
+            if (effectiveRenderCullingMode == platformator_detail::RenderCullingMode::CachedLinear)
             {
-                renderCullingState = std::make_unique<platformator_detail::RenderCullingState>(
-                    effectiveRenderCullingMode);
+                renderCullingState = std::make_unique<platformator_detail::RenderCullingState>();
                 renderCullingState->publishCapacityObservation();
                 PLATFORMATOR_RENDER_CULLING_ADD(renderCullingStateCreations, 1);
             }
@@ -434,8 +447,6 @@ void SDLWindow::render()
     {
         PLATFORMATOR_RENDER_ELIGIBILITY_CHECK();
         cullingEligible = hasDefaultRenderMapping(renderer, renderWidth, renderHeight);
-        if (effectiveRenderCullingMode == platformator_detail::RenderCullingMode::CurrentLinear && !cullingEligible)
-            ++observedFallbackCounts.mappingFallbacks;
     }
     const auto renderView = mainCamera->prepareRenderView(renderWidth, renderHeight, cullingEligible);
 
@@ -506,6 +517,9 @@ bool SDLWindow::isHeadless() const
 bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detail::SpriteRenderView &view)
 {
     using namespace platformator_detail;
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+    ScopedBenchmarkTiming scopedSelectionTiming{benchmarkSelectionTiming};
+#endif
     if (!renderCullingState || camera == nullptr)
         return false;
     if (!view.cullingEligible)
@@ -529,26 +543,20 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
     }
 
     PLATFORMATOR_RENDER_CULLING_ADD(renderCullingViewQueryBuilds, 1);
-    const SpriteRenderProjectionKey projection = makeSpriteRenderProjectionKey(view);
     const SpriteRenderViewKey currentView = makeSpriteRenderViewKey(camera->getHandle(), view);
     SpriteRenderBounds query;
-    if (!projection.valid || !currentView.valid || !makeCertifiedRenderViewQuery(view, query))
+    if (!currentView.valid || !makeCertifiedRenderViewQuery(view, query))
     {
         ++observedFallbackCounts.numericFallbacks;
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingNumericFallbacks, 1);
         return false;
     }
 
-    const bool projectionChanged = !sameSpriteRenderProjection(state.projectionKey(), projection);
+    const bool projectionChanged = !sameSpriteRenderProjection(state.projectionKey(), currentView.projection);
     const bool viewChanged = !sameSpriteRenderView(state.viewKey(), currentView);
     const bool rebuildSelection = projectionChanged || viewChanged || !state.selectionValid();
     if (projectionChanged)
-    {
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingProjectionRebuilds, 1);
-        if (state.mode() == RenderCullingMode::Indexed)
-            state.setSpatialCellSize(static_cast<double>(view.outputWidth) / view.scaleX,
-                                     static_cast<double>(view.outputHeight) / view.scaleY);
-    }
 
     GameManager &manager = RuntimeAccess::gameManager();
     const auto resolveRecordSprite = [&](const RenderCullingState::Record &record) {
@@ -559,22 +567,9 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
     const auto refreshRecord = [&](RenderCullingState::RecordIndex index) -> Sprite * {
         auto &record = state.recordAt(index);
         Sprite *sprite = resolveRecordSprite(record);
-        if (sprite == nullptr)
+        if (sprite == nullptr || sprite->getTexture() == nullptr)
         {
             record.boundsValid = false;
-            record.hasTexture = false;
-            if (state.mode() == RenderCullingMode::Indexed)
-                state.updateSpatialBounds(index, record.bounds, false);
-            PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
-            return nullptr;
-        }
-
-        record.hasTexture = sprite->getTexture() != nullptr;
-        if (!record.hasTexture)
-        {
-            record.boundsValid = false;
-            if (state.mode() == RenderCullingMode::Indexed)
-                state.updateSpatialBounds(index, record.bounds, false);
             PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
             return sprite;
         }
@@ -585,8 +580,6 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
                                                             sprite->getHeight(),
                                                             sprite->getGameObject()->getRotationInDegrees(),
                                                             view.scaleX, view.scaleY, record.bounds);
-        if (state.mode() == RenderCullingMode::Indexed)
-            state.updateSpatialBounds(index, record.bounds, record.boundsValid);
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
         return sprite;
     };
@@ -595,7 +588,7 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
                                                bool hasResolvedSprite) {
         const auto &record = state.recordAt(rank);
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingCandidateVisits, 1);
-        if (!record.hasTexture || !record.boundsValid)
+        if (!record.boundsValid)
             return true;
         if (!overlaps(record.bounds, query))
             return false;
@@ -625,21 +618,11 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
         }
 
         state.beginVisibleSelectionScratch();
-        if (state.mode() == RenderCullingMode::Indexed)
+        for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
         {
-            const auto &candidates = state.querySpatial(query);
-            for (const auto rank : candidates)
-                if (visibleWithResolvedSprite(rank, nullptr, false))
-                    state.appendVisibleSelectionScratch(rank);
-        }
-        else
-        {
-            for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
-            {
-                PLATFORMATOR_RENDER_CULLING_ADD(renderCullingFullPopulationVisits, 1);
-                if (visibleWithResolvedSprite(rank, nullptr, false))
-                    state.appendVisibleSelectionScratch(rank);
-            }
+            PLATFORMATOR_RENDER_CULLING_ADD(renderCullingFullPopulationVisits, 1);
+            if (visibleWithResolvedSprite(rank, nullptr, false))
+                state.appendVisibleSelectionScratch(rank);
         }
         state.publishVisibleSelectionScratch();
     }
@@ -657,7 +640,7 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
         state.finishVisibleDelta();
     }
 
-    state.setPreparedKeys(projection, currentView);
+    state.setPreparedViewKey(currentView);
     state.clearDirtyQueue();
     return true;
 }
@@ -669,20 +652,7 @@ void SDLWindow::prepareDrawOrder(bool useCachedSelection)
 
     auto &order = *spriteDrawOrder;
 #if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
-    struct ScopedOrderTiming
-    {
-        BenchmarkOrderTiming &timing;
-        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-        ~ScopedOrderTiming() noexcept
-        {
-            const auto elapsed =
-                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
-            const std::uint64_t ns = elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0;
-            ++timing.calls;
-            timing.lastNs = ns;
-            timing.totalNs += ns;
-        }
-    } scopedTiming{order.benchmarkTiming};
+    ScopedBenchmarkTiming scopedTiming{order.benchmarkTiming};
 #endif
 
     const size_t population = spriteComponents.size();
@@ -1078,12 +1048,22 @@ SDLWindow::BenchmarkOrderTiming SDLWindow::consumeBenchmarkOrderTiming() noexcep
     spriteDrawOrder->benchmarkTiming = {};
     return current;
 }
+
+SDLWindow::BenchmarkOrderTiming SDLWindow::consumeBenchmarkSelectionTiming() noexcept
+{
+    const BenchmarkOrderTiming current = benchmarkSelectionTiming;
+    benchmarkSelectionTiming = {};
+    return current;
+}
 #endif
 
 void SDLWindow::releaseRenderingStorage() noexcept
 {
     if (renderCullingState)
         renderCullingState->releaseStorage();
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+    benchmarkSelectionTiming = {};
+#endif
     if (spriteDrawOrder)
     {
         std::vector<uint64_t>().swap(spriteDrawOrder->sequenceBySlot);

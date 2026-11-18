@@ -35,7 +35,7 @@ TRAJECTORY_PERIOD_STEPS = {profile: (240 if profile in ("crossing", "camera-pan"
                                                            "giant", "large-offset", "rotated", "clustered") else 0)
                            for profile in INCREMENTAL_PROFILES}
 EXPECTED_HARNESS_LENGTH = 64
-INCREMENTAL_STRATEGIES = ("current-linear", "cached-linear", "indexed")
+INCREMENTAL_STRATEGIES = ("cached-linear",)
 INCREMENTAL_PHASES = ("validate", "resources", "time", "pilot")
 FOCUSED_CASE_NAMES = ("mostly-offscreen", "camera-motion", "small-moving-subset",
                       "fully-moving-crossing", "all-visible", "crossing-multiworker")
@@ -72,6 +72,8 @@ def validate_incremental_options(comparison: str, phase: str | None, strategy: s
     if comparison == "incremental":
         if phase not in INCREMENTAL_PHASES:
             raise CaptureError(f"Unknown incremental phase: {phase}")
+        if strategy in ("indexed", "current-linear"):
+            raise CaptureError(f"Retired render strategy '{strategy}': only 'cached-linear' is supported")
         if strategy not in (*INCREMENTAL_STRATEGIES, "all"):
             raise CaptureError(f"Unknown render strategy: {strategy}")
     elif comparison == "render-order-culling":
@@ -175,23 +177,30 @@ def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expec
             raise CaptureError("Incremental step samples contain duration attributed to the render scope")
     paired_values = []
     prepare_values: list[float | None] = []
+    selection_values: list[float | None] = []
     with paired_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames not in (["step", "paired_step_render_ns"],
-                                     ["step", "paired_step_render_ns", "draw_order_prepare_ns"]):
+                                     ["step", "paired_step_render_ns", "draw_order_prepare_ns"],
+                                     ["step", "paired_step_render_ns", "draw_order_prepare_ns", "visible_selection_ns"]):
             raise CaptureError("Incremental paired timing columns are invalid")
         has_prepare = "draw_order_prepare_ns" in reader.fieldnames
+        has_selection = "visible_selection_ns" in reader.fieldnames
         for index, row in enumerate(reader):
             try:
                 sample_index = int(row["step"])
                 nanoseconds = int(row["paired_step_render_ns"])
                 prepare_ns = int(row["draw_order_prepare_ns"]) if has_prepare else None
+                selection_ns = int(row["visible_selection_ns"]) if has_selection else None
             except (TypeError, ValueError) as error:
                 raise CaptureError("Incremental paired timing sample is invalid") from error
-            if sample_index != index or nanoseconds < 0 or (prepare_ns is not None and prepare_ns < 0):
+            if (sample_index != index or nanoseconds < 0 or
+                    (prepare_ns is not None and prepare_ns < 0) or
+                    (selection_ns is not None and selection_ns < 0)):
                 raise CaptureError("Incremental paired timing samples are negative, truncated, or reordered")
             paired_values.append(nanoseconds / 1_000_000)
             prepare_values.append((prepare_ns / 1_000_000) if prepare_ns is not None else None)
+            selection_values.append((selection_ns / 1_000_000) if selection_ns is not None else None)
     if len(paired_values) != expected_steps:
         raise CaptureError("Incremental paired timing sample count differs from the requested run")
     for row in render_rows:
@@ -202,7 +211,8 @@ def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expec
         rows.append({"sample_index": index, "complete_step_ms": row["complete_step"],
                      "render_ms": by_render_index[index]["render"] if index in by_render_index else 0.0,
                      "paired_step_render_ms": paired_values[index],
-                     "draw_order_prepare_ms": prepare_values[index]})
+                     "draw_order_prepare_ms": prepare_values[index],
+                     "visible_selection_ms": selection_values[index]})
     return rows, paired_values
 
 
@@ -642,22 +652,31 @@ def validate_resource_proof(root: Path, case: dict, args, mode: str) -> dict:
         raise CaptureError("Resource proof changed fraction is inconsistent with actual per-step observations")
     cold = proof["cold_observation"]
     reset = proof["reset_observation"]
+    is_zero_int = lambda val: isinstance(val, int) and not isinstance(val, bool) and val == 0
+    requires_cell_capacity = (mode == "indexed") or (isinstance(reset, dict) and "cell_capacity_after_clear" in reset)
     if (not isinstance(cold, dict) or not isinstance(reset, dict) or
             not isinstance(cold.get("first_warmup_step_elapsed_ns"), int) or
+            isinstance(cold.get("first_warmup_step_elapsed_ns"), bool) or
             cold["first_warmup_step_elapsed_ns"] <= 0 or
             not isinstance(cold.get("fixture_construction_and_registration_ns"), int) or
+            isinstance(cold.get("fixture_construction_and_registration_ns"), bool) or
             cold["fixture_construction_and_registration_ns"] <= 0 or
             not isinstance(cold.get("fixture_construction_allocation_calls"), int) or
+            isinstance(cold.get("fixture_construction_allocation_calls"), bool) or
             cold["fixture_construction_allocation_calls"] < 0 or
             not isinstance(cold.get("fixture_construction_allocated_bytes"), int) or
+            isinstance(cold.get("fixture_construction_allocated_bytes"), bool) or
             cold["fixture_construction_allocated_bytes"] < 0 or
-            reset.get("records_registered_after_clear") != 0 or
-            reset.get("owned_bytes_after_clear") != 0 or
-            reset.get("record_capacity_after_clear") != 0 or
-            reset.get("cell_capacity_after_clear") != 0 or
-            not isinstance(reset.get("elapsed_ns"), int) or reset["elapsed_ns"] <= 0 or
-            not isinstance(reset.get("allocation_calls"), int) or reset["allocation_calls"] < 0 or
-            not isinstance(reset.get("allocated_bytes"), int) or reset["allocated_bytes"] < 0):
+            not is_zero_int(reset.get("records_registered_after_clear")) or
+            not is_zero_int(reset.get("owned_bytes_after_clear")) or
+            not is_zero_int(reset.get("record_capacity_after_clear")) or
+            (requires_cell_capacity and not is_zero_int(reset.get("cell_capacity_after_clear"))) or
+            not isinstance(reset.get("elapsed_ns"), int) or isinstance(reset.get("elapsed_ns"), bool) or
+            reset["elapsed_ns"] <= 0 or
+            not isinstance(reset.get("allocation_calls"), int) or isinstance(reset.get("allocation_calls"), bool) or
+            reset["allocation_calls"] < 0 or
+            not isinstance(reset.get("allocated_bytes"), int) or isinstance(reset.get("allocated_bytes"), bool) or
+            reset["allocated_bytes"] < 0):
         raise CaptureError("Resource proof lacks separate setup/cold or full-storage-reclamation evidence")
     growth = proof["capacity_growth_observation"]
     if not isinstance(growth, dict) or not isinstance(growth.get("attempted"), bool):
@@ -892,7 +911,8 @@ def _write_incremental_identity(path: Path, case: dict, strategy: str, args,
 def _incremental_probe_command(binary: Path, case: dict, args, mode: str, csv_path: Path,
                                evidence_path: Path, *, phase: str, run_index: int = 0,
                                validation_path: Path | None = None,
-                               resource_path: Path | None = None) -> list[str]:
+                               resource_path: Path | None = None,
+                               allow_frozen_strategy: bool = False) -> list[str]:
     command = [str(binary), "--profile", case["profile"], "--sprite-count", str(case["sprite_count"]),
                "--workers", str(case["workers"]), "--seed", str(args.seed),
                "--warmup-frames", str(args.warmup_frames), "--measure-frames", str(args.measure_frames),
@@ -900,7 +920,7 @@ def _incremental_probe_command(binary: Path, case: dict, args, mode: str, csv_pa
                "--csv-output", str(csv_path), "--evidence-output", str(evidence_path),
                "--changed-percent", str(case["changed_percent"]), "--layout", case["layout"],
                "--size-distribution", case["size_distribution"]]
-    if mode in INCREMENTAL_STRATEGIES:
+    if mode in INCREMENTAL_STRATEGIES or (allow_frozen_strategy and mode == "current-linear"):
         command += ["--render-strategy", mode]
     elif mode == "disabled":
         command.append("--no-render-culling")
@@ -967,7 +987,10 @@ def validate_frozen_control_group(frozen: dict, candidate: dict, case: dict) -> 
         raise CaptureError("Frozen feature-008 controls are missing a strategy")
     for mode in ("current-linear", "disabled"):
         baseline = frozen[mode]
-        current = candidate[mode]
+        candidate_mode = "disabled" if mode == "disabled" else (
+            "current-linear" if "current-linear" in candidate else INCREMENTAL_STRATEGIES[0]
+        )
+        current = candidate[candidate_mode]
         if baseline.get("fixture_sha256") != current.get("fixture_sha256") or \
                 baseline.get("harness_sha256") != current.get("harness_sha256"):
             raise CaptureError("Frozen and candidate controls do not share the audited capture harness")
@@ -1084,7 +1107,7 @@ def capture_incremental_mismatch_images(args, case: dict, frame: int, output: Pa
     candidate_modes = [mode for mode in (*INCREMENTAL_STRATEGIES, "disabled") if mode in candidate_proofs]
     if "disabled" not in candidate_modes or not set(INCREMENTAL_STRATEGIES) <= set(candidate_modes):
         raise CaptureError("Incremental mismatch recovery lacks all candidate strategy proofs")
-    expected_candidate = candidate_proofs["current-linear"]
+    expected_candidate = candidate_proofs[INCREMENTAL_STRATEGIES[0]]
     for mode in candidate_modes:
         proof = candidate_proofs[mode]
         if any(proof.get(field) != expected_candidate.get(field)
@@ -1117,7 +1140,8 @@ def capture_incremental_mismatch_images(args, case: dict, frame: int, output: Pa
         prefix = mismatch_dir / label
         csv_path = Path(str(prefix) + ".csv")
         command = _incremental_probe_command(
-            binary, case, args, mode, csv_path, prefix, phase="validate", run_index=0)
+            binary, case, args, mode, csv_path, prefix, phase="validate", run_index=0,
+            allow_frozen_strategy=label.startswith("frozen-"))
         command += ["--capture-frame-index", str(frame)]
         log_path = logs / f"mismatch-{incremental_case_key(case)}-{label}.log"
         _run(command, log_path, env)
@@ -1394,16 +1418,16 @@ def render_order_cases(selection: str | list[str], workers: int, multiworker_cou
     return [dict(specs[name]) for name in names]
 
 
-def render_order_arms(case: dict) -> list[dict]:
+def render_order_arms(case: dict, include_baseline: bool = True) -> list[dict]:
     if case["all_zero"]:
-        arms = [
-            {"arm": "baseline-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
-             "workers": case["workers"], "is_baseline": True},
-            {"arm": "candidate-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
-             "workers": case["workers"], "is_baseline": False},
+        arms = []
+        if include_baseline:
+            arms.append(
+                {"arm": "baseline-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
+                 "workers": case["workers"], "is_baseline": True})
+        arms.append(
             {"arm": "candidate-cached-linear", "strategy": "cached-linear", "ordering_variant": "rebuild",
-             "workers": case["workers"], "is_baseline": False},
-        ]
+             "workers": case["workers"], "is_baseline": False})
     else:
         w = case["workers"]
         mw = case["multiworker_count"]
@@ -1429,10 +1453,10 @@ def _render_order_control_specs() -> list[dict]:
     return [
         {"control_name": "rejected-z-edit", "profile": "rejected-z-edit", "sprite_count": 10000,
          "layout": "profile-defined", "changed_percent": 0, "size_distribution": "standard",
-         "strategies": ("indexed", "cached-linear")},
+         "strategies": ("cached-linear",)},
         {"control_name": "fully-moving-crossing", "profile": "crossing", "sprite_count": 10000,
          "layout": "continuous-crossing", "changed_percent": 100, "size_distribution": "standard",
-         "strategies": ("current-linear", "cached-linear", "indexed")},
+         "strategies": ("cached-linear",)},
     ]
 
 
@@ -1441,6 +1465,8 @@ def _build_render_order_command(binary: Path, case: dict, arm: dict, args, *, ph
                                 evidence_prefix: Path | None = None,
                                 validation_path: Path | None = None,
                                 resource_path: Path | None = None) -> list[str]:
+    if arm["strategy"] == "indexed" and not arm["is_baseline"]:
+        raise CaptureError("Candidate probe no longer supports retired indexed strategy")
     command = [str(binary), "--profile", case["profile"], "--sprite-count", str(case["sprite_count"]),
                "--workers", str(arm["workers"]), "--seed", str(args.seed),
                "--warmup-frames", str(args.warmup_frames), "--measure-frames", str(args.measure_frames),
@@ -1596,15 +1622,15 @@ def validate_render_order_timing_manifest(csv_path: Path, case: dict, arm: dict,
         raise CaptureError(f"{case['case_name']} {arm['arm']} unexpectedly observed frame fallbacks")
     if arm["is_baseline"]:
         if render_proof is None or resource_proof is None:
-            raise CaptureError("Baseline timing check requires candidate indexed proofs to compare trajectory and fixture")
+            raise CaptureError("Baseline timing check requires candidate cached-linear proofs to compare trajectory and fixture")
         if (resolved != render_proof.get("trajectory_parameters") or
                 resolved != resource_proof.get("trajectory_parameters")):
             raise CaptureError(
-                f"{case['case_name']} {arm['arm']} resolved all-zero trajectory differs from candidate indexed control")
+                f"{case['case_name']} {arm['arm']} resolved all-zero trajectory differs from candidate cached-linear control")
         if manifest.get("fixture_sha256") != render_proof.get("fixture_sha256"):
-            raise CaptureError(f"{case['case_name']} {arm['arm']} fixture_sha256 differs from candidate indexed control")
+            raise CaptureError(f"{case['case_name']} {arm['arm']} fixture_sha256 differs from candidate cached-linear control")
         if manifest.get("renderer_mapping") != render_proof.get("renderer_mapping"):
-            raise CaptureError(f"{case['case_name']} {arm['arm']} renderer mapping differs from candidate indexed control")
+            raise CaptureError(f"{case['case_name']} {arm['arm']} renderer mapping differs from candidate cached-linear control")
     else:
         if manifest.get("ordering_variant", "rebuild") != arm["ordering_variant"]:
             raise CaptureError(f"{case['case_name']} {arm['arm']} ordering_variant mismatch")
@@ -1639,43 +1665,44 @@ def _delta_spread(left_values: list[float], right_values: list[float]) -> dict:
             "ratio_left_over_right": {"values": ratios, "mean": statistics.fmean(ratios) if ratios else 0.0}}
 
 
+def _optional_metric_entry(filtered_by_rep: list[list[dict]], field: str) -> dict:
+    rep_means = []
+    all_vals = []
+    for rows in filtered_by_rep:
+        vals = [row.get(field) for row in rows]
+        if not rows or any(val is None for val in vals):
+            return {"available": False, "reason": "unavailable in uninstrumented binary"}
+        rep_means.append(statistics.fmean(vals))
+        all_vals.extend(vals)
+    if not all_vals:
+        return {"available": False, "reason": "unavailable in uninstrumented binary"}
+    return {"available": True, **_timing_summary(all_vals), "process_spread": _process_spread(rep_means)}
+
+
 def _slice_stats(rows_by_rep: list[list[dict]], predicate) -> dict:
+    filtered_by_rep = [[row for row in rep_rows if predicate(row)] for rep_rows in rows_by_rep]
     rep_paired_means = []
     rep_render_means = []
     rep_step_means = []
-    rep_prepare_means = []
     all_paired = []
     all_render = []
     all_step = []
-    all_prepare = []
-    prepare_complete = True
-    for rep_rows in rows_by_rep:
-        filtered = [row for row in rep_rows if predicate(row)]
+    for filtered in filtered_by_rep:
         p = [row["paired_step_render_ms"] for row in filtered]
         r = [row["render_ms"] for row in filtered]
         s = [row["complete_step_ms"] for row in filtered]
-        prep = [row.get("draw_order_prepare_ms") for row in filtered]
-        if not filtered or any(val is None for val in prep):
-            prepare_complete = False
-        else:
-            rep_prepare_means.append(statistics.fmean(prep))
-            all_prepare.extend(prep)
         rep_paired_means.append(statistics.fmean(p) if p else 0.0)
         rep_render_means.append(statistics.fmean(r) if r else 0.0)
         rep_step_means.append(statistics.fmean(s) if s else 0.0)
         all_paired.extend(p)
         all_render.extend(r)
         all_step.extend(s)
-    prepare_entry = (
-        {"available": True, **_timing_summary(all_prepare), "process_spread": _process_spread(rep_prepare_means)}
-        if prepare_complete and all_prepare
-        else {"available": False, "reason": "unavailable in frozen pre-change baseline binary (uninstrumented)"}
-    )
     return {
         "paired_step_render_ms": {**_timing_summary(all_paired), "process_spread": _process_spread(rep_paired_means)},
         "render_ms": {**_timing_summary(all_render), "process_spread": _process_spread(rep_render_means)},
         "complete_step_ms": {**_timing_summary(all_step), "process_spread": _process_spread(rep_step_means)},
-        "draw_order_prepare_ms": prepare_entry,
+        "draw_order_prepare_ms": _optional_metric_entry(filtered_by_rep, "draw_order_prepare_ms"),
+        "visible_selection_ms": _optional_metric_entry(filtered_by_rep, "visible_selection_ms"),
         "samples_per_run": len(rows_by_rep[0]) if predicate == (lambda _r: True) else len([r for r in rows_by_rep[0] if predicate(r)]),
     }
 
@@ -1692,31 +1719,66 @@ def _cleanup_transient_render_order_files(output_dir: Path) -> None:
                     path.unlink(missing_ok=True)
 
 
+def _require_nonneg_int(mapping: dict, field: str, label: str) -> int:
+    value = mapping.get(field)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise CaptureError(f"{label} is missing or has invalid {field}")
+    return value
+
+
 def validate_render_order_control_resource(ctrl: dict, strategy: str, rproof: dict, args) -> None:
     cname = ctrl["control_name"]
-    if rproof.get("profile") not in (None, ctrl["profile"]) or rproof.get("sprite_count") not in (None, ctrl["sprite_count"]):
-        raise CaptureError(f"{cname} control ({strategy}) resource proof has mismatched workload identity")
-    if rproof.get("measure_frames") not in (None, args.measure_frames):
-        raise CaptureError(f"{cname} control ({strategy}) resource proof has mismatched measure_frames")
-    if "mode" in rproof and rproof.get("mode") != strategy:
-        raise CaptureError(f"{cname} control ({strategy}) resource proof has mismatched mode")
-    required_int_fields = (
+    label = f"{cname} control ({strategy}) resource proof"
+    if rproof.get("profile") != ctrl["profile"]:
+        raise CaptureError(f"{label} has missing or mismatched profile")
+    sprite_count = rproof.get("sprite_count")
+    if not isinstance(sprite_count, int) or isinstance(sprite_count, bool) or sprite_count != ctrl["sprite_count"]:
+        raise CaptureError(f"{label} has missing or mismatched sprite_count")
+    if rproof.get("mode") != strategy:
+        raise CaptureError(f"{label} has missing or mismatched mode")
+    workers = rproof.get("workers")
+    if not isinstance(workers, int) or isinstance(workers, bool) or workers != args.workers:
+        raise CaptureError(f"{label} has missing or mismatched workers")
+    seed = rproof.get("seed")
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed != args.seed:
+        raise CaptureError(f"{label} has missing or mismatched seed")
+    warmup = rproof.get("warmup_frames")
+    if not isinstance(warmup, int) or isinstance(warmup, bool) or warmup != args.warmup_frames:
+        raise CaptureError(f"{label} has missing or mismatched warmup_frames")
+    measure = rproof.get("measure_frames")
+    if not isinstance(measure, int) or isinstance(measure, bool) or measure != args.measure_frames:
+        raise CaptureError(f"{label} has missing or mismatched measure_frames")
+    dt = rproof.get("dt")
+    if not isinstance(dt, (int, float)) or isinstance(dt, bool) or not math.isfinite(dt) or dt != args.dt:
+        raise CaptureError(f"{label} has missing or mismatched dt")
+
+    for field in (
         "allocation_calls", "allocated_bytes",
         "actual_changed_sprite_total", "actual_changed_pose_total",
         "actual_changed_z_total", "actual_changed_sprites_per_step_max",
-    )
-    for field in required_int_fields:
-        value = rproof.get(field)
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise CaptureError(f"{cname} control ({strategy}) resource proof is missing or has invalid {field}")
+        "render_view_preparations", "render_eligibility_checks",
+        "render_visibility_checks", "render_submissions",
+    ):
+        _require_nonneg_int(rproof, field, label)
     changed_fraction = rproof.get("actual_changed_fraction")
     if not isinstance(changed_fraction, (int, float)) or isinstance(changed_fraction, bool) or not math.isfinite(changed_fraction) or not 0 <= changed_fraction <= 1:
-        raise CaptureError(f"{cname} control ({strategy}) resource proof has invalid actual_changed_fraction")
+        raise CaptureError(f"{label} has invalid actual_changed_fraction")
     for field in ("cold_observation", "capacity_growth_observation", "reset_observation", "culling_work"):
         if not isinstance(rproof.get(field), dict):
-            raise CaptureError(f"{cname} control ({strategy}) resource proof is missing {field}")
+            raise CaptureError(f"{label} is missing {field}")
 
     work = rproof["culling_work"]
+    for field in (
+        "bounds_refreshes",
+        "sprite_order_preparations", "sprite_order_sorts",
+        "candidate_visits", "full_population_visits",
+        "dirty_enqueues", "visible_membership_checks", "visible_membership_changes",
+    ):
+        _require_nonneg_int(work, field, f"{label} culling_work")
+    for legacy_field in ("queries", "index_relinks"):
+        if legacy_field in work:
+            _require_nonneg_int(work, legacy_field, f"{label} culling_work")
+
     if cname == "rejected-z-edit":
         rejected_count = max(0, ctrl["sprite_count"] - 64)
         expected_z_total = min(100, rejected_count) * args.measure_frames
@@ -1725,8 +1787,9 @@ def validate_render_order_control_resource(ctrl: dict, strategy: str, rproof: di
                 rproof["actual_changed_sprite_total"] != expected_z_total or
                 (rejected_count > 0 and rproof["actual_changed_z_total"] == 0)):
             raise CaptureError(f"rejected-z-edit control ({strategy}) did not observe expected rejected-only Z edits")
-        if (work.get("sprite_order_preparations", 0) != 0 or work.get("sprite_order_sorts", 0) != 0 or
-                work.get("bounds_refreshes", 0) != 0 or work.get("index_relinks", 0) != 0 or
+        if (work["sprite_order_preparations"] != 0 or work["sprite_order_sorts"] != 0 or
+                work["bounds_refreshes"] != 0 or work["full_population_visits"] != 0 or
+                work["candidate_visits"] != 0 or work.get("index_relinks", 0) != 0 or
                 work.get("queries", 0) != 0 or rproof["allocation_calls"] != 0):
             raise CaptureError(f"rejected-z-edit control ({strategy}) performed unexpected work or warm allocations")
     elif cname == "fully-moving-crossing":
@@ -1737,7 +1800,7 @@ def validate_render_order_control_resource(ctrl: dict, strategy: str, rproof: di
                 rproof["actual_changed_sprite_total"] != expected_pose_total or
                 (ctrl["sprite_count"] > 0 and expected_steps > 0 and rproof["actual_changed_pose_total"] == 0)):
             raise CaptureError(f"fully-moving-crossing control ({strategy}) did not observe expected crossing pose changes")
-        if rproof.get("render_submissions", 0) > ctrl["sprite_count"] * args.measure_frames:
+        if rproof["render_submissions"] > ctrl["sprite_count"] * args.measure_frames:
             raise CaptureError(f"fully-moving-crossing control ({strategy}) exceeded maximum possible submissions")
 
 
@@ -1753,16 +1816,16 @@ def run_render_order_culling(args) -> dict:
     if any(case["case_name"] == "dense-z-edit" for case in cases) and args.measure_frames < 2:
         raise CaptureError("dense-z-edit requires --measure-frames >= 2 for at least one clean and one edit frame")
     for case in cases:
-        arms = render_order_arms(case)
+        arms = render_order_arms(case, include_baseline=(args.baseline_probe is not None))
         if len({(a["strategy"], a["ordering_variant"], a["workers"], a["is_baseline"]) for a in arms}) != len(arms):
             raise CaptureError(f"{case['case_name']} has colliding worker/variant arm identities")
-    needs_baseline = any(case["all_zero"] for case in cases)
+    has_baseline = args.baseline_probe is not None
     if not args.candidate_probe.is_file() or not os.access(args.candidate_probe, os.X_OK):
         raise CaptureError(f"Candidate timing probe is not executable: {args.candidate_probe}")
     if not args.candidate_validation_probe.is_file() or not os.access(args.candidate_validation_probe, os.X_OK):
         raise CaptureError(f"Candidate validation probe is not executable: {args.candidate_validation_probe}")
-    if needs_baseline and (args.baseline_probe is None or not args.baseline_probe.is_file() or not os.access(args.baseline_probe, os.X_OK)):
-        raise CaptureError("All-zero cases require an executable --baseline-probe")
+    if has_baseline and (not args.baseline_probe.is_file() or not os.access(args.baseline_probe, os.X_OK)):
+        raise CaptureError(f"Pre-change baseline probe is not executable: {args.baseline_probe}")
 
     args.output.mkdir(parents=True)
     logs = args.output / "logs"; logs.mkdir()
@@ -1776,9 +1839,7 @@ def run_render_order_culling(args) -> dict:
     in_progress_files: list[Path] = []
     current_stage = "identity"
     expected_comparisons = {
-        "implementation_overhead": [c["case_name"] for c in cases if c["all_zero"]],
-        "culling_strategy": [c["case_name"] for c in cases if c["all_zero"]],
-        "default_policy": [c["case_name"] for c in cases if c["all_zero"]],
+        "endpoint_implementation_and_policy": ([c["case_name"] for c in cases if c["all_zero"]] if has_baseline else []),
         "dense_z_ordering": (["dense-z-edit"] if any(c["case_name"] == "dense-z-edit" for c in cases) else []),
     }
 
@@ -1812,7 +1873,7 @@ def run_render_order_culling(args) -> dict:
         base_id = (_read_probe_identity(args.baseline_probe, logs / "baseline-timing-identity.log", env)
                    if args.baseline_probe is not None else None)
         _validate_render_order_probe_identities(
-            val_id, tim_id, base_id, needs_baseline,
+            val_id, tim_id, base_id, has_baseline,
             candidate_path=args.candidate_probe, baseline_path=args.baseline_probe)
 
         # 1. Validation & resource pass on candidate probes (before any timing runs)
@@ -1821,7 +1882,7 @@ def run_render_order_culling(args) -> dict:
             validation_proofs[cname] = {}
             resource_proofs[cname] = {}
             try:
-                for arm in render_order_arms(case):
+                for arm in render_order_arms(case, include_baseline=has_baseline):
                     if arm["is_baseline"]:
                         continue
                     aname = arm["arm"]
@@ -1903,7 +1964,7 @@ def run_render_order_culling(args) -> dict:
 
         # 3. Independent timed repetitions (uninstrumented Release probes)
         rng = random.Random(args.seed ^ 0x9E3779B9)
-        jobs = [(case, arm) for case in cases for arm in render_order_arms(case)]
+        jobs = [(case, arm) for case in cases for arm in render_order_arms(case, include_baseline=has_baseline)]
 
         for run_index in range(args.repetitions):
             schedule = list(jobs)
@@ -1915,7 +1976,7 @@ def run_render_order_culling(args) -> dict:
                 b_id = base_id if arm["is_baseline"] else tim_id
                 stem = f"{cname}-{aname}-r{run_index}"
                 csv_path = raw_root / f"{stem}.csv"
-                ref_arm = "candidate-indexed" if arm["is_baseline"] else aname
+                ref_arm = "candidate-cached-linear" if arm["is_baseline"] else aname
                 vpath = Path(validation_proofs[cname][aname]["_path"]) if not arm["is_baseline"] else None
                 rpath = Path(resource_proofs[cname][aname]["_path"]) if not arm["is_baseline"] else None
                 tcmd = _build_render_order_command(binary, case, arm, args, phase="time", csv_path=csv_path,
@@ -1938,6 +1999,8 @@ def run_render_order_culling(args) -> dict:
                 if not arm["is_baseline"]:
                     if len(samples) != args.measure_frames or any(row.get("draw_order_prepare_ms") is None for row in samples):
                         raise CaptureError(f"{cname} {aname} candidate paired CSV is missing draw_order_prepare_ns column or samples")
+                    if any(row.get("visible_selection_ms") is None for row in samples):
+                        raise CaptureError(f"{cname} {aname} candidate paired CSV is missing visible_selection_ns column or samples")
                 key = (cname, aname)
                 rows_by_case_arm.setdefault(key, []).append({
                     "run_index": run_index, "workers": arm["workers"],
@@ -1947,6 +2010,10 @@ def run_render_order_culling(args) -> dict:
                     "draw_order_prepare_mean_ms": (
                         statistics.fmean([row["draw_order_prepare_ms"] for row in samples])
                         if all(row.get("draw_order_prepare_ms") is not None for row in samples)
+                        else None),
+                    "visible_selection_mean_ms": (
+                        statistics.fmean([row["visible_selection_ms"] for row in samples])
+                        if all(row.get("visible_selection_ms") is not None for row in samples)
                         else None),
                     "samples": samples,
                     "csv": str(csv_path), "manifest": str(csv_path.with_suffix(".manifest.json")),
@@ -1961,7 +2028,7 @@ def run_render_order_culling(args) -> dict:
         for case in cases:
             cname = case["case_name"]
             aggregates[cname] = {}
-            for arm in render_order_arms(case):
+            for arm in render_order_arms(case, include_baseline=has_baseline):
                 aname = arm["arm"]
                 rep_samples = samples_by_case_arm[(cname, aname)]
                 entry = {"combined": _slice_stats(rep_samples, lambda _r: True)}
@@ -1972,34 +2039,26 @@ def run_render_order_culling(args) -> dict:
                         raise CaptureError("dense-z-edit requires both clean and edit measured samples")
                     if not arm["is_baseline"] and (
                             not clean_slice["draw_order_prepare_ms"].get("available") or
-                            not edit_slice["draw_order_prepare_ms"].get("available")):
-                        raise CaptureError(f"{cname} {aname} candidate slice is missing draw_order_prepare_ms samples")
+                            not edit_slice["draw_order_prepare_ms"].get("available") or
+                            not clean_slice["visible_selection_ms"].get("available") or
+                            not edit_slice["visible_selection_ms"].get("available")):
+                        raise CaptureError(f"{cname} {aname} candidate slice is missing timing instrumentation samples")
                     entry["clean_frames"] = clean_slice
                     entry["edit_frames"] = edit_slice
                 aggregates[cname][aname] = entry
 
-        comparisons: dict[str, dict] = {"implementation_overhead": {}, "culling_strategy": {},
-                                        "default_policy": {}, "dense_z_ordering": {}}
+        comparisons: dict[str, dict] = {"endpoint_implementation_and_policy": {}, "dense_z_ordering": {}}
         for case in cases:
             cname = case["case_name"]
-            if case["all_zero"]:
+            if case["all_zero"] and has_baseline:
                 def arm_means(arm_name: str, field: str) -> list[float]:
                     return aggregates[cname][arm_name]["combined"][field]["process_spread"]["values_ms"]
-                comparisons["implementation_overhead"][cname] = {
-                    **{field: _delta_spread(arm_means("candidate-indexed", field), arm_means("baseline-indexed", field))
-                       for field in ("paired_step_render_ms", "render_ms", "complete_step_ms")},
-                    "draw_order_prepare_ms": {"available": False, "reason": "unavailable in frozen pre-change baseline binary"},
-                }
-                comparisons["culling_strategy"][cname] = {
-                    field: _delta_spread(arm_means("candidate-cached-linear", field), arm_means("candidate-indexed", field))
-                    for field in ("paired_step_render_ms", "render_ms", "complete_step_ms", "draw_order_prepare_ms")
-                    if aggregates[cname]["candidate-cached-linear"]["combined"][field].get("available", True)
-                    and aggregates[cname]["candidate-indexed"]["combined"][field].get("available", True)
-                }
-                comparisons["default_policy"][cname] = {
+                comparisons["endpoint_implementation_and_policy"][cname] = {
+                    "comparison_scope": "combined implementation + policy change (frozen pre-removal indexed baseline vs candidate cached-linear)",
                     **{field: _delta_spread(arm_means("candidate-cached-linear", field), arm_means("baseline-indexed", field))
                        for field in ("paired_step_render_ms", "render_ms", "complete_step_ms")},
                     "draw_order_prepare_ms": {"available": False, "reason": "unavailable in frozen pre-change baseline binary"},
+                    "visible_selection_ms": {"available": False, "reason": "unavailable in frozen pre-change baseline binary"},
                 }
             elif cname == "dense-z-edit":
                 for phase_name in ("combined", "clean_frames", "edit_frames"):
@@ -2042,6 +2101,7 @@ def run_render_order_culling(args) -> dict:
                           "render_ms": "Benchmark render scope including present and VSync pacing",
                           "complete_step_ms": "Benchmark simulation step scope including setters",
                           "draw_order_prepare_ms": "Benchmark-only std::chrono::steady_clock CPU elapsed time around candidate SDLWindow::prepareDrawOrder (unavailable in frozen baseline binary)",
+                          "visible_selection_ms": "Benchmark-only std::chrono::steady_clock CPU elapsed time around candidate SDLWindow::prepareVisibleSelection excluding draw ordering, submission, and presentation",
                       }},
             "parity_checks": parity_summaries,
             "aggregates_by_case": aggregates,
@@ -2056,7 +2116,8 @@ def run_render_order_culling(args) -> dict:
 
         lines = ["# Render Order & Culling Pilot Report", "",
                  f"- Repetitions: {args.repetitions}, Warmup: {args.warmup_frames}, Measured: {args.measure_frames}",
-                 f"- Baseline binary: `{args.baseline_probe}`",
+                 (f"- Baseline binary: `{args.baseline_probe}`"
+                  if has_baseline else "- Baseline binary: none (candidate-only capture)"),
                  f"- Candidate timing: `{args.candidate_probe}`",
                  f"- Candidate validation: `{args.candidate_validation_probe}`", ""]
         if expected_mapping:
@@ -2067,20 +2128,30 @@ def run_render_order_culling(args) -> dict:
             lines.append("")
         for case in cases:
             cname = case["case_name"]
-            lines += [f"## Case: {cname}", "",
-                      "| Arm | Slice | Order Prep Mean (ms) | Paired Mean (ms) | Render Mean (ms) | Step Mean (ms) | Paired p95 (ms) |",
+            lines += [f"## Case: {cname}", ""]
+            if case["all_zero"]:
+                if has_baseline:
+                    lines.append("Note: `baseline-indexed` vs `candidate-cached-linear` is a combined implementation + policy endpoint comparison (pre-removal `indexed` vs current `cached-linear`).")
+                else:
+                    lines.append("Note: candidate-only `cached-linear` capture (no frozen `--baseline-probe` supplied).")
+                lines.append("")
+            lines += ["| Arm | Slice | Selection Median/p95 (ms) | Order Prep Mean (ms) | Paired Mean/Median/p95 (ms) | Render Mean (ms) | Step Mean (ms) |",
                       "|---|---|---:|---:|---:|---:|---:|"]
-            for arm in render_order_arms(case):
+            for arm in render_order_arms(case, include_baseline=has_baseline):
                 aname = arm["arm"]
                 slices = ("combined", "clean_frames", "edit_frames") if cname == "dense-z-edit" else ("combined",)
                 for sl in slices:
                     st = aggregates[cname][aname][sl]
+                    sel = st["visible_selection_ms"]
+                    sel_cell = (f"{sel['median_ms']:.4f}/{sel['p95_ms']:.4f}"
+                                if sel.get("available") else "unavailable")
                     prep = st["draw_order_prepare_ms"]
                     prep_cell = f"{prep['mean_ms']:.4f}" if prep.get("available") else "unavailable (frozen baseline)"
+                    paired_st = st["paired_step_render_ms"]
                     lines.append(
-                        f"| {aname} | {sl} | {prep_cell} | {st['paired_step_render_ms']['mean_ms']:.4f} | "
-                        f"{st['render_ms']['mean_ms']:.4f} | {st['complete_step_ms']['mean_ms']:.4f} | "
-                        f"{st['paired_step_render_ms']['p95_ms']:.4f} |")
+                        f"| {aname} | {sl} | {sel_cell} | {prep_cell} | "
+                        f"{paired_st['mean_ms']:.4f}/{paired_st['median_ms']:.4f}/{paired_st['p95_ms']:.4f} | "
+                        f"{st['render_ms']['mean_ms']:.4f} | {st['complete_step_ms']['mean_ms']:.4f} |")
             lines.append("")
         (args.output / "report.md").write_text("\n".join(lines), encoding="utf-8")
         check_budget()
@@ -2203,7 +2274,7 @@ def _validate_incremental_timing_manifest(csv_path: Path, case: dict, args, stra
         raise CaptureError("Incremental timing trajectory differs from the matching rendering proof")
     culling = manifest.get("linear_render_culling", {})
     expected_policy = "headless-no-rendering" if case.get("headless") else strategy
-    expected_enabled = strategy in INCREMENTAL_STRATEGIES and not case.get("headless")
+    expected_enabled = strategy != "disabled" and not case.get("headless")
     if (culling.get("mode") != strategy or culling.get("requested_mode") != strategy or
             culling.get("effective_policy") != expected_policy or culling.get("enabled") is not expected_enabled or
             manifest.get("requested_render_strategy") != strategy):
@@ -2484,21 +2555,11 @@ def _run_incremental_pilot(args, selection: str) -> dict:
                     "p99_by_process": [row["render_p99_ms"] for row in selected],
                     "worst_by_process": [row["render_worst_ms"] for row in selected]}
             differences[case_id] = {}
-            for left, right in (("cached-linear", "current-linear"), ("indexed", "cached-linear"),
-                                ("indexed", "current-linear")):
-                left_rows = {row["run_index"]: row for row in run_rows
-                             if row["case_id"] == case_id and row["strategy"] == left}
-                right_rows = {row["run_index"]: row for row in run_rows
-                              if row["case_id"] == case_id and row["strategy"] == right}
-                differences[case_id][f"{left}_vs_{right}"] = {
-                    field: [left_rows[index][field] - right_rows[index][field]
-                            for index in range(args.repetitions)]
-                    for field in ("render_mean_ms", "complete_step_mean_ms", "paired_step_render_mean_ms")}
         (raw_root / "raw-index.json").write_text(json.dumps(raw_index, indent=2) + "\n", encoding="utf-8")
         report = {"proof_kind": "platformator.incremental-pilot", "proof_version": 1,
                   "comparison": "incremental", "phase": "pilot", "complete": True,
                   "exploratory": True,
-                  "acceptance": "No feature acceptance claim; no framewise parity/frozen-control proof; SC-006 remains open until evidence supports the indexed incremental benefit.",
+                  "acceptance": "No feature acceptance claim; single-culler cached-linear exploratory pilot.",
                   "scope": {"focused_cases": [case["pilot_name"] for case in cases],
                             "strategies": list(INCREMENTAL_STRATEGIES), "resource_modes": [*INCREMENTAL_STRATEGIES, "disabled"],
                             "repetitions": args.repetitions, "warmup_steps": args.warmup_frames,
@@ -2519,7 +2580,7 @@ def _run_incremental_pilot(args, selection: str) -> dict:
                             "capture_driver_sha256": sha256(Path(__file__)),
                             "host_environment": host_environment,
                             "renderer_mapping_by_case": {incremental_case_key(case):
-                                resource_by_case[incremental_case_key(case)]["current-linear"]["renderer_mapping"]
+                                resource_by_case[incremental_case_key(case)][INCREMENTAL_STRATEGIES[0]]["renderer_mapping"]
                                 for case in cases}},
                   "resources": resource_inventory, "timing_runs": run_rows,
                   "aggregates_by_case": aggregates, "process_differences_by_case": differences,
@@ -2563,7 +2624,7 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
                             env: dict, assets_hash: str, timing_identity: dict,
                             baseline_timing_identity: dict) -> dict:
     if strategies != list(INCREMENTAL_STRATEGIES):
-        raise CaptureError("Acceptance timing requires all three candidate strategies")
+        raise CaptureError("Acceptance timing requires the sole supported candidate strategy ('cached-linear')")
     validation_marker = json.loads((args.validation_root / "phase.json").read_text(encoding="utf-8"))
     resource_marker = json.loads((args.resource_root / "phase.json").read_text(encoding="utf-8"))
     validation_cases = _incremental_phase_inventory(
@@ -2642,7 +2703,8 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
             command = _incremental_probe_command(
                 binary, case, args, strategy, csv_path, evidence_prefix,
                 phase="time", run_index=run_index,
-                validation_path=Path(proof["_path"]), resource_path=Path(resource["_path"]))
+                validation_path=Path(proof["_path"]), resource_path=Path(resource["_path"]),
+                allow_frozen_strategy=frozen)
             log_path = logs / f"time-{prefix_name}.log"
             _run(command, log_path, env)
             metrics = parse_benchmark_csv(csv_path)
@@ -2721,21 +2783,15 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
                 "paired_frame_worst_ms_by_process": [row["paired_worst_ms"] for row in selected]}
         aggregates[case_id] = by_strategy
         differences[case_id] = {}
-        for strategy, reference in (("cached-linear", "current-linear"), ("indexed", "cached-linear"),
-                                    ("indexed", "current-linear")):
-            left = {row["run_index"]: row for row in run_rows
-                    if row["case_key"] == case_id and row["strategy"] == strategy}
-            right = {row["run_index"]: row for row in run_rows
-                     if row["case_key"] == case_id and row["strategy"] == reference}
-            differences[case_id][f"{strategy}_vs_{reference}"] = {
-                field: [left[index][field] - right[index][field] for index in range(args.repetitions)]
-                for field in ("render_ms", "complete_step_ms", "paired_step_render_ms")}
+        ref_strategy = strategies[0]
         for strategy in (*strategies, "disabled"):
+            if strategy == ref_strategy:
+                continue
             baseline = {row["run_index"]: row for row in run_rows
-                        if row["case_key"] == case_id and row["strategy"] == "current-linear"}
+                        if row["case_key"] == case_id and row["strategy"] == ref_strategy}
             candidate = {row["run_index"]: row for row in run_rows
                          if row["case_key"] == case_id and row["strategy"] == strategy}
-            differences[case_id][f"{strategy}_vs_current-linear"] = {
+            differences[case_id][f"{strategy}_vs_{ref_strategy}"] = {
                 field: [candidate[index][field] - baseline[index][field] for index in range(args.repetitions)]
                 for field in ("render_ms", "complete_step_ms", "paired_step_render_ms")}
 
@@ -2749,8 +2805,11 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
         case_id = item["case_id"]
         frozen_control_analysis[case_id] = {}
         for strategy in ("current-linear", "disabled"):
+            candidate_strategy = strategy if any(
+                row["case_key"] == case_id and row["strategy"] == strategy for row in run_rows
+            ) else strategies[0]
             candidate = {row["run_index"]: row for row in run_rows
-                         if row["case_key"] == case_id and row["strategy"] == strategy}
+                         if row["case_key"] == case_id and row["strategy"] == candidate_strategy}
             frozen = {row["run_index"]: row for row in frozen_rows
                       if row["case_key"] == case_id and row["strategy"] == strategy}
             if set(candidate) != set(range(args.repetitions)) or set(frozen) != set(range(args.repetitions)):
@@ -2762,7 +2821,7 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
             frozen_summaries = {
                 field: _timing_summary([frozen[index][field] for index in range(args.repetitions)])
                 for field in metrics}
-            frozen_control_analysis[case_id][strategy] = {
+            entry = {
                 "candidate_summaries": candidate_summaries,
                 "feature008_summaries": frozen_summaries,
                 "candidate_minus_feature008_by_process": {
@@ -2770,6 +2829,9 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
                             for index in range(args.repetitions)] for field in metrics},
                 "candidate_runs": [candidate[index] for index in range(args.repetitions)],
                 "feature008_runs": [frozen[index] for index in range(args.repetitions)]}
+            if candidate_strategy != strategy:
+                entry["comparison_scope"] = "combined implementation + policy change (frozen current-linear vs candidate cached-linear)"
+            frozen_control_analysis[case_id][strategy] = entry
 
     stock_controls = run_engine_controls(
         args, logs, raw_root, env, rng,
@@ -2805,8 +2867,8 @@ def _run_incremental_timing(args, strategies: list[str], cases: list[dict], logs
 
 def run_incremental_capture(args, strategy_selection: str) -> dict:
     if args.phase == "pilot":
-        if strategy_selection != "all":
-            raise CaptureError("The pilot phase compares all three candidate strategies")
+        if strategy_selection not in (*INCREMENTAL_STRATEGIES, "all"):
+            raise CaptureError("The pilot phase supports only --strategy cached-linear (or omitted/'all')")
         return _run_incremental_pilot(args, args.focused_cases)
     validate_repetitions(args.repetitions)
     if (args.multiworker_count <= 0 or args.workers <= 0 or args.seed < 0 or args.warmup_frames < 0 or
@@ -2868,10 +2930,7 @@ def run_incremental_capture(args, strategy_selection: str) -> dict:
             case_root = phase_root / case_id
             case_root.mkdir()
             proofs = {}
-            case_modes = list(modes)
-            if case_id in control_ids and "current-linear" not in case_modes:
-                case_modes.append("current-linear")
-            for mode in case_modes:
+            for mode in modes:
                 prefix = case_root / f"{case_key(case)}-{mode}"
                 csv_path = Path(str(prefix) + ".csv")
                 command = _incremental_probe_command(
@@ -2900,7 +2959,8 @@ def run_incremental_capture(args, strategy_selection: str) -> dict:
                     prefix = frozen_root / f"{case_key(case)}-{mode}"
                     command = _incremental_probe_command(
                         args.baseline_validation_probe, case, args, mode,
-                        Path(str(prefix) + ".csv"), prefix, phase="validate", run_index=0)
+                        Path(str(prefix) + ".csv"), prefix, phase="validate", run_index=0,
+                        allow_frozen_strategy=True)
                     _run(command, logs / f"validate-{case_id}-frozen-{mode}.log", env)
                     proof = validate_render_proof(frozen_root, case, args, mode)
                     proof_path = Path(proof["_path"])
@@ -2959,10 +3019,7 @@ def run_incremental_capture(args, strategy_selection: str) -> dict:
             resources = {}
             render_proofs = {}
             validation_case_root = args.validation_root / case_id
-            case_modes = list(modes)
-            if case_id in control_ids and "current-linear" not in case_modes:
-                case_modes.append("current-linear")
-            for mode in case_modes:
+            for mode in modes:
                 render_proofs[mode] = validate_render_proof(validation_case_root, case, args, mode)
                 prefix = case_root / f"{case_key(case)}-{mode}"
                 command = _incremental_probe_command(
@@ -2987,7 +3044,8 @@ def run_incremental_capture(args, strategy_selection: str) -> dict:
                     prefix = frozen_root / f"{case_key(case)}-{mode}"
                     command = _incremental_probe_command(
                         args.baseline_validation_probe, case, args, mode,
-                        Path(str(prefix) + ".csv"), prefix, phase="resources", run_index=0)
+                        Path(str(prefix) + ".csv"), prefix, phase="resources", run_index=0,
+                        allow_frozen_strategy=True)
                     _run(command, logs / f"resources-{case_id}-frozen-{mode}.log", env)
                     resource = validate_resource_proof(frozen_root, case, args, mode)
                     resource["_incremental_identity"] = _write_incremental_identity(
@@ -3207,7 +3265,7 @@ def main(argv=None) -> int:
                 raise CaptureError(f"Refusing to reuse an existing output path: {root}")
         budget = CaptureBudget(roots, args.max_output_mib, args.max_seconds)
         try:
-            with capture_budget(budget):
+            with capture_budget(budget, check_on_exit=(comparison != "render-order-culling")):
                 if comparison == "render-order-culling":
                     run_render_order_culling(args)
                 elif comparison == "incremental":

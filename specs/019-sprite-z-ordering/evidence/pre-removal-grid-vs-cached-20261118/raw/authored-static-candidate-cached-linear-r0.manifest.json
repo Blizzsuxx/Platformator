@@ -1,0 +1,161 @@
+{
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup"
+  },
+  "build": {
+    "commit": "eacf1e9ca900e92dda65f8714c85d0c0c5d601b2",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": true,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "11673d3f9bd612cd5b4c5d783c874f0b8af74381cb7d3f4caeb0de1e65764319",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "SDL_ttf": "3.2.2",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "fixture_sha256": "170c6203834cd331174fdd004ffda0f23d1508bb1c722599266b6759337b5eb6",
+  "harness_sha256": "99056ad405221df2795293581720971a1bc845ddb526f94ac43367a45cbe1d61",
+  "linear_render_culling": {
+    "disabled": false,
+    "effective_policy": "cached-linear",
+    "enabled": true,
+    "headless": false,
+    "mode": "cached-linear",
+    "observed_frame_fallbacks": 0,
+    "observed_mapping_fallbacks": 0,
+    "observed_numeric_fallbacks": 0,
+    "requested_mode": "cached-linear",
+    "requested_selector": "cached-linear",
+    "resolved_startup_strategy": "cached-linear"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.12.112-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 30,
+  "order_prepare_clock": {
+    "boundary": "SDLWindow::prepareDrawOrder CPU elapsed time excluding presentation and frame pacing",
+    "source": "std::chrono::steady_clock"
+  },
+  "ordering_variant": "rebuild",
+  "physical_invariants": {
+    "finite": true,
+    "populations_valid": true,
+    "supports_valid": true
+  },
+  "render_samples": 30,
+  "renderer_mapping": {
+    "actual_output_height": 240,
+    "actual_output_width": 320,
+    "current_output_height": 240,
+    "current_output_width": 320,
+    "logical_presentation": [
+      0,
+      0,
+      0
+    ],
+    "mapping_eligible": true,
+    "mapping_known": true,
+    "output_height": 240,
+    "output_width": 320,
+    "renderer": "software",
+    "scale": [
+      1.0,
+      1.0
+    ],
+    "target_active": false,
+    "viewport": [
+      0,
+      0,
+      320,
+      240
+    ],
+    "viewport_set": false,
+    "vsync": 1,
+    "vsync_known": true
+  },
+  "rendering": true,
+  "repetition_index": 0,
+  "repetitions": 3,
+  "requested_measured_steps": 30,
+  "requested_render_strategy": "cached-linear",
+  "resolved_parameters": {
+    "camera_height": 240.0,
+    "camera_schedule": "fixed",
+    "camera_width": 320.0,
+    "changed_percent": 0,
+    "churn_minimum_replacements": 0,
+    "churn_replacements_per_step": 0,
+    "layout": "fixed-area",
+    "output_resize_step": 0,
+    "output_schedule": "320x240",
+    "profile": "visible",
+    "rotation_distribution": "zero",
+    "scene_asset": "",
+    "seed": 0,
+    "size_distribution": "standard",
+    "sprite_count": 64,
+    "sprite_height": 16.0,
+    "sprite_width": 16.0,
+    "trajectory_period_steps": 0
+  },
+  "resource_observation": {
+    "path": "/home/user/Projects/Platformator/specs/019-sprite-z-ordering/evidence/pre-removal-grid-vs-cached-20261118/resources/authored-static-candidate-cached-linear.resources.json",
+    "sha256": "a985bb25043ac57e683cf17e6da586b1c3da937a7725e4eac60cab2602e4a6cd"
+  },
+  "sample_capacity": 4096,
+  "scenario": "linear_render_culling",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": true,
+  "total_render_samples": 30,
+  "total_steps": 30,
+  "validation_mode": "boundary-only",
+  "validation_proof": {
+    "path": "/home/user/Projects/Platformator/specs/019-sprite-z-ordering/evidence/pre-removal-grid-vs-cached-20261118/proofs/authored-static-candidate-cached-linear.evidence.json",
+    "sha256": "780eeccf6bd32b741037b5d63b9641913eea395fd5875584f7707985ac27e064"
+  },
+  "visible_selection_clock": {
+    "boundary": "SDLWindow::prepareVisibleSelection CPU elapsed time excluding draw ordering, submission, and presentation",
+    "source": "std::chrono::steady_clock"
+  },
+  "warmup_steps": 5,
+  "workers": 1
+}

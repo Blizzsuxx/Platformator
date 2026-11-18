@@ -115,6 +115,7 @@ class SDLWindow
 #if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
     void setBenchmarkSpriteOrderMode(BenchmarkSpriteOrderMode mode) noexcept;
     BenchmarkOrderTiming consumeBenchmarkOrderTiming() noexcept;
+    BenchmarkOrderTiming consumeBenchmarkSelectionTiming() noexcept;
 #endif
     void releaseRenderingStorage() noexcept;
 
@@ -191,6 +192,9 @@ class SDLWindow
     RenderFallbackCounts observedFallbackCounts{};
     std::unique_ptr<platformator_detail::RenderCullingState> renderCullingState;
     std::optional<SpriteDrawOrder> spriteDrawOrder;
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+    BenchmarkOrderTiming benchmarkSelectionTiming{};
+#endif
 
     std::vector<Sprite *> spriteComponents;
     std::vector<std::function<void(SDL_Event, double)>> listeners;

@@ -103,35 +103,39 @@ int main()
         }
 
         {
-            ScopedEnvSelector indexed("indexed");
+            ScopedEnvSelector cached("cached-linear");
             std::array<char *, 2> renderArguments{const_cast<char *>("platformator_benchmark_runner"),
                                                   const_cast<char *>("--render")};
             const auto rendered = parseBenchmarkRunnerOptions(static_cast<int>(renderArguments.size()),
                                                                renderArguments.data());
-            const auto indexedMetadata = renderCullingMetadata(rendered);
-            test_support::require(indexedMetadata.at("requested_selector") == "indexed" &&
-                                      indexedMetadata.at("resolved_startup_strategy") == "indexed" &&
-                                      indexedMetadata.at("effective_policy") == "indexed" &&
-                                      indexedMetadata.at("effective_enabled") == true,
-                                  "Explicit indexed selector must appear in benchmark policy metadata");
+            const auto cachedMetadata = renderCullingMetadata(rendered);
+            test_support::require(cachedMetadata.at("requested_selector") == "cached-linear" &&
+                                      cachedMetadata.at("resolved_startup_strategy") == "cached-linear" &&
+                                      cachedMetadata.at("effective_policy") == "cached-linear" &&
+                                      cachedMetadata.at("effective_enabled") == true,
+                                  "Explicit cached-linear selector must appear in benchmark policy metadata");
         }
 
+        for (const char *badSelector : {"indexed", "current-linear", "bogus-strategy"})
         {
-            ScopedEnvSelector invalid("bogus-strategy");
+            ScopedEnvSelector invalid(badSelector);
             std::array<char *, 2> disabledArgs{const_cast<char *>("platformator_benchmark_runner"),
                                                const_cast<char *>("--no-render-culling")};
             const auto disabled = parseBenchmarkRunnerOptions(static_cast<int>(disabledArgs.size()),
                                                                disabledArgs.data());
             bool rejected = false;
+            std::string message;
             try
             {
                 (void)renderCullingMetadata(disabled);
             }
-            catch (const std::invalid_argument &)
+            catch (const std::invalid_argument &error)
             {
                 rejected = true;
+                message = error.what();
             }
-            test_support::require(rejected, "Invalid selector must fail policy resolution even when disabled");
+            test_support::require(rejected && message.find("cached-linear") != std::string::npos,
+                                  "Retired or unknown selector must fail policy resolution with actionable guidance even when disabled");
         }
         std::cout << "[PASS] benchmark render culling CLI and policy metadata\n";
         return 0;

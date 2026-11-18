@@ -533,84 +533,55 @@ void checkStaticCacheReuse()
 
     for (const auto &testCase : cases)
     {
-        const StaticModeCapture linear = captureStaticMode("current-linear", true, testCase.count, testCase.layout);
-        const StaticModeCapture submitAll = captureStaticMode("current-linear", false, testCase.count, testCase.layout);
+        const StaticModeCapture defaultRun = captureStaticMode(nullptr, true, testCase.count, testCase.layout);
         const StaticModeCapture cached = captureStaticMode("cached-linear", true, testCase.count, testCase.layout);
-        const StaticModeCapture indexed = captureStaticMode("indexed", true, testCase.count, testCase.layout);
+        const StaticModeCapture submitAll = captureStaticMode("cached-linear", false, testCase.count, testCase.layout);
 
-        test_support::require(linear.setupWork.renderCullingStateCreations == 0 &&
-                                  submitAll.setupWork.renderCullingStateCreations == 0,
-                              std::string(testCase.name) + ": inactive comparison modes must not create cache state");
+        test_support::require(submitAll.setupWork.renderCullingStateCreations == 0,
+                              std::string(testCase.name) + ": submit-all opt-out must not create cache state");
+        test_support::require(defaultRun.setupWork.renderCullingStateCreations == 1 &&
+                                  defaultRun.setupWork.renderCullingRecordsAdded == testCase.count,
+                              std::string(testCase.name) + ": default mode must own one record per registered sprite");
         test_support::require(cached.setupWork.renderCullingStateCreations == 1 &&
                                   cached.setupWork.renderCullingRecordsAdded == testCase.count,
                               std::string(testCase.name) + ": cached-linear must own one record per registered sprite");
-        test_support::require(indexed.setupWork.renderCullingStateCreations == 1 &&
-                                  indexed.setupWork.renderCullingRecordsAdded == testCase.count,
-                              std::string(testCase.name) + ": indexed mode must own one record per registered sprite");
-        test_support::require(linear.frames.front().image.rgba == submitAll.frames.front().image.rgba,
-                              std::string(testCase.name) + ": submit-all and current-linear images differ");
         test_support::require(submitAll.frames.front().submissions.size() == testCase.count,
                               std::string(testCase.name) + ": submit-all must preserve every registered submission");
         for (size_t rank = 0; rank < testCase.count; ++rank)
             test_support::require(submitAll.frames.front().submissions[rank].slot == rank,
                                   std::string(testCase.name) + ": submit-all order differs from registration order");
-        std::vector<SpriteIdentity> expectedLinear;
+        std::vector<SpriteIdentity> expectedVisibleOrdered;
         for (const auto identity : submitAll.frames.front().submissions)
-            if (std::find(linear.frames.front().expectedVisible.begin(), linear.frames.front().expectedVisible.end(),
-                          identity) != linear.frames.front().expectedVisible.end())
-                expectedLinear.push_back(identity);
-        test_support::require(linear.frames.front().submissions == expectedLinear,
-                              std::string(testCase.name) + ": current-linear differs from the ordered oracle subset");
-        for (size_t frameIndex = 0; frameIndex < cached.frames.size(); ++frameIndex)
+            if (std::find(submitAll.frames.front().expectedVisible.begin(),
+                          submitAll.frames.front().expectedVisible.end(),
+                          identity) != submitAll.frames.front().expectedVisible.end())
+                expectedVisibleOrdered.push_back(identity);
+        for (const auto *runPtr : {&defaultRun, &cached})
         {
-            compareFixtureFrames(std::string(testCase.name) + " cached frame " + std::to_string(frameIndex),
-                                 linear.frames.front(), cached.frames[frameIndex]);
-            const auto &work = cached.frames[frameIndex].work;
-            if (frameIndex == 0)
+            for (size_t frameIndex = 0; frameIndex < runPtr->frames.size(); ++frameIndex)
             {
-                test_support::require(work.renderCullingViewQueryBuilds == 1 &&
-                                          work.renderCullingProjectionRebuilds == 1 &&
-                                          work.renderCullingCacheHits == 0,
-                                      std::string(testCase.name) +
-                                          ": initial cached-linear preparation must certify and build view query once");
-                continue;
-            }
-            test_support::require(work.renderCullingViewQueryBuilds == 0 &&
-                                      work.renderCullingProjectionRebuilds == 0 &&
-                                      work.renderCullingBoundsRefreshes == 0 &&
-                                      work.renderCullingQueries == 0 &&
-                                      work.renderCullingFullPopulationVisits == 0 &&
-                                      work.renderCullingNumericRankSorts == 0 &&
-                                      work.visibleMembershipChanges == 0 &&
-                                      work.spriteOrderPreparations == 0 &&
-                                      work.spriteOrderSorts == 0 &&
-                                      work.spriteOrderComparisons == 0 &&
-                                      work.renderCullingCacheHits == 1,
-                                  std::string(testCase.name) +
-                                      ": an unchanged prepared frame must short-circuit without query construction");
-        }
-        for (size_t frameIndex = 0; frameIndex < indexed.frames.size(); ++frameIndex)
-        {
-            compareFixtureFrames(std::string(testCase.name) + " indexed frame " + std::to_string(frameIndex),
-                                 linear.frames.front(), indexed.frames[frameIndex]);
-            const auto &work = indexed.frames[frameIndex].work;
-            if (frameIndex == 0)
-            {
-                test_support::require(work.renderCullingViewQueryBuilds == 1 &&
-                                          work.renderCullingQueries == 1 &&
-                                          work.renderCullingProjectionRebuilds == 1 &&
-                                          work.renderCullingNumericRankSorts == 0 && work.spriteOrderSorts <= 1,
-                                      std::string(testCase.name) +
-                                          ": initial indexed preparation must build view query and query once without numeric rank sorts");
-            }
-            else
+                const FrameResult &frame = runPtr->frames[frameIndex];
+                test_support::require(frame.image.rgba == submitAll.frames.front().image.rgba,
+                                      std::string(testCase.name) + ": cached frame image differs from submit-all oracle");
+                test_support::require(frame.submissions == expectedVisibleOrdered,
+                                      std::string(testCase.name) + ": cached submissions differ from ordered oracle");
+                const auto &work = frame.work;
+                if (frameIndex == 0)
+                {
+                    test_support::require(work.renderCullingViewQueryBuilds == 1 &&
+                                              work.renderCullingProjectionRebuilds == 1 &&
+                                              work.renderCullingFullPopulationVisits == testCase.count &&
+                                              work.renderCullingNumericRankSorts == 0 && work.spriteOrderSorts <= 1 &&
+                                              work.renderCullingCacheHits == 0,
+                                          std::string(testCase.name) +
+                                              ": initial cached-linear preparation must scan common records once");
+                    continue;
+                }
                 test_support::require(work.renderCullingViewQueryBuilds == 0 &&
                                           work.renderCullingProjectionRebuilds == 0 &&
                                           work.renderCullingBoundsRefreshes == 0 &&
-                                          work.renderCullingQueries == 0 &&
-                                          work.renderCullingCellVisits == 0 &&
-                                          work.renderCullingCandidateVisits == 0 &&
                                           work.renderCullingFullPopulationVisits == 0 &&
+                                          work.renderCullingCandidateVisits == 0 &&
                                           work.renderCullingNumericRankSorts == 0 &&
                                           work.visibleMembershipChanges == 0 &&
                                           work.spriteOrderPreparations == 0 &&
@@ -618,7 +589,8 @@ void checkStaticCacheReuse()
                                           work.spriteOrderComparisons == 0 &&
                                           work.renderCullingCacheHits == 1,
                                       std::string(testCase.name) +
-                                          ": an unchanged indexed frame must short-circuit without query construction");
+                                          ": an unchanged prepared frame must short-circuit without query construction");
+            }
         }
     }
 }
@@ -720,21 +692,16 @@ std::vector<FrameResult> capturePublishedWorldPositionSequence(const char *mode)
 
 void checkPublishedWorldPositionBounds()
 {
-    const auto current = capturePublishedWorldPositionSequence("current-linear");
+    const auto defaultRun = capturePublishedWorldPositionSequence(nullptr);
     const auto cached = capturePublishedWorldPositionSequence("cached-linear");
-    const auto indexed = capturePublishedWorldPositionSequence("indexed");
-    test_support::require(current.size() == 3 && cached.size() == current.size() && indexed.size() == current.size(),
+    test_support::require(defaultRun.size() == 3 && cached.size() == defaultRun.size(),
                           "Published-position regression must capture initial, render-only, and synchronized frames");
-    test_support::require(current[1].submissions == std::vector<SpriteIdentity>{{0, 0}} &&
-                              current[2].submissions.empty(),
+    test_support::require(defaultRun[1].submissions == std::vector<SpriteIdentity>{{0, 0}} &&
+                              defaultRun[2].submissions.empty(),
                           "The parent move must remain at the prior published position until transform synchronization");
-    for (size_t frame = 0; frame < current.size(); ++frame)
-    {
-        compareFixtureFrames("published world position cached frame " + std::to_string(frame), current[frame],
+    for (size_t frame = 0; frame < defaultRun.size(); ++frame)
+        compareFixtureFrames("published world position cached frame " + std::to_string(frame), defaultRun[frame],
                              cached[frame]);
-        compareFixtureFrames("published world position indexed frame " + std::to_string(frame), current[frame],
-                             indexed[frame]);
-    }
 }
 
 std::vector<FrameResult> captureDistantTexturelessSequence(const char *mode)
@@ -763,19 +730,19 @@ std::vector<FrameResult> captureDistantTexturelessSequence(const char *mode)
     return frames;
 }
 
-void checkDistantTexturelessIndexedFallback()
+void checkDistantTexturelessFallback()
 {
-    const auto current = captureDistantTexturelessSequence("current-linear");
-    const auto indexed = captureDistantTexturelessSequence("indexed");
-    test_support::require(current.size() == 6 && indexed.size() == current.size(),
+    const auto defaultRun = captureDistantTexturelessSequence(nullptr);
+    const auto cached = captureDistantTexturelessSequence("cached-linear");
+    test_support::require(defaultRun.size() == 6 && cached.size() == defaultRun.size(),
                           "Textureless fallback sequence must cover initial, dirty, and camera-pan frames");
     const std::array<bool, 6> expectedSubmission = {true, false, true, true, true, false};
-    for (size_t frame = 0; frame < current.size(); ++frame)
+    for (size_t frame = 0; frame < defaultRun.size(); ++frame)
     {
-        test_support::require(current[frame].submissions.size() == (expectedSubmission[frame] ? 1u : 0u),
-                              "Current-linear textureless fallback schedule did not match its contract");
-        compareFixtureFrames("distant textureless indexed frame " + std::to_string(frame), current[frame],
-                             indexed[frame]);
+        test_support::require(defaultRun[frame].submissions.size() == (expectedSubmission[frame] ? 1u : 0u),
+                              "Cached-linear textureless fallback schedule did not match its contract");
+        compareFixtureFrames("distant textureless cached frame " + std::to_string(frame), defaultRun[frame],
+                             cached[frame]);
     }
 }
 
@@ -816,16 +783,15 @@ std::vector<FrameResult> captureSimultaneousCrossing(const char *mode)
 
 void checkSimultaneousCrossingOrderWork()
 {
-    const auto current = captureSimultaneousCrossing("current-linear");
+    const auto defaultRun = captureSimultaneousCrossing(nullptr);
     const auto cached = captureSimultaneousCrossing("cached-linear");
-    const auto indexed = captureSimultaneousCrossing("indexed");
     constexpr size_t population = 512;
     constexpr size_t half = population / 2;
-    for (const auto *frames : {&cached, &indexed})
+    for (const auto *frames : {&defaultRun, &cached})
     {
-        test_support::require(frames->size() == 2 && current.size() == 2,
+        test_support::require(frames->size() == 2,
                               "Simultaneous crossing must capture preparation and the batched membership change");
-        compareFixtureFrames("simultaneous crossing current frame", current[1], (*frames)[1]);
+        compareFixtureFrames("simultaneous crossing cached frame", defaultRun[1], (*frames)[1]);
         const auto &work = (*frames)[1].work;
         test_support::require(work.renderCullingDirtyEnqueues == population &&
                                   work.renderCullingBoundsRefreshes == population,
@@ -835,18 +801,19 @@ void checkSimultaneousCrossingOrderWork()
                                   work.spriteOrderPreparations == 1 &&
                                   work.spriteOrderSorts <= 1,
                               "Simultaneous visibility changes must use bounded delta membership updates and at most one draw sort");
-        test_support::require((*frames)[1].submissions.size() == half,
-                              "The simultaneous crossing must replace the visible half without duplicates");
+        test_support::require((*frames)[1].submissions.size() == half &&
+                                  (*frames)[1].submissions == (*frames)[1].expectedVisible,
+                              "The simultaneous crossing must replace the visible half in expected order without duplicates");
         test_support::require(work.renderCullingOwnedRecordCapacity == population,
                               "The warmed crossing path must not grow record capacity");
     }
 }
 
-std::vector<FrameResult> captureIndexedPanSequence(const char *mode)
+std::vector<FrameResult> captureCachedPanSequence(const char *mode, bool enableCulling = true)
 {
     ScopedRenderCullingMode strategy(mode);
     test_support::headlessEnvironment();
-    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+    RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, enableCulling);
     constexpr size_t spreadCount = 400;
     fixture.reserveSprites(spreadCount + 3);
     size_t slot = 0;
@@ -859,8 +826,6 @@ std::vector<FrameResult> captureIndexedPanSequence(const char *mode)
             fixture.addSprite(slot++, 0, x, y, 24.0f, 24.0f);
         }
     }
-    // Keep overlapping translucent sprites in one queried cell. The index's
-    // linked-list traversal is deliberately independent of submission rank.
     fixture.addSprite(slot++, 0, 0.0f, 0.0f, 120.0f, 90.0f, FixtureTexture::RedCircle);
     fixture.addSprite(slot++, 0, 0.0f, 0.0f, 90.0f, 110.0f, FixtureTexture::BlackSquare, SDL_FLIP_HORIZONTAL);
     fixture.addSprite(slot++, 0, 0.0f, 0.0f, 70.0f, 70.0f, FixtureTexture::RedCircle, SDL_FLIP_VERTICAL);
@@ -886,50 +851,51 @@ std::vector<FrameResult> captureIndexedPanSequence(const char *mode)
     return frames;
 }
 
-void checkIndexedPanSelection()
+void checkCachedPanSelection()
 {
-    const auto reference = captureIndexedPanSequence("current-linear");
-    const auto indexed = captureIndexedPanSequence("indexed");
-    test_support::require(reference.size() == indexed.size(), "Pan comparison frame counts differ");
-    for (size_t frame = 0; frame < reference.size(); ++frame)
-        compareFixtureFrames("indexed pan frame " + std::to_string(frame), reference[frame], indexed[frame]);
-
-    constexpr size_t population = 403;
-    for (size_t frame = 1; frame + 1 < indexed.size(); ++frame)
+    const auto submitAll = captureCachedPanSequence(nullptr, false);
+    const auto cached = captureCachedPanSequence("cached-linear", true);
+    test_support::require(submitAll.size() == cached.size(), "Pan comparison frame counts differ");
+    for (size_t frame = 0; frame < submitAll.size(); ++frame)
     {
-        const auto &work = indexed[frame].work;
-        test_support::require(work.renderCullingQueries > 0,
-                              "A camera pan must execute an actual spatial query");
-        test_support::require(work.renderCullingBoundsRefreshes == 0 && work.renderCullingIndexRelinks == 0 &&
-                                  work.renderCullingFullPopulationVisits == 0,
-                              "Camera-only pans must reuse bounds and avoid a population-wide selection pass");
-        test_support::require(work.renderCullingCandidateVisits < population / 4 &&
-                                  work.renderCullingNumericRankSorts == 0 &&
-                                  work.spriteOrderEntries < population &&
-                                  work.spriteOrderSorts <= 1,
-                              "Spread-scene pan must visit and order a spatially selective candidate set");
+        requireGoodReadback(cached[frame], "cached pan frame " + std::to_string(frame));
+        test_support::require(cached[frame].image.rgba == submitAll[frame].image.rgba,
+                              "Cached pan pixel output differed from submit-all oracle");
+        test_support::require(cached[frame].submissions == cached[frame].expectedVisible,
+                              "Cached pan submissions differed from independently expected oracle order");
     }
 
-    const auto &projectionWork = indexed.back().work;
+    constexpr size_t population = 403;
+    for (size_t frame = 1; frame + 1 < cached.size(); ++frame)
+    {
+        const auto &work = cached[frame].work;
+        test_support::require(work.renderCullingViewQueryBuilds == 1 &&
+                                  work.renderCullingFullPopulationVisits == population &&
+                                  work.renderCullingCandidateVisits == population,
+                              "A camera pan under cached-linear must scan all registered common records once");
+        test_support::require(work.renderCullingBoundsRefreshes == 0,
+                              "Camera-only pans must reuse certified bounds");
+        test_support::require(work.renderCullingNumericRankSorts == 0 &&
+                                  work.spriteOrderEntries < population &&
+                                  work.spriteOrderSorts <= 1,
+                              "Spread-scene pan must sort only retained candidates without numeric rank sorts");
+    }
+
+    const auto &projectionWork = cached.back().work;
     test_support::require(projectionWork.renderCullingProjectionRebuilds == 1 &&
-                              projectionWork.renderCullingBoundsRefreshes == population,
-                          "A genuine camera projection change must refresh/regrid the dependent records");
-    const auto &panWork = indexed[2].work;
-    std::cout << "[WORK] indexed-pan queries=" << panWork.renderCullingQueries
-              << " cells=" << panWork.renderCullingCellVisits
+                              projectionWork.renderCullingBoundsRefreshes == population &&
+                              projectionWork.renderCullingFullPopulationVisits == population,
+                          "A genuine camera projection change must refresh and rescan common records");
+    const auto &panWork = cached[2].work;
+    std::cout << "[WORK] cached-pan full=" << panWork.renderCullingFullPopulationVisits
               << " candidates=" << panWork.renderCullingCandidateVisits
               << " orderEntries=" << panWork.spriteOrderEntries
               << " orderSorts=" << panWork.spriteOrderSorts
               << " membershipChanges=" << panWork.visibleMembershipChanges
               << " refresh=" << panWork.renderCullingBoundsRefreshes
-              << " relinks=" << panWork.renderCullingIndexRelinks
-              << " full=" << panWork.renderCullingFullPopulationVisits
-              << " cacheHit=" << panWork.renderCullingCacheHits
-              << " ownedCells=" << panWork.renderCullingOwnedCellCount
-              << " nodeSupply=" << panWork.renderCullingOwnedCellCapacity << '\n';
-    std::cout << "[WORK] indexed-projection refresh=" << projectionWork.renderCullingBoundsRefreshes
-              << " relinks=" << projectionWork.renderCullingIndexRelinks
-              << " queries=" << projectionWork.renderCullingQueries
+              << " cacheHit=" << panWork.renderCullingCacheHits << '\n';
+    std::cout << "[WORK] cached-projection refresh=" << projectionWork.renderCullingBoundsRefreshes
+              << " full=" << projectionWork.renderCullingFullPopulationVisits
               << " orderEntries=" << projectionWork.spriteOrderEntries
               << " orderSorts=" << projectionWork.spriteOrderSorts << '\n';
 }
@@ -1076,7 +1042,7 @@ void checkRenderedDynamicSequence()
 
 void checkSceneResetFailurePreservationAndEmptyChurn()
 {
-    ScopedRenderCullingMode strategy("indexed");
+    ScopedRenderCullingMode strategy("cached-linear");
     test_support::headlessEnvironment();
     RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
     constexpr size_t population = 96;
@@ -1087,7 +1053,7 @@ void checkSceneResetFailurePreservationAndEmptyChurn()
     const FrameResult prepared = captureFixtureFrame(fixture);
     test_support::require(prepared.work.renderCullingOwnedRecords == population &&
                               prepared.work.renderCullingOwnedBytes > 0,
-                          "Prepared scene must expose its live indexed cache storage");
+                          "Prepared scene must expose its live cached culling storage");
 
     const auto badScenePath = std::filesystem::temp_directory_path() /
                               "platformator-render-culling-invalid-scene.json";
@@ -1126,9 +1092,8 @@ void checkSceneResetFailurePreservationAndEmptyChurn()
         const FrameResult afterClear = captureFixtureFrame(fixture);
         test_support::require(afterClear.work.renderCullingOwnedRecords == 0 &&
                                   afterClear.work.renderCullingOwnedBytes == 0 &&
-                                  afterClear.work.renderCullingOwnedCellCount == 0 &&
-                                  afterClear.work.renderCullingOwnedCellCapacity == 0,
-                              "Successful scene clear must release old record and grid high-water capacity");
+                                  afterClear.work.renderCullingOwnedRecordCapacity == 0,
+                              "Successful scene clear must release old record high-water capacity");
 
         fixture.loadSceneAndCreateCamera(goodScenePath.string(), 320.0f, 240.0f);
         fixture.addSprite(0, 1, 85.0f, 75.0f, 28.0f, 24.0f, FixtureTexture::RedCircle);
@@ -1141,7 +1106,7 @@ void checkSceneResetFailurePreservationAndEmptyChurn()
         fixture.clearSceneAndCreateCamera(320.0f, 240.0f);
         const FrameResult secondReset = captureFixtureFrame(fixture);
         test_support::require(secondReset.work.renderCullingOwnedBytes == 0 &&
-                                  secondReset.work.renderCullingOwnedCellCount == 0,
+                                  secondReset.work.renderCullingOwnedRecords == 0,
                               "Repeated scene reset must not retain keys or handles from a prior scene");
     }
     catch (...)
@@ -1159,7 +1124,7 @@ void checkSceneResetFailurePreservationAndEmptyChurn()
 
 void checkRuntimeCacheReset()
 {
-    ScopedRenderCullingMode strategy("indexed");
+    ScopedRenderCullingMode strategy("cached-linear");
     test_support::headlessEnvironment();
     uint64_t firstSerial = 0;
     uint64_t secondSerial = 0;
@@ -1170,7 +1135,7 @@ void checkRuntimeCacheReset()
                           FixtureTexture::RedCircle);
         const FrameResult frame = captureFixtureFrame(fixture);
         test_support::require(frame.work.renderCullingOwnedRecords == 1 &&
-                                  frame.work.renderCullingOwnedCellCapacity <= 4 * frame.work.renderCullingOwnedRecordCapacity &&
+                                  frame.work.renderCullingOwnedBytes > 0 &&
                                   frame.submissions == std::vector<SpriteIdentity>{{0, static_cast<uint32_t>(instance)}},
                               "A newly constructed runtime must start with only its own render cache handles");
         if (instance == 0)
@@ -1796,71 +1761,60 @@ std::vector<FrameResult> captureConsecutiveMutationSequence(const char *mode, bo
 
 void checkConsecutiveMutationStrategies()
 {
-    const auto current = captureConsecutiveMutationSequence("current-linear", true);
-    const auto submitAll = captureConsecutiveMutationSequence("current-linear", false);
+    const auto defaultRun = captureConsecutiveMutationSequence(nullptr, true);
     const auto cached = captureConsecutiveMutationSequence("cached-linear", true);
-    const auto indexed = captureConsecutiveMutationSequence("indexed", true);
-    test_support::require(current.size() == 11 && submitAll.size() == current.size() &&
-                              cached.size() == current.size() && indexed.size() == current.size(),
+    const auto submitAll = captureConsecutiveMutationSequence("cached-linear", false);
+    test_support::require(defaultRun.size() == 11 && submitAll.size() == defaultRun.size() &&
+                              cached.size() == defaultRun.size(),
                           "Consecutive mutation strategies produced different frame counts");
-    test_support::require(current[1].image.width == 400 && current[1].image.height == 300,
+    test_support::require(defaultRun[1].image.width == 400 && defaultRun[1].image.height == 300,
                           "A real output resize after rendering must update the next frame readback");
-    for (size_t step = 0; step < current.size(); ++step)
+    for (size_t step = 0; step < defaultRun.size(); ++step)
     {
         const bool mappingFallback = step == 2 || step == 4 || step == 6 || step == 8;
-        if (mappingFallback)
+        requireGoodReadback(submitAll[step], "consecutive submit-all transition " + std::to_string(step));
+        for (const auto *modeFrame : {&defaultRun[step], &cached[step]})
         {
-            for (const auto *mode : {&cached[step], &indexed[step]})
+            requireGoodReadback(*modeFrame, "consecutive cached-linear transition " + std::to_string(step));
+            test_support::require(modeFrame->image.width == submitAll[step].image.width &&
+                                      modeFrame->image.height == submitAll[step].image.height &&
+                                      modeFrame->image.rgba == submitAll[step].image.rgba,
+                                  "Cached-linear consecutive image differed from submit-all oracle");
+            if (mappingFallback)
             {
-                requireGoodReadback(*mode, "consecutive mapping fallback");
-                test_support::require(mode->image.width == current[step].image.width &&
-                                          mode->image.height == current[step].image.height &&
-                                          mode->image.rgba == current[step].image.rgba &&
-                                          mode->submissions == current[step].submissions,
+                test_support::require(modeFrame->submissions == submitAll[step].submissions,
                                       "A custom mapping fallback must submit all current eligible sprites in order");
             }
+            else
+            {
+                std::vector<SpriteIdentity> selected;
+                for (const auto identity : submitAll[step].submissions)
+                    if (std::find(submitAll[step].expectedVisible.begin(), submitAll[step].expectedVisible.end(),
+                                  identity) != submitAll[step].expectedVisible.end())
+                        selected.push_back(identity);
+                test_support::require(modeFrame->submissions == selected,
+                                      "Cached-linear selection differs from the submit-all independent-oracle subsequence");
+            }
         }
-        else
-        {
-            compareFixtureFrames("consecutive cached-linear transition " + std::to_string(step), current[step],
-                                 cached[step]);
-            compareFixtureFrames("consecutive indexed transition " + std::to_string(step), current[step],
-                                 indexed[step]);
-        }
-        requireGoodReadback(submitAll[step], "consecutive submit-all transition " + std::to_string(step));
-        test_support::require(submitAll[step].image.rgba == current[step].image.rgba,
-                              "Submit-all image changed during a consecutive transition");
-        if (mappingFallback)
-            continue;
-        std::vector<SpriteIdentity> selected;
-        for (const auto identity : submitAll[step].submissions)
-            if (std::find(submitAll[step].expectedVisible.begin(), submitAll[step].expectedVisible.end(), identity) !=
-                submitAll[step].expectedVisible.end())
-                selected.push_back(identity);
-        test_support::require(selected == current[step].submissions,
-                              "Current-linear selection differs from the submit-all independent-oracle subsequence");
     }
-    for (const auto *frames : {&cached, &indexed})
+    for (const auto *frames : {&defaultRun, &cached})
     {
         for (const size_t step : {size_t(2), size_t(4), size_t(6), size_t(8)})
             test_support::require((*frames)[step].work.renderCullingMappingFallbacks == 1 &&
-                                      (*frames)[step].work.renderCullingBoundsRefreshes == 0 &&
-                                      (*frames)[step].work.renderCullingQueries == 0,
+                                      (*frames)[step].work.renderCullingBoundsRefreshes == 0,
                                   "Unsupported mappings must submit all without consuming dirty bounds or rebuilding selection");
         test_support::require((*frames)[3].work.renderCullingBoundsRefreshes == 1 &&
-                                  (*frames)[3].work.renderCullingQueries <= 1 &&
                                   (*frames)[3].work.renderCullingProjectionRebuilds == 0,
                               "Returning to default mapping must drain only the affected record without a full rebuild");
         test_support::require((*frames)[5].work.renderCullingBoundsRefreshes == 2 &&
                                   (*frames)[5].work.renderCullingDirtyEnqueues == 1 &&
-                                  (*frames)[5].work.renderCullingQueries <= 1 &&
                                   (*frames)[5].work.renderCullingProjectionRebuilds == 0,
                               "Texture eligibility changes during fallback must remain pending until same-view resumption");
     }
-    test_support::require(current[9].submissions.empty() && indexed[9].submissions.empty(),
+    test_support::require(defaultRun[9].submissions.empty() && cached[9].submissions.empty(),
                           "No-camera transition must suspend selection and submit no sprites");
-    std::cout << "consecutive-mutations frames=" << current.size()
-              << " cached-linear=indexed=current-linear submit-all=verified resize=400x300 fallback-return=verified\n";
+    std::cout << "consecutive-mutations frames=" << defaultRun.size()
+              << " default=cached-linear=submit-all resize=400x300 fallback-return=verified\n";
 }
 
 void checkTexturelessIntervalAndRestoration()
@@ -1874,7 +1828,7 @@ void checkTexturelessIntervalAndRestoration()
         rec.sprite->setZOrder(3);
 
         std::vector<FrameResult> frames;
-        frames.reserve(6);
+        frames.reserve(9);
         // Frame 0: initial offscreen textureless sprite (no proxy certification).
         frames.push_back(captureFixtureFrame(fixture));
 
@@ -1906,31 +1860,46 @@ void checkTexturelessIntervalAndRestoration()
         stepMutation([&] {
             fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::RedCircle));
         });
+        // Frame 6: clear texture and change projection (must check live texture before certifying bounds).
+        stepMutation([&] {
+            fixture.record(0).sprite->setTextureWrapper(nullptr);
+            fixture.camera()->setWidth(640.0f);
+        });
+        // Frame 7: clean fixed-view hit with uncertified bounds (reuses selection without query/certification).
+        stepMutation([&] {});
+        // Frame 8: restore texture onscreen under new projection (certifies geometry once).
+        stepMutation([&] {
+            fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::BlackSquare));
+        });
         return frames;
     };
 
-    const auto current = captureSequence("current-linear");
+    const auto defaultRun = captureSequence(nullptr);
     const auto cached = captureSequence("cached-linear");
-    const auto indexed = captureSequence("indexed");
-    test_support::require(current.size() == 6 && cached.size() == 6 && indexed.size() == 6,
+    test_support::require(defaultRun.size() == 9 && cached.size() == 9,
                           "Textureless interval sequence length mismatch");
-    const std::array<bool, 6> expectedSubmitted = {true, true, false, true, true, true};
-    const std::array<size_t, 6> expectedCertifications = {0, 0, 1, 0, 0, 1};
-    for (size_t step = 0; step < 6; ++step)
+    const std::array<bool, 9> expectedSubmitted = {true, true, false, true, true, true, true, true, true};
+    const std::array<size_t, 9> expectedCertifications = {0, 0, 1, 0, 0, 1, 0, 0, 1};
+    const std::array<size_t, 9> expectedRefreshes = {1, 1, 1, 1, 1, 1, 1, 0, 1};
+    for (size_t step = 0; step < 9; ++step)
     {
-        test_support::require(current[step].submissions.size() == (expectedSubmitted[step] ? 1u : 0u),
-                              "Current-linear textureless restoration submission mismatch at step " +
-                                  std::to_string(step));
-        compareFixtureFrames("textureless interval cached step " + std::to_string(step), current[step], cached[step]);
-        compareFixtureFrames("textureless interval indexed step " + std::to_string(step), current[step], indexed[step]);
-        for (const auto *modeFrames : {&cached, &indexed})
+        test_support::require(defaultRun[step].submissions.size() == (expectedSubmitted[step] ? 1u : 0u),
+                              "Textureless restoration submission mismatch at step " + std::to_string(step));
+        compareFixtureFrames("textureless interval cached step " + std::to_string(step), defaultRun[step], cached[step]);
+        for (const auto *modeFrames : {&defaultRun, &cached})
         {
             const auto &work = (*modeFrames)[step].work;
             test_support::require(work.renderCullingProxyCertifications == expectedCertifications[step] &&
-                                      work.renderCullingBoundsRefreshes == 1,
+                                      work.renderCullingBoundsRefreshes == expectedRefreshes[step],
                                   "Textureless interval proxy certification count mismatch at step " +
                                       std::to_string(step));
-            if (step > 0)
+            if (step == 6)
+                test_support::require(work.renderCullingProjectionRebuilds == 1,
+                                      "Projection change while textureless must rebuild projection without certification");
+            if (step == 7)
+                test_support::require(work.renderCullingCacheHits == 1 && work.renderCullingViewQueryBuilds == 0,
+                                      "Clean fixed view after textureless projection change must hit O(1) cache");
+            if (step > 0 && step != 6 && step != 7)
             {
                 test_support::require(work.renderCullingHandleResolutions == 1,
                                       "Fixed-view dirty delta must resolve queued handle once at step " +
@@ -2054,32 +2023,23 @@ void checkDefaultCachedLinearAndMixedZCompositingParity()
 
     const ModeRun defaultMode = captureMixedZSequence(nullptr, true);
     const ModeRun cachedLinear = captureMixedZSequence("cached-linear", true);
-    const ModeRun indexed = captureMixedZSequence("indexed", true);
-    const ModeRun currentLinear = captureMixedZSequence("current-linear", true);
     const ModeRun submitAll = captureMixedZSequence("cached-linear", false);
 
     test_support::require(defaultMode.setupWork.renderCullingStateCreations == 1 &&
-                              defaultMode.setupWork.renderCullingGridOwnedBytes == 0 &&
-                              cachedLinear.setupWork.renderCullingGridOwnedBytes == 0 &&
-                              indexed.setupWork.renderCullingGridOwnedBytes > 0,
-                          "Unset default mode must create cached-linear state with zero grid bytes");
+                              cachedLinear.setupWork.renderCullingStateCreations == 1 &&
+                              submitAll.setupWork.renderCullingStateCreations == 0,
+                          "Unset default mode and explicit cached-linear must create culling state while submit-all does not");
 
     for (size_t step = 0; step < 8; ++step)
     {
         requireGoodReadback(defaultMode.frames[step], "default mixed-Z step " + std::to_string(step));
         requireGoodReadback(cachedLinear.frames[step], "cached-linear mixed-Z step " + std::to_string(step));
-        requireGoodReadback(indexed.frames[step], "indexed mixed-Z step " + std::to_string(step));
-        requireGoodReadback(currentLinear.frames[step], "current-linear mixed-Z step " + std::to_string(step));
         requireGoodReadback(submitAll.frames[step], "submit-all mixed-Z step " + std::to_string(step));
 
         test_support::require(defaultMode.frames[step].image.rgba == cachedLinear.frames[step].image.rgba &&
                                   defaultMode.frames[step].submissions == cachedLinear.frames[step].submissions &&
-                                  defaultMode.frames[step].image.rgba == indexed.frames[step].image.rgba &&
-                                  defaultMode.frames[step].submissions == indexed.frames[step].submissions &&
-                                  defaultMode.frames[step].image.rgba == currentLinear.frames[step].image.rgba &&
-                                  defaultMode.frames[step].submissions == currentLinear.frames[step].submissions &&
                                   defaultMode.frames[step].image.rgba == submitAll.frames[step].image.rgba,
-                              "Mixed-Z compositing pixels and ordered submissions must match across default, cached-linear, indexed, and current-linear");
+                              "Mixed-Z compositing pixels and ordered submissions must match across default, cached-linear, and submit-all");
     }
 
     // Frame 0: sprite 1 (undersized offscreen collider, visible sprite) MUST be retained before 2/0/3
@@ -2096,26 +2056,22 @@ void checkDefaultCachedLinearAndMixedZCompositingParity()
     test_support::require(defaultMode.frames[2].submissions ==
                               (std::vector<SpriteIdentity>{{2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
                               defaultMode.frames[2].work.renderCullingBoundsRefreshes == 2 &&
-                              defaultMode.frames[2].work.renderCullingProjectionRebuilds == 0 &&
-                              defaultMode.frames[2].work.renderCullingGridOwnedBytes == 0,
+                              defaultMode.frames[2].work.renderCullingProjectionRebuilds == 0,
                           "Restored default cached-linear selection must drain pending geometry changes cleanly");
     // Frame 3: uncertifiable sprite is conservatively retained with mixed-Z order
     test_support::require(defaultMode.frames[3].submissions ==
-                              (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
-                              defaultMode.frames[3].work.renderCullingGridOwnedBytes == 0,
+                              (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}),
                           "Uncertifiable sprite must be conservatively retained in mixed-Z order");
-    // Frame 4: uncertifiable camera triggers numeric fallback cleanly under both cached-linear and indexed
+    // Frame 4: uncertifiable camera triggers numeric fallback cleanly under cached-linear
     test_support::require(defaultMode.frames[4].submissions ==
                               (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
                               defaultMode.frames[4].work.renderCullingNumericFallbacks == 1 &&
                               defaultMode.frames[4].work.renderCullingViewQueryBuilds == 1 &&
                               cachedLinear.frames[4].work.renderCullingNumericFallbacks == 1 &&
-                              indexed.frames[4].work.renderCullingNumericFallbacks == 1 &&
-                              indexed.frames[4].work.renderCullingViewQueryBuilds == 1 &&
-                              defaultMode.frames[4].work.renderCullingGridOwnedBytes == 0,
-                          "Numeric fallback must preserve mixed-Z ordering across default cached-linear and indexed");
+                              cachedLinear.frames[4].work.renderCullingViewQueryBuilds == 1,
+                          "Numeric fallback must preserve mixed-Z ordering across default and explicit cached-linear");
     // Frame 5: restoring certified view recovers fixed-view cache hit without query construction
-    for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
+    for (const auto *modeRun : {&defaultMode, &cachedLinear})
         test_support::require(modeRun->frames[5].submissions ==
                                       (std::vector<SpriteIdentity>{{5, 0}, {2, 0}, {1, 0}, {0, 0}, {3, 0}, {4, 0}}) &&
                                   modeRun->frames[5].work.renderCullingNumericFallbacks == 0 &&
@@ -2123,7 +2079,7 @@ void checkDefaultCachedLinearAndMixedZCompositingParity()
                                   modeRun->frames[5].work.renderCullingCacheHits == 1,
                               "Restored certified view after numeric fallback must resume fixed-view cache hit cleanly");
     // Frame 6: dirty sprite edit constructs view query once without triggering a warm hit
-    for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
+    for (const auto *modeRun : {&defaultMode, &cachedLinear})
         test_support::require(modeRun->frames[6].work.renderCullingNumericFallbacks == 0 &&
                                   modeRun->frames[6].work.renderCullingViewQueryBuilds == 1 &&
                                   modeRun->frames[6].work.renderCullingBoundsRefreshes == 1 &&
@@ -2132,10 +2088,10 @@ void checkDefaultCachedLinearAndMixedZCompositingParity()
                                   modeRun->frames[6].work.renderCullingProjectionRebuilds == 0,
                               "Dirty sprite frame must build query once and resolve dirty handle once without warm cache hit");
     // Frame 7: clean frame after dirty drain short-circuits again
-    for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
+    for (const auto *modeRun : {&defaultMode, &cachedLinear})
         test_support::require(modeRun->frames[7].work.renderCullingViewQueryBuilds == 0 &&
                                   modeRun->frames[7].work.renderCullingCacheHits == 1,
-                              "Post-edit clean frame must short-circuit fixed-view cache hit in both cached modes");
+                              "Post-edit clean frame must short-circuit fixed-view cache hit in cached-linear mode");
 }
 #endif
 
@@ -2163,9 +2119,9 @@ void run()
     checkStaticCacheReuse();
     checkCachePublicationCoalescing();
     checkPublishedWorldPositionBounds();
-    checkDistantTexturelessIndexedFallback();
+    checkDistantTexturelessFallback();
     checkSimultaneousCrossingOrderWork();
-    checkIndexedPanSelection();
+    checkCachedPanSelection();
     checkScenario("all-visible",
                   {{70, 60, 40, 40}, {150, 90, 50, 30, 0.0f, Eigen::Vector2f::Ones(), FixtureTexture::RedCircle}},
                   2);

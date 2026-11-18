@@ -1,6 +1,6 @@
 # C++ benchmark measurements
 
-Rendering comparisons default to a compact exploratory pilot with a **50 MiB output / 600 second capture budget**. See the [rendering quickstart](../../specs/009-incremental-render-culling/quickstart.md). Retain reports, identities, commands and raw timings; keep builds outside artifacts. Full frame traces and exhaustive campaigns require an explicit user request. Other benchmark tools below do **not** inherit these guards: use equivalent external monitoring when running them. See [AGENTS.md](../../AGENTS.md) for the repository-wide retention policy.
+Rendering comparisons default to a compact exploratory pilot with a **50 MiB output / 600 second capture budget**. See the [current rendering quickstart](../../specs/019-sprite-z-ordering/quickstart.md) (and the historical [feature-009 incremental culling quickstart](../../specs/009-incremental-render-culling/quickstart.md) for archived multi-strategy methodology). Retain reports, identities, commands and raw timings; keep builds outside artifacts. Full frame traces and exhaustive campaigns require an explicit user request. Other benchmark tools below do **not** inherit these guards: use equivalent external monitoring when running them. See [AGENTS.md](../../AGENTS.md) for the repository-wide retention policy.
 
 
 Configure `cmake --preset benchmark`, then build `cmake --build --preset benchmark --parallel 4`. Captures require Release without sanitizer, work probes or debug tools. Benchmark scopes themselves are timing instrumentation. Python tooling uses only the standard library except optional matplotlib plotting.
@@ -49,7 +49,7 @@ The focused `platformator_linear_render_probe` reuses schema-v3 summaries, raw s
 
 ### Focused exploratory pilot
 
-Start with a fresh ignored output directory and selected cases. A pilot needs a candidate work-probe validation executable and a separate uninstrumented timing executable; it does not need complete phase roots, frozen-reference runs, or per-frame identity dumps.
+Start with a fresh ignored output directory and selected cases under the sole production culler (`cached-linear`). A pilot needs a candidate work-probe validation executable and a separate uninstrumented timing executable; it does not need complete phase roots, frozen-reference runs, or per-frame identity dumps. (Retired `indexed` / `current-linear` selectors are rejected by current probes and may only be passed to archived frozen baseline binaries.)
 
 ```sh
 RUN_ID=replace-with-unique-run-id
@@ -57,7 +57,7 @@ BUILD_ROOT="$PWD/build/linear-render-$RUN_ID"
 REPORT_ROOT="$PWD/specs/009-incremental-render-culling/evidence/pilots/$RUN_ID"
 test ! -e "$REPORT_ROOT/captures/pilot"
 SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
-  --comparison incremental --phase pilot --strategy all --exploratory \
+  --comparison incremental --phase pilot --strategy cached-linear --exploratory \
   --focused-cases mostly-offscreen \
   --candidate-validation-probe "$BUILD_ROOT/candidate-validation/platformator_linear_render_probe" \
   --candidate-probe "$BUILD_ROOT/candidate-timing/platformator_linear_render_probe" \
@@ -68,11 +68,11 @@ SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
 
 Build trees stay under `build/`; the report path holds only the compact pilot report and timing samples. Use one fresh run ID and do not reuse or replace an output directory after a failure.
 
-The driver writes a report only after every selected resource/timing run validates. It retains raw step/render/paired samples and cold/growth/reset observations. Three short repetitions screen large effects but do not support an acceptance claim. The current pilot summary is `specs/009-incremental-render-culling/evidence/RESULTS.md`.
+The driver writes a report only after every selected resource/timing run validates. It retains raw step/render/paired samples and cold/growth/reset observations. Three short repetitions screen large effects but do not support an acceptance claim. Historical feature-009 multi-strategy summaries live in `specs/009-incremental-render-culling/evidence/RESULTS.md`; current feature-019 evidence lives under `specs/019-sprite-z-ordering/evidence/`.
 
 ### Render Z ordering & culling comparison (`render-order-culling`)
 
-Use `--comparison render-order-culling` with `--focused-cases authored-static,sparse-camera-pan,dense-z-edit` to run the combined compact pilot (defaults: 3 repetitions, 5 warmup frames, 30 measured frames, 50 MiB output limit, 600 s wall-clock limit):
+Use `--comparison render-order-culling` with `--focused-cases authored-static,sparse-camera-pan,dense-z-edit` to run the combined compact pilot under `cached-linear` (defaults: 3 repetitions, 5 warmup frames, 30 measured frames, 50 MiB output limit, 600 s wall-clock limit). `--baseline-probe` is optional: supply it when comparing `authored-static` and `sparse-camera-pan` against the recorded frozen pre-removal `indexed` baseline, or omit it for candidate-only `cached-linear` runs:
 
 ```sh
 SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
@@ -87,7 +87,7 @@ SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
 ```
 
 - **Effective-policy metadata**: `linear_render_culling` reports `requested_selector`, `resolved_startup_strategy`, `requested_mode`, `headless`, `disabled`, `effective_policy`, `observed_mapping_fallbacks`, `observed_numeric_fallbacks`, and `observed_frame_fallbacks` separately while preserving reader compatibility for schema-3 historical manifests.
-- **Timed cases vs. work/resource controls**: `authored-static` (64 visible, Z=0) and `sparse-camera-pan` (10,000 sparse pan, Z=0) time `baseline-indexed`, `candidate-indexed`, and `candidate-cached-linear`; `dense-z-edit` (10,000 retained 1x1 mixed-Z sprites, alternating clean and peer-crossing 1-edit frames) times `rebuild`, `forced-sort`, `repair` at 1 worker and `rebuild` at `--multiworker-count` under `cached-linear`, separating `clean_frames`, `edit_frames`, and `combined` samples. `rejected-z-edit` and 10,000-sprite `fully-moving-crossing` (`current-linear`, `cached-linear`, `indexed`) run only under `--validate-resources` as work/resource controls—never infer timing speedups from work-only controls.
+- **Timed cases vs. work/resource controls**: `authored-static` (64 visible, Z=0) and `sparse-camera-pan` (10,000 sparse pan, Z=0) run `candidate-cached-linear` (and optional `baseline-indexed` passed *only* to the frozen pre-removal baseline binary and labeled as a combined implementation + policy change; historical pre-removal same-build sparse-pan tradeoff of `indexed` vs `cached-linear` is preserved in `specs/019-sprite-z-ordering/evidence/pre-removal-grid-vs-cached-20261118/report.md`). `dense-z-edit` (10,000 retained 1x1 mixed-Z sprites, alternating clean and peer-crossing 1-edit frames) times `rebuild`, `forced-sort`, `repair` at 1 worker and `rebuild` at `--multiworker-count` under `cached-linear`, separating `clean_frames`, `edit_frames`, and `combined` samples. `rejected-z-edit` and 10,000-sprite `fully-moving-crossing` (`cached-linear`) run only under `--validate-resources` as work/resource controls—never infer timing speedups from work-only controls.
 - **Bounded outputs**: Per-frame `.frames.jsonl` traces and `.ppm` images are deleted immediately after validation parity checks so only compact reports (`report.json`, `report.md`), build/workload identities, commands, resource summaries, and raw timing CSVs/samples remain. Historical reports whose raw artifacts were deleted remain historical observations.
 
 ## Capture limits and retention

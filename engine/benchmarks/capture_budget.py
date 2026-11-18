@@ -59,14 +59,15 @@ _active_budget = None
 
 
 @contextmanager
-def capture_budget(budget):
+def capture_budget(budget, *, check_on_exit=True):
     global _active_budget
     previous = _active_budget
     _active_budget = budget
     try:
         budget.check()
         yield
-        budget.check()
+        if check_on_exit:
+            budget.check()
     finally:
         _active_budget = previous
 

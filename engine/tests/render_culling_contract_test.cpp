@@ -75,8 +75,6 @@ void checkInactiveModesDoNotCreateState()
         {nullptr, "cached-linear"},
         {"", "cached-linear"},
         {"cached-linear", "cached-linear"},
-        {"current-linear", "current-linear"},
-        {"indexed", "indexed"},
     };
     for (const auto &selector : cases)
     {
@@ -107,11 +105,9 @@ void checkInactiveModesDoNotCreateState()
                                       expectedEffectiveName,
                                   "Effective policy name mismatch");
 
-            const bool isCurrentLinear = std::string(selector.expectedRequested) == "current-linear";
-            const bool isIndexed = std::string(selector.expectedRequested) == "indexed";
-            const size_t expectedCreations = enabled && !headless && !isCurrentLinear ? 1 : 0;
+            const size_t expectedCreations = enabled && !headless ? 1 : 0;
             test_support::require(platformator_test::work.renderCullingStateCreations == expectedCreations,
-                                  "State creation must be limited to renderer-backed cached modes");
+                                  "State creation must be limited to renderer-backed enabled culling");
 
             if (!headless)
             {
@@ -124,20 +120,14 @@ void checkInactiveModesDoNotCreateState()
                 if (expectedCreations == 0)
                 {
                     test_support::require(platformator_test::work.renderCullingDirtyEnqueues == 0 &&
-                                              platformator_test::work.renderCullingGridOwnedBytes == 0,
-                                          "Inactive modes must not enqueue geometry changes or allocate grid state");
-                }
-                else if (isIndexed)
-                {
-                    test_support::require(platformator_test::work.renderCullingGridOwnedBytes > 0,
-                                          "Indexed mode must own grid storage after sprite registration");
+                                              platformator_test::work.renderCullingOwnedBytes == 0,
+                                          "Submit-all mode must not enqueue geometry changes or allocate culling state");
                 }
                 else
                 {
-                    test_support::require(platformator_test::work.renderCullingGridOwnedBytes == 0 &&
-                                              platformator_test::work.renderCullingIndexRelinks == 0 &&
-                                              platformator_test::work.renderCullingQueries == 0,
-                                          "Cached-linear mode must allocate zero grid storage and zero relinks");
+                    test_support::require(platformator_test::work.renderCullingOwnedRecords == 1 &&
+                                              platformator_test::work.renderCullingOwnedBytes > 0,
+                                          "Cached-linear mode must retain common culling state for live sprites");
                 }
             }
             else
@@ -150,7 +140,7 @@ void checkInactiveModesDoNotCreateState()
                 runtime.simulateAndRenderFrame(test_support::dt);
                 test_support::require(platformator_test::work.renderCullingStateCreations == 0 &&
                                           platformator_test::work.renderCullingDirtyEnqueues == 0 &&
-                                          platformator_test::work.renderCullingGridOwnedBytes == 0 &&
+                                          platformator_test::work.renderCullingOwnedBytes == 0 &&
                                           platformator_test::work.spriteOrderOwnedRecords == 0 &&
                                           platformator_test::work.spriteOrderOwnedBytes == 0,
                                       "Headless mode must not retain or publish culling or ordering state");
@@ -167,7 +157,7 @@ void countPresent(SDL_Renderer *, int, int, void *context)
 void checkNoCameraAndDirectCameraContracts()
 {
     test_support::headlessEnvironment();
-    for (const char *selector : {static_cast<const char *>(nullptr), "indexed"})
+    for (const char *selector : {static_cast<const char *>(nullptr), "cached-linear"})
     {
         {
             ScopedMode selection(selector);
@@ -203,23 +193,36 @@ void checkNoCameraAndDirectCameraContracts()
     }
 }
 
-void checkUnknownModeRejected()
+void checkUnknownAndRetiredModesRejected()
 {
     test_support::headlessEnvironment();
-    ScopedMode selection("not-a-render-strategy");
-    for (const auto [enabled, headless] : {std::pair{true, true}, std::pair{false, false}, std::pair{false, true}})
+    for (const char *badSelector : {"indexed", "current-linear", "not-a-render-strategy"})
     {
-        bool rejected = false;
-        try
+        ScopedMode selection(badSelector);
+        for (const auto [enabled, headless] :
+             {std::pair{true, false}, std::pair{true, true}, std::pair{false, false}, std::pair{false, true}})
         {
-            platformator::Runtime runtime(makeOptions(enabled, headless));
+            bool rejected = false;
+            std::string message;
+            try
+            {
+                platformator::Runtime runtime(makeOptions(enabled, headless));
+            }
+            catch (const std::invalid_argument &error)
+            {
+                rejected = true;
+                message = error.what();
+            }
+            test_support::require(rejected && message.find("cached-linear") != std::string::npos,
+                                  "Unknown or retired culling selectors must fail at startup with actionable guidance");
+            if (std::string(badSelector) == "indexed" || std::string(badSelector) == "current-linear")
+            {
+                test_support::require(
+                    message.find("unset PLATFORMATOR_RENDER_CULLING_MODE") != std::string::npos &&
+                        message.find("or disable culling") == std::string::npos,
+                    "Retired culling diagnostic must direct opt-out/headless and enabled callers to clear or select cached-linear before disabling culling");
+            }
         }
-        catch (const std::invalid_argument &)
-        {
-            rejected = true;
-        }
-        test_support::require(rejected,
-                              "Unknown internal comparison modes must fail at startup even with culling disabled or headless");
     }
 }
 
@@ -227,7 +230,7 @@ void run()
 {
     checkInactiveModesDoNotCreateState();
     checkNoCameraAndDirectCameraContracts();
-    checkUnknownModeRejected();
+    checkUnknownAndRetiredModesRejected();
 }
 } // namespace
 

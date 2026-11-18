@@ -8,7 +8,7 @@ From the repository root, use the current CMake/Ninja, C++20, Python 3, and vend
 
 Set `RENDER_BASELINE_PROBE` to the absolute path of the pre-change timing executable. Before runtime changes, record the current source revision, dirty source fingerprint, and Release timing-probe identity. Reuse a matching build if available. Otherwise build the existing probe once under `build/`. Keep binaries and build trees outside the report directory.
 
-Set `RENDER_BASELINE_PROBE` to the absolute path of that recorded pre-change probe. It supplies the indexed-culling control for the all-zero authored-scale and 10,000-sprite pan cases. It has no Z-order options. Record its workload and build identity. On the candidate, run both indexed and cached-linear modes against the same resolved workload. This gives the sequence old indexed, candidate indexed, candidate cached-linear. The first comparison measures combined implementation overhead with the culling strategy held fixed, including both the culling cleanup and the ordering work. The second compares culling strategies within one candidate build. Report any remaining attribution uncertainty within this pilot. A missing equivalent baseline remains unavailable rather than an assumed zero-cost result.
+Set `RENDER_BASELINE_PROBE` to the absolute path of the pre-change timing executable (when running endpoint comparisons against the frozen pre-removal binary). Record the current source revision, dirty source fingerprint, and Release timing-probe identity. Reuse a matching build if available, keeping binaries and build trees outside the report directory. Since the render grid is retired in favor of sole production culler `cached-linear`, passing `indexed` is restricted to the frozen pre-removal baseline binary and any such endpoint comparison must be labeled explicitly as combining implementation cleanup with the policy change (`pre-removal-grid-vs-cached-20261118` preserves the historical same-build `indexed` vs `cached-linear` sparse-pan tradeoff). A missing baseline remains unavailable rather than an assumed zero-cost result.
 
 ## 2. Focused correctness and work checks
 
@@ -18,7 +18,7 @@ Configure the standard test preset, build the relevant runtime/editor targets, a
 cmake --preset test
 cmake --build --preset test --parallel 4 --target \
   platformator_sprite_ordering_test \
-  platformator_render_culling_test platformator_render_culling_index_test \
+  platformator_render_culling_test platformator_render_culling_state_test \
   platformator_render_culling_worker_test platformator_render_culling_trajectory_test \
   platformator_render_culling_contract_test \
   platformator_scene_io_contract_test platformator_runtime_template_test \
@@ -26,18 +26,18 @@ cmake --build --preset test --parallel 4 --target \
   platformator_editor_diagnostics_test platformator_editor_template_test \
   platformator_editor_component_operations_test
 ctest --test-dir build/test --output-on-failure \
-  -R '^platformator_(sprite_ordering|render_culling|render_culling_index|render_culling_worker|render_culling_trajectory|render_culling_contract|scene_io_contract|runtime_template|editor_inspector_interaction|editor_preview|editor_diagnostics|editor_template|editor_component_operations)_test$'
+  -R '^platformator_(sprite_ordering|render_culling|render_culling_state|render_culling_worker|render_culling_trajectory|render_culling_contract|scene_io_contract|runtime_template|editor_inspector_interaction|editor_preview|editor_diagnostics|editor_template|editor_component_operations)_test$'
 ```
 
-Start fresh windows with the mode variable unset and empty, verify cached-linear in both cases, and check zero grid-specific retained bytes and relinks after registration and growth. Test unknown-mode rejection and that disabling culling overrides each valid selection. Run explicit current-linear, cached-linear, and indexed controls on the same spread, clustered, and moving fixtures. Verify that indexed remains available as an explicit path. Compare visibility membership and ordered submissions against independent oracles.
+Start fresh windows with the mode variable unset, empty, and explicit `cached-linear`, verifying `cached-linear` in all three cases with zero grid storage or maintenance. Test retired-selector rejection (`indexed`, `current-linear`), unknown-mode rejection, and that disabling culling (`--no-render-culling` / `enableRenderCulling=false`) overrides a valid selection cleanly. Verify O(1) clean fixed-view reuse, O(dirty slots) stationary edits, O(N) camera-pan scans, and independent visibility membership and ordered submissions.
 
 Cover no camera, empty population, disabled culling, headless execution, custom renderer target/viewport/scale, invalid or uncertifiable mappings, restoration to the supported mapping, and direct caller-ordered Camera draws. Unsupported mappings traverse the ordered all-sprite list. On numeric fallback verify the existing per-sprite eligibility rule and the latest Z on the first restored frame. Headless runs retain no renderer culling or ordering state.
 
 Correctness and work assertions must include:
 
 - Independent expected sequences and transparency composites for negative, zero, positive, minimum, and maximum Z values, different textures, equal-depth ties, edits, dense slot moves, and real unregister/re-register.
-- In either cached policy, Z edits to slots excluded from a fixed prepared subset cause no draw-list rebuild, bounds refresh, spatial migration, or visibility query. When camera movement or fallback later includes an edited sprite, that first prepared frame uses its latest Z value.
-- With clean retained keys, unchanged membership reuses prepared draw order even when a visibility query enumerates the same set in a different order. Equal-sized sets with different members invalidate it. A changed indexed membership set performs no numeric-rank sort and at most one draw-key sort.
+- With `cached-linear` culling, Z edits to slots excluded from a fixed prepared subset cause no draw-list rebuild, bounds refresh, or visibility query. When camera movement or fallback later includes an edited sprite, that first prepared frame uses its latest Z value.
+- With clean retained keys, unchanged membership reuses prepared draw order in O(1) even when a full reselection re-enumerates the same set. Equal-sized sets with different members invalidate it. A changed selection performs no numeric-rank sort and at most one draw-key sort (up to O(V log V)).
 - No numeric rank sorting or sorted delta merge remains in the new membership path. Validate inverse positions, delta swap-erase, same-set full queries, equal-count membership exchanges, registration, relocation, removal, and scene retirement.
 - A retained Z edit may use the planned full draw-list rebuild. Compare one-entry repositioning only through the bounded prototype workload below. Verify the final total key order independently for both paths.
 - Headless/renderer-free runs allocate and maintain no renderer-owned culling or ordering state. Scene replacement, failed preparation, and retired handles retain their lifetime guarantees.
@@ -80,13 +80,13 @@ Extend `engine/benchmarks/capture_linear_render.py` with a focused `render-order
 
 | Case | Workload | Comparison |
 |---|---|---|
-| `authored-static` | 64 all-visible sprites in a fixed view, all Z values zero | Pre-change indexed, candidate indexed, and candidate cached-linear. |
-| `sparse-camera-pan` | Existing 10,000-sprite sparse `camera-motion` trajectory, all Z values zero | Pre-change indexed, candidate indexed, and candidate cached-linear. |
-| `dense-z-edit` | 10,000 retained sprites, mixed Z values, fixed camera, deterministic draw-list order | Candidate full rebuild versus a forced per-frame full-sort reference. In the one-visible-edit phase also compare the one-entry reposition prototype. Include no-edit and one-entry-changing phases as separate samples. |
+| `authored-static` | 64 all-visible sprites in a fixed view, all Z values zero | Candidate `cached-linear` (and optional frozen pre-removal `indexed` endpoint labeled as implementation + policy change). |
+| `sparse-camera-pan` | Existing 10,000-sprite sparse `camera-motion` trajectory, all Z values zero | Candidate `cached-linear` (and optional frozen pre-removal `indexed` endpoint labeled as implementation + policy change; historical same-build indexed tradeoff archived separately). |
+| `dense-z-edit` | 10,000 retained sprites, mixed Z values, fixed camera, deterministic draw-list order | Candidate full rebuild versus a forced per-frame full-sort reference and benchmark-only one-entry repair, plus multiworker control. Include clean and single-edit phases separately. |
 
-The dense Z fixture is a planned probe workload with 10,000 sprites placed across the 320×240 view with 1×1 render dimensions at the fixture’s unit scale, so all sprites are retained while raster overdraw stays low. A changed entry must cross at least one peer in the total key. The schedule, selected slot, values, and resulting order are deterministic. Charge setter and prototype bookkeeping to paired step-plus-render timing. Use cached-linear for all dense-Z comparisons. Verify that all 10,000 sprites are retained in every measured phase. Include one matched multiworker candidate control for that case.
+The dense Z fixture uses 10,000 sprites placed across the 320×240 view with 1×1 render dimensions at the fixture's unit scale, so all sprites are retained while raster overdraw stays low. A changed entry must cross at least one peer in the total key. The schedule, selected slot, values, and resulting order are deterministic. Charge setter and prototype bookkeeping to paired step-plus-render timing under `cached-linear`. Verify that all 10,000 sprites are retained in every measured phase and include one matched multiworker control.
 
-In the same bounded run, check rejected-only Z edits on the two prepared cached subsets. Capture the existing 10,000-sprite fully-moving-crossing workload as a resource/work control under current-linear, cached-linear, and indexed. These controls show update-side and retained-state costs without adding separate timing campaigns. Work observations distinguish bounds refreshes, index migration, candidate visits, membership changes, sorting, retained capacities, allocations, and fallback work. Correctness tests separately cover projection rebuilds, churn, large Z edit fractions, and no-culling fallback.
+In the same bounded run, check rejected-only Z edits on the prepared `cached-linear` subset and capture the 10,000-sprite fully-moving-crossing workload under `cached-linear` as a resource/work control without extra timing matrices or retries.
 
 The comparison selector and case names are planned additions. The bounded comparison includes a resource-only fully-moving-crossing control, so it does not add another timing matrix or capture run. Keep the invocation to existing common arguments and the planned comparison selector and focused cases. Do not pass unimplemented case-specific switches, change limits, enable `--allow-full-campaign`, or create replacement artifact directories.
 
@@ -117,6 +117,6 @@ Retain a compact report with build/workload identities, exact commands, raw timi
 
 ## 6. Read the results
 
-Report paired step-plus-render time, separate step and render scopes, initialization, typical and tail samples, allocation and retained bytes, and process variation. Do not add nested scopes together. Keep the pre-change-to-candidate indexed comparison separate from the candidate indexed-to-cached-linear comparison. The former measures the combined implementation overhead under the old culling strategy. The latter measures the culling-mode difference on one source build.
+Report visible selection, ordering preparation, paired step-plus-render time, separate step and render scopes, initialization, typical and tail samples, allocation and retained bytes, and process variation without adding nested scopes together. Label any comparison against the frozen pre-change indexed endpoint as a combined implementation + policy change, and reference `pre-removal-grid-vs-cached-20261118` when discussing the historical sparse-pan grid tradeoff.
 
 For the dense Z case, report no-edit and one-entry-changing phases independently. Include draw entries visited, full sorts, one-entry repositions, setter-side work, and retained capacity. Report the fully moving work/resource observations separately from timing rows. A short pilot informs these selected workloads and cannot establish universal performance or GPU timing. If a baseline is unavailable or run variation obscures a difference, report that limitation directly.

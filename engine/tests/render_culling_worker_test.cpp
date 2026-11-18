@@ -146,12 +146,12 @@ bool resolveIdentity(const Sprite *sprite, SpriteIdentity &identity, void *conte
     return observation->fixture->resolveIdentity(sprite, identity);
 }
 
-Result runWorkerFrame(size_t workers, const char *mode)
+Result runWorkerFrame(size_t workers, const char *mode, bool enableCulling)
 {
     ScopedStrategy strategy(mode);
     test_support::headlessEnvironment();
     tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
-    RenderCullingFixture fixture(320, 240, 320.0f, 240.0f, true);
+    RenderCullingFixture fixture(320, 240, 320.0f, 240.0f, enableCulling);
     constexpr size_t population = 48;
     fixture.reserveSprites(population);
     std::vector<Rigidbody *> bodies;
@@ -228,25 +228,27 @@ Result runWorkerFrame(size_t workers, const char *mode)
         result.bodies.push_back(state);
     }
     test_support::require(late->applied, "LateUpdate did not apply the same-step geometry edit");
-    if (std::strcmp(mode, "indexed") == 0)
+    if (enableCulling)
     {
         test_support::require(result.work.renderCullingDirtyEnqueues == population &&
                                   result.work.renderCullingBoundsRefreshes == population,
                               "Worker movement and late edits must publish once per affected Sprite after worker join");
         test_support::require(result.work.renderCullingCandidateVisits == population &&
-                                  result.work.renderCullingQueries == 0,
-                              "Worker-updated indexed bounds must update only dirty visible memberships without a camera query");
+                                  result.work.renderCullingCacheHits == 0,
+                              "Worker-updated cached-linear bounds must update only dirty visible memberships cleanly");
     }
     return result;
 }
 
-void compare(const Result &reference, const Result &actual, const std::string &name)
+void compare(const Result &reference, const Result &actual, const std::string &name,
+             bool compareSubmissions = true)
 {
     test_support::require(reference.image.width == actual.image.width && reference.image.height == actual.image.height &&
                               reference.image.imageHash == actual.image.imageHash,
                           name + ": worker counts or cache strategy changed same-frame rendered pixels");
-    test_support::require(reference.submissions == actual.submissions,
-                          name + ": worker counts or cache strategy changed ordered submissions");
+    if (compareSubmissions)
+        test_support::require(reference.submissions == actual.submissions,
+                              name + ": worker counts or cache strategy changed ordered submissions");
     test_support::require(reference.bodies.size() == actual.bodies.size(), name + ": body populations differ");
     for (size_t index = 0; index < reference.bodies.size(); ++index)
     {
@@ -270,11 +272,14 @@ int main()
     try
     {
         const size_t physicalWorkers = std::max<size_t>(2, std::thread::hardware_concurrency());
-        const Result single = runWorkerFrame(1, "indexed");
-        const Result parallel = runWorkerFrame(physicalWorkers, "indexed");
-        const Result currentLinear = runWorkerFrame(physicalWorkers, "current-linear");
-        compare(single, parallel, "single versus multiworker indexed");
-        compare(currentLinear, parallel, "current-linear versus indexed multiworker");
+        const Result single = runWorkerFrame(1, "cached-linear", true);
+        const Result parallel = runWorkerFrame(physicalWorkers, "cached-linear", true);
+        const Result submitAll = runWorkerFrame(physicalWorkers, "cached-linear", false);
+        compare(single, parallel, "single versus multiworker cached-linear", true);
+        compare(submitAll, parallel, "submit-all versus cached-linear multiworker", false);
+        test_support::require(!submitAll.submissions.empty() && !parallel.submissions.empty() &&
+                                  parallel.submissions.size() < submitAll.submissions.size(),
+                              "Worker cached-linear must cull offscreen sprites while matching submit-all pixels");
         std::cout << "[PASS] render_culling_worker_test workers=1/" << physicalWorkers
                   << " moved_records=" << parallel.work.renderCullingBoundsRefreshes
                   << " worker_enqueues=" << parallel.work.renderCullingDirtyEnqueues

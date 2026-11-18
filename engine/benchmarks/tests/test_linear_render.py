@@ -173,9 +173,9 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         "timing_eligible": True, "validation_mode": "boundary-only",
                         "stopped_on_quit": False, "complete_capture": True, "total_steps": 2,
                         "resolved_parameters": resource["trajectory_parameters"],
-                        "linear_render_culling": {"mode": "indexed", "requested_mode": "indexed",
-                                                   "effective_policy": "indexed", "enabled": True},
-                        "requested_render_strategy": "indexed", "rendering": True,
+                        "linear_render_culling": {"mode": "cached-linear", "requested_mode": "cached-linear",
+                                                   "effective_policy": "cached-linear", "enabled": True},
+                        "requested_render_strategy": "cached-linear", "rendering": True,
                         "render_samples": 2, "total_render_samples": 2,
                         "fixture_sha256": self.identity, "harness_sha256": "b" * 64,
                         "renderer_mapping": self.mapping,
@@ -186,7 +186,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
             args = types.SimpleNamespace(**args_values)
             metrics = {"scope.render.avg": 1.0, "scope.complete_step.avg": 2.0}
             result = capture._validate_focused_timing_manifest(
-                csv_path, self.case, args, "indexed", resource,
+                csv_path, self.case, args, "cached-linear", resource,
                 {"source_sha256": self.identity, "fixture_sha256": self.identity,
                  "harness_sha256": "b" * 64}, metrics)
             self.assertTrue(result["timing_eligible"])
@@ -194,7 +194,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
             csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
             with self.assertRaises(capture.CaptureError):
                 capture._validate_focused_timing_manifest(
-                    csv_path, self.case, args, "indexed", resource,
+                    csv_path, self.case, args, "cached-linear", resource,
                     {"source_sha256": self.identity, "fixture_sha256": self.identity,
                      "harness_sha256": "b" * 64}, metrics)
 
@@ -337,8 +337,8 @@ class LinearRenderCaptureTests(unittest.TestCase):
             root = Path(directory)
             with self.assertRaises(capture.CaptureError):
                 capture.validate_resource_proof(root, self.case, self.args, "linear")
-            path = root / f"{capture.case_key(self.case)}-linear.resources.json"
-            proof = self.proof()
+            path = root / f"{capture.case_key(self.case)}-cached-linear.resources.json"
+            proof = self.proof("cached-linear")
             proof.update({"allocation_calls": 0, "allocated_bytes": 0,
                           "allocation_calls_per_frame": 0, "allocated_bytes_per_frame": 0,
                           "process_rss_before_kib": 1000, "process_rss_after_kib": 1000,
@@ -353,26 +353,42 @@ class LinearRenderCaptureTests(unittest.TestCase):
                                                "fixture_construction_allocated_bytes": 4096},
                           "capacity_growth_observation": {"attempted": False, "reason": "inactive mode"},
                           "reset_observation": {"records_registered_after_clear": 0, "owned_bytes_after_clear": 0,
-                                                "record_capacity_after_clear": 0, "cell_capacity_after_clear": 0,
+                                                "record_capacity_after_clear": 0,
                                                 "elapsed_ns": 4321, "allocation_calls": 3, "allocated_bytes": 128},
                           "headless": False,
                           "allocation_probe": "C++ new/new[] counts; SDL allocations not attributed"})
             path.write_text(json.dumps(proof))
-            self.assertEqual(capture.validate_resource_proof(root, self.case, self.args, "linear")["allocation_calls"], 0)
+            self.assertEqual(capture.validate_resource_proof(root, self.case, self.args, "cached-linear")["allocation_calls"], 0)
+            # Applicable historical indexed proof requires cell_capacity_after_clear == 0.
+            hist_path = root / f"{capture.case_key(self.case)}-indexed.resources.json"
+            hist = json.loads(json.dumps(proof))
+            hist["mode"] = "indexed"
+            hist_path.write_text(json.dumps(hist))
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_resource_proof(root, self.case, self.args, "indexed")
+            hist["reset_observation"]["cell_capacity_after_clear"] = 0
+            hist_path.write_text(json.dumps(hist))
+            self.assertEqual(capture.validate_resource_proof(root, self.case, self.args, "indexed")["mode"], "indexed")
+            hist["reset_observation"]["cell_capacity_after_clear"] = 1
+            hist_path.write_text(json.dumps(hist))
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_resource_proof(root, self.case, self.args, "indexed")
+            path.write_text(json.dumps(proof))
             for change in ({"mode": "disabled"}, {"trajectory_parameters": {"profile": "visible"}},
                            {"allocation_calls": -1}, {"render_submissions": None},
                            {"render_visibility_checks": 2.5}, {"render_submissions": 21},
                            {"actual_changed_sprite_total": -1}, {"actual_changed_fraction": 0.1},
                            {"cold_observation": {}}, {"capacity_growth_observation": {}},
                            {"reset_observation": {"owned_bytes_after_clear": 1}},
+                           {"reset_observation": {**proof["reset_observation"], "record_capacity_after_clear": 1}},
                            {"source_sha256": "not-a-fingerprint"}):
                 invalid = dict(proof); invalid.update(change)
                 path.write_text(json.dumps(invalid))
                 with self.subTest(change=change), self.assertRaises(capture.CaptureError):
-                    capture.validate_resource_proof(root, self.case, self.args, "linear")
+                    capture.validate_resource_proof(root, self.case, self.args, "cached-linear")
             path.write_text("corrupt JSON")
             with self.assertRaises(json.JSONDecodeError):
-                capture.validate_resource_proof(root, self.case, self.args, "linear")
+                capture.validate_resource_proof(root, self.case, self.args, "cached-linear")
 
     def test_resource_mode_evidence_requires_matching_allocation_and_work_counts(self):
         resource = {}
@@ -693,13 +709,15 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 capture._run(["true"], root / "missing" / "run.log", os.environ.copy())
 
     def test_incremental_options_reject_unknown_comparison_phase_and_strategy(self):
-        for values in (("unknown", "validate", "indexed"),
-                       ("incremental", "unknown", "indexed"),
+        for values in (("unknown", "validate", "cached-linear"),
+                       ("incremental", "unknown", "cached-linear"),
+                       ("incremental", "validate", "indexed"),
+                       ("incremental", "validate", "current-linear"),
                        ("incremental", "validate", "automatic")):
             with self.subTest(values=values), self.assertRaises(capture.CaptureError):
                 capture.validate_incremental_options(*values)
-        self.assertEqual(capture.validate_incremental_options("incremental", "validate", "indexed"),
-                         ("incremental", "validate", "indexed"))
+        self.assertEqual(capture.validate_incremental_options("incremental", "validate", "cached-linear"),
+                         ("incremental", "validate", "cached-linear"))
 
     def test_incremental_case_identity_rejects_stale_case_and_substituted_inputs(self):
         case = {"strategy": "indexed", "profile": "sparse", "population": 1000,
@@ -965,15 +983,15 @@ class LinearRenderCaptureTests(unittest.TestCase):
                     mock.patch.object(capture, "_run", side_effect=fake_run):
                 images = capture.capture_incremental_mismatch_images(
                     args, case, 2, output, logs, os.environ.copy(), candidate_proofs, frozen_proofs)
-            self.assertEqual(len(images), 6)
-            self.assertEqual(len(called), 6)
+            self.assertEqual(len(images), 4)
+            self.assertEqual(len(called), 4)
             self.assertTrue(all("--capture-frame-index" in command and command[-1] == "2" for command in called))
             self.assertIn(("candidate-probe", "c" * 64), identity_calls)
             self.assertIn(("baseline-probe", "d" * 64), identity_calls)
             mismatch_record = json.loads((output / "mismatches" / capture.incremental_case_key(case) /
                                           "mismatch.json").read_text())
             self.assertEqual(mismatch_record["frame"], 2)
-            self.assertEqual(len(mismatch_record["images"]), 6)
+            self.assertEqual(len(mismatch_record["images"]), 4)
 
     def test_render_order_case_selection_arms_workers_and_baseline_arguments(self):
         cases = capture.render_order_cases("authored-static,sparse-camera-pan,dense-z-edit", 1, 4)
@@ -986,12 +1004,10 @@ class LinearRenderCaptureTests(unittest.TestCase):
         static_arms = capture.render_order_arms(cases[0])
         self.assertEqual([(a["arm"], a["strategy"], a["workers"], a["is_baseline"]) for a in static_arms],
                          [("baseline-indexed", "indexed", 1, True),
-                          ("candidate-indexed", "indexed", 1, False),
                           ("candidate-cached-linear", "cached-linear", 1, False)])
         pan_arms = capture.render_order_arms(cases[1])
         self.assertEqual([(a["arm"], a["strategy"], a["workers"], a["is_baseline"]) for a in pan_arms],
                          [("baseline-indexed", "indexed", 1, True),
-                          ("candidate-indexed", "indexed", 1, False),
                           ("candidate-cached-linear", "cached-linear", 1, False)])
         dense_arms = capture.render_order_arms(cases[2])
         self.assertEqual([(a["arm"], a["strategy"], a["ordering_variant"], a["workers"]) for a in dense_arms],
@@ -1102,8 +1118,8 @@ class LinearRenderCaptureTests(unittest.TestCase):
 
             def make_fake_run(fail_parity=False, fail_mid_control=False, base_traj_override=None,
                               extra_present_wait_ns=0, prepare_ns_by_arm=None,
-                              omit_candidate_prepare_col=False, oversized_in_progress_bytes=0,
-                              control_override=None):
+                              omit_candidate_prepare_col=False, omit_candidate_selection_col=False,
+                              oversized_in_progress_bytes=0, control_override=None):
                 calls = []
                 def fake_run(cmd, log_path, env, **kwargs):
                     calls.append(list(cmd))
@@ -1134,10 +1150,10 @@ class LinearRenderCaptureTests(unittest.TestCase):
                                         "unresolved": 0, "overflow": 0}) for f in range(meas)) + "\n")
                         Path(str(ev) + ".representative.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
                         if fail_parity and strategy == "cached-linear":
-                            subs_bad = list(reversed(subs))
+                            subs_bad = [subs[0], subs[0]]
                             Path(str(ev) + ".frames.jsonl").write_text("\n".join(
                                 json.dumps({"frame": f, "image_fnv64": f"h{f}", "output_width": 320,
-                                            "output_height": 240, "submissions": subs_bad, "oracle_visible": subs_bad,
+                                            "output_height": 240, "submissions": subs_bad, "oracle_visible": subs,
                                             "unresolved": 0, "overflow": 0}) for f in range(meas)) + "\n")
                             Path(str(ev) + ".mismatch.ppm").write_bytes(b"P6\n1 1\n255\n\xff\x00\x00")
                         Path(str(ev) + ".evidence.json").write_text(json.dumps({
@@ -1148,7 +1164,10 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         res = Path(cmd[cmd.index("--evidence-output") + 1] + ".resources.json")
                         cw = {"sprite_order_preparations": 0 if profile == "rejected-z-edit" else 2,
                               "sprite_order_sorts": 0 if (profile == "rejected-z-edit" or ordering == "repair") else 2,
-                              "bounds_refreshes": 0, "index_relinks": 0, "queries": 0}
+                              "bounds_refreshes": 0,
+                              "candidate_visits": 0, "full_population_visits": 0,
+                              "dirty_enqueues": 0, "visible_membership_checks": 0,
+                              "visible_membership_changes": 0}
                         if profile == "rejected-z-edit":
                             z_tot = min(100, max(0, count - 64)) * meas
                             pose_tot = 0
@@ -1165,14 +1184,17 @@ class LinearRenderCaptureTests(unittest.TestCase):
                             spr_tot = 0
                             max_step = 0
                         payload = {
-                            "profile": profile, "sprite_count": count, "measure_frames": meas, "mode": strategy,
+                            "profile": profile, "sprite_count": count, "workers": workers,
+                            "seed": 0, "dt": 0.008333333333333333, "warmup_frames": 2,
+                            "measure_frames": meas, "mode": strategy,
                             "trajectory_parameters": traj, "allocation_calls": 0, "allocated_bytes": 0,
                             "actual_changed_sprite_total": spr_tot,
                             "actual_changed_pose_total": pose_tot,
                             "actual_changed_z_total": z_tot,
                             "actual_changed_sprites_per_step_max": max_step,
                             "actual_changed_fraction": (spr_tot / (count * meas)) if count * meas else 0.0,
-                            "render_submissions": min(count * meas, 100),
+                            "render_view_preparations": meas, "render_eligibility_checks": meas,
+                            "render_visibility_checks": 0, "render_submissions": min(count * meas, 100),
                             "cold_observation": {}, "capacity_growth_observation": {}, "reset_observation": {},
                             "culling_work": cw,
                         }
@@ -1231,15 +1253,21 @@ class LinearRenderCaptureTests(unittest.TestCase):
                                 w.writerow(["step", "paired_step_render_ns"])
                                 for i in range(meas):
                                     w.writerow([i, 1_500_000 if (i % 2 == 0 or profile != "dense-z-edit") else 2_500_000])
-                            else:
+                            elif omit_candidate_selection_col:
                                 w.writerow(["step", "paired_step_render_ns", "draw_order_prepare_ns"])
+                                for i in range(meas):
+                                    paired_ns = (1_500_000 if (i % 2 == 0 or profile != "dense-z-edit") else 2_500_000) + extra_present_wait_ns
+                                    w.writerow([i, paired_ns, 50_000])
+                            else:
+                                w.writerow(["step", "paired_step_render_ns", "draw_order_prepare_ns", "visible_selection_ns"])
                                 for i in range(meas):
                                     paired_ns = (1_500_000 if (i % 2 == 0 or profile != "dense-z-edit") else 2_500_000) + extra_present_wait_ns
                                     prep_key = (profile, strategy, ordering, workers, i % 2)
                                     prep_ns = (prepare_ns_by_arm[prep_key]
                                                if prepare_ns_by_arm and prep_key in prepare_ns_by_arm
                                                else (50_000 if (i % 2 == 0 or profile != "dense-z-edit") else 300_000))
-                                    w.writerow([i, paired_ns, prep_ns])
+                                    sel_ns = 700 if profile != "dense-z-edit" else 20_000
+                                    w.writerow([i, paired_ns, prep_ns, sel_ns])
                 return fake_run, calls
 
             # 1. Happy path removes large traces and writes separated comparisons.
@@ -1255,9 +1283,12 @@ class LinearRenderCaptureTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             rep = json.loads((out_ok / "report.json").read_text())
             self.assertEqual(rep["scope"]["cases"], ["authored-static", "dense-z-edit"])
-            self.assertIn("implementation_overhead", rep["comparisons"])
-            self.assertIn("culling_strategy", rep["comparisons"])
-            self.assertIn("default_policy", rep["comparisons"])
+            self.assertIn("endpoint_implementation_and_policy", rep["comparisons"])
+            self.assertIn("combined implementation + policy",
+                          rep["comparisons"]["endpoint_implementation_and_policy"]["authored-static"]["comparison_scope"])
+            self.assertNotIn("implementation_overhead", rep["comparisons"])
+            self.assertNotIn("culling_strategy", rep["comparisons"])
+            self.assertNotIn("default_policy", rep["comparisons"])
             self.assertIn("clean_frames", rep["comparisons"]["dense_z_ordering"])
             self.assertIn("edit_frames", rep["comparisons"]["dense_z_ordering"])
             self.assertEqual(list((out_ok / "proofs").glob("*.frames.jsonl")), [])
@@ -1422,7 +1453,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
             rep_prep = json.loads((out_prep / "report.json").read_text())
             base_prep_stat = rep_prep["aggregates_by_case"]["authored-static"]["baseline-indexed"]["combined"]["draw_order_prepare_ms"]
             self.assertFalse(base_prep_stat["available"])
-            self.assertFalse(rep_prep["comparisons"]["implementation_overhead"]["authored-static"]["draw_order_prepare_ms"]["available"])
+            self.assertFalse(rep_prep["comparisons"]["endpoint_implementation_and_policy"]["authored-static"]["draw_order_prepare_ms"]["available"])
             rebuild_edit_prep = rep_prep["aggregates_by_case"]["dense-z-edit"]["candidate-rebuild-w1"]["edit_frames"]["draw_order_prepare_ms"]
             repair_edit_prep = rep_prep["aggregates_by_case"]["dense-z-edit"]["candidate-repair-w1"]["edit_frames"]["draw_order_prepare_ms"]
             repair_edit_paired = rep_prep["aggregates_by_case"]["dense-z-edit"]["candidate-repair-w1"]["edit_frames"]["paired_step_render_ms"]
@@ -1432,9 +1463,11 @@ class LinearRenderCaptureTests(unittest.TestCase):
             # Paired step+render still reflects the 15 ms presentation wait (~17.5 ms) independently.
             self.assertGreater(repair_edit_paired["mean_ms"], 15.0)
             self.assertIn("unavailable (frozen baseline)", (out_prep / "report.md").read_text())
-            # T063: Verify work-only control totals are included in compact report.
-            self.assertEqual(rep_prep["work_resource_controls"]["rejected-z-edit"]["indexed"]["actual_changed_z_total"], 400)
-            self.assertEqual(rep_prep["work_resource_controls"]["fully-moving-crossing"]["indexed"]["actual_changed_pose_total"], 40000)
+            # T063: Verify work-only control totals are included in compact report under cached-linear only.
+            self.assertEqual(list(rep_prep["work_resource_controls"]["rejected-z-edit"].keys()), ["cached-linear"])
+            self.assertEqual(list(rep_prep["work_resource_controls"]["fully-moving-crossing"].keys()), ["cached-linear"])
+            self.assertEqual(rep_prep["work_resource_controls"]["rejected-z-edit"]["cached-linear"]["actual_changed_z_total"], 400)
+            self.assertEqual(rep_prep["work_resource_controls"]["fully-moving-crossing"]["cached-linear"]["actual_changed_pose_total"], 40000)
 
             # 8. T060: Dense worker-arm collisions rejected before creating output directory;
             #    all-zero-only selections remain compatible; manifest worker label mismatches rejected.
@@ -1543,12 +1576,12 @@ class LinearRenderCaptureTests(unittest.TestCase):
 
             # 11. T063: Negative control-resource driver tests (omitted rejected edit, misdirected edit, stationary crossing).
             for label, override, expected_arm in (
-                ("omitted_rejected", {("rejected-z-edit", "indexed"): {"actual_changed_z_total": 399, "actual_changed_sprite_total": 399}},
-                 "rejected-z-edit-indexed"),
+                ("omitted_rejected", {("rejected-z-edit", "cached-linear"): {"actual_changed_z_total": 399, "actual_changed_sprite_total": 399}},
+                 "rejected-z-edit-cached-linear"),
                 ("misdirected_pose", {("rejected-z-edit", "cached-linear"): {"actual_changed_pose_total": 1, "actual_changed_sprite_total": 401}},
                  "rejected-z-edit-cached-linear"),
-                ("stationary_crossing", {("crossing", "current-linear"): {"actual_changed_pose_total": 0, "actual_changed_sprite_total": 0}},
-                 "fully-moving-crossing-current-linear"),
+                ("stationary_crossing", {("crossing", "cached-linear"): {"actual_changed_pose_total": 0, "actual_changed_sprite_total": 0}},
+                 "fully-moving-crossing-cached-linear"),
             ):
                 out_ctrl = root / f"fail_ctrl_{label}"
                 fake_ctrl, _ = make_fake_run(control_override=override)
@@ -1563,6 +1596,361 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 self.assertFalse((out_ctrl / "report.json").exists(), label)
                 partial_ctrl = json.loads((out_ctrl / "partial-report.json").read_text())
                 self.assertNotIn(expected_arm, [item["arm"] for item in partial_ctrl["completed_arms"]], label)
+
+            # 12. T069/T075: validate_render_order_control_resource requires identity and surviving work counters
+            #     while remaining compatible with historical legacy proofs containing queries/index_relinks.
+            ctrl_rej = {"control_name": "rejected-z-edit", "profile": "rejected-z-edit", "sprite_count": 10000}
+            ctrl_args = types.SimpleNamespace(workers=1, seed=0, dt=1 / 120, warmup_frames=2, measure_frames=4)
+            valid_rej = {
+                "profile": "rejected-z-edit", "sprite_count": 10000, "mode": "cached-linear",
+                "workers": 1, "seed": 0, "dt": 1 / 120, "warmup_frames": 2, "measure_frames": 4,
+                "allocation_calls": 0, "allocated_bytes": 0,
+                "actual_changed_sprite_total": 400, "actual_changed_pose_total": 0,
+                "actual_changed_z_total": 400, "actual_changed_sprites_per_step_max": 100,
+                "actual_changed_fraction": 400 / 40000,
+                "render_view_preparations": 4, "render_eligibility_checks": 4,
+                "render_visibility_checks": 0, "render_submissions": 256,
+                "cold_observation": {}, "capacity_growth_observation": {}, "reset_observation": {},
+                "culling_work": {
+                    "bounds_refreshes": 0,
+                    "sprite_order_preparations": 0, "sprite_order_sorts": 0,
+                    "candidate_visits": 0, "full_population_visits": 0,
+                    "dirty_enqueues": 0, "visible_membership_checks": 0,
+                    "visible_membership_changes": 0,
+                },
+            }
+            capture.validate_render_order_control_resource(ctrl_rej, "cached-linear", valid_rej, ctrl_args)
+            legacy_rej = json.loads(json.dumps(valid_rej))
+            legacy_rej["mode"] = "indexed"
+            legacy_rej["culling_work"].update({"queries": 0, "index_relinks": 0})
+            capture.validate_render_order_control_resource(ctrl_rej, "indexed", legacy_rej, ctrl_args)
+            for id_field in ("profile", "sprite_count", "mode", "workers", "seed", "warmup_frames", "measure_frames", "dt"):
+                bad_id = json.loads(json.dumps(valid_rej))
+                bad_id.pop(id_field)
+                with self.subTest(missing_identity=id_field), self.assertRaises(capture.CaptureError):
+                    capture.validate_render_order_control_resource(ctrl_rej, "cached-linear", bad_id, ctrl_args)
+            no_work = json.loads(json.dumps(valid_rej))
+            no_work.pop("culling_work")
+            with self.assertRaises(capture.CaptureError):
+                capture.validate_render_order_control_resource(ctrl_rej, "cached-linear", no_work, ctrl_args)
+            for wk in tuple(valid_rej["culling_work"].keys()):
+                for bad_val in (None, -1, True):
+                    bad_w = json.loads(json.dumps(valid_rej))
+                    bad_w["culling_work"][wk] = bad_val
+                    with self.subTest(work_key=wk, bad_val=bad_val), self.assertRaises(capture.CaptureError):
+                        capture.validate_render_order_control_resource(ctrl_rej, "cached-linear", bad_w, ctrl_args)
+
+            # 13. T070: Final deadline race produces either valid success report or compact failure report.
+            out_race_fail = root / "race_fail"
+            fake_race, race_calls = make_fake_run()
+            orig_check = capture.check_budget
+            state = {"final_calls": 0}
+
+            def expire_on_final_check(reserve_bytes=0):
+                if reserve_bytes == 0:
+                    state["final_calls"] += 1
+                    if state["final_calls"] >= 1:
+                        raise capture.BudgetExceeded("Capture exceeded deadline at final check")
+                return orig_check(reserve_bytes=reserve_bytes)
+
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_race), \
+                    mock.patch.object(capture, "check_budget", side_effect=expire_on_final_check):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "2", "--output", str(out_race_fail)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_race_fail / "report.json").exists())
+            self.assertFalse((out_race_fail / "report.md").exists())
+            partial_race = json.loads((out_race_fail / "partial-report.json").read_text())
+            self.assertFalse(partial_race["complete"])
+            self.assertEqual(partial_race["failure_stage"], "final-publication")
+
+            out_race_ok = root / "race_ok"
+            fake_race_ok, _ = make_fake_run()
+            orig_run_roc = capture.run_render_order_culling
+            clock = {"now": 100.0}
+
+            def run_and_expire(a):
+                res = orig_run_roc(a)
+                # Advance monotonic past deadline right as run_render_order_culling returns;
+                # with check_on_exit=False, context exit must not fail or replace the finished report.
+                clock["now"] = 1000.0
+                return res
+
+            with mock.patch("capture_budget.time.monotonic", side_effect=lambda: clock["now"]), \
+                    mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_race_ok), \
+                    mock.patch.object(capture, "run_render_order_culling", side_effect=run_and_expire):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "2", "--max-seconds", "10",
+                                   "--output", str(out_race_ok)])
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_race_ok / "report.json").is_file())
+            self.assertFalse((out_race_ok / "partial-report.json").exists())
+
+            # Explicitly test CaptureBudget context exit enforcement: default checks on exit,
+            # check_on_exit=False skips post-yield check while preserving entry check.
+            b_root = root / "budget_ctx"; b_root.mkdir()
+            times = iter([100.0, 100.0, 200.0])
+            with mock.patch("capture_budget.time.monotonic", side_effect=lambda: next(times)):
+                b = capture.CaptureBudget([b_root], max_seconds=10.0)
+                with self.assertRaises(capture.BudgetExceeded):
+                    with capture.capture_budget(b):
+                        pass
+            times2 = iter([100.0, 100.0, 200.0])
+            with mock.patch("capture_budget.time.monotonic", side_effect=lambda: next(times2)):
+                b2 = capture.CaptureBudget([b_root], max_seconds=10.0)
+                with capture.capture_budget(b2, check_on_exit=False):
+                    pass
+
+            # 14. T081: Optional frozen endpoint for authored-static and sparse-camera-pan.
+            out_cand_only = root / "cand_only_all_zero"
+            fake_cand_only, _ = make_fake_run()
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_cand_only):
+                rc = capture.main(["--comparison", "render-order-culling",
+                                   "--focused-cases", "authored-static,sparse-camera-pan",
+                                   "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]),
+                                   "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_cand_only)])
+            self.assertEqual(rc, 0)
+            rep_cand_only = json.loads((out_cand_only / "report.json").read_text())
+            self.assertIsNone(rep_cand_only["scope"]["baseline_build_identity"])
+            self.assertEqual(rep_cand_only["comparisons"]["endpoint_implementation_and_policy"], {})
+            for cname in ("authored-static", "sparse-camera-pan"):
+                self.assertEqual(list(rep_cand_only["aggregates_by_case"][cname].keys()),
+                                 ["candidate-cached-linear"])
+                self.assertTrue(rep_cand_only["aggregates_by_case"][cname]["candidate-cached-linear"]["combined"]["visible_selection_ms"]["available"])
+            self.assertIn("candidate-only", (out_cand_only / "report.md").read_text())
+
+            out_with_base = root / "with_base_all_zero"
+            fake_with_base, _ = make_fake_run()
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_with_base):
+                rc = capture.main(["--comparison", "render-order-culling",
+                                   "--focused-cases", "authored-static,sparse-camera-pan",
+                                   "--baseline-probe", str(bins["base"]),
+                                   "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]),
+                                   "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "2",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_with_base)])
+            self.assertEqual(rc, 0)
+            rep_with_base = json.loads((out_with_base / "report.json").read_text())
+            self.assertIsNotNone(rep_with_base["scope"]["baseline_build_identity"])
+            for cname in ("authored-static", "sparse-camera-pan"):
+                self.assertEqual(set(rep_with_base["aggregates_by_case"][cname].keys()),
+                                 {"baseline-indexed", "candidate-cached-linear"})
+                self.assertIn("combined implementation + policy",
+                              rep_with_base["comparisons"]["endpoint_implementation_and_policy"][cname]["comparison_scope"])
+                self.assertFalse(rep_with_base["aggregates_by_case"][cname]["baseline-indexed"]["combined"]["visible_selection_ms"]["available"])
+                self.assertTrue(rep_with_base["aggregates_by_case"][cname]["candidate-cached-linear"]["combined"]["visible_selection_ms"]["available"])
+
+            # 15. T082: Candidate paired CSV missing visible_selection_ns must fail with bounded partial report.
+            out_no_sel = root / "fail_missing_selection_col"
+            fake_no_sel, _ = make_fake_run(omit_candidate_selection_col=True)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_no_sel):
+                rc = capture.main(["--comparison", "render-order-culling",
+                                   "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]),
+                                   "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]),
+                                   "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_no_sel)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_no_sel / "report.json").exists())
+            partial_no_sel = json.loads((out_no_sel / "partial-report.json").read_text())
+            self.assertFalse(partial_no_sel["complete"])
+            self.assertIn("visible_selection_ns", partial_no_sel["failure_reason"])
+
+    def test_incremental_pilot_cli_strategy_dispatch_and_current_resource_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"; assets.mkdir(); (assets / "scene.json").write_text("{}")
+            cand_tim = root / "cand_timing"
+            cand_val = root / "cand_val"
+            for p in (cand_tim, cand_val):
+                p.write_text("#!/bin/sh\nexit 0\n")
+                p.chmod(0o755)
+            tim_id = {"configuration": "Release", "sanitizer": "none", "work_probes": False, "debug_tools": False,
+                      "commit": "a" * 40, "dirty": False, "compiler": "g++", "flags": "-O3",
+                      "source_sha256": "c" * 64, "fixture_sha256": "f" * 64, "harness_sha256": "d" * 64}
+            val_id = {**tim_id, "work_probes": True}
+
+            def fake_identity(binary, log_path, env):
+                return dict(val_id if binary == cand_val else tim_id)
+
+            def make_pilot_runner(nonzero_reset_cap=False):
+                calls = []
+                def fake_run(cmd, log_path, env, **kwargs):
+                    calls.append(list(cmd))
+                    Path(log_path).write_text("ok\n")
+                    profile = cmd[cmd.index("--profile") + 1]
+                    count = int(cmd[cmd.index("--sprite-count") + 1])
+                    workers = int(cmd[cmd.index("--workers") + 1])
+                    meas = int(cmd[cmd.index("--measure-frames") + 1])
+                    warm = int(cmd[cmd.index("--warmup-frames") + 1])
+                    rep = int(cmd[cmd.index("--repetitions") + 1])
+                    run_idx = int(cmd[cmd.index("--run-index") + 1])
+                    layout = cmd[cmd.index("--layout") + 1]
+                    mode = "disabled" if "--no-render-culling" in cmd else cmd[cmd.index("--render-strategy") + 1]
+                    traj = capture.expected_trajectory(
+                        {"profile": profile, "sprite_count": count, "layout": layout, "changed_percent": 0},
+                        types.SimpleNamespace(seed=0))
+                    if "--validate-resources" in cmd:
+                        ev = Path(cmd[cmd.index("--evidence-output") + 1])
+                        res_path = Path(str(ev) + ".resources.json")
+                        payload = {
+                            "profile": profile, "sprite_count": count, "workers": workers,
+                            "seed": 0, "dt": 0.008333333333333333, "warmup_frames": warm,
+                            "measure_frames": meas, "mode": mode, "trajectory_parameters": traj,
+                            "fixture_sha256": val_id["fixture_sha256"], "harness_sha256": val_id["harness_sha256"],
+                            "source_sha256": val_id["source_sha256"], "renderer_mapping": self.mapping,
+                            "headless": False, "timing_eligible": False, "validation_mode": "per-step",
+                            "allocation_calls": 0, "allocated_bytes": 0,
+                            "allocation_calls_per_frame": 0.0, "allocated_bytes_per_frame": 0.0,
+                            "allocation_probe": "C++ operator new/new[]; SDL allocations not attributed",
+                            "process_rss_before_kib": 1000, "process_rss_after_kib": 1000,
+                            "process_rss_after_reset_kib": 1000,
+                            "render_view_preparations": meas,
+                            "render_eligibility_checks": 0 if mode == "disabled" else meas,
+                            "render_visibility_checks": 0 if mode == "disabled" else count * meas,
+                            "render_submissions": count * meas if mode == "disabled" else 4 * meas,
+                            "actual_changed_sprite_total": 0, "actual_changed_pose_total": 0,
+                            "actual_changed_z_total": 0, "actual_changed_sprites_per_step_max": 0,
+                            "actual_changed_fraction": 0.0,
+                            "cold_observation": {
+                                "first_warmup_step_elapsed_ns": 5000,
+                                "fixture_construction_and_registration_ns": 10000,
+                                "fixture_construction_allocation_calls": 10,
+                                "fixture_construction_allocated_bytes": 1024,
+                            },
+                            "capacity_growth_observation": {"attempted": False, "reason": "within capacity"},
+                            "reset_observation": {
+                                "records_registered_after_clear": 0,
+                                "owned_bytes_after_clear": 0,
+                                "record_capacity_after_clear": 16 if nonzero_reset_cap else 0,
+                                "elapsed_ns": 1000, "allocation_calls": 0, "allocated_bytes": 0,
+                            },
+                            "culling_initial": {
+                                "state_creations": 0 if mode == "disabled" else 1,
+                                "records_registered": 0 if mode == "disabled" else count,
+                            },
+                            "culling_work": {"peak_owned_bytes": 0 if mode == "disabled" else 1024},
+                        }
+                        res_path.write_text(json.dumps(payload))
+                    else:
+                        csv_path = Path(cmd[cmd.index("--csv-output") + 1])
+                        rp = Path(cmd[cmd.index("--resource-proof") + 1])
+                        manifest = {
+                            "schema_version": 3, "build": tim_id, "scenario": "linear_render_culling",
+                            "workers": workers, "seed": 0, "dt": 0.008333333333333333,
+                            "warmup_steps": warm, "measured_steps": meas, "requested_measured_steps": meas,
+                            "repetitions": rep, "repetition_index": run_idx,
+                            "timing_eligible": True, "validation_mode": "boundary-only",
+                            "stopped_on_quit": False, "complete_capture": True, "total_steps": meas,
+                            "linear_render_culling": {"mode": mode, "requested_mode": mode,
+                                                       "effective_policy": mode, "enabled": True},
+                            "requested_render_strategy": mode, "rendering": True,
+                            "render_samples": meas, "total_render_samples": meas,
+                            "resolved_parameters": traj,
+                            "fixture_sha256": tim_id["fixture_sha256"], "harness_sha256": tim_id["harness_sha256"],
+                            "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
+                            "dependencies": {"SDL": "3"},
+                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
+                            "resource_observation": {"sha256": capture.sha256(rp)},
+                        }
+                        csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+                        with csv_path.open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
+                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                                val_ms = 0.5 if sc == "render" else 1.0
+                                w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
+                            for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
+                                w.writerow([3, "counter", ct, meas, 0, 0, 0, 0, 0, 0, "count"])
+                        with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "sample_kind", "index",
+                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *capture.INCREMENTAL_BENCHMARK_COUNTERS])
+                            for i in range(meas):
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                            for i in range(meas):
+                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                        with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["step", "paired_step_render_ns", "draw_order_prepare_ns", "visible_selection_ns"])
+                            for i in range(meas):
+                                w.writerow([i, 1500, 100, 200])
+                return fake_run, calls
+
+            # README flags with explicit --strategy cached-linear, omitted --strategy, and --strategy all.
+            for label, extra_flags in (
+                ("explicit_cached", ["--strategy", "cached-linear"]),
+                ("omitted_strategy", []),
+                ("all_shorthand", ["--strategy", "all"]),
+            ):
+                out_dir = root / f"pilot_{label}"
+                fake_run, _ = make_pilot_runner()
+                with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                        mock.patch.object(capture, "_run", side_effect=fake_run):
+                    rc = capture.main([
+                        "--comparison", "incremental", "--phase", "pilot", *extra_flags, "--exploratory",
+                        "--focused-cases", "mostly-offscreen",
+                        "--candidate-validation-probe", str(cand_val),
+                        "--candidate-probe", str(cand_tim),
+                        "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "6",
+                        "--seed", "0", "--repetitions", "2", "--warmup-frames", "1", "--measure-frames", "2",
+                        "--dt", "0.008333333333333333", "--output", str(out_dir),
+                    ])
+                self.assertEqual(rc, 0, label)
+                rep = json.loads((out_dir / "report.json").read_text())
+                self.assertEqual(rep["scope"]["strategies"], ["cached-linear"])
+
+            # Nonzero common capacity after clear must fail the incremental pilot resource stage.
+            out_bad_reset = root / "pilot_bad_reset"
+            fake_bad_reset, _ = make_pilot_runner(nonzero_reset_cap=True)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_bad_reset):
+                rc = capture.main([
+                    "--comparison", "incremental", "--phase", "pilot", "--strategy", "cached-linear",
+                    "--focused-cases", "mostly-offscreen",
+                    "--candidate-validation-probe", str(cand_val),
+                    "--candidate-probe", str(cand_tim),
+                    "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "6",
+                    "--repetitions", "2", "--warmup-frames", "1", "--measure-frames", "2",
+                    "--output", str(out_bad_reset),
+                ])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_bad_reset / "report.json").exists())
+
+            # Retired strategies must fail before capture on CLI and option validation.
+            for retired in ("indexed", "current-linear"):
+                out_ret = root / f"pilot_retired_{retired}"
+                fake_ret, calls_ret = make_pilot_runner()
+                with mock.patch.object(capture, "_run", side_effect=fake_ret):
+                    with self.assertRaises(SystemExit) as exc:
+                        capture.main(["--comparison", "incremental", "--phase", "pilot",
+                                      "--strategy", retired, "--output", str(out_ret),
+                                      "--multiworker-count", "6"])
+                self.assertEqual(exc.exception.code, 2)
+                self.assertEqual(calls_ret, [])
+                with self.assertRaises(capture.CaptureError):
+                    capture.validate_incremental_options("incremental", "pilot", retired)
 
 
 if __name__ == "__main__":

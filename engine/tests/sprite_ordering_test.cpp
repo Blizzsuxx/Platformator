@@ -540,9 +540,9 @@ struct ScaleRunSummary
     size_t bulkEditComparisons = 0;
 };
 
-ScaleRunSummary checkIndexedWorkScaling(size_t population)
+ScaleRunSummary checkCachedWorkScaling(size_t population)
 {
-    ScopedRenderCullingMode selection("indexed");
+    ScopedRenderCullingMode selection("cached-linear");
     test_support::headlessEnvironment();
     RenderCullingFixture fixture(kOutputWidth, kOutputHeight, 320.0f, 240.0f, true);
     fixture.reserveSprites(population);
@@ -613,7 +613,7 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
     test_support::require(frame.work.spriteOrderPreparations == 0 &&
                               frame.work.spriteOrderSorts == 0 && frame.work.spriteOrderComparisons == 0 &&
                               frame.work.renderCullingBoundsRefreshes == 0 &&
-                              frame.work.renderCullingIndexRelinks == 0 && frame.work.renderCullingQueries == 0 &&
+                              frame.work.renderCullingFullPopulationVisits == 0 &&
                               frame.work.renderCullingCacheHits == 1,
                           "Identical Z writes must do zero ordering or culling work");
 
@@ -627,14 +627,12 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
                               frame.work.spriteOrderSorts == 1 &&
                               frame.work.spriteOrderEntries == kVisibleCount &&
                               frame.work.renderCullingBoundsRefreshes == 0 &&
-                              frame.work.renderCullingIndexRelinks == 0 && frame.work.renderCullingQueries == 0 &&
+                              frame.work.renderCullingFullPopulationVisits == 0 &&
                               frame.submissions.front() == (SpriteIdentity{0, 0}),
                           "Repeated visible Z edit failed: prep=" + std::to_string(frame.work.spriteOrderPreparations) +
                               " sorts=" + std::to_string(frame.work.spriteOrderSorts) +
                               " entries=" + std::to_string(frame.work.spriteOrderEntries) +
                               " refresh=" + std::to_string(frame.work.renderCullingBoundsRefreshes) +
-                              " relinks=" + std::to_string(frame.work.renderCullingIndexRelinks) +
-                              " queries=" + std::to_string(frame.work.renderCullingQueries) +
                               " frontSlot=" +
                               (frame.submissions.empty() ? std::string("empty")
                                                          : std::to_string(frame.submissions.front().slot)));
@@ -649,8 +647,9 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
     test_support::require(frame.work.spriteOrderPreparations == 0 &&
                               frame.work.spriteOrderSorts == 0 && frame.work.spriteOrderEntries == 0 &&
                               frame.work.renderCullingBoundsRefreshes == 0 &&
-                              frame.work.renderCullingIndexRelinks == 0 && frame.work.renderCullingQueries == 0,
-                          "Rejected-only Z edits must leave visible draw order and spatial state untouched");
+                              frame.work.renderCullingFullPopulationVisits == 0 &&
+                              frame.work.renderCullingCacheHits == 1,
+                          "Rejected-only Z edits must leave visible draw order and culling state untouched");
 
     // Admission: move sprite (kVisibleCount) inside view with edited Z = -500.
     fixture.record(kVisibleCount).object->setPosition({160.0f, 120.0f});
@@ -693,18 +692,19 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
                               frame.work.spriteOrderComparisons == 0,
                           "Within-view movement keeping visible membership must resolve once per dirty slot and reuse prepared draw order");
 
-    // 5. Same-set camera pan performs a spatial query without resorting unchanged membership.
+    // 5. Same-set camera pan scans registered sprites in O(N) without resorting unchanged membership.
     renderAndCheckNoAlloc(
         "same-set-camera-pan", [&]() { fixture.camera()->getGameObject()->setPosition({1.0f, 0.0f}); }, false);
-    test_support::require(frame.work.renderCullingQueries == 1 &&
+    test_support::require(frame.work.renderCullingFullPopulationVisits == population &&
+                              frame.work.renderCullingCandidateVisits == population &&
                               frame.work.renderCullingBoundsRefreshes == 0 &&
                               frame.work.visibleMembershipChanges == 0 &&
                               frame.work.spriteOrderPreparations == 0 && frame.work.spriteOrderSorts == 0,
-                          "Same-set camera pan must not re-sort unchanged visible membership");
+                          "Same-set camera pan must scan registered sprites without re-sorting unchanged visible membership");
     fixture.camera()->getGameObject()->setPosition({0.0f, 0.0f});
     captureIntoFrame(fixture, frame);
 
-    // 6. Bulk Z edits on all visible sprites touch only V entries in one sort without culling queries.
+    // 6. Bulk Z edits on all visible sprites touch only V entries in one sort without full-population scans.
     renderAndCheckNoAlloc("bulk-visible-z-edits", [&]() {
         for (size_t i = 0; i < kVisibleCount; ++i)
             fixture.record(i).sprite->setZOrder(-static_cast<std::int32_t>(i));
@@ -713,10 +713,10 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
                               frame.work.spriteOrderSorts == 1 &&
                               frame.work.spriteOrderEntries == kVisibleCount &&
                               frame.work.renderCullingBoundsRefreshes == 0 &&
-                              frame.work.renderCullingIndexRelinks == 0 && frame.work.renderCullingQueries == 0 &&
+                              frame.work.renderCullingFullPopulationVisits == 0 &&
                               frame.submissions.front() == (SpriteIdentity{kVisibleCount - 1, 0}) &&
                               frame.submissions.back() == (SpriteIdentity{0, 0}),
-                          "Bulk visible Z edit must visit/sort only V entries without culling queries");
+                          "Bulk visible Z edit must visit/sort only V entries without full-population scans");
     summary.bulkEditEntries = frame.work.spriteOrderEntries;
     summary.bulkEditComparisons = frame.work.spriteOrderComparisons;
 
@@ -725,17 +725,17 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
 
 void checkWorkOnlyScalingContracts()
 {
-    const ScaleRunSummary small = checkIndexedWorkScaling(1000);
-    const ScaleRunSummary large = checkIndexedWorkScaling(10000);
+    const ScaleRunSummary small = checkCachedWorkScaling(1000);
+    const ScaleRunSummary large = checkCachedWorkScaling(10000);
     test_support::require(small.singleEditEntries == large.singleEditEntries &&
                               small.bulkEditEntries == large.bulkEditEntries &&
                               large.singleEditComparisons == small.singleEditComparisons &&
                               large.bulkEditComparisons == small.bulkEditComparisons,
-                          "Fixed-V ordering work under indexed culling scaled with background population N");
+                          "Fixed-V ordering work under cached-linear culling scaled with background population N");
 
     // 7. Headless execution with 1,000 sprites retains zero culling or ordering state.
     {
-        ScopedRenderCullingMode selection("indexed");
+        ScopedRenderCullingMode selection("cached-linear");
         test_support::headlessEnvironment();
         RuntimeOptions options;
         options.windowSettings.width = kOutputWidth;
@@ -928,11 +928,9 @@ int main()
     try
     {
         checkInitialOverlappingRegistrationOrder();
-        checkOrderingAcrossModes("indexed", "indexed", true);
+        checkOrderingAcrossModes("default", nullptr, true);
         checkOrderingAcrossModes("cached-linear", "cached-linear", true);
-        checkOrderingAcrossModes("current-linear", "current-linear", true);
         checkOrderingAcrossModes("submit-all", "cached-linear", false);
-        checkLifecycleStabilityAndChurn("indexed");
         checkLifecycleStabilityAndChurn("cached-linear");
         checkWorkOnlyScalingContracts();
         checkBenchmarkOrderingVariants();

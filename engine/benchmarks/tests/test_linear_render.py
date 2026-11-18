@@ -1952,6 +1952,365 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 with self.assertRaises(capture.CaptureError):
                     capture.validate_incremental_options("incremental", "pilot", retired)
 
+    def test_render_order_all_zero_registration_oracle_and_single_arm_reporting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"; assets.mkdir(); (assets / "scene.json").write_text("{}")
+            cand = root / "cand"; val = root / "val"
+            for p in (cand, val):
+                p.write_text("#!/bin/sh\nexit 0\n"); p.chmod(0o755)
+            cand_id = {"configuration": "Release", "sanitizer": "none", "work_probes": False, "debug_tools": False,
+                       "commit": "a" * 40, "dirty": False, "compiler": "g++", "flags": "-O3",
+                       "source_sha256": "c" * 64, "fixture_sha256": "f" * 64, "harness_sha256": "d" * 64}
+            val_id = {**cand_id, "work_probes": True}
+
+            def fake_identity(binary, log_path, env):
+                return dict(val_id if binary == val else cand_id)
+
+            def make_oracle_runner(frame_subs_oracle_fn):
+                calls = []
+                def fake_run(cmd, log_path, env, **kwargs):
+                    calls.append(list(cmd))
+                    Path(log_path).write_text("ok\n")
+                    profile = cmd[cmd.index("--profile") + 1]
+                    strategy = cmd[cmd.index("--render-strategy") + 1]
+                    ordering = cmd[cmd.index("--ordering-variant") + 1] if "--ordering-variant" in cmd else "rebuild"
+                    count = int(cmd[cmd.index("--sprite-count") + 1])
+                    workers = int(cmd[cmd.index("--workers") + 1])
+                    reps = int(cmd[cmd.index("--repetitions") + 1])
+                    run_idx = int(cmd[cmd.index("--run-index") + 1])
+                    meas = int(cmd[cmd.index("--measure-frames") + 1])
+                    layout = cmd[cmd.index("--layout") + 1] if "--layout" in cmd else "profile-defined"
+                    traj = {"profile": profile, "sprite_count": count, "layout": layout, "camera_schedule": "fixed"}
+                    if "--validate-rendering" in cmd:
+                        ev = Path(cmd[cmd.index("--evidence-output") + 1])
+                        lines = []
+                        for f in range(meas):
+                            subs, oracle = frame_subs_oracle_fn(profile, count, f)
+                            lines.append(json.dumps({
+                                "frame": f, "image_fnv64": f"h{f}", "output_width": 320, "output_height": 240,
+                                "submissions": subs, "oracle_visible": oracle, "unresolved": 0, "overflow": 0,
+                            }))
+                        Path(str(ev) + ".frames.jsonl").write_text("\n".join(lines) + "\n")
+                        Path(str(ev) + ".representative.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
+                        Path(str(ev) + ".evidence.json").write_text(json.dumps({
+                            "trajectory_parameters": traj, "renderer_mapping": self.mapping,
+                            "fixture_sha256": val_id["fixture_sha256"], "harness_sha256": val_id["harness_sha256"],
+                        }))
+                    elif "--validate-resources" in cmd:
+                        res = Path(cmd[cmd.index("--evidence-output") + 1] + ".resources.json")
+                        z_tot = min(100, max(0, count - 64)) * meas if profile == "rejected-z-edit" else 0
+                        pose_tot = count * meas if profile == "crossing" else 0
+                        spr_tot = z_tot or pose_tot
+                        Path(res).write_text(json.dumps({
+                            "profile": profile, "sprite_count": count, "workers": workers, "seed": 0,
+                            "dt": 0.008333333333333333, "warmup_frames": 2, "measure_frames": meas,
+                            "mode": strategy, "trajectory_parameters": traj, "allocation_calls": 0, "allocated_bytes": 0,
+                            "actual_changed_sprite_total": spr_tot, "actual_changed_pose_total": pose_tot,
+                            "actual_changed_z_total": z_tot,
+                            "actual_changed_sprites_per_step_max": count if profile == "crossing" else min(100, max(0, count - 64)) if profile == "rejected-z-edit" else 0,
+                            "actual_changed_fraction": (spr_tot / (count * meas)) if count * meas else 0.0,
+                            "render_view_preparations": meas, "render_eligibility_checks": meas,
+                            "render_visibility_checks": 0, "render_submissions": min(count * meas, 100),
+                            "cold_observation": {}, "capacity_growth_observation": {}, "reset_observation": {},
+                            "culling_work": {
+                                "sprite_order_preparations": 0, "sprite_order_sorts": 0,
+                                "bounds_refreshes": 0, "candidate_visits": 0, "full_population_visits": 0,
+                                "dirty_enqueues": 0, "visible_membership_checks": 0, "visible_membership_changes": 0,
+                            },
+                        }))
+                    else:
+                        csv_path = Path(cmd[cmd.index("--csv-output") + 1])
+                        vp = cmd[cmd.index("--validation-proof") + 1]
+                        rp = cmd[cmd.index("--resource-proof") + 1]
+                        manifest = {
+                            "schema_version": 3, "build": cand_id, "scenario": "linear_render_culling",
+                            "workers": workers, "seed": 0, "dt": 0.008333333333333333,
+                            "warmup_steps": 2, "measured_steps": meas, "requested_measured_steps": meas,
+                            "repetitions": reps, "repetition_index": run_idx, "timing_eligible": True,
+                            "validation_mode": "boundary-only", "stopped_on_quit": False, "complete_capture": True,
+                            "total_steps": meas, "rendering": True, "render_samples": meas, "total_render_samples": meas,
+                            "ordering_variant": ordering,
+                            "linear_render_culling": {"mode": strategy, "requested_mode": strategy,
+                                                       "effective_policy": strategy, "enabled": True,
+                                                       "observed_frame_fallbacks": 0},
+                            "resolved_parameters": traj,
+                            "fixture_sha256": cand_id["fixture_sha256"], "harness_sha256": cand_id["harness_sha256"],
+                            "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
+                            "dependencies": {"SDL": "3"},
+                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
+                            "validation_proof": {"sha256": capture.sha256(Path(vp))},
+                            "resource_observation": {"sha256": capture.sha256(Path(rp))},
+                        }
+                        csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+                        with csv_path.open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
+                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                                val_ms = 0.5 if sc == "render" else 1.0
+                                w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
+                            for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
+                                w.writerow([3, "counter", ct, meas, 0, 0, 0, 0, 0, 0, "count"])
+                        with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "sample_kind", "index",
+                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *capture.INCREMENTAL_BENCHMARK_COUNTERS])
+                            for i in range(meas):
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                            for i in range(meas):
+                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                        with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["step", "paired_step_render_ns", "draw_order_prepare_ns", "visible_selection_ns"])
+                            for i in range(meas):
+                                w.writerow([i, 1_500_000, 50_000, 700])
+                return fake_run, calls
+
+            # 1. Reversed all-zero sequence fails before timing even with one candidate arm.
+            out_rev = root / "fail_reversed"
+            fake_rev, calls_rev = make_oracle_runner(
+                lambda _p, _c, _f: ([[3, 0], [2, 0], [1, 0], [0, 0]], [[0, 0], [1, 0], [2, 0], [3, 0]]))
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_rev):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--candidate-probe", str(cand), "--candidate-validation-probe", str(val),
+                                   "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "4",
+                                   "--repetitions", "1", "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--output", str(out_rev)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_rev / "report.json").exists())
+            self.assertFalse(any("--csv-output" in c and str(out_rev / "raw") in c[c.index("--csv-output") + 1] for c in calls_rev))
+            partial_rev = json.loads((out_rev / "partial-report.json").read_text())
+            self.assertEqual(partial_rev["failure_stage"], "parity")
+            self.assertIn("registration-order", partial_rev["failure_reason"])
+
+            # 2. Adjacent inversion on a sparse frame fails before timing even with one candidate arm.
+            out_inv = root / "fail_sparse_inversion"
+            fake_inv, calls_inv = make_oracle_runner(
+                lambda _p, _c, f: (([[0, 0], [2, 0], [1, 0], [3, 0]] if f == 1 else [[0, 0], [1, 0], [2, 0], [3, 0]]),
+                                    [[0, 0], [1, 0], [2, 0], [3, 0]]))
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_inv):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "sparse-camera-pan",
+                                   "--candidate-probe", str(cand), "--candidate-validation-probe", str(val),
+                                   "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "4",
+                                   "--repetitions", "1", "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--output", str(out_inv)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_inv / "report.json").exists())
+            self.assertFalse(any("--csv-output" in c and str(out_inv / "raw") in c[c.index("--csv-output") + 1] for c in calls_inv))
+            partial_inv = json.loads((out_inv / "partial-report.json").read_text())
+            self.assertEqual(partial_inv["failure_stage"], "parity")
+            self.assertIn("registration-order", partial_inv["failure_reason"])
+
+            # 3. Valid ordered conservative superset succeeds on single-arm capture and distinguishes oracle from inter-arm parity.
+            out_sup = root / "ok_conservative_superset"
+            fake_sup, _ = make_oracle_runner(
+                lambda profile, count, _f: (
+                    ([[i, 0] for i in range(count)], [[i, 0] for i in range(count)])
+                    if profile == "dense-z-edit"
+                    else ([[0, 0], [1, 0], [2, 0], [3, 0]], [[1, 0], [3, 0]])
+                ))
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_sup):
+                rc = capture.main(["--comparison", "render-order-culling",
+                                   "--focused-cases", "authored-static,sparse-camera-pan,dense-z-edit",
+                                   "--candidate-probe", str(cand), "--candidate-validation-probe", str(val),
+                                   "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "4",
+                                   "--repetitions", "1", "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--output", str(out_sup)])
+            self.assertEqual(rc, 0)
+            rep_sup = json.loads((out_sup / "report.json").read_text())
+            for single_case in ("authored-static", "sparse-camera-pan"):
+                pcheck = rep_sup["parity_checks"][single_case]
+                self.assertEqual(pcheck["validation_scope"], "single-arm-oracle-only")
+                self.assertTrue(pcheck["oracle_checked"])
+                self.assertFalse(pcheck["inter_arm_image_parity_checked"])
+            dense_pcheck = rep_sup["parity_checks"]["dense-z-edit"]
+            self.assertEqual(dense_pcheck["validation_scope"], "inter-arm-parity-and-oracle")
+            self.assertTrue(dense_pcheck["oracle_checked"])
+            self.assertTrue(dense_pcheck["inter_arm_image_parity_checked"])
+            report_md = (out_sup / "report.md").read_text()
+            self.assertIn("single-arm oracle check only", report_md)
+            self.assertIn("inter-arm image parity not applicable", report_md)
+            self.assertIn("inter-arm image parity and oracle check", report_md)
+
+    def test_render_order_keyboard_interrupt_partial_cleanup_and_exit_130(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"; assets.mkdir(); (assets / "scene.json").write_text("{}")
+            cand = root / "cand"; val = root / "val"
+            for p in (cand, val):
+                p.write_text("#!/bin/sh\nexit 0\n"); p.chmod(0o755)
+            cand_id = {"configuration": "Release", "sanitizer": "none", "work_probes": False, "debug_tools": False,
+                       "commit": "a" * 40, "dirty": False, "compiler": "g++", "flags": "-O3",
+                       "source_sha256": "c" * 64, "fixture_sha256": "f" * 64, "harness_sha256": "d" * 64}
+            val_id = {**cand_id, "work_probes": True}
+
+            def fake_identity(binary, log_path, env):
+                return dict(val_id if binary == val else cand_id)
+
+            def make_interrupt_runner(interrupt_on_timing_call=None):
+                calls = []
+                timing_calls = [0]
+                def fake_run(cmd, log_path, env, **kwargs):
+                    calls.append(list(cmd))
+                    Path(log_path).write_text("ok\n")
+                    profile = cmd[cmd.index("--profile") + 1]
+                    strategy = cmd[cmd.index("--render-strategy") + 1]
+                    ordering = cmd[cmd.index("--ordering-variant") + 1] if "--ordering-variant" in cmd else "rebuild"
+                    count = int(cmd[cmd.index("--sprite-count") + 1])
+                    workers = int(cmd[cmd.index("--workers") + 1])
+                    reps = int(cmd[cmd.index("--repetitions") + 1])
+                    run_idx = int(cmd[cmd.index("--run-index") + 1])
+                    meas = int(cmd[cmd.index("--measure-frames") + 1])
+                    layout = cmd[cmd.index("--layout") + 1] if "--layout" in cmd else "profile-defined"
+                    traj = {"profile": profile, "sprite_count": count, "layout": layout, "camera_schedule": "fixed"}
+                    if "--validate-rendering" in cmd:
+                        ev = Path(cmd[cmd.index("--evidence-output") + 1])
+                        subs = [[i, 0] for i in range(min(count, 4))]
+                        Path(str(ev) + ".frames.jsonl").write_text("\n".join(
+                            json.dumps({"frame": f, "image_fnv64": f"h{f}", "output_width": 320,
+                                        "output_height": 240, "submissions": subs, "oracle_visible": subs,
+                                        "unresolved": 0, "overflow": 0}) for f in range(meas)) + "\n")
+                        Path(str(ev) + ".representative.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
+                        Path(str(ev) + ".evidence.json").write_text(json.dumps({
+                            "trajectory_parameters": traj, "renderer_mapping": self.mapping,
+                            "fixture_sha256": val_id["fixture_sha256"], "harness_sha256": val_id["harness_sha256"],
+                        }))
+                    elif "--validate-resources" in cmd:
+                        res = Path(cmd[cmd.index("--evidence-output") + 1] + ".resources.json")
+                        z_tot = min(100, max(0, count - 64)) * meas if profile == "rejected-z-edit" else 0
+                        pose_tot = count * meas if profile == "crossing" else 0
+                        spr_tot = z_tot or pose_tot
+                        Path(res).write_text(json.dumps({
+                            "profile": profile, "sprite_count": count, "workers": workers, "seed": 0,
+                            "dt": 0.008333333333333333, "warmup_frames": 2, "measure_frames": meas,
+                            "mode": strategy, "trajectory_parameters": traj, "allocation_calls": 0, "allocated_bytes": 0,
+                            "actual_changed_sprite_total": spr_tot, "actual_changed_pose_total": pose_tot,
+                            "actual_changed_z_total": z_tot,
+                            "actual_changed_sprites_per_step_max": count if profile == "crossing" else min(100, max(0, count - 64)) if profile == "rejected-z-edit" else 0,
+                            "actual_changed_fraction": (spr_tot / (count * meas)) if count * meas else 0.0,
+                            "render_view_preparations": meas, "render_eligibility_checks": meas,
+                            "render_visibility_checks": 0, "render_submissions": min(count * meas, 100),
+                            "cold_observation": {}, "capacity_growth_observation": {}, "reset_observation": {},
+                            "culling_work": {
+                                "sprite_order_preparations": 0, "sprite_order_sorts": 0,
+                                "bounds_refreshes": 0, "candidate_visits": 0, "full_population_visits": 0,
+                                "dirty_enqueues": 0, "visible_membership_checks": 0, "visible_membership_changes": 0,
+                            },
+                        }))
+                    else:
+                        timing_calls[0] += 1
+                        csv_path = Path(cmd[cmd.index("--csv-output") + 1])
+                        if interrupt_on_timing_call is not None and timing_calls[0] == interrupt_on_timing_call:
+                            csv_path.write_text("partial-in-progress\n")
+                            csv_path.with_suffix(".paired.csv").write_text("partial\n")
+                            raise KeyboardInterrupt("user signal")
+                        vp = cmd[cmd.index("--validation-proof") + 1]
+                        rp = cmd[cmd.index("--resource-proof") + 1]
+                        manifest = {
+                            "schema_version": 3, "build": cand_id, "scenario": "linear_render_culling",
+                            "workers": workers, "seed": 0, "dt": 0.008333333333333333,
+                            "warmup_steps": 2, "measured_steps": meas, "requested_measured_steps": meas,
+                            "repetitions": reps, "repetition_index": run_idx, "timing_eligible": True,
+                            "validation_mode": "boundary-only", "stopped_on_quit": False, "complete_capture": True,
+                            "total_steps": meas, "rendering": True, "render_samples": meas, "total_render_samples": meas,
+                            "ordering_variant": ordering,
+                            "linear_render_culling": {"mode": strategy, "requested_mode": strategy,
+                                                       "effective_policy": strategy, "enabled": True,
+                                                       "observed_frame_fallbacks": 0},
+                            "resolved_parameters": traj,
+                            "fixture_sha256": cand_id["fixture_sha256"], "harness_sha256": cand_id["harness_sha256"],
+                            "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
+                            "dependencies": {"SDL": "3"},
+                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
+                            "validation_proof": {"sha256": capture.sha256(Path(vp))},
+                            "resource_observation": {"sha256": capture.sha256(Path(rp))},
+                        }
+                        csv_path.with_suffix(".manifest.json").write_text(json.dumps(manifest))
+                        with csv_path.open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
+                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                                val_ms = 0.5 if sc == "render" else 1.0
+                                w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
+                            for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
+                                w.writerow([3, "counter", ct, meas, 0, 0, 0, 0, 0, 0, "count"])
+                        with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["schema_version", "sample_kind", "index",
+                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *capture.INCREMENTAL_BENCHMARK_COUNTERS])
+                            for i in range(meas):
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                            for i in range(meas):
+                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                            *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
+                        with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
+                            w = csv.writer(f)
+                            w.writerow(["step", "paired_step_render_ns", "draw_order_prepare_ns", "visible_selection_ns"])
+                            for i in range(meas):
+                                w.writerow([i, 1_500_000, 50_000, 700])
+                return fake_run, calls
+
+            # 1. Interrupt during an active timing arm (rep 1 after rep 0 completed).
+            out_mid_int = root / "interrupt_during_timing"
+            fake_mid, calls_mid = make_interrupt_runner(interrupt_on_timing_call=2)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_mid):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--candidate-probe", str(cand), "--candidate-validation-probe", str(val),
+                                   "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "4",
+                                   "--repetitions", "3", "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--output", str(out_mid_int)])
+            self.assertEqual(rc, 130)
+            self.assertFalse((out_mid_int / "report.json").exists())
+            self.assertFalse((out_mid_int / "report.md").exists())
+            self.assertTrue((out_mid_int / "raw" / "authored-static-candidate-cached-linear-r0.csv").is_file())
+            self.assertFalse((out_mid_int / "raw" / "authored-static-candidate-cached-linear-r1.csv").exists())
+            self.assertFalse((out_mid_int / "raw" / "authored-static-candidate-cached-linear-r1.paired.csv").exists())
+            self.assertFalse((out_mid_int / "logs" / "time-authored-static-candidate-cached-linear-r1.log").exists())
+            # 4 pre-timing calls (val, res, 2 controls) + 2 timing calls (r0 + interrupted r1), zero retries.
+            self.assertEqual(len(calls_mid), 6)
+            partial_mid = json.loads((out_mid_int / "partial-report.json").read_text())
+            self.assertFalse(partial_mid["complete"])
+            self.assertEqual(partial_mid["failure_stage"], "time")
+            self.assertTrue(any(item["stage"] == "time-r0" for item in partial_mid["completed_arms"]))
+
+            # 2. Interrupt after success JSON/MD publication but before the final budget check.
+            out_pub_int = root / "interrupt_after_pub"
+            fake_pub, calls_pub = make_interrupt_runner(interrupt_on_timing_call=None)
+            orig_check = capture.check_budget
+
+            def interrupt_final_check(reserve_bytes=0):
+                if reserve_bytes == 0 and (out_pub_int / "report.json").exists():
+                    raise KeyboardInterrupt("interrupted after report publication")
+                return orig_check(reserve_bytes=reserve_bytes)
+
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=fake_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_pub), \
+                    mock.patch.object(capture, "check_budget", side_effect=interrupt_final_check):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--candidate-probe", str(cand), "--candidate-validation-probe", str(val),
+                                   "--asset-root", str(assets), "--workers", "1", "--multiworker-count", "4",
+                                   "--repetitions", "1", "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--output", str(out_pub_int)])
+            self.assertEqual(rc, 130)
+            self.assertFalse((out_pub_int / "report.json").exists())
+            self.assertFalse((out_pub_int / "report.md").exists())
+            self.assertEqual(len(calls_pub), 5)
+            partial_pub = json.loads((out_pub_int / "partial-report.json").read_text())
+            self.assertFalse(partial_pub["complete"])
+            self.assertEqual(partial_pub["failure_stage"], "final-publication")
+            self.assertIn("interrupted", partial_pub["failure_reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

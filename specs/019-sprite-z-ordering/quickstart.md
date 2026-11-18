@@ -1,6 +1,6 @@
 # Validation Guide: Render Culling Cleanup and Sprite Z Ordering
 
-Run these checks after implementing the combined culling and ordering changes. The feature tests, probe workloads, and driver comparison described here are planned additions. Planning has not modified runtime code or run a benchmark.
+Run these checks for the combined culling and ordering implementation. The feature tests, probe workloads, and driver comparison described here are implemented in the repository.
 
 ## 1. Record the pre-change baseline
 
@@ -19,6 +19,7 @@ cmake --preset test
 cmake --build --preset test --parallel 4 --target \
   platformator_sprite_ordering_test \
   platformator_render_culling_test platformator_render_culling_state_test \
+  platformator_render_culling_geometry_test \
   platformator_render_culling_worker_test platformator_render_culling_trajectory_test \
   platformator_render_culling_contract_test \
   platformator_scene_io_contract_test platformator_runtime_template_test \
@@ -26,7 +27,7 @@ cmake --build --preset test --parallel 4 --target \
   platformator_editor_diagnostics_test platformator_editor_template_test \
   platformator_editor_component_operations_test
 ctest --test-dir build/test --output-on-failure \
-  -R '^platformator_(sprite_ordering|render_culling|render_culling_state|render_culling_worker|render_culling_trajectory|render_culling_contract|scene_io_contract|runtime_template|editor_inspector_interaction|editor_preview|editor_diagnostics|editor_template|editor_component_operations)_test$'
+  -R '^platformator_(sprite_ordering|render_culling|render_culling_state|render_culling_geometry|render_culling_worker|render_culling_trajectory|render_culling_contract|scene_io_contract|runtime_template|editor_inspector_interaction|editor_preview|editor_diagnostics|editor_template|editor_component_operations)_test$'
 ```
 
 Start fresh windows with the mode variable unset, empty, and explicit `cached-linear`, verifying `cached-linear` in all three cases with zero grid storage or maintenance. Test retired-selector rejection (`indexed`, `current-linear`), unknown-mode rejection, and that disabling culling (`--no-render-culling` / `enableRenderCulling=false`) overrides a valid selection cleanly. Verify O(1) clean fixed-view reuse, O(dirty slots) stationary edits, O(N) camera-pan scans, and independent visibility membership and ordered submissions.
@@ -76,7 +77,7 @@ Verify that candidate identities match on source, fixture, harness, Release conf
 
 ## 5. One bounded combined pilot
 
-Extend `engine/benchmarks/capture_linear_render.py` with a focused `render-order-culling` comparison and the probe with deterministic Z schedules and work counters. Reuse the existing render strategies and scene fixture machinery. The driver extension must preserve the defaults of 3 independent repetitions, 5 warmup frames, 30 measured frames, a 50 MiB output limit, and a 600 second whole-run limit.
+Run `engine/benchmarks/capture_linear_render.py` with the `render-order-culling` comparison and deterministic probe Z schedules and work counters. It reuses the render strategies and scene fixture machinery while preserving the defaults of 3 independent repetitions, 5 warmup frames, 30 measured frames, a 50 MiB output limit, and a 600 second whole-run limit.
 
 | Case | Workload | Comparison |
 |---|---|---|
@@ -88,9 +89,9 @@ The dense Z fixture uses 10,000 sprites placed across the 320×240 view with 1×
 
 In the same bounded run, check rejected-only Z edits on the prepared `cached-linear` subset and capture the 10,000-sprite fully-moving-crossing workload under `cached-linear` as a resource/work control without extra timing matrices or retries.
 
-The comparison selector and case names are planned additions. The bounded comparison includes a resource-only fully-moving-crossing control, so it does not add another timing matrix or capture run. Keep the invocation to existing common arguments and the planned comparison selector and focused cases. Do not pass unimplemented case-specific switches, change limits, enable `--allow-full-campaign`, or create replacement artifact directories.
+The bounded comparison includes the resource-only `rejected-z-edit` and `fully-moving-crossing` controls automatically, so it does not add another timing matrix or capture run. Keep the invocation to the supported common arguments and the `--comparison` and `--focused-cases` options below; do not change limits, enable `--allow-full-campaign`, or create replacement artifact directories.
 
-Example invocation after that driver extension is implemented:
+Primary candidate-only invocation (no `RENDER_BASELINE_PROBE` environment variable required):
 
 ```sh
 RENDER_RUN_ID=replace-with-one-unused-run-id
@@ -99,7 +100,6 @@ test ! -e "$RENDER_REPORT_ROOT"
 SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
   --comparison render-order-culling \
   --focused-cases authored-static,sparse-camera-pan,dense-z-edit \
-  --baseline-probe "$RENDER_BASELINE_PROBE" \
   --candidate-validation-probe "$PWD/build/render-order-validation/platformator_linear_render_probe" \
   --candidate-probe "$PWD/build/render-order-timing/platformator_linear_render_probe" \
   --asset-root "$PWD/engine/benchmarks/assets" \
@@ -107,7 +107,13 @@ SDL_RENDER_DRIVER=software python3 engine/benchmarks/capture_linear_render.py \
   --output "$RENDER_REPORT_ROOT"
 ```
 
-The comparison selector and case names above are new planned driver inputs. Existing `--workers`, `--multiworker-count`, `--seed`, probe, asset-root, and output options are already part of the rendering capture workflow. Run the existing Python harness tests after implementing the driver extension:
+When comparing `authored-static` and `sparse-camera-pan` against a supplied frozen pre-removal executable (`RENDER_BASELINE_PROBE` set as in §1), add the optional baseline argument:
+
+```sh
+  --baseline-probe "$RENDER_BASELINE_PROBE"
+```
+
+All options above (`--comparison render-order-culling`, `--focused-cases`, optional `--baseline-probe`, `--workers`, `--multiworker-count`, `--seed`, probe paths, `--asset-root`, and `--output`) are supported CLI inputs. Run the Python harness tests after any driver change:
 
 ```sh
 python3 -m unittest discover -s engine/benchmarks/tests -p 'test_linear_render.py' -v

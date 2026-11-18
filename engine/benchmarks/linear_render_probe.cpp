@@ -850,6 +850,33 @@ std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
     }
     return visible;
 }
+
+void verifyAllZeroSubmissionOrder(size_t population, const std::vector<SpriteIdentity> &submissions,
+                                  const std::vector<SpriteIdentity> &oracle)
+{
+    bool hasPrevious = false;
+    size_t previousSlot = 0;
+    for (const auto &identity : submissions)
+    {
+        if (identity.slot >= population || identity.generation != 0)
+            throw std::runtime_error("All-zero validation frame submitted an invalid or unexpected generation identity");
+        if (hasPrevious && identity.slot <= previousSlot)
+            throw std::runtime_error("All-zero validation frame violated registration submission order");
+        previousSlot = identity.slot;
+        hasPrevious = true;
+    }
+
+    size_t subIndex = 0;
+    for (const auto &expected : oracle)
+    {
+        while (subIndex < submissions.size() && submissions[subIndex].slot < expected.slot)
+            ++subIndex;
+        if (subIndex >= submissions.size() || submissions[subIndex].slot != expected.slot ||
+            submissions[subIndex].generation != expected.generation)
+            throw std::runtime_error("All-zero validation frame omitted an independent visibility oracle member");
+        ++subIndex;
+    }
+}
 #endif
 
 void updateFixture(RenderCullingFixture &fixture, const Options &options,
@@ -1441,6 +1468,13 @@ void run(const Options &options)
                 if (options.denseZEdit &&
                     (*observation.submissions != oracle || observation.submissions->size() != options.population))
                     throw std::runtime_error("Dense Z validation frame did not preserve exact Z-ordered retention");
+                if (!options.denseZEdit && !options.rejectedZEdit &&
+                    options.profile != FixtureTrajectoryProfile::Churn &&
+                    options.profile != FixtureTrajectoryProfile::SceneDefault &&
+                    options.profile != FixtureTrajectoryProfile::SceneStacking)
+                {
+                    verifyAllZeroSubmissionOrder(options.population, *observation.submissions, oracle);
+                }
                 *framesFile << nlohmann::json{{"frame", frame}, {"image_fnv64", readback.hash},
                                              {"output_width", readback.width}, {"output_height", readback.height},
                                              {"submissions", std::move(currentVisible)},
@@ -1951,6 +1985,17 @@ void runZEditOracleSelfTest()
     verifyCrossingPoseStep(crossOpts, crossTraj, 2, crossBefore, crossAfter, 0);
     expectReject([&] { verifyCrossingPoseStep(crossOpts, crossTraj, 2, crossBefore, crossBefore, 0); },
                  "Crossing oracle must reject a stationary crossing control");
+
+    // All-zero registration-order oracle checks: conservative superset passes, inversions & missing oracle fail.
+    const std::vector<SpriteIdentity> oracleSubset{{1, 0}, {3, 0}};
+    const std::vector<SpriteIdentity> validSuperset{{0, 0}, {1, 0}, {2, 0}, {3, 0}};
+    verifyAllZeroSubmissionOrder(4, validSuperset, oracleSubset);
+    expectReject([&] { verifyAllZeroSubmissionOrder(4, {{3, 0}, {2, 0}, {1, 0}, {0, 0}}, oracleSubset); },
+                 "All-zero oracle must reject a reversed submission sequence");
+    expectReject([&] { verifyAllZeroSubmissionOrder(4, {{0, 0}, {2, 0}, {1, 0}, {3, 0}}, oracleSubset); },
+                 "All-zero oracle must reject an adjacent inversion");
+    expectReject([&] { verifyAllZeroSubmissionOrder(4, {{0, 0}, {2, 0}, {3, 0}}, oracleSubset); },
+                 "All-zero oracle must reject an omitted visibility oracle member");
 }
 #endif
 } // namespace

@@ -1543,6 +1543,32 @@ def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure
         frames_path = Path(proof["_frames_path"])
         streams[arm] = frames_path.open("r", encoding="utf-8")
         summary_hashes[arm] = []
+
+    def check_all_zero_registration_order(arm_name: str, frame_idx: int, row_data: dict) -> None:
+        subs = row_data.get("submissions", [])
+        oracle = row_data.get("oracle_visible", [])
+        if not isinstance(subs, list) or not isinstance(oracle, list):
+            raise CaptureError(f"{case['case_name']} {arm_name} frame {frame_idx}: missing submissions or oracle_visible")
+        prev_slot = -1
+        submitted_set = set()
+        for item in subs:
+            if (not _valid_sprite_identity(item) or item[1] != 0 or
+                    item[0] >= case["sprite_count"] or item[0] <= prev_slot):
+                raise CaptureError(
+                    f"{case['case_name']} {arm_name} frame {frame_idx}: registration-order violation in submissions")
+            prev_slot = item[0]
+            submitted_set.add((item[0], item[1]))
+        prev_oracle_slot = -1
+        for item in oracle:
+            if (not _valid_sprite_identity(item) or item[1] != 0 or
+                    item[0] >= case["sprite_count"] or item[0] <= prev_oracle_slot):
+                raise CaptureError(
+                    f"{case['case_name']} {arm_name} frame {frame_idx}: malformed all-zero oracle_visible sequence")
+            prev_oracle_slot = item[0]
+            if (item[0], item[1]) not in submitted_set:
+                raise CaptureError(
+                    f"{case['case_name']} {arm_name} frame {frame_idx}: omitted independent visibility oracle member")
+
     try:
         count = 0
         for frame_index, lines in enumerate(itertools.zip_longest(*streams.values())):
@@ -1559,12 +1585,17 @@ def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure
             if case["case_name"] == "dense-z-edit":
                 if ref_subs != ref.get("oracle_visible") or len(ref_subs) != case["sprite_count"]:
                     raise CaptureError(f"dense-z-edit {ref_arm} frame {frame_index}: exact sorted 10,000-sprite oracle mismatch")
+            elif case.get("all_zero"):
+                check_all_zero_registration_order(ref_arm, frame_index, ref)
             for arm, row in zip(arms, parsed):
+                if row.get("unresolved", 0) != 0 or row.get("overflow", 0) != 0:
+                    raise CaptureError(f"{case['case_name']} {arm} frame {frame_index}: unresolved or overflowed trace")
+                if case.get("all_zero") and arm != ref_arm:
+                    check_all_zero_registration_order(arm, frame_index, row)
                 if (row.get("image_fnv64") != ref.get("image_fnv64") or
                         row.get("output_width") != ref.get("output_width") or
                         row.get("output_height") != ref.get("output_height") or
-                        row.get("submissions") != ref_subs or
-                        row.get("unresolved", 0) != 0 or row.get("overflow", 0) != 0):
+                        row.get("submissions") != ref_subs):
                     raise CaptureError(f"{case['case_name']}: parity mismatch between {ref_arm} and {arm} at frame {frame_index}")
                 summary_hashes[arm].append(row.get("image_fnv64"))
             count += 1
@@ -1573,8 +1604,15 @@ def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure
     finally:
         for stream in streams.values():
             stream.close()
-    return {"frames_checked": measure_frames, "arms_checked": arms,
-            "image_fnv64_by_frame": summary_hashes[arms[0]]}
+    inter_arm_parity = len(arms) > 1
+    return {
+        "frames_checked": measure_frames,
+        "arms_checked": arms,
+        "validation_scope": "inter-arm-parity-and-oracle" if inter_arm_parity else "single-arm-oracle-only",
+        "oracle_checked": True,
+        "inter_arm_image_parity_checked": inter_arm_parity,
+        "image_fnv64_by_frame": summary_hashes[arms[0]],
+    }
 
 
 def validate_render_order_timing_manifest(csv_path: Path, case: dict, arm: dict, args, run_index: int,
@@ -2129,12 +2167,22 @@ def run_render_order_culling(args) -> dict:
         for case in cases:
             cname = case["case_name"]
             lines += [f"## Case: {cname}", ""]
+            p_sum = parity_summaries[cname]
+            if p_sum["inter_arm_image_parity_checked"]:
+                lines.append(
+                    f"- Validation: inter-arm image parity and oracle check across {len(p_sum['arms_checked'])} arms "
+                    f"({', '.join(p_sum['arms_checked'])}; {p_sum['frames_checked']}/{p_sum['frames_checked']} frames matched).")
+            else:
+                lines.append(
+                    f"- Validation: single-arm oracle check only (`{p_sum['arms_checked'][0]}`: "
+                    f"{p_sum['frames_checked']}/{p_sum['frames_checked']} frames checked against fixture oracle; "
+                    f"inter-arm image parity not applicable with a single arm).")
             if case["all_zero"]:
                 if has_baseline:
                     lines.append("Note: `baseline-indexed` vs `candidate-cached-linear` is a combined implementation + policy endpoint comparison (pre-removal `indexed` vs current `cached-linear`).")
                 else:
                     lines.append("Note: candidate-only `cached-linear` capture (no frozen `--baseline-probe` supplied).")
-                lines.append("")
+            lines.append("")
             lines += ["| Arm | Slice | Selection Median/p95 (ms) | Order Prep Mean (ms) | Paired Mean/Median/p95 (ms) | Render Mean (ms) | Step Mean (ms) |",
                       "|---|---|---:|---:|---:|---:|---:|"]
             for arm in render_order_arms(case, include_baseline=has_baseline):
@@ -2156,13 +2204,15 @@ def run_render_order_culling(args) -> dict:
         (args.output / "report.md").write_text("\n".join(lines), encoding="utf-8")
         check_budget()
         return report
-    except (BudgetExceeded, CaptureError, subprocess.CalledProcessError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+    except (BudgetExceeded, CaptureError, subprocess.CalledProcessError, OSError, ValueError, KeyError, json.JSONDecodeError, KeyboardInterrupt) as error:
         for name in ("report.json", "report.md"):
             (args.output / name).unlink(missing_ok=True)
         for path in in_progress_files:
             path.unlink(missing_ok=True)
         _cleanup_transient_render_order_files(args.output)
-        error_text = str(error)
+        error_text = ("interrupted by KeyboardInterrupt"
+                      if isinstance(error, KeyboardInterrupt) and not str(error)
+                      else str(error))
         partial = {
             "proof_kind": "platformator.render-order-culling-pilot", "proof_version": 1,
             "comparison": "render-order-culling", "exploratory": True, "complete": False,
@@ -3272,8 +3322,8 @@ def main(argv=None) -> int:
                     run_incremental_capture(args, strategy)
                 else:
                     run_capture(args)
-        except (BudgetExceeded, Exception):
-            # Completion markers cannot survive a failed size/time/validation check.
+        except BaseException:
+            # Completion markers cannot survive a failed size/time/validation check or interruption.
             for root in roots:
                 for name in ("report.json", "report.md", "phase.json", "case-index.json"):
                     (root / name).unlink(missing_ok=True)

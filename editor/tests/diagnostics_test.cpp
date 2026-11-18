@@ -776,7 +776,90 @@ void run_sprite_z_order_validation_and_fingerprint()
                                      return issue.componentId == 92 && issue.fieldPath == "zOrder";
                                  }),
                 "Valid Sprite zOrder must clear previous zOrder diagnostic");
+}
+}
+
+void run_sprite_color_validation_and_snapshot()
+{
+    TemporaryDirectory temporary;
+    const auto project = temporary.path() / "project";
+    const auto assets = project / "assets";
+    std::filesystem::create_directories(assets);
+    auto document = make_default_document(project, assets, 1);
+    document.root[0]["components"].push_back(component(
+        93, 6, Json{{"textureFilePath", ""}, {"flip", 0}, {"width", 16.0},
+                    {"height", 16.0}, {"sourceRectEnabled", false}}));
+    ++document.structureRevision;
+    ++document.documentGeneration;
+    rebuild_document_indexes(document);
+
+    // 1. Omitted legacy "color" validates cleanly.
+    const auto legacyResult = validate_document(document);
+    require(legacyResult.valid_for_run(),
+            "Sprite omitting legacy \"color\" must remain valid to run");
+
+    // 2. Explicit valid RGBA "color" validates cleanly synchronously and asynchronously.
+    document.root[0]["components"].back()["color"] = Json{{"r", 0}, {"g", 128}, {"b", 255}, {"a", 64}};
+    ++document.valueRevision;
+    ++document.documentGeneration;
+    const auto validResult = validate_document(document);
+    require(validResult.valid_for_run() && validResult.issues.empty(),
+            "Valid Sprite RGBA \"color\" must produce zero validation issues");
+
+    ValidationService service;
+    service.request(document);
+    std::optional<ValidationCompletion> asyncCompletion;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline && !asyncCompletion)
+    {
+        asyncCompletion = service.take_current(document);
+        if (!asyncCompletion)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    require(asyncCompletion.has_value() && asyncCompletion->result.valid_for_run(),
+            "Async ValidationService snapshot (copy_validation_component) must accept valid Sprite color");
+
+    // 3. Invalid "color" payloads must emit blocking ValidationSeverity::Error on fieldPath == "color".
+    const std::vector<Json> invalidPayloads = {
+        123,
+        "red",
+        Json::array({1, 2, 3, 4}),
+        Json{{"r", 1}, {"g", 2}, {"b", 3}},
+        Json{{"r", true}, {"g", 2}, {"b", 3}, {"a", 4}},
+        Json{{"r", 1}, {"g", 2.5}, {"b", 3}, {"a", 4}},
+        Json{{"r", 1}, {"g", 2}, {"b", "3"}, {"a", 4}},
+        Json{{"r", 1}, {"g", 2}, {"b", 3}, {"a", -1}},
+        Json{{"r", 256}, {"g", 2}, {"b", 3}, {"a", 4}},
+    };
+    for (const auto &badColor : invalidPayloads)
+    {
+        document.root[0]["components"].back()["color"] = badColor;
+        ++document.valueRevision;
+        ++document.documentGeneration;
+        const auto badResult = validate_document(document);
+        require(!badResult.valid_for_run() && badResult.blocksRun,
+                "Malformed Sprite \"color\" must block Run");
+        const bool hasColorError = std::any_of(
+            badResult.issues.begin(), badResult.issues.end(), [](const ValidationIssue &issue) {
+                return issue.severity == ValidationSeverity::Error && issue.componentId == 93 &&
+                       issue.fieldPath == "color" && issue.blocksRun;
+            });
+        require(hasColorError,
+                "Malformed Sprite \"color\" must emit a blocking ValidationSeverity::Error on field \"color\"");
+    }
+
+    // 4. Async ValidationService with invalid color must also observe blocking error via copy_validation_component.
+    service.request(document, true);
+    asyncCompletion.reset();
+    const auto badDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < badDeadline && !asyncCompletion)
+    {
+        asyncCompletion = service.take_current(document);
+        if (!asyncCompletion)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    require(asyncCompletion.has_value() && !asyncCompletion->result.valid_for_run(),
+            "Async ValidationService must preserve invalid Sprite \"color\" across copy_validation_component");
 }
 } // namespace
 
@@ -796,6 +879,7 @@ int main()
         run_deleted_field_issue_is_removed_from_local_publication();
         run_external_scene_identity_requires_a_run_decision();
         run_sprite_z_order_validation_and_fingerprint();
+        run_sprite_color_validation_and_snapshot();
         std::cout << "diagnostics tests passed\n";
         return 0;
     }

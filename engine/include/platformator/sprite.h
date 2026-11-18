@@ -33,6 +33,8 @@ public:
 	float getWidthWithoutScale() const;
 	float getHeightWithoutScale() const;
 	std::int32_t getZOrder() const;
+	SDL_Color getColor() const;
+	std::uint8_t getAlpha() const;
 
 	void setTextureWrapper(TextureWrapper *textureWrapper);
 	void setTextureRegion(const TextureRegion &region);
@@ -42,6 +44,9 @@ public:
 	void setSourceRect(const SDL_FRect &sourceRect);
 	void clearSourceRect();
 	void setZOrder(std::int32_t zOrder);
+	void setColor(const SDL_Color &color);
+	void setColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255);
+	void setAlpha(std::uint8_t alpha);
 
 	bool getIsRegisteredInWindow() const;
 	void setIsRegisteredInWindow(bool isRegisteredInWindow);
@@ -54,6 +59,7 @@ private:
 	float width;
 	float height;
 	std::int32_t zOrder = 0;
+	SDL_Color color{255, 255, 255, 255};
 	bool isRegisteredInWindow;
 	size_t windowIndex;
 };

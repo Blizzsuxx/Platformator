@@ -361,6 +361,42 @@ void validate_sprite(const DocumentSession &document, const Json &component,
             add_issue(result, ValidationSeverity::Error, objectId, componentId, "zOrder",
                       "Sprite Z Order must be an integer in [-2147483648, 2147483647].", true);
     }
+    if (const auto *color = member(component, "color"))
+    {
+        bool validColor = color->is_object();
+        if (validColor)
+        {
+            for (const char *channel : {"r", "g", "b", "a"})
+            {
+                const auto *ch = member(*color, channel);
+                if (ch == nullptr || ch->is_boolean() || !ch->is_number_integer())
+                {
+                    validColor = false;
+                    break;
+                }
+                if (ch->is_number_unsigned())
+                {
+                    if (ch->get<std::uint64_t>() > 255ULL)
+                    {
+                        validColor = false;
+                        break;
+                    }
+                }
+                else
+                {
+                    const auto parsed = ch->get<std::int64_t>();
+                    if (parsed < 0 || parsed > 255)
+                    {
+                        validColor = false;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!validColor)
+            add_issue(result, ValidationSeverity::Error, objectId, componentId, "color",
+                      "Sprite color must be an object with integer r, g, b and a channels in [0, 255].", true);
+    }
     const auto *enabled = member(component, "sourceRectEnabled");
     if (enabled == nullptr || !enabled->is_boolean())
         add_issue(result, ValidationSeverity::Error, objectId, componentId, "sourceRectEnabled",
@@ -813,7 +849,7 @@ bool copy_validation_component(const Json &source, Json &destination,
     else if (type == SPRITE)
     {
         const char *selected[] = {"textureFilePath", "flip", "width", "height",
-                                  "zOrder", "sourceRectEnabled", "sourceRect"};
+                                  "zOrder", "color", "sourceRectEnabled", "sourceRect"};
         std::copy(std::begin(selected), std::end(selected), fields);
         fieldCount = std::size(selected);
     }

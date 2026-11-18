@@ -3528,6 +3528,276 @@ void run_sprite_z_order_inspector_discovery_edit_and_multiedit()
     ImGui::DestroyContext();
 }
 
+void run_sprite_color_inspector_discovery_edit_and_multiedit()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {800.0f, 900.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    TemporaryDirectory tempDir;
+    const auto project = tempDir.path() / "project";
+    const auto assets = project / "assets";
+    const auto tmplDir = assets / "templates";
+    std::filesystem::create_directories(tmplDir);
+    const auto tmplPath = tmplDir / "ColorTmpl.pttemplate";
+    {
+        Json root = object(1, "ColorTmpl",
+                           Json::array({component(2, 6, Json{{"textureFilePath", ""},
+                                                             {"flip", 0},
+                                                             {"width", 16.0},
+                                                             {"height", 16.0},
+                                                             {"color", {{"r", 10}, {"g", 20}, {"b", 30}, {"a", 40}}},
+                                                             {"sourceRectEnabled", false}})}));
+        write_json(tmplPath, make_template_envelope("ColorTmpl", std::move(root)));
+    }
+
+    auto document = make_default_document();
+    document.projectRoot = project;
+    document.assetRoot = assets;
+    document.root.clear();
+    document.root.push_back(object(
+        101, "SpriteObjA",
+        Json::array({component(102, 6, Json{{"textureFilePath", ""},
+                                            {"flip", 0},
+                                            {"width", 16.0},
+                                            {"height", 16.0},
+                                            {"sourceRectEnabled", false}})})));
+    document.root.push_back(object(
+        201, "SpriteObjB",
+        Json::array({component(202, 6, Json{{"textureFilePath", ""},
+                                            {"flip", 0},
+                                            {"width", 16.0},
+                                            {"height", 16.0},
+                                            {"color", {{"r", 10}, {"g", 20}, {"b", 30}, {"a", 40}}},
+                                            {"sourceRectEnabled", false}})})));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    SelectionModel selection;
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    InspectorPanel panel;
+
+    // 1. Semantic discovery & search filtering on legacy omitted color.
+    const Selection selA{101, std::nullopt, std::nullopt, FocusedPanel::Inspector};
+    selection.set(document, selA);
+    {
+        const auto nodes = panel.semantic_nodes(document, selA, "inspector", &catalog);
+        const auto colorNode = std::find_if(nodes.begin(), nodes.end(), [](const SemanticNode &node) {
+            return node.name == "Color";
+        });
+        require(colorNode != nodes.end() && colorNode->value == "(255, 255, 255, 255)",
+                "Semantic nodes must expose Sprite Color defaulting to (255, 255, 255, 255)");
+
+        panel.set_search_query("Color");
+        const auto nodesWithQuery = panel.semantic_nodes(document, selA, "inspector", &catalog);
+        require(std::any_of(nodesWithQuery.begin(), nodesWithQuery.end(), [](const SemanticNode &node) {
+                    return node.name == "Color";
+                }),
+                "Semantic nodes must still expose Sprite Color when search query is set");
+    }
+
+    // 2. Search filtering in draw + interactive ImGui ColorEdit4 edit on single selection + undo/redo.
+    std::vector<std::pair<float, float>> debugSpanBounds;
+    const auto tryFindColorChannels = [&]() -> std::optional<std::array<ImVec2, 4>> {
+        debugSpanBounds.clear();
+        for (float y = 100.0f; y < 520.0f; y += 8.0f)
+        {
+            struct Span
+            {
+                ImGuiID id = 0;
+                float minX = 0.0f;
+                float maxX = 0.0f;
+            };
+            std::vector<Span> spans;
+            for (float x = 140.0f; x < 770.0f; x += 4.0f)
+            {
+                frame(panel, document, selection, commands, catalog, {x, y}, false);
+                const ImGuiID hovered = ImGui::GetCurrentContext()->HoveredId;
+                if (hovered != 0)
+                {
+                    if (spans.empty() || spans.back().id != hovered)
+                        spans.push_back(Span{hovered, x, x});
+                    else
+                        spans.back().maxX = x;
+                }
+            }
+            if (spans.size() >= 4)
+            {
+                for (const auto &s : spans)
+                    debugSpanBounds.emplace_back(s.minX, s.maxX);
+                return std::array<ImVec2, 4>{
+                    ImVec2{(spans[0].minX + spans[0].maxX) * 0.5f, y},
+                    ImVec2{(spans[1].minX + spans[1].maxX) * 0.5f, y},
+                    ImVec2{(spans[2].minX + spans[2].maxX) * 0.5f, y},
+                    ImVec2{(spans[3].minX + spans[3].maxX) * 0.5f, y},
+                };
+            }
+        }
+        return std::nullopt;
+    };
+    const auto findColorChannels = [&]() -> std::array<ImVec2, 4> {
+        if (const auto found = tryFindColorChannels())
+            return *found;
+        throw std::runtime_error("Could not locate 4 RGBA ColorEdit4 widgets in Sprite Color row");
+    };
+
+    panel.set_search_query("UnrelatedPropertyXYZ");
+    require(!tryFindColorChannels().has_value(),
+            "Searching an unrelated string must hide the Sprite Color widgets in Inspector::draw");
+
+    panel.set_search_query("Color");
+
+    const auto editChannel = [&](ImVec2 pos, const char *digits) {
+        frame(panel, document, selection, commands, catalog, pos, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        frame(panel, document, selection, commands, catalog, pos, true);
+        frame(panel, document, selection, commands, catalog, pos, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        io.AddInputCharactersUTF8(digits);
+        frame(panel, document, selection, commands, catalog, pos, false);
+        io.AddKeyEvent(ImGuiKey_Enter, true);
+        frame(panel, document, selection, commands, catalog, pos, false);
+        io.AddKeyEvent(ImGuiKey_Enter, false);
+        frame(panel, document, selection, commands, catalog, pos, false);
+    };
+
+    const auto singleChannels = findColorChannels();
+    editChannel(singleChannels[0], "120");
+    editChannel(singleChannels[3], "64");
+    std::string spanSummary;
+    for (const auto &[mn, mx] : debugSpanBounds)
+        spanSummary += "[" + std::to_string(mn) + ".." + std::to_string(mx) + "] ";
+    require(document.root[0]["components"][0]["color"] == Json{{"r", 120}, {"g", 255}, {"b", 255}, {"a", 64}},
+            "Editing R and A channels in single-select ColorEdit4 must commit normalized integer RGBA (row y=" +
+                std::to_string(singleChannels[0].y) + ", spans=" + spanSummary + ", actual=" +
+                document.root[0]["components"][0].dump() + ")");
+
+    require(commands.undo(document, selection).status == CommandStatus::Changed,
+            "Undo after A channel edit must succeed");
+    require(document.root[0]["components"][0]["color"] == Json{{"r", 120}, {"g", 255}, {"b", 255}, {"a", 255}},
+            "Undo after A channel edit must restore previous RGBA color");
+    require(commands.redo(document, selection).status == CommandStatus::Changed,
+            "Redo after A channel edit must succeed");
+    require(document.root[0]["components"][0]["color"] == Json{{"r", 120}, {"g", 255}, {"b", 255}, {"a", 64}},
+            "Redo must reapply A=64 RGBA color");
+
+    // 3. Multi-selection MixedValue display & atomic multi-object RGBA edit + undo.
+    Selection multiSel{101, std::nullopt, std::nullopt, FocusedPanel::Inspector, WindowHostGeneration{}, {101, 201}};
+    selection.set(document, multiSel);
+    const auto multiChannels = findColorChannels();
+    const std::size_t undoBeforeMulti = commands.history_status().undoCommands;
+    editChannel(multiChannels[0], "90");
+    require(commands.history_status().undoCommands == undoBeforeMulti + 1,
+            "Multi-object ColorEdit4 commit must push one atomic undo command");
+    require(document.root[0]["components"][0]["color"]["r"] == 90 &&
+                document.root[1]["components"][0]["color"]["r"] == 90,
+            "Multi-object ColorEdit4 edit must update R across all selected sprites");
+    require(commands.undo(document, selection).status == CommandStatus::Changed,
+            "Undo of multi-object ColorEdit4 edit must succeed");
+    require(document.root[0]["components"][0]["color"] == Json{{"r", 120}, {"g", 255}, {"b", 255}, {"a", 64}} &&
+                document.root[1]["components"][0]["color"] == Json{{"r", 10}, {"g", 20}, {"b", 30}, {"a", 40}},
+            "Undo of multi-object ColorEdit4 edit must restore each object's distinct prior RGBA color");
+
+    // 4. Template override + revert integration on linked instance edited through Inspector.
+    const auto loadedTmpl = load_template_envelope(read_json(tmplPath));
+    require(static_cast<bool>(loadedTmpl), "ColorTmpl must load for Inspector override test");
+    const auto coverage = template_asset_binding_coverage(*loadedTmpl.asset);
+    const auto inserted = insert_template(
+        commands, document, *loadedTmpl.asset, {}, coverage, std::nullopt,
+        std::numeric_limits<std::size_t>::max(), {}, {},
+        normalize_template_asset_ref(assets, tmplPath));
+    require(static_cast<bool>(inserted) && inserted.insertedObjectIds.size() == 1,
+            "Inserting ColorTmpl into document must succeed");
+    const int tmplInstId = inserted.insertedObjectIds[0];
+    const int tmplCompId = inserted.sourceToDestinationIds.at(2);
+    selection.set(document, Selection{tmplInstId, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    const auto tmplChannels = findColorChannels();
+    editChannel(tmplChannels[1], "200");
+    const auto colorAddr =
+        address_for_document(document, tmplInstId, tmplCompId, std::nullopt, {std::string("color")});
+    const auto overridePath = template_override_path_for_address(document, colorAddr);
+    const Json *tmplObj = find_document_object_by_id(document, tmplInstId);
+    require(tmplObj != nullptr && is_property_overridden(*tmplObj, overridePath) &&
+                (*tmplObj)["components"][0]["color"]["g"] == 200,
+            "Inspector ColorEdit4 edit on linked template instance must mark template override");
+
+    std::string revertErr;
+    require(revert_template_property(document, commands, tmplInstId, tmplCompId, std::nullopt,
+                                     {std::string("color")}, assets, revertErr),
+            "Template revert on Sprite color must succeed: " + revertErr);
+    tmplObj = find_document_object_by_id(document, tmplInstId);
+    require(tmplObj != nullptr && !is_property_overridden(*tmplObj, overridePath) &&
+                (*tmplObj)["components"][0]["color"] == Json{{"r", 10}, {"g", 20}, {"b", 30}, {"a", 40}},
+            "Template revert must restore template Sprite RGBA color");
+
+    // 5. Malformed Sprite "color" repair (single-selection & multi-selection) + undo/redo without resetting other fields.
+    document.root.push_back(object(
+        301, "MalformedSingle",
+        Json::array({component(302, 6, Json{{"textureFilePath", ""},
+                                            {"flip", 0},
+                                            {"width", 48.0},
+                                            {"height", 16.0},
+                                            {"zOrder", 7},
+                                            {"color", "not-an-object"},
+                                            {"sourceRectEnabled", false}})})));
+    document.root.push_back(object(
+        401, "MalformedMulti",
+        Json::array({component(402, 6, Json{{"textureFilePath", ""},
+                                            {"flip", 0},
+                                            {"width", 32.0},
+                                            {"height", 32.0},
+                                            {"zOrder", 3},
+                                            {"color", {{"r", 999}}},
+                                            {"sourceRectEnabled", false}})})));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    require(!validate_document(document).valid_for_run(),
+            "Document with malformed Sprite colors must initially block Run");
+
+    // Single-selection repair by typing "255" into R (which already shows fallback 255) -> becomes valid {255,255,255,255}
+    selection.set(document, Selection{301, std::nullopt, std::nullopt, FocusedPanel::Inspector});
+    const auto malformedChannels = findColorChannels();
+    editChannel(malformedChannels[0], "255");
+    const std::size_t malIdx = document.root.size() - 2;
+    require(document.root[malIdx]["components"][0]["color"] == Json{{"r", 255}, {"g", 255}, {"b", 255}, {"a", 255}} &&
+                document.root[malIdx]["components"][0]["width"] == 48.0 &&
+                document.root[malIdx]["components"][0]["zOrder"] == 7,
+            "Repairing malformed Sprite color to opaque white must preserve width and zOrder");
+    require(commands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[malIdx]["components"][0]["color"] == "not-an-object",
+            "Undo of single malformed color repair must restore original malformed payload");
+    require(commands.redo(document, selection).status == CommandStatus::Changed &&
+                document.root[malIdx]["components"][0]["color"] == Json{{"r", 255}, {"g", 255}, {"b", 255}, {"a", 255}},
+            "Redo of single malformed color repair must reapply valid white RGBA");
+
+    // Multi-selection repair containing valid (SpriteObjB) + malformed (MalformedMulti)
+    Selection malMultiSel{201, std::nullopt, std::nullopt, FocusedPanel::Inspector, WindowHostGeneration{}, {201, 401}};
+    selection.set(document, malMultiSel);
+    const auto malMultiChannels = findColorChannels();
+    editChannel(malMultiChannels[0], "180");
+    const std::size_t malMultiIdx = document.root.size() - 1;
+    require(document.root[1]["components"][0]["color"].is_object() &&
+                document.root[1]["components"][0]["color"]["r"] == 180 &&
+                document.root[malMultiIdx]["components"][0]["color"].is_object() &&
+                document.root[malMultiIdx]["components"][0]["color"]["r"] == 180 &&
+                document.root[malMultiIdx]["components"][0]["width"] == 32.0 &&
+                document.root[malMultiIdx]["components"][0]["zOrder"] == 3,
+            "Multi-selection repair must fix malformed Sprite color across all selected objects without resetting other fields");
+    require(validate_document(document).valid_for_run(),
+            "Document must validate cleanly once both malformed Sprite colors are repaired");
+    require(commands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[1]["components"][0]["color"] == Json{{"r", 10}, {"g", 20}, {"b", 30}, {"a", 40}} &&
+                document.root[malMultiIdx]["components"][0]["color"] == Json{{"r", 999}},
+            "Undo of multi-selection malformed color repair must restore distinct valid and malformed values");
+
+    ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main()
@@ -3559,6 +3829,7 @@ int main()
         run_lossless_scrub_and_context_binding_tests();
         run_multi_asset_picker_and_browse_completion_tests();
         run_sprite_z_order_inspector_discovery_edit_and_multiedit();
+        run_sprite_color_inspector_discovery_edit_and_multiedit();
         std::cout << "Inspector interaction tests passed\n";
         return 0;
     }

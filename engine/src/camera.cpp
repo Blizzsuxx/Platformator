@@ -76,7 +76,8 @@ void Camera::renderWithView(Sprite *sprite, SDL_Renderer *renderer,
     }
     PLATFORMATOR_RENDER_SUBMISSION(sprite);
     platformator_detail::submitSpriteRender(renderer, sprite->getTexture(), sprite->getSourceRect(),
-                                             renderQuad, angleDegrees, sprite->getFlip());
+                                             renderQuad, angleDegrees, sprite->getFlip(),
+                                             sprite->getColor());
 }
 
 void Camera::prepareSpriteGeometry(Sprite *sprite, const platformator_detail::SpriteRenderView &view,

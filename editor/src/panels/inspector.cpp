@@ -53,6 +53,58 @@ std::string lowercase_ascii(std::string value)
     return value;
 }
 
+bool parse_sprite_color_json(const Json *colorJson, std::array<int, 4> &outRgba)
+{
+    outRgba = {255, 255, 255, 255};
+    if (colorJson == nullptr)
+        return true;
+    if (!colorJson->is_object())
+        return false;
+    static constexpr std::array<const char *, 4> kChannels{"r", "g", "b", "a"};
+    bool allValid = true;
+    for (std::size_t index = 0; index < kChannels.size(); ++index)
+    {
+        const auto found = colorJson->find(kChannels[index]);
+        if (found == colorJson->end() || found->is_boolean() || !found->is_number_integer())
+        {
+            allValid = false;
+            continue;
+        }
+        if (found->is_number_unsigned())
+        {
+            const auto value = found->get<std::uint64_t>();
+            if (value > 255ULL)
+            {
+                allValid = false;
+                continue;
+            }
+            outRgba[index] = static_cast<int>(value);
+        }
+        else
+        {
+            const auto value = found->get<std::int64_t>();
+            if (value < 0 || value > 255)
+            {
+                allValid = false;
+                continue;
+            }
+            outRgba[index] = static_cast<int>(value);
+        }
+    }
+    return allValid;
+}
+
+Json sprite_color_to_json(const float col[4])
+{
+    const auto toByte = [](float component) -> int {
+        return static_cast<int>(std::clamp(std::lround(component * 255.0f), 0L, 255L));
+    };
+    return Json{{"r", toByte(col[0])},
+                {"g", toByte(col[1])},
+                {"b", toByte(col[2])},
+                {"a", toByte(col[3])}};
+}
+
 EditorIcon component_icon(int type) noexcept
 {
     switch (type)
@@ -1197,6 +1249,7 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
             add("width", "Width", "16");
             add("height", "Height", "16");
             add("zOrder", "Z Order", "0");
+            add("color", "Color", "(255, 255, 255, 255)");
             add("sourceRectEnabled", "Use source rectangle", "false");
             if (component.contains("sourceRect"))
             {
@@ -2046,6 +2099,97 @@ bool InspectorPanel::draw_enum(DocumentSession &document, EditCommandService &co
         ImGui::SetScrollHereY(0.5f);
     end_field();
     return changed;
+}
+
+static bool color_edit_child_text_committed(const ImGuiContext *ctx)
+{
+    if (ctx == nullptr)
+        return false;
+    ImGui::PushID("##value");
+    const ImGuiID ids[5]{
+        ImGui::GetID("##X"),
+        ImGui::GetID("##Y"),
+        ImGui::GetID("##Z"),
+        ImGui::GetID("##W"),
+        ImGui::GetID("##Text"),
+    };
+    ImGui::PopID();
+    const auto matchesChild = [&](ImGuiID id) {
+        if (id == 0)
+            return false;
+        for (ImGuiID candidate : ids)
+        {
+            if (candidate == id)
+                return true;
+        }
+        return false;
+    };
+    if (matchesChild(ctx->InputTextState.ID) && ctx->InputTextState.EditedBefore)
+        return true;
+    if (matchesChild(ctx->InputTextDeactivatedState.ID))
+        return true;
+    const bool enterPressed = ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+    return enterPressed && !ImGui::IsKeyPressed(ImGuiKey_Escape) &&
+           ctx->ActiveId != ctx->ActiveIdPreviousFrame &&
+           (matchesChild(ctx->ActiveIdPreviousFrame) || matchesChild(ctx->InputTextState.ID));
+}
+
+bool InspectorPanel::draw_color(DocumentSession &document, EditCommandService &commands, int objectId,
+                                std::optional<int> componentId, std::vector<FieldPathSegment> path,
+                                const char *label)
+{
+    if (!field_matches_search(document, objectId, componentId, path, label))
+        return false;
+    const Json *stored = address_value(document, objectId, componentId, path);
+    std::array<int, 4> rgba{255, 255, 255, 255};
+    const bool valid = parse_sprite_color_json(stored, rgba);
+    const bool malformed = (stored != nullptr) && !valid;
+    float col[4]{rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f, rgba[3] / 255.0f};
+    const bool reveal = consume_reveal_target(objectId, componentId, path);
+    const bool overridden = template_field_is_overridden(document, objectId, componentId, path);
+    begin_field(label, path, overridden, false, [&] {
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+        if (malformed && ImGui::BeginPopupContextItem("##template-field-context"))
+        {
+            if (ImGui::MenuItem("Reset Invalid Color"))
+                set(document, commands, objectId, componentId, path,
+                    Json{{"r", 255}, {"g", 255}, {"b", 255}, {"a", 255}});
+            ImGui::EndPopup();
+        }
+    });
+    if (reveal)
+        ImGui::SetKeyboardFocusHere();
+    const auto widgetId = static_cast<std::uint32_t>(ImGui::GetID("##value"));
+    const bool wasActive = liveEdit_.active() && liveEdit_.widget_id() == widgetId;
+    const bool changed = ImGui::ColorEdit4(
+        "##value", col,
+        ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
+    const bool textCommittedWhileMalformed = malformed && color_edit_child_text_committed(ImGui::GetCurrentContext());
+    if (overridden)
+    {
+        if (ImGui::IsItemHovered())
+            ImGui::SetItemTooltip("This field overrides its linked template value.");
+        draw_template_revert_context(document, commands, objectId, componentId, path, feedback_);
+    }
+    else if (malformed && ImGui::IsItemHovered())
+    {
+        ImGui::SetItemTooltip("Malformed color; edit or right-click the label to reset to white.");
+    }
+    if (reveal)
+        ImGui::SetScrollHereY(0.5f);
+    const bool itemActive = ImGui::IsItemActive();
+    const bool cancel = (wasActive || itemActive) && ImGui::IsKeyPressed(ImGuiKey_Escape);
+    bool updated = false;
+    if (!cancel && (changed || textCommittedWhileMalformed))
+    {
+        updated = liveEdit_.update_single(
+            document, commands, address_for_document(document, objectId, componentId, std::nullopt, path),
+            currentSelection_, widgetId, hostGeneration_, currentOrderedSelection_,
+            sprite_color_to_json(col), feedback_);
+    }
+    liveEdit_.finish_widget(widgetId, &document, itemActive, cancel);
+    end_field();
+    return updated;
 }
 
 bool InspectorPanel::draw_compact_vector2(
@@ -3702,6 +3846,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
             draw_integer(document, commands, objectId, componentId, {std::string("zOrder")}, "Z Order", 0,
                          std::numeric_limits<std::int32_t>::min(),
                          std::numeric_limits<std::int32_t>::max());
+            draw_color(document, commands, objectId, componentId, {std::string("color")}, "Color");
             draw_boolean(document, commands, objectId, componentId,
                          {std::string("sourceRectEnabled")}, "Use Source Rectangle");
             const Json *sourceRectEnabledJson = address_value(document, objectId, componentId, {std::string("sourceRectEnabled")});
@@ -4516,6 +4661,94 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         end_field();
                     }
                 }
+                const std::vector<FieldPathSegment> spriteColorPath{std::string("color")};
+                if (type == 6 && matches_any_component_search(matching, spriteColorPath, "Color"))
+                {
+                    std::vector<std::array<int, 4>> colorValues;
+                    colorValues.reserve(matching.size());
+                    bool anyMalformed = false;
+                    for (const auto &component : matching)
+                    {
+                        const auto found = component.second->find("color");
+                        std::array<int, 4> parsed{255, 255, 255, 255};
+                        if (found != component.second->end() && !parse_sprite_color_json(&*found, parsed))
+                            anyMalformed = true;
+                        colorValues.push_back(parsed);
+                    }
+                    if (!colorValues.empty())
+                    {
+                        const bool colorMixed = anyMalformed || std::any_of(
+                            colorValues.begin() + 1, colorValues.end(),
+                            [&](const auto &v) { return v != colorValues.front(); });
+                        std::vector<std::pair<int, int>> colorOverrideTargets;
+                        colorOverrideTargets.reserve(matching.size());
+                        for (std::size_t index = 0; index < matching.size(); ++index)
+                        {
+                            if (template_field_is_overridden(document, objectIds[index],
+                                                             matching[index].first, spriteColorPath))
+                                colorOverrideTargets.emplace_back(objectIds[index], matching[index].first);
+                        }
+                        std::vector<PropertyAddress> colorTargets;
+                        colorTargets.reserve(matching.size());
+                        for (std::size_t index = 0; index < matching.size(); ++index)
+                            colorTargets.push_back(address_for_document(document, objectIds[index],
+                                                                        matching[index].first, std::nullopt,
+                                                                        spriteColorPath));
+                        begin_field("Color", spriteColorPath, !colorOverrideTargets.empty(), false, [&] {
+                            draw_template_revert_context(document, commands, colorOverrideTargets,
+                                                         {spriteColorPath}, feedback_);
+                            if (anyMalformed && ImGui::BeginPopupContextItem("##template-field-context"))
+                            {
+                                if (ImGui::MenuItem("Reset Invalid Color"))
+                                {
+                                    std::vector<BatchPropertyEdit> resetEdits;
+                                    resetEdits.reserve(colorTargets.size());
+                                    const Json white{{"r", 255}, {"g", 255}, {"b", 255}, {"a", 255}};
+                                    for (const auto &target : colorTargets)
+                                        resetEdits.push_back({target, PropertyValue::of(white)});
+                                    commands.apply_batch(document, resetEdits,
+                                                         SelectionState{selection.current(), selection.current()});
+                                }
+                                ImGui::EndPopup();
+                            }
+                        });
+                        const auto widgetId = static_cast<std::uint32_t>(ImGui::GetID("##value"));
+                        const bool wasActive = liveEdit_.active() && liveEdit_.widget_id() == widgetId;
+                        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, colorMixed);
+                        float col[4]{colorValues.front()[0] / 255.0f,
+                                     colorValues.front()[1] / 255.0f,
+                                     colorValues.front()[2] / 255.0f,
+                                     colorValues.front()[3] / 255.0f};
+                        const bool changed = ImGui::ColorEdit4(
+                            "##value", col,
+                            ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_AlphaBar |
+                                ImGuiColorEditFlags_AlphaPreviewHalf);
+                        const bool textCommittedWhileMixedOrMalformed =
+                            (colorMixed || anyMalformed) && color_edit_child_text_committed(ImGui::GetCurrentContext());
+                        ImGui::PopItemFlag();
+                        if (!colorOverrideTargets.empty())
+                        {
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetItemTooltip("This field overrides its linked template value.");
+                            draw_template_revert_context(document, commands, colorOverrideTargets,
+                                                         {spriteColorPath}, feedback_);
+                        }
+                        else if (anyMalformed && ImGui::IsItemHovered())
+                        {
+                            ImGui::SetItemTooltip("One or more selected Sprites have malformed color values.");
+                        }
+                        const bool itemActive = ImGui::IsItemActive();
+                        const bool cancel = (wasActive || itemActive) && ImGui::IsKeyPressed(ImGuiKey_Escape);
+                        if (!cancel && (changed || textCommittedWhileMixedOrMalformed))
+                        {
+                            liveEdit_.update_targets(document, commands, colorTargets, selection.current(),
+                                                     widgetId, hostGeneration_, currentOrderedSelection_,
+                                                     sprite_color_to_json(col), feedback_);
+                        }
+                        liveEdit_.finish_widget(widgetId, &document, itemActive, cancel);
+                        end_field();
+                    }
+                }
                 for (auto it = matching.front().second->begin(); it != matching.front().second->end(); ++it)
                 {
                     const std::string key = it.key();
@@ -4523,7 +4756,7 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                         continue;
                     if (type == 3 && (key == "collisionGroup" || key == "collisionMask"))
                         continue;
-                    if (type == 6 && key == "zOrder")
+                    if (type == 6 && (key == "zOrder" || key == "color"))
                         continue;
                     std::vector<Json> values;
                     values.reserve(matching.size());

@@ -13,12 +13,14 @@
 
 void to_json(nlohmann::json &j, const Sprite &sprite)
 {
+    const SDL_Color color = sprite.getColor();
     j["id"] = sprite.getId();
     j["textureFilePath"] = sprite.getTextureWrapper() ? sprite.getTextureWrapper()->getFilePath() : "";
     j["flip"] = sprite.getFlip();
     j["width"] = sprite.getWidthWithoutScale();
     j["height"] = sprite.getHeightWithoutScale();
     j["zOrder"] = sprite.getZOrder();
+    j["color"] = {{"r", color.r}, {"g", color.g}, {"b", color.b}, {"a", color.a}};
     j["sourceRectEnabled"] = sprite.hasSourceRect();
     if (sprite.hasSourceRect())
     {
@@ -57,6 +59,43 @@ void deserialize(const nlohmann::json &j, Sprite &sprite, platformator::Referenc
         }
     }
 
+    SDL_Color color{255, 255, 255, 255};
+    if (const auto foundColor = j.find("color"); foundColor != j.end())
+    {
+        if (!foundColor->is_object())
+        {
+            throw std::invalid_argument("Sprite color must be a JSON object with r, g, b, and a in [0, 255]");
+        }
+        const auto parseChannel = [&](const char *channelName) -> std::uint8_t
+        {
+            const auto ch = foundColor->find(channelName);
+            if (ch == foundColor->end() || ch->is_boolean() || !ch->is_number_integer())
+            {
+                throw std::invalid_argument(std::string("Sprite color.") + channelName +
+                                            " must be an integer in [0, 255]");
+            }
+            if (ch->is_number_unsigned())
+            {
+                const auto u = ch->get<std::uint64_t>();
+                if (u > 255ULL)
+                {
+                    throw std::out_of_range(std::string("Sprite color.") + channelName + " is outside [0, 255]");
+                }
+                return static_cast<std::uint8_t>(u);
+            }
+            const auto s = ch->get<std::int64_t>();
+            if (s < 0 || s > 255)
+            {
+                throw std::out_of_range(std::string("Sprite color.") + channelName + " is outside [0, 255]");
+            }
+            return static_cast<std::uint8_t>(s);
+        };
+        color.r = parseChannel("r");
+        color.g = parseChannel("g");
+        color.b = parseChannel("b");
+        color.a = parseChannel("a");
+    }
+
     sprite.setId(j.at("id").get<int>());
 
     std::string filePath = j.at("textureFilePath").get<std::string>();
@@ -73,6 +112,7 @@ void deserialize(const nlohmann::json &j, Sprite &sprite, platformator::Referenc
         sprite.setSourceRect(j.at("sourceRect").get<SDL_FRect>());
     }
     sprite.setZOrder(zOrder);
+    sprite.setColor(color);
 }
 void from_json(const nlohmann::json &j, Sprite &sprite)
 {

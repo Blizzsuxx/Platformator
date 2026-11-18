@@ -107,6 +107,9 @@ class SDLWindow
     int getRenderWidth() const;
     int getRenderHeight() const;
     bool isHeadless() const;
+    SDL_Color getClearColor() const noexcept;
+    void setClearColor(const SDL_Color &color) noexcept;
+    void setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255) noexcept;
 
     void addSpriteComponent(Sprite *spriteComponent);
     void removeSpriteComponent(Sprite *spriteComponent);

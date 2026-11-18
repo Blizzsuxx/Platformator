@@ -49,6 +49,7 @@ Component *Sprite::clone() const
     cloned->setWidth(width);
     cloned->setHeight(height);
     cloned->setZOrder(zOrder);
+    cloned->setColor(color);
     return cloned.release();
 }
 
@@ -86,6 +87,16 @@ float Sprite::getHeightWithoutScale() const
 std::int32_t Sprite::getZOrder() const
 {
     return zOrder;
+}
+
+SDL_Color Sprite::getColor() const
+{
+    return color;
+}
+
+std::uint8_t Sprite::getAlpha() const
+{
+    return color.a;
 }
 
 bool Sprite::hasSourceRect() const
@@ -148,6 +159,21 @@ void Sprite::setZOrder(std::int32_t newZOrder)
     zOrder = newZOrder;
     if (isRegisteredInWindow)
         platformator_detail::RuntimeAccess::window()->notifySpriteOrderChanged(windowIndex);
+}
+
+void Sprite::setColor(const SDL_Color &newColor)
+{
+    color = newColor;
+}
+
+void Sprite::setColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
+{
+    color = SDL_Color{r, g, b, a};
+}
+
+void Sprite::setAlpha(std::uint8_t alpha)
+{
+    color.a = alpha;
 }
 
 void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)

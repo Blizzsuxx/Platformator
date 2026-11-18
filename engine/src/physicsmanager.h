@@ -6,8 +6,12 @@
 #include "platformator/collider.h"
 #include "platformator/rigidbody.h"
 #include <algorithm>
+#include <cstdint>
 #include <oneapi/tbb/enumerable_thread_specific.h>
+#include <optional>
 #include <vector>
+
+#include "platformator/collisiontypes.h"
 
 class GameManager;
 
@@ -65,7 +69,23 @@ public:
     void refreshSolverPairs(Collider *collider);
     void refreshResponse(Collider *collider);
 
+    std::optional<platformator::RaycastHit> raycast(const Eigen::Vector2f &origin,
+                                                    const Eigen::Vector2f &direction, float maxDistance,
+                                                    uint64_t collisionMask = ~uint64_t{0},
+                                                    bool includeTriggers = false) const;
+    bool raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction, float maxDistance,
+                 platformator::RaycastHit &outHit, uint64_t collisionMask = ~uint64_t{0},
+                 bool includeTriggers = false) const;
+    std::vector<platformator::RaycastHit> raycastAll(const Eigen::Vector2f &origin,
+                                                     const Eigen::Vector2f &direction, float maxDistance,
+                                                     uint64_t collisionMask = ~uint64_t{0},
+                                                     bool includeTriggers = false) const;
+
 private:
+    template <typename HitCallback>
+    bool traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2f &dir, float maxDistance,
+                               float &limit, uint64_t collisionMask, bool includeTriggers,
+                               HitCallback &&onHit) const;
     void flushPendingColliderOperations();
 
     void updateSleepingStates(double timeDelta);

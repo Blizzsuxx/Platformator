@@ -403,7 +403,8 @@ void SDLWindow::render()
         renderCullingState->publishCapacityObservation();
     publishOrderCapacityObservation();
 
-    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    SDL_SetRenderDrawColor(renderer, windowSettings.clearColor.r, windowSettings.clearColor.g,
+                           windowSettings.clearColor.b, windowSettings.clearColor.a);
     SDL_RenderClear(renderer);
     if (!mainCamera)
     {
@@ -512,6 +513,21 @@ int SDLWindow::getRenderHeight() const
 bool SDLWindow::isHeadless() const
 {
     return windowSettings.headless;
+}
+
+SDL_Color SDLWindow::getClearColor() const noexcept
+{
+    return windowSettings.clearColor;
+}
+
+void SDLWindow::setClearColor(const SDL_Color &color) noexcept
+{
+    windowSettings.clearColor = color;
+}
+
+void SDLWindow::setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a) noexcept
+{
+    windowSettings.clearColor = SDL_Color{r, g, b, a};
 }
 
 bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detail::SpriteRenderView &view)

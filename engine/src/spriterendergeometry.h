@@ -36,10 +36,40 @@ inline SDL_FRect makeSpriteRenderDestination(float worldX, float worldY, float w
 
 inline bool submitSpriteRender(SDL_Renderer *renderer, SDL_Texture *texture,
                                const SDL_FRect *source, const SDL_FRect &destination,
-                               float angleDegrees, SDL_FlipMode flip)
+                               float angleDegrees, SDL_FlipMode flip,
+                               SDL_Color color = SDL_Color{255, 255, 255, 255})
 {
-    return SDL_RenderTextureRotated(renderer, texture, source, &destination,
-                                   angleDegrees, nullptr, flip);
+    const bool modulated = texture != nullptr &&
+                           (color.r != 255 || color.g != 255 || color.b != 255 || color.a != 255);
+    Uint8 previousR = 255;
+    Uint8 previousG = 255;
+    Uint8 previousB = 255;
+    Uint8 previousA = 255;
+    SDL_BlendMode previousBlend = SDL_BLENDMODE_BLEND;
+    bool restoreBlend = false;
+    if (modulated)
+    {
+        SDL_GetTextureColorMod(texture, &previousR, &previousG, &previousB);
+        SDL_GetTextureAlphaMod(texture, &previousA);
+        SDL_SetTextureColorMod(texture, color.r, color.g, color.b);
+        SDL_SetTextureAlphaMod(texture, color.a);
+        if (color.a < 255 && SDL_GetTextureBlendMode(texture, &previousBlend) &&
+            previousBlend == SDL_BLENDMODE_NONE)
+        {
+            SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+            restoreBlend = true;
+        }
+    }
+    const bool ok = SDL_RenderTextureRotated(renderer, texture, source, &destination,
+                                             angleDegrees, nullptr, flip);
+    if (modulated)
+    {
+        SDL_SetTextureColorMod(texture, previousR, previousG, previousB);
+        SDL_SetTextureAlphaMod(texture, previousA);
+        if (restoreBlend)
+            SDL_SetTextureBlendMode(texture, previousBlend);
+    }
+    return ok;
 }
 
 struct SpriteRenderBounds

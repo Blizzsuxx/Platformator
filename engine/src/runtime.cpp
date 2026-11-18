@@ -281,6 +281,21 @@ SDL_Renderer *Runtime::getRenderer() const
     return gameManager->getWindow()->getRenderer();
 }
 
+SDL_Color Runtime::getClearColor() const
+{
+    return gameManager->getWindow()->getClearColor();
+}
+
+void Runtime::setClearColor(const SDL_Color &color)
+{
+    gameManager->getWindow()->setClearColor(color);
+}
+
+void Runtime::setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
+{
+    gameManager->getWindow()->setClearColor(r, g, b, a);
+}
+
 Runtime *&Runtime::activeRuntime()
 {
     static Runtime *runtime = nullptr;
@@ -295,5 +310,24 @@ GameManager &Runtime::getGameManager() const
 const std::vector<GameObject *> &Runtime::getAllGameObjects() const
 {
     return gameManager->getGameObjects();
+}
+
+std::optional<RaycastHit> Runtime::raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction,
+                                           float maxDistance, uint64_t collisionMask, bool includeTriggers) const
+{
+    return gameManager->getPhysicsManager()->raycast(origin, direction, maxDistance, collisionMask, includeTriggers);
+}
+
+bool Runtime::raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction, float maxDistance,
+                      RaycastHit &outHit, uint64_t collisionMask, bool includeTriggers) const
+{
+    return gameManager->getPhysicsManager()->raycast(origin, direction, maxDistance, outHit, collisionMask,
+                                                     includeTriggers);
+}
+
+std::vector<RaycastHit> Runtime::raycastAll(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction,
+                                            float maxDistance, uint64_t collisionMask, bool includeTriggers) const
+{
+    return gameManager->getPhysicsManager()->raycastAll(origin, direction, maxDistance, collisionMask, includeTriggers);
 }
 } // namespace platformator

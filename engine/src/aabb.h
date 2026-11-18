@@ -12,7 +12,7 @@ class Grid;
 
 class AABBPair
 {
-  public:
+public:
     AABBPair(Collider *a, Collider *b) : a(a), b(b)
     {
     }
@@ -27,7 +27,7 @@ class AABBPair
 
     class HashFunction
     {
-      public:
+    public:
         size_t operator()(const AABBPair &pair) const
         {
             // sort them so that the order of the objects doesn't matter
@@ -51,7 +51,7 @@ class AABBPair
 
 class AABB
 {
-  public:
+public:
     struct ColliderBinding
     {
         Collider *collider;
@@ -62,7 +62,6 @@ class AABB
             : collider(collider), xBinding(collider->getXProjections()), yBinding(collider->getYProjections())
         {
         }
-
     };
 
     AABB(Grid *owner);
@@ -76,10 +75,24 @@ class AABB
     ColliderBinding *getBinding(Collider *element);
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
+    template <typename Visitor>
+    void forEachOverlappingAABB(float minX, float maxX, float minY, float maxY, Visitor &&visitor) const
+    {
+        intervalListX.forEachOverlappingInterval(minX, maxX, [&](Collider *collider)
+                                                 {
+            const float cMinX = collider->getXProjections()->getMin()->getProjectedPosition();
+            const float cMaxX = collider->getXProjections()->getMax()->getProjectedPosition();
+            const float cMinY = collider->getYProjections()->getMin()->getProjectedPosition();
+            const float cMaxY = collider->getYProjections()->getMax()->getProjectedPosition();
+            if (cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY)
+            {
+                visitor(collider, cMinX, cMaxX, cMinY, cMaxY);
+            } });
+    }
     // sort the array with insertion sort, sort from lowest to highest
     bool getIsEmpty() const;
 
-  private:
+private:
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB);
     void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);

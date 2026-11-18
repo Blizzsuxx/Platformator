@@ -9,6 +9,9 @@
 
 #include "platformator/runtimeoptions.h"
 #include "platformator/objecthandle.h"
+#include "platformator/collisiontypes.h"
+#include <cstdint>
+#include <optional>
 
 class BaseObject;
 class Camera;
@@ -83,8 +86,23 @@ class Runtime
     SDL_MouseButtonFlags getMouseState(float *x = nullptr, float *y = nullptr) const;
     SDL_Window *getWindowHandle() const;
     SDL_Renderer *getRenderer() const;
+    SDL_Color getClearColor() const;
+    void setClearColor(const SDL_Color &color);
+    void setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255);
     const std::vector<GameObject *> &getAllGameObjects() const;
     void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback);
+
+    // Thread-safe for concurrent read-only queries on a stable scene while no
+    // structural, lifecycle, or transform mutations occur concurrently.
+    std::optional<RaycastHit> raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction,
+                                      float maxDistance, uint64_t collisionMask = ~uint64_t{0},
+                                      bool includeTriggers = false) const;
+    bool raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction, float maxDistance,
+                 RaycastHit &outHit, uint64_t collisionMask = ~uint64_t{0},
+                 bool includeTriggers = false) const;
+    std::vector<RaycastHit> raycastAll(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction,
+                                       float maxDistance, uint64_t collisionMask = ~uint64_t{0},
+                                       bool includeTriggers = false) const;
 
   private:
     friend class ::GameManager;

@@ -322,6 +322,60 @@ void test_sprite_z_order_copy_paste_and_reset()
                 document.root[1]["components"][0]["zOrder"] == 0,
             "Sprite settings reset must restore zOrder 0");
 }
+
+void test_sprite_color_copy_paste_and_reset()
+{
+    auto source = object(1, "SourceColor");
+    source["components"] = Json::array({Json{{"id", 10},
+                                             {"type", 6},
+                                             {"textureFilePath", ""},
+                                             {"flip", 0},
+                                             {"width", 16.0},
+                                             {"height", 16.0},
+                                             {"color", {{"r", 12}, {"g", 34}, {"b", 56}, {"a", 78}}},
+                                             {"sourceRectEnabled", false}}});
+    auto target = object(2, "TargetColor");
+    target["components"] = Json::array({Json{{"id", 20},
+                                             {"type", 6},
+                                             {"textureFilePath", ""},
+                                             {"flip", 0},
+                                             {"width", 16.0},
+                                             {"height", 16.0},
+                                             {"sourceRectEnabled", false}}});
+    auto parsed = parse_document(scene({std::move(source), std::move(target)}));
+    require(static_cast<bool>(parsed), "color component fixture must parse: " + parsed.error);
+    auto &document = *parsed.document;
+    rebuild_document_indexes(document);
+
+    EditCommandService commands;
+    BehaviorCatalog catalog;
+    SelectionModel selection;
+    std::string error;
+
+    const auto copied = copy_component_settings(document.root[0]["components"][0], catalog, error);
+    require(copied.has_value() && error.empty(), "copy_component_settings must succeed for Sprite color: " + error);
+    require(copied->contains("fields") && (*copied)["fields"].contains("color") &&
+                (*copied)["fields"]["color"] == Json{{"r", 12}, {"g", 34}, {"b", 56}, {"a", 78}},
+            "Copied Sprite settings must include exact RGBA color");
+
+    const auto pasted = paste_component_settings(document, commands, 2, 20, *copied, catalog);
+    require(pasted.status == CommandStatus::Changed, "Pasting Sprite settings must update target color");
+    require(document.root[1]["components"][0]["color"] == Json{{"r", 12}, {"g", 34}, {"b", 56}, {"a", 78}},
+            "Pasted Sprite component must receive source RGBA color");
+
+    require(commands.undo(document, selection).status == CommandStatus::Changed,
+            "Undoing Sprite color paste must restore prior state");
+    require(!document.root[1]["components"][0].contains("color"),
+            "Undoing paste onto omitted-color Sprite must restore omitted color");
+    require(commands.redo(document, selection).status == CommandStatus::Changed &&
+                document.root[1]["components"][0]["color"] == Json{{"r", 12}, {"g", 34}, {"b", 56}, {"a", 78}},
+            "Redoing Sprite color paste must reapply source color");
+
+    const auto reset = reset_component_settings(document, commands, 2, 20, catalog);
+    require(reset.status == CommandStatus::Changed, "Resetting Sprite component must restore default color");
+    require(document.root[1]["components"][0]["color"] == Json{{"r", 255}, {"g", 255}, {"b", 255}, {"a", 255}},
+            "Sprite settings reset must restore opaque white color (255,255,255,255)");
+}
 } // namespace
 
 int main()
@@ -333,6 +387,7 @@ int main()
         test_sprite_source_rectangle_is_copied_and_reset_as_optional_data();
         test_script_copy_and_reset_remove_unknown_default_overrides();
         test_sprite_z_order_copy_paste_and_reset();
+        test_sprite_color_copy_paste_and_reset();
         std::cout << "Component operation cases passed\n";
         return 0;
     }

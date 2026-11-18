@@ -2354,6 +2354,94 @@ void check_preview_tab_switch_resets_registration_precedence()
 
     preview.release();
 }
+
+void check_preview_sprite_color_and_no_order_or_upload_churn()
+{
+    TemporaryAssets assets;
+    write_solid_png(assets.root / "assets" / "textures" / "solid_white.png", 255, 255, 255);
+
+    RuntimeOptions options;
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.assetRoot = (assets.root / "assets").string();
+    platformator::Runtime runtime(options);
+    SDL_Renderer *renderer = runtime.getRenderer();
+    require(renderer != nullptr, "color preview fixture requires SDL software renderer");
+
+    DocumentSession document = make_default_document(assets.root, assets.root / "assets", 95);
+    document.tabId = TabId{7};
+
+    Json baseSprite = sprite_component(101, "assets/textures/solid_white.png");
+    baseSprite["width"] = 120.0;
+    baseSprite["height"] = 120.0;
+    baseSprite["zOrder"] = 0;
+    baseSprite["color"] = Json{{"r", 0}, {"g", 0}, {"b", 0}, {"a", 255}};
+
+    Json fgSprite = sprite_component(102, "assets/textures/solid_white.png");
+    fgSprite["width"] = 120.0;
+    fgSprite["height"] = 120.0;
+    fgSprite["zOrder"] = 1;
+    fgSprite["color"] = Json{{"r", 200}, {"g", 40}, {"b", 80}, {"a", 255}};
+
+    document.root.push_back(object_record(10, "BackdropQuad", 160.0f, 120.0f, Json::array({std::move(baseSprite)})));
+    document.root.push_back(object_record(11, "TintedQuad", 160.0f, 120.0f, Json::array({std::move(fgSprite)})));
+    document.structureRevision++;
+    rebuild_document_indexes(document);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{document.projectGeneration}, document.assetRoot);
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+    preview.reconcile(document, true);
+    wait_for_asset_preparation(preview, document);
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+            "initial tinted preview render must succeed");
+
+    {
+        SDL_Surface *captured = read_target(renderer, preview.target());
+        const auto px = pixel(captured, 160, 120);
+        SDL_DestroySurface(captured);
+        require(SDL_SetRenderTarget(renderer, nullptr), "release preview render target");
+        require(std::abs(static_cast<int>(px[0]) - 200) <= 3 &&
+                    std::abs(static_cast<int>(px[1]) - 40) <= 3 &&
+                    std::abs(static_cast<int>(px[2]) - 80) <= 3,
+                "preview must render initial RGBA tint (200, 40, 80)");
+    }
+
+    // Color-only edit with alpha < 255 over dark backdrop: must blend AND avoid sorts/uploads/transform syncs.
+    document.root.back()["components"][0]["color"] = Json{{"r", 0}, {"g", 255}, {"b", 128}, {"a", 128}};
+    document.valueRevision++;
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    work::reset();
+#endif
+    preview.reconcile(document, false, {11}, false);
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+            "color-updated preview render must succeed");
+
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    const auto counts = work::snapshot();
+    require(counts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] == 0,
+            "color-only preview edit must trigger zero draw-order sorts");
+    require(counts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)] == 0,
+            "color-only preview edit must trigger zero proxy transform publications");
+    require(counts[static_cast<std::size_t>(work::Counter::TextureUploads)] == 0,
+            "color-only preview edit must trigger zero texture uploads");
+    require(counts[static_cast<std::size_t>(work::Counter::ImageDecodes)] == 0,
+            "color-only preview edit must trigger zero image decodes");
+#endif
+
+    {
+        SDL_Surface *captured = read_target(renderer, preview.target());
+        const auto px = pixel(captured, 160, 120);
+        SDL_DestroySurface(captured);
+        require(SDL_SetRenderTarget(renderer, nullptr), "release preview render target");
+        require(px[0] <= 4 && std::abs(static_cast<int>(px[1]) - 128) <= 4 &&
+                    std::abs(static_cast<int>(px[2]) - 64) <= 4,
+                "color-only edit with alpha=128 over black must blend immediately in preview");
+    }
+
+    preview.release();
+}
 } // namespace
 
 int main()
@@ -2374,6 +2462,7 @@ int main()
         check_animation_dependency_queue_recovery_and_stale_generation();
         check_shared_texture_and_animation_consumers_after_rebuild();
         check_preview_z_ordering_and_paused_order_only_edits();
+        check_preview_sprite_color_and_no_order_or_upload_churn();
         check_preview_asset_reload_preserves_draw_order();
         check_preview_nested_sprite_multi_edit_z_batch();
         check_preview_tab_switch_resets_registration_precedence();

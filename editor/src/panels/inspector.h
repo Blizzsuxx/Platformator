@@ -122,6 +122,9 @@ class InspectorPanel
                    std::optional<int> componentId, std::vector<FieldPathSegment> path,
                    const char *label, int defaultValue,
                    const std::vector<std::pair<int, const char *>> &values);
+    bool draw_color(DocumentSession &document, EditCommandService &commands, int objectId,
+                    std::optional<int> componentId, std::vector<FieldPathSegment> path,
+                    const char *label);
     bool draw_compact_vector2(DocumentSession &document, EditCommandService &commands,
                               int objectId, std::optional<int> componentId,
                               std::vector<FieldPathSegment> basePath, const char *label,

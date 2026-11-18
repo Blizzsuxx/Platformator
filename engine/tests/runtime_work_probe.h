@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -73,6 +74,7 @@ struct WorkCounters
     size_t spriteOrderOwnedRecords = 0;
     size_t spriteOrderOwnedEntryCapacity = 0;
     size_t spriteOrderOwnedBytes = 0;
+    size_t raycastCandidateVisits = 0;
 };
 inline WorkCounters work;
 
@@ -156,8 +158,10 @@ inline void observeBeforePresent(SDL_Renderer *renderer, int width, int height)
 } // namespace platformator_test
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
-#define PLATFORMATOR_WORK_ADD(field, count) (::platformator_test::work.field += (count))
-#define PLATFORMATOR_WORK_SET(field, value) (::platformator_test::work.field = (value))
+#define PLATFORMATOR_WORK_ADD(field, count) \
+    (::std::atomic_ref<size_t>(::platformator_test::work.field).fetch_add((count), ::std::memory_order_relaxed))
+#define PLATFORMATOR_WORK_SET(field, value) \
+    (::std::atomic_ref<size_t>(::platformator_test::work.field).store((value), ::std::memory_order_relaxed))
 #define PLATFORMATOR_RENDER_VIEW_PREPARED() (++::platformator_test::work.renderViewPreparations)
 #define PLATFORMATOR_RENDER_ELIGIBILITY_CHECK() (++::platformator_test::work.renderEligibilityChecks)
 #define PLATFORMATOR_RENDER_VISIBILITY_CHECK() (++::platformator_test::work.renderVisibilityChecks)

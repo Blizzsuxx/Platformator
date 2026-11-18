@@ -919,6 +919,79 @@ void testSpriteZOrderTemplateInstantiationAndClone()
             "Failed scene preparation must preserve live template instances and their tie order");
 #endif
 }
+
+void testSpriteColorTemplateInstantiationAndClone()
+{
+    ScopedTempDir tmp("platformator_sprite_color_tpl");
+    const auto tintedRoot = makeObjectJson(
+        1, "TintedRoot", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 2},
+                                {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"},
+                                {"flip", 0},
+                                {"width", 16.0f},
+                                {"height", 16.0f},
+                                {"color", {{"r", 120}, {"g", 200}, {"b", 45}, {"a", 160}}},
+                                {"sourceRectEnabled", false}}}));
+    const auto legacyRoot = makeObjectJson(
+        3, "LegacyRoot", {24.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 4},
+                                {"type", ComponentType::SPRITE},
+                                {"textureFilePath", "assets/wall.png"},
+                                {"flip", 0},
+                                {"width", 16.0f},
+                                {"height", 16.0f},
+                                {"sourceRectEnabled", false}}}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "tinted.pttemplate",
+                  makeTemplateDoc("TintedTemplate", tintedRoot));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "legacy.pttemplate",
+                  makeTemplateDoc("LegacyTemplate", legacyRoot));
+
+    RuntimeOptions options;
+    options.windowSettings.headless = false;
+    options.assetRoot = (tmp.dir / "assets").string();
+    platformator::Runtime runtime(options);
+
+    const auto tintedTpl = runtime.loadTemplate("assets/templates/tinted.pttemplate");
+    const auto legacyTpl = runtime.loadTemplate("assets/templates/legacy.pttemplate");
+    GameObject *tintedObj = tintedTpl->instantiate();
+    GameObject *legacyObj = legacyTpl->instantiate();
+    require(tintedObj != nullptr && legacyObj != nullptr, "Templates must instantiate cleanly");
+
+    Sprite *tintedSprite = tintedObj->getComponent<Sprite>();
+    Sprite *legacySprite = legacyObj->getComponent<Sprite>();
+    require(tintedSprite != nullptr && legacySprite != nullptr, "Template instances must carry Sprite components");
+
+    const SDL_Color tintedColor = tintedSprite->getColor();
+    require(tintedColor.r == 120 && tintedColor.g == 200 && tintedColor.b == 45 && tintedColor.a == 160,
+            "Template instantiation must preserve serialized Sprite color");
+    const SDL_Color legacyColor = legacySprite->getColor();
+    require(legacyColor.r == 255 && legacyColor.g == 255 && legacyColor.b == 255 && legacyColor.a == 255,
+            "Legacy template without Sprite color must default to opaque white");
+
+    std::unique_ptr<Component> clonedComp(tintedSprite->clone());
+    auto *clonedSprite = dynamic_cast<Sprite *>(clonedComp.get());
+    require(clonedSprite != nullptr && clonedSprite->getColor().r == 120 && clonedSprite->getColor().g == 200 &&
+                clonedSprite->getColor().b == 45 && clonedSprite->getColor().a == 160,
+            "Sprite::clone must preserve RGBA tint");
+
+    // Failed scene preparation with invalid Sprite "color" must leave live template instances intact.
+    writeJsonFile(tmp.dir / "assets" / "scenes" / "invalid_color.scene",
+                  nlohmann::json::array({makeObjectJson(
+                      99, "BadColor", {0.0f, 0.0f}, 0.0f,
+                      nlohmann::json::array({{{"id", 100},
+                                              {"type", ComponentType::SPRITE},
+                                              {"textureFilePath", ""},
+                                              {"flip", 0},
+                                              {"width", 10.0f},
+                                              {"height", 10.0f},
+                                              {"color", {{"r", 256}, {"g", 0}, {"b", 0}, {"a", 255}}},
+                                              {"sourceRectEnabled", false}}}))}));
+    requireThrow([&] { runtime.loadScene((tmp.dir / "assets" / "scenes" / "invalid_color.scene").string()); },
+                 "Invalid scene Sprite color must throw");
+    require(tintedSprite->getColor().r == 120 && tintedSprite->getColor().a == 160,
+            "Failed scene preparation must preserve live template Sprite color");
+}
 } // namespace
 
 int main()
@@ -931,6 +1004,7 @@ int main()
         testUs4CyclesMidStepCollisionAndCleanup();
         testEngineCleanupContracts();
         testSpriteZOrderTemplateInstantiationAndClone();
+        testSpriteColorTemplateInstantiationAndClone();
         std::cout << "Runtime template tests passed\n";
         return 0;
     }

@@ -347,6 +347,63 @@ int main()
                         reloadedZ->getComponent<Sprite>()->getZOrder() ==
                             std::numeric_limits<std::int32_t>::min(),
                     "Scene save/load must preserve extreme signed zOrder");
+
+            // Round-trip Sprite color, omitted legacy default reset, and atomic rejection on invalid color.
+            auto *colorObj = runtime.createGameObject()->setName("color-object");
+            colorObj->addComponent<Sprite>(static_cast<TextureWrapper *>(nullptr), 8.0f, 8.0f);
+            auto *colorSprite = colorObj->getComponent<Sprite>();
+            colorSprite->setColor(12, 34, 56, 78);
+
+            const auto colorScenePath = directory / "color-roundtrip.scene";
+            runtime.saveScene(colorScenePath.string());
+            runtime.clearScene();
+            runtime.loadScene(colorScenePath.string());
+            auto *reloadedColor = runtime.getGameObject("color-object");
+            require(reloadedColor != nullptr && reloadedColor->getComponent<Sprite>() != nullptr,
+                    "Reloaded color object must have a Sprite");
+            const SDL_Color loadedColor = reloadedColor->getComponent<Sprite>()->getColor();
+            require(loadedColor.r == 12 && loadedColor.g == 34 && loadedColor.b == 56 && loadedColor.a == 78,
+                    "Scene save/load must preserve Sprite color RGBA values");
+
+            // Legacy omitted "color" resets an already-tinted Sprite to opaque white.
+            Sprite directColorSprite;
+            directColorSprite.setId(1);
+            directColorSprite.setColor(12, 34, 56, 78);
+            Json serializedColorSprite;
+            to_json(serializedColorSprite, directColorSprite);
+            require(serializedColorSprite.contains("color") &&
+                        serializedColorSprite["color"] == Json{{"r", 12}, {"g", 34}, {"b", 56}, {"a", 78}},
+                    "Sprite to_json must serialize RGBA color fields");
+            Json omittedColorJson = serializedColorSprite;
+            omittedColorJson.erase("color");
+            from_json(omittedColorJson, directColorSprite);
+            const SDL_Color resetColor = directColorSprite.getColor();
+            require(resetColor.r == 255 && resetColor.g == 255 && resetColor.b == 255 && resetColor.a == 255,
+                    "Deserializing legacy JSON without \"color\" must reset tinted Sprite to white");
+
+            // Invalid "color" payloads must reject cleanly and leave the target Sprite unmodified.
+            directColorSprite.setColor(12, 34, 56, 78);
+            const std::vector<Json> invalidColorPayloads = {
+                123,
+                "red",
+                Json::array({1, 2, 3, 4}),
+                Json{{"r", 1}, {"g", 2}, {"b", 3}},
+                Json{{"r", true}, {"g", 2}, {"b", 3}, {"a", 4}},
+                Json{{"r", 1}, {"g", 2.5}, {"b", 3}, {"a", 4}},
+                Json{{"r", 1}, {"g", 2}, {"b", "3"}, {"a", 4}},
+                Json{{"r", 1}, {"g", 2}, {"b", 3}, {"a", -1}},
+                Json{{"r", 256}, {"g", 2}, {"b", 3}, {"a", 4}},
+            };
+            for (const auto &badColor : invalidColorPayloads)
+            {
+                Json invalidJson = serializedColorSprite;
+                invalidJson["color"] = badColor;
+                const std::string err = failure([&] { from_json(invalidJson, directColorSprite); });
+                require(!err.empty(), "Invalid Sprite color payload must throw during from_json");
+                const SDL_Color preserved = directColorSprite.getColor();
+                require(preserved.r == 12 && preserved.g == 34 && preserved.b == 56 && preserved.a == 78,
+                        "Failed Sprite color deserialization must leave target Sprite unmodified");
+            }
         }
 
         std::filesystem::remove_all(directory);

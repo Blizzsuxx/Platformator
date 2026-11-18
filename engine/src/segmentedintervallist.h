@@ -25,6 +25,61 @@ public:
     bool getIsEmpty() const;
     size_t getChunkCount() const;
 
+    template <typename Visitor>
+    void forEachOverlappingInterval(float minCoord, float maxCoord, Visitor &&visitor) const
+    {
+        if (chunks.empty() || (chunks.size() == 1 && chunks[0]->getSize() == 0))
+            return;
+
+        size_t low = 0;
+        size_t high = chunks.size();
+        while (low < high)
+        {
+            const size_t mid = low + (high - low) / 2;
+            if (chunks[mid]->getSize() == 0 ||
+                chunks[mid]->getMax()->getCachedProjectedPosition() < minCoord)
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid;
+            }
+        }
+        if (low >= chunks.size())
+            return;
+
+        LocalSortArray *startChunk = chunks[low];
+        if (LocalSortArray *leftChunk = startChunk->getLeftChunk())
+        {
+            for (Collider *collider : *leftChunk->getCheckpoints())
+            {
+                if (collider != nullptr)
+                    visitor(collider);
+            }
+        }
+
+        for (LocalSortArray *chunk = startChunk;
+             chunk != nullptr && chunk->getSize() > 0 &&
+             chunk->getMin()->getCachedProjectedPosition() <= maxCoord;
+             chunk = chunk->getRightChunk())
+        {
+            BoundingRadiusProjectionProxy **arr = chunk->getArray();
+            const size_t sz = chunk->getSize();
+            for (size_t i = 0; i < sz; ++i)
+            {
+                BoundingRadiusProjectionProxy *proxy = arr[i];
+                if (proxy->getCachedProjectedPosition() > maxCoord)
+                    return;
+                if (!proxy->getIsMaxima())
+                {
+                    if (Collider *collider = proxy->getCollider())
+                        visitor(collider);
+                }
+            }
+        }
+    }
+
 private:
     template <typename EmitFn>
     void processProjectionCollisions(

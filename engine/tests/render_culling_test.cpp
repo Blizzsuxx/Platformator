@@ -2093,6 +2093,67 @@ void checkDefaultCachedLinearAndMixedZCompositingParity()
                                   modeRun->frames[7].work.renderCullingCacheHits == 1,
                               "Post-edit clean frame must short-circuit fixed-view cache hit in cached-linear mode");
 }
+
+void checkSharedTextureTintingAndOpacityParity()
+{
+    const auto runSequence = [](bool enableCulling) {
+        ScopedRenderCullingMode strategy("cached-linear");
+        test_support::headlessEnvironment();
+        RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, enableCulling);
+        fixture.reserveSprites(5);
+
+        auto &opaqueBase = fixture.addSprite(0, 0, 120.0f, 100.0f, 64.0f, 64.0f, FixtureTexture::BlackSquare);
+        opaqueBase.sprite->setZOrder(0);
+        opaqueBase.sprite->setAlpha(128);
+
+        auto &redCircle = fixture.addSprite(1, 0, 220.0f, 100.0f, 48.0f, 48.0f, FixtureTexture::RedCircle);
+        redCircle.sprite->setZOrder(1);
+        redCircle.sprite->setColor(255, 255, 255, 128);
+
+        auto &untintedCircle = fixture.addSprite(2, 0, 280.0f, 100.0f, 48.0f, 48.0f, FixtureTexture::RedCircle);
+        untintedCircle.sprite->setZOrder(2);
+
+        auto &offscreenTinted = fixture.addSprite(3, 0, -450.0f, 90.0f, 32.0f, 32.0f, FixtureTexture::BlackSquare);
+        offscreenTinted.sprite->setColor(0, 255, 0, 128);
+
+        std::vector<FrameResult> frames;
+        frames.reserve(4);
+        // Frame 0: initial cold render
+        frames.push_back(captureFrame(fixture, 5));
+        // Frame 1: warm cached frame before color-only mutation
+        frames.push_back(captureFrame(fixture, 5));
+
+        // Color-only edits on shared textures (opacity + zero-out red channel on one RedCircle, leaving sibling untinted)
+        opaqueBase.sprite->setAlpha(64);
+        redCircle.sprite->setColor(0, 255, 255, 255);
+        frames.push_back(captureFrame(fixture, 5));
+
+        // Frame 3: mapping fallback parity with tinted/translucent sprites
+        SDL_Renderer *renderer = fixture.runtime().getRenderer();
+        test_support::require(SDL_SetRenderScale(renderer, 1.005f, 1.0f), "Could not set fallback scale");
+        frames.push_back(captureFrame(fixture, 5));
+        test_support::require(SDL_SetRenderScale(renderer, 1.0f, 1.0f), "Could not restore render scale");
+        return frames;
+    };
+
+    const auto submitAll = runSequence(false);
+    const auto culled = runSequence(true);
+
+    for (std::size_t f = 0; f < culled.size(); ++f)
+    {
+        test_support::require(culled[f].image.rgba == submitAll[f].image.rgba,
+                              "Tinted & translucent frame " + std::to_string(f) +
+                                  " in cached-linear must match submit-all oracle pixel-for-pixel");
+    }
+
+    const auto &colorEditWork = culled[2].work;
+    test_support::require(colorEditWork.renderCullingBoundsRefreshes == 0 &&
+                              colorEditWork.renderCullingViewQueryBuilds == 0 &&
+                              colorEditWork.renderCullingCandidateVisits == 0 &&
+                              colorEditWork.renderCullingCacheHits == 1 &&
+                              colorEditWork.spriteOrderSorts == 0,
+                          "Color-only edit on warm RenderCullingFixture view must trigger 0 view-query builds, 0 candidate visits, 0 bounds refreshes, and 0 draw-order sorts");
+}
 #endif
 
 void checkPublicOption()
@@ -2155,6 +2216,7 @@ void run()
     checkConsecutiveMutationStrategies();
     checkTexturelessIntervalAndRestoration();
     checkDefaultCachedLinearAndMixedZCompositingParity();
+    checkSharedTextureTintingAndOpacityParity();
 #endif
 }
 } // namespace

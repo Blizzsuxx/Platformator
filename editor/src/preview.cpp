@@ -124,6 +124,37 @@ int integer_value(const Json &record, const char *key, int fallback)
     }
 }
 
+SDL_Color sprite_color(const Json &record)
+{
+    constexpr SDL_Color defaultColor{255, 255, 255, 255};
+    const auto found = record.find("color");
+    if (found == record.end() || !found->is_object())
+        return defaultColor;
+    const auto parseChannel = [&](const char *key, std::uint8_t &out) -> bool {
+        const auto ch = found->find(key);
+        if (ch == found->end() || ch->is_boolean() || !ch->is_number_integer())
+            return false;
+        if (ch->is_number_unsigned())
+        {
+            const auto v = ch->get<std::uint64_t>();
+            if (v > 255ULL)
+                return false;
+            out = static_cast<std::uint8_t>(v);
+            return true;
+        }
+        const auto v = ch->get<std::int64_t>();
+        if (v < 0 || v > 255)
+            return false;
+        out = static_cast<std::uint8_t>(v);
+        return true;
+    };
+    SDL_Color result = defaultColor;
+    if (!parseChannel("r", result.r) || !parseChannel("g", result.g) ||
+        !parseChannel("b", result.b) || !parseChannel("a", result.a))
+        return defaultColor;
+    return result;
+}
+
 bool positive_number(const Json &record, const char *key, float &result)
 {
     const auto found = record.find(key);
@@ -1509,6 +1540,7 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     const bool newProxy = proxy.registrationSequence == 0;
     const int spriteComponentId = integer_value(*spriteData, "id", -1);
     const std::int32_t zOrder = integer_value(*spriteData, "zOrder", 0);
+    const SDL_Color color = sprite_color(*spriteData);
     const Json emptyAnimatorData = Json::object();
     const Json *animatorDataPointer = component_of_type(objectData, 0);
     const Json &animatorData = animatorDataPointer == nullptr ? emptyAnimatorData : *animatorDataPointer;
@@ -1672,6 +1704,10 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
         proxy.object->setRotation(rotation);
     if (proxy.sprite->getZOrder() != zOrder)
         proxy.sprite->setZOrder(zOrder);
+    const SDL_Color existingColor = proxy.sprite->getColor();
+    if (existingColor.r != color.r || existingColor.g != color.g ||
+        existingColor.b != color.b || existingColor.a != color.a)
+        proxy.sprite->setColor(color);
     if (!proxy.hasPublishedTransform || proxy.cachedWorldX != worldX || proxy.cachedWorldY != worldY)
     {
         platformator_editor_detail::EditorPreviewAccess::publish_proxy_position(*proxy.object, worldX, worldY);

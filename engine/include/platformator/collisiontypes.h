@@ -6,6 +6,9 @@
 
 #include <Eigen/Dense>
 
+class Collider;
+class GameObject;
+
 enum EdgeNumber : uint8_t
 {
     NO_EDGE = 0,
@@ -153,3 +156,16 @@ struct ClipPointsWithData
         return SIZE_MAX;
     }
 };
+
+namespace platformator
+{
+struct RaycastHit
+{
+    Collider *collider = nullptr;
+    GameObject *gameObject = nullptr;
+    Eigen::Vector2f point = Eigen::Vector2f::Zero();
+    Eigen::Vector2f normal = Eigen::Vector2f::Zero();
+    float distance = 0.0f;
+    float fraction = 0.0f;
+};
+} // namespace platformator

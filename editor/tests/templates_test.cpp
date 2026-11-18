@@ -2395,6 +2395,87 @@ void test_template_sprite_z_order_override_revert_and_duplicate()
 
     std::filesystem::remove_all(tempDir, ec);
 }
+
+void test_template_sprite_color_override_revert_and_duplicate()
+{
+    TemporaryDirectory tmp;
+    const auto project = tmp.path() / "project";
+    const auto assets = project / "assets";
+    const auto tmplDir = assets / "templates";
+    std::filesystem::create_directories(tmplDir);
+
+    const auto tmplPath = tmplDir / "TintedSprite.pttemplate";
+    {
+        Json root = platformator_editor_test::object(
+            1, "TintedSprite",
+            Json::array({component(2, 6, Json{{"textureFilePath", ""},
+                                              {"flip", 0},
+                                              {"width", 16.0},
+                                              {"height", 16.0},
+                                              {"color", {{"r", 100}, {"g", 150}, {"b", 200}, {"a", 220}}},
+                                              {"sourceRectEnabled", false}})}));
+        write_json(tmplPath, make_template_envelope("TintedSprite", std::move(root)));
+    }
+
+    const auto loaded = load_template_envelope(read_json(tmplPath));
+    require(static_cast<bool>(loaded), "Tinted sprite template must load cleanly");
+    const auto coverage = template_asset_binding_coverage(*loaded.asset);
+    require(static_cast<bool>(coverage), "Tinted sprite template coverage must succeed");
+
+    DocumentSession sceneDoc = make_default_document(project, assets, 1);
+    EditCommandService cmds;
+    const auto inserted = insert_template(
+        cmds, sceneDoc, *loaded.asset, {}, coverage, std::nullopt,
+        std::numeric_limits<std::size_t>::max(), {}, {},
+        normalize_template_asset_ref(assets, tmplPath));
+    require(static_cast<bool>(inserted) && inserted.insertedObjectIds.size() == 1,
+            "Inserting tinted sprite template must succeed");
+
+    const int instId = inserted.insertedObjectIds[0];
+    const auto compIt = inserted.sourceToDestinationIds.find(2);
+    require(compIt != inserted.sourceToDestinationIds.end(),
+            "Inserted template must map Sprite component id");
+    const int compId = compIt->second;
+
+    const Json *insertedObj = find_document_object_by_id(sceneDoc, instId);
+    require(insertedObj != nullptr &&
+                (*insertedObj)["components"][0]["color"] ==
+                    Json{{"r", 100}, {"g", 150}, {"b", 200}, {"a", 220}},
+            "Inserted template instance must retain serialized Sprite RGBA color");
+
+    const auto colorAddr =
+        address_for_document(sceneDoc, instId, compId, std::nullopt, {std::string("color")});
+    const auto overridePath = template_override_path_for_address(sceneDoc, colorAddr);
+    require(cmds.set_property(sceneDoc, colorAddr,
+                              Json{{"r", 250}, {"g", 50}, {"b", 10}, {"a", 128}}).status ==
+                CommandStatus::Changed,
+            "Overriding template instance Sprite color must succeed");
+    mark_template_override(sceneDoc, instId, overridePath);
+    require(is_property_overridden(*find_document_object_by_id(sceneDoc, instId), overridePath),
+            "Sprite color edit on linked instance must record template override");
+
+    const auto dupResult = cmds.duplicate_object(sceneDoc, instId);
+    require(dupResult.status == CommandStatus::Changed,
+            "Duplicating overridden tinted template instance must succeed");
+    const int dupId = sceneDoc.root.back()["id"].get<int>();
+    const Json *dupObj = find_document_object_by_id(sceneDoc, dupId);
+    require(dupObj != nullptr &&
+                (*dupObj)["components"][0]["color"] ==
+                    Json{{"r", 250}, {"g", 50}, {"b", 10}, {"a", 128}} &&
+                is_property_overridden(*dupObj, overridePath),
+            "Duplicated template instance must preserve overridden Sprite color and override marker");
+
+    std::string revertErr;
+    require(revert_template_property(sceneDoc, cmds, instId, compId, std::nullopt,
+                                     {std::string("color")}, assets, revertErr),
+            "Reverting Sprite color override must succeed: " + revertErr);
+    const Json *revertedObj = find_document_object_by_id(sceneDoc, instId);
+    require(revertedObj != nullptr &&
+                (*revertedObj)["components"][0]["color"] ==
+                    Json{{"r", 100}, {"g", 150}, {"b", 200}, {"a", 220}} &&
+                !is_property_overridden(*revertedObj, overridePath),
+            "Reverting Sprite color must restore template color and clear override flag");
+}
 } // namespace
 
 int main()
@@ -2426,6 +2507,7 @@ int main()
         test_component_subtype_bindings_and_mario_manager_export();
         test_template_asset_ref_preserved_across_export_duplicate_and_revert();
         test_template_sprite_z_order_override_revert_and_duplicate();
+        test_template_sprite_color_override_revert_and_duplicate();
         std::cout << "Template, binding, insertion, and duplicate cases passed\n";
         return 0;
     }

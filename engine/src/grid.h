@@ -49,7 +49,14 @@ class Grid
     void flushDeferredPairDeltas();
     void flushPendingCellUpdates();
 
+    const GridCellRange &getActiveCellBounds() const noexcept
+    {
+        return activeCellBounds;
+    }
+
   private:
+    void expandActiveCellBounds(const GridCellRange &range) noexcept;
+    void recomputeActiveCellBounds() noexcept;
     void addColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     void removeGridCellIfEmpty(GridCell *cell);
@@ -58,6 +65,7 @@ class Grid
     void queuePairsForCollider(Collider *collider);
     const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
     GridCell *findCell(const GridCellKey &key);
+    const GridCell *findCell(const GridCellKey &key) const;
     GridCell &getOrCreateCell(const GridCellKey &key);
     void queueForEmptyCheck(GridCell *cell);
     void queueForOperations(GridCell *cell);
@@ -76,4 +84,5 @@ class Grid
     tbb::concurrent_vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
     PairDeltaCollector activePairDeltaCollector;
+    GridCellRange activeCellBounds{};
 };

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <SDL3/SDL_pixels.h>
+
 struct WindowSettings
 {
     int width = 640;
@@ -12,4 +14,5 @@ struct WindowSettings
     bool hidden = false;
     bool enableRenderCulling = true;
     bool highPixelDensity = false;
+    SDL_Color clearColor{255, 255, 255, 255};
 };

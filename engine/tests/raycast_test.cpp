@@ -747,6 +747,120 @@ void testAfterPhysicsSyncBehaviorRaycasts()
     require(driver->sawSyncHit && nearFloat(static_cast<float>(driver->observedDt), static_cast<float>(dt), 1e-6f),
             "afterPhysicsSync must observe both published physics movement and Update script transforms");
 }
+
+void testSimultaneousGridCornerCrossings()
+{
+    platformator::Runtime runtime(physicsOnly());
+
+    // Box spanning [200, 240] x [200, 240] lives exclusively in GridCell (1, 1); corner (200, 200)
+    // is the shared intersection of cells (0,0), (1,0), (0,1), and (1,1).
+    GameObject *posBox = runtime.createGameObject()->setName("CornerBoxPos");
+    posBox->setPosition({220.0f, 220.0f});
+    posBox->addComponent<BoxCollider>(40.0f, 40.0f);
+    Collider *posCol = posBox->getComponent<Collider>();
+
+    // Negative-coordinate box spanning [-200, -160] x [-200, -160] lives exclusively in GridCell (-1, -1);
+    // corner (-200, -200) is shared by (-2,-2), (-1,-2), (-2,-1), and (-1,-1).
+    GameObject *negBox = runtime.createGameObject()->setName("CornerBoxNeg");
+    negBox->setPosition({-180.0f, -180.0f});
+    negBox->addComponent<BoxCollider>(40.0f, 40.0f);
+    Collider *negCol = negBox->getComponent<Collider>();
+
+    runtime.simulateFrame(dt);
+
+    const float expectedCornerDist = std::hypot(50.0f, 50.0f);
+    auto verifyCornerCast = [&](const Eigen::Vector2f &origin, const Eigen::Vector2f &dir, float maxDist,
+                                Collider *expectedCol, const Eigen::Vector2f &expectedPoint,
+                                const std::string &label) {
+        gAllocationCount = 0;
+        gCountAllocations = true;
+        const auto single = runtime.raycast(origin, dir, maxDist);
+        gCountAllocations = false;
+        require(gAllocationCount == 0, label + ": closest-hit raycast must allocate zero heap memory");
+
+        const auto all = runtime.raycastAll(origin, dir, maxDist);
+        require(single.has_value() && single->collider == expectedCol && all.size() == 1 &&
+                    all[0].collider == expectedCol,
+                label + ": both raycast and raycastAll must hit corner collider once");
+        require(nearFloat(single->distance, expectedCornerDist) && nearVec(single->point, expectedPoint) &&
+                    nearFloat(all[0].distance, expectedCornerDist) && nearVec(all[0].point, expectedPoint),
+                label + ": corner hit distance and point must match");
+    };
+
+    // Opposing rays along x + y = 400 passing through (200, 200)
+    verifyCornerCast({250.0f, 150.0f}, {-1.0f, 1.0f}, 120.0f, posCol, {200.0f, 200.0f},
+                     "x+y=400 (-1,+1) full");
+    verifyCornerCast({150.0f, 250.0f}, {1.0f, -1.0f}, 120.0f, posCol, {200.0f, 200.0f},
+                     "x+y=400 (+1,-1) full");
+    // Clipped endpoints landing right on the shared grid corner (200, 200)
+    verifyCornerCast({250.0f, 150.0f}, {-1.0f, 1.0f}, expectedCornerDist, posCol, {200.0f, 200.0f},
+                     "x+y=400 (-1,+1) clipped at corner");
+    verifyCornerCast({150.0f, 250.0f}, {1.0f, -1.0f}, expectedCornerDist, posCol, {200.0f, 200.0f},
+                     "x+y=400 (+1,-1) clipped at corner");
+    verifyCornerCast({150.0f, 150.0f}, {1.0f, 1.0f}, expectedCornerDist, posCol, {200.0f, 200.0f},
+                     "(+1,+1) clipped at corner");
+    require(!runtime.raycast({250.0f, 150.0f}, {-1.0f, 1.0f}, expectedCornerDist - 1e-3f).has_value() &&
+                !runtime.raycast({150.0f, 250.0f}, {1.0f, -1.0f}, expectedCornerDist - 1e-3f).has_value(),
+            "Rays clipped strictly before (200, 200) must miss");
+
+    // Opposing rays along x + y = -400 across negative grid coordinates through (-200, -200)
+    verifyCornerCast({-250.0f, -150.0f}, {1.0f, -1.0f}, 120.0f, negCol, {-200.0f, -200.0f},
+                     "x+y=-400 (+1,-1) full");
+    verifyCornerCast({-150.0f, -250.0f}, {-1.0f, 1.0f}, 120.0f, negCol, {-200.0f, -200.0f},
+                     "x+y=-400 (-1,+1) full");
+    verifyCornerCast({-250.0f, -150.0f}, {1.0f, -1.0f}, expectedCornerDist, negCol, {-200.0f, -200.0f},
+                     "x+y=-400 (+1,-1) clipped at corner");
+    verifyCornerCast({-150.0f, -250.0f}, {-1.0f, 1.0f}, expectedCornerDist, negCol, {-200.0f, -200.0f},
+                     "x+y=-400 (-1,+1) clipped at corner");
+}
+
+void testObliqueTangentCircles()
+{
+    platformator::Runtime runtime(physicsOnly());
+
+    GameObject *circleAObj = runtime.createGameObject()->setName("TangentCircleA");
+    circleAObj->setPosition({26.0f, 43.0f});
+    circleAObj->addComponent<CircleCollider>(5.0f);
+    Collider *colA = circleAObj->getComponent<Collider>();
+
+    GameObject *circleBObj = runtime.createGameObject()->setName("TangentCircleB");
+    circleBObj->setPosition({34.0f, 37.0f});
+    circleBObj->addComponent<CircleCollider>(5.0f);
+    Collider *colB = circleBObj->getComponent<Collider>();
+    require(colA->getId() < colB->getId(), "Expected ascending collider IDs for tangent tie-break");
+
+    runtime.simulateFrame(dt);
+
+    for (float maxDist : {60.0f, 50.0f})
+    {
+        const auto single = runtime.raycast({0.0f, 0.0f}, {3.0f, 4.0f}, maxDist);
+        const auto all = runtime.raycastAll({0.0f, 0.0f}, {3.0f, 4.0f}, maxDist);
+        require(all.size() == 2 && single.has_value(),
+                "Oblique (3,4) ray must hit both tangent circles at distance 50");
+        require(single->collider == colA && all[0].collider == colA && all[1].collider == colB,
+                "Tangent tie must deterministically select lower collider ID first");
+        require(nearFloat(single->distance, 50.0f) && nearVec(single->point, {30.0f, 40.0f}) &&
+                    nearVec(single->normal, {0.8f, -0.6f}),
+                "Circle (26,43) tangent hit distance, point (30,40), and outward normal (0.8,-0.6) must be exact");
+        require(nearFloat(all[1].distance, 50.0f) && nearVec(all[1].point, {30.0f, 40.0f}) &&
+                    nearVec(all[1].normal, {-0.8f, 0.6f}),
+                "Circle (34,37) tangent hit distance, point (30,40), and outward normal (-0.8,0.6) must be exact");
+    }
+
+    // Nearby distance miss just shy of 50
+    const float shortDist = std::nextafter(50.0f, 0.0f);
+    require(!runtime.raycast({0.0f, 0.0f}, {3.0f, 4.0f}, shortDist).has_value() &&
+                runtime.raycastAll({0.0f, 0.0f}, {3.0f, 4.0f}, shortDist).empty(),
+            "Ray ending 1 ULP before tangent distance 50 must miss both circles");
+
+    // Nearby geometric miss when each circle shifts slightly away from the ray
+    circleAObj->setPosition({25.999f, 43.0f});
+    circleBObj->setPosition({34.001f, 37.0f});
+    runtime.simulateFrame(dt);
+    require(!runtime.raycast({0.0f, 0.0f}, {3.0f, 4.0f}, 60.0f).has_value() &&
+                runtime.raycastAll({0.0f, 0.0f}, {3.0f, 4.0f}, 60.0f).empty(),
+            "Nearby non-tangent circles shifted 1e-3 away must miss cleanly");
+}
 } // namespace
 
 int main()
@@ -766,6 +880,8 @@ int main()
         testPublishedGeometryPublicationOrdering();
         testEqualFloatDistanceRoundingTieOrderIndependence();
         testAfterPhysicsSyncBehaviorRaycasts();
+        testSimultaneousGridCornerCrossings();
+        testObliqueTangentCircles();
         std::cout << "[PASS] raycast tests\n";
         return 0;
     }

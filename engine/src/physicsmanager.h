@@ -83,7 +83,7 @@ public:
 
 private:
     template <typename HitCallback>
-    bool traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2f &dir, float maxDistance,
+    bool traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, float maxDistance,
                                const double &limit, uint64_t collisionMask, bool includeTriggers,
                                HitCallback &&onHit) const;
     void flushPendingColliderOperations();

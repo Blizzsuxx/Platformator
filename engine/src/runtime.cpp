@@ -245,9 +245,9 @@ void Runtime::simulateFrame(double timeDelta)
 }
 
 void Runtime::simulateFrameWithCustomCallback(double timeDelta,
-                                              const std::function<void(double)> &preRenderCallback)
+                                              const std::function<void(double)> &prePhysicsStepHook)
 {
-    gameManager->simulateFrameWithCustomCallback(preRenderCallback, timeDelta);
+    gameManager->simulateFrameWithCustomCallback(prePhysicsStepHook, timeDelta);
 }
 
 bool Runtime::simulateAndRenderFrame(double timeDelta)
@@ -256,9 +256,9 @@ bool Runtime::simulateAndRenderFrame(double timeDelta)
 }
 
 bool Runtime::simulateAndRenderFrameWithCustomCallback(double timeDelta,
-                                                       const std::function<void(double)> &preRenderCallback)
+                                                       const std::function<void(double)> &prePhysicsStepHook)
 {
-    return gameManager->simulateAndRenderFrameWithCustomCallback(preRenderCallback, timeDelta);
+    return gameManager->simulateAndRenderFrameWithCustomCallback(prePhysicsStepHook, timeDelta);
 }
 
 bool Runtime::isKeyDown(SDL_Scancode key) const

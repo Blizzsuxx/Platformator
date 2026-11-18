@@ -44,14 +44,14 @@ class CaptureBudget:
                             f"Capture exceeded {self.max_bytes / 1024 / 1024:g} MiB; "
                             "stopped without a success report. Partial files retained for inspection")
 
-    def wait(self, process):
+    def wait(self, process, reserve_bytes=0):
         while True:
-            self.check()
+            self.check(reserve_bytes=reserve_bytes)
             try:
                 result = process.wait(timeout=min(0.25, max(0.001, self.deadline - time.monotonic())))
             except subprocess.TimeoutExpired:
                 continue
-            self.check()
+            self.check(reserve_bytes=reserve_bytes)
             return result
 
 
@@ -80,5 +80,5 @@ def active_budget_max_bytes():
     return _active_budget.max_bytes if _active_budget is not None else None
 
 
-def wait_for_process(process):
-    return process.wait() if _active_budget is None else _active_budget.wait(process)
+def wait_for_process(process, reserve_bytes=0):
+    return process.wait() if _active_budget is None else _active_budget.wait(process, reserve_bytes=reserve_bytes)

@@ -1141,8 +1141,9 @@ def preserve_image_mismatch(mismatch: ImageMismatch, recovery) -> None:
     raise mismatch
 
 
-def _run(command: list[str], log_path: Path, env: dict, *, stdout_path: Path | None = None) -> None:
-    check_budget()
+def _run(command: list[str], log_path: Path, env: dict, *, stdout_path: Path | None = None,
+         reserve_bytes: int = 0) -> None:
+    check_budget(reserve_bytes=reserve_bytes)
     with log_path.open("x", encoding="utf-8") as log:
         log.write("COMMAND: " + json.dumps(command) + "\n")
         log.flush()
@@ -1152,7 +1153,7 @@ def _run(command: list[str], log_path: Path, env: dict, *, stdout_path: Path | N
                                        stderr=log if stdout_path else subprocess.STDOUT, env=env,
                                        start_new_session=(os.name == "posix"))
             try:
-                return_code = wait_for_process(process)
+                return_code = wait_for_process(process, reserve_bytes=reserve_bytes)
             except BaseException:
                 _stop_owned_process(process)
                 raise
@@ -1372,6 +1373,11 @@ def render_order_cases(selection: str | list[str], workers: int, multiworker_cou
         raise CaptureError("Unknown render-order-culling case name: " + ", ".join(unknown))
     if workers <= 0 or multiworker_count <= 0:
         raise CaptureError("Worker counts must be positive")
+    if "dense-z-edit" in names:
+        if workers != 1:
+            raise CaptureError("dense-z-edit requires --workers 1 for single-worker rebuild, repair, and forced-sort arms")
+        if multiworker_count <= 1 or multiworker_count == workers:
+            raise CaptureError("dense-z-edit requires a distinct --multiworker-count greater than 1")
     specs = {
         "authored-static": {"case_name": "authored-static", "profile": "visible", "sprite_count": 64,
                             "layout": "fixed-area", "changed_percent": 0, "size_distribution": "standard",
@@ -1390,7 +1396,7 @@ def render_order_cases(selection: str | list[str], workers: int, multiworker_cou
 
 def render_order_arms(case: dict) -> list[dict]:
     if case["all_zero"]:
-        return [
+        arms = [
             {"arm": "baseline-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
              "workers": case["workers"], "is_baseline": True},
             {"arm": "candidate-indexed", "strategy": "indexed", "ordering_variant": "rebuild",
@@ -1398,17 +1404,24 @@ def render_order_arms(case: dict) -> list[dict]:
             {"arm": "candidate-cached-linear", "strategy": "cached-linear", "ordering_variant": "rebuild",
              "workers": case["workers"], "is_baseline": False},
         ]
-    arms = [
-        {"arm": "candidate-rebuild-w1", "strategy": "cached-linear", "ordering_variant": "rebuild",
-         "workers": case["workers"], "is_baseline": False},
-        {"arm": "candidate-forced-sort-w1", "strategy": "cached-linear", "ordering_variant": "forced-sort",
-         "workers": case["workers"], "is_baseline": False},
-        {"arm": "candidate-repair-w1", "strategy": "cached-linear", "ordering_variant": "repair",
-         "workers": case["workers"], "is_baseline": False},
-    ]
-    if case["multiworker_count"] != case["workers"]:
-        arms.append({"arm": f"candidate-rebuild-w{case['multiworker_count']}", "strategy": "cached-linear",
-                     "ordering_variant": "rebuild", "workers": case["multiworker_count"], "is_baseline": False})
+    else:
+        w = case["workers"]
+        mw = case["multiworker_count"]
+        if mw == w:
+            raise CaptureError(f"{case['case_name']} multiworker control must differ from primary worker count ({w})")
+        arms = [
+            {"arm": f"candidate-rebuild-w{w}", "strategy": "cached-linear", "ordering_variant": "rebuild",
+             "workers": w, "is_baseline": False},
+            {"arm": f"candidate-forced-sort-w{w}", "strategy": "cached-linear", "ordering_variant": "forced-sort",
+             "workers": w, "is_baseline": False},
+            {"arm": f"candidate-repair-w{w}", "strategy": "cached-linear", "ordering_variant": "repair",
+             "workers": w, "is_baseline": False},
+            {"arm": f"candidate-rebuild-w{mw}", "strategy": "cached-linear", "ordering_variant": "rebuild",
+             "workers": mw, "is_baseline": False},
+        ]
+    arm_names = [a["arm"] for a in arms]
+    if len(arm_names) != len(set(arm_names)):
+        raise CaptureError(f"{case['case_name']} produced duplicate arm names")
     return arms
 
 
@@ -1574,6 +1587,9 @@ def validate_render_order_timing_manifest(csv_path: Path, case: dict, arm: dict,
     for field in ("fixture_sha256", "harness_sha256"):
         if manifest.get(field) != build_identity.get(field):
             raise CaptureError(f"{case['case_name']} {arm['arm']} {field} mismatch")
+    if arm["arm"].endswith(f"-w{arm['workers']}") is False and not arm["is_baseline"]:
+        if "-w" in arm["arm"]:
+            raise CaptureError(f"{case['case_name']} {arm['arm']} worker label does not match manifest workers={arm['workers']}")
     if expected_mapping is not None and manifest.get("renderer_mapping") != expected_mapping:
         raise CaptureError(f"{case['case_name']} {arm['arm']} renderer backend/mapping mismatch")
     if int(culling.get("observed_frame_fallbacks", 0)) != 0:
@@ -1668,11 +1684,61 @@ def _cleanup_transient_render_order_files(output_dir: Path) -> None:
     for pattern in ("*.frames.jsonl", "*.ppm"):
         for path in output_dir.rglob(pattern):
             path.unlink(missing_ok=True)
-    proofs_dir = output_dir / "proofs"
-    if proofs_dir.is_dir():
-        for suffix in (".csv", ".samples.csv", ".manifest.json"):
-            for path in proofs_dir.glob(f"*{suffix}"):
-                path.unlink(missing_ok=True)
+    for folder in ("proofs", "resources"):
+        subdir = output_dir / folder
+        if subdir.is_dir():
+            for suffix in (".csv", ".samples.csv", ".paired.csv", ".manifest.json"):
+                for path in subdir.glob(f"*{suffix}"):
+                    path.unlink(missing_ok=True)
+
+
+def validate_render_order_control_resource(ctrl: dict, strategy: str, rproof: dict, args) -> None:
+    cname = ctrl["control_name"]
+    if rproof.get("profile") not in (None, ctrl["profile"]) or rproof.get("sprite_count") not in (None, ctrl["sprite_count"]):
+        raise CaptureError(f"{cname} control ({strategy}) resource proof has mismatched workload identity")
+    if rproof.get("measure_frames") not in (None, args.measure_frames):
+        raise CaptureError(f"{cname} control ({strategy}) resource proof has mismatched measure_frames")
+    if "mode" in rproof and rproof.get("mode") != strategy:
+        raise CaptureError(f"{cname} control ({strategy}) resource proof has mismatched mode")
+    required_int_fields = (
+        "allocation_calls", "allocated_bytes",
+        "actual_changed_sprite_total", "actual_changed_pose_total",
+        "actual_changed_z_total", "actual_changed_sprites_per_step_max",
+    )
+    for field in required_int_fields:
+        value = rproof.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise CaptureError(f"{cname} control ({strategy}) resource proof is missing or has invalid {field}")
+    changed_fraction = rproof.get("actual_changed_fraction")
+    if not isinstance(changed_fraction, (int, float)) or isinstance(changed_fraction, bool) or not math.isfinite(changed_fraction) or not 0 <= changed_fraction <= 1:
+        raise CaptureError(f"{cname} control ({strategy}) resource proof has invalid actual_changed_fraction")
+    for field in ("cold_observation", "capacity_growth_observation", "reset_observation", "culling_work"):
+        if not isinstance(rproof.get(field), dict):
+            raise CaptureError(f"{cname} control ({strategy}) resource proof is missing {field}")
+
+    work = rproof["culling_work"]
+    if cname == "rejected-z-edit":
+        rejected_count = max(0, ctrl["sprite_count"] - 64)
+        expected_z_total = min(100, rejected_count) * args.measure_frames
+        if (rproof["actual_changed_pose_total"] != 0 or
+                rproof["actual_changed_z_total"] != expected_z_total or
+                rproof["actual_changed_sprite_total"] != expected_z_total or
+                (rejected_count > 0 and rproof["actual_changed_z_total"] == 0)):
+            raise CaptureError(f"rejected-z-edit control ({strategy}) did not observe expected rejected-only Z edits")
+        if (work.get("sprite_order_preparations", 0) != 0 or work.get("sprite_order_sorts", 0) != 0 or
+                work.get("bounds_refreshes", 0) != 0 or work.get("index_relinks", 0) != 0 or
+                work.get("queries", 0) != 0 or rproof["allocation_calls"] != 0):
+            raise CaptureError(f"rejected-z-edit control ({strategy}) performed unexpected work or warm allocations")
+    elif cname == "fully-moving-crossing":
+        expected_steps = args.measure_frames if args.warmup_frames > 0 else max(0, args.measure_frames - 1)
+        expected_pose_total = ctrl["sprite_count"] * expected_steps
+        if (rproof["actual_changed_z_total"] != 0 or
+                rproof["actual_changed_pose_total"] != expected_pose_total or
+                rproof["actual_changed_sprite_total"] != expected_pose_total or
+                (ctrl["sprite_count"] > 0 and expected_steps > 0 and rproof["actual_changed_pose_total"] == 0)):
+            raise CaptureError(f"fully-moving-crossing control ({strategy}) did not observe expected crossing pose changes")
+        if rproof.get("render_submissions", 0) > ctrl["sprite_count"] * args.measure_frames:
+            raise CaptureError(f"fully-moving-crossing control ({strategy}) exceeded maximum possible submissions")
 
 
 def run_render_order_culling(args) -> dict:
@@ -1684,6 +1750,12 @@ def run_render_order_culling(args) -> dict:
     if not args.candidate_probe or not args.candidate_validation_probe:
         raise CaptureError("render-order-culling requires --candidate-probe and --candidate-validation-probe")
     cases = render_order_cases(args.focused_cases, args.workers, args.multiworker_count)
+    if any(case["case_name"] == "dense-z-edit" for case in cases) and args.measure_frames < 2:
+        raise CaptureError("dense-z-edit requires --measure-frames >= 2 for at least one clean and one edit frame")
+    for case in cases:
+        arms = render_order_arms(case)
+        if len({(a["strategy"], a["ordering_variant"], a["workers"], a["is_baseline"]) for a in arms}) != len(arms):
+            raise CaptureError(f"{case['case_name']} has colliding worker/variant arm identities")
     needs_baseline = any(case["all_zero"] for case in cases)
     if not args.candidate_probe.is_file() or not os.access(args.candidate_probe, os.X_OK):
         raise CaptureError(f"Candidate timing probe is not executable: {args.candidate_probe}")
@@ -1701,6 +1773,7 @@ def run_render_order_culling(args) -> dict:
     env.update({"SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy", "SDL_RENDER_DRIVER": "software"})
     commands_log: list[dict] = []
     completed_arms: list[dict] = []
+    in_progress_files: list[Path] = []
     current_stage = "identity"
     expected_comparisons = {
         "implementation_overhead": [c["case_name"] for c in cases if c["all_zero"]],
@@ -1709,14 +1782,18 @@ def run_render_order_culling(args) -> dict:
         "dense_z_ordering": (["dense-z-edit"] if any(c["case_name"] == "dense-z-edit" for c in cases) else []),
     }
 
-    def run_logged(stage: str, command: list[str], log_path: Path) -> None:
+    def run_logged(stage: str, command: list[str], log_path: Path, tracked_files: list[Path] | None = None) -> None:
         nonlocal current_stage
         current_stage = stage
+        in_progress_files.clear()
+        if tracked_files:
+            in_progress_files.extend(tracked_files)
+        in_progress_files.append(log_path)
         max_bytes = active_budget_max_bytes()
         reserve = PARTIAL_SUMMARY_RESERVE_BYTES if (max_bytes is not None and max_bytes > PARTIAL_SUMMARY_RESERVE_BYTES) else 0
         check_budget(reserve_bytes=reserve)
         commands_log.append({"stage": stage, "command": command})
-        _run(command, log_path, env)
+        _run(command, log_path, env, reserve_bytes=reserve)
         check_budget(reserve_bytes=reserve)
 
     validation_proofs: dict[str, dict[str, dict]] = {}
@@ -1752,7 +1829,10 @@ def run_render_order_culling(args) -> dict:
                     vcmd = _build_render_order_command(args.candidate_validation_probe, case, arm, args,
                                                        phase="validate", csv_path=Path(str(vprefix) + ".csv"),
                                                        evidence_prefix=vprefix)
-                    run_logged("validate", vcmd, logs / f"validate-{cname}-{aname}.log")
+                    v_tracked = [Path(str(vprefix) + sfx) for sfx in
+                                 (".csv", ".samples.csv", ".paired.csv", ".manifest.json",
+                                  ".evidence.json", ".frames.jsonl", ".representative.ppm", ".mismatch.ppm")]
+                    run_logged("validate", vcmd, logs / f"validate-{cname}-{aname}.log", v_tracked)
                     ev_path = Path(str(vprefix) + ".evidence.json")
                     proof = json.loads(ev_path.read_text(encoding="utf-8"))
                     proof["_path"] = str(ev_path)
@@ -1762,18 +1842,22 @@ def run_render_order_culling(args) -> dict:
                     if expected_mapping is None:
                         expected_mapping = proof.get("renderer_mapping")
                     validation_proofs[cname][aname] = proof
+                    in_progress_files.clear()
                     completed_arms.append({"case": cname, "arm": aname, "stage": "validate"})
 
                     rprefix = resources_root / f"{cname}-{aname}"
                     rcmd = _build_render_order_command(args.candidate_validation_probe, case, arm, args,
                                                        phase="resources", csv_path=Path(str(rprefix) + ".csv"),
                                                        evidence_prefix=rprefix)
-                    run_logged("resources", rcmd, logs / f"resource-{cname}-{aname}.log")
+                    r_tracked = [Path(str(rprefix) + sfx) for sfx in
+                                 (".csv", ".samples.csv", ".paired.csv", ".manifest.json", ".resources.json")]
+                    run_logged("resources", rcmd, logs / f"resource-{cname}-{aname}.log", r_tracked)
                     res_path = Path(str(rprefix) + ".resources.json")
                     rproof = json.loads(res_path.read_text(encoding="utf-8"))
                     rproof["_path"] = str(res_path)
                     rproof["_sha256"] = sha256(res_path)
                     resource_proofs[cname][aname] = rproof
+                    in_progress_files.clear()
                     completed_arms.append({"case": cname, "arm": aname, "stage": "resources"})
 
                 current_stage = "parity"
@@ -1793,25 +1877,29 @@ def run_render_order_culling(args) -> dict:
                 rcmd = _build_render_order_command(args.candidate_validation_probe, ctrl, arm, args,
                                                    phase="resources", csv_path=Path(str(rprefix) + ".csv"),
                                                    evidence_prefix=rprefix)
-                run_logged("control-resources", rcmd, logs / f"control-{cname}-{strategy}.log")
+                c_tracked = [Path(str(rprefix) + sfx) for sfx in
+                             (".csv", ".samples.csv", ".paired.csv", ".manifest.json", ".resources.json")]
+                run_logged("control-resources", rcmd, logs / f"control-{cname}-{strategy}.log", c_tracked)
                 res_path = Path(str(rprefix) + ".resources.json")
                 rproof = json.loads(res_path.read_text(encoding="utf-8"))
+                validate_render_order_control_resource(ctrl, strategy, rproof, args)
                 controls_summary[cname][strategy] = {
                     "path": str(res_path), "sha256": sha256(res_path),
                     "allocation_calls": rproof.get("allocation_calls"),
                     "allocated_bytes": rproof.get("allocated_bytes"),
+                    "actual_changed_sprite_total": rproof.get("actual_changed_sprite_total"),
+                    "actual_changed_pose_total": rproof.get("actual_changed_pose_total"),
+                    "actual_changed_z_total": rproof.get("actual_changed_z_total"),
+                    "actual_changed_sprites_per_step_max": rproof.get("actual_changed_sprites_per_step_max"),
+                    "actual_changed_fraction": rproof.get("actual_changed_fraction"),
                     "cold_observation": rproof.get("cold_observation"),
                     "capacity_growth_observation": rproof.get("capacity_growth_observation"),
                     "reset_observation": rproof.get("reset_observation"),
                     "culling_work": rproof.get("culling_work"),
                 }
+                in_progress_files.clear()
                 completed_arms.append({"case": cname, "arm": arm["arm"], "stage": "control-resources"})
-                work = rproof.get("culling_work", {})
-                if cname == "rejected-z-edit":
-                    if (work.get("sprite_order_preparations", 0) != 0 or work.get("sprite_order_sorts", 0) != 0 or
-                            work.get("bounds_refreshes", 0) != 0 or work.get("index_relinks", 0) != 0 or
-                            work.get("queries", 0) != 0 or rproof.get("allocation_calls", 0) != 0):
-                        raise CaptureError(f"rejected-z-edit control ({strategy}) performed unexpected work or warm allocations")
+            _cleanup_transient_render_order_files(args.output)
 
         # 3. Independent timed repetitions (uninstrumented Release probes)
         rng = random.Random(args.seed ^ 0x9E3779B9)
@@ -1832,7 +1920,9 @@ def run_render_order_culling(args) -> dict:
                 rpath = Path(resource_proofs[cname][aname]["_path"]) if not arm["is_baseline"] else None
                 tcmd = _build_render_order_command(binary, case, arm, args, phase="time", csv_path=csv_path,
                                                    run_index=run_index, validation_path=vpath, resource_path=rpath)
-                run_logged("time", tcmd, logs / f"time-{stem}.log")
+                t_tracked = [csv_path, csv_path.with_suffix(".samples.csv"),
+                             csv_path.with_suffix(".paired.csv"), csv_path.with_suffix(".manifest.json")]
+                run_logged("time", tcmd, logs / f"time-{stem}.log", t_tracked)
                 metrics = parse_benchmark_csv(csv_path)
                 manifest = validate_render_order_timing_manifest(
                     csv_path, case, arm, args, run_index, b_id, metrics,
@@ -1845,6 +1935,9 @@ def run_render_order_culling(args) -> dict:
                 samples, _paired = read_incremental_timing_samples(
                     csv_path.with_suffix(".samples.csv"), csv_path.with_suffix(".paired.csv"),
                     args.measure_frames, args.measure_frames, False)
+                if not arm["is_baseline"]:
+                    if len(samples) != args.measure_frames or any(row.get("draw_order_prepare_ms") is None for row in samples):
+                        raise CaptureError(f"{cname} {aname} candidate paired CSV is missing draw_order_prepare_ns column or samples")
                 key = (cname, aname)
                 rows_by_case_arm.setdefault(key, []).append({
                     "run_index": run_index, "workers": arm["workers"],
@@ -1859,6 +1952,7 @@ def run_render_order_culling(args) -> dict:
                     "csv": str(csv_path), "manifest": str(csv_path.with_suffix(".manifest.json")),
                 })
                 samples_by_case_arm.setdefault(key, []).append(samples)
+                in_progress_files.clear()
                 completed_arms.append({"case": cname, "arm": aname, "stage": f"time-r{run_index}"})
 
         # 4. Aggregate summaries and separated comparisons
@@ -1872,8 +1966,16 @@ def run_render_order_culling(args) -> dict:
                 rep_samples = samples_by_case_arm[(cname, aname)]
                 entry = {"combined": _slice_stats(rep_samples, lambda _r: True)}
                 if cname == "dense-z-edit":
-                    entry["clean_frames"] = _slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 0)
-                    entry["edit_frames"] = _slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 1)
+                    clean_slice = _slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 0)
+                    edit_slice = _slice_stats(rep_samples, lambda r: r["sample_index"] % 2 == 1)
+                    if clean_slice["samples_per_run"] == 0 or edit_slice["samples_per_run"] == 0:
+                        raise CaptureError("dense-z-edit requires both clean and edit measured samples")
+                    if not arm["is_baseline"] and (
+                            not clean_slice["draw_order_prepare_ms"].get("available") or
+                            not edit_slice["draw_order_prepare_ms"].get("available")):
+                        raise CaptureError(f"{cname} {aname} candidate slice is missing draw_order_prepare_ms samples")
+                    entry["clean_frames"] = clean_slice
+                    entry["edit_frames"] = edit_slice
                 aggregates[cname][aname] = entry
 
         comparisons: dict[str, dict] = {"implementation_overhead": {}, "culling_strategy": {},
@@ -1949,6 +2051,7 @@ def run_render_order_culling(args) -> dict:
             "raw_timing_samples": {f"{c}:{a}": rows for (c, a), rows in rows_by_case_arm.items()},
             "commands": commands_log,
         }
+        current_stage = "final-publication"
         (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
         lines = ["# Render Order & Culling Pilot Report", "",
@@ -1980,30 +2083,64 @@ def run_render_order_culling(args) -> dict:
                         f"{st['paired_step_render_ms']['p95_ms']:.4f} |")
             lines.append("")
         (args.output / "report.md").write_text("\n".join(lines), encoding="utf-8")
+        check_budget()
         return report
     except (BudgetExceeded, CaptureError, subprocess.CalledProcessError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        for name in ("report.json", "report.md"):
+            (args.output / name).unlink(missing_ok=True)
+        for path in in_progress_files:
+            path.unlink(missing_ok=True)
         _cleanup_transient_render_order_files(args.output)
+        error_text = str(error)
         partial = {
             "proof_kind": "platformator.render-order-culling-pilot", "proof_version": 1,
             "comparison": "render-order-culling", "exploratory": True, "complete": False,
-            "failure_stage": current_stage, "failure_reason": str(error),
+            "failure_stage": current_stage, "failure_reason": error_text,
             "completed_arms": completed_arms,
             "unavailable_comparisons": expected_comparisons,
             "completed_parity_checks": sorted(parity_summaries.keys()),
         }
         max_bytes = active_budget_max_bytes()
         partial_path = args.output / "partial-report.json"
-        payload = json.dumps(partial, indent=2) + "\n"
-        if max_bytes is None or len(payload.encode("utf-8")) <= max_bytes:
-            partial_path.write_text(payload, encoding="utf-8")
-        else:
-            compact_partial = json.dumps({
+        candidates = [
+            json.dumps(partial, indent=2) + "\n",
+            json.dumps(partial, separators=(",", ":")) + "\n",
+            json.dumps({
                 "complete": False, "failure_stage": current_stage,
-                "failure_reason": str(error)[:120],
+                "failure_reason": error_text[:240],
                 "completed_count": len(completed_arms),
                 "unavailable_comparisons": expected_comparisons,
-            }) + "\n"
-            partial_path.write_text(compact_partial, encoding="utf-8")
+            }, separators=(",", ":")) + "\n",
+            json.dumps({
+                "complete": False, "failure_stage": current_stage,
+                "failure_reason": error_text[:80],
+            }, separators=(",", ":")) + "\n",
+        ]
+        if max_bytes is None:
+            partial_path.write_text(candidates[0], encoding="utf-8")
+        else:
+            def current_dir_bytes() -> int:
+                return sum(p.stat().st_size for p in args.output.rglob("*") if p.is_file() and not p.is_symlink())
+
+            min_needed = len(candidates[-1].encode("utf-8"))
+            if current_dir_bytes() + min_needed > max_bytes:
+                existing_files = [
+                    p for p in args.output.rglob("*")
+                    if p.is_file() and not p.is_symlink() and p != partial_path
+                ]
+                existing_files.sort(key=lambda p: (0 if p.parent == logs else 1, -p.stat().st_size))
+                for victim in existing_files:
+                    if current_dir_bytes() + min_needed <= max_bytes:
+                        break
+                    victim.unlink(missing_ok=True)
+            remaining = max(0, max_bytes - current_dir_bytes())
+            chosen = candidates[-1]
+            for cand in candidates:
+                if len(cand.encode("utf-8")) <= remaining:
+                    chosen = cand
+                    break
+            if len(chosen.encode("utf-8")) <= max_bytes:
+                partial_path.write_text(chosen, encoding="utf-8")
         raise
 
 

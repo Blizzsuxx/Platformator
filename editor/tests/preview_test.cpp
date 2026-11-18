@@ -2012,6 +2012,121 @@ void check_preview_z_ordering_and_paused_order_only_edits()
 
     preview.release();
 }
+
+void check_preview_asset_reload_preserves_draw_order()
+{
+    TemporaryAssets assets;
+    const auto solidAPath = assets.root / "assets" / "textures" / "reload_a.png";
+    const auto solidBPath = assets.root / "assets" / "textures" / "reload_b.png";
+    write_solid_png(solidAPath, 0, 220, 0);
+    write_solid_png(solidBPath, 0, 0, 220);
+
+    RuntimeOptions options;
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.assetRoot = (assets.root / "assets").string();
+    platformator::Runtime runtime(options);
+    SDL_Renderer *renderer = runtime.getRenderer();
+    require(renderer != nullptr, "preview asset reload order check requires software SDL renderer");
+
+    DocumentSession document = make_default_document(assets.root.parent_path(), assets.root / "assets", 101);
+    document.tabId = TabId{12};
+    Json spriteA = sprite_component(101, "assets/textures/reload_a.png");
+    spriteA["zOrder"] = 1;
+    Json spriteB = sprite_component(201, "assets/textures/reload_b.png");
+    spriteB["zOrder"] = 5;
+    document.root.push_back(object_record(10, "Back", 160.0f, 120.0f, Json::array({spriteA})));
+    document.root.push_back(object_record(20, "Front", 160.0f, 120.0f, Json::array({spriteB})));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{document.projectGeneration}, document.assetRoot);
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+    preview.reconcile(document, true);
+    wait_for_asset_preparation(preview, document);
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240), "initial asset reload render must succeed");
+
+    ViewportTransform pickTransform;
+    require(pickTransform.configure({0.0f, 0.0f, 320.0f, 240.0f}, 1.0f, 1.0f,
+                                    320.0f, 240.0f, 160.0f, 120.0f),
+            "Viewport pick transform must configure");
+    require(preview.draw_document_ids() == std::vector<int>({10, 20}),
+            "Initial draw order must place zOrder 1 before zOrder 5");
+    require(viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                     preview, {160.0f, 120.0f}, 0.0f) == std::vector<int>({20, 10}),
+            "Initial pick order must place front sprite 20 before 10");
+
+    {
+        SDL_Surface *initial = read_target(renderer, preview.target());
+        const auto center = pixel(initial, 160, 120);
+        SDL_DestroySurface(initial);
+        require(center[2] > 180 && center[0] < 30 && center[1] < 30,
+                "Initial front sprite must render blue");
+    }
+
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    const auto beforeReload = work::snapshot();
+#endif
+    write_solid_png(solidBPath, 240, 230, 10);
+    resources.invalidate(solidBPath);
+    const auto consumers = resources.affected_consumers(solidBPath);
+    require(consumers.size() == 1, "expected one consumer for reloaded texture");
+    preview.refresh_asset(document, solidBPath, false, consumers);
+    wait_for_asset_preparation(preview, document);
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240), "render after asset reload must succeed");
+
+    require(preview.draw_document_ids() == std::vector<int>({10, 20}),
+            "Asset-only reload must keep identical draw order");
+    require(viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                     preview, {160.0f, 120.0f}, 0.0f) == std::vector<int>({20, 10}),
+            "Asset-only reload must keep identical pick order");
+    {
+        SDL_Surface *reloaded = read_target(renderer, preview.target());
+        const auto center = pixel(reloaded, 160, 120);
+        SDL_DestroySurface(reloaded);
+        require(center[0] > 200 && center[1] > 200 && center[2] < 40,
+                "Asset-only reload must render refreshed yellow pixels");
+    }
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    const auto afterReload = work::snapshot();
+    require(afterReload[static_cast<std::size_t>(work::Counter::ImageDecodes)] >
+                    beforeReload[static_cast<std::size_t>(work::Counter::ImageDecodes)] &&
+                afterReload[static_cast<std::size_t>(work::Counter::TextureUploads)] >
+                    beforeReload[static_cast<std::size_t>(work::Counter::TextureUploads)] &&
+                afterReload[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] ==
+                    beforeReload[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)],
+            "Asset-only reload must refresh texture while performing zero draw-order sorts");
+#endif
+
+    // Real Z edit after asset reload must trigger one draw-order sort and flip draw/pick order.
+    document.root[1]["components"][0]["zOrder"] = 20;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {10}, false);
+    require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240), "render after real Z edit must succeed");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    {
+        const auto afterZEdit = work::snapshot();
+        require(afterZEdit[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] ==
+                    afterReload[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] + 1,
+                "Real Z edit after asset reload must perform exactly one draw-order sort");
+    }
+#endif
+    require(preview.draw_document_ids() == std::vector<int>({20, 10}),
+            "Real Z edit must update draw order");
+    require(viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                     preview, {160.0f, 120.0f}, 0.0f) == std::vector<int>({10, 20}),
+            "Real Z edit must update pick order");
+    {
+        SDL_Surface *edited = read_target(renderer, preview.target());
+        const auto center = pixel(edited, 160, 120);
+        SDL_DestroySurface(edited);
+        require(center[1] > 180 && center[0] < 40 && center[2] < 40,
+                "Real Z edit must draw green sprite 10 in front");
+    }
+    preview.release();
+}
 } // namespace
 
 int main()
@@ -2032,6 +2147,7 @@ int main()
         check_animation_dependency_queue_recovery_and_stale_generation();
         check_shared_texture_and_animation_consumers_after_rebuild();
         check_preview_z_ordering_and_paused_order_only_edits();
+        check_preview_asset_reload_preserves_draw_order();
         platformator_editor::run_viewport_cases();
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
         const auto counts = work::snapshot();

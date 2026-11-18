@@ -38,11 +38,11 @@ checked("${CMAKE_COMMAND}" -S "${PLATFORMATOR_SOURCE_DIR}/examples/mario" -B "${
     -G Ninja -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_MARIO_USE_INSTALLED=ON "-DCMAKE_PREFIX_PATH=${relocated}")
 checked("${CMAKE_COMMAND}" --build "${fixture}/mario" --parallel 3)
 checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${CMAKE_COMMAND}" -E env
-    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software "${fixture}/mario/mario_example" --smoke-steps 5)
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software "${fixture}/mario/mario" --scene assets/scenes/level1.scene --smoke-steps 5)
 checked("${CMAKE_COMMAND}" --install "${fixture}/mario" --prefix "${relocated}")
 set(finalPrefix "${fixture}/final-prefix")
 file(REMOVE_RECURSE "${finalPrefix}")
 file(RENAME "${relocated}" "${finalPrefix}")
 checked("${CMAKE_COMMAND}" -E chdir "${fixture}/elsewhere" "${CMAKE_COMMAND}" -E env
-    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software "${finalPrefix}/bin/mario_example" --smoke-steps 5)
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software "${finalPrefix}/bin/mario" --scene assets/scenes/level1.scene --smoke-steps 5)
 message(STATUS "Installed and relocated public-only consumers passed")

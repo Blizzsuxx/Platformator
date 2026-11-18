@@ -677,6 +677,77 @@ void verifyDenseZEditStep(size_t frameIndex, const std::vector<std::int32_t> &be
         throw std::runtime_error("dense-z-edit edit frame did not cross any peer rank in sorted order");
 }
 
+void verifyRejectedZEditStep(const Options &options, size_t trajectoryStep,
+                             const std::vector<std::int32_t> &beforeZ,
+                             const std::vector<std::int32_t> &afterZ, size_t poseChanges)
+{
+    if (beforeZ.size() != options.population || afterZ.size() != options.population)
+        throw std::runtime_error("rejected-z-edit population size mismatch");
+    if (poseChanges != 0)
+        throw std::runtime_error("rejected-z-edit frame unexpectedly mutated sprite pose");
+    std::vector<std::int32_t> expectedBeforeZ(options.population, 0);
+    if (trajectoryStep == 0)
+    {
+        for (size_t slot = 0; slot < options.population; ++slot)
+            expectedBeforeZ[slot] = static_cast<std::int32_t>(slot % 257) - 128;
+    }
+    else
+    {
+        expectedBeforeZ = computeDeterministicZOrders(options, trajectoryStep - 1);
+    }
+    const std::vector<std::int32_t> expectedAfterZ = computeDeterministicZOrders(options, trajectoryStep);
+    if (beforeZ != expectedBeforeZ)
+        throw std::runtime_error("rejected-z-edit pre-step Z orders diverged from expected schedule");
+    if (afterZ != expectedAfterZ)
+        throw std::runtime_error("rejected-z-edit post-step Z orders diverged from expected slots or values");
+    if (options.population > 64)
+    {
+        size_t expectedChanged = 0;
+        for (size_t slot = 0; slot < options.population; ++slot)
+        {
+            if (expectedBeforeZ[slot] != expectedAfterZ[slot])
+            {
+                if (slot < 64)
+                    throw std::runtime_error("rejected-z-edit schedule mutated a visible slot");
+                ++expectedChanged;
+            }
+        }
+        if (expectedChanged == 0)
+            throw std::runtime_error("rejected-z-edit frame produced zero expected rejected Z mutations");
+    }
+}
+
+void verifyCrossingPoseStep(const Options &options, const DeterministicFixtureTrajectory &trajectory,
+                            size_t trajectoryStep,
+                            const std::vector<std::array<float, 3>> &beforePoses,
+                            const std::vector<std::array<float, 3>> &afterPoses,
+                            size_t changedZOrders)
+{
+    if (changedZOrders != 0)
+        throw std::runtime_error("crossing frame unexpectedly mutated Z order");
+    if (beforePoses.size() != options.population || afterPoses.size() != options.population)
+        throw std::runtime_error("crossing population size mismatch");
+    const size_t previousStep = trajectoryStep == 0 ? 0 : trajectoryStep - 1;
+    size_t observedChanged = 0;
+    size_t expectedChanged = 0;
+    for (size_t slot = 0; slot < options.population; ++slot)
+    {
+        const FixturePose expected = trajectory.pose(slot, trajectoryStep);
+        if (afterPoses[slot][0] != expected.x || afterPoses[slot][1] != expected.y ||
+            afterPoses[slot][2] != expected.rotationRadians)
+            throw std::runtime_error("crossing sprite pose diverged from deterministic fixture schedule");
+        const FixturePose expectedPrev = trajectory.pose(slot, previousStep);
+        if (expectedPrev.x != expected.x || expectedPrev.y != expected.y ||
+            expectedPrev.rotationRadians != expected.rotationRadians)
+            ++expectedChanged;
+        if (beforePoses[slot][0] != afterPoses[slot][0] || beforePoses[slot][1] != afterPoses[slot][1] ||
+            beforePoses[slot][2] != afterPoses[slot][2])
+            ++observedChanged;
+    }
+    if (observedChanged != expectedChanged || (options.population > 0 && trajectoryStep > 0 && observedChanged == 0))
+        throw std::runtime_error("crossing control observed pose changes differed from fixture schedule");
+}
+
 #if PLATFORMATOR_ENABLE_WORK_PROBES
 std::vector<SpriteIdentity> independentVisibleOracle(const Options &options,
                                                        const DeterministicFixtureTrajectory &trajectory,
@@ -1388,6 +1459,7 @@ void run(const Options &options)
         else if (options.validateResources)
         {
 #if PLATFORMATOR_ENABLE_WORK_PROBES
+            const size_t trajectoryStep = stepIndex;
             previousMeasuredPoses.clear();
             previousMeasuredZ.clear();
             for (const auto &record : fixture.records())
@@ -1407,37 +1479,46 @@ void run(const Options &options)
             size_t changedPoses = 0;
             size_t changedZOrders = 0;
             size_t changedSprites = 0;
-            size_t minChangedZSlot = fixture.records().size();
             currentMeasuredZ.clear();
+            std::vector<std::array<float, 3>> beforeCrossingPoses;
+            std::vector<std::array<float, 3>> afterCrossingPoses;
+            if (options.profile == FixtureTrajectoryProfile::Crossing)
+            {
+                beforeCrossingPoses.reserve(fixture.records().size());
+                afterCrossingPoses.reserve(fixture.records().size());
+            }
             for (size_t index = 0; index < fixture.records().size(); ++index)
             {
                 const auto &record = fixture.records()[index];
                 const auto &previous = previousMeasuredPoses[index];
                 const auto position = record.object->getPosition();
+                const float rotation = record.object->getRotation();
                 const std::int32_t zOrder = record.sprite->getZOrder();
                 currentMeasuredZ.push_back(zOrder);
+                if (options.profile == FixtureTrajectoryProfile::Crossing)
+                {
+                    beforeCrossingPoses.push_back({previous.x, previous.y, previous.rotation});
+                    afterCrossingPoses.push_back({position.x(), position.y(), rotation});
+                }
                 const bool poseChanged = record.identity.slot != previous.slot ||
                                          record.identity.generation != previous.generation ||
                                          position.x() != previous.x || position.y() != previous.y ||
-                                         record.object->getRotation() != previous.rotation;
+                                         rotation != previous.rotation;
                 const bool zChanged = zOrder != previous.zOrder;
                 if (poseChanged)
                     ++changedPoses;
                 if (zChanged)
-                {
                     ++changedZOrders;
-                    minChangedZSlot = std::min(minChangedZSlot, index);
-                }
                 if (poseChanged || zChanged)
                     ++changedSprites;
             }
             if (options.denseZEdit)
                 verifyDenseZEditStep(frame, previousMeasuredZ, currentMeasuredZ, changedPoses);
-            if (options.rejectedZEdit && options.population > 64)
-            {
-                if (changedPoses != 0 || changedZOrders == 0 || minChangedZSlot < 64)
-                    throw std::runtime_error("rejected-z-edit step did not mutate rejected-only slots");
-            }
+            if (options.rejectedZEdit)
+                verifyRejectedZEditStep(options, trajectoryStep, previousMeasuredZ, currentMeasuredZ, changedPoses);
+            if (options.profile == FixtureTrajectoryProfile::Crossing)
+                verifyCrossingPoseStep(options, trajectory, trajectoryStep,
+                                       beforeCrossingPoses, afterCrossingPoses, changedZOrders);
             actualChangedPoseTotal += changedPoses;
             actualChangedZTotal += changedZOrders;
             actualChangedSpriteTotal += changedSprites;
@@ -1839,6 +1920,51 @@ void runZEditOracleSelfTest()
     afterLow[0] = -1001;
     expectReject([&] { verifyDenseZEditStep(1, beforeLow, afterLow, 0); },
                  "Edit frame must reject non-peer-crossing ineffective Z mutation");
+
+    // Rejected-Z-edit oracle checks: valid step, omitted rejected edit, and misdirected edit.
+    Options rejOpts;
+    rejOpts.rejectedZEdit = true;
+    rejOpts.population = 80;
+    rejOpts.warmupFrames = 2;
+    const auto rejBefore = computeDeterministicZOrders(rejOpts, 1);
+    const auto rejAfter = computeDeterministicZOrders(rejOpts, 2);
+    verifyRejectedZEditStep(rejOpts, 2, rejBefore, rejAfter, 0);
+
+    std::vector<std::int32_t> rejOmitted = rejAfter;
+    const size_t firstScheduledSlot = 64 + ((2 * 100) % 16);
+    rejOmitted[firstScheduledSlot] = rejBefore[firstScheduledSlot];
+    expectReject([&] { verifyRejectedZEditStep(rejOpts, 2, rejBefore, rejOmitted, 0); },
+                 "Rejected-z-edit oracle must reject an omitted rejected edit");
+
+    std::vector<std::int32_t> rejMisdirectedVisible = rejAfter;
+    rejMisdirectedVisible[0] = -999;
+    expectReject([&] { verifyRejectedZEditStep(rejOpts, 2, rejBefore, rejMisdirectedVisible, 0); },
+                 "Rejected-z-edit oracle must reject an edit hitting a visible slot");
+
+    std::vector<std::int32_t> rejMisdirectedPeer = rejAfter;
+    rejMisdirectedPeer[firstScheduledSlot] = rejBefore[firstScheduledSlot];
+    rejMisdirectedPeer[64] += 1;
+    expectReject([&] { verifyRejectedZEditStep(rejOpts, 2, rejBefore, rejMisdirectedPeer, 0); },
+                 "Rejected-z-edit oracle must reject a misdirected rejected-slot edit");
+
+    // Crossing schedule oracle checks: moving crossing passes, stationary crossing rejects.
+    Options crossOpts;
+    crossOpts.profile = FixtureTrajectoryProfile::Crossing;
+    crossOpts.population = 8;
+    crossOpts.warmupFrames = 2;
+    const DeterministicFixtureTrajectory crossTraj(FixtureTrajectoryProfile::Crossing, crossOpts.population, 0, 100, false);
+    std::vector<std::array<float, 3>> crossBefore(crossOpts.population);
+    std::vector<std::array<float, 3>> crossAfter(crossOpts.population);
+    for (size_t slot = 0; slot < crossOpts.population; ++slot)
+    {
+        const auto p1 = crossTraj.pose(slot, 1);
+        const auto p2 = crossTraj.pose(slot, 2);
+        crossBefore[slot] = {p1.x, p1.y, p1.rotationRadians};
+        crossAfter[slot] = {p2.x, p2.y, p2.rotationRadians};
+    }
+    verifyCrossingPoseStep(crossOpts, crossTraj, 2, crossBefore, crossAfter, 0);
+    expectReject([&] { verifyCrossingPoseStep(crossOpts, crossTraj, 2, crossBefore, crossBefore, 0); },
+                 "Crossing oracle must reject a stationary crossing control");
 }
 #endif
 } // namespace

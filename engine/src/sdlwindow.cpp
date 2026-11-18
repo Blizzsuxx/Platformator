@@ -1,6 +1,7 @@
 #include "sdlwindow.h"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -550,9 +551,14 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
     }
 
     GameManager &manager = RuntimeAccess::gameManager();
-    const auto refreshRecord = [&](RenderCullingState::RecordIndex index) {
+    const auto resolveRecordSprite = [&](const RenderCullingState::Record &record) {
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingHandleResolutions, 1);
+        return static_cast<Sprite *>(manager.resolveHandle(record.spriteHandle, ObjectKind::Sprite));
+    };
+
+    const auto refreshRecord = [&](RenderCullingState::RecordIndex index) -> Sprite * {
         auto &record = state.recordAt(index);
-        auto *sprite = static_cast<Sprite *>(manager.resolveHandle(record.spriteHandle, ObjectKind::Sprite));
+        Sprite *sprite = resolveRecordSprite(record);
         if (sprite == nullptr)
         {
             record.boundsValid = false;
@@ -560,33 +566,33 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
             if (state.mode() == RenderCullingMode::Indexed)
                 state.updateSpatialBounds(index, record.bounds, false);
             PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
-            return;
+            return nullptr;
+        }
+
+        record.hasTexture = sprite->getTexture() != nullptr;
+        if (!record.hasTexture)
+        {
+            record.boundsValid = false;
+            if (state.mode() == RenderCullingMode::Indexed)
+                state.updateSpatialBounds(index, record.bounds, false);
+            PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
+            return sprite;
         }
 
         const Eigen::Vector2f &position = camera->getPublishedSpritePosition(sprite);
-        record.hasTexture = sprite->getTexture() != nullptr;
+        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingProxyCertifications, 1);
         record.boundsValid = makeCertifiedSpriteRenderProxy(position.x(), position.y(), sprite->getWidth(),
                                                             sprite->getHeight(),
                                                             sprite->getGameObject()->getRotationInDegrees(),
                                                             view.scaleX, view.scaleY, record.bounds);
         if (state.mode() == RenderCullingMode::Indexed)
-            state.updateSpatialBounds(index, record.bounds, record.boundsValid && record.hasTexture);
+            state.updateSpatialBounds(index, record.bounds, record.boundsValid);
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingBoundsRefreshes, 1);
+        return sprite;
     };
 
-    if (projectionChanged)
-    {
-        for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
-            refreshRecord(rank);
-    }
-    else
-    {
-        const auto queuedCount = state.dirtyCount();
-        for (RenderCullingState::RecordIndex queued = 0; queued < queuedCount; ++queued)
-            refreshRecord(state.dirtyAt(queued));
-    }
-
-    const auto visibleAtCurrentView = [&](RenderCullingState::RecordIndex rank) {
+    const auto visibleWithResolvedSprite = [&](RenderCullingState::RecordIndex rank, Sprite *resolvedSprite,
+                                               bool hasResolvedSprite) {
         const auto &record = state.recordAt(rank);
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingCandidateVisits, 1);
         if (!record.hasTexture || !record.boundsValid)
@@ -594,7 +600,7 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
         if (!overlaps(record.bounds, query))
             return false;
 
-        auto *sprite = static_cast<Sprite *>(manager.resolveHandle(record.spriteHandle, ObjectKind::Sprite));
+        Sprite *sprite = hasResolvedSprite ? resolvedSprite : resolveRecordSprite(record);
         if (sprite == nullptr)
             return true;
         SDL_FRect destination{};
@@ -606,12 +612,24 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
 
     if (rebuildSelection)
     {
+        if (projectionChanged)
+        {
+            for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
+                refreshRecord(rank);
+        }
+        else
+        {
+            const auto queuedCount = state.dirtyCount();
+            for (RenderCullingState::RecordIndex queued = 0; queued < queuedCount; ++queued)
+                refreshRecord(state.dirtyAt(queued));
+        }
+
         state.beginVisibleSelectionScratch();
         if (state.mode() == RenderCullingMode::Indexed)
         {
             const auto &candidates = state.querySpatial(query);
             for (const auto rank : candidates)
-                if (visibleAtCurrentView(rank))
+                if (visibleWithResolvedSprite(rank, nullptr, false))
                     state.appendVisibleSelectionScratch(rank);
         }
         else
@@ -619,24 +637,22 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
             for (RenderCullingState::RecordIndex rank = 0; rank < state.recordCount(); ++rank)
             {
                 PLATFORMATOR_RENDER_CULLING_ADD(renderCullingFullPopulationVisits, 1);
-                if (visibleAtCurrentView(rank))
+                if (visibleWithResolvedSprite(rank, nullptr, false))
                     state.appendVisibleSelectionScratch(rank);
             }
         }
         state.publishVisibleSelectionScratch();
     }
-    else if (state.dirtyCount() == 0)
-    {
-        PLATFORMATOR_RENDER_CULLING_ADD(renderCullingCacheHits, 1);
-    }
     else
     {
         const auto queuedCount = state.dirtyCount();
+        assert(queuedCount > 0);
         state.beginVisibleDelta();
         for (RenderCullingState::RecordIndex queued = 0; queued < queuedCount; ++queued)
         {
             const auto rank = state.dirtyAt(queued);
-            state.updateVisibleRank(rank, visibleAtCurrentView(rank));
+            Sprite *sprite = refreshRecord(rank);
+            state.updateVisibleRank(rank, visibleWithResolvedSprite(rank, sprite, true));
         }
         state.finishVisibleDelta();
     }
@@ -1007,13 +1023,19 @@ void SDLWindow::notifySpriteOrderChanged(size_t slot) noexcept
 #if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
     if (order.orderDirty && order.orderMode != BenchmarkSpriteOrderMode::SingleEntryRepair)
         return;
+#else
+    if (order.orderDirty)
+        return;
+#endif
     const bool stale =
         slot >= spriteComponents.size() || !order.preparedOnce ||
         (!order.preparedAll && (!renderCullingState || !renderCullingState->selectionValid() ||
                                 order.preparedMembershipRevision != renderCullingState->visibleMembershipRevision()));
     if (stale)
     {
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
         order.singleEditCandidateValid = false;
+#endif
         order.orderDirty = true;
         return;
     }
@@ -1021,6 +1043,7 @@ void SDLWindow::notifySpriteOrderChanged(size_t slot) noexcept
     if (!affected)
         return;
 
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
     if (order.orderMode == BenchmarkSpriteOrderMode::SingleEntryRepair)
     {
         if (!order.orderDirty && !order.entries.empty())
@@ -1033,21 +1056,6 @@ void SDLWindow::notifySpriteOrderChanged(size_t slot) noexcept
             order.singleEditCandidateValid = false;
         }
     }
-#else
-    if (order.orderDirty)
-        return;
-    const bool stale =
-        slot >= spriteComponents.size() || !order.preparedOnce ||
-        (!order.preparedAll && (!renderCullingState || !renderCullingState->selectionValid() ||
-                                order.preparedMembershipRevision != renderCullingState->visibleMembershipRevision()));
-    if (stale)
-    {
-        order.orderDirty = true;
-        return;
-    }
-    const bool affected = order.preparedAll || renderCullingState->isRankVisible(slot);
-    if (!affected)
-        return;
 #endif
     order.orderDirty = true;
 }

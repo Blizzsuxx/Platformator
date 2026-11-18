@@ -1066,6 +1066,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 lambda m: m["build"].update({"source_sha256": "x" * 64}),
                 lambda m: m["renderer_mapping"].update({"output_width": 640}),
                 lambda m: m.update({"ordering_variant": "rebuild"}),
+                lambda m: m.update({"workers": 4}),
                 lambda m: m["linear_render_culling"].update({"observed_frame_fallbacks": 1}),
             ):
                 bad = json.loads(json.dumps(manifest))
@@ -1100,9 +1101,11 @@ class LinearRenderCaptureTests(unittest.TestCase):
                 return dict(val_id)
 
             def make_fake_run(fail_parity=False, fail_mid_control=False, base_traj_override=None,
-                              extra_present_wait_ns=0, prepare_ns_by_arm=None):
+                              extra_present_wait_ns=0, prepare_ns_by_arm=None,
+                              omit_candidate_prepare_col=False, oversized_in_progress_bytes=0,
+                              control_override=None):
                 calls = []
-                def fake_run(cmd, log_path, env):
+                def fake_run(cmd, log_path, env, **kwargs):
                     calls.append(list(cmd))
                     Path(log_path).write_text("ok\n")
                     profile = cmd[cmd.index("--profile") + 1]
@@ -1121,6 +1124,9 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         traj.update(base_traj_override)
                     if "--validate-rendering" in cmd:
                         ev = Path(cmd[cmd.index("--evidence-output") + 1])
+                        if oversized_in_progress_bytes > 0:
+                            Path(str(ev) + ".frames.jsonl").write_bytes(b"x" * oversized_in_progress_bytes)
+                            capture.check_budget(reserve_bytes=kwargs.get("reserve_bytes", 0))
                         subs = [[i, 0] for i in range(min(count, 4))] if profile != "dense-z-edit" else [[i, 0] for i in range(count)]
                         Path(str(ev) + ".frames.jsonl").write_text("\n".join(
                             json.dumps({"frame": f, "image_fnv64": f"h{f}", "output_width": 320,
@@ -1143,10 +1149,36 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         cw = {"sprite_order_preparations": 0 if profile == "rejected-z-edit" else 2,
                               "sprite_order_sorts": 0 if (profile == "rejected-z-edit" or ordering == "repair") else 2,
                               "bounds_refreshes": 0, "index_relinks": 0, "queries": 0}
-                        Path(res).write_text(json.dumps({
+                        if profile == "rejected-z-edit":
+                            z_tot = min(100, max(0, count - 64)) * meas
+                            pose_tot = 0
+                            spr_tot = z_tot
+                            max_step = min(100, max(0, count - 64))
+                        elif profile == "crossing":
+                            z_tot = 0
+                            pose_tot = count * meas
+                            spr_tot = pose_tot
+                            max_step = count
+                        else:
+                            z_tot = 0
+                            pose_tot = 0
+                            spr_tot = 0
+                            max_step = 0
+                        payload = {
+                            "profile": profile, "sprite_count": count, "measure_frames": meas, "mode": strategy,
                             "trajectory_parameters": traj, "allocation_calls": 0, "allocated_bytes": 0,
+                            "actual_changed_sprite_total": spr_tot,
+                            "actual_changed_pose_total": pose_tot,
+                            "actual_changed_z_total": z_tot,
+                            "actual_changed_sprites_per_step_max": max_step,
+                            "actual_changed_fraction": (spr_tot / (count * meas)) if count * meas else 0.0,
+                            "render_submissions": min(count * meas, 100),
                             "cold_observation": {}, "capacity_growth_observation": {}, "reset_observation": {},
-                            "culling_work": cw}))
+                            "culling_work": cw,
+                        }
+                        if control_override and (profile, strategy) in control_override:
+                            payload.update(control_override[(profile, strategy)])
+                        Path(res).write_text(json.dumps(payload))
                     else:
                         csv_path = Path(cmd[cmd.index("--csv-output") + 1])
                         vp = cmd[cmd.index("--validation-proof") + 1] if "--validation-proof" in cmd else None
@@ -1195,7 +1227,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                         with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
                             w = csv.writer(f)
-                            if is_base:
+                            if is_base or omit_candidate_prepare_col:
                                 w.writerow(["step", "paired_step_render_ns"])
                                 for i in range(meas):
                                     w.writerow([i, 1_500_000 if (i % 2 == 0 or profile != "dense-z-edit") else 2_500_000])
@@ -1264,10 +1296,10 @@ class LinearRenderCaptureTests(unittest.TestCase):
             # 4. Time budget failure stops without emitting report.json and preserves partial files.
             out_time = root / "fail_time"
             calls_time = []
-            def fake_slow_run(cmd, log_path, env):
+            def fake_slow_run(cmd, log_path, env, **kwargs):
                 calls_time.append(list(cmd))
                 capture.time.sleep(0.08)
-                fake_ok(cmd, log_path, env)
+                fake_ok(cmd, log_path, env, **kwargs)
             with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
                     mock.patch.object(capture, "_run", side_effect=fake_slow_run):
                 rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
@@ -1400,6 +1432,137 @@ class LinearRenderCaptureTests(unittest.TestCase):
             # Paired step+render still reflects the 15 ms presentation wait (~17.5 ms) independently.
             self.assertGreater(repair_edit_paired["mean_ms"], 15.0)
             self.assertIn("unavailable (frozen baseline)", (out_prep / "report.md").read_text())
+            # T063: Verify work-only control totals are included in compact report.
+            self.assertEqual(rep_prep["work_resource_controls"]["rejected-z-edit"]["indexed"]["actual_changed_z_total"], 400)
+            self.assertEqual(rep_prep["work_resource_controls"]["fully-moving-crossing"]["indexed"]["actual_changed_pose_total"], 40000)
+
+            # 8. T060: Dense worker-arm collisions rejected before creating output directory;
+            #    all-zero-only selections remain compatible; manifest worker label mismatches rejected.
+            for w, mw in ((4, 1), (1, 1), (2, 4)):
+                out_w = root / f"dense_bad_w_{w}_{mw}"
+                with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                        mock.patch.object(capture, "_run", side_effect=fake_ok):
+                    rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "dense-z-edit",
+                                       "--candidate-probe", str(bins["cand"]),
+                                       "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                       "--workers", str(w), "--multiworker-count", str(mw), "--repetitions", "1",
+                                       "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_w)])
+                self.assertEqual(rc, 2, (w, mw))
+                self.assertFalse(out_w.exists(), f"Output directory must not be created for invalid ({w}, {mw})")
+
+            for w, mw in ((1, 4), (4, 1), (1, 1), (2, 4)):
+                all_zero_cases = capture.render_order_cases("authored-static,sparse-camera-pan", w, mw)
+                for c in all_zero_cases:
+                    arms = capture.render_order_arms(c)
+                    self.assertEqual(len({a["arm"] for a in arms}), len(arms))
+                    self.assertEqual(len({(a["arm"], a["workers"]) for a in arms}), len(arms))
+            dense_valid = capture.render_order_cases("dense-z-edit", 1, 4)
+            dense_arms_valid = capture.render_order_arms(dense_valid[0])
+            self.assertEqual(len({a["arm"] for a in dense_arms_valid}), 4)
+            self.assertEqual(len({(a["ordering_variant"], a["workers"]) for a in dense_arms_valid}), 4)
+
+            # 9. T061: Final-publication budget failure and oversized in-progress output.
+            out_pub = root / "fail_final_pub"
+            fake_pub, calls_pub = make_fake_run(fail_parity=False)
+            # First run succeeds at large budget so we know exact pre-report byte size.
+            out_probe_size = root / "probe_size"
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_pub):
+                self.assertEqual(capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                               "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                               "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                               "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                               "--warmup-frames", "2", "--measure-frames", "2", "--output", str(out_probe_size)]), 0)
+            rep_size = (out_probe_size / "report.json").stat().st_size + (out_probe_size / "report.md").stat().st_size
+            total_ok_bytes = sum(p.stat().st_size for p in out_probe_size.rglob("*") if p.is_file())
+            pre_report_bytes = total_ok_bytes - rep_size
+            tight_mib = (pre_report_bytes + capture.PARTIAL_SUMMARY_RESERVE_BYTES + 256) / (1024 * 1024)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_pub):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--max-output-mib", repr(tight_mib), "--output", str(out_pub)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_pub / "report.json").exists())
+            self.assertFalse((out_pub / "report.md").exists())
+            partial_pub = json.loads((out_pub / "partial-report.json").read_text())
+            self.assertFalse(partial_pub["complete"])
+            self.assertEqual(partial_pub["failure_stage"], "final-publication")
+            self.assertLessEqual(sum(p.stat().st_size for p in out_pub.rglob("*") if p.is_file()),
+                                 int(tight_mib * 1024 * 1024))
+
+            out_oversized = root / "fail_oversized_in_progress"
+            fake_over, calls_over = make_fake_run(oversized_in_progress_bytes=64 * 1024)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_over):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                   "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "2",
+                                   "--max-output-mib", "0.03", "--output", str(out_oversized)])
+            self.assertEqual(rc, 2)
+            self.assertEqual(len(calls_over), 1)
+            self.assertFalse((out_oversized / "report.json").exists())
+            self.assertEqual(list(out_oversized.rglob("*.frames.jsonl")), [])
+            partial_over = json.loads((out_oversized / "partial-report.json").read_text())
+            self.assertFalse(partial_over["complete"])
+            self.assertLessEqual(sum(p.stat().st_size for p in out_oversized.rglob("*") if p.is_file()),
+                                 int(0.03 * 1024 * 1024))
+
+            # 10. T062: Dense 1-frame rejection before launch & candidate missing draw_order_prepare_ns rejection.
+            out_one_frame = root / "fail_dense_one_frame"
+            fake_1f, calls_1f = make_fake_run()
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_1f):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "dense-z-edit",
+                                   "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "1", "--output", str(out_one_frame)])
+            self.assertEqual(rc, 2)
+            self.assertFalse(out_one_frame.exists())
+            self.assertEqual(calls_1f, [])
+
+            out_missing_col = root / "fail_missing_prep_col"
+            fake_nocol, _ = make_fake_run(omit_candidate_prepare_col=True)
+            with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                    mock.patch.object(capture, "_run", side_effect=fake_nocol):
+                rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "dense-z-edit",
+                                   "--candidate-probe", str(bins["cand"]),
+                                   "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                   "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                   "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_missing_col)])
+            self.assertEqual(rc, 2)
+            self.assertFalse((out_missing_col / "report.json").exists())
+            partial_nocol = json.loads((out_missing_col / "partial-report.json").read_text())
+            self.assertIn("draw_order_prepare_ns", partial_nocol["failure_reason"])
+
+            # 11. T063: Negative control-resource driver tests (omitted rejected edit, misdirected edit, stationary crossing).
+            for label, override, expected_arm in (
+                ("omitted_rejected", {("rejected-z-edit", "indexed"): {"actual_changed_z_total": 399, "actual_changed_sprite_total": 399}},
+                 "rejected-z-edit-indexed"),
+                ("misdirected_pose", {("rejected-z-edit", "cached-linear"): {"actual_changed_pose_total": 1, "actual_changed_sprite_total": 401}},
+                 "rejected-z-edit-cached-linear"),
+                ("stationary_crossing", {("crossing", "current-linear"): {"actual_changed_pose_total": 0, "actual_changed_sprite_total": 0}},
+                 "fully-moving-crossing-current-linear"),
+            ):
+                out_ctrl = root / f"fail_ctrl_{label}"
+                fake_ctrl, _ = make_fake_run(control_override=override)
+                with mock.patch.object(capture, "_read_probe_identity", side_effect=make_identity), \
+                        mock.patch.object(capture, "_run", side_effect=fake_ctrl):
+                    rc = capture.main(["--comparison", "render-order-culling", "--focused-cases", "authored-static",
+                                       "--baseline-probe", str(bins["base"]), "--candidate-probe", str(bins["cand"]),
+                                       "--candidate-validation-probe", str(bins["val"]), "--asset-root", str(assets),
+                                       "--workers", "1", "--multiworker-count", "4", "--repetitions", "1",
+                                       "--warmup-frames", "2", "--measure-frames", "4", "--output", str(out_ctrl)])
+                self.assertEqual(rc, 2, label)
+                self.assertFalse((out_ctrl / "report.json").exists(), label)
+                partial_ctrl = json.loads((out_ctrl / "partial-report.json").read_text())
+                self.assertNotIn(expected_arm, [item["arm"] for item in partial_ctrl["completed_arms"]], label)
 
 
 if __name__ == "__main__":

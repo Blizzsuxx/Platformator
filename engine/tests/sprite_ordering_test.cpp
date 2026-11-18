@@ -687,10 +687,11 @@ ScaleRunSummary checkIndexedWorkScaling(size_t population)
         },
         false);
     test_support::require(frame.work.renderCullingBoundsRefreshes == 8 &&
+                              frame.work.renderCullingHandleResolutions == 8 &&
                               frame.work.visibleMembershipChanges == 0 &&
                               frame.work.spriteOrderPreparations == 0 && frame.work.spriteOrderSorts == 0 &&
                               frame.work.spriteOrderComparisons == 0,
-                          "Within-view movement keeping visible membership must reuse prepared draw order");
+                          "Within-view movement keeping visible membership must resolve once per dirty slot and reuse prepared draw order");
 
     // 5. Same-set camera pan performs a spatial query without resorting unchanged membership.
     renderAndCheckNoAlloc(

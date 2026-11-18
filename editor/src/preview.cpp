@@ -1528,21 +1528,30 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     const float scaleY = nested_number(objectData, "scale", "y", 1.0f);
     const float rotation = finite_number(objectData, "rotation", 0.0f);
     const bool active = boolean_value(objectData, "active", true);
-    const bool reactivated = !newProxy && proxy.hasCachedDocumentState && !proxy.cachedActive && active;
-    const bool spriteReplaced =
-        !newProxy && proxy.hasCachedDocumentState && proxy.cachedSpriteComponentId != spriteComponentId;
-    if (newProxy || reactivated || spriteReplaced)
+    const bool reactivated = !newProxy && !proxy.cachedActive && active;
+    const bool spriteReplaced = !newProxy && proxy.cachedSpriteComponentId != spriteComponentId;
+    if (newProxy)
     {
         proxy.registrationSequence = nextRegistrationSequence_++;
-        drawOrderDirty_ = true;
-    }
-    if (!proxy.hasCachedDocumentState || proxy.cachedZOrder != zOrder)
-    {
         proxy.cachedZOrder = zOrder;
+        proxy.cachedSpriteComponentId = spriteComponentId;
+        proxy.cachedActive = active;
         drawOrderDirty_ = true;
     }
-    if (!proxy.hasCachedDocumentState || proxy.cachedSpriteComponentId != spriteComponentId)
-        proxy.cachedSpriteComponentId = spriteComponentId;
+    else
+    {
+        if (reactivated || spriteReplaced)
+        {
+            proxy.registrationSequence = nextRegistrationSequence_++;
+            proxy.cachedSpriteComponentId = spriteComponentId;
+            drawOrderDirty_ = true;
+        }
+        if (proxy.cachedZOrder != zOrder)
+        {
+            proxy.cachedZOrder = zOrder;
+            drawOrderDirty_ = true;
+        }
+    }
     const bool documentStateUnchanged = proxy.hasCachedDocumentState &&
         proxy.cachedPositionX == positionX && proxy.cachedPositionY == positionY &&
         proxy.cachedScaleX == scaleX && proxy.cachedScaleY == scaleY &&

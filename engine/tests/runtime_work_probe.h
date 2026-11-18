@@ -53,6 +53,8 @@ struct WorkCounters
     size_t renderCullingQueries = 0;
     size_t renderCullingViewQueryBuilds = 0;
     size_t renderCullingQueryStampResets = 0;
+    size_t renderCullingHandleResolutions = 0;
+    size_t renderCullingProxyCertifications = 0;
     size_t renderCullingCellVisits = 0;
     size_t renderCullingCandidateVisits = 0;
     size_t renderCullingFullPopulationVisits = 0;

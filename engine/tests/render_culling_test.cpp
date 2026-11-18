@@ -1863,6 +1863,83 @@ void checkConsecutiveMutationStrategies()
               << " cached-linear=indexed=current-linear submit-all=verified resize=400x300 fallback-return=verified\n";
 }
 
+void checkTexturelessIntervalAndRestoration()
+{
+    const auto captureSequence = [](const char *mode) {
+        ScopedRenderCullingMode strategy(mode);
+        test_support::headlessEnvironment();
+        RenderCullingFixture fixture(OUTPUT_WIDTH, OUTPUT_HEIGHT, 320.0f, 240.0f, true);
+        fixture.reserveSprites(1);
+        auto &rec = fixture.addSprite(0, 0, 800.0f, 80.0f, 24.0f, 24.0f, FixtureTexture::Null);
+        rec.sprite->setZOrder(3);
+
+        std::vector<FrameResult> frames;
+        frames.reserve(6);
+        // Frame 0: initial offscreen textureless sprite (no proxy certification).
+        frames.push_back(captureFixtureFrame(fixture));
+
+        const auto stepMutation = [&](const std::function<void()> &mutation) {
+            FrameResult frame = captureFrame(fixture, 1, [&](double) { mutation(); }, nullptr, true);
+            frame.expectedVisible = expectedVisibleForFixture(fixture, frame.image.width, frame.image.height);
+            frames.push_back(std::move(frame));
+        };
+        // Frame 1: move and rotate while still textureless (must skip proxy certification).
+        stepMutation([&] {
+            fixture.record(0).object->setPosition({900.0f, 90.0f});
+            fixture.record(0).object->setRotation(0.5f);
+        });
+        // Frame 2: restore texture while offscreen (certifies geometry once, rejects sprite).
+        stepMutation([&] {
+            fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::BlackSquare));
+        });
+        // Frame 3: clear texture and move onscreen (skips proxy certification).
+        stepMutation([&] {
+            fixture.record(0).sprite->setTextureWrapper(nullptr);
+            fixture.record(0).object->setPosition({120.0f, 100.0f});
+        });
+        // Frame 4: move and rotate onscreen while textureless (skips proxy certification).
+        stepMutation([&] {
+            fixture.record(0).object->setPosition({140.0f, 110.0f});
+            fixture.record(0).object->setRotation(0.3f);
+        });
+        // Frame 5: restore texture while onscreen (certifies geometry once, renders sprite).
+        stepMutation([&] {
+            fixture.record(0).sprite->setTextureWrapper(fixture.texture(FixtureTexture::RedCircle));
+        });
+        return frames;
+    };
+
+    const auto current = captureSequence("current-linear");
+    const auto cached = captureSequence("cached-linear");
+    const auto indexed = captureSequence("indexed");
+    test_support::require(current.size() == 6 && cached.size() == 6 && indexed.size() == 6,
+                          "Textureless interval sequence length mismatch");
+    const std::array<bool, 6> expectedSubmitted = {true, true, false, true, true, true};
+    const std::array<size_t, 6> expectedCertifications = {0, 0, 1, 0, 0, 1};
+    for (size_t step = 0; step < 6; ++step)
+    {
+        test_support::require(current[step].submissions.size() == (expectedSubmitted[step] ? 1u : 0u),
+                              "Current-linear textureless restoration submission mismatch at step " +
+                                  std::to_string(step));
+        compareFixtureFrames("textureless interval cached step " + std::to_string(step), current[step], cached[step]);
+        compareFixtureFrames("textureless interval indexed step " + std::to_string(step), current[step], indexed[step]);
+        for (const auto *modeFrames : {&cached, &indexed})
+        {
+            const auto &work = (*modeFrames)[step].work;
+            test_support::require(work.renderCullingProxyCertifications == expectedCertifications[step] &&
+                                      work.renderCullingBoundsRefreshes == 1,
+                                  "Textureless interval proxy certification count mismatch at step " +
+                                      std::to_string(step));
+            if (step > 0)
+            {
+                test_support::require(work.renderCullingHandleResolutions == 1,
+                                      "Fixed-view dirty delta must resolve queued handle once at step " +
+                                          std::to_string(step));
+            }
+        }
+    }
+}
+
 void checkDefaultCachedLinearAndMixedZCompositingParity()
 {
     struct ModeRun
@@ -2050,9 +2127,10 @@ void checkDefaultCachedLinearAndMixedZCompositingParity()
         test_support::require(modeRun->frames[6].work.renderCullingNumericFallbacks == 0 &&
                                   modeRun->frames[6].work.renderCullingViewQueryBuilds == 1 &&
                                   modeRun->frames[6].work.renderCullingBoundsRefreshes == 1 &&
+                                  modeRun->frames[6].work.renderCullingHandleResolutions == 1 &&
                                   modeRun->frames[6].work.renderCullingCacheHits == 0 &&
                                   modeRun->frames[6].work.renderCullingProjectionRebuilds == 0,
-                              "Dirty sprite frame must build query once without warm cache hit");
+                              "Dirty sprite frame must build query once and resolve dirty handle once without warm cache hit");
     // Frame 7: clean frame after dirty drain short-circuits again
     for (const auto *modeRun : {&defaultMode, &cachedLinear, &indexed})
         test_support::require(modeRun->frames[7].work.renderCullingViewQueryBuilds == 0 &&
@@ -2119,6 +2197,7 @@ void run()
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     checkCustomMappingFallbacksAndDirectCamera();
     checkConsecutiveMutationStrategies();
+    checkTexturelessIntervalAndRestoration();
     checkDefaultCachedLinearAndMixedZCompositingParity();
 #endif
 }

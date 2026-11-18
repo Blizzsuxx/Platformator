@@ -3,11 +3,14 @@
 
 #include <oneapi/tbb/parallel_for.h>
 
+#include <platformator/behavior.h>
 #include <platformator/boxcollider.h>
 #include <platformator/circlecollider.h>
 #include <platformator/collisiontypes.h>
 #include <platformator/gameobject.h>
+#include <platformator/rigidbody.h>
 #include <platformator/runtime.h>
+#include <platformator/scriptcomponent.h>
 
 #include <cmath>
 #include <cstddef>
@@ -583,6 +586,167 @@ void testGridAabbChunksMultiCellAndLongEmptyRay()
     require(gAllocationCount == 0, "Grid+AABB raycast through multi-cell and chunked cell must allocate zero heap memory");
     require(singleWide.has_value(), "Ray through multi-chunk cell must hit an aligned box cleanly");
 }
+
+void testPublishedGeometryPublicationOrdering()
+{
+    platformator::Runtime runtime(physicsOnly());
+
+    GameObject *boxObj = runtime.createGameObject()->setName("PubBox");
+    boxObj->setPosition({100.0f, 0.0f});
+    boxObj->addComponent<BoxCollider>(20.0f, 10.0f);
+    BoxCollider *box = boxObj->getComponent<BoxCollider>();
+
+    GameObject *circleObj = runtime.createGameObject()->setName("PubCircle");
+    circleObj->setPosition({100.0f, 120.0f});
+    circleObj->addComponent<CircleCollider>(5.0f);
+    CircleCollider *circle = circleObj->getComponent<CircleCollider>();
+
+    runtime.simulateFrame(dt);
+
+    // Queue all 5 geometry/pose mutations BEFORE publication:
+    // 1) resize, 2) rotation, 3) scale, 4) offset, 5) movement.
+    box->setWidth(4.0f);
+    box->setHeight(4.0f);
+    boxObj->setRotation(std::numbers::pi_v<float> * 0.5f);
+    boxObj->setScale({3.0f, 1.0f});
+    box->setOffset({30.0f, 0.0f});
+    boxObj->setPosition({250.0f, 0.0f});
+
+    circle->setRadius(2.0f);
+    circleObj->setScale({4.0f, 4.0f});
+    circle->setOffset({-20.0f, 0.0f});
+    circleObj->setPosition({260.0f, 120.0f});
+
+    // Before publication, both raycast and raycastAll must observe the previous consistent published geometry
+    // (box centered at (100,0) with halfW=10, halfH=5; circle centered at (100,120) with r=5) — never mixed state.
+    const auto preBoxSingle = runtime.raycast({50.0f, 0.0f}, {1.0f, 0.0f}, 80.0f);
+    const auto preBoxAll = runtime.raycastAll({50.0f, 0.0f}, {1.0f, 0.0f}, 80.0f);
+    require(preBoxSingle.has_value() && preBoxAll.size() == 1 && nearFloat(preBoxSingle->distance, 40.0f) &&
+                nearFloat(preBoxAll[0].distance, 40.0f) && nearVec(preBoxSingle->normal, {-1.0f, 0.0f}),
+            "Queued box mutations must not affect raycasts before publication");
+
+    const auto preCircleSingle = runtime.raycast({50.0f, 120.0f}, {1.0f, 0.0f}, 80.0f);
+    const auto preCircleAll = runtime.raycastAll({50.0f, 120.0f}, {1.0f, 0.0f}, 80.0f);
+    require(preCircleSingle.has_value() && preCircleAll.size() == 1 &&
+                nearFloat(preCircleSingle->distance, 45.0f) && nearFloat(preCircleAll[0].distance, 45.0f),
+            "Queued circle mutations must not affect raycasts before publication");
+
+    // Step to publish synchronized geometry to Grid + AABB.
+    runtime.simulateFrame(dt);
+
+    // Miss at old positions.
+    require(!runtime.raycast({50.0f, 0.0f}, {1.0f, 0.0f}, 80.0f).has_value() &&
+                !runtime.raycast({50.0f, 120.0f}, {1.0f, 0.0f}, 80.0f).has_value(),
+            "Published mutations must remove stale old hits");
+
+    // Box after publication: pos=(250,0), rot=90deg, offset=(30,0) -> center=(250,30);
+    // base=(4,4)*scale(3,1) => local half=(6, 2), rotated 90deg => world halfX=2, halfY=6.
+    // Ray from (240, 34) along +X hits x=248 at dist=8.
+    const auto postBoxSingle = runtime.raycast({240.0f, 34.0f}, {1.0f, 0.0f}, 30.0f);
+    const auto postBoxAll = runtime.raycastAll({240.0f, 34.0f}, {1.0f, 0.0f}, 30.0f);
+    require(postBoxSingle.has_value() && postBoxAll.size() == 1 &&
+                nearFloat(postBoxSingle->distance, 8.0f) && nearFloat(postBoxAll[0].distance, 8.0f) &&
+                nearVec(postBoxSingle->normal, {-1.0f, 0.0f}),
+            "Published box resize/rotation/scale/offset/move must agree across raycast and raycastAll");
+
+    // Circle after publication: center=(240, 120), published radius=2*4=8 -> front face at x=232.
+    const auto postCircleSingle = runtime.raycast({220.0f, 120.0f}, {1.0f, 0.0f}, 30.0f);
+    const auto postCircleAll = runtime.raycastAll({220.0f, 120.0f}, {1.0f, 0.0f}, 30.0f);
+    require(postCircleSingle.has_value() && postCircleAll.size() == 1 &&
+                nearFloat(postCircleSingle->distance, 12.0f) && nearFloat(postCircleAll[0].distance, 12.0f),
+            "Published circle resize/scale/offset/move must agree across raycast and raycastAll");
+}
+
+void testEqualFloatDistanceRoundingTieOrderIndependence()
+{
+    // Both circles yield double intersection t = 10.0 + ~1e-7 which rounds down to float 10.0f.
+    // Verify raycast picks the lower-ID collider consistently in both visit orders, matching raycastAll()[0],
+    // while maxDistance = 9.99999f still excludes hits beyond the caller bound.
+    auto verifyOrder = [](bool reverseVisitOrder) {
+        platformator::Runtime runtime(physicsOnly());
+        GameObject *objLow = runtime.createGameObject()->setName("TieRoundLow");
+        objLow->setPosition({15.0f, 1e-3f});
+        objLow->addComponent<CircleCollider>(5.0f);
+        Collider *colLow = objLow->getComponent<Collider>();
+
+        GameObject *objHigh = runtime.createGameObject()->setName("TieRoundHigh");
+        objHigh->setPosition({15.0f, 1e-3f});
+        objHigh->addComponent<CircleCollider>(5.0f);
+        Collider *colHigh = objHigh->getComponent<Collider>();
+        require(colLow->getId() < colHigh->getId(), "Expected ascending collider IDs");
+
+        runtime.simulateFrame(dt);
+        if (reverseVisitOrder)
+        {
+            // Evict objLow from (0,0) and reinsert so colHigh precedes colLow in SegmentedIntervalList.
+            objLow->setPosition({500.0f, 0.0f});
+            runtime.simulateFrame(dt);
+            objLow->setPosition({15.0f, 1e-3f});
+            runtime.simulateFrame(dt);
+        }
+
+        const auto closest = runtime.raycast({0.0f, 0.0f}, {1.0f, 0.0f}, 50.0f);
+        const auto all = runtime.raycastAll({0.0f, 0.0f}, {1.0f, 0.0f}, 50.0f);
+        require(all.size() == 2 && closest.has_value(), "Expected both equal-float-distance circles to hit");
+        require(nearFloat(closest->distance, 10.0f) && nearFloat(all[0].distance, 10.0f) &&
+                    nearFloat(all[1].distance, 10.0f),
+                "Double intersection slightly above 10.0f must round to 10.0f");
+        require(closest->collider == colLow && all[0].collider == colLow,
+                "Equal-float-distance hit rounding down must select lower collider ID in both visit orders");
+        require(!runtime.raycast({0.0f, 0.0f}, {1.0f, 0.0f}, 9.99999f).has_value(),
+                "Caller maxDistance bound must strictly reject hits at 10.0f");
+    };
+
+    verifyOrder(false);
+    verifyOrder(true);
+}
+
+void testAfterPhysicsSyncBehaviorRaycasts()
+{
+    struct ScriptDriver final : test_support::Behavior
+    {
+        GameObject *bodyTarget = nullptr;
+        GameObject *scriptTarget = nullptr;
+        bool sawSyncHit = false;
+        double observedDt = 0.0;
+
+        void update(double) override
+        {
+            if (scriptTarget != nullptr)
+                scriptTarget->setPosition({100.0f, 100.0f});
+        }
+
+        void afterPhysicsSync(double timeDelta) override
+        {
+            observedDt = timeDelta;
+            const auto bodyHit = getRuntime().raycast({25.0f, 0.0f}, {1.0f, 0.0f}, 50.0f);
+            const auto scriptHit = getRuntime().raycast({70.0f, 100.0f}, {1.0f, 0.0f}, 50.0f);
+            sawSyncHit = bodyHit.has_value() && bodyHit->gameObject == bodyTarget &&
+                         scriptHit.has_value() && scriptHit->gameObject == scriptTarget;
+        }
+    };
+
+    platformator::Runtime runtime(physicsOnly());
+    GameObject *bodyTarget = runtime.createGameObject()->setName("BodyTarget");
+    bodyTarget->setPosition({40.0f, 0.0f});
+    bodyTarget->addComponent<BoxCollider>(10.0f, 10.0f);
+    bodyTarget->addComponent<Rigidbody>(KINEMATIC, false);
+    bodyTarget->getComponent<Rigidbody>()->setVelocity({600.0f, 0.0f}); // moves +10 in dt=1/60 to x=50
+
+    GameObject *scriptTarget = runtime.createGameObject()->setName("ScriptTarget");
+    scriptTarget->setPosition({500.0f, 500.0f});
+    scriptTarget->addComponent<BoxCollider>(10.0f, 10.0f);
+
+    GameObject *observer = runtime.createGameObject()->setName("Observer");
+    auto *driver = new ScriptDriver();
+    driver->bodyTarget = bodyTarget;
+    driver->scriptTarget = scriptTarget;
+    observer->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(driver);
+
+    runtime.simulateFrame(dt);
+    require(driver->sawSyncHit && nearFloat(static_cast<float>(driver->observedDt), static_cast<float>(dt), 1e-6f),
+            "afterPhysicsSync must observe both published physics movement and Update script transforms");
+}
 } // namespace
 
 int main()
@@ -599,6 +763,9 @@ int main()
         testBoundedSpatialTraversalAndSameFrameMovement();
         testConcurrentRaycastsAndZeroPositionWrites();
         testGridAabbChunksMultiCellAndLongEmptyRay();
+        testPublishedGeometryPublicationOrdering();
+        testEqualFloatDistanceRoundingTieOrderIndependence();
+        testAfterPhysicsSyncBehaviorRaycasts();
         std::cout << "[PASS] raycast tests\n";
         return 0;
     }

@@ -794,7 +794,7 @@ namespace
     }
 
     bool intersectColliderRay(Collider *collider, const Eigen::Vector2f &origin,
-                              const Eigen::Vector2f &dir, float maxDistance, float limit, uint64_t collisionMask,
+                              const Eigen::Vector2f &dir, float maxDistance, double limit, uint64_t collisionMask,
                               bool includeTriggers, float cMinX, float cMaxX, float cMinY, float cMaxY,
                               platformator::RaycastHit &outHit)
     {
@@ -812,20 +812,25 @@ namespace
         float halfW = 0.0f;
         float halfH = 0.0f;
         float radius = 0.0f;
+        double cosR = 1.0;
+        double sinR = 0.0;
         if (shape == ColliderType::CircleCollider)
         {
             const auto *circle = static_cast<const CircleCollider *>(collider);
-            radius = circle->getRadius();
+            radius = circle->getPublishedRadius();
             if (!std::isfinite(radius) || radius <= 0.0f)
                 return false;
         }
         else if (shape == ColliderType::BoxCollider)
         {
             const auto *box = static_cast<const BoxCollider *>(collider);
-            halfW = box->getWidth() * 0.5f;
-            halfH = box->getHeight() * 0.5f;
+            halfW = box->getPublishedHalfWidth();
+            halfH = box->getPublishedHalfHeight();
             if (!std::isfinite(halfW) || !std::isfinite(halfH) || halfW <= 0.0f || halfH <= 0.0f)
                 return false;
+            const Eigen::Vector2f &xAxis = box->getPublishedXAxis();
+            cosR = static_cast<double>(xAxis.x());
+            sinR = static_cast<double>(xAxis.y());
         }
         else
         {
@@ -836,8 +841,6 @@ namespace
         if (!center.allFinite())
             return false;
 
-        const double cosR = static_cast<double>(obj->getCosRotation());
-        const double sinR = static_cast<double>(obj->getSinRotation());
         const double aabbMinX = static_cast<double>(cMinX);
         const double aabbMaxX = static_cast<double>(cMaxX);
         const double aabbMinY = static_cast<double>(cMinY);
@@ -848,7 +851,7 @@ namespace
         const double maxCoord =
             std::max({1.0, std::abs(aabbMinX), std::abs(aabbMaxX), std::abs(aabbMinY), std::abs(aabbMaxY)});
         const double aabbTol = std::max(1e-4, 1e-6 * maxCoord);
-        const double dLimit = static_cast<double>(limit);
+        const double dLimit = std::min(static_cast<double>(maxDistance), limit);
         double aabbTMin = 0.0;
         double aabbTMax = 0.0;
         if (!rayIntersectsAABBInterval(origin, dir, dLimit, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbTol, aabbTMin,
@@ -966,7 +969,7 @@ namespace
 
 template <typename HitCallback>
 bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2f &dir, float maxDistance,
-                                           float &limit, uint64_t collisionMask, bool includeTriggers,
+                                           const double &limit, uint64_t collisionMask, bool includeTriggers,
                                            HitCallback &&onHit) const
 {
     platformator::RaycastHit candidate;
@@ -981,7 +984,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
 
     double tGridStart = 0.0;
     double tGridEnd = 0.0;
-    if (!rayIntersectsAABBInterval(origin, dir, static_cast<double>(limit), gridMinX, gridMaxX, gridMinY, gridMaxY,
+    if (!rayIntersectsAABBInterval(origin, dir, limit, gridMinX, gridMaxX, gridMinY, gridMaxY,
                                    1.0, tGridStart, tGridEnd))
     {
         return true;
@@ -998,7 +1001,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
     const auto visitCellInterval = [&](const GridCell &cell, double tEnter, double tExit)
     {
         const double tClampedEnter = std::max(0.0, tEnter);
-        const double tClampedExit = std::max(tClampedEnter, std::min(static_cast<double>(limit), tExit));
+        const double tClampedExit = std::max(tClampedEnter, std::min(limit, tExit));
         const double p0x = ox + tClampedEnter * dx;
         const double p0y = oy + tClampedEnter * dy;
         const double p1x = ox + tClampedExit * dx;
@@ -1035,7 +1038,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
     };
 
     const double tStart = std::max(0.0, tGridStart);
-    const double tEnd = std::min(static_cast<double>(limit), tGridEnd);
+    const double tEnd = std::min(limit, tGridEnd);
     const double cellSize = static_cast<double>(GRID_CELL_SIZE);
     const double startX = ox + tStart * dx;
     const double startY = oy + tStart * dy;
@@ -1076,10 +1079,10 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
         int cy = startCy;
         double tCellEnter = tStart;
         const std::int64_t stepBudget = maxSteps + 4;
-        for (std::int64_t step = 0; step <= stepBudget && tCellEnter <= std::min(static_cast<double>(limit), tEnd) + 1e-4;
+        for (std::int64_t step = 0; step <= stepBudget && tCellEnter <= std::min(limit, tEnd) + 1e-4;
              ++step)
         {
-            const double tCellExit = std::min({static_cast<double>(limit), tEnd, tMaxX, tMaxY});
+            const double tCellExit = std::min({limit, tEnd, tMaxX, tMaxY});
             if (const GridCell *cell = grid.findCell(GridCellKey(cx, cy)))
                 visitCellInterval(*cell, tCellEnter, tCellExit);
             if (cx == endCx && cy == endCy)
@@ -1113,7 +1116,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
         const double cMaxY = static_cast<double>(key.y + 1) * cellSize;
         double cTEnter = 0.0;
         double cTExit = 0.0;
-        if (rayIntersectsAABBInterval(origin, dir, static_cast<double>(limit), cMinX, cMaxX, cMinY, cMaxY, 1e-2,
+        if (rayIntersectsAABBInterval(origin, dir, limit, cMinX, cMaxX, cMinY, cMaxY, 1e-2,
                                       cTEnter, cTExit))
         {
             visitCellInterval(entry.second, cTEnter, cTExit);
@@ -1138,7 +1141,7 @@ bool PhysicsManager::raycast(const Eigen::Vector2f &origin, const Eigen::Vector2
     const Eigen::Vector2f dir = validateAndNormalizeRay(origin, direction, maxDistance);
 
     bool hasHit = false;
-    float limit = maxDistance;
+    double limit = static_cast<double>(maxDistance);
     platformator::RaycastHit best;
 
     traverseRayCandidates(origin, dir, maxDistance, limit, collisionMask, includeTriggers,
@@ -1150,7 +1153,13 @@ bool PhysicsManager::raycast(const Eigen::Vector2f &origin, const Eigen::Vector2
                               {
                                   best = candidate;
                                   hasHit = true;
-                                  limit = best.distance;
+                                  // Keep the upper bound of best.distance's float rounding interval so
+                                  // equal-float-distance candidates with lower IDs are never pruned early.
+                                  const double nextAfterMid =
+                                      0.5 * (static_cast<double>(best.distance) +
+                                             static_cast<double>(std::nextafter(
+                                                 best.distance, std::numeric_limits<float>::infinity())));
+                                  limit = std::min(static_cast<double>(maxDistance), nextAfterMid);
                               }
                           });
 
@@ -1166,7 +1175,7 @@ std::vector<platformator::RaycastHit> PhysicsManager::raycastAll(const Eigen::Ve
     const Eigen::Vector2f dir = validateAndNormalizeRay(origin, direction, maxDistance);
 
     std::vector<platformator::RaycastHit> hits;
-    float limit = maxDistance;
+    const double limit = static_cast<double>(maxDistance);
     const bool usedGrid = traverseRayCandidates(
         origin, dir, maxDistance, limit, collisionMask, includeTriggers,
         [&](const platformator::RaycastHit &candidate)

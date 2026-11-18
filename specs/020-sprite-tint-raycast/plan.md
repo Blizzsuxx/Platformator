@@ -10,7 +10,7 @@
 
 Add three focused, zero-dependency engine and editor capabilities following a strict KISS + performance-first design:
 
-1. **Per-Sprite Color & Opacity Tinting**: Store an 8-bit `SDL_Color color{255, 255, 255, 255}` on `Sprite` (fitting into existing tail padding), expose `getColor` / `getAlpha` / `setColor` / `setAlpha`, serialize `"color": {"r", "g", "b", "a"}` with legacy omission defaulting to opaque white, support full editor inspection/validation/copy-reset/template/preview workflows, and apply modulation per draw inside `platformator_detail::submitSpriteRender` with a zero-overhead fast path when `(255, 255, 255, 255)` and clean state restoration afterward. Color edits never dirty culling bounds or sprite draw order. [Research](research.md#1-per-sprite-rgba-modulation-sdl_settexturecolormod--sdl_settexturealphamod)
+1. **Per-Sprite Color & Opacity Tinting**: Store an 8-bit `SDL_Color color{255, 255, 255, 255}` on `Sprite` (fitting into existing tail padding), expose `getColor` / `getAlpha` / `setColor` / `setAlpha`, serialize `"color": {"r", "g", "b", "a"}` with legacy omission defaulting to opaque white, support full editor inspection/validation/copy-reset/template/preview workflows, and apply modulation per draw inside `platformator_detail::submitSpriteRender` with a zero-modulation-call fast path when `(255, 255, 255, 255)` and prior RGB/alpha/blend state restoration afterward. Color edits never dirty culling bounds or sprite draw order. [Research](research.md#1-per-sprite-rgba-modulation-sdl_settexturecolormod--sdl_settexturealphamod)
 2. **Configurable Frame Clear Color**: Add `SDL_Color clearColor{255, 255, 255, 255}` to `WindowSettings` and forward `Runtime::getClearColor()` / `Runtime::setClearColor(...)` directly to `SDLWindow`'s `windowSettings.clearColor`, replacing the hardcoded white clear in `SDLWindow::render()` with zero duplicate state and safe headless storage. [Research](research.md#3-window--runtime-clear-color-override)
 3. **2D Spatial Raycast Queries**: Add `platformator::RaycastHit` (`collisiontypes.h`) and `Runtime::raycast` / `Runtime::raycastAll` (`runtime.h`), backed by `PhysicsManager` (`physicsmanager.{h,cpp}`) reusing the existing `Grid` + `AABB` (`SegmentedIntervalList` / `LocalSortArray` + `BoundingRadiusProjectionAxis`) infrastructure directly on the synchronized physics world. Queries clip `[0, maxDistance]` against the occupied `Grid` cell bounds (`grid.getActiveCellBounds()`) via `rayIntersectsAABBInterval`, step 2D Amanatides & Woo DDA across occupied `GridCell`s, query `cell.getAABB()->forEachOverlappingAABB(...)` on the cell's X/Y projections with stack multi-cell deduplication, apply ray-vs-AABB slab pruning before exact 2D circle / oriented-box slab intersection against `cachedWorldPosition`, perform zero heap allocations on `raycast`, and break ties deterministically by `(distance, collider->getId())`. [Research](research.md#4-kiss-high-performance-2d-raycast-architecture-runtimeraycast--runtimeraycastall)
 
@@ -45,7 +45,7 @@ Add three focused, zero-dependency engine and editor capabilities following a st
 |---|---|---|
 | I. Performance and Scalability First | Avoid allocations, culling/order invalidation, and texture duplication on tinting; avoid full-list collider scans or allocations on raycast. | Untinted sprites incur 0 extra SDL calls; tinted sprites preserve SDL batching and trigger 0 culling/draw-order invalidations; `raycast` reuses `Grid` + `AABB` (`SegmentedIntervalList` + ray-AABB slab pruning) with shrinking `limit` and 0 heap allocations. |
 | II. Multicore Design with oneTBB | Evaluate whether rendering tint/clear or raycast should parallelize. | Rendering runs on the owner thread in SDL3; spawning oneTBB tasks inside a single microsecond-scale `raycast` query adds task-schedule overhead exceeding the work itself. Making `raycast` `const` with purely stack-local state and zero writes to shared counters enables caller-side `tbb::parallel_for` ray batching cleanly when needed. |
-| III. Research-Backed Collision Architecture | Reuse `Grid` + `AABB` safely for raycasts without mutating broad-phase state. | `PhysicsManager::grid` broad-phase storage, pair witness counts, and solver pairs remain completely untouched (read-only). Queries traverse the synchronized physics world directly via `Grid` + `AABB::forEachOverlappingAABB` and `cachedWorldPosition`, designed for callbacks after physics sync (`Update` / `LateUpdate` / stepped scenes). |
+| III. Research-Backed Collision Architecture | Reuse `Grid` + `AABB` safely for raycasts without mutating broad-phase state. | `PhysicsManager::grid` broad-phase storage, pair witness counts, and solver pairs remain completely untouched (read-only). Queries traverse the synchronized physics world directly via `Grid` + `AABB::forEachOverlappingAABB`, `cachedWorldPosition`, and published extents/axes, paired with `Behavior::afterPhysicsSync(double)` once fixed-step physics and cleanup mutations synchronize. |
 | IV. Simple Code and KISS | Reuse existing `Sprite`, `WindowSettings`, `Runtime`, `submitSpriteRender`, and `PhysicsManager` owners with minimal fields and helpers. | `SDL_Color` on `Sprite` fits existing padding; `clearColor` lives directly on `SDLWindow::windowSettings` (zero duplicate fields); raycast adds two small pure-geometry helpers (~100 lines total) without a spatial tree or extra state structures. |
 | V. Unity-Inspired Developer Experience | Provide familiar `Sprite` color/alpha, camera/window clear color, and `raycast` / `raycastAll` semantics. | Exposes intuitive `Sprite::setColor` / `setAlpha`, `Runtime::setClearColor`, and `Runtime::raycast` / `raycastAll` returning `RaycastHit` (`collider`, `gameObject`, `point`, `normal`, `distance`, `fraction`), while documenting the deterministic inside-origin (`distance = 0`, `normal = -dir`) contract. |
 | VI. Evidence Before Performance Claims | Verify behavior and work counts via existing deterministic tests and probes before claiming zero overhead. | `quickstart.md` defines targeted work-probe checks (`0` culling/order refreshes on color edits), pixel verification under software rendering, allocation-free closest-hit raycast tests, and full `ctest --preset test` validation. |
@@ -74,18 +74,22 @@ specs/020-sprite-tint-raycast/
 ```text
 engine/
 ├── include/platformator/
+│   ├── behavior.h                 # optional Behavior::afterPhysicsSync(double timeDelta) hook
 │   ├── collisiontypes.h         # platformator::RaycastHit struct
 │   ├── runtime.h                # getClearColor/setClearColor, raycast/raycastAll declarations
 │   ├── sprite.h                 # SDL_Color color field, getColor/getAlpha/setColor/setAlpha
 │   └── windowsettings.h         # SDL_Color clearColor{255, 255, 255, 255}
 ├── src/
+│   ├── behavior.cpp / scriptcomponent.cpp # afterPhysicsSync default no-op & dispatch guard
+│   ├── gamemanager.h / gamemanager.cpp    # Phase::AfterPhysicsSync post-commitMutations step hook
 │   ├── camera.cpp               # pass sprite->getColor() to submitSpriteRender
-│   ├── spriterendergeometry.h   # apply & restore SDL_SetTextureColorMod / AlphaMod / BlendMode
+│   ├── collider.cpp / boxcollider.cpp / circlecollider.cpp # published raycast extents/axes at sync
+│   ├── spriterendergeometry.h   # save & restore prior RGB, alpha, and BlendMode on modulated draws
 │   ├── sprite.cpp               # constructors, clone(), color/alpha getters & setters
 │   ├── spriteserializer.cpp     # "color": {"r","g","b","a"} JSON serialization & validation
 │   ├── sdlwindow.h / sdlwindow.cpp # clearColor accessors & clear in SDLWindow::render()
 │   ├── runtime.cpp              # clearColor and raycast/raycastAll forwarding
-│   └── physicsmanager.h / physicsmanager.cpp # raycast / raycastAll + circle/OBB slab math
+│   └── physicsmanager.h / physicsmanager.cpp # Grid + AABB raycast / raycastAll & cutoff pruning
 └── tests/
     ├── CMakeLists.txt           # add platformator_sprite_tinting_test & platformator_raycast_test
     ├── sprite_tinting_test.cpp  # shared-texture tint/alpha isolation, clearColor, culling invariance

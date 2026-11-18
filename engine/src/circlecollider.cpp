@@ -3,12 +3,14 @@
 #include "platformator/rigidbody.h"
 #include "inputvalidation.h"
 
-CircleCollider::CircleCollider() : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(1.0f)
+CircleCollider::CircleCollider()
+    : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(1.0f), publishedRadius(1.0f)
 {
 }
 
 CircleCollider::CircleCollider(GameObject *gameObject, const float radius)
-    : Collider(gameObject, ComponentType::COLLIDER, ColliderType::CircleCollider), radius(radius)
+    : Collider(gameObject, ComponentType::COLLIDER, ColliderType::CircleCollider), radius(radius),
+      publishedRadius(radius)
 {
     platformator_detail::positive(radius, "circle.radius");
 }
@@ -103,6 +105,7 @@ void CircleCollider::generateProjections()
 
 void CircleCollider::updateCollider()
 {
+    publishedRadius = getRadius();
     generateProjections();
 }
 

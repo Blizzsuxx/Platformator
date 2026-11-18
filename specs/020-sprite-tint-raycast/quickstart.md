@@ -47,15 +47,16 @@ ctest --preset test --output-on-failure
   - Authored `"color"` objects round-trip through scene save/load, template instantiation, and `Sprite::clone()`.
   - Out-of-range (`< 0`, `> 255`), boolean, float, or malformed `"color"` values fail deserialization without mutating existing sprites.
 
-### C. 2D Raycasting Geometry & Filtering
-- Run raycast integration tests:
+### C. 2D Raycasting Geometry, Synchronization & Filtering
+- Run raycast, runtime-step, and contact-event integration tests:
   ```sh
-  ctest --test-dir build/test -R "platformator_raycast_test" --output-on-failure
+  ctest --test-dir build/test -R "platformator_raycast_test|platformator_runtime_step_test|platformator_contact_events_test" --output-on-failure
   ```
 - **Expected outcomes**:
   - Exact hit point, outward unit normal, distance, and fraction match analytical expectations within `1e-4` across axis-aligned, rotated, scaled, and offset `BoxCollider`s and `CircleCollider`s.
+  - Published raycast geometry synchronizes deterministically with `cachedWorldPosition` and `Grid` + `AABB` bounds (queued resizes/rotations/scales/moves before sync stay isolated; `Behavior::afterPhysicsSync` sees post-`commitMutations` synced state; cleanup collision-callback writes publish on the next sync point).
   - Inactive objects, excluded triggers, and non-matching collision masks are filtered out.
-  - Inside-collider origin hits at distance `0.0`, zero/non-finite/negative inputs throw `std::invalid_argument`, `raycastAll` returns sorted results, and `raycast` executes with zero heap allocations.
+  - Inside-collider origin hits at distance `0.0`, equal-float-distance rounding ties respect lowest `collider->getId()` regardless of storage order, zero/non-finite/negative inputs throw `std::invalid_argument`, `raycastAll` returns sorted results, and `raycast` executes with zero heap allocations.
 
 ### D. Editor Authoring, Validation, Copy/Reset, Templates & Preview
 - Run editor tests:

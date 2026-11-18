@@ -73,7 +73,8 @@ class Runtime
     // owner-thread service before each frame.
     void run_with_owner_service(const std::function<bool()> &ownerThreadService);
     // The session overload provides the owned SDL window for control requests
-    // and reports each completed fixed simulation step on the owner thread.
+    // and reports each completed fixed simulation step on the owner thread
+    // (after Behavior::afterPhysicsSync and commitMutations finish).
     void run_with_owner_service(
         const std::function<bool(SDLWindow &)> &ownerThreadService,
         const std::function<void(std::uint64_t)> &afterSimulationStep);
@@ -92,8 +93,14 @@ class Runtime
     const std::vector<GameObject *> &getAllGameObjects() const;
     void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &preRenderCallback);
 
-    // Thread-safe for concurrent read-only queries on a stable scene while no
-    // structural, lifecycle, or transform mutations occur concurrently.
+    // Queries the synchronized physics world (Grid + AABB and published collider
+    // geometry from the latest physics/cleanup sync or idle reconciliation).
+    // Intended for Behavior::afterPhysicsSync(double) or post-step owner-thread
+    // callers (afterSimulationStep, preRenderCallback, or after simulateFrame*
+    // returns). Queued geometry edits in FixedUpdate or cleanup collision
+    // callbacks become visible on the next sync point. Thread-safe for
+    // concurrent read-only queries on a stable scene while no mutations occur;
+    // parallel readers spawned in afterPhysicsSync must join before returning.
     std::optional<RaycastHit> raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction,
                                       float maxDistance, uint64_t collisionMask = ~uint64_t{0},
                                       bool includeTriggers = false) const;

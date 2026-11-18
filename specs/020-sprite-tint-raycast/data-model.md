@@ -16,7 +16,7 @@
   - Modifying `color` or `alpha` does **not** invoke `notifySpriteGeometryChanged` or `notifySpriteOrderChanged` on `SDLWindow`:
     - `RenderCullingState` spatial bounds remain valid.
     - `SpriteDrawOrder` remains clean (`0` extra order sorts or candidate re-scans).
-  - During rendering (`platformator_detail::submitSpriteRender`), modulation is applied per draw call and restored if non-default so shared `SDL_Texture*` state never leaks across consecutive draws or editor panels.
+  - During rendering (`platformator_detail::submitSpriteRender`), non-default modulation queries and saves the texture's prior RGB color mod, alpha mod, and (when `a < 255` and blend mode is `SDL_BLENDMODE_NONE`) blend mode, then restores those saved values right after drawing so shared `SDL_Texture*` state never leaks across consecutive draws or editor panels (while default `(255, 255, 255, 255)` draws take a zero-modulation-call fast path).
 - **Persistence & Editor State**:
   - JSON representation on Sprite (`type == 6`): `"color": {"r": <0..255>, "g": <0..255>, "b": <0..255>, "a": <0..255>}`.
   - Omitted `"color"` in legacy `.scene`/`.pttemplate` documents loads as `{255, 255, 255, 255}` (even when deserializing into an already-tinted `Sprite`).
@@ -49,7 +49,8 @@
   - `float fraction = 0.0f;` — Normalized distance `distance / maxDistance` (`0.0f` if `maxDistance == 0.0f`).
 - **Relationships & Transform Timing**:
   - Traverses colliders through the synchronized `PhysicsManager::grid` (`Grid::getActiveCellBounds()` + 2D DDA + each visited `GridCell`'s `AABB::forEachOverlappingAABB` query over `SegmentedIntervalList` X/Y projections).
-  - Excludes colliders whose owning `GameObject` is null, inactive (`!getActive()`), or marked for deletion (`getIsMarkedForDeletion()`), plus inactive/retired components and filtered masks/triggers.
-  - Reads synchronized `collider->getCachedWorldPosition()`, `gameObject->cosRotation`, `gameObject->sinRotation`, `box->getWidth()`, `box->getHeight()`, `circle->getRadius()`, and the cell `AABB` projections (`cMinX..cMaxY`), keeping `Grid` state read-only and concurrent-query safe without touching non-atomic read counters.
+  - Excludes colliders whose owning `GameObject` is null, inactive (`!getActive()`), or marked for deletion (`getIsMarkedForDeletion()`), plus inactive/retired components and filtered masks/triggers via live lifecycle/filter inspection.
+  - Reads synchronized `collider->getCachedWorldPosition()`, published `BoxCollider` (`getPublishedHalfWidth()`, `getPublishedHalfHeight()`, `getPublishedXAxis()`) and `CircleCollider` (`getPublishedRadius()`) geometry updated together in `Collider::prepareSyncFromCache()`, and the cell `AABB` projections (`cMinX..cMaxY`), keeping `Grid` state read-only and concurrent-query safe without touching non-atomic read counters.
+  - Edits queued before a sync point or inside cleanup collision callbacks after `reconcilePending()`'s final flush take effect in raycasts on the next sync (`Phase::Physics` `broadPhase()`, `Phase::Cleanup` `reconcilePending()`, or idle reconciliation), matching `Behavior::afterPhysicsSync(double)` and post-step caller timing.
 - **Ordering & Tie-Breaking**:
-  - Closest-hit (`raycast`) and multi-hit (`raycastAll`) order hits by `(distance, collider->getId())` ascending, ensuring deterministic tie-breaking independent of internal collider swap-remove storage order.
+  - Closest-hit (`raycast`) and multi-hit (`raycastAll`) order hits by `(distance, collider->getId())` ascending, using a float-rounding-safe `double` cutoff (`min(maxDistance, midpoint(best, nextafter(best, +inf)))`) to ensure equal-float-distance candidates with lower `collider->getId()` are never pruned prematurely independent of internal collider swap-remove storage order.

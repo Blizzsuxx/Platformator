@@ -17,6 +17,10 @@ public:
 
     float getRadius() const;
     float getRadiusWithoutScale() const;
+    float getPublishedRadius() const noexcept
+    {
+        return publishedRadius;
+    }
 
     void setRadius(float radius);
 
@@ -24,6 +28,7 @@ public:
 
 private:
     float radius;
+    float publishedRadius;
 
     void generateProjections();
     void updateCollider() override;

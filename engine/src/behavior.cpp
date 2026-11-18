@@ -54,6 +54,10 @@ void Behavior::lateUpdate(double)
 {
 }
 
+void Behavior::afterPhysicsSync(double)
+{
+}
+
 void Behavior::onDestroy()
 {
 }

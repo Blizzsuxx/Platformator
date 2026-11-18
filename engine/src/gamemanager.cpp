@@ -264,6 +264,20 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
         }
     }
 
+    if (!error)
+    {
+        ++simulationStepNumber;
+        try
+        {
+            stage(Phase::AfterPhysicsSync, [&]
+                  { afterPhysicsSyncScriptComponents(timeDelta); });
+        }
+        catch (...)
+        {
+            error = std::current_exception();
+        }
+    }
+
     PLATFORMATOR_BENCH_SET_COUNTER(ObjectCount, gameObjects.size());
     PLATFORMATOR_BENCH_FRAME_END();
 
@@ -271,7 +285,6 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
     {
         std::rethrow_exception(error);
     }
-    ++simulationStepNumber;
 }
 
 void GameManager::loop(const std::function<bool(SDLWindow &)> &ownerThreadService,
@@ -803,6 +816,19 @@ void GameManager::lateUpdateScriptComponents(double timeDelta)
         }
 
         scriptComponent->lateUpdate(timeDelta);
+    }
+}
+
+void GameManager::afterPhysicsSyncScriptComponents(double timeDelta)
+{
+    for (ScriptComponent *scriptComponent : scriptComponents)
+    {
+        if (!scriptComponent->canDispatch())
+        {
+            continue;
+        }
+
+        scriptComponent->afterPhysicsSync(timeDelta);
     }
 }
 

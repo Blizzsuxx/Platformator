@@ -7,14 +7,17 @@
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
     : Collider(gameObject, ComponentType::COLLIDER, ColliderType::BoxCollider), width(width), height(height),
-      vertices(), normals()
+      publishedHalfWidth(width * 0.5f), publishedHalfHeight(height * 0.5f), vertices(),
+      normals{Eigen::Vector2f::UnitX(), Eigen::Vector2f::UnitY()}
 {
     platformator_detail::positive(width, "box.width");
     platformator_detail::positive(height, "box.height");
 }
 
 BoxCollider::BoxCollider()
-    : Collider(ComponentType::COLLIDER, ColliderType::BoxCollider), width(1.0f), height(1.0f), vertices(), normals()
+    : Collider(ComponentType::COLLIDER, ColliderType::BoxCollider), width(1.0f), height(1.0f),
+      publishedHalfWidth(0.5f), publishedHalfHeight(0.5f), vertices(),
+      normals{Eigen::Vector2f::UnitX(), Eigen::Vector2f::UnitY()}
 {
 }
 
@@ -191,8 +194,10 @@ void BoxCollider::generateVertices()
 
 void BoxCollider::updateCollider()
 {
-    generateVertices();
+    publishedHalfWidth = getWidth() * 0.5f;
+    publishedHalfHeight = getHeight() * 0.5f;
     generateNormals();
+    generateVertices();
     generateProjections();
 }
 

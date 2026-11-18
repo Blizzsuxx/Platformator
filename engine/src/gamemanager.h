@@ -73,6 +73,7 @@ class GameManager
         Animation,
         LateUpdate,
         MutationCommit,
+        AfterPhysicsSync,
         DestructionCallbacks,
         Rendering,
         Saving,
@@ -237,6 +238,7 @@ class GameManager
     void fixedUpdateScriptComponents(double timeDelta);
     void updateScriptComponents(double timeDelta);
     void lateUpdateScriptComponents(double timeDelta);
+    void afterPhysicsSyncScriptComponents(double timeDelta);
     void updateAnimatorComponents(double timeDelta);
     void startPendingScripts();
 

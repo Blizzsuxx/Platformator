@@ -31,11 +31,25 @@ class BoxCollider : public Collider
     {
         return normals;
     }
+    float getPublishedHalfWidth() const noexcept
+    {
+        return publishedHalfWidth;
+    }
+    float getPublishedHalfHeight() const noexcept
+    {
+        return publishedHalfHeight;
+    }
+    const Eigen::Vector2f &getPublishedXAxis() const noexcept
+    {
+        return normals[0];
+    }
     Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const override;
 
   private:
     float width;
     float height;
+    float publishedHalfWidth;
+    float publishedHalfHeight;
     std::array<Eigen::Vector2f, 4> vertices;
     std::array<Eigen::Vector2f, 2> normals;
 

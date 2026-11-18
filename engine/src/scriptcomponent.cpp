@@ -119,6 +119,13 @@ void ScriptComponent::lateUpdate(double timeDelta)
         behaviors[i]->lateUpdate(timeDelta);
 }
 
+void ScriptComponent::afterPhysicsSync(double timeDelta)
+{
+    const size_t count = behaviors.size();
+    for (size_t i = 0; i < count && canDispatch(); ++i)
+        behaviors[i]->afterPhysicsSync(timeDelta);
+}
+
 void ScriptComponent::setGameObject(GameObject *gameObject)
 {
     Component::setGameObject(gameObject);

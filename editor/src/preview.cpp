@@ -546,6 +546,7 @@ void EditorPreview::reconcile(const DocumentSession &document, bool structureCha
     const DocumentIdentity identity{ProjectGeneration{document.projectGeneration}, document.tabId,
                                     DocumentGeneration{document.documentGeneration}};
     const bool resourceIdentityChanged = resourceDocument_ != identity;
+    const bool documentIdentityChanged = previewDocumentIdentity_ != identity;
     if (resourceDocument_ && resourceDocument_ != identity && resourceIndex_ != nullptr)
         resourceIndex_->unregister_document(*resourceDocument_);
     if (resourceIdentityChanged)
@@ -563,14 +564,29 @@ void EditorPreview::reconcile(const DocumentSession &document, bool structureCha
     }
     const bool rootChanged = assetRoot_ != document.assetRoot;
     const bool generationChanged = documentGeneration_ != document.documentGeneration;
-    if (rootChanged || generationChanged || resourceIdentityChanged || structureChanged ||
-        structureRevision_ != document.structureRevision)
+    if (rootChanged || generationChanged || documentIdentityChanged || resourceIdentityChanged ||
+        structureChanged || structureRevision_ != document.structureRevision)
     {
         invalidate_render_cache();
-        if (rootChanged || generationChanged)
+        const bool tabChanged =
+            previewDocumentIdentity_ && previewDocumentIdentity_->tabId != identity.tabId;
+        if (rootChanged || generationChanged || tabChanged)
         {
             release();
+            previewDocumentIdentity_ = identity;
             resourceDocument_ = identity;
+        }
+        else if (documentIdentityChanged)
+        {
+            nextRegistrationSequence_ = 1;
+            drawDocumentIds_.clear();
+            drawOrderDirty_ = true;
+            for (auto &[id, proxy] : proxies_)
+            {
+                (void)id;
+                proxy.registrationSequence = 0;
+            }
+            previewDocumentIdentity_ = identity;
         }
         assetRoot_ = document.assetRoot;
         documentGeneration_ = document.documentGeneration;
@@ -594,26 +610,33 @@ void EditorPreview::reconcile(const DocumentSession &document, bool structureCha
     }
 
     std::vector<int> effectiveRoots;
-    effectiveRoots.reserve(changedRoots.size());
-    for (const int rootId : changedRoots)
+    if (inheritedTranslationChanged)
     {
-        bool coveredByChangedAncestor = false;
-        const auto indexedParent = document.indexes.parentById.find(rootId);
-        std::optional<int> parentId = indexedParent == document.indexes.parentById.end()
-                                          ? std::nullopt : indexedParent->second;
-        while (parentId)
+        effectiveRoots.reserve(changedRoots.size());
+        for (const int rootId : changedRoots)
         {
-            if (changedIds.contains(*parentId))
+            bool coveredByChangedAncestor = false;
+            const auto indexedParent = document.indexes.parentById.find(rootId);
+            std::optional<int> parentId = indexedParent == document.indexes.parentById.end()
+                                              ? std::nullopt : indexedParent->second;
+            while (parentId)
             {
-                coveredByChangedAncestor = true;
-                break;
+                if (changedIds.contains(*parentId))
+                {
+                    coveredByChangedAncestor = true;
+                    break;
+                }
+                const auto nextParent = document.indexes.parentById.find(*parentId);
+                parentId = nextParent == document.indexes.parentById.end()
+                               ? std::nullopt : nextParent->second;
             }
-            const auto nextParent = document.indexes.parentById.find(*parentId);
-            parentId = nextParent == document.indexes.parentById.end()
-                           ? std::nullopt : nextParent->second;
+            if (!coveredByChangedAncestor)
+                effectiveRoots.push_back(rootId);
         }
-        if (!coveredByChangedAncestor)
-            effectiveRoots.push_back(rootId);
+    }
+    else
+    {
+        effectiveRoots = std::move(changedRoots);
     }
     if (!effectiveRoots.empty())
         invalidate_render_cache();
@@ -2161,6 +2184,7 @@ void EditorPreview::release() noexcept
     proxies_.clear();
     if (resourceIndex_ != nullptr && resourceDocument_)
         resourceIndex_->unregister_document(*resourceDocument_);
+    previewDocumentIdentity_.reset();
     resourceDocument_.reset();
     orderedDocumentIds_.clear();
     authoringIndex_.clear();

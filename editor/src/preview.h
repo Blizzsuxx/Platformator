@@ -227,6 +227,7 @@ class EditorPreview
     std::filesystem::path assetRoot_;
     ResourceIndex *resourceIndex_ = nullptr;
     std::unique_ptr<AssetReloadState> assetReloadState_;
+    std::optional<DocumentIdentity> previewDocumentIdentity_;
     std::optional<DocumentIdentity> resourceDocument_;
     std::unordered_map<int, Proxy> proxies_;
     AuthoringIndex authoringIndex_;

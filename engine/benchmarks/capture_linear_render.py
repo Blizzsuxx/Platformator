@@ -13,6 +13,7 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import signal
 import statistics
 import subprocess
@@ -529,6 +530,74 @@ def _frame_total(proof: dict, field: str) -> int:
     return sum(len(frame.get(field, ())) for frame in _iter_render_proof_frames(proof))
 
 
+def _validate_render_frame_row(frame: object, index: int, sprite_count: int, *, headless: bool = False,
+                               require_dimensions: bool = False, label: str = "Rendered proof") -> tuple[int, int]:
+    if not isinstance(frame, dict):
+        raise CaptureError(f"{label} frame is not a JSON object")
+    if not isinstance(frame.get("frame"), int) or isinstance(frame.get("frame"), bool) or frame["frame"] != index:
+        raise CaptureError(f"{label} frame sequence is incomplete or reordered")
+    if not isinstance(frame.get("submissions"), list) or not isinstance(frame.get("oracle_visible"), list):
+        raise CaptureError(f"{label} omits submission/oracle membership")
+    for field in ("submissions", "oracle_visible"):
+        identities = frame[field]
+        if (len(identities) > sprite_count or
+                any(not _valid_sprite_identity(identity) for identity in identities) or
+                len({tuple(identity) for identity in identities}) != len(identities)):
+            raise CaptureError(f"{label} has malformed or duplicate {field} identities")
+    if not headless and (not isinstance(frame.get("image_fnv64"), str) or len(frame["image_fnv64"]) != 16):
+        raise CaptureError(f"{label} has no normalized image hash")
+    if not headless and any(character not in "0123456789abcdef" for character in frame["image_fnv64"]):
+        raise CaptureError(f"{label} has a malformed normalized image hash")
+    if headless and frame.get("image_fnv64") is not None:
+        raise CaptureError("Headless proof unexpectedly claims an image hash")
+    if require_dimensions or "output_width" in frame or "output_height" in frame:
+        for dimension in ("output_width", "output_height"):
+            dim_value = frame.get(dimension)
+            if not isinstance(dim_value, int) or isinstance(dim_value, bool) or dim_value <= 0:
+                raise CaptureError(f"{label} has invalid {dimension}")
+    for field in ("unresolved", "overflow"):
+        if not headless and field not in frame:
+            raise CaptureError(f"{label} omits the {field} observation")
+        value = frame.get(field, 0)
+        if not isinstance(value, int) or isinstance(value, bool) or value != 0:
+            raise CaptureError(f"{label} has unresolved or overflowed {field} observations")
+    if headless and frame.get("headless_work") != {"views": 0, "eligibility_checks": 0, "visibility_checks": 0, "submissions": 0}:
+        raise CaptureError("Headless validation reports rendering work")
+    return len(frame["submissions"]), len(frame["oracle_visible"])
+
+
+def _validate_render_frame_stream(proof: dict, frames_path: Path, sprite_count: int, measure_frames: int, *,
+                                  headless: bool = False, require_dimensions: bool = False,
+                                  label: str = "Rendered proof") -> dict:
+    if not frames_path.is_file():
+        raise CaptureError(f"Missing frame stream for {label}")
+    expected_digest = proof.get("frames_sha256")
+    if not isinstance(expected_digest, str) or sha256(frames_path) != expected_digest:
+        raise CaptureError(f"{label} frame checksum is stale or corrupt")
+    frame_count = 0
+    submission_total = 0
+    oracle_visible_total = 0
+    maximum_oracle_visible = 0
+    with frames_path.open(encoding="utf-8") as stream:
+        for index, line in enumerate(stream):
+            frame = json.loads(line)
+            submissions, oracle_visible = _validate_render_frame_row(
+                frame, index, sprite_count, headless=headless,
+                require_dimensions=require_dimensions, label=label)
+            frame_count += 1
+            submission_total += submissions
+            oracle_visible_total += oracle_visible
+            maximum_oracle_visible = max(maximum_oracle_visible, oracle_visible)
+    if frame_count != measure_frames:
+        raise CaptureError(f"{label} frame count does not match the requested sample count")
+    return {
+        "frame_count": frame_count,
+        "submission_total": submission_total,
+        "oracle_visible_total": oracle_visible_total,
+        "maximum_oracle_visible": maximum_oracle_visible,
+    }
+
+
 def validate_render_proof(root: Path, case: dict, args, mode: str) -> dict:
     prefix = root / f"{case_key(case)}-{mode}"
     evidence_path = Path(str(prefix) + ".evidence.json")
@@ -539,47 +608,9 @@ def validate_render_proof(root: Path, case: dict, args, mode: str) -> dict:
     _check_common_identity(proof, case, args, mode, "render")
     if proof.get("headless") is not bool(case.get("headless")):
         raise CaptureError("Rendered proof has the wrong headless identity")
-    if sha256(frames_path) != proof.get("frames_sha256"):
-        raise CaptureError("Rendered proof frame checksum is stale or corrupt")
-    frame_count = 0
-    submission_total = 0
-    oracle_visible_total = 0
-    maximum_oracle_visible = 0
-    with frames_path.open(encoding="utf-8") as stream:
-        for index, line in enumerate(stream):
-            frame = json.loads(line)
-            if not isinstance(frame, dict):
-                raise CaptureError("Rendered proof frame is not a JSON object")
-            if not isinstance(frame.get("frame"), int) or isinstance(frame.get("frame"), bool) or frame["frame"] != index:
-                raise CaptureError("Rendered proof frame sequence is incomplete or reordered")
-            if not isinstance(frame.get("submissions"), list) or not isinstance(frame.get("oracle_visible"), list):
-                raise CaptureError("Rendered proof omits submission/oracle membership")
-            for field in ("submissions", "oracle_visible"):
-                identities = frame[field]
-                if (len(identities) > case["sprite_count"] or
-                        any(not _valid_sprite_identity(identity) for identity in identities) or
-                        len({tuple(identity) for identity in identities}) != len(identities)):
-                    raise CaptureError(f"Rendered proof has malformed or duplicate {field} identities")
-            if not case.get("headless") and (not isinstance(frame.get("image_fnv64"), str) or len(frame["image_fnv64"]) != 16):
-                raise CaptureError("Rendered proof has no normalized image hash")
-            if not case.get("headless") and any(character not in "0123456789abcdef" for character in frame["image_fnv64"]):
-                raise CaptureError("Rendered proof has a malformed normalized image hash")
-            if case.get("headless") and frame.get("image_fnv64") is not None:
-                raise CaptureError("Headless proof unexpectedly claims an image hash")
-            for field in ("unresolved", "overflow"):
-                if not case.get("headless") and field not in frame:
-                    raise CaptureError(f"Rendered proof omits the {field} observation")
-                value = frame.get(field, 0)
-                if not isinstance(value, int) or isinstance(value, bool) or value != 0:
-                    raise CaptureError(f"Rendered proof has unresolved or overflowed {field} observations")
-            if case.get("headless") and frame.get("headless_work") != {"views": 0, "eligibility_checks": 0, "visibility_checks": 0, "submissions": 0}:
-                raise CaptureError("Headless validation reports rendering work")
-            frame_count += 1
-            submission_total += len(frame["submissions"])
-            oracle_visible_total += len(frame["oracle_visible"])
-            maximum_oracle_visible = max(maximum_oracle_visible, len(frame["oracle_visible"]))
-    if frame_count != args.measure_frames:
-        raise CaptureError("Rendered proof frame count does not match the requested sample count")
+    stream_summary = _validate_render_frame_stream(
+        proof, frames_path, case["sprite_count"], args.measure_frames,
+        headless=bool(case.get("headless")), require_dimensions=False, label="Rendered proof")
     if case.get("headless"):
         if proof.get("representative_sha256") is not None:
             raise CaptureError("Headless proof unexpectedly claims a renderer image")
@@ -588,10 +619,10 @@ def validate_render_proof(root: Path, case: dict, args, mode: str) -> dict:
         if not image_path.is_file() or sha256(image_path) != proof.get("representative_sha256"):
             raise CaptureError("Representative image is missing or its checksum is stale")
     proof["_frames_path"] = str(frames_path)
-    proof["_frame_count"] = frame_count
-    proof["_submission_total"] = submission_total
-    proof["_oracle_visible_total"] = oracle_visible_total
-    proof["_maximum_oracle_visible"] = maximum_oracle_visible
+    proof["_frame_count"] = stream_summary["frame_count"]
+    proof["_submission_total"] = stream_summary["submission_total"]
+    proof["_oracle_visible_total"] = stream_summary["oracle_visible_total"]
+    proof["_maximum_oracle_visible"] = stream_summary["maximum_oracle_visible"]
     proof["_path"] = str(evidence_path)
     return proof
 
@@ -1537,6 +1568,16 @@ def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure
     arms = list(proofs_by_arm.keys())
     if not arms:
         raise CaptureError("No validation proofs supplied for parity check")
+    for arm, proof in proofs_by_arm.items():
+        _validate_render_frame_stream(
+            proof,
+            Path(proof["_frames_path"]),
+            case["sprite_count"],
+            measure_frames,
+            headless=bool(case.get("headless")),
+            require_dimensions=True,
+            label=f"{case['case_name']} {arm}",
+        )
     streams = {}
     summary_hashes = {}
     for arm, proof in proofs_by_arm.items():
@@ -1570,6 +1611,10 @@ def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure
                     f"{case['case_name']} {arm_name} frame {frame_idx}: omitted independent visibility oracle member")
 
     try:
+        expected_authored_subs = (
+            [[slot, 0] for slot in range(case["sprite_count"])]
+            if case["case_name"] == "authored-static" else None
+        )
         count = 0
         for frame_index, lines in enumerate(itertools.zip_longest(*streams.values())):
             if any(line is None for line in lines):
@@ -1585,6 +1630,11 @@ def _validate_render_order_frame_parity(proofs_by_arm: dict, case: dict, measure
             if case["case_name"] == "dense-z-edit":
                 if ref_subs != ref.get("oracle_visible") or len(ref_subs) != case["sprite_count"]:
                     raise CaptureError(f"dense-z-edit {ref_arm} frame {frame_index}: exact sorted 10,000-sprite oracle mismatch")
+            elif case["case_name"] == "authored-static":
+                check_all_zero_registration_order(ref_arm, frame_index, ref)
+                if ref_subs != expected_authored_subs:
+                    raise CaptureError(
+                        f"authored-static {ref_arm} frame {frame_index}: expected all {case['sprite_count']} registrations in order")
             elif case.get("all_zero"):
                 check_all_zero_registration_order(ref_arm, frame_index, ref)
             for arm, row in zip(arms, parsed):
@@ -1842,6 +1892,25 @@ def validate_render_order_control_resource(ctrl: dict, strategy: str, rproof: di
             raise CaptureError(f"fully-moving-crossing control ({strategy}) exceeded maximum possible submissions")
 
 
+def _bounded_log_tail(log_path: Path | None, max_bytes: int = 4096, max_chars: int = 180) -> str:
+    if log_path is None or not log_path.is_file():
+        return ""
+    size = log_path.stat().st_size
+    if size <= 0:
+        return ""
+    with log_path.open("rb") as stream:
+        if size > max_bytes:
+            stream.seek(size - max_bytes)
+        raw_text = stream.read().decode("utf-8", errors="replace")
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if len(lines) > 1 and lines[0].startswith("COMMAND:"):
+        lines = lines[1:]
+    joined = " | ".join(lines)
+    if len(joined) > max_chars:
+        return "..." + joined[-(max_chars - 3):]
+    return joined
+
+
 def run_render_order_culling(args) -> dict:
     if args.repetitions <= 0 or args.workers <= 0 or args.multiworker_count <= 0 or args.seed < 0 or args.warmup_frames < 0 or args.measure_frames <= 0 or not math.isfinite(args.dt) or args.dt <= 0:
         raise CaptureError("Invalid repetition, worker, seed, frame, or dt arguments")
@@ -1876,24 +1945,41 @@ def run_render_order_culling(args) -> dict:
     completed_arms: list[dict] = []
     in_progress_files: list[Path] = []
     current_stage = "identity"
+    active_probe: dict | None = None
     expected_comparisons = {
         "endpoint_implementation_and_policy": ([c["case_name"] for c in cases if c["all_zero"]] if has_baseline else []),
         "dense_z_ordering": (["dense-z-edit"] if any(c["case_name"] == "dense-z-edit" for c in cases) else []),
     }
 
-    def run_logged(stage: str, command: list[str], log_path: Path, tracked_files: list[Path] | None = None) -> None:
-        nonlocal current_stage
+    def run_logged(stage: str, command: list[str], log_path: Path, tracked_files: list[Path] | None = None, *,
+                   case_name: str | None = None, arm_name: str | None = None) -> None:
+        nonlocal current_stage, active_probe
         current_stage = stage
         in_progress_files.clear()
         if tracked_files:
             in_progress_files.extend(tracked_files)
         in_progress_files.append(log_path)
+        active_probe = {"case": case_name, "arm": arm_name, "stage": stage, "log_path": log_path}
         max_bytes = active_budget_max_bytes()
         reserve = PARTIAL_SUMMARY_RESERVE_BYTES if (max_bytes is not None and max_bytes > PARTIAL_SUMMARY_RESERVE_BYTES) else 0
         check_budget(reserve_bytes=reserve)
         commands_log.append({"stage": stage, "command": command})
         _run(command, log_path, env, reserve_bytes=reserve)
+        active_probe = None
         check_budget(reserve_bytes=reserve)
+
+    def read_identity_logged(binary: Path, log_name: str, arm_label: str) -> dict:
+        nonlocal current_stage, active_probe
+        current_stage = "identity"
+        id_log = logs / log_name
+        id_out = id_log.with_suffix(".identity.json")
+        in_progress_files.clear()
+        in_progress_files.extend([id_log, id_out])
+        active_probe = {"case": "identity", "arm": arm_label, "stage": "identity", "log_path": id_log}
+        result = _read_probe_identity(binary, id_log, env)
+        active_probe = None
+        in_progress_files.clear()
+        return result
 
     validation_proofs: dict[str, dict[str, dict]] = {}
     resource_proofs: dict[str, dict[str, dict]] = {}
@@ -1906,9 +1992,9 @@ def run_render_order_culling(args) -> dict:
 
     try:
         current_stage = "identity"
-        val_id = _read_probe_identity(args.candidate_validation_probe, logs / "candidate-validation-identity.log", env)
-        tim_id = _read_probe_identity(args.candidate_probe, logs / "candidate-timing-identity.log", env)
-        base_id = (_read_probe_identity(args.baseline_probe, logs / "baseline-timing-identity.log", env)
+        val_id = read_identity_logged(args.candidate_validation_probe, "candidate-validation-identity.log", "candidate-validation")
+        tim_id = read_identity_logged(args.candidate_probe, "candidate-timing-identity.log", "candidate-timing")
+        base_id = (read_identity_logged(args.baseline_probe, "baseline-timing-identity.log", "baseline-timing")
                    if args.baseline_probe is not None else None)
         _validate_render_order_probe_identities(
             val_id, tim_id, base_id, has_baseline,
@@ -1931,7 +2017,8 @@ def run_render_order_culling(args) -> dict:
                     v_tracked = [Path(str(vprefix) + sfx) for sfx in
                                  (".csv", ".samples.csv", ".paired.csv", ".manifest.json",
                                   ".evidence.json", ".frames.jsonl", ".representative.ppm", ".mismatch.ppm")]
-                    run_logged("validate", vcmd, logs / f"validate-{cname}-{aname}.log", v_tracked)
+                    run_logged("validate", vcmd, logs / f"validate-{cname}-{aname}.log", v_tracked,
+                               case_name=cname, arm_name=aname)
                     ev_path = Path(str(vprefix) + ".evidence.json")
                     proof = json.loads(ev_path.read_text(encoding="utf-8"))
                     proof["_path"] = str(ev_path)
@@ -1950,7 +2037,8 @@ def run_render_order_culling(args) -> dict:
                                                        evidence_prefix=rprefix)
                     r_tracked = [Path(str(rprefix) + sfx) for sfx in
                                  (".csv", ".samples.csv", ".paired.csv", ".manifest.json", ".resources.json")]
-                    run_logged("resources", rcmd, logs / f"resource-{cname}-{aname}.log", r_tracked)
+                    run_logged("resources", rcmd, logs / f"resource-{cname}-{aname}.log", r_tracked,
+                               case_name=cname, arm_name=aname)
                     res_path = Path(str(rprefix) + ".resources.json")
                     rproof = json.loads(res_path.read_text(encoding="utf-8"))
                     rproof["_path"] = str(res_path)
@@ -1978,7 +2066,8 @@ def run_render_order_culling(args) -> dict:
                                                    evidence_prefix=rprefix)
                 c_tracked = [Path(str(rprefix) + sfx) for sfx in
                              (".csv", ".samples.csv", ".paired.csv", ".manifest.json", ".resources.json")]
-                run_logged("control-resources", rcmd, logs / f"control-{cname}-{strategy}.log", c_tracked)
+                run_logged("control-resources", rcmd, logs / f"control-{cname}-{strategy}.log", c_tracked,
+                           case_name=cname, arm_name=arm["arm"])
                 res_path = Path(str(rprefix) + ".resources.json")
                 rproof = json.loads(res_path.read_text(encoding="utf-8"))
                 validate_render_order_control_resource(ctrl, strategy, rproof, args)
@@ -2021,7 +2110,8 @@ def run_render_order_culling(args) -> dict:
                                                    run_index=run_index, validation_path=vpath, resource_path=rpath)
                 t_tracked = [csv_path, csv_path.with_suffix(".samples.csv"),
                              csv_path.with_suffix(".paired.csv"), csv_path.with_suffix(".manifest.json")]
-                run_logged("time", tcmd, logs / f"time-{stem}.log", t_tracked)
+                run_logged("time", tcmd, logs / f"time-{stem}.log", t_tracked,
+                           case_name=cname, arm_name=aname)
                 metrics = parse_benchmark_csv(csv_path)
                 manifest = validate_render_order_timing_manifest(
                     csv_path, case, arm, args, run_index, b_id, metrics,
@@ -2205,14 +2295,36 @@ def run_render_order_culling(args) -> dict:
         check_budget()
         return report
     except (BudgetExceeded, CaptureError, subprocess.CalledProcessError, OSError, ValueError, KeyError, json.JSONDecodeError, KeyboardInterrupt) as error:
+        probe_failure = None
+        if active_probe is not None and isinstance(error, (CaptureError, subprocess.CalledProcessError)):
+            exit_status = None
+            if isinstance(error, subprocess.CalledProcessError):
+                exit_status = error.returncode
+            else:
+                match = re.search(r"Capture process failed \((-?\d+)\)", str(error))
+                if match is not None:
+                    exit_status = int(match.group(1))
+            if exit_status is not None or isinstance(error, subprocess.CalledProcessError):
+                probe_failure = {
+                    "case": active_probe.get("case"),
+                    "arm": active_probe.get("arm"),
+                    "stage": active_probe.get("stage") or current_stage,
+                    "exit_status": exit_status,
+                    "log_tail": _bounded_log_tail(active_probe.get("log_path")),
+                }
         for name in ("report.json", "report.md"):
             (args.output / name).unlink(missing_ok=True)
         for path in in_progress_files:
             path.unlink(missing_ok=True)
         _cleanup_transient_render_order_files(args.output)
-        error_text = ("interrupted by KeyboardInterrupt"
-                      if isinstance(error, KeyboardInterrupt) and not str(error)
-                      else str(error))
+        if probe_failure is not None:
+            summary = (f"{probe_failure['case']} {probe_failure['arm']} {probe_failure['stage']} "
+                       f"exited {probe_failure['exit_status']}")
+            error_text = f"{summary}: {probe_failure['log_tail']}" if probe_failure["log_tail"] else f"{summary}: {error}"
+        else:
+            error_text = ("interrupted by KeyboardInterrupt"
+                          if isinstance(error, KeyboardInterrupt) and not str(error)
+                          else str(error))
         partial = {
             "proof_kind": "platformator.render-order-culling-pilot", "proof_version": 1,
             "comparison": "render-order-culling", "exploratory": True, "complete": False,
@@ -2221,6 +2333,8 @@ def run_render_order_culling(args) -> dict:
             "unavailable_comparisons": expected_comparisons,
             "completed_parity_checks": sorted(parity_summaries.keys()),
         }
+        if probe_failure is not None:
+            partial["failed_probe"] = probe_failure
         max_bytes = active_budget_max_bytes()
         partial_path = args.output / "partial-report.json"
         candidates = [

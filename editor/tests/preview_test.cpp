@@ -2127,6 +2127,233 @@ void check_preview_asset_reload_preserves_draw_order()
     }
     preview.release();
 }
+
+void check_preview_nested_sprite_multi_edit_z_batch()
+{
+    TemporaryAssets assets;
+    write_solid_png(assets.root / "assets" / "textures" / "solid_red.png", 220, 0, 0);
+    write_solid_png(assets.root / "assets" / "textures" / "solid_green.png", 0, 220, 0);
+    write_solid_png(assets.root / "assets" / "textures" / "solid_blue.png", 0, 0, 220);
+
+    RuntimeOptions options;
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.assetRoot = (assets.root / "assets").string();
+    platformator::Runtime runtime(options);
+    SDL_Renderer *renderer = runtime.getRenderer();
+    require(renderer != nullptr, "nested sprite Z batch test requires software SDL renderer");
+
+    DocumentSession document = make_default_document(assets.root.parent_path(), assets.root / "assets", 109);
+    document.tabId = TabId{12};
+
+    Json refSprite = sprite_component(101, "assets/textures/solid_red.png");
+    refSprite["zOrder"] = 5;
+    Json parentSprite = sprite_component(201, "assets/textures/solid_green.png");
+    parentSprite["zOrder"] = 0;
+    Json childSprite = sprite_component(301, "assets/textures/solid_blue.png");
+    childSprite["zOrder"] = 0;
+
+    Json child = object_record(300, "Child", 0.0f, 0.0f, Json::array({childSprite}));
+    Json parent = object_record(200, "Parent", 160.0f, 120.0f, Json::array({parentSprite}), Json::array({child}));
+    document.root.push_back(object_record(100, "Reference", 160.0f, 120.0f, Json::array({refSprite})));
+    document.root.push_back(std::move(parent));
+    document.structureRevision++;
+    rebuild_document_indexes(document);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{document.projectGeneration}, document.assetRoot);
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+    preview.reconcile(document, true);
+    wait_for_asset_preparation(preview, document);
+
+    ViewportTransform pickTransform;
+    require(pickTransform.configure({0.0f, 0.0f, 320.0f, 240.0f}, 1.0f, 1.0f,
+                                    320.0f, 240.0f, 160.0f, 120.0f),
+            "Viewport pick transform must configure");
+
+    auto assertState = [&](const std::vector<int> &expectedDrawOrder, int expectedFrontId,
+                           uint8_t minR, uint8_t minG, uint8_t minB, const char *label) {
+        require(preview.draw_document_ids() == expectedDrawOrder,
+                std::string(label) + ": unexpected draw_document_ids");
+        const auto candidates = viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                                         preview, {160.0f, 120.0f}, 0.0f);
+        require(!candidates.empty() && candidates[0] == expectedFrontId,
+                std::string(label) + ": unexpected frontmost pick candidate");
+        require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+                std::string(label) + ": render must succeed");
+        SDL_Surface *surface = read_target(renderer, preview.target());
+        const auto center = pixel(surface, 160, 120);
+        SDL_DestroySurface(surface);
+        require(center[0] >= minR && center[1] >= minG && center[2] >= minB,
+                std::string(label) + ": rendered center pixel did not match frontmost sprite");
+    };
+
+    assertState({200, 300, 100}, 100, 180, 0, 0, "initial nested state");
+
+    // Batch Z-only edit of overlapping parent (200) and child (300) across Reference (100, z=5).
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    const auto beforeZBatchCounts = work::snapshot();
+#endif
+    document.root[2]["components"][0]["zOrder"] = 10;
+    document.root[2]["children"][0]["components"][0]["zOrder"] = 10;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200, 300}, false);
+    {
+        const auto stats = preview.last_reconcile_stats();
+        require(stats.visitedAuthoringObjects == 2 && stats.visitedProxyObjects == 2 && stats.updatedProxies == 2,
+                "Z-only batch edit on parent and child must visit each explicitly changed object once");
+    }
+    assertState({100, 200, 300}, 300, 0, 0, 180, "after Z-only batch edit");
+#if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
+    {
+        const auto afterZBatchCounts = work::snapshot();
+        require(afterZBatchCounts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)] ==
+                    beforeZBatchCounts[static_cast<std::size_t>(work::Counter::SceneProxyTransformPublications)],
+                "Z-only batch edit must publish zero scene proxy transforms");
+        require(afterZBatchCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] ==
+                    beforeZBatchCounts[static_cast<std::size_t>(work::Counter::SceneDrawOrderSorts)] + 1,
+                "Z-only batch edit must prepare draw order once after updating the batch");
+    }
+#endif
+
+    // Undo back to z=0 for both parent and child.
+    document.root[2]["components"][0]["zOrder"] = 0;
+    document.root[2]["children"][0]["components"][0]["zOrder"] = 0;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200, 300}, false);
+    assertState({200, 300, 100}, 100, 180, 0, 0, "after undo of Z-only batch edit");
+
+    // Redo back to z=10 for both parent and child.
+    document.root[2]["components"][0]["zOrder"] = 10;
+    document.root[2]["children"][0]["components"][0]["zOrder"] = 10;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200, 300}, false);
+    assertState({100, 200, 300}, 300, 0, 0, 180, "after redo of Z-only batch edit");
+
+    // Inherited position edit with both ancestor (200) and descendant (300) changed must visit the subtree once.
+    document.root[2]["position"]["x"] = 220.0f;
+    ++document.valueRevision;
+    preview.reconcile(document, false, {200, 300}, true);
+    {
+        const auto stats = preview.last_reconcile_stats();
+        require(stats.visitedAuthoringObjects == 2 && stats.visitedProxyObjects == 2,
+                "Inherited position edit listing parent and child must keep one subtree visit");
+    }
+    const auto movedCandidates = viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                                          preview, {220.0f, 120.0f}, 0.0f);
+    require(movedCandidates == std::vector<int>({300, 200}),
+            "Inherited position edit must move both parent and child to x=220");
+    const auto remainingCandidates = viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                                              preview, {160.0f, 120.0f}, 0.0f);
+    require(remainingCandidates == std::vector<int>({100}),
+            "Reference sprite 100 must remain at x=160");
+
+    preview.release();
+}
+
+void check_preview_tab_switch_resets_registration_precedence()
+{
+    TemporaryAssets assets;
+    write_solid_png(assets.root / "assets" / "textures" / "solid_red.png", 220, 0, 0);
+    write_solid_png(assets.root / "assets" / "textures" / "solid_green.png", 0, 220, 0);
+
+    RuntimeOptions options;
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.assetRoot = (assets.root / "assets").string();
+    platformator::Runtime runtime(options);
+    SDL_Renderer *renderer = runtime.getRenderer();
+    require(renderer != nullptr, "tab switch precedence test requires software SDL renderer");
+
+    auto makeDoc = [&](TabId tabId, std::uint64_t projectGeneration, bool reverseTraversal) {
+        DocumentSession doc = make_default_document(assets.root.parent_path(), assets.root / "assets", 500);
+        doc.tabId = tabId;
+        doc.projectGeneration = projectGeneration;
+        doc.documentGeneration = 1;
+        Json redSprite = sprite_component(101, "assets/textures/solid_red.png");
+        redSprite["zOrder"] = 0;
+        Json greenSprite = sprite_component(201, "assets/textures/solid_green.png");
+        greenSprite["zOrder"] = 0;
+        Json obj10 = object_record(10, "Obj10", 160.0f, 120.0f, Json::array({redSprite}));
+        Json obj20 = object_record(20, "Obj20", 160.0f, 120.0f, Json::array({greenSprite}));
+        if (reverseTraversal)
+        {
+            doc.root.push_back(std::move(obj20));
+            doc.root.push_back(std::move(obj10));
+        }
+        else
+        {
+            doc.root.push_back(std::move(obj10));
+            doc.root.push_back(std::move(obj20));
+        }
+        rebuild_document_indexes(doc);
+        return doc;
+    };
+
+    DocumentSession tab1 = makeDoc(TabId{1}, 1, false);
+    DocumentSession tab2 = makeDoc(TabId{2}, 1, true);
+    DocumentSession project2Tab2 = makeDoc(TabId{2}, 2, false);
+
+    ResourceIndex resources;
+    resources.set_project(ProjectGeneration{1}, tab1.assetRoot);
+    EditorPreview preview(runtime);
+    preview.set_resource_index(&resources);
+
+    ViewportTransform pickTransform;
+    require(pickTransform.configure({0.0f, 0.0f, 320.0f, 240.0f}, 1.0f, 1.0f,
+                                    320.0f, 240.0f, 160.0f, 120.0f),
+            "Viewport pick transform must configure");
+
+    auto verifyTabView = [&](const DocumentSession &doc, const std::vector<int> &expectedDrawOrder,
+                             int expectedFrontId, bool expectGreenOnTop, const char *label) {
+        wait_for_asset_preparation(preview, doc);
+        require(preview.draw_document_ids() == expectedDrawOrder,
+                std::string(label) + ": draw_document_ids must match document traversal order");
+        const auto candidates = viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
+                                                         preview, {160.0f, 120.0f}, 0.0f);
+        require(candidates.size() >= 2 && candidates[0] == expectedFrontId,
+                std::string(label) + ": frontmost pick must match rendered top sprite");
+        require(preview.render(0.0f, 0.0f, 320.0f, 240.0f, 320, 240),
+                std::string(label) + ": render must succeed");
+        SDL_Surface *surface = read_target(renderer, preview.target());
+        const auto center = pixel(surface, 160, 120);
+        SDL_DestroySurface(surface);
+        if (expectGreenOnTop)
+            require(center[1] > 180 && center[0] < 40, std::string(label) + ": green object 20 must draw on top");
+        else
+            require(center[0] > 180 && center[1] < 40, std::string(label) + ": red object 10 must draw on top");
+    };
+
+    preview.reconcile(tab1, true);
+    verifyTabView(tab1, {10, 20}, 20, true, "initial tab 1");
+
+    // Same-tab component replacement renews live tie order without switching documents.
+    DocumentSession tab1Live = tab1;
+    tab1Live.root[1]["components"][0]["id"] = 102;
+    ++tab1Live.structureRevision;
+    ++tab1Live.valueRevision;
+    rebuild_document_indexes(tab1Live);
+    preview.reconcile(tab1Live, false, {10}, false);
+    verifyTabView(tab1Live, {20, 10}, 10, false, "live tie renewal inside tab 1");
+
+    // Switch to tab 2 sharing assetRoot and documentGeneration=1 (reversed traversal).
+    preview.reconcile(tab2, false);
+    verifyTabView(tab2, {20, 10}, 10, false, "switch to tab 2");
+
+    // Switch back to tab 1: must reconstruct tab 1's serialized traversal {10, 20}.
+    preview.reconcile(tab1, false);
+    verifyTabView(tab1, {10, 20}, 20, true, "switch back to tab 1");
+
+    // Switch to tab 2, then switch projectGeneration (same tabId=2, documentGeneration=1, assetRoot).
+    preview.reconcile(tab2, false);
+    verifyTabView(tab2, {20, 10}, 10, false, "switch to tab 2 before project change");
+    resources.set_project(ProjectGeneration{2}, project2Tab2.assetRoot);
+    preview.reconcile(project2Tab2, false);
+    verifyTabView(project2Tab2, {10, 20}, 20, true, "switch across projectGeneration");
+
+    preview.release();
+}
 } // namespace
 
 int main()
@@ -2148,6 +2375,8 @@ int main()
         check_shared_texture_and_animation_consumers_after_rebuild();
         check_preview_z_ordering_and_paused_order_only_edits();
         check_preview_asset_reload_preserves_draw_order();
+        check_preview_nested_sprite_multi_edit_z_batch();
+        check_preview_tab_switch_resets_registration_precedence();
         platformator_editor::run_viewport_cases();
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
         const auto counts = work::snapshot();

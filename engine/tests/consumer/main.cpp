@@ -13,6 +13,15 @@ namespace
 struct alignas(2 * __STDCPP_DEFAULT_NEW_ALIGNMENT__) AlignedCollider : BoxCollider
 {
 };
+
+class HeapCollider : public BoxCollider
+{
+public:
+    static void *operator new(std::size_t size) { return ::operator new(size); }
+
+private:
+    char extraStorage[64]{};
+};
 }
 
 int main(int argc, char **argv)
@@ -23,6 +32,8 @@ int main(int argc, char **argv)
         const std::unique_ptr<BoxCollider> aligned(new (std::nothrow) AlignedCollider);
         if (!pooled || !aligned || reinterpret_cast<std::uintptr_t>(aligned.get()) % alignof(AlignedCollider) != 0)
             return 5;
+        std::unique_ptr<BoxCollider> heapAllocated(new HeapCollider);
+        heapAllocated.reset();
 
         RuntimeOptions options;
         options.windowSettings.headless = true;

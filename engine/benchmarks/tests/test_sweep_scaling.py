@@ -2,6 +2,7 @@ import csv
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -179,7 +180,8 @@ class PlotAndFailureContract(unittest.TestCase):
     def test_plot_rejects_legacy_missing_metrics_and_validation(self):
         spec = importlib.util.spec_from_file_location("plot_scaling", Path(__file__).resolve().parents[1] / "plot_scaling.py")
         plot = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(plot)
+        with patch.dict(sys.modules, {"sweep_scaling": sweep}):
+            spec.loader.exec_module(plot)
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "plot.csv"
@@ -205,7 +207,8 @@ class PlotAndFailureContract(unittest.TestCase):
     def test_plot_references_and_two_panel_generation(self):
         spec = importlib.util.spec_from_file_location("plot_scaling", Path(__file__).resolve().parents[1] / "plot_scaling.py")
         plot = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(plot)
+        with patch.dict(sys.modules, {"sweep_scaling": sweep}):
+            spec.loader.exec_module(plot)
         from types import SimpleNamespace
 
         refs = plot.compute_reference_curve([100.0, 200.0, 400.0], [1.0, 2.0, 4.0], "N", anchor="first")
@@ -221,11 +224,19 @@ class PlotAndFailureContract(unittest.TestCase):
 
         primary = dict(scenario="moving_add_and_remove", sweep_parameter="churn_count", seed=0,
                        steady_count=1000, scripted_endpoints=0, workers=1)
+        config = dict(dt=1 / 120, rendering=False, box_count=1000, circle_count=0)
+        primary["comparison_workload"] = json.dumps(config)
         plot.validate_comparison([primary], [dict(primary, workers=6)])
         for field, value in (("scenario", "add_and_remove"), ("sweep_parameter", "steady_count"),
                              ("seed", 1), ("steady_count", 2000), ("scripted_endpoints", 2)):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
                 plot.validate_comparison([primary], [dict(primary, **{field: value})])
+        for field, value in (("box_count", 0), ("circle_count", 1000), ("dt", 1 / 60), ("rendering", True)):
+            comparison = dict(primary, workers=6, comparison_workload=json.dumps(dict(config, **{field: value})))
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                plot.validate_comparison([primary], [comparison])
+        with self.assertRaisesRegex(ValueError, "resolved workload"):
+            plot.validate_comparison([primary], [dict(primary, comparison_workload="")])
 
         with tempfile.TemporaryDirectory() as directory:
             csv_w1 = Path(directory) / "w1.csv"
@@ -239,12 +250,12 @@ class PlotAndFailureContract(unittest.TestCase):
                     rows.append(sweep.build_result_row(
                         SimpleNamespace(scenario="broad_phase", workers=workers, seed=0, validate_invariants=False),
                         count, [sweep.parse_benchmark_csv(src)] * 5))
+                    rows[-1]["comparison_workload"] = json.dumps(sweep.comparison_workload(sweep.load_manifest(src)))
                 with csv_path.open("w", newline="") as handle:
                     writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
                     writer.writeheader()
                     writer.writerows(rows)
 
-            import sys
             argv_backup = sys.argv[:]
             try:
                 sys.argv = [

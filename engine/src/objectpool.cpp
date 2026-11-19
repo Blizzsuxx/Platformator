@@ -6,6 +6,9 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdlib>
+#include <cstdint>
+#include <iterator>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -39,7 +42,7 @@ void *allocatePooledObject(PooledObjectKind, size_t size)
     return ::operator new(size);
 }
 
-void deallocatePooledObject(void *ptr) noexcept
+void deallocatePooledObject(PooledObjectKind, void *ptr, size_t) noexcept
 {
     ::operator delete(ptr);
 }
@@ -67,118 +70,174 @@ struct FreeNode
     FreeNode *next;
 };
 
-class SlabPool;
-
 struct alignas(SLOT_ALIGNMENT) Slab
 {
-    SlabPool *pool;
     FreeNode *freeHead = nullptr;
     size_t liveSlots = 0;
+    std::uintptr_t endAddress = 0;
+    bool reclaimWhenEmpty = false;
 
     // Only slabs with free slots are on this list.
     Slab *next = nullptr;
     Slab **previousLink = nullptr;
 };
 
-struct SlotHeader
+struct SlabDeleter
 {
-    Slab *slab;
+    void operator()(Slab *slab) const noexcept
+    {
+        std::destroy_at(slab);
+        ::operator delete(slab, std::align_val_t{SLOT_ALIGNMENT});
+    }
 };
 
-constexpr size_t alignSlotSize(size_t size) noexcept
-{
-    return (size + SLOT_ALIGNMENT - 1) & ~(SLOT_ALIGNMENT - 1);
-}
-
-constexpr size_t OBJECT_OFFSET = alignSlotSize(sizeof(SlotHeader));
-constexpr size_t SLAB_OBJECT_OFFSET = alignSlotSize(sizeof(Slab) + sizeof(SlotHeader));
-
-SlotHeader *slotHeader(void *ptr) noexcept
-{
-    return reinterpret_cast<SlotHeader *>(static_cast<std::byte *>(ptr) - sizeof(SlotHeader));
-}
+using SlabMap = std::map<std::uintptr_t, std::unique_ptr<Slab, SlabDeleter>>;
 
 class SlabPool
 {
   public:
     explicit SlabPool(size_t objectSize) noexcept
-        : objectSize(objectSize), slotSize(alignSlotSize(sizeof(SlotHeader) + std::max(objectSize, sizeof(FreeNode))))
+        : objectSize(objectSize),
+          slotSize((std::max(objectSize, sizeof(FreeNode)) + SLOT_ALIGNMENT - 1) & ~(SLOT_ALIGNMENT - 1))
     {
     }
 
     void *allocate(size_t size)
     {
         if (size != objectSize)
+            return ::operator new(size);
+
+        // Declare the node first so any unused backing storage is freed after unlocking.
+        SlabMap::node_type candidate;
+        std::unique_lock lock(mutex);
+        if (!available)
         {
-            // A derived type can inherit this allocator. Its allocation still needs a header
-            // so the corresponding nothrow placement delete can free it without a size.
-            if (size > SIZE_MAX - OBJECT_OFFSET)
-                throw std::bad_alloc();
-            auto *storage = static_cast<std::byte *>(
-                ::operator new(OBJECT_OFFSET + size, std::align_val_t{SLOT_ALIGNMENT}));
-            void *ptr = storage + OBJECT_OFFSET;
-            std::construct_at(slotHeader(ptr), SlotHeader{nullptr});
-            return ptr;
+            const size_t count = nextSlabSlots;
+            lock.unlock();
+            try
+            {
+                candidate = makeSlab(count);
+            }
+            catch (const std::bad_alloc &)
+            {
+                lock.lock();
+                if (!available)
+                    throw;
+                return takeSlot();
+            }
+            lock.lock();
+            if (!available)
+            {
+                Slab *slab = candidate.mapped().get();
+                slab->reclaimWhenEmpty = exiting;
+                slabs.insert(std::move(candidate));
+                link(slab);
+                nextSlabSlots = std::min(count * 2, MAX_SLAB_SLOTS);
+            }
         }
-
-        std::lock_guard lock(mutex);
-        if (available == nullptr)
-            grow();
-
-        Slab *slab = available;
-        FreeNode *slot = slab->freeHead;
-        slab->freeHead = slot->next;
-        ++slab->liveSlots;
-        if (slab->freeHead == nullptr)
-            unlink(slab);
-        return slot;
+        return takeSlot();
     }
 
-    void deallocate(Slab *slab, void *ptr) noexcept
+    bool deallocate(void *ptr, size_t size) noexcept
     {
+        if (size != 0 && size != objectSize)
+            return false;
+
+        SlabMap::node_type retired;
         std::lock_guard lock(mutex);
+        Slab *slab = findSlab(reinterpret_cast<std::uintptr_t>(ptr));
+        if (!slab)
+            return false;
+
         const bool wasFull = slab->freeHead == nullptr;
         slab->freeHead = std::construct_at(static_cast<FreeNode *>(ptr), FreeNode{slab->freeHead});
         if (wasFull)
             link(slab);
 
-        --slab->liveSlots;
-        if (exiting && slab->liveSlots == 0)
-            release(slab);
+        if (--slab->liveSlots == 0 && slab->reclaimWhenEmpty)
+        {
+            unlink(slab);
+            lastFreed = nullptr;
+            retired = slabs.extract(firstAddress(slab));
+        }
+        return true;
     }
 
     void trim(bool atExit = false) noexcept
     {
+        SlabMap retired;
         std::lock_guard lock(mutex);
         exiting = atExit || exiting;
-        Slab *slab = available;
-        while (slab != nullptr)
+        lastFreed = nullptr;
+        for (auto it = slabs.begin(); it != slabs.end();)
         {
-            Slab *next = slab->next;
+            Slab *slab = it->second.get();
             if (slab->liveSlots == 0)
-                release(slab);
-            slab = next;
+            {
+                unlink(slab);
+                retired.insert(retired.end(), slabs.extract(it++));
+            }
+            else
+            {
+                slab->reclaimWhenEmpty = true;
+                ++it;
+            }
         }
         nextSlabSlots = INITIAL_SLAB_SLOTS;
     }
 
   private:
-    void grow()
+    static std::uintptr_t firstAddress(const Slab *slab) noexcept
     {
-        const size_t count = nextSlabSlots;
+        return reinterpret_cast<std::uintptr_t>(slab + 1);
+    }
+
+    Slab *findSlab(std::uintptr_t address) noexcept
+    {
+        // Consecutive deletes commonly come from the same slab.
+        Slab *slab = lastFreed;
+        if (!slab || address < firstAddress(slab) || address >= slab->endAddress)
+        {
+            auto next = slabs.upper_bound(address);
+            if (next == slabs.begin())
+                return nullptr;
+            slab = std::prev(next)->second.get();
+            if (address >= slab->endAddress)
+                return nullptr;
+            lastFreed = slab;
+        }
+        assert((address - firstAddress(slab)) % slotSize == 0);
+        return slab;
+    }
+
+    FreeNode *takeSlot() noexcept
+    {
+        Slab *slab = available;
+        FreeNode *slot = slab->freeHead;
+        slab->freeHead = slot->next;
+        ++slab->liveSlots;
+        if (!slab->freeHead)
+            unlink(slab);
+        return slot;
+    }
+
+    SlabMap::node_type makeSlab(size_t count) const
+    {
         auto *storage = static_cast<std::byte *>(
-            ::operator new(SLAB_OBJECT_OFFSET - sizeof(SlotHeader) + count * slotSize,
-                           std::align_val_t{SLOT_ALIGNMENT}));
-        auto *slab = std::construct_at(reinterpret_cast<Slab *>(storage), Slab{this});
-        storage += SLAB_OBJECT_OFFSET;
+            ::operator new(sizeof(Slab) + count * slotSize, std::align_val_t{SLOT_ALIGNMENT}));
+        std::unique_ptr<Slab, SlabDeleter> slab(std::construct_at(reinterpret_cast<Slab *>(storage)));
+        storage += sizeof(Slab);
+        slab->endAddress = reinterpret_cast<std::uintptr_t>(storage + count * slotSize);
         for (size_t i = count; i > 0; --i)
         {
             auto *slot = reinterpret_cast<FreeNode *>(storage + (i - 1) * slotSize);
-            std::construct_at(slotHeader(slot), SlotHeader{slab});
             slab->freeHead = std::construct_at(slot, FreeNode{slab->freeHead});
         }
-        link(slab);
-        nextSlabSlots = std::min(count * 2, MAX_SLAB_SLOTS);
+
+        // Prepare both allocations before acquiring the pool lock.
+        SlabMap pending;
+        const auto address = firstAddress(slab.get());
+        return pending.extract(pending.emplace(address, std::move(slab)).first);
     }
 
     void link(Slab *slab) noexcept
@@ -197,17 +256,12 @@ class SlabPool
             slab->next->previousLink = slab->previousLink;
     }
 
-    void release(Slab *slab) noexcept
-    {
-        unlink(slab);
-        std::destroy_at(slab);
-        ::operator delete(slab, std::align_val_t{SLOT_ALIGNMENT});
-    }
-
     const size_t objectSize;
     const size_t slotSize;
     tbb::spin_mutex mutex;
+    SlabMap slabs;
     Slab *available = nullptr;
+    Slab *lastFreed = nullptr;
     size_t nextSlabSlots = INITIAL_SLAB_SLOTS;
     bool exiting = false;
 };
@@ -249,15 +303,16 @@ void *allocatePooledObject(PooledObjectKind kind, size_t size)
     return getPools()[index].allocate(size);
 }
 
-void deallocatePooledObject(void *ptr) noexcept
+void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t size) noexcept
 {
-    if (ptr == nullptr)
+    if (!ptr)
         return;
 
-    if (Slab *slab = slotHeader(ptr)->slab)
-        slab->pool->deallocate(slab, ptr);
-    else
-        ::operator delete(static_cast<std::byte *>(ptr) - OBJECT_OFFSET, std::align_val_t{SLOT_ALIGNMENT});
+    const size_t index = static_cast<size_t>(kind);
+    assert(index < static_cast<size_t>(PooledObjectKind::Count));
+    auto *pools = publishedPools.load(std::memory_order_acquire);
+    if (!pools || !(*pools)[index].deallocate(ptr, size))
+        ::operator delete(ptr);
 }
 
 void releaseEmptyObjectPools() noexcept

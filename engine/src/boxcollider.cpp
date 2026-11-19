@@ -11,9 +11,9 @@ void *BoxCollider::operator new(size_t size)
     return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::BoxCollider, size);
 }
 
-void BoxCollider::operator delete(void *ptr, size_t) noexcept
+void BoxCollider::operator delete(void *ptr, size_t size) noexcept
 {
-    platformator_detail::deallocatePooledObject(ptr);
+    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::BoxCollider, ptr, size);
 }
 
 void *BoxCollider::operator new(size_t size, const std::nothrow_t &) noexcept
@@ -23,7 +23,7 @@ void *BoxCollider::operator new(size_t size, const std::nothrow_t &) noexcept
 
 void BoxCollider::operator delete(void *ptr, const std::nothrow_t &) noexcept
 {
-    platformator_detail::deallocatePooledObject(ptr);
+    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::BoxCollider, ptr);
 }
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)

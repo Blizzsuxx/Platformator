@@ -12,9 +12,9 @@ void *Rigidbody::operator new(size_t size)
     return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, size);
 }
 
-void Rigidbody::operator delete(void *ptr, size_t) noexcept
+void Rigidbody::operator delete(void *ptr, size_t size) noexcept
 {
-    platformator_detail::deallocatePooledObject(ptr);
+    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, ptr, size);
 }
 
 void *Rigidbody::operator new(size_t size, const std::nothrow_t &) noexcept
@@ -24,7 +24,7 @@ void *Rigidbody::operator new(size_t size, const std::nothrow_t &) noexcept
 
 void Rigidbody::operator delete(void *ptr, const std::nothrow_t &) noexcept
 {
-    platformator_detail::deallocatePooledObject(ptr);
+    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, ptr);
 }
 
 Rigidbody::Rigidbody() : Rigidbody(nullptr, BodyType::DYNAMIC, true)

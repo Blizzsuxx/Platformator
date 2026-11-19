@@ -6,8 +6,11 @@ import math
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
+from sweep_scaling import comparison_workload, is_add_remove_scenario, load_manifest
 
-STRING_COLUMNS = {"scenario", "sweep_parameter", "raw_directory", "raw_archive", "validation_mode", "timing_eligible"}
+
+STRING_COLUMNS = {"scenario", "sweep_parameter", "raw_directory", "raw_archive", "validation_mode", "timing_eligible",
+                  "comparison_workload"}
 SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions")
 
 COMPLEXITY_SPECS: Dict[str, Tuple[str, Callable[[float], float], str]] = {
@@ -19,7 +22,24 @@ COMPLEXITY_SPECS: Dict[str, Tuple[str, Callable[[float], float], str]] = {
 }
 
 
-def load_rows(csv_path):
+def _legacy_comparison_workload(csv_path, row):
+    raw_directory = row.get("raw_directory")
+    manifests = sorted((Path(csv_path).parent / raw_directory).glob("run-*.manifest.json")) if raw_directory else []
+    if len(manifests) != int(row["repetitions"]):
+        raise ValueError(f"Cannot verify the comparison workload in {csv_path}. Its run manifests are incomplete.")
+
+    workloads = set()
+    for path in manifests:
+        manifest = load_manifest(path.with_name(path.name.removesuffix(".manifest.json") + ".csv"))
+        if any(manifest[key] != row[key] for key in ("scenario", "workers", "seed", "repetitions")):
+            raise ValueError(f"Run manifest does not match the aggregate row in {csv_path}")
+        workloads.add(json.dumps(comparison_workload(manifest), sort_keys=True))
+    if len(workloads) != 1:
+        raise ValueError(f"Run manifests disagree on the comparison workload in {csv_path}")
+    return workloads.pop()
+
+
+def load_rows(csv_path, require_workload=False):
     with open(csv_path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         required = {"schema_version", "scenario", "sweep_parameter", "swept_value", "requested_count", "workers", "seed", "repetitions",
@@ -39,6 +59,8 @@ def load_rows(csv_path):
                     raise ValueError(f"Invalid metric: {key}")
             if parsed["repetitions"] < 5:
                 raise ValueError("At least five independent repetitions are required")
+            if require_workload and not parsed.get("comparison_workload"):
+                parsed["comparison_workload"] = _legacy_comparison_workload(csv_path, parsed)
             rows.append(parsed)
         if not rows:
             raise ValueError("Input CSV has no data rows")
@@ -80,6 +102,19 @@ def validate_comparison(rows, compare_rows) -> None:
             continue
         if {row.get(field, 0.0) for row in rows} != {row.get(field, 0.0) for row in compare_rows}:
             raise ValueError(f"Compare CSV must use the same {field} as --input")
+    controls = ("dt", "rendering")
+    if is_add_remove_scenario(rows[0]["scenario"]):
+        controls += ("box_count", "circle_count")
+
+    workloads = []
+    for arm in (rows, compare_rows):
+        settings = [json.loads(row.get("comparison_workload") or "{}") for row in arm]
+        if any(not isinstance(config, dict) or not all(field in config for field in controls) for config in settings):
+            raise ValueError("Comparison requires resolved workload settings for both inputs")
+        workloads.append(settings)
+    for field in controls:
+        if len({config[field] for arm in workloads for config in arm}) != 1:
+            raise ValueError(f"Compare CSV must use the same resolved {field} as --input")
 
 
 def build_title(rows: List[Dict[str, Union[str, float]]], compare_rows: Optional[List[Dict[str, Union[str, float]]]] = None) -> str:
@@ -416,8 +451,8 @@ def main() -> int:
     if not args.input:
         raise ValueError("Provide --input CSV path or --render-report JSON path.")
 
-    rows = load_rows(args.input)
-    compare_rows = load_rows(args.compare) if args.compare else None
+    rows = load_rows(args.input, require_workload=bool(args.compare))
+    compare_rows = load_rows(args.compare, require_workload=True) if args.compare else None
     if compare_rows is not None:
         validate_comparison(rows, compare_rows)
 

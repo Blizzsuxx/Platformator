@@ -157,6 +157,17 @@ def sweep_parameter_name(scenario):
             "add_and_remove": "churn_count", "moving_add_and_remove": "churn_count"}[scenario]
 
 
+def comparison_workload(manifest):
+    workload = {"dt": manifest["dt"], "rendering": manifest["rendering"]}
+    if is_add_remove_scenario(manifest["scenario"]):
+        resolved = manifest.get("resolved_parameters", {})
+        for key in ("box_count", "circle_count"):
+            if key not in resolved:
+                raise ValueError(f"Benchmark manifest is missing the resolved {key}")
+            workload[key] = resolved[key]
+    return workload
+
+
 def build_result_row(args, count, metrics):
     # All required keys were checked; a missing metric must never become zero.
     row = {"schema_version": 3, "scenario": args.scenario, "sweep_parameter": sweep_parameter_name(args.scenario),
@@ -232,6 +243,7 @@ def main(argv=None):
     rows = []
     for count in counts:
         results = []
+        workload = None
         directory = raw / f"population-{count:06d}"
         directory.mkdir(parents=True, exist_ok=True)
         for repetition in range(args.repetitions):
@@ -244,6 +256,10 @@ def main(argv=None):
                 subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
             metrics = parse_benchmark_csv(csv_path)
             manifest = load_manifest(csv_path)
+            run_workload = comparison_workload(manifest)
+            if workload is not None and run_workload != workload:
+                raise ValueError("Runner changed the resolved workload between repetitions")
+            workload = run_workload
             build = manifest["build"]
             if manifest.get("validation_mode") != ("per-step" if args.validate_invariants else "boundary-only"):
                 raise ValueError("Validation instrumentation does not match the requested mode")
@@ -258,6 +274,7 @@ def main(argv=None):
             if args.cooldown_seconds:
                 time.sleep(args.cooldown_seconds)
         row = build_result_row(args, count, results)
+        row["comparison_workload"] = json.dumps(workload, sort_keys=True)
         try:
             row["raw_directory"] = str(directory.relative_to(output.parent))
         except ValueError:

@@ -16,6 +16,6 @@ enum class PooledObjectKind : size_t
 
 void *allocatePooledObject(PooledObjectKind kind, size_t size);
 void *allocatePooledObjectNothrow(PooledObjectKind kind, size_t size) noexcept;
-void deallocatePooledObject(void *ptr) noexcept;
+void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t size = 0) noexcept;
 void releaseEmptyObjectPools() noexcept;
 } // namespace platformator_detail

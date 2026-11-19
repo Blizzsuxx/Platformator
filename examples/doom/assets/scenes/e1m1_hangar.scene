@@ -1,0 +1,3174 @@
+[
+  {
+    "id": 1,
+    "name": "GameManager",
+    "tag": "manager",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomGameManager",
+            "levelTitle": "DOOM E1M1 - Phobos Hangar",
+            "nextScenePath": "assets/scenes/e1m2_reactor.scene",
+            "firstScenePath": "assets/scenes/e1m1_hangar.scene",
+            "levelIndex": 1,
+            "player": 5,
+            "camera": 7,
+            "bgm": 4
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 3,
+    "name": "BGM",
+    "tag": "audio",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 4,
+        "type": 1,
+        "autoPlay": true,
+        "filePath": "assets/audio/bgm_e1m1.wav",
+        "gain": 0.3,
+        "loopCount": -1
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 5,
+    "name": "Player",
+    "tag": "player",
+    "position": {
+      "x": 120.0,
+      "y": 700.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": -0.45,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 8,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/map/player_map.png"
+      },
+      {
+        "id": 9,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 10,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 11,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.7,
+        "loopCount": 0
+      },
+      {
+        "id": 12,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomPlayer",
+            "moveSpeed": 165.0,
+            "sprintMultiplier": 1.45,
+            "turnSpeed": 2.4,
+            "startYaw": -0.45,
+            "maxHp": 100,
+            "hp": 100,
+            "armor": 25,
+            "ammo": 28,
+            "maxAmmo": 100,
+            "currentWeapon": 0,
+            "hasShotgun": false,
+            "hasPlasma": false,
+            "plasmaBoltTemplate": "assets/templates/PlayerPlasma.pttemplate",
+            "hitSparkTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pistolSound": "assets/audio/pistol.wav",
+            "shotgunSound": "assets/audio/shotgun.wav",
+            "plasmaSound": "assets/audio/plasma.wav",
+            "hurtSound": "assets/audio/player_hurt.wav",
+            "emptySound": "assets/audio/door_locked.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 6,
+    "name": "Main Camera",
+    "tag": "camera",
+    "position": {
+      "x": 3200.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 7,
+        "type": 2,
+        "width": 640.0,
+        "height": 360.0
+      },
+      {
+        "id": 13,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomRaycaster",
+            "camera": 7,
+            "ceilingTex": "assets/textures/world/ceiling.png",
+            "floorTex": "assets/textures/world/floor.png",
+            "hudBarTex": "assets/textures/hud/hud_bar.png",
+            "digitsTex": "assets/textures/hud/digits.png",
+            "faceTex": "assets/textures/hud/face_strip.png",
+            "crosshairTex": "assets/textures/hud/crosshair.png",
+            "keyIconTex": "assets/textures/items/keycard_red.png",
+            "whiteTex": "assets/textures/hud/white.png",
+            "defaultWallTex": "assets/textures/walls/wall_tech.png",
+            "pistolTex": "assets/textures/weapons/pistol_idle.png",
+            "pistolFireTex": "assets/textures/weapons/pistol_fire.png",
+            "shotgunTex": "assets/textures/weapons/shotgun_idle.png",
+            "shotgunFireTex": "assets/textures/weapons/shotgun_fire.png",
+            "plasmaTex": "assets/textures/weapons/plasma_idle.png",
+            "plasmaFireTex": "assets/textures/weapons/plasma_fire.png"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 14,
+    "name": "WallNorth",
+    "tag": "wall",
+    "position": {
+      "x": 512.0,
+      "y": 16.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 15,
+        "type": 6,
+        "flip": 0,
+        "width": 1056.0,
+        "height": 32.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_tech.png"
+      },
+      {
+        "id": 16,
+        "type": 3,
+        "colliderType": 1,
+        "width": 1056.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 17,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 18,
+    "name": "WallSouth",
+    "tag": "wall",
+    "position": {
+      "x": 512.0,
+      "y": 880.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 19,
+        "type": 6,
+        "flip": 0,
+        "width": 1056.0,
+        "height": 32.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_tech.png"
+      },
+      {
+        "id": 20,
+        "type": 3,
+        "colliderType": 1,
+        "width": 1056.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 21,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 22,
+    "name": "WallWest",
+    "tag": "wall",
+    "position": {
+      "x": 16.0,
+      "y": 448.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 23,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 896.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_tech.png"
+      },
+      {
+        "id": 24,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 896.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 25,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 26,
+    "name": "WallEast",
+    "tag": "wall",
+    "position": {
+      "x": 1008.0,
+      "y": 448.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 27,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 896.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_tech.png"
+      },
+      {
+        "id": 28,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 896.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 29,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 30,
+    "name": "DivSW_Left",
+    "tag": "wall",
+    "position": {
+      "x": 120.0,
+      "y": 448.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 31,
+        "type": 6,
+        "flip": 0,
+        "width": 192.0,
+        "height": 32.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_tech.png"
+      },
+      {
+        "id": 32,
+        "type": 3,
+        "colliderType": 1,
+        "width": 192.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 33,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 34,
+    "name": "DivSW_Right",
+    "tag": "wall",
+    "position": {
+      "x": 368.0,
+      "y": 448.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 35,
+        "type": 6,
+        "flip": 0,
+        "width": 192.0,
+        "height": 32.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_tech.png"
+      },
+      {
+        "id": 36,
+        "type": 3,
+        "colliderType": 1,
+        "width": 192.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 37,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 38,
+    "name": "DoorNorth",
+    "tag": "door",
+    "position": {
+      "x": 240.0,
+      "y": 448.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 39,
+        "type": 6,
+        "flip": 0,
+        "width": 68.0,
+        "height": 16.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_door.png"
+      },
+      {
+        "id": 40,
+        "type": 3,
+        "colliderType": 1,
+        "width": 68.0,
+        "height": 16.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 64,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 41,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 42,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.7,
+        "loopCount": 0
+      },
+      {
+        "id": 43,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomDoor",
+            "slideDirX": 1.0,
+            "slideDirY": 0.0,
+            "slideDistance": 62.0,
+            "slideSpeed": 140.0,
+            "requiresRedKey": false,
+            "autoCloseDelay": 4.5,
+            "doorSound": "assets/audio/door.wav",
+            "lockedSound": "assets/audio/door_locked.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 44,
+    "name": "DivBay_Top",
+    "tag": "wall",
+    "position": {
+      "x": 448.0,
+      "y": 530.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 45,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 196.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_brick.png"
+      },
+      {
+        "id": 46,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 196.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 47,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 48,
+    "name": "DivBay_Bot",
+    "tag": "wall",
+    "position": {
+      "x": 448.0,
+      "y": 786.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 49,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 196.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_brick.png"
+      },
+      {
+        "id": 50,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 196.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 51,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 52,
+    "name": "DivEastMid",
+    "tag": "wall",
+    "position": {
+      "x": 728.0,
+      "y": 448.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 53,
+        "type": 6,
+        "flip": 0,
+        "width": 560.0,
+        "height": 32.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_brick.png"
+      },
+      {
+        "id": 54,
+        "type": 3,
+        "colliderType": 1,
+        "width": 560.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 55,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 56,
+    "name": "DivNE_Top",
+    "tag": "wall",
+    "position": {
+      "x": 704.0,
+      "y": 120.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 57,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 200.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_comp.png"
+      },
+      {
+        "id": 58,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 200.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 59,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 60,
+    "name": "DivNE_Bot",
+    "tag": "wall",
+    "position": {
+      "x": 704.0,
+      "y": 360.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 61,
+        "type": 6,
+        "flip": 0,
+        "width": 32.0,
+        "height": 200.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_comp.png"
+      },
+      {
+        "id": 62,
+        "type": 3,
+        "colliderType": 1,
+        "width": 32.0,
+        "height": 200.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 63,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 64,
+    "name": "DoorRed",
+    "tag": "door",
+    "position": {
+      "x": 704.0,
+      "y": 240.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 65,
+        "type": 6,
+        "flip": 0,
+        "width": 16.0,
+        "height": 68.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_door_red.png"
+      },
+      {
+        "id": 66,
+        "type": 3,
+        "colliderType": 1,
+        "width": 16.0,
+        "height": 68.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 64,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 67,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 68,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.7,
+        "loopCount": 0
+      },
+      {
+        "id": 69,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomDoor",
+            "slideDirX": 0.0,
+            "slideDirY": -1.0,
+            "slideDistance": 62.0,
+            "slideSpeed": 140.0,
+            "requiresRedKey": true,
+            "autoCloseDelay": 4.5,
+            "doorSound": "assets/audio/door.wav",
+            "lockedSound": "assets/audio/door_locked.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 70,
+    "name": "AngledBunker_SW",
+    "tag": "wall",
+    "position": {
+      "x": 280.0,
+      "y": 760.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": -0.785398,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 71,
+        "type": 6,
+        "flip": 0,
+        "width": 128.0,
+        "height": 24.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_comp.png"
+      },
+      {
+        "id": 72,
+        "type": 3,
+        "colliderType": 1,
+        "width": 128.0,
+        "height": 24.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 73,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 74,
+    "name": "AngledComp_SE",
+    "tag": "wall",
+    "position": {
+      "x": 840.0,
+      "y": 550.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.785398,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 75,
+        "type": 6,
+        "flip": 0,
+        "width": 128.0,
+        "height": 24.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_comp.png"
+      },
+      {
+        "id": 76,
+        "type": 3,
+        "colliderType": 1,
+        "width": 128.0,
+        "height": 24.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 77,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 78,
+    "name": "Pillar_SW",
+    "tag": "wall",
+    "position": {
+      "x": 150.0,
+      "y": 560.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 79,
+        "type": 6,
+        "flip": 0,
+        "width": 44.0,
+        "height": 44.0,
+        "zOrder": 2,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_pillar.png"
+      },
+      {
+        "id": 80,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 22.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 81,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 82,
+    "name": "Pillar_NorthA",
+    "tag": "wall",
+    "position": {
+      "x": 200.0,
+      "y": 200.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 83,
+        "type": 6,
+        "flip": 0,
+        "width": 48.0,
+        "height": 48.0,
+        "zOrder": 2,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_pillar.png"
+      },
+      {
+        "id": 84,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 24.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 85,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 86,
+    "name": "Pillar_NorthB",
+    "tag": "wall",
+    "position": {
+      "x": 460.0,
+      "y": 200.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 87,
+        "type": 6,
+        "flip": 0,
+        "width": 48.0,
+        "height": 48.0,
+        "zOrder": 2,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_pillar.png"
+      },
+      {
+        "id": 88,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 24.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 89,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 90,
+    "name": "WallExitPanel",
+    "tag": "wall",
+    "position": {
+      "x": 990.0,
+      "y": 240.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 91,
+        "type": 6,
+        "flip": 0,
+        "width": 16.0,
+        "height": 64.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_exit.png"
+      },
+      {
+        "id": 92,
+        "type": 3,
+        "colliderType": 1,
+        "width": 16.0,
+        "height": 64.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 93,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 94,
+    "name": "Barrel_SW",
+    "tag": "barrel",
+    "position": {
+      "x": 250.0,
+      "y": 600.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 95,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 4,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/props/barrel.png"
+      },
+      {
+        "id": 96,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 13.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 128,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 97,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 98,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.85,
+        "loopCount": 0
+      },
+      {
+        "id": 99,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 34.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomBarrel",
+            "hp": 20,
+            "blastRadius": 140.0,
+            "blastDamage": 85,
+            "explosionTemplate": "assets/templates/ExplosionFx.pttemplate",
+            "explodeSound": "assets/audio/explosion.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 100,
+    "name": "Barrel_SE_A",
+    "tag": "barrel",
+    "position": {
+      "x": 650.0,
+      "y": 640.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 101,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 4,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/props/barrel.png"
+      },
+      {
+        "id": 102,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 13.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 128,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 103,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 104,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.85,
+        "loopCount": 0
+      },
+      {
+        "id": 105,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 34.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomBarrel",
+            "hp": 20,
+            "blastRadius": 140.0,
+            "blastDamage": 85,
+            "explosionTemplate": "assets/templates/ExplosionFx.pttemplate",
+            "explodeSound": "assets/audio/explosion.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 106,
+    "name": "Barrel_SE_B",
+    "tag": "barrel",
+    "position": {
+      "x": 688.0,
+      "y": 660.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 107,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 4,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/props/barrel.png"
+      },
+      {
+        "id": 108,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 13.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 128,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 109,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 110,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.85,
+        "loopCount": 0
+      },
+      {
+        "id": 111,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 34.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomBarrel",
+            "hp": 20,
+            "blastRadius": 140.0,
+            "blastDamage": 85,
+            "explosionTemplate": "assets/templates/ExplosionFx.pttemplate",
+            "explodeSound": "assets/audio/explosion.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 112,
+    "name": "Trooper_SW",
+    "tag": "enemy",
+    "position": {
+      "x": 310.0,
+      "y": 590.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 113,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/trooper_walk0.png"
+      },
+      {
+        "id": 114,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 115,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 116,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/trooper_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 117,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 118,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 44.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 0,
+            "hp": 36,
+            "maxHp": 36,
+            "moveSpeed": 65.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.35,
+            "attackDamage": 8,
+            "fireballTemplate": "",
+            "dropTemplate": "assets/templates/AmmoBox.pttemplate",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/trooper_walk.animset",
+            "attackAnim": "assets/animations/trooper_attack.animset",
+            "hurtAnim": "assets/animations/trooper_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/pistol.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 119,
+    "name": "Trooper_SE",
+    "tag": "enemy",
+    "position": {
+      "x": 640.0,
+      "y": 740.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 120,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/trooper_walk0.png"
+      },
+      {
+        "id": 121,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 122,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 123,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/trooper_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 124,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 125,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 44.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 0,
+            "hp": 36,
+            "maxHp": 36,
+            "moveSpeed": 65.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.35,
+            "attackDamage": 8,
+            "fireballTemplate": "",
+            "dropTemplate": "assets/templates/AmmoBox.pttemplate",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/trooper_walk.animset",
+            "attackAnim": "assets/animations/trooper_attack.animset",
+            "hurtAnim": "assets/animations/trooper_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/pistol.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 126,
+    "name": "Imp_SE",
+    "tag": "enemy",
+    "position": {
+      "x": 820.0,
+      "y": 690.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 127,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/imp_walk0.png"
+      },
+      {
+        "id": 128,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 15.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 129,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 130,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/imp_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 131,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 132,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 48.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 1,
+            "hp": 60,
+            "maxHp": 60,
+            "moveSpeed": 82.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.45,
+            "attackDamage": 14,
+            "fireballTemplate": "assets/templates/ImpFireball.pttemplate",
+            "dropTemplate": "",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/imp_walk.animset",
+            "attackAnim": "assets/animations/imp_attack.animset",
+            "hurtAnim": "assets/animations/imp_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/plasma.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 133,
+    "name": "Imp_North",
+    "tag": "enemy",
+    "position": {
+      "x": 340.0,
+      "y": 140.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 134,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/imp_walk0.png"
+      },
+      {
+        "id": 135,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 15.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 136,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 137,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/imp_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 138,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 139,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 48.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 1,
+            "hp": 60,
+            "maxHp": 60,
+            "moveSpeed": 82.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.45,
+            "attackDamage": 14,
+            "fireballTemplate": "assets/templates/ImpFireball.pttemplate",
+            "dropTemplate": "",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/imp_walk.animset",
+            "attackAnim": "assets/animations/imp_attack.animset",
+            "hurtAnim": "assets/animations/imp_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/plasma.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 140,
+    "name": "Trooper_North",
+    "tag": "enemy",
+    "position": {
+      "x": 580.0,
+      "y": 260.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 141,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/trooper_walk0.png"
+      },
+      {
+        "id": 142,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 143,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 144,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/trooper_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 145,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 146,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 44.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 0,
+            "hp": 36,
+            "maxHp": 36,
+            "moveSpeed": 65.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.35,
+            "attackDamage": 8,
+            "fireballTemplate": "",
+            "dropTemplate": "assets/templates/AmmoBox.pttemplate",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/trooper_walk.animset",
+            "attackAnim": "assets/animations/trooper_attack.animset",
+            "hurtAnim": "assets/animations/trooper_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/pistol.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 147,
+    "name": "Imp_Exit",
+    "tag": "enemy",
+    "position": {
+      "x": 850.0,
+      "y": 160.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 148,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/imp_walk0.png"
+      },
+      {
+        "id": 149,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 15.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 150,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 151,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/imp_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 152,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 153,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 48.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 1,
+            "hp": 60,
+            "maxHp": 60,
+            "moveSpeed": 82.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.45,
+            "attackDamage": 14,
+            "fireballTemplate": "assets/templates/ImpFireball.pttemplate",
+            "dropTemplate": "",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/imp_walk.animset",
+            "attackAnim": "assets/animations/imp_attack.animset",
+            "hurtAnim": "assets/animations/imp_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/plasma.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 154,
+    "name": "Ammo_Start",
+    "tag": "pickup",
+    "position": {
+      "x": 80.0,
+      "y": 790.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 155,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/ammo_box.png"
+      },
+      {
+        "id": 156,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 157,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 158,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 20.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 2,
+            "amount": 20,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 159,
+    "name": "Medkit_SW",
+    "tag": "pickup",
+    "position": {
+      "x": 370.0,
+      "y": 790.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 160,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/medkit.png"
+      },
+      {
+        "id": 161,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 162,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 163,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 22.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 0,
+            "amount": 25,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 164,
+    "name": "ShotgunPickup",
+    "tag": "pickup",
+    "position": {
+      "x": 540.0,
+      "y": 660.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 165,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/pickup_shotgun.png"
+      },
+      {
+        "id": 166,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 167,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 168,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 20.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 3,
+            "amount": 12,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 169,
+    "name": "Medkit_SE",
+    "tag": "pickup",
+    "position": {
+      "x": 920.0,
+      "y": 790.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 170,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/medkit.png"
+      },
+      {
+        "id": 171,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 172,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 173,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 22.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 0,
+            "amount": 25,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 174,
+    "name": "RedKeycard",
+    "tag": "pickup",
+    "position": {
+      "x": 910.0,
+      "y": 530.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 175,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/keycard_red.png"
+      },
+      {
+        "id": 176,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 177,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 178,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 18.0,
+            "verticalOffset": 0.0,
+            "fullBright": true
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 5,
+            "amount": 1,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/keycard.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 179,
+    "name": "Armor_North",
+    "tag": "pickup",
+    "position": {
+      "x": 100.0,
+      "y": 100.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 180,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/armor.png"
+      },
+      {
+        "id": 181,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 182,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 183,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 22.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 1,
+            "amount": 50,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 184,
+    "name": "Ammo_North",
+    "tag": "pickup",
+    "position": {
+      "x": 580.0,
+      "y": 100.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 185,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/ammo_box.png"
+      },
+      {
+        "id": 186,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 187,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 188,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 20.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 2,
+            "amount": 24,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  {
+    "id": 189,
+    "name": "ExitPortal",
+    "tag": "pickup",
+    "position": {
+      "x": 910.0,
+      "y": 240.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 190,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/exit_beacon.png"
+      },
+      {
+        "id": 191,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 192,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 193,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 40.0,
+            "verticalOffset": 0.0,
+            "fullBright": true
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 6,
+            "amount": 1,
+            "targetScenePath": "assets/scenes/e1m2_reactor.scene",
+            "pickupSound": "assets/audio/keycard.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  }
+]

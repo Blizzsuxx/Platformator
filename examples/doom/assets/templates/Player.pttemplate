@@ -1,0 +1,110 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "Player",
+  "root": {
+    "id": 1,
+    "name": "Player",
+    "tag": "player",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/map/player_map.png"
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 4,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 5,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.7,
+        "loopCount": 0
+      },
+      {
+        "id": 6,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomPlayer",
+            "moveSpeed": 165.0,
+            "sprintMultiplier": 1.45,
+            "turnSpeed": 2.4,
+            "startYaw": 0.0,
+            "maxHp": 100,
+            "hp": 100,
+            "armor": 25,
+            "ammo": 28,
+            "maxAmmo": 100,
+            "currentWeapon": 0,
+            "hasShotgun": false,
+            "hasPlasma": false,
+            "plasmaBoltTemplate": "assets/templates/PlayerPlasma.pttemplate",
+            "hitSparkTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "pistolSound": "assets/audio/pistol.wav",
+            "shotgunSound": "assets/audio/shotgun.wav",
+            "plasmaSound": "assets/audio/plasma.wav",
+            "hurtSound": "assets/audio/player_hurt.wav",
+            "emptySound": "assets/audio/door_locked.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

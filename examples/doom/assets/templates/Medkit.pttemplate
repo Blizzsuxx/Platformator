@@ -1,0 +1,82 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "Medkit",
+  "root": {
+    "id": 1,
+    "name": "Medkit",
+    "tag": "pickup",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 28.0,
+        "height": 28.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/items/medkit.png"
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 14.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 16,
+        "collisionMask": 4
+      },
+      {
+        "id": 4,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 5,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 22.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomPickup",
+            "pickupKind": 0,
+            "amount": 25,
+            "targetScenePath": "",
+            "pickupSound": "assets/audio/pickup.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

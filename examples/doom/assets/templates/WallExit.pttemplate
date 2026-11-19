@@ -1,0 +1,75 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "WallExit",
+  "root": {
+    "id": 1,
+    "name": "WallExit",
+    "tag": "wall",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 64.0,
+        "height": 32.0,
+        "zOrder": 1,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_exit.png"
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 1,
+        "width": 64.0,
+        "height": 32.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 2,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 1,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

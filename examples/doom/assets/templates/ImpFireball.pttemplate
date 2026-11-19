@@ -1,0 +1,102 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "ImpFireball",
+  "root": {
+    "id": 1,
+    "name": "ImpFireball",
+    "tag": "projectile",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 16.0,
+        "height": 16.0,
+        "zOrder": 8,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/fx/fireball_0.png"
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 6.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": true,
+        "collisionGroup": 32,
+        "collisionMask": 70
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 5,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/fireball.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 6,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 20.0,
+            "verticalOffset": 0.5,
+            "fullBright": true
+          },
+          {
+            "type": "DoomProjectile",
+            "friendly": false,
+            "speed": 310.0,
+            "damage": 14,
+            "lifetime": 3.0,
+            "impactFxTemplate": "assets/templates/HitSparkFx.pttemplate"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

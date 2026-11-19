@@ -1,0 +1,33 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "BGM",
+  "root": {
+    "id": 1,
+    "name": "BGM",
+    "tag": "audio",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 1,
+        "autoPlay": true,
+        "filePath": "assets/audio/bgm_e1m1.wav",
+        "gain": 0.35,
+        "loopCount": -1
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

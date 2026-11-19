@@ -1,0 +1,123 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "Imp",
+  "root": {
+    "id": 1,
+    "name": "Imp",
+    "tag": "enemy",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 34.0,
+        "height": 34.0,
+        "zOrder": 5,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/enemies/imp_walk0.png"
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 0,
+        "radius": 15.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 8,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 0,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 5,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/imp_walk.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 6,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.65,
+        "loopCount": 0
+      },
+      {
+        "id": 7,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 48.0,
+            "verticalOffset": 0.0,
+            "fullBright": false
+          },
+          {
+            "type": "DoomEnemy",
+            "enemyKind": 1,
+            "hp": 60,
+            "maxHp": 60,
+            "moveSpeed": 82.0,
+            "detectRange": 520.0,
+            "attackRange": 380.0,
+            "attackCooldown": 1.45,
+            "attackDamage": 14,
+            "fireballTemplate": "assets/templates/ImpFireball.pttemplate",
+            "dropTemplate": "",
+            "deathFxTemplate": "assets/templates/HitSparkFx.pttemplate",
+            "walkAnim": "assets/animations/imp_walk.animset",
+            "attackAnim": "assets/animations/imp_attack.animset",
+            "hurtAnim": "assets/animations/imp_hurt.animset",
+            "alertSound": "assets/audio/enemy_alert.wav",
+            "attackSound": "assets/audio/plasma.wav",
+            "hurtSound": "assets/audio/enemy_hurt.wav",
+            "deathSound": "assets/audio/enemy_death.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

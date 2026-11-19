@@ -1,0 +1,28 @@
+{
+  "filePath": "assets/animations/plasma_bolt.animset",
+  "loop": true,
+  "frames": [
+    {
+      "duration": 0.08,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/plasma_bolt_0.png"
+    },
+    {
+      "duration": 0.08,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/plasma_bolt_1.png"
+    }
+  ]
+}

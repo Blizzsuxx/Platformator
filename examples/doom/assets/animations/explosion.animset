@@ -1,0 +1,39 @@
+{
+  "filePath": "assets/animations/explosion.animset",
+  "loop": false,
+  "frames": [
+    {
+      "duration": 0.11,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/explosion_0.png"
+    },
+    {
+      "duration": 0.11,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/explosion_1.png"
+    },
+    {
+      "duration": 0.11,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/explosion_2.png"
+    }
+  ]
+}

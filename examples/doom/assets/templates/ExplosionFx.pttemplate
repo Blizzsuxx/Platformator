@@ -1,0 +1,66 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "ExplosionFx",
+  "root": {
+    "id": 1,
+    "name": "ExplosionFx",
+    "tag": "fx",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 48.0,
+        "height": 48.0,
+        "zOrder": 10,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/fx/explosion_0.png"
+      },
+      {
+        "id": 3,
+        "type": 0,
+        "animationClipFilePath": "assets/animations/explosion.animset",
+        "currentFrameIndex": 0,
+        "playbackSpeed": 1.0,
+        "playing": true
+      },
+      {
+        "id": 4,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomBillboard",
+            "worldHeight": 56.0,
+            "verticalOffset": 0.5,
+            "fullBright": true
+          },
+          {
+            "type": "DoomTimedFx",
+            "lifetime": 0.34
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

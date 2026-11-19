@@ -1,0 +1,28 @@
+{
+  "filePath": "assets/animations/fireball.animset",
+  "loop": true,
+  "frames": [
+    {
+      "duration": 0.1,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/fireball_0.png"
+    },
+    {
+      "duration": 0.1,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/fireball_1.png"
+    }
+  ]
+}

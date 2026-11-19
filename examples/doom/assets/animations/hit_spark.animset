@@ -1,0 +1,39 @@
+{
+  "filePath": "assets/animations/hit_spark.animset",
+  "loop": false,
+  "frames": [
+    {
+      "duration": 0.06,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/spark_0.png"
+    },
+    {
+      "duration": 0.06,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/spark_1.png"
+    },
+    {
+      "duration": 0.06,
+      "hasSourceRect": false,
+      "sourceRect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      "textureWrapperFilePath": "assets/textures/fx/spark_2.png"
+    }
+  ]
+}

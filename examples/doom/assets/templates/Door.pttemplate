@@ -1,0 +1,100 @@
+{
+  "format": "platformator.object-template",
+  "version": 1,
+  "name": "Door",
+  "root": {
+    "id": 1,
+    "name": "Door",
+    "tag": "door",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "rotation": 0.0,
+    "active": true,
+    "parentId": -1,
+    "components": [
+      {
+        "id": 2,
+        "type": 6,
+        "flip": 0,
+        "width": 68.0,
+        "height": 16.0,
+        "zOrder": 3,
+        "color": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "sourceRect": null,
+        "sourceRectEnabled": false,
+        "textureFilePath": "assets/textures/walls/wall_door.png"
+      },
+      {
+        "id": 3,
+        "type": 3,
+        "colliderType": 1,
+        "width": 68.0,
+        "height": 16.0,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "trigger": false,
+        "collisionGroup": 64,
+        "collisionMask": 4294967295
+      },
+      {
+        "id": 4,
+        "type": 4,
+        "angularVelocity": 0.0,
+        "bodyType": 2,
+        "force": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "friction": 0.0,
+        "gravity": false,
+        "mass": 1.0,
+        "restitution": 0.0,
+        "torque": 0.0,
+        "velocity": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "id": 5,
+        "type": 1,
+        "autoPlay": false,
+        "filePath": "",
+        "gain": 0.7,
+        "loopCount": 0
+      },
+      {
+        "id": 6,
+        "type": 5,
+        "behaviors": [
+          {
+            "type": "DoomDoor",
+            "slideDirX": 1.0,
+            "slideDirY": 0.0,
+            "slideDistance": 62.0,
+            "slideSpeed": 140.0,
+            "requiresRedKey": false,
+            "autoCloseDelay": 4.5,
+            "doorSound": "assets/audio/door.wav",
+            "lockedSound": "assets/audio/door_locked.wav"
+          }
+        ]
+      }
+    ],
+    "children": []
+  },
+  "reference_bindings": []
+}

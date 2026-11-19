@@ -251,6 +251,7 @@ int main()
         runtime.clearScene();
         require(runtime.createGameObject()->getId() == 0, "A new empty scene resets its file-ID allocator");
         runtime.loadScene(hierarchyPath.string());
+        committed = runtime.getGameObject("committed");
         auto *loadedParent = runtime.getGameObject("unsynchronized-parent");
         auto *loadedChild = runtime.getGameObject("unsynchronized-child");
         auto *loadedGrandchild = runtime.getGameObject("unsynchronized-grandchild");

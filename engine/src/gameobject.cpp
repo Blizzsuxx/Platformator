@@ -14,8 +14,8 @@
 
 GameObject::GameObject()
     : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), position(Eigen::Vector2f::Zero()),
-      scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(0),
-      flags(static_cast<uint8_t>(IS_ACTIVE))
+      scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(SIZE_MAX),
+      active(true)
 {
 }
 
@@ -38,7 +38,7 @@ float GameObject::getRotationInDegrees() const
 
 bool GameObject::getActive() const
 {
-    return flags & IS_ACTIVE;
+    return active;
 }
 
 Eigen::Vector2f GameObject::getPosition() const
@@ -130,12 +130,9 @@ GameObject *GameObject::setRotation(const float rotation)
 GameObject *GameObject::setActive(const bool active)
 {
     validateMutation();
-    if (getActive() == active)
+    if (this->active == active)
         return this;
-    if (active)
-        flags |= IS_ACTIVE;
-    else
-        flags &= ~IS_ACTIVE;
+    this->active = active;
     if (getIsRegisteredInGameManager())
     {
         auto &manager = platformator_detail::RuntimeAccess::gameManager();
@@ -177,13 +174,14 @@ GameObject *GameObject::applyLocalPosition(const Eigen::Vector2f &localPosition)
     return this;
 }
 
-void GameObject::queueTransform()
+void GameObject::queueTransform(bool refreshImmediate)
 {
     if (getIsRegisteredInGameManager())
-        platformator_detail::RuntimeAccess::gameManager().queueTransform(this);
+        platformator_detail::RuntimeAccess::gameManager().queueTransform(this, refreshImmediate);
     else
     {
-        refreshImmediatePositions();
+        if (refreshImmediate)
+            refreshImmediatePositions();
         worldPosition = getPosition();
     }
 }
@@ -232,12 +230,14 @@ GameObject *GameObject::setScale(const Eigen::Vector2f &scale)
 
 GameObject *GameObject::setName(const std::string &name)
 {
+    validateMutation();
     this->name = name;
     return this;
 }
 
 GameObject *GameObject::setTag(const std::string &tag)
 {
+    validateMutation();
     this->tag = tag;
     return this;
 }
@@ -357,9 +357,7 @@ void GameObject::addChild(GameObject *child)
     children.push_back(child);
     child->parent = this;
     child->position = world - getPosition();
-    if (getIsRegisteredInGameManager())
-        platformator_detail::RuntimeAccess::gameManager().hierarchyDirty = true;
-    child->queueTransform();
+    child->queueTransform(false);
 }
 
 bool GameObject::removeChild(GameObject *child)
@@ -371,40 +369,13 @@ bool GameObject::removeChild(GameObject *child)
     if (child->parent != this)
         return false;
     child->detachFromParent();
-    child->queueTransform();
+    child->queueTransform(false);
     return true;
 }
 
 bool GameObject::getIsMarkedForDeletion() const
 {
-    return flags & IS_MARKED_FOR_DELETION;
-}
-
-GameObject *GameObject::setIsMarkedForDeletion(const bool markedForDeletion)
-{
-    if (markedForDeletion)
-    {
-        flags |= IS_MARKED_FOR_DELETION;
-    }
-    else
-    {
-        flags &= ~IS_MARKED_FOR_DELETION;
-    }
-    return this;
-}
-
-GameObject *GameObject::setIsRegisteredInGameManager(const bool isRegisteredInGameManager)
-{
-    if (isRegisteredInGameManager)
-    {
-        flags |= IS_REGISTERED_IN_GAME_MANAGER;
-    }
-    else
-    {
-        flags &= ~IS_REGISTERED_IN_GAME_MANAGER;
-    }
-
-    return this;
+    return isRetired();
 }
 
 GameObject *GameObject::setGameManagerIteratorIndex(const size_t index)
@@ -415,7 +386,7 @@ GameObject *GameObject::setGameManagerIteratorIndex(const size_t index)
 
 bool GameObject::getIsRegisteredInGameManager() const
 {
-    return flags & IS_REGISTERED_IN_GAME_MANAGER;
+    return getLifecycle() == ObjectLifecycle::Live;
 }
 
 void GameObject::addComponentsToGameManager()
@@ -454,6 +425,4 @@ void GameObject::detachFromParent()
     parent = nullptr;
     parentIndex = SIZE_MAX;
     position = world;
-    if (getIsRegisteredInGameManager())
-        platformator_detail::RuntimeAccess::gameManager().hierarchyDirty = true;
 }

@@ -115,9 +115,13 @@ int main()
         runtime.simulateAndRenderFrame(dt);
         runtime.requestLoadScene(a.string());
         runtime.requestLoadScene(b.string());
+        auto *ephemeral = runtime.createGameObject()->setName("ephemeral")->addComponent<BoxCollider>(10, 10);
+        ephemeral->setActive(false)->setActive(true);
+        require(runtime.getGameObject("ephemeral") == ephemeral && !runtime.getGameObject("new"),
+                "Idle local mutations must not prematurely consume a queued scene transition");
         runtime.simulateFrame(dt);
-        require(runtime.getGameObject("new") && !runtime.getGameObject("old"),
-                "Queued idle requests must also use last-wins replacement");
+        require(runtime.getGameObject("new") && !runtime.getGameObject("old") && !runtime.getGameObject("ephemeral"),
+                "Queued idle requests must use last-wins replacement at the step commit boundary");
         nlohmann::json document;
         {
             std::ifstream file(b);

@@ -74,14 +74,14 @@ class Runtime
     void run_with_owner_service(const std::function<bool()> &ownerThreadService);
     // The session overload provides the owned SDL window for control requests
     // and reports each completed fixed simulation step on the owner thread
-    // (after Behavior::afterPhysicsSync and commitMutations finish).
+    // (after commitMutations finishes).
     void run_with_owner_service(
         const std::function<bool(SDLWindow &)> &ownerThreadService,
         const std::function<void(std::uint64_t)> &afterSimulationStep);
     void simulateFrame(double timeDelta);
     bool simulateAndRenderFrame(double timeDelta);
     // Invokes prePhysicsStepHook as a pre-physics step hook (after pending script
-    // start() and before fixedUpdate/physics/update/lateUpdate/commitMutations/afterPhysicsSync).
+    // start() and before fixedUpdate/physics/update/lateUpdate/commitMutations).
     bool simulateAndRenderFrameWithCustomCallback(double timeDelta,
                                                   const std::function<void(double)> &prePhysicsStepHook);
     // Poll native or embedded Game view input. Call on the runtime owner thread.
@@ -94,20 +94,19 @@ class Runtime
     void setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255);
     const std::vector<GameObject *> &getAllGameObjects() const;
     // Invokes prePhysicsStepHook as a pre-physics step hook (after pending script
-    // start() and before fixedUpdate/physics/update/lateUpdate/commitMutations/afterPhysicsSync).
+    // start() and before fixedUpdate/physics/update/lateUpdate/commitMutations).
     void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &prePhysicsStepHook);
 
     // Queries the synchronized physics world (Grid + AABB and published collider
-    // geometry from the latest physics/cleanup sync or idle reconciliation).
-    // Post-sync entry points: Behavior::afterPhysicsSync(double), the
-    // run_with_owner_service(..., afterSimulationStep) callback, or owner-thread
-    // callers after simulateFrame* / simulateAndRenderFrame* returns. The custom
-    // callback in simulate*WithCustomCallback is a pre-physics step hook (queries
-    // there observe the previously committed sync state). Queued geometry edits in
-    // FixedUpdate or cleanup collision callbacks become visible on the next sync
-    // point. Thread-safe for concurrent read-only queries on a stable scene while
-    // no mutations occur; parallel readers spawned in afterPhysicsSync must join
-    // before returning.
+    // geometry from the latest step commit, scene load, or idle reconciliation).
+    // Synced entry points: Behavior::fixedUpdate(double) (observes the prior step's
+    // committed physics/script state and supports normal mutations such as destroy()),
+    // run_with_owner_service(..., afterSimulationStep), or owner-thread callers after
+    // simulateFrame* / simulateAndRenderFrame* returns. The custom callback in
+    // simulate*WithCustomCallback runs before fixedUpdate/physics and also observes
+    // the previously committed sync state. Geometry edits queued during a step become
+    // visible after the next sync point (broadPhase or end-of-step commit). Thread-safe
+    // for concurrent read-only queries on a stable scene while no mutations occur.
     std::optional<RaycastHit> raycast(const Eigen::Vector2f &origin, const Eigen::Vector2f &direction,
                                       float maxDistance, uint64_t collisionMask = ~uint64_t{0},
                                       bool includeTriggers = false) const;

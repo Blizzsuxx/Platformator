@@ -416,7 +416,7 @@ void SDLWindow::render()
     }
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::gameManager().getPhysicsManager();
+    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::physicsManager();
     if (shouldSimulateFrame())
     {
         for (const auto &cellEntry : physicsManager->getGrid().getCells())
@@ -818,7 +818,7 @@ bool SDLWindow::isRunning() const
 bool SDLWindow::shouldUseFixedStepDelta() const
 {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    return paused || (editorSessionControlsEnabled && paused);
+    return paused;
 #else
     return editorSessionControlsEnabled && paused;
 #endif
@@ -1096,6 +1096,13 @@ void SDLWindow::releaseRenderingStorage() noexcept
         spriteDrawOrder->preparedAll = false;
     }
     publishOrderCapacityObservation();
+}
+
+void SDLWindow::clearSceneComponents() noexcept
+{
+    spriteComponents.clear();
+    mainCamera = nullptr;
+    releaseRenderingStorage();
 }
 
 void SDLWindow::setMainCamera(Camera *mainCamera)

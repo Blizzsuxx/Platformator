@@ -23,8 +23,6 @@ class Animator : public Component
     float getPlaybackSpeed() const;
     bool getIsPlaying() const;
     bool getIsPaused() const;
-    // Compatibility alias for getCurrentClip().
-    const AnimationClip *getCurrentAnimationClip() const;
 
     bool play(const AnimationClip *animationClip);
     void stop();

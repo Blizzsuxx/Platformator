@@ -1,6 +1,7 @@
 #include "platformator/animator.h"
 
 #include <algorithm>
+#include <cassert>
 
 #include "platformator/sprite.h"
 #include "platformator/texturewrapper.h"
@@ -53,11 +54,6 @@ bool Animator::getIsPlaying() const
 bool Animator::getIsPaused() const
 {
     return !playing;
-}
-
-const AnimationClip *Animator::getCurrentAnimationClip() const
-{
-    return getCurrentClip();
 }
 
 bool Animator::play(const AnimationClip *animationClip)
@@ -116,8 +112,9 @@ void Animator::update(double timeDelta)
 
     accumulatedTime += timeDelta * static_cast<double>(playbackSpeed);
 
-    while (playing && getIsCallbackEligible() && !isRetired() && getGameObject()->getActive())
+    while (playing && getIsCallbackEligible())
     {
+        assert(!isRetired() && getGameObject()->getActive());
         const double frameDuration = getCurrentFrameDuration();
         if (frameDuration <= 0.0 || accumulatedTime < frameDuration)
         {
@@ -196,9 +193,11 @@ void Animator::advanceFrame()
         playing = false;
     }
     const auto callbackCount = onClipEndCallbacks.size();
-    for (size_t i = 0; i < callbackCount && getIsCallbackEligible() && !isRetired() && getGameObject()->getActive();
-         ++i)
+    for (size_t i = 0; i < callbackCount && getIsCallbackEligible(); ++i)
+    {
+        assert(!isRetired() && getGameObject()->getActive());
         (*onClipEndCallbacks[i])();
+    }
 }
 
 size_t Animator::getGameManagerIndex() const

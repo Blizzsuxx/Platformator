@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "gamemanager.h"
+#include "pathmanager.h"
 #include "platformator/scriptregistration.h"
 #include "scenecomponentio.h"
 #include "inputvalidation.h"
@@ -198,6 +199,14 @@ void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
 {
     manager.registry.add(object, kind, false);
     ids.emplace(object.getId(), &object);
+    if (kind != Kind::GameObject)
+    {
+        ++componentCount;
+        if (kind == Kind::ScriptComponent)
+            ++scriptCount;
+        else if (kind == Kind::Animator)
+            ++animatorCount;
+    }
 }
 
 GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *parent)
@@ -226,7 +235,12 @@ GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *paren
 
 void SceneBuildContext::prepare(const Scene &scene)
 {
-    path = scene.resolvedFilePath().string();
+    prepare(scene.filePath);
+}
+
+void SceneBuildContext::prepare(const std::string &sceneFilePath)
+{
+    path = PathManager::getInstance().resolveScenePath(sceneFilePath).string();
     try
     {
         std::ifstream file(path);
@@ -260,6 +274,7 @@ void SceneBuildContext::prepare(const Scene &scene)
                 throw;
             }
             object->setId(static_cast<int>(nextFileId++));
+            object->setName("Main Camera");
             object->addComponent<Camera>();
             object->getComponent<Camera>()->setId(static_cast<int>(nextFileId++));
             addIdentity(*object, Kind::GameObject);

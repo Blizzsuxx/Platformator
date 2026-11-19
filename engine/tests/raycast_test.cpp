@@ -701,28 +701,38 @@ void testEqualFloatDistanceRoundingTieOrderIndependence()
     verifyOrder(true);
 }
 
-void testAfterPhysicsSyncBehaviorRaycasts()
+void testFixedUpdateBehaviorRaycasts()
 {
     struct ScriptDriver final : test_support::Behavior
     {
         GameObject *bodyTarget = nullptr;
         GameObject *scriptTarget = nullptr;
+        int step = 0;
         bool sawSyncHit = false;
         double observedDt = 0.0;
 
-        void update(double) override
-        {
-            if (scriptTarget != nullptr)
-                scriptTarget->setPosition({100.0f, 100.0f});
-        }
-
-        void afterPhysicsSync(double timeDelta) override
+        void fixedUpdate(double timeDelta) override
         {
             observedDt = timeDelta;
-            const auto bodyHit = getRuntime().raycast({25.0f, 0.0f}, {1.0f, 0.0f}, 50.0f);
-            const auto scriptHit = getRuntime().raycast({70.0f, 100.0f}, {1.0f, 0.0f}, 50.0f);
-            sawSyncHit = bodyHit.has_value() && bodyHit->gameObject == bodyTarget &&
-                         scriptHit.has_value() && scriptHit->gameObject == scriptTarget;
+            ++step;
+            if (step == 2)
+            {
+                const auto bodyHit = getRuntime().raycast({25.0f, 0.0f}, {1.0f, 0.0f}, 50.0f);
+                const auto scriptHit = getRuntime().raycast({70.0f, 100.0f}, {1.0f, 0.0f}, 50.0f);
+                sawSyncHit = bodyHit.has_value() && bodyHit->gameObject == bodyTarget &&
+                             scriptHit.has_value() && scriptHit->gameObject == scriptTarget;
+                if (scriptHit.has_value())
+                {
+                    scriptHit->gameObject->destroy();
+                    scriptTarget = nullptr;
+                }
+            }
+        }
+
+        void update(double) override
+        {
+            if (step == 1 && scriptTarget != nullptr)
+                scriptTarget->setPosition({100.0f, 100.0f});
         }
     };
 
@@ -744,8 +754,12 @@ void testAfterPhysicsSyncBehaviorRaycasts()
     observer->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(driver);
 
     runtime.simulateFrame(dt);
+    runtime.simulateFrame(dt);
     require(driver->sawSyncHit && nearFloat(static_cast<float>(driver->observedDt), static_cast<float>(dt), 1e-6f),
-            "afterPhysicsSync must observe both published physics movement and Update script transforms");
+            "fixedUpdate must observe both published physics movement and prior Update script transforms");
+    require(runtime.getGameObject("ScriptTarget") == nullptr &&
+                !runtime.raycast({70.0f, 100.0f}, {1.0f, 0.0f}, 50.0f).has_value(),
+            "Destroying a raycast hit inside fixedUpdate must retire and remove it cleanly");
 }
 
 void testSimultaneousGridCornerCrossings()
@@ -879,7 +893,7 @@ int main()
         testGridAabbChunksMultiCellAndLongEmptyRay();
         testPublishedGeometryPublicationOrdering();
         testEqualFloatDistanceRoundingTieOrderIndependence();
-        testAfterPhysicsSyncBehaviorRaycasts();
+        testFixedUpdateBehaviorRaycasts();
         testSimultaneousGridCornerCrossings();
         testObliqueTangentCircles();
         std::cout << "[PASS] raycast tests\n";

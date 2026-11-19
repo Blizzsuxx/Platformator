@@ -25,7 +25,6 @@ class ObjectRegistry
         BaseObject *object = nullptr;
         uint64_t generation = 1;
         ObjectKind kind = ObjectKind::BaseObject;
-        bool published = false;
     };
     uint64_t runtimeSerial;
     std::vector<Slot> slots;

@@ -170,8 +170,7 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
     std::unordered_set<GameObject *> liveObjects;
     liveObjects.reserve(allObjects.size());
     for (GameObject *object : allObjects)
-        if (object != nullptr && object->getLifecycle() == ObjectLifecycle::Live &&
-            !object->getIsMarkedForDeletion())
+        if (object != nullptr && object->getLifecycle() == ObjectLifecycle::Live)
             liveObjects.insert(object);
 
     std::vector<PendingHierarchyObject> pending;
@@ -1171,8 +1170,7 @@ bool EditorSessionService::accept_request(editor_session::Message message,
                                                 requestedRuntimeSerial};
         auto *base = runtime->resolveHandle(handle, platformator_detail::ObjectKind::GameObject);
         auto *object = base == nullptr ? nullptr : static_cast<GameObject *>(base);
-        if (object == nullptr || object->getLifecycle() != ObjectLifecycle::Live ||
-            object->getIsMarkedForDeletion())
+        if (object == nullptr || object->getLifecycle() != ObjectLifecycle::Live)
             return respond("stale", {{"runtime_serial", runtimeSerial},
                                       {"handle", handle_json(handle,
                                           platformator_detail::ObjectKind::GameObject)},

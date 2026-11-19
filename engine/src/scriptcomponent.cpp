@@ -4,6 +4,7 @@
 #include "gamemanager.h"
 #include "runtimeaccess.h"
 #include "platformator/runtime.h"
+#include <cassert>
 #include <cstdio>
 
 ScriptComponent::ScriptComponent() : Component(ComponentType::SCRIPT), behaviors(), gameManagerIndex(SIZE_MAX)
@@ -65,7 +66,6 @@ Behavior *ScriptComponent::addBehavior(Behavior *behavior)
     }
     behavior->scriptComponent = this;
     behavior->setGameObject(getGameObject());
-    pendingReferencesResolved = false;
     return behavior;
 }
 
@@ -77,7 +77,7 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
         auto *behavior = pendingBehaviors[processed];
         try
         {
-            if (!pendingReferencesResolved)
+            if (processed >= resolvedPendingCount)
                 behavior->resolveReferences(resolver);
             behavior->start();
         }
@@ -94,8 +94,7 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
     }
     behaviors.insert(behaviors.end(), pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
     pendingBehaviors.erase(pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
-    if (pendingBehaviors.empty())
-        pendingReferencesResolved = false;
+    resolvedPendingCount = resolvedPendingCount > processed ? resolvedPendingCount - processed : 0;
 }
 
 void ScriptComponent::update(double timeDelta)
@@ -117,13 +116,6 @@ void ScriptComponent::lateUpdate(double timeDelta)
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
         behaviors[i]->lateUpdate(timeDelta);
-}
-
-void ScriptComponent::afterPhysicsSync(double timeDelta)
-{
-    const size_t count = behaviors.size();
-    for (size_t i = 0; i < count && canDispatch(); ++i)
-        behaviors[i]->afterPhysicsSync(timeDelta);
 }
 
 void ScriptComponent::setGameObject(GameObject *gameObject)
@@ -162,7 +154,11 @@ void ScriptComponent::setGameManagerIndex(size_t index)
 
 bool ScriptComponent::canDispatch() const
 {
-    const auto *owner = getGameObject();
-    return getIsCallbackEligible() && !isRetired() && owner->getActive() && !owner->isRetired() &&
-           owner->getComponent<ScriptComponent>() == this;
+    if (!getIsCallbackEligible())
+    {
+        return false;
+    }
+    assert(!isRetired() && getGameObject() != nullptr && getGameObject()->getActive() &&
+           !getGameObject()->isRetired() && getGameObject()->getComponent<ScriptComponent>() == this);
+    return true;
 }

@@ -286,44 +286,24 @@ void mutationAndFailure()
     require(first.exits == 0 && second.exits == 1, "Retired script is skipped while survivor receives Exit");
 }
 
-void cleanupCallbackGeometryWriteVisibleNextSync()
+void cleanupCallbackGeometryWriteSettledImmediately()
 {
-    struct PostCleanupObserver : test_support::Behavior
-    {
-        GameObject *target = nullptr;
-        std::vector<bool> sawMovedPos;
-
-        void afterPhysicsSync(double) override
-        {
-            sawMovedPos.push_back(getRuntime().raycast({180.0f, 0.0f}, {1.0f, 0.0f}, 40.0f).has_value());
-        }
-    };
-
     Counts counts;
     platformator::Runtime runtime(physicsOnly());
     auto *a = runtime.createGameObject()->setPosition({0.0f, 0.0f})->addComponent<BoxCollider>(20.0f, 20.0f);
     auto *b = runtime.createGameObject()->setPosition({0.0f, 0.0f})->addComponent<BoxCollider>(20.0f, 20.0f);
     auto *c = runtime.createGameObject()->setPosition({500.0f, 0.0f})->addComponent<BoxCollider>(20.0f, 20.0f);
 
-    auto *obs = new PostCleanupObserver();
-    obs->target = c;
-    auto *obsObj = runtime.createGameObject();
-    obsObj->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(obs);
-
     auto *listener = attach(b, counts);
-    runtime.simulateFrame(dt); // step 1: enter contact, obs sees false
-    require(counts.enters == 1 && obs->sawMovedPos.size() == 1 && !obs->sawMovedPos[0],
+    runtime.simulateFrame(dt); // step 1: establish initial contact
+    require(counts.enters == 1 && !runtime.raycast({180.0f, 0.0f}, {1.0f, 0.0f}, 40.0f).has_value(),
             "Setup must establish initial contact before cleanup mutation");
 
-    // Queue geometry write on c inside cleanup onCollisionExit (dispatched inside commitMutations after final flush):
+    // Queue transform write on c inside cleanup onCollisionExit (dispatched inside reconcilePending):
     listener->exitAction = [&] { c->setPosition({200.0f, 0.0f}); };
     runtime.simulateFrameWithCustomCallback(dt, [&](double) { a->destroy(); }); // step 2
-    require(counts.exits == 1 && obs->sawMovedPos.size() == 2 && !obs->sawMovedPos[1],
-            "Geometry write queued by cleanup collision exit after final flush must wait for next sync");
-
-    runtime.simulateFrame(dt); // step 3: broadPhase sync publishes queued move before next afterPhysicsSync
-    require(obs->sawMovedPos.size() == 3 && obs->sawMovedPos[2],
-            "Geometry write queued by cleanup collision exit must be visible after next sync");
+    require(counts.exits == 1 && runtime.raycast({180.0f, 0.0f}, {1.0f, 0.0f}, 40.0f).has_value(),
+            "Transform write queued by cleanup collision exit must settle before the step returns");
 }
 } // namespace
 int main(int argc, char **argv)
@@ -345,7 +325,7 @@ int main(int argc, char **argv)
             eligibilityAtDelivery();
             cleanupFailure();
             mutationAndFailure();
-            cleanupCallbackGeometryWriteVisibleNextSync();
+            cleanupCallbackGeometryWriteSettledImmediately();
         }
         std::cout << "[PASS] contact transitions, recipients, silence, script lifecycle\n";
         return 0;

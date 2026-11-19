@@ -154,15 +154,11 @@ class Collider : public Component
         return cachedWorldPosition;
     }
 
-    bool getIsQueuedForAdd() const;
-
     bool getIsQueuedForSync() const;
     void scheduleSync();
     void invalidateResponse();
 
     bool getIsQueuedForRemove() const;
-
-    bool getIsQueuedForAnything() const;
 
     void prepareSync();
     uint64_t getStateVersion() const;
@@ -170,7 +166,6 @@ class Collider : public Component
     const GridCellRange &getGridCellRange() const;
     void calculateGridCellRange();
     const GridCellRange &getGridCellRangeCache() const;
-    bool hasValidGridCellRange() const;
 
     bool getIsRegisteredInGrid() const;
     void setIsRegisteredInGrid(bool isRegisteredInGrid);

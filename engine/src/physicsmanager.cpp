@@ -66,15 +66,12 @@ void PhysicsManager::applyMovement(double timeDelta)
             if (changed.rotated)
             {
                 manager.publishRenderGeometryChange(changed.object);
+                changed.object->updateCollider();
             }
             if (changed.translated)
             {
                 // The manager synchronizes this batch before any callbacks or reads.
                 manager.queueTransform(changed.object, false);
-            }
-            else
-            {
-                changed.object->updateCollider();
             }
         }
         objects.clear();
@@ -183,6 +180,26 @@ void PhysicsManager::flushPendingColliderOperations()
 {
     grid.flushPendingCellUpdates();
     flushSupportDeltas();
+}
+
+void PhysicsManager::clearAll()
+{
+    registeredBodies.clear();
+    awakeDynamicBodies.clear();
+    movingKinematicBodies.clear();
+    sleepCandidates.clear();
+    pendingBodyChanges.clear();
+    colliderComponents.clear();
+    dynamicCollisionScratch.clear();
+    contactPairs.clear();
+    solverPairs.clear();
+    supportDeltaBodies.clear();
+    pendingPhysicsEvents.clear();
+    for (auto &objects : movedObjects)
+    {
+        objects.clear();
+    }
+    grid.clearAll();
 }
 
 void PhysicsManager::broadPhase()
@@ -600,7 +617,7 @@ void PhysicsManager::resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody,
     {
         GameObject *gameObject = rigidBody->getGameObject();
         gameObject->position -= correctionDistance * approachNormal;
-        gameObject->queueTransform();
+        platformator_detail::RuntimeAccess::gameManager().queueTransform(gameObject, false);
     }
 }
 

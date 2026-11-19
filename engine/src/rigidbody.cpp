@@ -329,45 +329,10 @@ Rigidbody *Rigidbody::setGravity(const bool gravity)
     return this;
 }
 
-Rigidbody *Rigidbody::applyForces(double timeDelta, const Eigen::Vector2f &gravityVector)
-{
-    if (bodyType != DYNAMIC || !getGameObject()->getActive() || sleeping)
-    {
-        return this;
-    }
-    integrateForces(timeDelta, gravityVector);
-    return this;
-}
-
 void Rigidbody::integrateForces(double timeDelta, const Eigen::Vector2f &gravityVector)
 {
     angularVelocity += torque * timeDelta * inverseMomentOfInertia;
     velocity += timeDelta * (force * inverseMass + (gravity ? gravityVector : Eigen::Vector2f::Zero()));
-}
-
-Rigidbody *Rigidbody::move(double timeDelta)
-{
-    if (bodyType == STATIC || !getGameObject()->getActive() || sleeping)
-    {
-        force.setZero();
-        torque = 0;
-        return this;
-    }
-    const auto changes = integrateLocal(timeDelta);
-    if (changes & 2)
-    {
-        if (getGameObject()->getIsRegisteredInGameManager())
-            platformator_detail::RuntimeAccess::gameManager().publishRenderGeometryChange(getGameObject());
-    }
-    if (changes & 1)
-    {
-        getGameObject()->queueTransform();
-    }
-    if (changes & 2)
-    {
-        getGameObject()->updateCollider();
-    }
-    return this;
 }
 
 uint8_t Rigidbody::integrateLocal(double timeDelta)
@@ -465,8 +430,7 @@ void Rigidbody::queueParticipationChange()
     // Setters affecting active/sleep lists coalesce here. Awake dynamic solver impulses need no refresh.
     if (isRegisteredInPhysicsManager)
     {
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueBodyParticipationChange(
-            this);
+        platformator_detail::RuntimeAccess::physicsManager()->queueBodyParticipationChange(this);
     }
 }
 
@@ -493,21 +457,6 @@ bool Rigidbody::hasSupportContact() const
 size_t Rigidbody::getSupportContactCount() const
 {
     return supportContactCount;
-}
-
-Rigidbody *Rigidbody::addSupportContact()
-{
-    supportContactCount++;
-    return this;
-}
-
-Rigidbody *Rigidbody::removeSupportContact()
-{
-    if (supportContactCount > 0)
-    {
-        supportContactCount--;
-    }
-    return this;
 }
 
 double Rigidbody::getSleepTimer() const

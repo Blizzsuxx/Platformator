@@ -486,6 +486,23 @@ void Grid::flushPendingCellUpdates()
         recomputeActiveCellBounds();
 }
 
+void Grid::clearAll()
+{
+    cells.clear();
+    candidateCollisions.clear();
+    pendingNarrowPhasePairs.clear();
+    pairAdjacency.clear();
+    potentiallyEmptyCells.clear();
+    cellsWithOperations.clear();
+    pendingColliderOperations.clear();
+    pairDeltaScratch.clear();
+    for (auto &local : activePairDeltaCollector.localPairDeltas)
+    {
+        local.clear();
+    }
+    activeCellBounds = GridCellRange{};
+}
+
 void Grid::queueForOperations(GridCell *cell)
 {
     if (!cell->markQueuedForOperations())

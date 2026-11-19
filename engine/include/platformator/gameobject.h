@@ -30,14 +30,6 @@ enum ComponentType
     COMPONENT_TYPE_COUNT
 };
 
-enum GameObjectFlags : uint8_t
-{
-    GAME_OBJECT_NONE = 0,
-    IS_MARKED_FOR_DELETION = 1 << 0,
-    IS_REGISTERED_IN_GAME_MANAGER = 1 << 1,
-    IS_ACTIVE = 1 << 2
-};
-
 class Component : public BaseObject
 {
     friend class GameManager;
@@ -137,7 +129,6 @@ class GameObject : public BaseObject
     Eigen::Vector2f immediateWorldPosition = Eigen::Vector2f::Zero();
     Eigen::Vector2f worldPosition = Eigen::Vector2f::Zero();
     size_t transformQueueIndex = SIZE_MAX;
-    size_t hierarchyOrder = 0;
     uint64_t transformStamp = 0;
     Eigen::Vector2f scale;
     std::string name;
@@ -146,20 +137,18 @@ class GameObject : public BaseObject
     Component *components[COMPONENT_TYPE_COUNT];
     std::vector<GameObject *> children;
     size_t gameManagerIteratorIndex;
-    uint8_t flags;
+    bool active;
 
     void validateMutation() const;
     GameObject *applyLocalPosition(const Eigen::Vector2f &localPosition);
     void detachFromParent();
     void updateCollider();
-    void queueTransform();
+    void queueTransform(bool refreshImmediate = true);
     void refreshImmediatePositions();
     void addComponentInternal(Component *component);
     void attachComponent(Component *component);
     void flushMutations();
     Component *getColliderByShape(bool box) const;
-    GameObject *setIsMarkedForDeletion(bool markedForDeletion);
-    GameObject *setIsRegisteredInGameManager(bool isRegisteredInGameManager);
     GameObject *setGameManagerIteratorIndex(size_t index);
     bool getIsRegisteredInGameManager() const;
     void addComponentsToGameManager();

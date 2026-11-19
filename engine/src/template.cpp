@@ -315,8 +315,8 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
 
     if (parent != nullptr)
     {
-        if (parent->getHandle().runtimeSerial != manager.registry.serial() || parent->isRetired() ||
-            !parent->getIsRegisteredInGameManager() || parent->getIsMarkedForDeletion())
+        if (parent->getHandle().runtimeSerial != manager.registry.serial() ||
+            parent->getLifecycle() != ObjectLifecycle::Live)
             throw std::invalid_argument("Parent GameObject must be live in the active runtime");
     }
 

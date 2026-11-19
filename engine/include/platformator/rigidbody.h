@@ -25,9 +25,6 @@ class Rigidbody : public Component
     ~Rigidbody();
     Component *clone() const override;
 
-    Rigidbody *move(double timeDelta);
-    Rigidbody *applyForces(double timeDelta, const Eigen::Vector2f &gravityVector);
-
     const Eigen::Vector2f &getVelocity() const;
     const Eigen::Vector2f &getForce() const;
 
@@ -68,8 +65,6 @@ class Rigidbody : public Component
     Rigidbody *wakeUp();
     bool hasSupportContact() const;
     size_t getSupportContactCount() const;
-    Rigidbody *addSupportContact();
-    Rigidbody *removeSupportContact();
     double getSleepTimer() const;
     Rigidbody *setSleepTimer(double sleepTimer);
 

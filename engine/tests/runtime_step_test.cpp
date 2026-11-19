@@ -40,11 +40,6 @@ struct Trace : test_support::Behavior
         trace += 'L';
     }
 
-    void afterPhysicsSync(double) override
-    {
-        trace += 'A';
-    }
-
     std::string &trace;
 };
 
@@ -181,7 +176,7 @@ int main()
                 require(actual == 0.02, "Explicit host dt passes through unchanged");
                 trace += 'H';
             });
-            require(trace == "SHFULA", "Custom hook follows starts and precedes fixed/update/late/afterPhysicsSync once");
+            require(trace == "SHFUL", "Custom hook follows starts and precedes fixed/update/late once");
             for (double invalid :
                  {0., -dt, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
             {
@@ -194,17 +189,17 @@ int main()
                 {
                     rejected = true;
                 }
-                require(rejected && trace == "SHFULA", "Invalid dt rejects before any callback");
+                require(rejected && trace == "SHFUL", "Invalid dt rejects before any callback");
             }
             runtime.simulateFrame(dt);
-            require(trace == "SHFULAFULA", "Explicit steps do not use the interactive accumulator");
+            require(trace == "SHFULFUL", "Explicit steps do not use the interactive accumulator");
             require(runtime.simulateAndRenderFrame(dt), "Plain rendered stepping must run");
             require(runtime.simulateAndRenderFrameWithCustomCallback(dt,
                                                                      [&](double) {
                                                                          trace += 'H';
                                                                      }),
                     "Custom rendered stepping must run");
-            require(trace == "SHFULAFULAFULAHFULA",
+            require(trace == "SHFULFULFULHFUL",
                     "Both rendered paths preserve the same simulation phase order");
 
             auto *victim = runtime.createGameObject();
@@ -223,8 +218,8 @@ int main()
             }
             require(failed && runtime.getObjectById(victimId) == nullptr,
                     "Hook failure propagates after pending retirement is committed");
-            require(trace == "SHFULAFULAFULAHFULA",
-                    "Step hook failure must skip afterPhysicsSync for that aborted step");
+            require(trace == "SHFULFULFULHFUL",
+                    "Step hook failure must skip remaining callbacks for that aborted step");
             runtime.simulateFrame(dt);
             const auto beforeQuit = trace;
 
@@ -241,88 +236,7 @@ int main()
         }
 
         {
-            struct ThrowingSync : test_support::Behavior
-            {
-                ThrowingSync(std::string &out, std::string tag, bool doThrow)
-                    : out(out), tag(std::move(tag)), doThrow(doThrow)
-                {
-                }
-                void afterPhysicsSync(double actualDt) override
-                {
-                    ++calls;
-                    lastDt = actualDt;
-                    out += tag;
-                    if (doThrow)
-                        throw std::runtime_error("afterPhysicsSync failure");
-                }
-                std::string &out;
-                std::string tag;
-                bool doThrow = false;
-                int calls = 0;
-                double lastDt = 0.0;
-            };
-
             platformator::Runtime stepRuntime(physicsOnly());
-            std::string order;
-            auto *ownerA = stepRuntime.createGameObject();
-            auto *b1 = new ThrowingSync(order, "1", false);
-            auto *b2 = new ThrowingSync(order, "2", true);
-            auto *bInactiveObj = stepRuntime.createGameObject()->setActive(false);
-            auto *bInactive = new ThrowingSync(order, "I", false);
-            ownerA->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(b1);
-            bInactiveObj->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(bInactive);
-            stepRuntime.simulateFrame(dt);
-            require(order == "1" && b1->calls == 1 && bInactive->calls == 0 && b1->lastDt == dt,
-                    "afterPhysicsSync must skip inactive behaviors and preserve order");
-
-            // Adding pending b2 before step 2 starts it in Phase::Starting and dispatches its afterPhysicsSync cleanly:
-            ownerA->getComponent<ScriptComponent>()->addBehavior(b2);
-            bool syncThrew = false;
-            try
-            {
-                stepRuntime.simulateFrame(dt);
-            }
-            catch (const std::runtime_error &)
-            {
-                syncThrew = true;
-            }
-            require(syncThrew && order == "112",
-                    "Throwing in afterPhysicsSync propagates out of committed step");
-            // Runtime must remain idle & steppable afterwards; disable thrower and continue cleanly.
-            b2->doThrow = false;
-            stepRuntime.simulateFrame(dt);
-            require(order == "11212",
-                    "Runtime remains valid and resumes stepping after afterPhysicsSync error");
-
-            // Verify behavior added DURING afterPhysicsSync waits for next step startup (stays excluded in same pass).
-            order.clear();
-            struct AdderSync : test_support::Behavior
-            {
-                ScriptComponent *sc = nullptr;
-                Behavior *toAdd = nullptr;
-                std::string &out;
-                explicit AdderSync(std::string &out) : out(out) {}
-                void afterPhysicsSync(double) override
-                {
-                    out += 'M';
-                    if (toAdd && sc)
-                    {
-                        sc->addBehavior(toAdd);
-                        toAdd = nullptr;
-                    }
-                }
-            };
-            auto *bLatePending = new ThrowingSync(order, "N", false);
-            auto *adder = new AdderSync(order);
-            adder->sc = ownerA->getComponent<ScriptComponent>();
-            adder->toAdd = bLatePending;
-            ownerA->getComponent<ScriptComponent>()->addBehavior(adder);
-            stepRuntime.simulateFrame(dt);
-            require(order == "12M", "Pending behavior added during afterPhysicsSync must wait until next step start");
-            stepRuntime.simulateFrame(dt);
-            require(order == "12M12MN", "Newly started behavior joins afterPhysicsSync on subsequent step");
-
-            // Verify interactive run_with_owner_service runs afterPhysicsSync before host afterSimulationStep:
             std::string interactiveOrder;
             auto *hostObj = stepRuntime.createGameObject();
             hostObj->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
@@ -336,8 +250,8 @@ int main()
                     lastStepNo = stepNo;
                     interactiveOrder += "|post";
                 });
-            require(hostSteps >= 1 && lastStepNo >= 4 && interactiveOrder.find("FULA|post") != std::string::npos,
-                    "afterPhysicsSync must run before host afterSimulationStep in interactive loop");
+            require(hostSteps >= 1 && lastStepNo >= 1 && interactiveOrder.find("FUL|post") != std::string::npos,
+                    "Simulation step must commit before host afterSimulationStep in interactive loop");
         }
         std::cout << "[PASS] simulation step and clock contracts\n";
         return 0;

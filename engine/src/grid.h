@@ -48,6 +48,7 @@ class Grid
     void syncCollider(Collider *collider);
     void flushDeferredPairDeltas();
     void flushPendingCellUpdates();
+    void clearAll();
 
     const GridCellRange &getActiveCellBounds() const noexcept
     {

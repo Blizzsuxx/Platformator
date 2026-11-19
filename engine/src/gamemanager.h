@@ -1,12 +1,13 @@
 #pragma once
 
+#include "assetstore.h"
+#include "objectregistry.h"
 #include "physicsmanager.h"
 #include "platformator/debugsettings.h"
+#include "platformator/scene.h"
 #include "platformator/windowsettings.h"
 #include "sdlwindow.h"
 
-#include "objectregistry.h"
-#include "assetrequestaliases.h"
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -15,29 +16,25 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
-#include "platformator/animationclip.h"
-#include "platformator/audiowrapper.h"
-#include "platformator/scene.h"
-#include "platformator/template.h"
-#include "platformator/texturewrapper.h"
-
 class Animator;
-class ScriptComponent;
+class Asset;
 class Behavior;
+class ScriptComponent;
+class Template;
 
 namespace platformator
 {
-class Runtime;
 class ReferenceResolver;
+class Runtime;
 } // namespace platformator
 
 namespace platformator_detail
 {
+class AssetStore;
 class RuntimeAccess;
-}
+} // namespace platformator_detail
 
 namespace platformator_editor_detail
 {
@@ -49,13 +46,10 @@ class GameManager
     friend class SceneBuildContext;
     friend class Template;
     friend class platformator::Runtime;
+    friend class platformator_detail::AssetStore;
     friend class platformator_detail::RuntimeAccess;
     friend class GameObject;
-    friend class Component;
     friend class Collider;
-    friend class Rigidbody;
-    friend class SDLWindow;
-    friend class ColliderPair;
     friend class ScriptComponent;
     friend class PhysicsManager;
     friend class platformator_editor_detail::EditorPreviewAccess;
@@ -73,7 +67,6 @@ class GameManager
         Animation,
         LateUpdate,
         MutationCommit,
-        AfterPhysicsSync,
         DestructionCallbacks,
         Rendering,
         Saving,
@@ -98,7 +91,14 @@ class GameManager
         Phase previous;
     };
 
+    GameManager(GameManager &) = delete;
+    GameManager &operator=(const GameManager &) = delete;
+
+    GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
+    ~GameManager();
+
     void assertCanMutate() const;
+    void commitLocalMutations();
     void commitMutations();
     void flushIfIdle();
     void shutdown();
@@ -112,43 +112,34 @@ class GameManager
 
     BaseObject *resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const;
 
-    GameManager(GameManager &) = delete;
-    GameManager &operator=(const GameManager &) = delete;
-
-    GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
-    ~GameManager();
-
-    GameObject *getGameObject(std::string name);
+    GameObject *getGameObject(const std::string &name);
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
-
     SDLWindow *getWindow() const;
 
     void loop(const std::function<bool(SDLWindow &)> &ownerThreadService = {},
               const std::function<void(std::uint64_t)> &afterSimulationStep = {});
     void simulateFrame(double timeDelta);
     bool simulateAndRenderFrame(double timeDelta);
+
+    // Asset cache facades (backed by AssetStore)
     TextureWrapper *loadTexture(const std::string &filePath, bool required = false);
     TextureWrapper *findTexture(const std::string &filePath);
     std::uint64_t texture_cache_bytes() const noexcept;
-    TextureWrapper *reloadTexture(const std::string &filePath);
     TextureWrapper *reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface);
     void freeTexture(TextureWrapper *textureWrapper);
     void freeAllTextures();
     AudioWrapper *loadAudio(const std::string &filePath, bool required = false);
-    AudioWrapper *reloadAudio(const std::string &filePath);
     void freeAudio(AudioWrapper *audioWrapper);
     void freeAllAudio();
     AnimationClip *loadAnimationClip(const std::string &filePath);
     AnimationClip *findAnimationClip(const std::string &filePath);
     AnimationClip *loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
                                      bool required);
-    AnimationClip *reloadAnimationClip(const std::string &filePath);
     AnimationClip *reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument);
     void freeAnimationClip(AnimationClip *animationClip);
     void freeAllAnimationClips();
     Template *loadTemplate(const std::string &filePath, bool required = false, bool *deferredCyclic = nullptr);
-    Template *findTemplate(const std::string &filePath);
     void freeTemplate(Template *tpl);
     void freeAllTemplates();
 
@@ -160,6 +151,12 @@ class GameManager
     const Eigen::Vector2f &getGravityVectorNormalized() const;
 
   private:
+    struct SceneRequest
+    {
+        // A null path requests clearing; no pending request means no scene work.
+        std::optional<std::string> path;
+    };
+
     Phase phase = Phase::Idle;
     std::thread::id mainThread = std::this_thread::get_id();
     platformator_detail::ObjectRegistry registry;
@@ -167,87 +164,70 @@ class GameManager
     bool shuttingDown = false;
     std::uint64_t simulationStepNumber = 0;
 
-    struct SceneRequest
-    {
-        // A null path requests clearing; no pending request means no scene work.
-        std::optional<std::string> path;
-    };
-
     std::optional<SceneRequest> pendingSceneRequest;
     bool preparingScene = false;
     int64_t nextFileId = 0;
-    void assignFileId(BaseObject &object);
-    void reconcilePending(std::exception_ptr &error);
-    void drainRetirements(std::exception_ptr &error);
-    std::vector<Component *> reconciliations;
-    std::vector<Component *> reconciliationDrain;
-    std::vector<Component *> retiredComponents;
-    std::vector<GameObject *> dirtyTransforms;
-    size_t nextHierarchyOrder = 0;
-    bool hierarchyDirty = true;
-    bool transformOrderNeeded = false;
-    uint64_t transformStamp = 0;
-    void queueTransform(GameObject *object, bool refreshImmediate = true);
-    void cancelTransform(GameObject *object);
-    void synchronizeTransforms();
-    void rebuildHierarchyOrder(GameObject *object);
-    void synchronizeSubtree(GameObject *object);
-    void publishRenderGeometryChange(GameObject *object);
-    void queueReconciliation(Component *component);
-    void retireComponent(Component *component);
-    void runDestructionCallbacks(ScriptComponent *script, std::exception_ptr &error);
+
     std::unique_ptr<SDLWindow> window;
+    std::unique_ptr<PhysicsManager> physicsManager;
+    platformator_detail::AssetStore assets;
+
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> scriptComponents;
-    platformator_detail::AssetRequestAliases textureAliases, audioAliases, animationAliases, templateAliases;
-    std::unordered_map<std::string, std::unique_ptr<TextureWrapper>> textureCache;
-    std::unordered_map<std::string, std::unique_ptr<AudioWrapper>> audioCache;
-    std::unordered_map<std::string, std::unique_ptr<AnimationClip>> animationClipCache;
-    std::unordered_map<std::string, std::unique_ptr<Template>> templateCache;
-    std::vector<std::unique_ptr<TextureWrapper>> retiredTextureCache;
-    std::vector<std::unique_ptr<AudioWrapper>> retiredAudioCache;
-    std::vector<std::unique_ptr<AnimationClip>> retiredAnimationCache;
-    std::vector<std::unique_ptr<Template>> retiredTemplateCache;
-    std::unordered_set<std::string> activeTemplateLoads;
     std::unordered_map<int, BaseObject *> idToObjectMap;
+
+    std::vector<Component *> reconciliations;
+    std::vector<Component *> reconciliationDrain;
+    std::vector<Component *> retiredComponents;
     std::vector<GameObject *> gameObjectsToDelete;
     std::vector<ScriptComponent *> pendingStartScripts;
+    std::vector<GameObject *> dirtyTransforms;
+    uint64_t transformStamp = 0;
 
-    std::unique_ptr<PhysicsManager> physicsManager;
+    // AssetStore helpers
+    void tagAssetRuntime(Asset &asset) const;
+    void loadTemplateDocument(Template &tpl, const nlohmann::json &document);
 
-
+    // Object & scene lifecycle
+    void assignFileId(BaseObject &object);
     void createMainCameraIfNoMainCameraExists();
     void registerGameObjectSubtree(GameObject *gameObject);
-    void runSimulationStep(double timeDelta);
-    void startDeletingGameObject(GameObject *gameObject);
-
     void removeGameObject(GameObject *gameObject);
+    void startDeletingGameObject(GameObject *gameObject);
+    void clearAllSceneObjects(std::exception_ptr &error);
+    void commitSceneTransition(SceneRequest selected);
+    void reconcilePending(std::exception_ptr &error);
+    void drainRetirements(std::exception_ptr &error);
+    void runDestructionCallbacks(ScriptComponent *script, std::exception_ptr &error);
 
-    void notifyPhysicsManagerOfComponentAdded(Component *component);
-    void notifyWindowOfComponentAdded(Component *component);
-
-    void notifyPhysicsManagerOfComponentRemoved(Component *component);
-    void notifyWindowOfComponentRemoved(Component *component);
-
-    void notifyRuntimeOfComponentAdded(Component *component);
-    void notifyRuntimeOfComponentRemoved(Component *component);
+    // Component subsystem registration
     void notifyComponentAdded(Component *component);
+    void queueReconciliation(Component *component);
+    void retireComponent(Component *component);
+    void registerComponentInSystems(Component *component);
+    void unregisterComponentFromSystems(Component *component);
 
+    // Transform synchronization
+    void queueTransform(GameObject *object, bool refreshImmediate = true);
+    void cancelTransform(GameObject *object);
+    void synchronizeTransforms();
+    void synchronizeSubtree(GameObject *object);
+    void publishRenderGeometryChange(GameObject *object);
+
+    // Simulation step & script dispatch
     PhysicsManager *getPhysicsManager() const;
     void fixedUpdateScriptComponents(double timeDelta);
     void updateScriptComponents(double timeDelta);
     void lateUpdateScriptComponents(double timeDelta);
-    void afterPhysicsSyncScriptComponents(double timeDelta);
     void updateAnimatorComponents(double timeDelta);
     void startPendingScripts();
-
     void queueScriptStart(ScriptComponent *script);
     void cancelScriptStart(ScriptComponent *script);
+
     const std::vector<GameObject *> &getGameObjects() const;
+    void runSimulationStep(double timeDelta);
     void simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
-    void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback,
-                                             double timeDelta);
-    bool simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback,
-                                                  double timeDelta);
+    void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
+    bool simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
 };

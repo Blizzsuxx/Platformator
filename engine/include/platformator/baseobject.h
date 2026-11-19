@@ -16,9 +16,7 @@ enum class ObjectLifecycle : uint8_t
     Staged,
     Live,
     PendingRetire,
-    DestroyCallbacks,
-    Unregistered,
-    Freed
+    DestroyCallbacks
 };
 
 class BaseObject

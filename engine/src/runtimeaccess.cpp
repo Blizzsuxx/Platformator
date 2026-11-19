@@ -54,11 +54,6 @@ std::uint64_t RuntimeAccess::textureCacheBytes() noexcept
     return gameManager().texture_cache_bytes();
 }
 
-TextureWrapper *RuntimeAccess::reloadTexture(const std::string &filePath)
-{
-    return gameManager().reloadTexture(filePath);
-}
-
 TextureWrapper *RuntimeAccess::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
 {
     return gameManager().reloadTexture(filePath, preparedSurface);
@@ -69,11 +64,6 @@ AudioWrapper *RuntimeAccess::loadAudio(const std::string &filePath)
     return runtime().loadAudio(filePath);
 }
 
-AudioWrapper *RuntimeAccess::reloadAudio(const std::string &filePath)
-{
-    return gameManager().reloadAudio(filePath);
-}
-
 AnimationClip *RuntimeAccess::loadAnimationClip(const std::string &filePath)
 {
     return runtime().loadAnimationClip(filePath);
@@ -82,11 +72,6 @@ AnimationClip *RuntimeAccess::loadAnimationClip(const std::string &filePath)
 AnimationClip *RuntimeAccess::findAnimationClip(const std::string &filePath)
 {
     return gameManager().findAnimationClip(filePath);
-}
-
-AnimationClip *RuntimeAccess::reloadAnimationClip(const std::string &filePath)
-{
-    return gameManager().reloadAnimationClip(filePath);
 }
 
 AnimationClip *RuntimeAccess::reloadAnimationClip(const std::string &filePath,

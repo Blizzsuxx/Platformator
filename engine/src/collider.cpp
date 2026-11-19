@@ -1,5 +1,6 @@
 #include "platformator/collider.h"
 
+#include <cassert>
 #include "constants.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
@@ -87,17 +88,12 @@ void Collider::setIsTrigger(const bool isTrigger)
     invalidateResponse();
 }
 
-bool Collider::getIsQueuedForAdd() const
-{
-    return gridQueueIndex != SIZE_MAX && desiredInGrid && !getIsRegisteredInGrid();
-}
-
 void Collider::scheduleSync()
 {
     PLATFORMATOR_WORK_ADD(colliderSyncRequests, 1);
     dirty |= Geometry;
     if (getIsRegisteredInPhysicsManager())
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueColliderSync(this);
+        platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }
 
 void Collider::prepareSync()
@@ -120,8 +116,12 @@ void Collider::prepareSyncFromCache()
 
 void Collider::triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const
 {
-    ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
-    if (getIsCallbackEligible() && !isRetired() && scriptComponent != nullptr)
+    if (!getIsCallbackEligible())
+    {
+        return;
+    }
+    assert(!isRetired());
+    if (ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>())
     {
         scriptComponent->dispatchCollisionEnter(collision, other, timeDelta);
     }
@@ -129,8 +129,12 @@ void Collider::triggerCollisionEnter(const Collision *collision, Collider *other
 
 void Collider::triggerCollisionExit(Collider *other, double timeDelta) const
 {
-    ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>();
-    if (getIsCallbackEligible() && !isRetired() && scriptComponent != nullptr)
+    if (!getIsCallbackEligible())
+    {
+        return;
+    }
+    assert(!isRetired());
+    if (ScriptComponent *scriptComponent = getGameObject()->getComponent<ScriptComponent>())
     {
         scriptComponent->dispatchCollisionExit(other, timeDelta);
     }
@@ -143,7 +147,7 @@ void Collider::setCollisionGroup(const uint64_t collisionGroup)
     this->collisionGroup = collisionGroup;
     dirty |= Filter;
     if (getIsRegisteredInPhysicsManager())
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueColliderSync(this);
+        platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }
 
 uint64_t Collider::getCollisionGroup() const
@@ -158,7 +162,7 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
     this->collisionMask = collisionMask;
     dirty |= Filter;
     if (getIsRegisteredInPhysicsManager())
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueColliderSync(this);
+        platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }
 
 uint64_t Collider::getCollisionMask() const
@@ -194,11 +198,6 @@ void Collider::calculateGridCellRange()
 bool Collider::getIsQueuedForSync() const
 {
     return gridQueueIndex != SIZE_MAX && desiredInGrid && dirty;
-}
-
-bool Collider::hasValidGridCellRange() const
-{
-    return gridCellRange.getIsValid();
 }
 
 bool Collider::getIsRegisteredInGrid() const
@@ -255,14 +254,9 @@ bool Collider::getIsQueuedForRemove() const
     return gridQueueIndex != SIZE_MAX && !desiredInGrid;
 }
 
-bool Collider::getIsQueuedForAnything() const
-{
-    return gridQueueIndex != SIZE_MAX;
-}
-
 void Collider::invalidateResponse()
 {
     dirty |= Response;
     if (getIsRegisteredInPhysicsManager())
-        platformator_detail::RuntimeAccess::gameManager().getPhysicsManager()->queueColliderSync(this);
+        platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }

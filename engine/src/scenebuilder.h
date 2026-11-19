@@ -36,6 +36,7 @@ class SceneBuildContext : public platformator::ReferenceResolver
     explicit SceneBuildContext(GameManager &manager);
     ~SceneBuildContext();
     void prepare(const Scene &scene);
+    void prepare(const std::string &sceneFilePath);
     BaseObject *findObject(int id, platformator_detail::ObjectKind kind) override;
     BaseObject *findHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) override;
     TextureWrapper *loadTexture(const std::string &path) override;
@@ -51,6 +52,9 @@ class SceneBuildContext : public platformator::ReferenceResolver
     std::vector<GameObject *> objects;
     std::unordered_map<int, BaseObject *> ids;
     int64_t nextFileId = 0;
+    size_t componentCount = 0;
+    size_t scriptCount = 0;
+    size_t animatorCount = 0;
     std::vector<TextureWrapper *> textures;
     std::vector<AudioWrapper *> audio;
     std::vector<AnimationClip *> clips;

@@ -17,7 +17,6 @@ class ReferenceResolver;
 
 class Behavior
 {
-    friend class GameManager;
     friend class ScriptComponent;
     friend class Template;
 
@@ -38,8 +37,6 @@ class Behavior
     virtual void update(double timeDelta);
     virtual void fixedUpdate(double timeDelta);
     virtual void lateUpdate(double timeDelta);
-    // Called once per committed fixed step after physics and mutations sync. Keep physics read-only here.
-    virtual void afterPhysicsSync(double timeDelta);
     virtual void onDestroy();
     virtual void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta);
     virtual void onCollisionExit(Collider *other, double timeDelta);

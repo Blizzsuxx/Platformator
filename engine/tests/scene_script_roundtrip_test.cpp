@@ -326,16 +326,15 @@ void testSceneVersion2RoundTrip()
                 "Scene v2 round-trip test failed to restore the animator component id.");
         require(std::abs(animator->getPlaybackSpeed() - 1.5f) <= 1e-5f,
                 "Scene v2 round-trip test failed to restore animator playback speed.");
-        require(animator->getCurrentAnimationClip() != nullptr &&
-                    animator->getCurrentAnimationClip()->getFilePath() == animationClipAssetPath,
+        require(animator->getCurrentClip() != nullptr &&
+                    animator->getCurrentClip()->getFilePath() == animationClipAssetPath,
                 "Scene v2 round-trip test failed to restore the animator clip asset.");
 
-        require(animator->getCurrentClip() == animator->getCurrentAnimationClip(),
-                "Animation clip getter names must remain equivalent");
         const bool wasPlaying = animator->getIsPlaying();
         animator->stop();
-        require(animator->getCurrentClip() == animator->getCurrentAnimationClip(),
-                "Animation clip getter names must remain equivalent while stopped");
+        require(animator->getCurrentClip() != nullptr &&
+                    animator->getCurrentClip()->getFilePath() == animationClipAssetPath,
+                "Stopping an animator must preserve its current clip.");
         if (wasPlaying) animator->resume();
 
         ScriptComponent *scriptComponent = scriptedObject->getComponent<ScriptComponent>();

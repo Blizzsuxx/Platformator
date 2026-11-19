@@ -87,6 +87,7 @@ private:
                                const double &limit, uint64_t collisionMask, bool includeTriggers,
                                HitCallback &&onHit) const;
     void flushPendingColliderOperations();
+    void clearAll();
 
     void updateSleepingStates(double timeDelta);
     void broadPhase();

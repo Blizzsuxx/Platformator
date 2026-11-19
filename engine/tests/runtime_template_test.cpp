@@ -240,6 +240,91 @@ class SpawnedUnitChildBehavior : public ::Behavior
     SERIALIZABLE_SCRIPT(SpawnedUnitChildBehavior, childLink)
 };
 
+class ResolveCountingTemplateBehavior : public ::Behavior
+{
+  public:
+    int resolveCount = 0;
+    int startCount = 0;
+    ObjectReference<GameObject> childLink;
+
+    ::Behavior *clone() const override
+    {
+        auto *copy = new ResolveCountingTemplateBehavior();
+        copy->childLink = childLink;
+        return copy;
+    }
+
+    std::string getTypeName() const override
+    {
+        return "ResolveCountingTemplateBehavior";
+    }
+
+    void serialize(nlohmann::json &j) const override
+    {
+        j["type"] = getTypeName();
+        j["childLink"] = childLink;
+    }
+
+    void deserialize(const nlohmann::json &j) override
+    {
+        if (j.contains("childLink"))
+            childLink = j.at("childLink").get<ObjectReference<GameObject>>();
+    }
+
+    void resolveReferences(platformator::ReferenceResolver &resolver) override
+    {
+        ++resolveCount;
+        childLink.resolve(resolver);
+    }
+
+    void start() override
+    {
+        ++startCount;
+    }
+};
+
+struct ResolveCountingTemplateBehaviorRegistrar
+{
+    ResolveCountingTemplateBehaviorRegistrar()
+    {
+        platformator::registerScriptFactory("ResolveCountingTemplateBehavior",
+                                            []() -> ::Behavior * { return new ResolveCountingTemplateBehavior(); });
+    }
+} gResolveCountingTemplateBehaviorRegistrar;
+
+class AppendedResolveBehavior : public ::Behavior
+{
+  public:
+    int resolveCount = 0;
+    int startCount = 0;
+    ObjectReference<GameObject> targetRef;
+
+    std::string getTypeName() const override
+    {
+        return "AppendedResolveBehavior";
+    }
+
+    void serialize(nlohmann::json &j) const override
+    {
+        j["type"] = getTypeName();
+    }
+
+    void deserialize(const nlohmann::json &) override
+    {
+    }
+
+    void resolveReferences(platformator::ReferenceResolver &resolver) override
+    {
+        ++resolveCount;
+        targetRef.resolve(resolver);
+    }
+
+    void start() override
+    {
+        ++startCount;
+    }
+};
+
 nlohmann::json makeAnimsetJson()
 {
     return {{"filePath", "assets/anim.animset"},
@@ -992,6 +1077,56 @@ void testSpriteColorTemplateInstantiationAndClone()
     require(tintedSprite->getColor().r == 120 && tintedSprite->getColor().a == 160,
             "Failed scene preparation must preserve live template Sprite color");
 }
+
+void testAppendingBehaviorToTemplateInstanceDoesNotReresolveTemplateBehaviors()
+{
+    ScopedTempDir tmp("platformator_b04_append_behavior");
+    const auto childObj = makeObjectJson(10, "ChildPart", {1.0f, 0.0f}, 0.0f, nlohmann::json::array());
+    const auto rootObj = makeObjectJson(
+        1, "UnitRoot", {0.0f, 0.0f}, 0.0f,
+        nlohmann::json::array({{{"id", 2},
+                                {"type", ComponentType::SCRIPT},
+                                {"behaviors",
+                                 nlohmann::json::array({{{"type", "ResolveCountingTemplateBehavior"},
+                                                         {"childLink", 10}}})}}}),
+        nlohmann::json::array({childObj}));
+    writeJsonFile(tmp.dir / "assets" / "templates" / "resolve_unit.pttemplate",
+                  makeTemplateDoc("ResolveUnit", rootObj));
+
+    RuntimeOptions options;
+    options.assetRoot = (tmp.dir / "assets").string();
+    platformator::Runtime runtime(options);
+
+    GameObject *sceneTarget = runtime.createGameObject()->setName("SceneTarget");
+    auto *tpl = runtime.loadTemplate("assets/templates/resolve_unit.pttemplate");
+    GameObject *instance = tpl->instantiate();
+    require(instance != nullptr && instance->getChildren().size() == 1,
+            "Template instance must spawn with child");
+
+    auto *script = instance->getComponent<ScriptComponent>();
+    auto *tplBehavior = script->getBehavior<ResolveCountingTemplateBehavior>();
+    require(tplBehavior != nullptr, "Template behavior must exist on instantiated script");
+    require(tplBehavior->resolveCount == 1,
+            "Template instantiation must resolve template behavior references exactly once");
+    require(tplBehavior->childLink.get() == instance->getChildren()[0],
+            "Template behavior childLink must point to instantiated child");
+
+    auto *appended = new AppendedResolveBehavior();
+    appended->targetRef.setReferencedId(sceneTarget->getId());
+    script->addBehavior(appended);
+
+    runtime.simulateFrame(dt);
+
+    require(tplBehavior->resolveCount == 1,
+            "Appending a new behavior to an instantiated template script must not re-resolve already-resolved template behaviors");
+    require(tplBehavior->childLink.get() == instance->getChildren()[0],
+            "Template behavior reference must remain bound to its instantiated child after start");
+    require(tplBehavior->startCount == 1, "Template behavior must start once");
+    require(appended->resolveCount == 1, "Appended behavior must resolve its references once before start");
+    require(appended->targetRef.get() == sceneTarget,
+            "Appended behavior must resolve its active-scene target reference");
+    require(appended->startCount == 1, "Appended behavior must start once");
+}
 } // namespace
 
 int main()
@@ -1005,6 +1140,7 @@ int main()
         testEngineCleanupContracts();
         testSpriteZOrderTemplateInstantiationAndClone();
         testSpriteColorTemplateInstantiationAndClone();
+        testAppendingBehaviorToTemplateInstanceDoesNotReresolveTemplateBehaviors();
         std::cout << "Runtime template tests passed\n";
         return 0;
     }

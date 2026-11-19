@@ -99,8 +99,9 @@ const Eigen::Vector2f &Camera::getPublishedSpritePosition(Sprite *sprite) const
 
 Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const
 {
-    return Eigen::Vector2f((worldPoint.x() - getGameObject()->getX()) * getScaleX(outputWidth),
-                           (worldPoint.y() - getGameObject()->getY()) * getScaleY(outputHeight));
+    const auto &cameraPosition = getGameObject()->worldPosition;
+    return Eigen::Vector2f((worldPoint.x() - cameraPosition.x()) * getScaleX(outputWidth),
+                           (worldPoint.y() - cameraPosition.y()) * getScaleY(outputHeight));
 }
 
 Eigen::Vector2f Camera::worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight) const

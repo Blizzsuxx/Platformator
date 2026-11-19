@@ -36,7 +36,6 @@ class ScriptComponent : public Component
     void fixedUpdate(double timeDelta);
     void update(double timeDelta);
     void lateUpdate(double timeDelta);
-    void afterPhysicsSync(double timeDelta);
     void setGameObject(GameObject *gameObject) override;
 
     size_t getGameManagerIndex() const;
@@ -46,14 +45,14 @@ class ScriptComponent : public Component
   private:
     void markPendingReferencesResolved()
     {
-        pendingReferencesResolved = true;
+        resolvedPendingCount = pendingBehaviors.size();
     }
     void startPendingBehaviors(platformator::ReferenceResolver &resolver);
     std::vector<Behavior *> behaviors;
     std::vector<Behavior *> pendingBehaviors;
+    size_t resolvedPendingCount = 0;
     size_t pendingStartIndex = SIZE_MAX; // Global script startup queue.
     size_t gameManagerIndex;
-    bool pendingReferencesResolved = false;
     bool destructionDelivered = false;
 
     void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);

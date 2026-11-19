@@ -121,6 +121,7 @@ class SDLWindow
     BenchmarkOrderTiming consumeBenchmarkSelectionTiming() noexcept;
 #endif
     void releaseRenderingStorage() noexcept;
+    void clearSceneComponents() noexcept;
 
     void addSdlListener(const std::function<void(SDL_Event, double)> &listener);
     bool shouldSimulateFrame() const;

@@ -172,7 +172,7 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
     gameObjects.push_back(gameObject);
 
     registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
-    idToObjectMap[gameObject->getId()] = gameObject;
+    idToObjectMap.insertOrAssign(gameObject->getId(), gameObject);
 
     gameObject->addComponentsToGameManager();
 
@@ -260,8 +260,7 @@ SDLWindow *GameManager::getWindow() const
 
 BaseObject *GameManager::getObjectById(int id) const
 {
-    const auto it = idToObjectMap.find(id);
-    return it != idToObjectMap.end() ? it->second : nullptr;
+    return idToObjectMap.find(id);
 }
 
 BaseObject *GameManager::resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const
@@ -281,8 +280,7 @@ void GameManager::assignFileId(BaseObject &object)
     }
     else
     {
-        if (auto found = idToObjectMap.find(object.getId());
-            found != idToObjectMap.end() && found->second != &object)
+        if (BaseObject *found = idToObjectMap.find(object.getId()); found != nullptr && found != &object)
         {
             throw std::invalid_argument("Duplicate registered file ID: " + std::to_string(object.getId()));
         }
@@ -516,7 +514,7 @@ void GameManager::notifyComponentAdded(Component *component)
                        : CircleCollider;
         }
         registry.add(*component, kind);
-        idToObjectMap[component->getId()] = component;
+        idToObjectMap.insertOrAssign(component->getId(), component);
     }
     queueReconciliation(component);
 }

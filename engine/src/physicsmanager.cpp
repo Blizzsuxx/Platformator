@@ -241,6 +241,8 @@ void PhysicsManager::clearAll()
         collider->setIsRegisteredInGrid(false);
         collider->desiredInGrid = false;
         collider->gridQueueIndex = SIZE_MAX;
+        collider->cachedCellCount = 0;
+        collider->adjacentPairs.clear();
     }
 
     registeredBodies.clear();
@@ -249,7 +251,7 @@ void PhysicsManager::clearAll()
     sleepCandidates.clear();
     pendingBodyChanges.clear();
     colliderComponents.clear();
-    dynamicCollisionScratch.clear();
+    solverConstraints.clear();
     contactPairs.clear();
     solverPairs.clear();
     supportDeltaBodies.clear();
@@ -364,7 +366,11 @@ void PhysicsManager::resolveCollisions(double timeDelta)
     PLATFORMATOR_BENCH_SCOPE(ResolveCollisions);
 
     float inverseTimeDelta = timeDelta > 0.0 ? static_cast<float>(1.0 / timeDelta) : 0.0f;
-    dynamicCollisionScratch.clear();
+    solverConstraints.clear();
+    if (solverConstraints.capacity() < solverPairs.size())
+    {
+        solverConstraints.reserve(solverPairs.size());
+    }
 
     for (auto *pair : solverPairs)
     {
@@ -373,10 +379,14 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 
         switch (resolutionType)
         {
-        case Collision::CollisionType::DYNAMIC:
-            preStepCollision(collision, inverseTimeDelta);
-            dynamicCollisionScratch.push_back(collision);
+        case Collision::CollisionType::DYNAMIC: {
+            SolverConstraint constraint;
+            if (preStepCollision(collision, inverseTimeDelta, constraint))
+            {
+                solverConstraints.push_back(constraint);
+            }
             break;
+        }
         case Collision::CollisionType::KINEMATIC:
             resolveKinematicCollision(collision);
             break;
@@ -390,9 +400,9 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 
     for (int iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; iteration++)
     {
-        for (Collision *collision : dynamicCollisionScratch)
+        for (const SolverConstraint &constraint : solverConstraints)
         {
-            resolveCollision(collision);
+            resolveCollision(constraint);
         }
     }
 
@@ -404,7 +414,7 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 #endif
 }
 
-void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDelta)
+bool PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDelta, SolverConstraint &outConstraint)
 {
     Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(
         ComponentType::RIGID_BODY);
@@ -413,7 +423,7 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
 
     if (rbA == nullptr || rbB == nullptr)
     {
-        return;
+        return false;
     }
 
     const auto hasWakeMotion = [](const Rigidbody *other)
@@ -441,36 +451,47 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
     Eigen::Vector2f positionB = rbB->getGameObject()->worldPosition;
 
     const Eigen::Vector2f &normal = collision->getNormal();
-    Eigen::Vector2f tangent = crossSV(1.0f, normal);
+    const Eigen::Vector2f tangent = crossSV(1.0f, normal);
     float inverseMassSum = invMassA + invMassB;
     ClipPointsWithData &contactPoints = collision->getContactPoints();
-    collision->solverFriction = collision->getFriction();
-    collision->blockSolve = false;
-    if (contactPoints.count == 2)
+    const uint8_t pointCount = static_cast<uint8_t>(std::min<size_t>(contactPoints.count, 2));
+
+    outConstraint.rbA = rbA;
+    outConstraint.rbB = rbB;
+    outConstraint.contactPoints = &contactPoints;
+    outConstraint.normal = normal;
+    outConstraint.tangent = tangent;
+    outConstraint.solverFriction = collision->getFriction();
+    outConstraint.pointCount = pointCount;
+    outConstraint.blockSolve = false;
+
+    for (uint8_t i = 0; i < pointCount; ++i)
     {
-        const auto rA0 = (contactPoints.points[0].point.point - positionA).eval();
-        const auto rA1 = (contactPoints.points[1].point.point - positionA).eval();
-        const auto rB0 = (contactPoints.points[0].point.point - positionB).eval();
-        const auto rB1 = (contactPoints.points[1].point.point - positionB).eval();
-        const float a0 = cross2D(rA0, normal), a1 = cross2D(rA1, normal);
-        const float b0 = cross2D(rB0, normal), b1 = cross2D(rB1, normal);
+        outConstraint.rA[i] = contactPoints.points[i].point.point - positionA;
+        outConstraint.rB[i] = contactPoints.points[i].point.point - positionB;
+    }
+
+    if (pointCount == 2)
+    {
+        const float a0 = cross2D(outConstraint.rA[0], normal), a1 = cross2D(outConstraint.rA[1], normal);
+        const float b0 = cross2D(outConstraint.rB[0], normal), b1 = cross2D(outConstraint.rB[1], normal);
         const float k00 = inverseMassSum + invInertiaA * a0 * a0 + invInertiaB * b0 * b0;
         const float k11 = inverseMassSum + invInertiaA * a1 * a1 + invInertiaB * b1 * b1;
         const float k01 = inverseMassSum + invInertiaA * a0 * a1 + invInertiaB * b0 * b1;
         const float determinant = k00 * k11 - k01 * k01;
         if (determinant > 0 && k00 * k00 < 1000.f * determinant)
         {
-            collision->normalK << k00, k01, k01, k11;
-            collision->normalMass << k11, -k01, -k01, k00;
-            collision->normalMass /= determinant;
-            collision->blockSolve = true;
+            outConstraint.normalK << k00, k01, k01, k11;
+            outConstraint.normalMass << k11, -k01, -k01, k00;
+            outConstraint.normalMass /= determinant;
+            outConstraint.blockSolve = true;
         }
     }
 
-    for (size_t i = 0; i < contactPoints.count; i++)
+    for (uint8_t i = 0; i < pointCount; ++i)
     {
-        Eigen::Vector2f rA = contactPoints.points[i].point.point - positionA;
-        Eigen::Vector2f rB = contactPoints.points[i].point.point - positionB;
+        const Eigen::Vector2f &rA = outConstraint.rA[i];
+        const Eigen::Vector2f &rB = outConstraint.rB[i];
         float rnA = rA.dot(normal);
         float rnB = rB.dot(normal);
         float kNormal =
@@ -503,60 +524,41 @@ void PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
         rbA->applySolverImpulse(-accumulatedImpulse, rA);
         rbB->applySolverImpulse(accumulatedImpulse, rB);
     }
+    return true;
 }
 
-void PhysicsManager::resolveCollision(const Collision *collision)
+void PhysicsManager::resolveCollision(const SolverConstraint &constraint)
 {
-    GameObject *gameObjectA = collision->getReferenceObject()->getGameObject();
-    GameObject *gameObjectB = collision->getIncidentObject()->getGameObject();
+    Rigidbody *rbA = constraint.rbA;
+    Rigidbody *rbB = constraint.rbB;
+    ClipPointsWithData &contactPoints = *constraint.contactPoints;
+    const Eigen::Vector2f &normal = constraint.normal;
+    const Eigen::Vector2f &tangent = constraint.tangent;
 
-    Rigidbody *rbA = (Rigidbody *)gameObjectA->getComponent(ComponentType::RIGID_BODY);
-    Rigidbody *rbB = (Rigidbody *)gameObjectB->getComponent(ComponentType::RIGID_BODY);
-
-    if (rbA == nullptr || rbB == nullptr)
+    if (constraint.blockSolve)
     {
-        return;
-    }
-
-    Eigen::Vector2f positionA = gameObjectA->worldPosition;
-    Eigen::Vector2f positionB = gameObjectB->worldPosition;
-
-    float invMassA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMass();
-    float invMassB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMass();
-
-    float invInertiaA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMomentOfInertia();
-    float invInertiaB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMomentOfInertia();
-    const Eigen::Vector2f &normal = collision->getNormal();
-    Eigen::Vector2f tangent = crossSV(1.0f, normal);
-    ClipPointsWithData &contactPoints = collision->getContactPoints();
-    if (collision->blockSolve)
-    {
-        const Eigen::Vector2f rA[] = {(contactPoints.points[0].point.point - positionA).eval(),
-                                      (contactPoints.points[1].point.point - positionA).eval()};
-        const Eigen::Vector2f rB[] = {(contactPoints.points[0].point.point - positionB).eval(),
-                                      (contactPoints.points[1].point.point - positionB).eval()};
         const Eigen::Vector2f previous(contactPoints.points[0].accumulatedNormalImpulse,
                                        contactPoints.points[1].accumulatedNormalImpulse);
         Eigen::Vector2f rhs;
         for (int i = 0; i < 2; ++i)
         {
-            rhs[i] = ((rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB[i])) -
-                      (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA[i])))
+            rhs[i] = ((rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), constraint.rB[i])) -
+                      (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), constraint.rA[i])))
                          .dot(normal) -
                      contactPoints.points[i].bias;
         }
-        rhs -= collision->normalK * previous;
-        Eigen::Vector2f next = -collision->normalMass * rhs;
+        rhs -= constraint.normalK * previous;
+        Eigen::Vector2f next = -constraint.normalMass * rhs;
         bool accepted = next.x() >= 0 && next.y() >= 0;
         if (!accepted)
         {
-            next = {-rhs.x() / collision->normalK(0, 0), 0};
-            accepted = next.x() >= 0 && collision->normalK(1, 0) * next.x() + rhs.y() >= 0;
+            next = {-rhs.x() / constraint.normalK(0, 0), 0};
+            accepted = next.x() >= 0 && constraint.normalK(1, 0) * next.x() + rhs.y() >= 0;
         }
         if (!accepted)
         {
-            next = {0, -rhs.y() / collision->normalK(1, 1)};
-            accepted = next.y() >= 0 && collision->normalK(0, 1) * next.y() + rhs.x() >= 0;
+            next = {0, -rhs.y() / constraint.normalK(1, 1)};
+            accepted = next.y() >= 0 && constraint.normalK(0, 1) * next.y() + rhs.x() >= 0;
         }
         if (!accepted && rhs.x() >= 0 && rhs.y() >= 0)
         {
@@ -568,8 +570,8 @@ void PhysicsManager::resolveCollision(const Collision *collision)
             for (int i = 0; i < 2; ++i)
             {
                 const Eigen::Vector2f impulse = (next[i] - previous[i]) * normal;
-                rbA->applySolverImpulse(-impulse, rA[i]);
-                rbB->applySolverImpulse(impulse, rB[i]);
+                rbA->applySolverImpulse(-impulse, constraint.rA[i]);
+                rbB->applySolverImpulse(impulse, constraint.rB[i]);
                 contactPoints.points[i].accumulatedNormalImpulse = next[i];
             }
         }
@@ -577,15 +579,15 @@ void PhysicsManager::resolveCollision(const Collision *collision)
 
     // TODO: paralelize this
     // or not
-    for (size_t i = 0; i < contactPoints.count; i++)
+    for (uint8_t i = 0; i < constraint.pointCount; ++i)
     {
-        Eigen::Vector2f rA = contactPoints.points[i].point.point - positionA;
-        Eigen::Vector2f rB = contactPoints.points[i].point.point - positionB;
+        const Eigen::Vector2f &rA = constraint.rA[i];
+        const Eigen::Vector2f &rB = constraint.rB[i];
 
         Eigen::Vector2f relativeVelocity = (rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB)) -
                                            (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA));
 
-        if (!collision->blockSolve)
+        if (!constraint.blockSolve)
         {
             float vn = relativeVelocity.dot(normal);
             float normalImpulse = contactPoints.points[i].massNormal * (-vn + contactPoints.points[i].bias);
@@ -610,7 +612,7 @@ void PhysicsManager::resolveCollision(const Collision *collision)
         float oldTangentImpulse = contactPoints.points[i].accumulatedTangentImpulse;
 
         float maxTangentImpulse =
-            collision->solverFriction * contactPoints.points[i].accumulatedNormalImpulse;
+            constraint.solverFriction * contactPoints.points[i].accumulatedNormalImpulse;
         float newTangentImpulse =
             Clamp(oldTangentImpulse + tangentImpulse, -maxTangentImpulse, maxTangentImpulse);
         contactPoints.points[i].accumulatedTangentImpulse = newTangentImpulse;

@@ -13,6 +13,7 @@ class LocalSortArray;
 class GridCell;
 class SegmentedIntervalList;
 class Collision;
+class ColliderPair;
 class Grid;
 class AABB;
 
@@ -207,6 +208,10 @@ class Collider : public Component
     uint8_t dirty = Geometry;
     bool desiredInGrid = false;
     size_t gridQueueIndex = SIZE_MAX;
+    static constexpr uint8_t MAX_CACHED_GRID_CELLS = 4;
+    GridCell *cachedCells[MAX_CACHED_GRID_CELLS] = {};
+    uint8_t cachedCellCount = 0;
+    std::vector<const ColliderPair *> adjacentPairs;
     void prepareSyncFromCache();
 };
 

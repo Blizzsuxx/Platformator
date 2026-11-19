@@ -2,10 +2,10 @@
 
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <json.hpp>
+#include "flatidmap.h"
 #include "platformator/referenceresolver.h"
 
 class GameManager;
@@ -50,7 +50,7 @@ class SceneBuildContext : public platformator::ReferenceResolver
     GameManager &manager;
     std::string path;
     std::vector<GameObject *> objects;
-    std::unordered_map<int, BaseObject *> ids;
+    platformator_detail::FlatIdMap ids;
     int64_t nextFileId = 0;
     size_t componentCount = 0;
     size_t scriptCount = 0;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <utility>
 
@@ -22,12 +23,16 @@ struct GridCellKey
 
     struct Hash
     {
-        std::size_t operator()(const GridCellKey &key) const
+        std::size_t operator()(const GridCellKey &key) const noexcept
         {
-            size_t h1 = std::hash<int>()(key.x);
-            size_t h2 = std::hash<int>()(key.y);
-
-            return h1 ^ (h2 << 1);
+            uint64_t z = (static_cast<uint64_t>(static_cast<uint32_t>(key.x)) << 32) |
+                         static_cast<uint64_t>(static_cast<uint32_t>(key.y));
+            z ^= z >> 30;
+            z *= 0xbf58476d1ce4e5b9ULL;
+            z ^= z >> 27;
+            z *= 0x94d049bb133111ebULL;
+            z ^= z >> 31;
+            return static_cast<std::size_t>(z);
         }
     };
 };

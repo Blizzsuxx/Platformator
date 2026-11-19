@@ -120,8 +120,24 @@ private:
     size_t countAwakeDynamicBodies() const;
 #endif
 
-    void preStepCollision(Collision *collision, float inverseTimeDelta);
-    void resolveCollision(const Collision *collision);
+    struct SolverConstraint
+    {
+        Rigidbody *rbA = nullptr;
+        Rigidbody *rbB = nullptr;
+        ClipPointsWithData *contactPoints = nullptr;
+        Eigen::Vector2f normal = Eigen::Vector2f::Zero();
+        Eigen::Vector2f tangent = Eigen::Vector2f::Zero();
+        Eigen::Vector2f rA[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
+        Eigen::Vector2f rB[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
+        Eigen::Matrix2f normalK = Eigen::Matrix2f::Zero();
+        Eigen::Matrix2f normalMass = Eigen::Matrix2f::Zero();
+        float solverFriction = 0.0f;
+        uint8_t pointCount = 0;
+        bool blockSolve = false;
+    };
+
+    bool preStepCollision(Collision *collision, float inverseTimeDelta, SolverConstraint &outConstraint);
+    void resolveCollision(const SolverConstraint &constraint);
     void resolveKinematicCollision(const Collision *collision);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
@@ -131,7 +147,7 @@ private:
     std::vector<Rigidbody *> registeredBodies;
     std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
     std::vector<Collider *> colliderComponents;
-    std::vector<Collision *> dynamicCollisionScratch;
+    std::vector<SolverConstraint> solverConstraints;
     std::vector<const ColliderPair *> contactPairs;
     // Append/swap-remove order; physical solving does not require canonical pair order.
     std::vector<const ColliderPair *> solverPairs;

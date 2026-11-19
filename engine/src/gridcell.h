@@ -2,8 +2,7 @@
 
 #include "aabb.h"
 #include "platformator/gridtypes.h"
-#include <atomic>
-#include <oneapi/tbb.h>
+#include <vector>
 
 class Grid;
 
@@ -22,22 +21,26 @@ class GridCell
     AABB *getAABB();
     const AABB *getAABB() const;
     const GridCellKey &getCellKey() const;
+    void resetKey(GridCellKey newKey) noexcept
+    {
+        key = newKey;
+    }
     bool markQueuedForEmpty();
     void clearQueuedForEmpty();
     bool markQueuedForOperations();
     void clearQueuedForOperations();
-    void queueRemoveBinding(AABB::ColliderBinding *binding);
+    void queueRemoveCollider(Collider *collider);
     void queueAddCollider(Collider *collider);
-    void queueSyncBinding(AABB::ColliderBinding *binding);
+    void queueSyncCollider(Collider *collider);
     void flushPendingOperations();
 
   private:
     AABB aabb;
     GridCellKey key;
-    std::atomic_bool queuedForEmpty;
-    std::atomic_bool queuedForOperations;
+    bool queuedForEmpty;
+    bool queuedForOperations;
 
-    tbb::concurrent_vector<Collider *> collidersToAdd;
-    tbb::concurrent_vector<AABB::ColliderBinding *> bindingsToRemove;
-    tbb::concurrent_vector<AABB::ColliderBinding *> bindingsToSync;
+    std::vector<Collider *> collidersToAdd;
+    std::vector<Collider *> collidersToRemove;
+    std::vector<Collider *> collidersToSync;
 };

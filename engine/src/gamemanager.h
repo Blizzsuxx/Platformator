@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assetstore.h"
+#include "flatidmap.h"
 #include "objectregistry.h"
 #include "physicsmanager.h"
 #include "platformator/debugsettings.h"
@@ -159,7 +160,7 @@ class GameManager
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> scriptComponents;
-    std::unordered_map<int, BaseObject *> idToObjectMap;
+    platformator_detail::FlatIdMap idToObjectMap;
 
     std::vector<Component *> reconciliations;
     std::vector<Component *> reconciliationDrain;

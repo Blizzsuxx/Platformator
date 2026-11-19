@@ -198,7 +198,7 @@ SceneBuildContext::~SceneBuildContext()
 void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
 {
     manager.registry.add(object, kind, false);
-    ids.emplace(object.getId(), &object);
+    ids.insertOrAssign(object.getId(), &object);
     if (kind != Kind::GameObject)
     {
         ++componentCount;
@@ -302,8 +302,8 @@ BaseObject *SceneBuildContext::findHandle(platformator::ObjectHandle handle, Kin
 }
 BaseObject *SceneBuildContext::findObject(int id, Kind kind)
 {
-    auto found = ids.find(id);
-    return found == ids.end() ? nullptr : findHandle(found->second->getHandle(), kind);
+    BaseObject *found = ids.find(id);
+    return found == nullptr ? nullptr : findHandle(found->getHandle(), kind);
 }
 TextureWrapper *SceneBuildContext::loadTexture(const std::string &path)
 {

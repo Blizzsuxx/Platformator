@@ -29,10 +29,12 @@ class Grid
     friend class PhysicsManager;
 
   public:
+    using CellMap = std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash>;
+
     explicit Grid(PhysicsManager *owner = nullptr);
     ~Grid();
 
-    const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &getCells() const;
+    const CellMap &getCells() const;
     bool containsCellPair(Collider *colliderA, Collider *colliderB) const;
     size_t getCandidatePairCount() const;
 
@@ -54,9 +56,11 @@ class Grid
     }
 
   private:
+    static bool rangeFitsCellCache(const GridCellRange &range) noexcept;
     void expandActiveCellBounds(const GridCellRange &range) noexcept;
     void recomputeActiveCellBounds() noexcept;
-    void addColliderInternal(Collider *collider);
+    void addColliderInternal(Collider *collider, bool geometryPrepared = false);
+    void syncColliderInternal(Collider *collider, bool geometryPrepared);
     void removeColliderInternal(Collider *collider);
     void removeGridCellIfEmpty(GridCell *cell);
     void dequeuePairFromNarrowPhase(const ColliderPair *pair);
@@ -75,12 +79,12 @@ class Grid
     PhysicsManager *owner;
     std::vector<PairDelta> pairDeltaScratch;
 
-    tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> cells;
+    CellMap cells;
+    std::vector<CellMap::node_type> freeCellNodes;
     std::unordered_set<ColliderPair, ColliderPair::HashFunction> candidateCollisions;
     std::vector<const ColliderPair *> pendingNarrowPhasePairs;
-    std::unordered_map<Collider *, std::vector<const ColliderPair *>> pairAdjacency;
-    tbb::concurrent_vector<GridCell *> potentiallyEmptyCells;
-    tbb::concurrent_vector<GridCell *> cellsWithOperations;
+    std::vector<GridCell *> potentiallyEmptyCells;
+    std::vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
     PairDeltaCollector activePairDeltaCollector;
     GridCellRange activeCellBounds{};

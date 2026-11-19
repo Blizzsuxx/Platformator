@@ -1,7 +1,7 @@
 #include "gridcell.h"
 
 GridCell::GridCell(GridCellKey key, Grid *owner)
-    : aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), bindingsToRemove(), bindingsToSync()
+    : aabb(owner), key(key), queuedForEmpty(false), queuedForOperations(false), collidersToAdd(), collidersToRemove(), collidersToSync()
 {
 }
 
@@ -36,29 +36,39 @@ const GridCellKey &GridCell::getCellKey() const
 
 bool GridCell::markQueuedForEmpty()
 {
-    return !queuedForEmpty.exchange(true, std::memory_order_acq_rel);
+    if (queuedForEmpty)
+    {
+        return false;
+    }
+    queuedForEmpty = true;
+    return true;
 }
 
 void GridCell::clearQueuedForEmpty()
 {
-    queuedForEmpty.store(false, std::memory_order_release);
+    queuedForEmpty = false;
 }
 
 bool GridCell::markQueuedForOperations()
 {
-    return !queuedForOperations.exchange(true, std::memory_order_acq_rel);
+    if (queuedForOperations)
+    {
+        return false;
+    }
+    queuedForOperations = true;
+    return true;
 }
 
 void GridCell::clearQueuedForOperations()
 {
-    queuedForOperations.store(false, std::memory_order_release);
+    queuedForOperations = false;
 }
 
-void GridCell::queueRemoveBinding(AABB::ColliderBinding *binding)
+void GridCell::queueRemoveCollider(Collider *collider)
 {
-    if (binding != nullptr)
+    if (collider != nullptr)
     {
-        bindingsToRemove.push_back(binding);
+        collidersToRemove.push_back(collider);
     }
 }
 
@@ -67,32 +77,32 @@ void GridCell::queueAddCollider(Collider *collider)
     collidersToAdd.push_back(collider);
 }
 
-void GridCell::queueSyncBinding(AABB::ColliderBinding *binding)
+void GridCell::queueSyncCollider(Collider *collider)
 {
-    if (binding != nullptr)
+    if (collider != nullptr)
     {
-        bindingsToSync.push_back(binding);
+        collidersToSync.push_back(collider);
     }
 }
 
 void GridCell::flushPendingOperations()
 {
-    for (AABB::ColliderBinding *binding : bindingsToRemove)
+    for (Collider *collider : collidersToRemove)
     {
-        aabb.remove(binding);
+        aabb.remove(collider);
     }
-    bindingsToRemove.clear();
+    collidersToRemove.clear();
 
-    for (AABB::ColliderBinding *binding : bindingsToSync)
+    for (Collider *collider : collidersToSync)
     {
-        if (binding == nullptr || binding->collider == nullptr || binding->collider->getIsQueuedForRemove() || binding->collider->getGameObject()->getIsMarkedForDeletion() || !binding->collider->getGameObject()->getActive())
+        if (collider == nullptr || collider->getIsQueuedForRemove() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
         {
             continue;
         }
 
-        aabb.repair(binding);
+        aabb.repair(collider);
     }
-    bindingsToSync.clear();
+    collidersToSync.clear();
 
     for (Collider *collider : collidersToAdd)
     {

@@ -8,7 +8,6 @@ AABB::AABB(Grid *owner)
       colliderBindings(),
       owner(owner)
 {
-    pairsWithBothAxisOverlapping.reserve(8);
 }
 
 AABB::~AABB()
@@ -101,35 +100,34 @@ SegmentedIntervalList *AABB::getIntervalListY()
 
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
 {
-    bool isOverlappingOnBothAxes = checkOverlapOnAxis(colliderA, colliderB);
-
-    if (!isOverlappingOnBothAxes)
-    {
-        return;
-    }
-
-    AABBPair pair(colliderA, colliderB);
-    auto iterator = pairsWithBothAxisOverlapping.find(pair);
-    if (iterator != pairsWithBothAxisOverlapping.end())
-    {
-        return;
-    }
-
     if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
     {
         return;
     }
-    if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 || (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
+    if ((colliderA->getCollisionGroup() & colliderB->getCollisionMask()) == 0 ||
+        (colliderB->getCollisionGroup() & colliderA->getCollisionMask()) == 0)
     {
         return;
     }
 
-    pairsWithBothAxisOverlapping.insert(pair);
-    owner->recordPairDelta(colliderA, colliderB, 1);
+    if (!checkOverlapOnAxis(colliderA, colliderB))
+    {
+        return;
+    }
+
+    if (pairsWithBothAxisOverlapping.emplace(colliderA, colliderB).second)
+    {
+        owner->recordPairDelta(colliderA, colliderB, 1);
+    }
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB)
 {
+    if (pairsWithBothAxisOverlapping.empty())
+    {
+        return;
+    }
+
     AABBPair pair(colliderA, colliderB);
     auto iterator = pairsWithBothAxisOverlapping.find(pair);
     if (iterator == pairsWithBothAxisOverlapping.end())

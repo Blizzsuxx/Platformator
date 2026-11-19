@@ -27,6 +27,29 @@ namespace doom
         {
             return static_cast<std::uint8_t>((static_cast<int>(entityMod) * static_cast<int>(fogShade)) / 255);
         }
+
+        void clampTexSpan(float rawStart, float rawLength, float texExtent, float &outStart, float &outLength)
+        {
+            if (!std::isfinite(texExtent) || texExtent <= 0.0f)
+            {
+                outStart = 0.0f;
+                outLength = 0.0f;
+                return;
+            }
+            if (!std::isfinite(rawStart))
+            {
+                rawStart = 0.0f;
+            }
+            if (!std::isfinite(rawLength))
+            {
+                rawLength = 0.0f;
+            }
+            const float maxStart = std::max(0.0f, texExtent - 1.0f);
+            outStart = std::clamp(rawStart, 0.0f, maxStart);
+            const float avail = std::max(0.0f, texExtent - outStart);
+            const float minLen = std::min(0.1f, avail);
+            outLength = std::clamp(rawLength, minLen, avail);
+        }
     } // namespace
 
     DoomRaycaster::DoomRaycaster() = default;
@@ -319,8 +342,9 @@ namespace doom
             const float srcX = std::clamp(std::floor(u * dims.w), 0.0f, std::max(0.0f, dims.w - 1.0f));
             const float v0 = (topClipped - topUnclipped) / projHeight;
             const float v1 = (botClipped - topUnclipped) / projHeight;
-            const float srcY = std::clamp(v0 * dims.h, 0.0f, std::max(0.0f, dims.h - 0.1f));
-            const float srcH = std::clamp((v1 - v0) * dims.h, 0.1f, dims.h - srcY);
+            float srcY = 0.0f;
+            float srcH = 0.0f;
+            clampTexSpan(v0 * dims.h, (v1 - v0) * dims.h, dims.h, srcY, srcH);
 
             // Distance fog + normal directional shading + muzzle light flash
             const float dirLight = 0.72f + 0.28f * std::abs(hit->normal.x());
@@ -433,8 +457,9 @@ namespace doom
 
                 const float v0 = (topClipped - topUnclipped) / projH;
                 const float v1 = (botClipped - topUnclipped) / projH;
-                const float srcY = std::clamp(regY + v0 * regH, 0.0f, std::max(0.0f, texDims.h - 0.1f));
-                const float srcH = std::clamp((v1 - v0) * regH, 0.1f, texDims.h - srcY);
+                float srcY = 0.0f;
+                float srcH = 0.0f;
+                clampTexSpan(regY + v0 * regH, (v1 - v0) * regH, texDims.h, srcY, srcH);
 
                 const SDL_Color baseTint = billboard->getTint();
                 float light = 1.0f;
@@ -473,9 +498,11 @@ namespace doom
                     }
 
                     const float u0 = std::clamp((spanLeft - bbLeft) / projW, 0.0f, 0.999f);
-                    const float u1 = std::clamp((spanRight - bbLeft) / projW, u0 + 0.001f, 1.0f);
-                    const float srcX = std::clamp(regX + u0 * regW, 0.0f, std::max(0.0f, texDims.w - 0.1f));
-                    const float srcW = std::clamp((u1 - u0) * regW, 0.1f, texDims.w - srcX);
+                    const float u1Min = std::min(1.0f, u0 + 0.001f);
+                    const float u1 = std::clamp((spanRight - bbLeft) / projW, u1Min, 1.0f);
+                    float srcX = 0.0f;
+                    float srcW = 0.0f;
+                    clampTexSpan(regX + u0 * regW, (u1 - u0) * regW, texDims.w, srcX, srcW);
 
                     PooledSprite &strip = billboardStrips[usedStrips++];
                     strip.active = true;

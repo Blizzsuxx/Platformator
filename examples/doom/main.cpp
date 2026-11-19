@@ -192,8 +192,26 @@ namespace
         colPos = player->getGameObject()->getPosition();
         require(colPos.x() <= 685.0f, "Player walked through closed locked DoorRed");
 
+        // 4b.6 Close-range & edge-clipped billboard/wall UV clamping sweep (Debug std::clamp regression check)
+        teleportPlayerAndSettle(Eigen::Vector2f(47.0f, 700.0f));
+        player->setYaw(3.14159265f);
+        stepRenderFrames(runtime, 1);
+
+        GameObject *barrelSeObj = runtime.getGameObject("Barrel_SE_A");
+        require(barrelSeObj != nullptr, "Barrel_SE_A missing in E1M1");
+        teleportPlayerAndSettle(Eigen::Vector2f(620.0f, 640.0f));
+        const Eigen::Vector2f toBarrelSe = barrelSeObj->getPosition() - player->getGameObject()->getPosition();
+        const float baseYaw = std::atan2(toBarrelSe.y(), toBarrelSe.x());
+        for (int s = 0; s <= 12; ++s)
+        {
+            const float offset = -0.85f + 1.70f * (static_cast<float>(s) / 12.0f);
+            player->setYaw(baseYaw + offset);
+            stepRenderFrames(runtime, 1);
+        }
+
         // Restore spawn state before key/door/pickup/transition tests
         teleportPlayerAndSettle(Eigen::Vector2f(120.0f, 700.0f));
+        player->setYaw(-0.45f);
         stepRenderFrames(runtime, 1);
         require(!player->isDead(), "Player died unexpectedly during collision verification");
 

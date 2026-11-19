@@ -7,7 +7,7 @@
 #include <string_view>
 
 #include "document.h"
-#include "process.h"
+#include "editorprocess.h"
 
 namespace platformator_editor
 {

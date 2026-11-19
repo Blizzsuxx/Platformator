@@ -1,4 +1,4 @@
-#include "process.h"
+#include "editorprocess.h"
 
 #include "behaviorcatalog.h"
 #include "process_internal.h"

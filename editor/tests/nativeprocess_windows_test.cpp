@@ -1,6 +1,6 @@
 #include "platform/nativeprocess_testhooks.h"
 #include "platform/sessionchannel_windows.h"
-#include "process.h"
+#include "editorprocess.h"
 #include "test_support.h"
 
 #ifndef NOMINMAX

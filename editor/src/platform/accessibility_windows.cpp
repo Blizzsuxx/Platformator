@@ -1,11 +1,100 @@
 #include "accessibility_windows.h"
 
 #define NOMINMAX
-#include <CommCtrl.h>
-#include <OleAuto.h>
-#include <UIAutomationCore.h>
-#include <UIAutomationCoreApi.h>
-#include <Windows.h>
+#include <windows.h>
+
+#include <commctrl.h>
+#include <oleauto.h>
+#include <uiautomationcore.h>
+#include <uiautomationcoreapi.h>
+
+// MinGW's uiautomationclient.h does not compile as C++, so define the UIA ids used here.
+#ifdef __MINGW32__
+#ifndef UIA_AutomationIdPropertyId
+#define UIA_AutomationIdPropertyId (30011)
+#endif
+#ifndef UIA_ButtonControlTypeId
+#define UIA_ButtonControlTypeId (50000)
+#endif
+#ifndef UIA_CheckBoxControlTypeId
+#define UIA_CheckBoxControlTypeId (50002)
+#endif
+#ifndef UIA_ControlTypePropertyId
+#define UIA_ControlTypePropertyId (30003)
+#endif
+#ifndef UIA_CustomControlTypeId
+#define UIA_CustomControlTypeId (50025)
+#endif
+#ifndef UIA_EditControlTypeId
+#define UIA_EditControlTypeId (50004)
+#endif
+#ifndef UIA_GroupControlTypeId
+#define UIA_GroupControlTypeId (50026)
+#endif
+#ifndef UIA_HasKeyboardFocusPropertyId
+#define UIA_HasKeyboardFocusPropertyId (30008)
+#endif
+#ifndef UIA_HelpTextPropertyId
+#define UIA_HelpTextPropertyId (30013)
+#endif
+#ifndef UIA_InvokePatternId
+#define UIA_InvokePatternId (10000)
+#endif
+#ifndef UIA_IsContentElementPropertyId
+#define UIA_IsContentElementPropertyId (30017)
+#endif
+#ifndef UIA_IsControlElementPropertyId
+#define UIA_IsControlElementPropertyId (30016)
+#endif
+#ifndef UIA_IsEnabledPropertyId
+#define UIA_IsEnabledPropertyId (30010)
+#endif
+#ifndef UIA_IsKeyboardFocusablePropertyId
+#define UIA_IsKeyboardFocusablePropertyId (30009)
+#endif
+#ifndef UIA_IsOffscreenPropertyId
+#define UIA_IsOffscreenPropertyId (30022)
+#endif
+#ifndef UIA_ListItemControlTypeId
+#define UIA_ListItemControlTypeId (50007)
+#endif
+#ifndef UIA_NamePropertyId
+#define UIA_NamePropertyId (30005)
+#endif
+#ifndef UIA_ProgressBarControlTypeId
+#define UIA_ProgressBarControlTypeId (50012)
+#endif
+#ifndef UIA_SelectionItemIsSelectedPropertyId
+#define UIA_SelectionItemIsSelectedPropertyId (30079)
+#endif
+#ifndef UIA_SelectionItemPatternId
+#define UIA_SelectionItemPatternId (10010)
+#endif
+#ifndef UIA_SliderControlTypeId
+#define UIA_SliderControlTypeId (50015)
+#endif
+#ifndef UIA_TabItemControlTypeId
+#define UIA_TabItemControlTypeId (50019)
+#endif
+#ifndef UIA_TextControlTypeId
+#define UIA_TextControlTypeId (50020)
+#endif
+#ifndef UIA_TogglePatternId
+#define UIA_TogglePatternId (10015)
+#endif
+#ifndef UIA_ToggleToggleStatePropertyId
+#define UIA_ToggleToggleStatePropertyId (30086)
+#endif
+#ifndef UIA_ValuePatternId
+#define UIA_ValuePatternId (10002)
+#endif
+#ifndef UIA_ValueValuePropertyId
+#define UIA_ValueValuePropertyId (30045)
+#endif
+#ifndef UIA_WindowControlTypeId
+#define UIA_WindowControlTypeId (50032)
+#endif
+#endif
 
 #include <algorithm>
 #include <array>

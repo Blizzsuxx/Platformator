@@ -1,7 +1,7 @@
 #pragma once
 
 #include "platform/sessionchannel.h"
-#include "process.h"
+#include "editorprocess.h"
 #include "sessionids.h"
 
 #include <editorprotocol.h>

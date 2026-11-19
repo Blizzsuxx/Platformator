@@ -1,6 +1,6 @@
 #pragma once
 
-#include "process.h"
+#include "editorprocess.h"
 #include "sessionids.h"
 
 #include <chrono>

@@ -1,7 +1,7 @@
 #include "document.h"
 #include "behaviorcatalog.h"
 #include "editcommands.h"
-#include "process.h"
+#include "editorprocess.h"
 #include "project.h"
 #include "preview.h"
 #include "selection.h"

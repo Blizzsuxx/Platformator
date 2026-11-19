@@ -67,7 +67,6 @@ target_link_libraries(platformator_engine PUBLIC
     SDL3::SDL3
     SDL3_mixer::SDL3_mixer
     SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
     Eigen3::Eigen
     TBB::tbb
     nlohmann_json::nlohmann_json

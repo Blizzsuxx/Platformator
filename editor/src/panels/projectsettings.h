@@ -3,7 +3,7 @@
 #include "../accessibility.h"
 #include "../layersettings.h"
 #include "../preferences.h"
-#include "../process.h"
+#include "../editorprocess.h"
 #include "../project.h"
 
 #include <filesystem>

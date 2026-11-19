@@ -4,7 +4,6 @@
 #include <SDL3/SDL_version.h>
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_mixer/SDL_mixer.h>
-#include <SDL3_ttf/SDL_ttf.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -233,7 +232,6 @@ nlohmann::json BenchmarkRecorder::manifest() const
     result["dependencies"] = {{"SDL", dependencyVersion(SDL_GetVersion())},
                               {"SDL_image", dependencyVersion(IMG_Version())},
                               {"SDL_mixer", dependencyVersion(MIX_Version())},
-                              {"SDL_ttf", dependencyVersion(TTF_Version())},
                               {"Eigen", "5.0.1"},
                               {"oneTBB", "2022.3.0"},
                               {"JSON", std::to_string(NLOHMANN_JSON_VERSION_MAJOR) + '.' +

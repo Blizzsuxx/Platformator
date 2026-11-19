@@ -274,12 +274,6 @@ bool SDLWindow::init()
     if (!setPaused(paused))
         return false;
 
-    if (!TTF_Init())
-    {
-        printf("SDL_ttf could not initialize! SDL_ttf Error: %s", SDL_GetError());
-        return false;
-    }
-
     SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE;
     if (windowSettings.hidden)
         windowFlags |= SDL_WINDOW_HIDDEN;
@@ -360,10 +354,6 @@ void SDLWindow::close()
     rendererName = nullptr;
 
     MIX_Quit();
-    if (TTF_WasInit() != 0)
-    {
-        TTF_Quit();
-    }
     SDL_Quit();
 }
 

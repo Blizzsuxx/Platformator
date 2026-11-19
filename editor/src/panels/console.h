@@ -2,7 +2,7 @@
 
 #include "../accessibility.h"
 #include "../diagnostics.h"
-#include "../process.h"
+#include "../editorprocess.h"
 #include "../style.h"
 
 #include <imgui.h>

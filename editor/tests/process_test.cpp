@@ -1,4 +1,4 @@
-#include "process.h"
+#include "editorprocess.h"
 #include "sourcescanner.h"
 #include "behaviorcatalog.h"
 #include "platform/nativeprocess.h"

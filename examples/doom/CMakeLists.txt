@@ -80,7 +80,7 @@ install(TARGETS doom
 )
 
 set(PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS)
-foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-shared SDL3_ttf-shared tbb)
+foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-shared tbb)
     if(TARGET ${platformator_runtime_target})
         get_target_property(platformator_runtime_imported ${platformator_runtime_target} IMPORTED)
         if(NOT platformator_runtime_imported)

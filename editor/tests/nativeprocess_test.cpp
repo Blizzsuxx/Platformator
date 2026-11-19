@@ -1,7 +1,7 @@
 #include "platform/nativeprocess.h"
 #include "platform/nativeprocess_testhooks.h"
 #include "platform/sessionchannel_posix.h"
-#include "process.h"
+#include "editorprocess.h"
 #include "test_support.h"
 
 #include <cerrno>

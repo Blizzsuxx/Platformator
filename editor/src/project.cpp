@@ -691,10 +691,16 @@ namespace platformator_editor
                     const auto canonicalPath = std::filesystem::canonical(entry.path(), canonError);
                     const std::string canonicalKey = canonError ? entry.path().string() : canonicalPath.string();
 
+#if defined(_WIN32)
+                    struct _stat st{};
+                    const bool statOk = ::_wstat(entry.path().c_str(), &st) == 0;
+#else
                     struct stat st{};
+                    const bool statOk = ::stat(entry.path().c_str(), &st) == 0;
+#endif
                     long long ctimeSec = 0;
                     long long ctimeNsec = 0;
-                    if (::stat(entry.path().c_str(), &st) == 0)
+                    if (statOk)
                     {
                         ctimeSec = static_cast<long long>(st.st_ctime);
 #if defined(__linux__)
@@ -1343,7 +1349,7 @@ namespace platformator_editor
             << "    BUNDLE DESTINATION bin\n"
             << ")\n\n"
             << "set(PLATFORMATOR_PROJECT_RUNTIME_LIBRARY_TARGETS)\n"
-            << "foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-shared SDL3_ttf-shared tbb)\n"
+            << "foreach(platformator_runtime_target SDL3-shared SDL3_image-shared SDL3_mixer-shared tbb)\n"
             << "    if(TARGET ${platformator_runtime_target})\n"
             << "        get_target_property(platformator_runtime_imported ${platformator_runtime_target} IMPORTED)\n"
             << "        if(NOT platformator_runtime_imported)\n"

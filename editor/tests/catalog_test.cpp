@@ -2,7 +2,7 @@
 #include "test_support.h"
 #include "../src/behaviorcatalog.h"
 #include "../src/sourcescanner.h"
-#include "../src/process.h"
+#include "../src/editorprocess.h"
 #include <editorprotocol.h>
 
 #include <SDL3/SDL.h>

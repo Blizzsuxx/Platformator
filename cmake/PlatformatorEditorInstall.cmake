@@ -22,8 +22,6 @@ function(platformator_install_editor)
         DESTINATION "${editor_license_directory}" RENAME SDL3-image-LICENSE.txt)
     install(FILES "${PROJECT_SOURCE_DIR}/vendored/SDL3_mixer-3.2.4/LICENSE.txt"
         DESTINATION "${editor_license_directory}" RENAME SDL3-mixer-LICENSE.txt)
-    install(FILES "${PROJECT_SOURCE_DIR}/vendored/SDL3_ttf-3.2.2/LICENSE.txt"
-        DESTINATION "${editor_license_directory}" RENAME SDL3-ttf-LICENSE.txt)
     install(FILES "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b/LICENSE.txt"
         DESTINATION "${editor_license_directory}" RENAME Dear-ImGui-LICENSE.txt)
     install(FILES "${PROJECT_SOURCE_DIR}/vendored/oneTBB-2022.3.0/LICENSE.txt"

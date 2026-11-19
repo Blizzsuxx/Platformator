@@ -25,7 +25,7 @@
 #include "layersettings.h"
 #include "sourcescanner.h"
 #include "preferences.h"
-#include "process.h"
+#include "editorprocess.h"
 #include "project.h"
 #include "projectsession.h"
 #include "statustoast.h"

@@ -22,7 +22,7 @@ namespace doom
         body = getGameObject()->getComponent<Rigidbody>();
         audio = getGameObject()->getComponent<Audio>();
         spawnPosition = getGameObject()->getPosition();
-        yaw = startYaw;
+        setYaw(startYaw);
         if (maxHp <= 0)
         {
             maxHp = 100;
@@ -87,8 +87,6 @@ namespace doom
         {
             body->setAngularVelocity(0.0f);
         }
-        getGameObject()->setRotation(0.0f);
-
         auto &runtime = getRuntime();
         auto *game = DoomGameManager::tryGetInstance();
 
@@ -187,13 +185,17 @@ namespace doom
         {
             turnInput += 1.0f;
         }
-        yaw += turnInput * turnSpeed * dt;
+        float turnDelta = turnInput * turnSpeed * dt;
 
         if (mouseLookActive && win != nullptr)
         {
             float relX = 0.0f, relY = 0.0f;
             SDL_GetRelativeMouseState(&relX, &relY);
-            yaw += relX * 0.0028f;
+            turnDelta += relX * 0.0028f;
+        }
+        if (turnDelta != 0.0f)
+        {
+            setYaw(yaw + turnDelta);
         }
 
         // Translation relative to current yaw
@@ -397,7 +399,7 @@ namespace doom
         hp = maxHp;
         armor = std::max(armor, 25);
         ammo = std::max(ammo, 20);
-        yaw = startYaw;
+        setYaw(startYaw);
         getGameObject()->setPosition(spawnPosition);
         if (body != nullptr)
         {
@@ -529,6 +531,10 @@ namespace doom
 
     void DoomPlayer::setYaw(float newYaw)
     {
+        if (auto *object = getGameObject())
+        {
+            object->setRotation(newYaw);
+        }
         yaw = newYaw;
     }
 

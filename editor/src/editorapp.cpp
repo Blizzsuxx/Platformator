@@ -959,6 +959,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             preferences.projectKey = options.projectRoot.string();
         std::string savedLayout;
         std::optional<ProjectPreferencePaths> preferencePaths;
+        bool startupPreferencesRecovered = false;
         if (!preferenceRootPath.empty() && projectOpened)
         {
             try
@@ -971,7 +972,10 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (!loaded.settingsPresent)
                     apply_known_bundled_run_defaults(preferences, options.projectRoot);
                 if (loaded.recovered)
+                {
                     startupMessage = loaded.message;
+                    startupPreferencesRecovered = true;
+                }
             }
             catch (const std::exception &error)
             {
@@ -2040,6 +2044,12 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         std::vector<DocumentSourceStatus> cachedSourceStatuses;
         std::string lastWindowTitle;
         WorkspacePreferencePersistence preferencePersistence(preferences, savedLayout);
+        if (startupPreferencesRecovered)
+        {
+            // Invalid stored values were discarded on load; rewrite the file so it is valid again.
+            preferencePersistence.mark_settings_dirty();
+            deferredPreferenceSave.schedule(std::chrono::steady_clock::now());
+        }
         std::optional<std::filesystem::path> persistedLastWorkspacePath;
         std::optional<std::filesystem::path> persistedLastWorkspaceRoot;
 

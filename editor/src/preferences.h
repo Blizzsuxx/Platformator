@@ -173,6 +173,8 @@ struct WorkspacePreferencesSaveResult
     }
 };
 
+bool is_valid_run_overlay(const std::string &name);
+
 class WorkspacePreferencePersistence
 {
   public:
@@ -183,8 +185,11 @@ class WorkspacePreferencePersistence
     WorkspacePreferencesSaveResult flush(const WorkspacePreferences &preferences,
                                          const std::string &layout,
                                          const Writer &writer);
+    // Forces the next flush to rewrite settings (e.g. after invalid stored values were discarded).
+    void mark_settings_dirty();
 
   private:
+    bool settingsForcedDirty_ = false;
     WorkspacePreferences persistedPreferences_;
     std::string persistedLayout_;
 };

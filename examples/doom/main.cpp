@@ -11,6 +11,7 @@
 #include "platformator/runner.h"
 #include "platformator/runtime.h"
 #include "platformator/runtimeoptions.h"
+#include "platformator/sprite.h"
 
 #include "assets/behaviors/doom_barrel.h"
 #include "assets/behaviors/doom_billboard.h"
@@ -247,6 +248,19 @@ namespace
         stepRenderFrames(runtime, 2);
         require(std::abs(game->getCamera()->getWidth() - 960.0f) < 1.0f,
                 "2D map view toggle should zoom camera out over physics arena");
+        auto *marker = player->getGameObject()->getComponent<Sprite>();
+        require(marker != nullptr, "Player map marker is missing");
+        const float yawBeforeMapTurn = player->getYaw();
+        for (const float heading : {1.5707963f, -1.5707963f})
+        {
+            player->setYaw(heading);
+            stepRenderFrames(runtime, 1);
+            const auto *markerObject = marker->getGameObject();
+            const Eigen::Vector2f markerForward(markerObject->getCosRotation(), markerObject->getSinRotation());
+            require(markerForward.isApprox(player->getForward(), 1e-5f),
+                    "Player map marker should follow player yaw across simulation steps");
+        }
+        player->setYaw(yawBeforeMapTurn);
         game->setMapViewMode(false);
         stepRenderFrames(runtime, 2);
         require(std::abs(game->getCamera()->getWidth() - doom::VIEW_WIDTH) < 1.0f,

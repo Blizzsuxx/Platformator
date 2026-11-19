@@ -230,7 +230,14 @@ void load_run_preferences(const Json &source, RunPreferences &run,
                     set_recovered(result, "invalid run overlay entry was ignored");
                     continue;
                 }
-                run.overlays.push_back(overlay.get<std::string>());
+                std::string name = overlay.get<std::string>();
+                if (!is_valid_run_overlay(name))
+                {
+                    set_recovered(result, "unknown run overlay '" + name + "' was removed");
+                    continue;
+                }
+                if (std::find(run.overlays.begin(), run.overlays.end(), name) == run.overlays.end())
+                    run.overlays.push_back(std::move(name));
             }
         }
     }
@@ -1260,10 +1267,22 @@ WorkspacePreferencePersistence::WorkspacePreferencePersistence(
 {
 }
 
+bool is_valid_run_overlay(const std::string &name)
+{
+    // Must match the categories accepted by --debug-draw (engine/src/runtimeoptions.cpp).
+    return name == "colliders" || name == "points" || name == "normals" || name == "collisions" ||
+           name == "gridcells";
+}
+
+void WorkspacePreferencePersistence::mark_settings_dirty()
+{
+    settingsForcedDirty_ = true;
+}
+
 WorkspacePreferencesSaveResult WorkspacePreferencePersistence::flush(
     const WorkspacePreferences &preferences, const std::string &layout, const Writer &writer)
 {
-    const bool settingsDirty = preferences != persistedPreferences_;
+    const bool settingsDirty = settingsForcedDirty_ || preferences != persistedPreferences_;
     const bool layoutDirty = layout != persistedLayout_;
     if (!settingsDirty && !layoutDirty)
         return {true, true, {}};
@@ -1273,7 +1292,10 @@ WorkspacePreferencesSaveResult WorkspacePreferencePersistence::flush(
 
     auto result = writer(settingsDirty, layoutDirty);
     if (settingsDirty && result.settingsSaved)
+    {
         persistedPreferences_ = preferences;
+        settingsForcedDirty_ = false;
+    }
     if (layoutDirty && result.layoutSaved)
         persistedLayout_ = layout;
     return result;

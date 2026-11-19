@@ -7,6 +7,16 @@
 class CircleCollider : public Collider
 {
 public:
+    static void *operator new(size_t size);
+    static void operator delete(void *ptr, size_t size) noexcept;
+    static void *operator new(size_t, void *ptr) noexcept
+    {
+        return ptr;
+    }
+    static void operator delete(void *, void *) noexcept
+    {
+    }
+
     CircleCollider();
     CircleCollider(GameObject *gameObject, float radius);
     ~CircleCollider();

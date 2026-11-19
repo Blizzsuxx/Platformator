@@ -41,8 +41,14 @@ class Component : public BaseObject
     virtual ~Component() = default;
     virtual Component *clone() const = 0;
 
-    GameObject *getGameObject() const;
-    ComponentType getType() const;
+    GameObject *getGameObject() const
+    {
+        return gameObject;
+    }
+    ComponentType getType() const
+    {
+        return type;
+    }
     bool getIsCallbackEligible() const
     {
         return callbackEligible;
@@ -69,32 +75,75 @@ class GameObject : public BaseObject
     friend class Camera;
 
   public:
+    static void *operator new(size_t size);
+    static void operator delete(void *ptr, size_t size) noexcept;
+    static void *operator new(size_t, void *ptr) noexcept
+    {
+        return ptr;
+    }
+    static void operator delete(void *, void *) noexcept
+    {
+    }
+
     GameObject(GameObject &) = delete;
     GameObject &operator=(const GameObject &) = delete;
 
     float getRotation() const;
     float getRotationInDegrees() const;
-    float getCosRotation() const;
-    float getSinRotation() const;
+    float getCosRotation() const
+    {
+        return cosRotation;
+    }
+    float getSinRotation() const
+    {
+        return sinRotation;
+    }
 
-    bool getActive() const;
+    bool getActive() const
+    {
+        return active;
+    }
     Eigen::Vector2f getPosition() const;
-    const Eigen::Vector2f &getLocalPosition() const;
+    const Eigen::Vector2f &getLocalPosition() const
+    {
+        return position;
+    }
     float getX() const;
     float getY() const;
-    const Eigen::Vector2f &getScale() const;
-    const std::string &getName() const;
-    const std::string &getTag() const;
-    GameObject *getParent() const;
+    const Eigen::Vector2f &getScale() const
+    {
+        return scale;
+    }
+    const std::string &getName() const
+    {
+        return name;
+    }
+    const std::string &getTag() const
+    {
+        return tag;
+    }
+    GameObject *getParent() const
+    {
+        return parent;
+    }
 
-    Component *getComponent(const ComponentType &componentType) const;
-    Component *const *getComponents() const;
+    Component *getComponent(const ComponentType &componentType) const
+    {
+        return components[componentType];
+    }
+    Component *const *getComponents() const
+    {
+        return components;
+    }
 
     template <typename T> T *getComponent() const;
 
     template <typename T, typename... Args> GameObject *addComponent(Args &&...args);
 
-    const std::vector<GameObject *> &getChildren() const;
+    const std::vector<GameObject *> &getChildren() const
+    {
+        return children;
+    }
 
     GameObject *setRotation(float rotation);
     GameObject *setActive(bool active);
@@ -108,7 +157,10 @@ class GameObject : public BaseObject
     bool removeComponent(const ComponentType &componentType);
     void addChild(GameObject *child);
     bool removeChild(GameObject *child);
-    bool getIsMarkedForDeletion() const;
+    bool getIsMarkedForDeletion() const
+    {
+        return isRetired();
+    }
     void destroy();
 
   private:
@@ -146,8 +198,15 @@ class GameObject : public BaseObject
     void attachComponent(Component *component);
     void flushMutations();
     Component *getColliderByShape(bool box) const;
-    GameObject *setGameManagerIteratorIndex(size_t index);
-    bool getIsRegisteredInGameManager() const;
+    GameObject *setGameManagerIteratorIndex(size_t index)
+    {
+        gameManagerIteratorIndex = index;
+        return this;
+    }
+    bool getIsRegisteredInGameManager() const
+    {
+        return getLifecycle() == ObjectLifecycle::Live;
+    }
     void addComponentsToGameManager();
 };
 

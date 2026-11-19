@@ -15,30 +15,77 @@ class ColliderPair
     ColliderPair(const ColliderPair &) = delete;
     ColliderPair &operator=(const ColliderPair &) = delete;
 
-    Collision *getCollision() const;
+    Collision *getCollision() const
+    {
+        return collision;
+    }
     Collision *getOrCreateCollisionNoEvent() const;
 
-    void updateCachedCollisionVersions() const;
-    bool shouldUpdate() const;
+    void updateCachedCollisionVersions() const
+    {
+        objectAStateVersion = objectA ? objectA->getStateVersion() : static_cast<uint64_t>(-1);
+        objectBStateVersion = objectB ? objectB->getStateVersion() : static_cast<uint64_t>(-1);
+    }
+    bool shouldUpdate() const
+    {
+        const uint64_t currentObjectAVersion = objectA ? objectA->getStateVersion() : static_cast<uint64_t>(-1);
+        const uint64_t currentObjectBVersion = objectB ? objectB->getStateVersion() : static_cast<uint64_t>(-1);
+        return currentObjectAVersion != objectAStateVersion || currentObjectBVersion != objectBStateVersion;
+    }
     void clearCollisionNoEvent() const;
 
-    bool getIsQueuedForNarrowPhase() const;
-    size_t getNarrowPhaseQueueIndex() const;
-    void setNarrowPhaseQueueIndex(size_t index) const;
-    size_t getAdjacencyIndexA() const;
-    void setAdjacencyIndexA(size_t index) const;
-    size_t getAdjacencyIndexB() const;
-    void setAdjacencyIndexB(size_t index) const;
+    bool getIsQueuedForNarrowPhase() const
+    {
+        return narrowPhaseQueueIndex != SIZE_MAX;
+    }
+    size_t getNarrowPhaseQueueIndex() const
+    {
+        return narrowPhaseQueueIndex;
+    }
+    void setNarrowPhaseQueueIndex(size_t index) const
+    {
+        narrowPhaseQueueIndex = index;
+    }
+    size_t getAdjacencyIndexA() const
+    {
+        return adjacencyIndexA;
+    }
+    void setAdjacencyIndexA(size_t index) const
+    {
+        adjacencyIndexA = index;
+    }
+    size_t getAdjacencyIndexB() const
+    {
+        return adjacencyIndexB;
+    }
+    void setAdjacencyIndexB(size_t index) const
+    {
+        adjacencyIndexB = index;
+    }
 
+    Collider *getObjectA() const
+    {
+        return objectA;
+    }
+    Collider *getObjectB() const
+    {
+        return objectB;
+    }
 
+    int getWitnessCount() const
+    {
+        return witnessCount;
+    }
+    void addToWitnessCount(int delta) const
+    {
+        witnessCount += delta;
+    }
 
-    Collider *getObjectA() const;
-    Collider *getObjectB() const;
-
-    int getWitnessCount() const;
-    void addToWitnessCount(int delta) const;
-
-    bool operator==(const ColliderPair &other) const;
+    bool operator==(const ColliderPair &other) const
+    {
+        return (objectA == other.objectA && objectB == other.objectB) ||
+               (objectA == other.objectB && objectB == other.objectA);
+    }
 
     class HashFunction
     {

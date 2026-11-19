@@ -2,8 +2,32 @@
 
 #include "constants.h"
 #include "helpers.h"
+#include "objectpool.h"
 #include "platformator/rigidbody.h"
 #include "inputvalidation.h"
+
+void *BoxCollider::operator new(size_t size)
+{
+    if (size == sizeof(BoxCollider))
+    {
+        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::BoxCollider, size);
+    }
+    return ::operator new(size);
+}
+
+void BoxCollider::operator delete(void *ptr, size_t size) noexcept
+{
+    if (ptr == nullptr)
+    {
+        return;
+    }
+    if (size == sizeof(BoxCollider))
+    {
+        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::BoxCollider, ptr, size);
+        return;
+    }
+    ::operator delete(ptr);
+}
 
 BoxCollider::BoxCollider(GameObject *gameObject, const float width, const float height)
     : Collider(gameObject, ComponentType::COLLIDER, ColliderType::BoxCollider), width(width), height(height),

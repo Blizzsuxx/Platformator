@@ -1,7 +1,31 @@
 #include "platformator/sprite.h"
+#include "objectpool.h"
 #include "runtimeaccess.h"
 #include "platformator/texturewrapper.h"
 #include "sdlwindow.h"
+
+void *Sprite::operator new(size_t size)
+{
+    if (size == sizeof(Sprite))
+    {
+        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Sprite, size);
+    }
+    return ::operator new(size);
+}
+
+void Sprite::operator delete(void *ptr, size_t size) noexcept
+{
+    if (ptr == nullptr)
+    {
+        return;
+    }
+    if (size == sizeof(Sprite))
+    {
+        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Sprite, ptr, size);
+        return;
+    }
+    ::operator delete(ptr);
+}
 
 Sprite::Sprite()
     : Component(ComponentType::SPRITE), region(), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f),

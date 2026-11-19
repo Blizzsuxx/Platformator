@@ -29,16 +29,6 @@ Collider::~Collider()
 {
 }
 
-ColliderType Collider::getColliderType() const
-{
-    return colliderType;
-}
-
-bool Collider::getIsTrigger() const
-{
-    return (flags & IS_TRIGGER) != 0;
-}
-
 const Eigen::Vector2f &Collider::getOffset() const
 {
     return offset;
@@ -150,21 +140,6 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
         platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }
 
-uint64_t Collider::getStateVersion() const
-{
-    return stateVersion;
-}
-
-void Collider::updateGridCellRange()
-{
-    gridCellRange = gridCellRangeCache;
-}
-
-const GridCellRange &Collider::getGridCellRange() const
-{
-    return gridCellRange;
-}
-
 void Collider::calculateGridCellRange()
 {
     int minX = static_cast<int>(std::floor(xProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
@@ -173,65 +148,6 @@ void Collider::calculateGridCellRange()
     int maxY = static_cast<int>(std::floor(yProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
 
     gridCellRangeCache = GridCellRange(minX, maxX, minY, maxY);
-}
-
-bool Collider::getIsQueuedForSync() const
-{
-    return gridQueueIndex != SIZE_MAX && desiredInGrid && dirty;
-}
-
-bool Collider::getIsRegisteredInGrid() const
-{
-    return (flags & IS_REGISTERED_IN_GRID) != 0;
-}
-
-bool Collider::getIsRegisteredInPhysicsManager() const
-{
-    return (flags & IS_REGISTERED_IN_PHYSICS_MANAGER) != 0;
-}
-
-void Collider::setIsRegisteredInGrid(bool isRegisteredInGrid)
-{
-    if (isRegisteredInGrid)
-    {
-        flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_GRID);
-    }
-    else
-    {
-        flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
-    }
-}
-
-void Collider::setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
-{
-    if (isRegisteredInPhysicsManager)
-    {
-        flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_PHYSICS_MANAGER);
-    }
-    else
-    {
-        flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_PHYSICS_MANAGER);
-    }
-}
-
-size_t Collider::getPhysicsManagerIndex() const
-{
-    return physicsManagerIndex;
-}
-
-void Collider::setPhysicsManagerIndex(size_t physicsManagerIndex)
-{
-    this->physicsManagerIndex = physicsManagerIndex;
-}
-
-const GridCellRange &Collider::getGridCellRangeCache() const
-{
-    return gridCellRangeCache;
-}
-
-bool Collider::getIsQueuedForRemove() const
-{
-    return gridQueueIndex != SIZE_MAX && !desiredInGrid;
 }
 
 void Collider::invalidateResponse()

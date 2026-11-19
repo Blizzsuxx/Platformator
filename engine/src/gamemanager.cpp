@@ -11,6 +11,7 @@
 
 #include "benchmark.h"
 #include "constants.h"
+#include "objectpool.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
 #include "platformator/camera.h"
@@ -134,7 +135,11 @@ GameObject *GameManager::createGameObject()
     assertCanMutate();
     auto cleanup = [](GameObject *object) { delete object; };
     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
-    registerGameObjectSubtree(gameObject.get());
+    assignFileId(*gameObject);
+    gameObject->setGameManagerIteratorIndex(gameObjects.size());
+    gameObjects.push_back(gameObject.get());
+    registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
+    idToObjectMap.insertOrAssign(gameObject->getId(), gameObject.get());
     return gameObject.release();
 }
 
@@ -288,17 +293,13 @@ void GameManager::assignFileId(BaseObject &object)
     }
 }
 
-void GameManager::assertCanMutate() const
+[[noreturn]] void GameManager::throwCannotMutate() const
 {
     if (std::this_thread::get_id() != mainThread)
     {
         throw std::logic_error("Structural mutation is main-thread-only");
     }
-    if (shuttingDown || preparingScene || phase == Phase::DestructionCallbacks || phase == Phase::Saving)
-    {
-        throw std::logic_error(
-            "Structural mutation is forbidden during preparation, saving, onDestroy, or shutdown");
-    }
+    throw std::logic_error("Structural mutation is forbidden during preparation, saving, onDestroy, or shutdown");
 }
 
 // ============================================================================
@@ -938,33 +939,62 @@ void GameManager::reconcilePending(std::exception_ptr &error)
 
 void GameManager::drainRetirements(std::exception_ptr &error)
 {
-    for (auto *component : retiredComponents)
+    if (retiredComponents.empty() && gameObjectsToDelete.empty())
     {
-        component->lifecycle = ObjectLifecycle::DestroyCallbacks;
+        return;
     }
-    for (auto *object : gameObjectsToDelete)
-    {
-        object->lifecycle = ObjectLifecycle::DestroyCallbacks;
-        for (auto *component : object->components)
-        {
-            if (component)
-            {
-                component->lifecycle = ObjectLifecycle::DestroyCallbacks;
-            }
-        }
-    }
+
+    bool hasScriptDestruction = false;
     for (auto *component : retiredComponents)
     {
         if (component->getType() == ComponentType::SCRIPT)
         {
-            runDestructionCallbacks(static_cast<ScriptComponent *>(component), error);
+            hasScriptDestruction = true;
+            break;
         }
     }
-    for (auto *object : gameObjectsToDelete)
+    if (!hasScriptDestruction)
     {
-        if (auto *script = object->getComponent<ScriptComponent>())
+        for (auto *object : gameObjectsToDelete)
         {
-            runDestructionCallbacks(script, error);
+            if (object->components[ComponentType::SCRIPT] != nullptr)
+            {
+                hasScriptDestruction = true;
+                break;
+            }
+        }
+    }
+
+    if (hasScriptDestruction)
+    {
+        for (auto *component : retiredComponents)
+        {
+            component->lifecycle = ObjectLifecycle::DestroyCallbacks;
+        }
+        for (auto *object : gameObjectsToDelete)
+        {
+            object->lifecycle = ObjectLifecycle::DestroyCallbacks;
+            for (auto *component : object->components)
+            {
+                if (component)
+                {
+                    component->lifecycle = ObjectLifecycle::DestroyCallbacks;
+                }
+            }
+        }
+        for (auto *component : retiredComponents)
+        {
+            if (component->getType() == ComponentType::SCRIPT)
+            {
+                runDestructionCallbacks(static_cast<ScriptComponent *>(component), error);
+            }
+        }
+        for (auto *object : gameObjectsToDelete)
+        {
+            if (auto *script = object->getComponent<ScriptComponent>())
+            {
+                runDestructionCallbacks(script, error);
+            }
         }
     }
 
@@ -1194,5 +1224,6 @@ void GameManager::shutdown()
     }
     window->clearTransientAudio();
     assets.freeAll();
+    platformator_detail::releaseEmptyObjectPools();
     shutdownComplete = true;
 }

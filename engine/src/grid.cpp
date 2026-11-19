@@ -559,7 +559,11 @@ void Grid::flushPendingCellUpdates()
         else if (collider->dirty)
             syncColliderInternal(collider, true);
     }
-    if (cellsWithOperations.size() < GRID_CELL_FLUSH_PARALLEL_THRESHOLD)
+    const bool runCellsParallel =
+        cellsWithOperations.size() >= GRID_CELL_FLUSH_PARALLEL_THRESHOLD ||
+        (cellsWithOperations.size() >= GRID_CELL_FLUSH_DENSE_MIN_CELLS &&
+         pendingColliderOperations.size() >= GRID_UPDATE_PARALLEL_THRESHOLD);
+    if (!runCellsParallel)
     {
         for (auto *cell : cellsWithOperations)
             cell->flushPendingOperations();

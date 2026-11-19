@@ -24,11 +24,6 @@ ColliderPair::~ColliderPair()
     delete collision;
 }
 
-Collision *ColliderPair::getCollision() const
-{
-    return collision;
-}
-
 Collision *ColliderPair::getOrCreateCollisionNoEvent() const
 {
     if (collision == nullptr)
@@ -50,79 +45,4 @@ void ColliderPair::clearCollisionNoEvent() const
     }
 
     updateCachedCollisionVersions();
-}
-
-bool ColliderPair::getIsQueuedForNarrowPhase() const
-{
-    return narrowPhaseQueueIndex != SIZE_MAX;
-}
-
-size_t ColliderPair::getNarrowPhaseQueueIndex() const
-{
-    return narrowPhaseQueueIndex;
-}
-
-void ColliderPair::setNarrowPhaseQueueIndex(size_t index) const
-{
-    narrowPhaseQueueIndex = index;
-}
-
-size_t ColliderPair::getAdjacencyIndexA() const
-{
-    return adjacencyIndexA;
-}
-
-void ColliderPair::setAdjacencyIndexA(size_t index) const
-{
-    adjacencyIndexA = index;
-}
-
-size_t ColliderPair::getAdjacencyIndexB() const
-{
-    return adjacencyIndexB;
-}
-
-void ColliderPair::setAdjacencyIndexB(size_t index) const
-{
-    adjacencyIndexB = index;
-}
-
-Collider *ColliderPair::getObjectA() const
-{
-    return objectA;
-}
-
-Collider *ColliderPair::getObjectB() const
-{
-    return objectB;
-}
-
-bool ColliderPair::shouldUpdate() const
-{
-    uint64_t currentObjectAVersion = objectA ? objectA->getStateVersion() : -1;
-    uint64_t currentObjectBVersion = objectB ? objectB->getStateVersion() : -1;
-
-    return currentObjectAVersion != objectAStateVersion || currentObjectBVersion != objectBStateVersion;
-}
-
-void ColliderPair::updateCachedCollisionVersions() const
-{
-    objectAStateVersion = objectA ? objectA->getStateVersion() : -1;
-    objectBStateVersion = objectB ? objectB->getStateVersion() : -1;
-}
-
-bool ColliderPair::operator==(const ColliderPair &other) const
-{
-    return (objectA == other.objectA && objectB == other.objectB) ||
-           (objectA == other.objectB && objectB == other.objectA);
-}
-
-int ColliderPair::getWitnessCount() const
-{
-    return witnessCount;
-}
-
-void ColliderPair::addToWitnessCount(int delta) const
-{
-    witnessCount += delta;
 }

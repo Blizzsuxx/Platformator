@@ -1,10 +1,34 @@
 #include "platformator/rigidbody.h"
 #include "constants.h"
 #include "inputvalidation.h"
+#include "objectpool.h"
 #include "physicsmanager.h"
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
 #include "runtimeaccess.h"
+
+void *Rigidbody::operator new(size_t size)
+{
+    if (size == sizeof(Rigidbody))
+    {
+        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, size);
+    }
+    return ::operator new(size);
+}
+
+void Rigidbody::operator delete(void *ptr, size_t size) noexcept
+{
+    if (ptr == nullptr)
+    {
+        return;
+    }
+    if (size == sizeof(Rigidbody))
+    {
+        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, ptr, size);
+        return;
+    }
+    ::operator delete(ptr);
+}
 
 Rigidbody::Rigidbody() : Rigidbody(nullptr, BodyType::DYNAMIC, true)
 {
@@ -108,57 +132,6 @@ Rigidbody *Rigidbody::refreshMomentOfInertiaCache()
     inverseMomentOfInertia = momentOfInertia > 0.0f ? 1.0f / momentOfInertia : 0.0f;
 
     return this;
-}
-
-// Getters
-const Eigen::Vector2f &Rigidbody::getVelocity() const
-{
-    return velocity;
-}
-
-const Eigen::Vector2f &Rigidbody::getForce() const
-{
-    return force;
-}
-
-float Rigidbody::getMass() const
-{
-    return mass;
-}
-
-float Rigidbody::getAngularVelocity() const
-{
-    return angularVelocity;
-}
-
-float Rigidbody::getTorque() const
-{
-    return torque;
-}
-
-float Rigidbody::getMomentOfInertia() const
-{
-    return momentOfInertia;
-}
-
-float Rigidbody::getFriction() const
-{
-    return friction;
-}
-
-float Rigidbody::getRestitution() const
-{
-    return restitution;
-}
-
-BodyType Rigidbody::getBodyType() const
-{
-    return bodyType;
-}
-
-bool Rigidbody::getGravity() const
-{
-    return gravity;
 }
 
 // Setters
@@ -359,25 +332,6 @@ uint8_t Rigidbody::integrateLocal(double timeDelta)
     return (translated ? 1 : 0) | (rotated ? 2 : 0);
 }
 
-float Rigidbody::getInverseMass() const
-{
-    if (bodyType != BodyType::DYNAMIC)
-    {
-        return 0.0f;
-    }
-    return inverseMass;
-}
-
-float Rigidbody::getInverseMomentOfInertia() const
-{
-    if (bodyType != BodyType::DYNAMIC)
-    {
-        return 0.0f;
-    }
-
-    return inverseMomentOfInertia;
-}
-
 Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
 {
     if (!impulse.allFinite())
@@ -396,11 +350,6 @@ Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
 
     this->setVelocity(this->getVelocity() + impulse * this->getInverseMass());
     return this;
-}
-
-bool Rigidbody::getIsSleeping() const
-{
-    return sleeping;
 }
 
 Rigidbody *Rigidbody::setIsSleeping(bool sleeping)
@@ -449,46 +398,9 @@ Rigidbody *Rigidbody::wakeUp()
     return setIsSleeping(false);
 }
 
-bool Rigidbody::hasSupportContact() const
-{
-    return supportContactCount > 0;
-}
-
-size_t Rigidbody::getSupportContactCount() const
-{
-    return supportContactCount;
-}
-
-double Rigidbody::getSleepTimer() const
-{
-    return sleepTimer;
-}
-
 Rigidbody *Rigidbody::setSleepTimer(double sleepTimer)
 {
     this->sleepTimer = sleepTimer;
-    return this;
-}
-
-bool Rigidbody::getIsRegisteredInPhysicsManager() const
-{
-    return isRegisteredInPhysicsManager;
-}
-
-Rigidbody *Rigidbody::setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
-{
-    this->isRegisteredInPhysicsManager = isRegisteredInPhysicsManager;
-    return this;
-}
-
-size_t Rigidbody::getPhysicsManagerIndex() const
-{
-    return physicsManagerIndex;
-}
-
-Rigidbody *Rigidbody::setPhysicsManagerIndex(size_t physicsManagerIndex)
-{
-    this->physicsManagerIndex = physicsManagerIndex;
     return this;
 }
 

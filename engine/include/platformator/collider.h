@@ -250,7 +250,10 @@ class Collider : public Component
     Collider(ComponentType type, ColliderType colliderType);
     ~Collider();
 
-    ColliderType getColliderType() const;
+    ColliderType getColliderType() const
+    {
+        return colliderType;
+    }
     virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
     virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
@@ -278,7 +281,10 @@ class Collider : public Component
     }
     void setCollisionMask(uint64_t collisionMask);
 
-    bool getIsTrigger() const;
+    bool getIsTrigger() const
+    {
+        return (flags & IS_TRIGGER) != 0;
+    }
     void setIsTrigger(bool isTrigger);
 
     const Eigen::Vector2f &getOffset() const;
@@ -289,25 +295,72 @@ class Collider : public Component
         return cachedWorldPosition;
     }
 
-    bool getIsQueuedForSync() const;
+    bool getIsQueuedForSync() const
+    {
+        return gridQueueIndex != SIZE_MAX && desiredInGrid && dirty;
+    }
     void scheduleSync();
     void invalidateResponse();
 
-    bool getIsQueuedForRemove() const;
+    bool getIsQueuedForRemove() const
+    {
+        return gridQueueIndex != SIZE_MAX && !desiredInGrid;
+    }
 
     void prepareSync();
-    uint64_t getStateVersion() const;
+    uint64_t getStateVersion() const
+    {
+        return stateVersion;
+    }
 
-    const GridCellRange &getGridCellRange() const;
+    const GridCellRange &getGridCellRange() const
+    {
+        return gridCellRange;
+    }
     void calculateGridCellRange();
-    const GridCellRange &getGridCellRangeCache() const;
+    const GridCellRange &getGridCellRangeCache() const
+    {
+        return gridCellRangeCache;
+    }
 
-    bool getIsRegisteredInGrid() const;
-    void setIsRegisteredInGrid(bool isRegisteredInGrid);
-    bool getIsRegisteredInPhysicsManager() const;
-    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
-    size_t getPhysicsManagerIndex() const;
-    void setPhysicsManagerIndex(size_t physicsManagerIndex);
+    bool getIsRegisteredInGrid() const
+    {
+        return (flags & IS_REGISTERED_IN_GRID) != 0;
+    }
+    void setIsRegisteredInGrid(bool isRegisteredInGrid)
+    {
+        if (isRegisteredInGrid)
+        {
+            flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_GRID);
+        }
+        else
+        {
+            flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
+        }
+    }
+    bool getIsRegisteredInPhysicsManager() const
+    {
+        return (flags & IS_REGISTERED_IN_PHYSICS_MANAGER) != 0;
+    }
+    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
+    {
+        if (isRegisteredInPhysicsManager)
+        {
+            flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_PHYSICS_MANAGER);
+        }
+        else
+        {
+            flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_PHYSICS_MANAGER);
+        }
+    }
+    size_t getPhysicsManagerIndex() const
+    {
+        return physicsManagerIndex;
+    }
+    void setPhysicsManagerIndex(size_t physicsManagerIndex)
+    {
+        this->physicsManagerIndex = physicsManagerIndex;
+    }
 
     virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
@@ -328,7 +381,10 @@ class Collider : public Component
     ColliderFlags flags;
     GridCellRange gridCellRangeCache;
 
-    void updateGridCellRange();
+    void updateGridCellRange()
+    {
+        gridCellRange = gridCellRangeCache;
+    }
 
     virtual void updateCollider() = 0;
 

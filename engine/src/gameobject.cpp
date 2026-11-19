@@ -4,6 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "objectpool.h"
 #include "platformator/collider.h"
 #include "gamemanager.h"
 #include "platformator/rigidbody.h"
@@ -12,9 +13,32 @@
 #include "inputvalidation.h"
 #include "workprobe.h"
 
+void *GameObject::operator new(size_t size)
+{
+    if (size == sizeof(GameObject))
+    {
+        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::GameObject, size);
+    }
+    return ::operator new(size);
+}
+
+void GameObject::operator delete(void *ptr, size_t size) noexcept
+{
+    if (ptr == nullptr)
+    {
+        return;
+    }
+    if (size == sizeof(GameObject))
+    {
+        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::GameObject, ptr, size);
+        return;
+    }
+    ::operator delete(ptr);
+}
+
 GameObject::GameObject()
     : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), position(Eigen::Vector2f::Zero()),
-      scale(Eigen::Vector2f::Ones()), name(""), tag(""), components(), children(), gameManagerIteratorIndex(SIZE_MAX),
+      scale(Eigen::Vector2f::Ones()), name(), tag(), components(), children(), gameManagerIteratorIndex(SIZE_MAX),
       active(true)
 {
 }
@@ -36,20 +60,10 @@ float GameObject::getRotationInDegrees() const
     return rotation * 180.0f / static_cast<float>(M_PI);
 }
 
-bool GameObject::getActive() const
-{
-    return active;
-}
-
 Eigen::Vector2f GameObject::getPosition() const
 {
     PLATFORMATOR_WORK_ADD(positionReadVisits, 1);
     return immediateWorldPosition;
-}
-
-const Eigen::Vector2f &GameObject::getLocalPosition() const
-{
-    return position;
 }
 
 float GameObject::getX() const
@@ -60,51 +74,6 @@ float GameObject::getX() const
 float GameObject::getY() const
 {
     return getPosition().y();
-}
-
-const Eigen::Vector2f &GameObject::getScale() const
-{
-    return scale;
-}
-
-const std::string &GameObject::getName() const
-{
-    return name;
-}
-
-const std::string &GameObject::getTag() const
-{
-    return tag;
-}
-
-GameObject *GameObject::getParent() const
-{
-    return parent;
-}
-
-Component *GameObject::getComponent(const ComponentType &componentType) const
-{
-    return components[componentType];
-}
-
-Component *const *GameObject::getComponents() const
-{
-    return components;
-}
-
-const std::vector<GameObject *> &GameObject::getChildren() const
-{
-    return children;
-}
-
-float GameObject::getCosRotation() const
-{
-    return cosRotation;
-}
-
-float GameObject::getSinRotation() const
-{
-    return sinRotation;
 }
 
 // Setters
@@ -261,13 +230,14 @@ void GameObject::attachComponent(Component *component)
     if (component->getHandle())
         throw std::invalid_argument("Component already belongs to a runtime/build");
     if (getIsRegisteredInGameManager())
-        platformator_detail::RuntimeAccess::gameManager().assignFileId(*component);
-    addComponentInternal(component);
-    if (getIsRegisteredInGameManager())
     {
         auto &manager = platformator_detail::RuntimeAccess::gameManager();
+        manager.assignFileId(*component);
+        addComponentInternal(component);
         manager.notifyComponentAdded(component);
+        return;
     }
+    addComponentInternal(component);
 }
 
 void GameObject::flushMutations()
@@ -376,22 +346,6 @@ bool GameObject::removeChild(GameObject *child)
     child->detachFromParent();
     child->queueTransform(false);
     return true;
-}
-
-bool GameObject::getIsMarkedForDeletion() const
-{
-    return isRetired();
-}
-
-GameObject *GameObject::setGameManagerIteratorIndex(const size_t index)
-{
-    gameManagerIteratorIndex = index;
-    return this;
-}
-
-bool GameObject::getIsRegisteredInGameManager() const
-{
-    return getLifecycle() == ObjectLifecycle::Live;
 }
 
 void GameObject::addComponentsToGameManager()

@@ -1,7 +1,31 @@
 #include "platformator/circlecollider.h"
 #include "helpers.h"
+#include "objectpool.h"
 #include "platformator/rigidbody.h"
 #include "inputvalidation.h"
+
+void *CircleCollider::operator new(size_t size)
+{
+    if (size == sizeof(CircleCollider))
+    {
+        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, size);
+    }
+    return ::operator new(size);
+}
+
+void CircleCollider::operator delete(void *ptr, size_t size) noexcept
+{
+    if (ptr == nullptr)
+    {
+        return;
+    }
+    if (size == sizeof(CircleCollider))
+    {
+        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, ptr, size);
+        return;
+    }
+    ::operator delete(ptr);
+}
 
 CircleCollider::CircleCollider()
     : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(1.0f), publishedRadius(1.0f)

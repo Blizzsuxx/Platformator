@@ -19,26 +19,66 @@ class Rigidbody : public Component
     friend class PhysicsManager;
 
   public:
+    static void *operator new(size_t size);
+    static void operator delete(void *ptr, size_t size) noexcept;
+    static void *operator new(size_t, void *ptr) noexcept
+    {
+        return ptr;
+    }
+    static void operator delete(void *, void *) noexcept
+    {
+    }
+
     Rigidbody();
     Rigidbody(GameObject *gameObject);
     Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity);
     ~Rigidbody();
     Component *clone() const override;
 
-    const Eigen::Vector2f &getVelocity() const;
-    const Eigen::Vector2f &getForce() const;
+    const Eigen::Vector2f &getVelocity() const
+    {
+        return velocity;
+    }
+    const Eigen::Vector2f &getForce() const
+    {
+        return force;
+    }
 
-    float getMass() const;
+    float getMass() const
+    {
+        return mass;
+    }
 
-    float getAngularVelocity() const;
-    float getTorque() const;
+    float getAngularVelocity() const
+    {
+        return angularVelocity;
+    }
+    float getTorque() const
+    {
+        return torque;
+    }
 
-    float getMomentOfInertia() const;
-    float getFriction() const;
-    float getRestitution() const;
+    float getMomentOfInertia() const
+    {
+        return momentOfInertia;
+    }
+    float getFriction() const
+    {
+        return friction;
+    }
+    float getRestitution() const
+    {
+        return restitution;
+    }
 
-    BodyType getBodyType() const;
-    bool getGravity() const;
+    BodyType getBodyType() const
+    {
+        return bodyType;
+    }
+    bool getGravity() const
+    {
+        return gravity;
+    }
 
     Rigidbody *setVelocity(const Eigen::Vector2f &velocity);
     Rigidbody *setForce(const Eigen::Vector2f &force);
@@ -55,23 +95,63 @@ class Rigidbody : public Component
     Rigidbody *setBodyType(BodyType bodyType);
     Rigidbody *setGravity(bool gravity);
 
-    float getInverseMass() const;
-    float getInverseMomentOfInertia() const;
+    float getInverseMass() const
+    {
+        if (bodyType != BodyType::DYNAMIC)
+        {
+            return 0.0f;
+        }
+        return inverseMass;
+    }
+    float getInverseMomentOfInertia() const
+    {
+        if (bodyType != BodyType::DYNAMIC)
+        {
+            return 0.0f;
+        }
+        return inverseMomentOfInertia;
+    }
 
     Rigidbody *addImpulse(const Eigen::Vector2f &impulse);
 
-    bool getIsSleeping() const;
+    bool getIsSleeping() const
+    {
+        return sleeping;
+    }
     Rigidbody *setIsSleeping(bool sleeping);
     Rigidbody *wakeUp();
-    bool hasSupportContact() const;
-    size_t getSupportContactCount() const;
-    double getSleepTimer() const;
+    bool hasSupportContact() const
+    {
+        return supportContactCount > 0;
+    }
+    size_t getSupportContactCount() const
+    {
+        return supportContactCount;
+    }
+    double getSleepTimer() const
+    {
+        return sleepTimer;
+    }
     Rigidbody *setSleepTimer(double sleepTimer);
 
-    bool getIsRegisteredInPhysicsManager() const;
-    Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager);
-    size_t getPhysicsManagerIndex() const;
-    Rigidbody *setPhysicsManagerIndex(size_t physicsManagerIndex);
+    bool getIsRegisteredInPhysicsManager() const
+    {
+        return isRegisteredInPhysicsManager;
+    }
+    Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
+    {
+        this->isRegisteredInPhysicsManager = isRegisteredInPhysicsManager;
+        return this;
+    }
+    size_t getPhysicsManagerIndex() const
+    {
+        return physicsManagerIndex;
+    }
+    Rigidbody *setPhysicsManagerIndex(size_t physicsManagerIndex)
+    {
+        this->physicsManagerIndex = physicsManagerIndex;
+        return this;
+    }
 
     Rigidbody *refreshMomentOfInertiaCache();
     bool qualifiesAsSupportContact(const Eigen::Vector2f &contactDirection,

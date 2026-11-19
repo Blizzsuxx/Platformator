@@ -96,7 +96,14 @@ class GameManager
     GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
     ~GameManager();
 
-    void assertCanMutate() const;
+    void assertCanMutate() const
+    {
+        if (std::this_thread::get_id() != mainThread || shuttingDown || preparingScene ||
+            phase == Phase::DestructionCallbacks || phase == Phase::Saving)
+        {
+            throwCannotMutate();
+        }
+    }
     void commitLocalMutations();
     void commitMutations();
     void flushIfIdle();
@@ -177,6 +184,7 @@ class GameManager
     // Object & scene lifecycle
     void assignFileId(BaseObject &object);
     void createMainCameraIfNoMainCameraExists();
+    [[noreturn]] void throwCannotMutate() const;
     void registerGameObjectSubtree(GameObject *gameObject);
     void removeGameObject(GameObject *gameObject);
     void startDeletingGameObject(GameObject *gameObject);

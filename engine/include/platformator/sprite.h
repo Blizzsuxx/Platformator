@@ -12,6 +12,16 @@
 class Sprite : public Component
 {
 public:
+	static void *operator new(size_t size);
+	static void operator delete(void *ptr, size_t size) noexcept;
+	static void *operator new(size_t, void *ptr) noexcept
+	{
+		return ptr;
+	}
+	static void operator delete(void *, void *) noexcept
+	{
+	}
+
 	Sprite();
 	explicit Sprite(GameObject *gameObject, TextureWrapper *textureWrapper = nullptr,
 	                SDL_FlipMode flip = SDL_FLIP_NONE, float width = 0.0f, float height = 0.0f);

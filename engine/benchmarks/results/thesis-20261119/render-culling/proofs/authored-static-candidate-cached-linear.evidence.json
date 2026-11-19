@@ -1,0 +1,73 @@
+{
+  "crossing_counts": {
+    "entries": 64,
+    "exits": 0
+  },
+  "dt": 0.008333333333333333,
+  "fixture_sha256": "170c6203834cd331174fdd004ffda0f23d1508bb1c722599266b6759337b5eb6",
+  "frames_sha256": "5992e4763f8e9a56e63a76a806c89847b2e26cc917a6ceda2a4345c9de65a34a",
+  "harness_sha256": "9ca485bd7d18341309d9a581354b8901d156392f0eb1050a9f5aef0ca2d0cedc",
+  "headless": false,
+  "measure_frames": 60,
+  "mode": "cached-linear",
+  "ordering_variant": "rebuild",
+  "profile": "visible",
+  "renderer_mapping": {
+    "actual_output_height": 240,
+    "actual_output_width": 320,
+    "current_output_height": 240,
+    "current_output_width": 320,
+    "logical_presentation": [
+      0,
+      0,
+      0
+    ],
+    "mapping_eligible": true,
+    "mapping_known": true,
+    "output_height": 240,
+    "output_width": 320,
+    "renderer": "software",
+    "scale": [
+      1.0,
+      1.0
+    ],
+    "target_active": false,
+    "viewport": [
+      0,
+      0,
+      320,
+      240
+    ],
+    "viewport_set": false,
+    "vsync": 1,
+    "vsync_known": true
+  },
+  "representative_sha256": "1df1843576663420c300648102a1883de00f6ba32532f46abcd90af10b8a70d2",
+  "seed": 0,
+  "source_sha256": "72235c551a0f47f41f1ee02eed3e898c789e3debd14b5f83620e872e7ab1af63",
+  "sprite_count": 64,
+  "timing_eligible": false,
+  "trajectory_parameters": {
+    "camera_height": 240.0,
+    "camera_schedule": "fixed",
+    "camera_width": 320.0,
+    "changed_percent": 0,
+    "churn_minimum_replacements": 0,
+    "churn_replacements_per_step": 0,
+    "layout": "fixed-area",
+    "output_resize_step": 0,
+    "output_schedule": "320x240",
+    "profile": "visible",
+    "rotation_distribution": "zero",
+    "scene_asset": "",
+    "seed": 0,
+    "size_distribution": "standard",
+    "sprite_count": 64,
+    "sprite_height": 16.0,
+    "sprite_width": 16.0,
+    "trajectory_period_steps": 0
+  },
+  "validation_mode": "per-step",
+  "warmup_frames": 10,
+  "workers": 1
+}

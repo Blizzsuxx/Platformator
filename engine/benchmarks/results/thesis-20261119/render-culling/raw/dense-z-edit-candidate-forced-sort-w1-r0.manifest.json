@@ -1,0 +1,153 @@
+{
+  "affinity": [
+    0,
+    2,
+    4,
+    6
+  ],
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup"
+  },
+  "build": {
+    "commit": "0ec8b085330aa669e0c28fdbd5d08a79322ff8f5",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": true,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "72235c551a0f47f41f1ee02eed3e898c789e3debd14b5f83620e872e7ab1af63",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "SDL_ttf": "3.2.2",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "fixture_sha256": "170c6203834cd331174fdd004ffda0f23d1508bb1c722599266b6759337b5eb6",
+  "harness_sha256": "9ca485bd7d18341309d9a581354b8901d156392f0eb1050a9f5aef0ca2d0cedc",
+  "linear_render_culling": {
+    "disabled": false,
+    "effective_policy": "cached-linear",
+    "enabled": true,
+    "headless": false,
+    "mode": "cached-linear",
+    "observed_frame_fallbacks": 0,
+    "observed_mapping_fallbacks": 0,
+    "observed_numeric_fallbacks": 0,
+    "requested_mode": "cached-linear",
+    "requested_selector": "cached-linear",
+    "resolved_startup_strategy": "cached-linear"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.12.112-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 60,
+  "order_prepare_clock": {
+    "boundary": "SDLWindow::prepareDrawOrder CPU elapsed time excluding presentation and frame pacing",
+    "source": "std::chrono::steady_clock"
+  },
+  "ordering_variant": "forced-sort",
+  "physical_invariants": {
+    "finite": true,
+    "populations_valid": true,
+    "supports_valid": true
+  },
+  "render_samples": 60,
+  "renderer_mapping": {
+    "actual_output_height": 240,
+    "actual_output_width": 320,
+    "current_output_height": 240,
+    "current_output_width": 320,
+    "logical_presentation": [
+      0,
+      0,
+      0
+    ],
+    "mapping_eligible": true,
+    "mapping_known": true,
+    "output_height": 240,
+    "output_width": 320,
+    "renderer": "software",
+    "scale": [
+      1.0,
+      1.0
+    ],
+    "target_active": false,
+    "viewport": [
+      0,
+      0,
+      320,
+      240
+    ],
+    "viewport_set": false,
+    "vsync": 1,
+    "vsync_known": true
+  },
+  "rendering": true,
+  "repetition_index": 0,
+  "repetitions": 5,
+  "requested_measured_steps": 60,
+  "requested_render_strategy": "cached-linear",
+  "resolved_parameters": {
+    "camera_height": 240.0,
+    "camera_schedule": "fixed",
+    "camera_width": 320.0,
+    "changed_percent": 0,
+    "churn_minimum_replacements": 0,
+    "churn_replacements_per_step": 0,
+    "layout": "profile-defined",
+    "output_resize_step": 0,
+    "output_schedule": "320x240",
+    "profile": "dense-z-edit",
+    "rotation_distribution": "zero",
+    "scene_asset": "",
+    "seed": 0,
+    "size_distribution": "standard",
+    "sprite_count": 10000,
+    "sprite_height": 1.0,
+    "sprite_width": 1.0,
+    "trajectory_period_steps": 0
+  },
+  "resource_observation": {
+    "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261119/render-culling/resources/dense-z-edit-candidate-forced-sort-w1.resources.json",
+    "sha256": "0993b07941199e04cc22407137e59098b90486009efe7d4f7c8b6757186ecb07"
+  },
+  "sample_capacity": 4096,
+  "scenario": "linear_render_culling",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": true,
+  "total_render_samples": 60,
+  "total_steps": 60,
+  "validation_mode": "boundary-only",
+  "validation_proof": {
+    "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261119/render-culling/proofs/dense-z-edit-candidate-forced-sort-w1.evidence.json",
+    "sha256": "f81bc726e3420c5e009756c4d9bf27985f01e87cb0048431348aa031a0611d06"
+  },
+  "visible_selection_clock": {
+    "boundary": "SDLWindow::prepareVisibleSelection CPU elapsed time excluding draw ordering, submission, and presentation",
+    "source": "std::chrono::steady_clock"
+  },
+  "warmup_steps": 10,
+  "workers": 1
+}

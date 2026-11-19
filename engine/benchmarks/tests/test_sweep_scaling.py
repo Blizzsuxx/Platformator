@@ -202,6 +202,51 @@ class PlotAndFailureContract(unittest.TestCase):
             with self.assertRaises(ValueError):
                 plot.load_rows(path)
 
+    def test_plot_references_and_two_panel_generation(self):
+        spec = importlib.util.spec_from_file_location("plot_scaling", Path(__file__).resolve().parents[1] / "plot_scaling.py")
+        plot = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(plot)
+        from types import SimpleNamespace
+
+        refs = plot.compute_reference_curve([100.0, 200.0, 400.0], [1.0, 2.0, 4.0], "N", anchor="first")
+        self.assertEqual(refs, [1.0, 2.0, 4.0])
+        quad = plot.compute_reference_curve([100.0, 200.0, 400.0], [1.0, 2.0, 4.0], "N2", anchor="first")
+        self.assertEqual(quad, [1.0, 4.0, 16.0])
+
+        with tempfile.TemporaryDirectory() as directory:
+            csv_w1 = Path(directory) / "w1.csv"
+            csv_w6 = Path(directory) / "w6.csv"
+            out_png = Path(directory) / "out.png"
+            for csv_path, workers, mult in ((csv_w1, 1, 1.0), (csv_w6, 6, 0.5)):
+                rows = []
+                for idx, count in enumerate((50, 100, 200)):
+                    src = Path(directory) / f"run_w{workers}_{idx}.csv"
+                    fixture(src, value=mult * (count / 50.0), workers=workers)
+                    rows.append(sweep.build_result_row(
+                        SimpleNamespace(scenario="broad_phase", workers=workers, seed=0, validate_invariants=False),
+                        count, [sweep.parse_benchmark_csv(src)] * 5))
+                with csv_path.open("w", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+                    writer.writeheader()
+                    writer.writerows(rows)
+
+            import sys
+            argv_backup = sys.argv[:]
+            try:
+                sys.argv = [
+                    "plot_scaling.py",
+                    "--input", str(csv_w1),
+                    "--compare", str(csv_w6),
+                    "--two-panel",
+                    "--include-cleanup",
+                    "--references", "logN,N,NlogN,N2",
+                    "--output", str(out_png),
+                ]
+                self.assertEqual(plot.main(), 0)
+                self.assertTrue(out_png.is_file() and out_png.stat().st_size > 1000)
+            finally:
+                sys.argv = argv_backup
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,31 +20,85 @@ class LocalSortArray
     BoundingRadiusProjectionProxy *remove(size_t index);
     size_t remove(BoundingRadiusProjectionProxy *element);
 
-    BoundingRadiusProjectionProxy *get(size_t index);
-    BoundingRadiusProjectionProxy *operator[](size_t index);
-    BoundingRadiusProjectionProxy *getMax();
-    BoundingRadiusProjectionProxy *getMin();
-    size_t getSize() const;
-    BoundingRadiusProjectionProxy **getArray();
-    void clear();
+    BoundingRadiusProjectionProxy *get(size_t index)
+    {
+        return array[index];
+    }
+    BoundingRadiusProjectionProxy *operator[](size_t index)
+    {
+        return array[index];
+    }
+    BoundingRadiusProjectionProxy *getMax()
+    {
+        return array[size - 1];
+    }
+    BoundingRadiusProjectionProxy *getMin()
+    {
+        return array[0];
+    }
+    size_t getSize() const
+    {
+        return size;
+    }
+    BoundingRadiusProjectionProxy **getArray()
+    {
+        return array;
+    }
+    void clear()
+    {
+        size = 0;
+        checkpoints.clear();
+        checkpointCache.clear();
+    }
     void addCheckpoint(Collider *element);
     void removeCheckpoint(Collider *element);
-    std::unordered_set<Collider *> *getCheckpoints();
+    std::unordered_set<Collider *> *getCheckpoints()
+    {
+        return &checkpoints;
+    }
 
-    size_t find(BoundingRadiusProjectionProxy *element);
+    size_t find(BoundingRadiusProjectionProxy *element)
+    {
+        const size_t cachedIndex = element->getChunkIndex();
+        if (cachedIndex < size && array[cachedIndex] == element)
+        {
+            return cachedIndex;
+        }
+        return logInvalidFind();
+    }
 
-    LocalSortArray *getLeftChunk() const;
-    LocalSortArray *getRightChunk() const;
-    void setLeftChunk(LocalSortArray *leftChunk);
-    void setRightChunk(LocalSortArray *rightChunk);
+    LocalSortArray *getLeftChunk() const
+    {
+        return leftChunk;
+    }
+    LocalSortArray *getRightChunk() const
+    {
+        return rightChunk;
+    }
+    void setLeftChunk(LocalSortArray *leftChunk)
+    {
+        this->leftChunk = leftChunk;
+    }
+    void setRightChunk(LocalSortArray *rightChunk)
+    {
+        this->rightChunk = rightChunk;
+    }
 
-    SegmentedIntervalList *getOwner() const;
-    void setOwner(SegmentedIntervalList *owner);
+    SegmentedIntervalList *getOwner() const
+    {
+        return owner;
+    }
+    void setOwner(SegmentedIntervalList *owner)
+    {
+        this->owner = owner;
+    }
 
+    void initFromSplit(LocalSortArray *other);
     LocalSortArray *tryMergeWithLeftChunk();
     LocalSortArray *tryMergeWithRightChunk();
 
   private:
+    size_t logInvalidFind();
     size_t binarySearch(BoundingRadiusProjectionProxy *element);
     void addCheckpointInternal(Collider *element);
     std::size_t removeCheckpointInternal(Collider *element);

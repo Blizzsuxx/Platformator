@@ -613,10 +613,9 @@ void Grid::clearAll()
     }
     for (auto &cellEntry : cells)
     {
-        for (auto &binding : cellEntry.second.getAABB()->colliderBindings)
-        {
-            binding.first->cachedCellCount = 0;
-        }
+        cellEntry.second.getAABB()->forEachRegisteredCollider([](Collider *collider) {
+            collider->cachedCellCount = 0;
+        });
     }
     for (const ColliderPair &pair : candidateCollisions)
     {

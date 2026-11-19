@@ -2,28 +2,62 @@
 #include "grid.h"
 
 AABB::AABB(Grid *owner)
-    : intervalListX(this, true),
+    : bindingBlocks(),
+      freeBindings(),
+      bindingMap(),
+      intervalListX(this, true),
       intervalListY(this, false),
       pairsWithBothAxisOverlapping(),
-      colliderBindings(),
       owner(owner)
 {
 }
 
 AABB::~AABB()
 {
+    intervalListX.clear();
+    intervalListY.clear();
+    bindingMap.forEach([](Collider *, ColliderBinding *binding) {
+        std::destroy_at(binding);
+    });
+    bindingMap.clear();
+    freeBindings.clear();
+    bindingBlocks.clear();
+}
+
+AABB::BindingSlot *AABB::allocateBindingSlot()
+{
+    if (!freeBindings.empty())
+    {
+        BindingSlot *slot = freeBindings.back();
+        freeBindings.pop_back();
+        return slot;
+    }
+
+    if (bindingBlocks.empty() || bindingBlocks.back().used == bindingBlocks.back().capacity)
+    {
+        const size_t prevCap = bindingBlocks.empty() ? 0 : bindingBlocks.back().capacity;
+        const size_t nextCap = prevCap == 0 ? 4 : std::min<size_t>(prevCap * 2, 64);
+        BindingBlock block;
+        block.slots = std::unique_ptr<BindingSlot[]>(new BindingSlot[nextCap]);
+        block.capacity = nextCap;
+        block.used = 0;
+        bindingBlocks.push_back(std::move(block));
+    }
+
+    BindingBlock &block = bindingBlocks.back();
+    return &block.slots[block.used++];
 }
 
 void AABB::add(Collider *element)
 {
-    // auto iterator = colliderBindings.find(element);
-    // if (iterator != colliderBindings.end())
-    // {
-    //     PLATFORMATOR_LOG("Warning: trying to add a collider to AABB that is already in it, collider: %s\n", element->getGameObject()->getName().c_str());
-    //     return;
-    // }
-    auto result = colliderBindings.try_emplace(element, element);
-    ColliderBinding *binding = &result.first->second;
+    ColliderBinding *binding = bindingMap.emplaceIfAbsent(element, [&]() {
+        BindingSlot *slot = allocateBindingSlot();
+        return std::construct_at(reinterpret_cast<ColliderBinding *>(slot), element);
+    });
+    if (binding == nullptr)
+    {
+        return;
+    }
     intervalListX.add(&binding->xBinding);
     intervalListY.add(&binding->yBinding);
 }
@@ -48,7 +82,9 @@ void AABB::remove(ColliderBinding *binding)
 
     intervalListX.remove(&binding->xBinding);
     intervalListY.remove(&binding->yBinding);
-    colliderBindings.erase(binding->collider);
+    bindingMap.erase(binding->collider);
+    std::destroy_at(binding);
+    freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
 }
 
 void AABB::repair(Collider *element)
@@ -79,13 +115,7 @@ void AABB::repair(ColliderBinding *binding)
 
 AABB::ColliderBinding *AABB::getBinding(Collider *element)
 {
-    auto iterator = colliderBindings.find(element);
-    if (iterator == colliderBindings.end())
-    {
-        return nullptr;
-    }
-
-    return &iterator->second;
+    return bindingMap.find(element);
 }
 
 SegmentedIntervalList *AABB::getIntervalListX()
@@ -151,10 +181,17 @@ void AABB::overlapEndCheckpoint(Collider *colliderA, Collider *colliderB)
 
 bool AABB::checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const
 {
-    bool xOverlap = (*colliderA->getXProjections()->getMax() >= *colliderB->getXProjections()->getMin() && *colliderA->getXProjections()->getMin() <= *colliderB->getXProjections()->getMax());
-    bool yOverlap = (*colliderA->getYProjections()->getMax() >= *colliderB->getYProjections()->getMin() && *colliderA->getYProjections()->getMin() <= *colliderB->getYProjections()->getMax());
-
-    return xOverlap && yOverlap;
+    auto *xA = colliderA->getXProjections();
+    auto *xB = colliderB->getXProjections();
+    if (xA->getMax()->getProjectedPosition() < xB->getMin()->getProjectedPosition() ||
+        xA->getMin()->getProjectedPosition() > xB->getMax()->getProjectedPosition())
+    {
+        return false;
+    }
+    auto *yA = colliderA->getYProjections();
+    auto *yB = colliderB->getYProjections();
+    return yA->getMax()->getProjectedPosition() >= yB->getMin()->getProjectedPosition() &&
+           yA->getMin()->getProjectedPosition() <= yB->getMax()->getProjectedPosition();
 }
 
 bool AABB::getIsEmpty() const

@@ -3,7 +3,7 @@
 #include "buildconfig.h"
 
 SegmentedIntervalList::SegmentedIntervalList(AABB *owner, bool isPrimary)
-    : chunks(), owner(owner), isPrimary(isPrimary)
+    : chunks(), freeChunks(), owner(owner), isPrimary(isPrimary)
 {
     chunks.push_back(new LocalSortArray(this));
 }
@@ -15,15 +15,16 @@ SegmentedIntervalList::~SegmentedIntervalList()
 
 void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
 {
-    BoundingRadiusProjection *lowerProjection = binding->minProxy.getProjection();
-    BoundingRadiusProjection *upperProjection = binding->maxProxy.getProjection();
-    Collider *collider = lowerProjection->getCollider();
-
     BoundingRadiusProjectionProxy *lowerProxy = &binding->minProxy;
     BoundingRadiusProjectionProxy *upperProxy = &binding->maxProxy;
 
     add(lowerProxy);
     add(upperProxy);
+
+    if (!isPrimary)
+    {
+        return;
+    }
 
     // have to find the proxies again to get their current chunk and index, since adding them might have caused them to move
     // also, this is cheap now because we index everything
@@ -36,15 +37,12 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
         return;
     }
 
+    Collider *collider = lowerProxy->getCollider();
     LocalSortArray *currentChunk = chunkWhereItWasInserted;
-
-    if (isPrimary)
+    while (currentChunk != chunkWhereItWasInserted2)
     {
-        while (currentChunk != chunkWhereItWasInserted2)
-        {
-            currentChunk->addCheckpoint(collider);
-            currentChunk = currentChunk->getRightChunk();
-        }
+        currentChunk->addCheckpoint(collider);
+        currentChunk = currentChunk->getRightChunk();
     }
 
     addCollisionsForNewlyAddedProjection(lowerProxy, indexInsideChunkWhereItWasInserted, upperProxy, indexInsideChunkWhereItWasInserted2);
@@ -52,9 +50,15 @@ void SegmentedIntervalList::add(BoundingRadiusProjectionAxisBinding *binding)
 
 void SegmentedIntervalList::remove(BoundingRadiusProjectionAxisBinding *binding)
 {
-    Collider *collider = binding->minProxy.getCollider();
     BoundingRadiusProjectionProxy *lowerProxy = &binding->minProxy;
     BoundingRadiusProjectionProxy *upperProxy = &binding->maxProxy;
+
+    if (!isPrimary)
+    {
+        remove(lowerProxy);
+        remove(upperProxy);
+        return;
+    }
 
     auto [currentChunk, indexInsideChunkWhereItWillBeRemoved] = find(lowerProxy);
     auto [upperChunk, indexInsideChunkWhereItWillBeRemoved2] = find(upperProxy);
@@ -65,18 +69,23 @@ void SegmentedIntervalList::remove(BoundingRadiusProjectionAxisBinding *binding)
         return;
     }
 
-    removeCollisionsForRemovedProjection(lowerProxy, indexInsideChunkWhereItWillBeRemoved, upperProxy, indexInsideChunkWhereItWillBeRemoved2);
-
-    if (isPrimary)
+    if (!owner->pairsWithBothAxisOverlapping.empty())
     {
-        while (currentChunk != upperChunk)
+        removeCollisionsForRemovedProjection(lowerProxy, indexInsideChunkWhereItWillBeRemoved, upperProxy, indexInsideChunkWhereItWillBeRemoved2);
+    }
+
+    if (currentChunk != upperChunk)
+    {
+        Collider *collider = lowerProxy->getCollider();
+        LocalSortArray *chunk = currentChunk;
+        while (chunk != upperChunk)
         {
-            currentChunk->removeCheckpoint(collider);
-            currentChunk = currentChunk->getRightChunk();
+            chunk->removeCheckpoint(collider);
+            chunk = chunk->getRightChunk();
         }
     }
 
-    remove(lowerProxy);
+    remove(currentChunk, indexInsideChunkWhereItWillBeRemoved);
     remove(upperProxy);
 }
 
@@ -87,6 +96,38 @@ void SegmentedIntervalList::clear()
         delete chunks[i];
     }
     chunks.clear();
+    for (size_t i = 0; i < freeChunks.size(); i++)
+    {
+        delete freeChunks[i];
+    }
+    freeChunks.clear();
+}
+
+LocalSortArray *SegmentedIntervalList::allocateSplitChunk(LocalSortArray *other)
+{
+    if (!freeChunks.empty())
+    {
+        LocalSortArray *chunk = freeChunks.back();
+        freeChunks.pop_back();
+        chunk->initFromSplit(other);
+        return chunk;
+    }
+    return new LocalSortArray(other);
+}
+
+void SegmentedIntervalList::recycleChunk(LocalSortArray *chunk)
+{
+    if (freeChunks.size() < MAX_RECYCLED_CHUNKS_PER_LIST)
+    {
+        chunk->clear();
+        chunk->setLeftChunk(nullptr);
+        chunk->setRightChunk(nullptr);
+        freeChunks.push_back(chunk);
+    }
+    else
+    {
+        delete chunk;
+    }
 }
 
 void SegmentedIntervalList::repairProjection(BoundingRadiusProjectionProxy *projection)
@@ -215,14 +256,14 @@ void SegmentedIntervalList::repairProjectionFromIndexInternal(BoundingRadiusProj
 
 size_t SegmentedIntervalList::binarySearch(BoundingRadiusProjectionProxy *element)
 {
-    if (chunks.empty() || (chunks[0]->getSize() == 0 && chunks.size() == 1))
+    if (chunks.size() <= 1)
     {
         return 0;
     }
 
     size_t low = 0;
     size_t high = chunks.size();
-    BoundingRadiusProjectionProxy value = *element;
+    const BoundingRadiusProjectionProxy &value = *element;
 
     while (low < high)
     {
@@ -287,7 +328,7 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::add(BoundingRadiusPro
     if (indexInsideChunk == SIZE_MAX)
     {
         // if the array is full, split it
-        LocalSortArray *newArray = new LocalSortArray(chunks[chunkIndex]);
+        LocalSortArray *newArray = allocateSplitChunk(chunks[chunkIndex]);
 
         // insert the new array after the current one
         chunks.insert(chunks.begin() + chunkIndex + 1, newArray);
@@ -343,7 +384,7 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(LocalSortArray
 
         chunks.erase(std::remove(chunks.begin(), chunks.end(), array), chunks.end());
 
-        delete array;
+        recycleChunk(array);
 
         return {rightChunk != nullptr ? rightChunk : leftChunk, index};
     }
@@ -354,13 +395,13 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::remove(LocalSortArray
         array = array->getLeftChunk();
 
         chunks.erase(std::remove(chunks.begin(), chunks.end(), chunkToDelete), chunks.end());
-        delete chunkToDelete;
+        recycleChunk(chunkToDelete);
     }
     chunkToDelete = array->tryMergeWithRightChunk();
     if (chunkToDelete != nullptr)
     {
         chunks.erase(std::remove(chunks.begin(), chunks.end(), chunkToDelete), chunks.end());
-        delete chunkToDelete;
+        recycleChunk(chunkToDelete);
     }
 
     return {array, index};
@@ -504,106 +545,118 @@ void SegmentedIntervalList::processProjectionCollisions(
     LocalSortArray *lowerChunk = lowerProjection->getChunk();
     LocalSortArray *upperChunk = upperProjection->getChunk();
     Collider *collider = lowerProjection->getCollider();
-
-    std::array<Collider *, MAX_CHUNK_SIZE> minimaSeenAfterUpper{};
-    size_t minimaSeenAfterUpperCount = 0;
-    bool hasReachedUpper = (lowerChunk != upperChunk);
-
-    auto containsMinimaSeenAfterUpper = [&](Collider *target)
-    {
-        for (size_t i = 0; i < minimaSeenAfterUpperCount; ++i)
-        {
-            if (minimaSeenAfterUpper[i] == target)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    };
+    BoundingRadiusProjectionProxy **lowerArr = lowerChunk->getArray();
+    const size_t lowerSz = lowerChunk->getSize();
 
     if (lowerChunk == upperChunk)
     {
-        for (size_t i = upperIndexInsideChunk + 1; i < lowerChunk->getSize(); i++)
+        for (size_t i = lowerIndexInsideChunk + 1; i < upperIndexInsideChunk; ++i)
         {
-            BoundingRadiusProjectionProxy *projection = lowerChunk->get(i);
-            if (projection->getCollider() != collider && !projection->getIsMaxima() && !containsMinimaSeenAfterUpper(projection->getCollider()))
+            BoundingRadiusProjectionProxy *projection = lowerArr[i];
+            if (projection->getIsMaxima())
             {
-                minimaSeenAfterUpper[minimaSeenAfterUpperCount++] = projection->getCollider();
+                emit(collider, projection->getCollider());
             }
         }
+
+        Collider *openMinimaAfterUpper[MAX_CHUNK_SIZE];
+        size_t openCount = 0;
+
+        auto eraseOpenMinima = [&](Collider *target) {
+            for (size_t k = 0; k < openCount; ++k)
+            {
+                if (openMinimaAfterUpper[k] == target)
+                {
+                    openMinimaAfterUpper[k] = openMinimaAfterUpper[--openCount];
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        for (size_t i = upperIndexInsideChunk + 1; i < lowerSz; ++i)
+        {
+            BoundingRadiusProjectionProxy *projection = lowerArr[i];
+            Collider *other = projection->getCollider();
+            if (!projection->getIsMaxima())
+            {
+                openMinimaAfterUpper[openCount++] = other;
+            }
+            else if (!eraseOpenMinima(other))
+            {
+                emit(collider, other);
+            }
+        }
+
+        if (!lowerChunk->checkpoints.empty())
+        {
+            for (Collider *checkpoint : lowerChunk->checkpoints)
+            {
+                if (checkpoint == collider)
+                {
+                    continue;
+                }
+                bool seenAfterUpper = false;
+                for (size_t k = 0; k < openCount; ++k)
+                {
+                    if (openMinimaAfterUpper[k] == checkpoint)
+                    {
+                        seenAfterUpper = true;
+                        break;
+                    }
+                }
+                if (!seenAfterUpper)
+                {
+                    emit(collider, checkpoint);
+                }
+            }
+        }
+        return;
     }
 
-    if (isPrimary)
+    if (!lowerChunk->checkpoints.empty())
     {
-        for (Collider *checkpoint : *lowerChunk->getCheckpoints())
+        for (Collider *checkpoint : lowerChunk->checkpoints)
         {
-            if (checkpoint != collider && (lowerChunk != upperChunk || !containsMinimaSeenAfterUpper(checkpoint)))
+            if (checkpoint != collider)
             {
                 emit(collider, checkpoint);
             }
         }
     }
 
-    for (size_t i = lowerIndexInsideChunk + 1; i < lowerChunk->getSize(); i++)
+    for (size_t i = lowerIndexInsideChunk + 1; i < lowerSz; ++i)
     {
-        BoundingRadiusProjectionProxy *projection = lowerChunk->get(i);
-
-        if (projection->getCollider() == collider)
-        {
-            hasReachedUpper = true;
-            continue;
-        }
-
-        if (!hasReachedUpper)
-        {
-            if (projection->getIsMaxima())
-            {
-                emit(collider, projection->getCollider());
-            }
-        }
-        else if (projection->getIsMaxima() && !containsMinimaSeenAfterUpper(projection->getCollider()))
+        BoundingRadiusProjectionProxy *projection = lowerArr[i];
+        if (projection->getIsMaxima() && projection->getCollider() != collider)
         {
             emit(collider, projection->getCollider());
         }
     }
 
-    for (LocalSortArray *currentChunk = lowerChunk->getRightChunk(); currentChunk != nullptr && currentChunk != upperChunk; currentChunk = currentChunk->getRightChunk())
+    for (LocalSortArray *currentChunk = lowerChunk->getRightChunk();
+         currentChunk != nullptr && currentChunk != upperChunk;
+         currentChunk = currentChunk->getRightChunk())
     {
-        for (size_t i = 0; i < currentChunk->getSize(); i++)
+        BoundingRadiusProjectionProxy **chunkArr = currentChunk->getArray();
+        const size_t chunkSz = currentChunk->getSize();
+        for (size_t i = 0; i < chunkSz; ++i)
         {
-            BoundingRadiusProjectionProxy *projection = currentChunk->get(i);
-            if (projection->getCollider() != collider && !projection->getIsMaxima())
+            BoundingRadiusProjectionProxy *projection = chunkArr[i];
+            if (!projection->getIsMaxima() && projection->getCollider() != collider)
             {
                 emit(collider, projection->getCollider());
             }
         }
     }
 
-    if (upperChunk != lowerChunk)
+    BoundingRadiusProjectionProxy **upperArr = upperChunk->getArray();
+    for (size_t i = 0; i < upperIndexInsideChunk; ++i)
     {
-        for (size_t i = 0; i < upperIndexInsideChunk; i++)
+        BoundingRadiusProjectionProxy *projection = upperArr[i];
+        if (!projection->getIsMaxima() && projection->getCollider() != collider)
         {
-            BoundingRadiusProjectionProxy *projection = upperChunk->get(i);
-            if (projection->getCollider() != collider && !projection->getIsMaxima())
-            {
-                emit(collider, projection->getCollider());
-            }
+            emit(collider, projection->getCollider());
         }
     }
-}
-
-bool SegmentedIntervalList::getIsPrimary() const
-{
-    return isPrimary;
-}
-
-bool SegmentedIntervalList::getIsEmpty() const
-{
-    return chunks.size() == 1 && chunks[0]->getSize() == 0;
-}
-
-size_t SegmentedIntervalList::getChunkCount() const
-{
-    return chunks.size();
 }

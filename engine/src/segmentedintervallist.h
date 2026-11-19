@@ -21,9 +21,18 @@ public:
     void remove(BoundingRadiusProjectionAxisBinding *binding);
     void repairProjection(BoundingRadiusProjectionProxy *projection);
 
-    bool getIsPrimary() const;
-    bool getIsEmpty() const;
-    size_t getChunkCount() const;
+    bool getIsPrimary() const
+    {
+        return isPrimary;
+    }
+    bool getIsEmpty() const
+    {
+        return chunks.size() == 1 && chunks[0]->getSize() == 0;
+    }
+    size_t getChunkCount() const
+    {
+        return chunks.size();
+    }
 
     template <typename Visitor>
     void forEachOverlappingInterval(float minCoord, float maxCoord, Visitor &&visitor) const
@@ -108,7 +117,11 @@ private:
     void removeCollision(Collider *colliderA, Collider *colliderB);
     void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
 
+    LocalSortArray *allocateSplitChunk(LocalSortArray *other);
+    void recycleChunk(LocalSortArray *chunk);
+
     std::vector<LocalSortArray *> chunks;
+    std::vector<LocalSortArray *> freeChunks;
     AABB *owner;
 
     // we only need to check for collisions in one of the axes when inserting or removing an interval, so we can use this to know if we should emit a collision or not

@@ -34,16 +34,6 @@ ColliderType Collider::getColliderType() const
     return colliderType;
 }
 
-BoundingRadiusProjectionAxis *Collider::getXProjections()
-{
-    return &xProjections;
-}
-
-BoundingRadiusProjectionAxis *Collider::getYProjections()
-{
-    return &yProjections;
-}
-
 bool Collider::getIsTrigger() const
 {
     return (flags & IS_TRIGGER) != 0;
@@ -150,11 +140,6 @@ void Collider::setCollisionGroup(const uint64_t collisionGroup)
         platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }
 
-uint64_t Collider::getCollisionGroup() const
-{
-    return collisionGroup;
-}
-
 void Collider::setCollisionMask(const uint64_t collisionMask)
 {
     if (this->collisionMask == collisionMask)
@@ -163,11 +148,6 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
     dirty |= Filter;
     if (getIsRegisteredInPhysicsManager())
         platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
-}
-
-uint64_t Collider::getCollisionMask() const
-{
-    return collisionMask;
 }
 
 uint64_t Collider::getStateVersion() const

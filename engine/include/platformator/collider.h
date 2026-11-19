@@ -20,24 +20,67 @@ class AABB;
 class BoundingRadiusProjection
 {
   public:
-    BoundingRadiusProjection();
-    BoundingRadiusProjection(Collider *collider, float projectedPosition, bool isEnd);
-    ~BoundingRadiusProjection();
+    BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isMaxima(false)
+    {
+    }
+    BoundingRadiusProjection(Collider *collider, float projectedPosition, bool isEnd)
+        : collider(collider), projectedPosition(projectedPosition), isMaxima(isEnd)
+    {
+    }
+    ~BoundingRadiusProjection() = default;
 
-    Collider *getCollider();
-    float getProjectedPosition() const;
-    bool getIsMaxima() const;
+    Collider *getCollider()
+    {
+        return collider;
+    }
+    float getProjectedPosition() const
+    {
+        return projectedPosition;
+    }
+    bool getIsMaxima() const
+    {
+        return isMaxima;
+    }
 
-    void setCollider(Collider *collider);
-    void setProjectedPosition(float projectedPosition);
-    void setIsMaxima(bool isMaxima);
+    void setCollider(Collider *collider)
+    {
+        this->collider = collider;
+    }
+    void setProjectedPosition(float projectedPosition)
+    {
+        this->projectedPosition = projectedPosition;
+    }
+    void setIsMaxima(bool isMaxima)
+    {
+        this->isMaxima = isMaxima;
+    }
 
-    bool operator==(const BoundingRadiusProjection &other) const;
-    bool operator!=(const BoundingRadiusProjection &other) const;
-    bool operator<(const BoundingRadiusProjection &other) const;
-    bool operator>(const BoundingRadiusProjection &other) const;
-    bool operator<=(const BoundingRadiusProjection &other) const;
-    bool operator>=(const BoundingRadiusProjection &other) const;
+    bool operator==(const BoundingRadiusProjection &other) const
+    {
+        return projectedPosition == other.projectedPosition && isMaxima == other.isMaxima;
+    }
+    bool operator!=(const BoundingRadiusProjection &other) const
+    {
+        return !(*this == other);
+    }
+    bool operator<(const BoundingRadiusProjection &other) const
+    {
+        return projectedPosition < other.projectedPosition ||
+               (projectedPosition == other.projectedPosition && !isMaxima && other.isMaxima);
+    }
+    bool operator>(const BoundingRadiusProjection &other) const
+    {
+        return projectedPosition > other.projectedPosition ||
+               (projectedPosition == other.projectedPosition && isMaxima && !other.isMaxima);
+    }
+    bool operator<=(const BoundingRadiusProjection &other) const
+    {
+        return *this < other || *this == other;
+    }
+    bool operator>=(const BoundingRadiusProjection &other) const
+    {
+        return *this > other || *this == other;
+    }
 
   private:
     Collider *collider;
@@ -48,47 +91,123 @@ class BoundingRadiusProjection
 class BoundingRadiusProjectionProxy
 {
   public:
-    BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk);
-    ~BoundingRadiusProjectionProxy();
+    BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk)
+        : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX),
+          cachedProjectedPosition(projection->getProjectedPosition()),
+          isMaxima(projection->getIsMaxima())
+    {
+    }
+    ~BoundingRadiusProjectionProxy() = default;
 
-    BoundingRadiusProjection *getProjection() const;
-    LocalSortArray *getChunk() const;
-    size_t getChunkIndex() const;
+    BoundingRadiusProjection *getProjection() const
+    {
+        return projection;
+    }
+    LocalSortArray *getChunk() const
+    {
+        return chunk;
+    }
+    size_t getChunkIndex() const
+    {
+        return chunkIndex;
+    }
 
-    void setChunk(LocalSortArray *chunk);
-    void setChunkIndex(size_t chunkIndex);
-    void updateCachedProjectedPosition();
+    void setChunk(LocalSortArray *chunk)
+    {
+        this->chunk = chunk;
+        if (chunk == nullptr)
+        {
+            chunkIndex = SIZE_MAX;
+        }
+    }
+    void setChunkIndex(size_t chunkIndex)
+    {
+        this->chunkIndex = chunkIndex;
+    }
+    void updateCachedProjectedPosition()
+    {
+        cachedProjectedPosition = projection->getProjectedPosition();
+    }
 
-    Collider *getCollider();
-    float getProjectedPosition() const;
-    bool getIsMaxima() const;
-    float getCachedProjectedPosition() const;
+    Collider *getCollider()
+    {
+        return projection->getCollider();
+    }
+    float getProjectedPosition() const
+    {
+        return projection->getProjectedPosition();
+    }
+    bool getIsMaxima() const
+    {
+        return isMaxima;
+    }
+    float getCachedProjectedPosition() const
+    {
+        return cachedProjectedPosition;
+    }
 
-    bool operator==(const BoundingRadiusProjectionProxy &other) const;
-    bool operator!=(const BoundingRadiusProjectionProxy &other) const;
-    bool operator<(const BoundingRadiusProjectionProxy &other) const;
-    bool operator>(const BoundingRadiusProjectionProxy &other) const;
-    bool operator<=(const BoundingRadiusProjectionProxy &other) const;
-    bool operator>=(const BoundingRadiusProjectionProxy &other) const;
+    bool operator==(const BoundingRadiusProjectionProxy &other) const
+    {
+        return cachedProjectedPosition == other.cachedProjectedPosition && isMaxima == other.isMaxima;
+    }
+    bool operator!=(const BoundingRadiusProjectionProxy &other) const
+    {
+        return !(*this == other);
+    }
+    bool operator<(const BoundingRadiusProjectionProxy &other) const
+    {
+        return cachedProjectedPosition < other.cachedProjectedPosition ||
+               (cachedProjectedPosition == other.cachedProjectedPosition && !isMaxima && other.isMaxima);
+    }
+    bool operator>(const BoundingRadiusProjectionProxy &other) const
+    {
+        return cachedProjectedPosition > other.cachedProjectedPosition ||
+               (cachedProjectedPosition == other.cachedProjectedPosition && isMaxima && !other.isMaxima);
+    }
+    bool operator<=(const BoundingRadiusProjectionProxy &other) const
+    {
+        return *this < other || *this == other;
+    }
+    bool operator>=(const BoundingRadiusProjectionProxy &other) const
+    {
+        return *this > other || *this == other;
+    }
 
   private:
     BoundingRadiusProjection *projection;
     LocalSortArray *chunk;
     size_t chunkIndex;
     float cachedProjectedPosition;
+    bool isMaxima;
 };
 
 class BoundingRadiusProjectionAxis
 {
   public:
-    BoundingRadiusProjectionAxis(Collider *collider, float min, float max);
-    ~BoundingRadiusProjectionAxis();
+    BoundingRadiusProjectionAxis(Collider *collider, float min, float max)
+        : min(BoundingRadiusProjection(collider, min, false)),
+          max(BoundingRadiusProjection(collider, max, true))
+    {
+    }
+    ~BoundingRadiusProjectionAxis() = default;
 
-    BoundingRadiusProjection *getMin();
-    BoundingRadiusProjection *getMax();
+    BoundingRadiusProjection *getMin()
+    {
+        return &min;
+    }
+    BoundingRadiusProjection *getMax()
+    {
+        return &max;
+    }
 
-    bool operator==(const BoundingRadiusProjectionAxis &other) const;
-    bool operator!=(const BoundingRadiusProjectionAxis &other) const;
+    bool operator==(const BoundingRadiusProjectionAxis &other) const
+    {
+        return min == other.min && max == other.max;
+    }
+    bool operator!=(const BoundingRadiusProjectionAxis &other) const
+    {
+        return !(*this == other);
+    }
 
   private:
     BoundingRadiusProjection min;
@@ -100,7 +219,10 @@ struct BoundingRadiusProjectionAxisBinding
     BoundingRadiusProjectionProxy minProxy;
     BoundingRadiusProjectionProxy maxProxy;
 
-    explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis);
+    explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis)
+        : minProxy(axis->getMin(), nullptr), maxProxy(axis->getMax(), nullptr)
+    {
+    }
 };
 
 enum class ColliderType
@@ -135,13 +257,25 @@ class Collider : public Component
     void triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const;
     void triggerCollisionExit(Collider *other, double timeDelta) const;
 
-    BoundingRadiusProjectionAxis *getXProjections();
-    BoundingRadiusProjectionAxis *getYProjections();
+    BoundingRadiusProjectionAxis *getXProjections()
+    {
+        return &xProjections;
+    }
+    BoundingRadiusProjectionAxis *getYProjections()
+    {
+        return &yProjections;
+    }
 
-    uint64_t getCollisionGroup() const;
+    uint64_t getCollisionGroup() const
+    {
+        return collisionGroup;
+    }
     void setCollisionGroup(uint64_t collisionGroup);
 
-    uint64_t getCollisionMask() const;
+    uint64_t getCollisionMask() const
+    {
+        return collisionMask;
+    }
     void setCollisionMask(uint64_t collisionMask);
 
     bool getIsTrigger() const;

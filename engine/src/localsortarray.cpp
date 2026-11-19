@@ -9,8 +9,26 @@ LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoints(other->owner->getIsPrimary() ? other->checkpoints : std::unordered_set<Collider *>()), leftChunk(other), rightChunk(other->rightChunk), owner(other->owner)
+    : size(0), array(), checkpoints(), checkpointCache(), leftChunk(nullptr), rightChunk(nullptr), owner(other->owner)
 {
+    initFromSplit(other);
+}
+
+void LocalSortArray::initFromSplit(LocalSortArray *other)
+{
+    owner = other->owner;
+    leftChunk = other;
+    rightChunk = other->rightChunk;
+    checkpointCache.clear();
+    if (owner->getIsPrimary())
+    {
+        checkpoints = other->checkpoints;
+    }
+    else
+    {
+        checkpoints.clear();
+    }
+
     const size_t oldSize = other->size;
     const size_t movedCount = oldSize / 2;
     const size_t splitIndex = oldSize - movedCount;
@@ -127,43 +145,6 @@ size_t LocalSortArray::remove(BoundingRadiusProjectionProxy *element)
     return SIZE_MAX;
 }
 
-BoundingRadiusProjectionProxy *LocalSortArray::get(size_t index)
-{
-    return array[index];
-}
-
-BoundingRadiusProjectionProxy *LocalSortArray::operator[](size_t index)
-{
-    return array[index];
-}
-
-BoundingRadiusProjectionProxy *LocalSortArray::getMax()
-{
-    return array[size - 1];
-}
-
-BoundingRadiusProjectionProxy *LocalSortArray::getMin()
-{
-    return array[0];
-}
-
-size_t LocalSortArray::getSize() const
-{
-    return size;
-}
-
-BoundingRadiusProjectionProxy **LocalSortArray::getArray()
-{
-    return array;
-}
-
-void LocalSortArray::clear()
-{
-    size = 0;
-    checkpoints.clear();
-    checkpointCache.clear();
-}
-
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
     if (checkpointCache.find(collider) != checkpointCache.end())
@@ -202,13 +183,8 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
 
     while (low < high)
     {
-        size_t mid = (low + high) / 2;
-
-        if (*array[mid] == *element)
-        {
-            return mid;
-        }
-        else if (*array[mid] < *element)
+        const size_t mid = low + ((high - low) >> 1);
+        if (*array[mid] < *element)
         {
             low = mid + 1;
         }
@@ -221,57 +197,15 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
     return low;
 }
 
-std::unordered_set<Collider *> *LocalSortArray::getCheckpoints()
+size_t LocalSortArray::logInvalidFind()
 {
-    return &checkpoints;
-}
-
-size_t LocalSortArray::find(BoundingRadiusProjectionProxy *element)
-{
-    size_t cachedIndex = element->getChunkIndex();
-    if (cachedIndex < size && array[cachedIndex] == element)
-    {
-        return cachedIndex;
-    }
-
     PLATFORMATOR_LOG("Warning: element's cached index is invalid for some reason\n");
-
     return SIZE_MAX;
-}
-
-LocalSortArray *LocalSortArray::getLeftChunk() const
-{
-    return leftChunk;
-}
-
-LocalSortArray *LocalSortArray::getRightChunk() const
-{
-    return rightChunk;
-}
-
-void LocalSortArray::setLeftChunk(LocalSortArray *leftChunk)
-{
-    this->leftChunk = leftChunk;
-}
-
-void LocalSortArray::setRightChunk(LocalSortArray *rightChunk)
-{
-    this->rightChunk = rightChunk;
-}
-
-SegmentedIntervalList *LocalSortArray::getOwner() const
-{
-    return owner;
-}
-
-void LocalSortArray::setOwner(SegmentedIntervalList *owner)
-{
-    this->owner = owner;
 }
 
 LocalSortArray *LocalSortArray::tryMergeWithRightChunk()
 {
-    if (rightChunk != nullptr && size + rightChunk->size <= MAX_CHUNK_SIZE)
+    if (rightChunk != nullptr && size + rightChunk->size <= CHUNK_MERGE_THRESHOLD)
     {
         for (size_t i = 0; i < rightChunk->size; i++)
         {
@@ -281,8 +215,11 @@ LocalSortArray *LocalSortArray::tryMergeWithRightChunk()
             array[size + i] = element;
         }
         size += rightChunk->size;
-        checkpoints = std::move(rightChunk->checkpoints);
-        checkpointCache = std::move(rightChunk->checkpointCache);
+        if (owner->getIsPrimary())
+        {
+            checkpoints = std::move(rightChunk->checkpoints);
+            checkpointCache = std::move(rightChunk->checkpointCache);
+        }
 
         LocalSortArray *oldRightChunk = rightChunk;
         LocalSortArray *newRightChunk = rightChunk->getRightChunk();

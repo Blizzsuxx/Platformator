@@ -1,56 +1,42 @@
 {
   "format": "platformator.object-template",
-  "version": 1,
   "name": "PlayerPlasma",
+  "reference_bindings": [],
   "root": {
-    "id": 1,
-    "name": "PlayerPlasma",
-    "tag": "projectile",
-    "position": {
-      "x": 0.0,
-      "y": 0.0
-    },
-    "scale": {
-      "x": 1.0,
-      "y": 1.0
-    },
-    "rotation": 0.0,
     "active": true,
-    "parentId": -1,
+    "children": [],
     "components": [
       {
-        "id": 2,
-        "type": 6,
-        "flip": 0,
-        "width": 16.0,
-        "height": 16.0,
-        "zOrder": 8,
         "color": {
-          "r": 255,
-          "g": 255,
+          "a": 255,
           "b": 255,
-          "a": 255
+          "g": 255,
+          "r": 255
         },
+        "flip": 0,
+        "height": 16.0,
+        "id": 2,
         "sourceRect": null,
         "sourceRectEnabled": false,
-        "textureFilePath": "assets/textures/fx/plasma_bolt_0.png"
+        "textureFilePath": "assets/textures/fx/plasma_bolt_0.png",
+        "type": 6,
+        "width": 16.0,
+        "zOrder": 8
       },
       {
-        "id": 3,
-        "type": 3,
         "colliderType": 0,
-        "radius": 6.0,
+        "collisionGroup": 32,
+        "collisionMask": 4294967295,
+        "id": 3,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
+        "radius": 6.0,
         "trigger": true,
-        "collisionGroup": 32,
-        "collisionMask": 202
+        "type": 3
       },
       {
-        "id": 4,
-        "type": 4,
         "angularVelocity": 0.0,
         "bodyType": 2,
         "force": {
@@ -59,44 +45,58 @@
         },
         "friction": 0.0,
         "gravity": false,
+        "id": 4,
         "mass": 1.0,
         "restitution": 0.0,
         "torque": 0.0,
+        "type": 4,
         "velocity": {
           "x": 0.0,
           "y": 0.0
         }
       },
       {
-        "id": 5,
-        "type": 0,
         "animationClipFilePath": "assets/animations/plasma_bolt.animset",
         "currentFrameIndex": 0,
+        "id": 5,
         "playbackSpeed": 1.0,
-        "playing": true
+        "playing": true,
+        "type": 0
       },
       {
-        "id": 6,
-        "type": 5,
         "behaviors": [
           {
+            "fullBright": true,
             "type": "DoomBillboard",
-            "worldHeight": 18.0,
             "verticalOffset": 0.5,
-            "fullBright": true
+            "worldHeight": 18.0
           },
           {
-            "type": "DoomProjectile",
-            "friendly": true,
-            "speed": 520.0,
             "damage": 28,
+            "friendly": true,
+            "impactFxTemplate": "assets/templates/HitSparkFx.pttemplate",
             "lifetime": 2.2,
-            "impactFxTemplate": "assets/templates/HitSparkFx.pttemplate"
+            "speed": 520.0,
+            "type": "DoomProjectile"
           }
-        ]
+        ],
+        "id": 6,
+        "type": 5
       }
     ],
-    "children": []
+    "id": 1,
+    "name": "PlayerPlasma",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "projectile"
   },
-  "reference_bindings": []
+  "version": 1
 }

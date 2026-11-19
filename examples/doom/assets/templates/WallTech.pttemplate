@@ -1,57 +1,43 @@
 {
   "format": "platformator.object-template",
-  "version": 1,
   "name": "WallTech",
+  "reference_bindings": [],
   "root": {
-    "id": 1,
-    "name": "WallTech",
-    "tag": "wall",
-    "position": {
-      "x": 0.0,
-      "y": 0.0
-    },
-    "scale": {
-      "x": 1.0,
-      "y": 1.0
-    },
-    "rotation": 0.0,
     "active": true,
-    "parentId": -1,
+    "children": [],
     "components": [
       {
-        "id": 2,
-        "type": 6,
-        "flip": 0,
-        "width": 64.0,
-        "height": 32.0,
-        "zOrder": 1,
         "color": {
-          "r": 255,
-          "g": 255,
+          "a": 255,
           "b": 255,
-          "a": 255
+          "g": 255,
+          "r": 255
         },
+        "flip": 0,
+        "height": 32.0,
+        "id": 2,
         "sourceRect": null,
         "sourceRectEnabled": false,
-        "textureFilePath": "assets/textures/walls/wall_tech.png"
+        "textureFilePath": "assets/textures/walls/wall_tech.png",
+        "type": 6,
+        "width": 64.0,
+        "zOrder": 1
       },
       {
-        "id": 3,
-        "type": 3,
         "colliderType": 1,
-        "width": 64.0,
+        "collisionGroup": 2,
+        "collisionMask": 4294967229,
         "height": 32.0,
+        "id": 3,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "trigger": false,
-        "collisionGroup": 2,
-        "collisionMask": 4294967295
+        "type": 3,
+        "width": 64.0
       },
       {
-        "id": 4,
-        "type": 4,
         "angularVelocity": 0.0,
         "bodyType": 1,
         "force": {
@@ -60,16 +46,30 @@
         },
         "friction": 0.0,
         "gravity": false,
+        "id": 4,
         "mass": 1.0,
         "restitution": 0.0,
         "torque": 0.0,
+        "type": 4,
         "velocity": {
           "x": 0.0,
           "y": 0.0
         }
       }
     ],
-    "children": []
+    "id": 1,
+    "name": "WallTech",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "wall"
   },
-  "reference_bindings": []
+  "version": 1
 }

@@ -1,82 +1,82 @@
 {
   "format": "platformator.object-template",
-  "version": 1,
   "name": "Armor",
+  "reference_bindings": [],
   "root": {
-    "id": 1,
-    "name": "Armor",
-    "tag": "pickup",
-    "position": {
-      "x": 0.0,
-      "y": 0.0
-    },
-    "scale": {
-      "x": 1.0,
-      "y": 1.0
-    },
-    "rotation": 0.0,
     "active": true,
-    "parentId": -1,
+    "children": [],
     "components": [
       {
-        "id": 2,
-        "type": 6,
-        "flip": 0,
-        "width": 28.0,
-        "height": 28.0,
-        "zOrder": 3,
         "color": {
-          "r": 255,
-          "g": 255,
+          "a": 255,
           "b": 255,
-          "a": 255
+          "g": 255,
+          "r": 255
         },
+        "flip": 0,
+        "height": 28.0,
+        "id": 2,
         "sourceRect": null,
         "sourceRectEnabled": false,
-        "textureFilePath": "assets/textures/items/armor.png"
+        "textureFilePath": "assets/textures/items/armor.png",
+        "type": 6,
+        "width": 28.0,
+        "zOrder": 3
       },
       {
-        "id": 3,
-        "type": 3,
         "colliderType": 0,
-        "radius": 14.0,
+        "collisionGroup": 16,
+        "collisionMask": 4294967295,
+        "id": 3,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
+        "radius": 14.0,
         "trigger": true,
-        "collisionGroup": 16,
-        "collisionMask": 4
+        "type": 3
       },
       {
-        "id": 4,
-        "type": 1,
         "autoPlay": false,
         "filePath": "",
         "gain": 0.65,
-        "loopCount": 0
+        "id": 4,
+        "loopCount": 0,
+        "type": 1
       },
       {
-        "id": 5,
-        "type": 5,
         "behaviors": [
           {
+            "fullBright": false,
             "type": "DoomBillboard",
-            "worldHeight": 22.0,
             "verticalOffset": 0.0,
-            "fullBright": false
+            "worldHeight": 22.0
           },
           {
-            "type": "DoomPickup",
-            "pickupKind": 1,
             "amount": 25,
+            "pickupKind": 1,
+            "pickupSound": "assets/audio/pickup.wav",
             "targetScenePath": "",
-            "pickupSound": "assets/audio/pickup.wav"
+            "type": "DoomPickup"
           }
-        ]
+        ],
+        "id": 5,
+        "type": 5
       }
     ],
-    "children": []
+    "id": 1,
+    "name": "Armor",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "pickup"
   },
-  "reference_bindings": []
+  "version": 1
 }

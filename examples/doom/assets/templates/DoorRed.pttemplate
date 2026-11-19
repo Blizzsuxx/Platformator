@@ -1,57 +1,43 @@
 {
   "format": "platformator.object-template",
-  "version": 1,
   "name": "DoorRed",
+  "reference_bindings": [],
   "root": {
-    "id": 1,
-    "name": "DoorRed",
-    "tag": "door",
-    "position": {
-      "x": 0.0,
-      "y": 0.0
-    },
-    "scale": {
-      "x": 1.0,
-      "y": 1.0
-    },
-    "rotation": 0.0,
     "active": true,
-    "parentId": -1,
+    "children": [],
     "components": [
       {
-        "id": 2,
-        "type": 6,
-        "flip": 0,
-        "width": 68.0,
-        "height": 16.0,
-        "zOrder": 3,
         "color": {
-          "r": 255,
-          "g": 255,
+          "a": 255,
           "b": 255,
-          "a": 255
+          "g": 255,
+          "r": 255
         },
+        "flip": 0,
+        "height": 16.0,
+        "id": 2,
         "sourceRect": null,
         "sourceRectEnabled": false,
-        "textureFilePath": "assets/textures/walls/wall_door_red.png"
+        "textureFilePath": "assets/textures/walls/wall_door_red.png",
+        "type": 6,
+        "width": 68.0,
+        "zOrder": 3
       },
       {
-        "id": 3,
-        "type": 3,
         "colliderType": 1,
-        "width": 68.0,
+        "collisionGroup": 64,
+        "collisionMask": 4294967293,
         "height": 16.0,
+        "id": 3,
         "offset": {
           "x": 0.0,
           "y": 0.0
         },
         "trigger": false,
-        "collisionGroup": 64,
-        "collisionMask": 4294967295
+        "type": 3,
+        "width": 68.0
       },
       {
-        "id": 4,
-        "type": 4,
         "angularVelocity": 0.0,
         "bodyType": 2,
         "force": {
@@ -60,41 +46,55 @@
         },
         "friction": 0.0,
         "gravity": false,
+        "id": 4,
         "mass": 1.0,
         "restitution": 0.0,
         "torque": 0.0,
+        "type": 4,
         "velocity": {
           "x": 0.0,
           "y": 0.0
         }
       },
       {
-        "id": 5,
-        "type": 1,
         "autoPlay": false,
         "filePath": "",
         "gain": 0.7,
-        "loopCount": 0
+        "id": 5,
+        "loopCount": 0,
+        "type": 1
       },
       {
-        "id": 6,
-        "type": 5,
         "behaviors": [
           {
-            "type": "DoomDoor",
+            "autoCloseDelay": 4.5,
+            "doorSound": "assets/audio/door.wav",
+            "lockedSound": "assets/audio/door_locked.wav",
+            "requiresRedKey": true,
             "slideDirX": 1.0,
             "slideDirY": 0.0,
             "slideDistance": 62.0,
             "slideSpeed": 140.0,
-            "requiresRedKey": true,
-            "autoCloseDelay": 4.5,
-            "doorSound": "assets/audio/door.wav",
-            "lockedSound": "assets/audio/door_locked.wav"
+            "type": "DoomDoor"
           }
-        ]
+        ],
+        "id": 6,
+        "type": 5
       }
     ],
-    "children": []
+    "id": 1,
+    "name": "DoorRed",
+    "parentId": -1,
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rotation": 0.0,
+    "scale": {
+      "x": 1.0,
+      "y": 1.0
+    },
+    "tag": "door"
   },
-  "reference_bindings": []
+  "version": 1
 }

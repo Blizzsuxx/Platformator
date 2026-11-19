@@ -14,13 +14,15 @@
 
 namespace doom
 {
+    class DoomBillboard;
+
     class DoomRaycaster : public Behavior
     {
       public:
         DoomRaycaster();
 
         void start() override;
-        void fixedUpdate(double timeDelta) override;
+        void lateUpdate(double timeDelta) override;
 
         int getLastWallHits() const;
         int getLastRenderedBillboardStrips() const;
@@ -37,6 +39,13 @@ namespace doom
             GameObject *object = nullptr;
             Sprite *sprite = nullptr;
             bool active = true;
+        };
+
+        struct BillboardCandidate
+        {
+            DoomBillboard *billboard = nullptr;
+            float depth = 0.0f;
+            float side = 0.0f;
         };
 
         ObjectReference<Camera> camera;
@@ -75,6 +84,7 @@ namespace doom
         std::array<PooledSprite, 2> killDigits{};
 
         std::unordered_map<const TextureWrapper *, TexDims> texDimsCache;
+        std::vector<BillboardCandidate> visibleBillboards;
         bool poolCreated = false;
         int lastWallHits = 0;
         int lastRenderedBillboardStrips = 0;

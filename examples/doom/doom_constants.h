@@ -40,6 +40,8 @@ namespace doom
 
     inline constexpr std::int32_t Z_CEILING = -2000000;
     inline constexpr std::int32_t Z_FLOOR = -1999999;
+    inline constexpr std::int32_t Z_WALL = -1000000;
+    inline constexpr std::int32_t Z_BILLBOARD = -500000;
     inline constexpr std::int32_t Z_WEAPON = 100000;
     inline constexpr std::int32_t Z_FLASH = 110000;
     inline constexpr std::int32_t Z_HUD_BG = 120000;

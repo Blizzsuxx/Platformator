@@ -18,12 +18,6 @@ namespace doom
     {
         constexpr float kPi = 3.14159265358979323846f;
 
-        std::int32_t depthToZOrder(float perpDist)
-        {
-            const float clamped = std::clamp(perpDist * 10.0f, 1.0f, 1500000.0f);
-            return -static_cast<std::int32_t>(clamped);
-        }
-
         std::uint8_t mulChannel(std::uint8_t base, float factor)
         {
             return static_cast<std::uint8_t>(std::clamp(static_cast<float>(base) * factor, 0.0f, 255.0f));
@@ -43,7 +37,7 @@ namespace doom
         render3DView();
     }
 
-    void DoomRaycaster::fixedUpdate(double)
+    void DoomRaycaster::lateUpdate(double)
     {
         ensureStagePool();
         auto *game = DoomGameManager::tryGetInstance();
@@ -165,13 +159,13 @@ namespace doom
         for (int c = 0; c < RAY_COLUMNS; ++c)
         {
             wallColumns[c] = createStageSprite("Stage_Col_" + std::to_string(c), defaultWallTex.get(), 1.0f, 1.0f,
-                                               Z_FLOOR + 1, PARK_X, PARK_Y);
+                                               Z_WALL, PARK_X, PARK_Y);
             wallColumns[c].active = false;
         }
         for (int b = 0; b < MAX_BILLBOARD_STRIPS; ++b)
         {
             billboardStrips[b] = createStageSprite("Stage_BB_" + std::to_string(b), defaultWallTex.get(), 1.0f, 1.0f,
-                                                   Z_FLOOR + 2, PARK_X, PARK_Y);
+                                                   Z_BILLBOARD, PARK_X, PARK_Y);
             billboardStrips[b].active = false;
         }
 
@@ -341,26 +335,47 @@ namespace doom
             col.sprite->setHeight(botClipped - topClipped);
             col.sprite->setColor(mulChannel(wallTint.r, light), mulChannel(wallTint.g, light),
                                  mulChannel(wallTint.b, light), 255);
-            col.sprite->setZOrder(depthToZOrder(perpDist));
             col.object->setPosition(Eigen::Vector2f(STAGE_ORIGIN_X + (static_cast<float>(c) + 0.5f) * kColumnWidth,
                                                     (topClipped + botClipped) * 0.5f));
         }
         lastWallHits = wallHits;
 
-        // 2. Render depth-sliced animated billboards against the 1D wall depth buffer
+        // 2. Render depth-sliced animated billboards back-to-front against the 1D wall depth buffer
         int usedStrips = 0;
         if (game != nullptr)
         {
+            visibleBillboards.clear();
             for (DoomBillboard *billboard : game->getBillboards())
+            {
+                if (billboard == nullptr || billboard->getGameObject() == nullptr)
+                {
+                    continue;
+                }
+                const Eigen::Vector2f toEntity = billboard->getGameObject()->getPosition() - playerPos;
+                const float depth = toEntity.dot(forward);
+                if (depth <= 10.0f || depth >= MAX_VIEW_DIST)
+                {
+                    continue;
+                }
+                visibleBillboards.push_back(BillboardCandidate{billboard, depth, toEntity.dot(right)});
+            }
+
+            std::sort(visibleBillboards.begin(), visibleBillboards.end(),
+                      [](const BillboardCandidate &a, const BillboardCandidate &b) {
+                          if (a.depth != b.depth)
+                          {
+                              return a.depth > b.depth;
+                          }
+                          return a.billboard->getGameObject()->getId() < b.billboard->getGameObject()->getId();
+                      });
+
+            for (const BillboardCandidate &cand : visibleBillboards)
             {
                 if (usedStrips >= MAX_BILLBOARD_STRIPS)
                 {
                     break;
                 }
-                if (billboard == nullptr || billboard->getGameObject() == nullptr)
-                {
-                    continue;
-                }
+                DoomBillboard *billboard = cand.billboard;
                 const TextureRegion region = billboard->getCurrentRegion();
                 TextureWrapper *tex = region.getTextureWrapper();
                 if (tex == nullptr)
@@ -368,14 +383,8 @@ namespace doom
                     continue;
                 }
 
-                const Eigen::Vector2f toEntity = billboard->getGameObject()->getPosition() - playerPos;
-                const float depth = toEntity.dot(forward);
-                if (depth <= 10.0f || depth >= MAX_VIEW_DIST)
-                {
-                    continue;
-                }
-                const float side = toEntity.dot(right);
-                const float screenCenterX = VIEW_WIDTH * 0.5f + (side / depth) * focalFactor;
+                const float depth = cand.depth;
+                const float screenCenterX = VIEW_WIDTH * 0.5f + (cand.side / depth) * focalFactor;
 
                 const TexDims texDims = getTexDims(tex);
                 const float regX = region.hasSourceRect ? region.sourceRect.x : 0.0f;
@@ -436,7 +445,6 @@ namespace doom
                     light = std::clamp(fog + flashBoost, 0.14f, 1.0f);
                 }
                 const std::uint8_t shade = static_cast<std::uint8_t>(std::clamp(light * 255.0f, 0.0f, 255.0f));
-                const std::int32_t bbZ = depthToZOrder(depth) + 1;
 
                 int c = colStart;
                 while (c <= colEnd && usedStrips < MAX_BILLBOARD_STRIPS)
@@ -477,7 +485,6 @@ namespace doom
                     strip.sprite->setHeight(botClipped - topClipped);
                     strip.sprite->setColor(tintChannel(baseTint.r, shade), tintChannel(baseTint.g, shade),
                                            tintChannel(baseTint.b, shade), baseTint.a);
-                    strip.sprite->setZOrder(bbZ);
                     strip.object->setPosition(Eigen::Vector2f(STAGE_ORIGIN_X + (spanLeft + spanRight) * 0.5f,
                                                               (topClipped + botClipped) * 0.5f));
                 }

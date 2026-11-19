@@ -36,43 +36,73 @@ void PhysicsManager::applyPhysics(double timeDelta)
     {
         return;
     }
-    tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i)
-                      {
-        auto *body = awakeDynamicBodies[i];
+    const auto integrateBody = [&](Rigidbody *body) {
         resetSleepIsland(body);
-        body->integrateForces(timeDelta, gravityVector); });
+        body->integrateForces(timeDelta, gravityVector);
+    };
+    if (awakeDynamicBodies.size() < BODY_INTEGRATION_PARALLEL_THRESHOLD)
+    {
+        for (auto *body : awakeDynamicBodies)
+        {
+            integrateBody(body);
+        }
+        return;
+    }
+    tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i) { integrateBody(awakeDynamicBodies[i]); });
 }
 
 void PhysicsManager::applyMovement(double timeDelta)
 {
-    PLATFORMATOR_WORK_ADD(movingBodies, awakeDynamicBodies.size() + movingKinematicBodies.size());
-    if (awakeDynamicBodies.empty() && movingKinematicBodies.empty())
+    const size_t totalMoving = awakeDynamicBodies.size() + movingKinematicBodies.size();
+    PLATFORMATOR_WORK_ADD(movingBodies, totalMoving);
+    if (totalMoving == 0)
     {
         return;
     }
-    tbb::parallel_for(size_t(0), awakeDynamicBodies.size() + movingKinematicBodies.size(), [&](size_t i)
-                      {
-        auto *body = i < awakeDynamicBodies.size() ? awakeDynamicBodies[i]
-                                                   : movingKinematicBodies[i - awakeDynamicBodies.size()];
+    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+    const auto publishMoved = [&](GameObject *object, bool translated, bool rotated) {
+        if (rotated)
+        {
+            manager.publishRenderGeometryChange(object);
+            object->updateCollider();
+        }
+        if (translated)
+        {
+            // The manager synchronizes this batch before any callbacks or reads.
+            manager.queueTransform(object, false);
+        }
+    };
+    if (totalMoving < BODY_INTEGRATION_PARALLEL_THRESHOLD)
+    {
+        for (auto *body : awakeDynamicBodies)
+        {
+            if (const auto changes = body->integrateLocal(timeDelta))
+            {
+                publishMoved(body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0);
+            }
+        }
+        for (auto *body : movingKinematicBodies)
+        {
+            if (const auto changes = body->integrateLocal(timeDelta))
+            {
+                publishMoved(body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0);
+            }
+        }
+        return;
+    }
+    tbb::parallel_for(size_t(0), totalMoving, [&](size_t i) {
+        auto *body =
+            i < awakeDynamicBodies.size() ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeDynamicBodies.size()];
         if (const auto changes = body->integrateLocal(timeDelta))
         {
             movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0});
-        } });
-    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+        }
+    });
     for (auto &objects : movedObjects)
     {
         for (auto changed : objects)
         {
-            if (changed.rotated)
-            {
-                manager.publishRenderGeometryChange(changed.object);
-                changed.object->updateCollider();
-            }
-            if (changed.translated)
-            {
-                // The manager synchronizes this batch before any callbacks or reads.
-                manager.queueTransform(changed.object, false);
-            }
+            publishMoved(changed.object, changed.translated, changed.rotated);
         }
         objects.clear();
     }

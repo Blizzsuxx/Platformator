@@ -428,8 +428,7 @@ void Grid::flushPendingCellUpdates()
 {
     if (pendingColliderOperations.empty() && cellsWithOperations.empty() && potentiallyEmptyCells.empty())
         return;
-    tbb::parallel_for(size_t(0), pendingColliderOperations.size(), [&](size_t i) {
-        auto *collider = pendingColliderOperations[i];
+    const auto processPendingCollider = [&](Collider *collider) {
         if (!collider->desiredInGrid)
         {
             if (collider->getIsRegisteredInGrid())
@@ -439,9 +438,27 @@ void Grid::flushPendingCellUpdates()
             addColliderInternal(collider);
         else if (collider->dirty)
             syncCollider(collider);
-    });
-    tbb::parallel_for(size_t(0), cellsWithOperations.size(),
-                      [&](size_t i) { cellsWithOperations[i]->flushPendingOperations(); });
+    };
+    if (pendingColliderOperations.size() < GRID_UPDATE_PARALLEL_THRESHOLD)
+    {
+        for (auto *collider : pendingColliderOperations)
+            processPendingCollider(collider);
+    }
+    else
+    {
+        tbb::parallel_for(size_t(0), pendingColliderOperations.size(),
+                          [&](size_t i) { processPendingCollider(pendingColliderOperations[i]); });
+    }
+    if (cellsWithOperations.size() < GRID_CELL_FLUSH_PARALLEL_THRESHOLD)
+    {
+        for (auto *cell : cellsWithOperations)
+            cell->flushPendingOperations();
+    }
+    else
+    {
+        tbb::parallel_for(size_t(0), cellsWithOperations.size(),
+                          [&](size_t i) { cellsWithOperations[i]->flushPendingOperations(); });
+    }
     cellsWithOperations.clear();
     applyCollectedPairDeltas();
     bool erasedBoundaryCell = false;

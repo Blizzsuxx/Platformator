@@ -74,6 +74,14 @@ def select_x_axis(rows: List[Dict[str, Union[str, float]]]) -> Tuple[str, str]:
     return "swept_value", sweep_label(str(rows[0]["sweep_parameter"]))
 
 
+def validate_comparison(rows, compare_rows) -> None:
+    for field in ("scenario", "sweep_parameter", "seed", "steady_count", "scripted_endpoints"):
+        if field == rows[0]["sweep_parameter"]:
+            continue
+        if {row.get(field, 0.0) for row in rows} != {row.get(field, 0.0) for row in compare_rows}:
+            raise ValueError(f"Compare CSV must use the same {field} as --input")
+
+
 def build_title(rows: List[Dict[str, Union[str, float]]], compare_rows: Optional[List[Dict[str, Union[str, float]]]] = None) -> str:
     scenario = str(rows[0].get("scenario", "unknown"))
     sweep_parameter = str(rows[0].get("sweep_parameter", "requested_count"))
@@ -99,32 +107,34 @@ def compute_reference_curve(
     values: Sequence[float],
     ref_key: str,
     anchor: str = "mid",
+    normalized: bool = False,
 ) -> List[float]:
     """Compute a scaled asymptotic reference curve anchored to observed data."""
     if ref_key not in COMPLEXITY_SPECS:
         raise ValueError(f"Unknown reference curve '{ref_key}'. Expected one of {tuple(COMPLEXITY_SPECS)}")
     _, fn, _ = COMPLEXITY_SPECS[ref_key]
-    valid_indices = [i for i, (c, v) in enumerate(zip(counts, values)) if c > 0.0 and v > 0.0 and fn(c) > 0.0]
+    shape = [fn(c) / c if c > 0.0 else 0.0 for c in counts] if normalized else [fn(c) for c in counts]
+    valid_indices = [i for i, (c, v) in enumerate(zip(counts, values)) if c > 0.0 and v > 0.0 and shape[i] > 0.0]
     if not valid_indices:
         return []
 
     if anchor == "first":
         idx = valid_indices[0]
-        scale = values[idx] / fn(counts[idx])
+        scale = values[idx] / shape[idx]
     elif anchor == "mid":
         idx = valid_indices[len(valid_indices) // 2]
-        scale = values[idx] / fn(counts[idx])
+        scale = values[idx] / shape[idx]
     elif anchor == "last":
         idx = valid_indices[-1]
-        scale = values[idx] / fn(counts[idx])
+        scale = values[idx] / shape[idx]
     elif anchor == "fit":
         # Geometric-mean fit minimizes relative error across log-spaced ranges.
-        log_ratios = [math.log(values[i] / fn(counts[i])) for i in valid_indices]
+        log_ratios = [math.log(values[i] / shape[i]) for i in valid_indices]
         scale = math.exp(sum(log_ratios) / len(log_ratios))
     else:
         raise ValueError(f"Unknown anchor mode: {anchor}")
 
-    return [scale * fn(c) for c in counts]
+    return [scale * v for v in shape]
 
 
 def _default_series(include_cleanup: bool, include_physics: bool) -> List[Tuple[str, str, str]]:
@@ -165,7 +175,9 @@ def _configure_axes(ax, counts: Sequence[float], log_x: bool, log_y: bool, x_tic
         ax.set_yscale("log")
 
 
-def _plot_references(ax, counts: Sequence[float], values: Sequence[float], references: Sequence[str], anchor: str) -> None:
+def _plot_references(
+    ax, counts: Sequence[float], values: Sequence[float], references: Sequence[str], anchor: str, normalized: bool
+) -> None:
     if not references or not any(v > 0.0 for v in values):
         return
     valid_pos = [v for v in values if v > 0.0]
@@ -173,11 +185,12 @@ def _plot_references(ax, counts: Sequence[float], values: Sequence[float], refer
     y_max_bound = max(valid_pos) * 4.0
 
     for ref_key in references:
-        ref_vals = compute_reference_curve(counts, values, ref_key, anchor=anchor)
+        ref_vals = compute_reference_curve(counts, values, ref_key, anchor=anchor, normalized=normalized)
         if not ref_vals:
             continue
         label, _, color = COMPLEXITY_SPECS[ref_key]
-        ax.plot(counts, ref_vals, linestyle=":", linewidth=1.6, color=color, alpha=0.85, label=f"ref {label}")
+        suffix = " per item" if normalized else ""
+        ax.plot(counts, ref_vals, linestyle=":", linewidth=1.6, color=color, alpha=0.85, label=f"ref {label}{suffix}")
 
     if ax.get_yscale() == "log":
         ax.set_ylim(bottom=max(y_min_bound, 1e-4), top=y_max_bound)
@@ -249,21 +262,7 @@ def _plot_series_panel(
 
     if references:
         ref_vals = transform([float(row[ref_target]) for row in rows])
-        if normalized:
-            # In normalized mode, O(N) is flat and O(N log N) grows as log N.
-            norm_refs = []
-            for r in references:
-                if r == "N":
-                    norm_refs.append("1")
-                elif r == "NlogN":
-                    norm_refs.append("logN")
-                elif r == "N2":
-                    norm_refs.append("N")
-                else:
-                    norm_refs.append(r)
-            _plot_references(ax, counts, ref_vals, norm_refs, ref_anchor)
-        else:
-            _plot_references(ax, counts, ref_vals, references, ref_anchor)
+        _plot_references(ax, counts, ref_vals, references, ref_anchor, normalized)
 
     y_label = "Time per item (us / N)" if normalized else "Time (ms)"
     _configure_axes(ax, counts, log_x, log_y, x_tick_step, x_label, y_label)
@@ -419,8 +418,8 @@ def main() -> int:
 
     rows = load_rows(args.input)
     compare_rows = load_rows(args.compare) if args.compare else None
-    if compare_rows is not None and rows[0]["scenario"] != compare_rows[0]["scenario"]:
-        raise ValueError("Compare CSV must use the same scenario as --input")
+    if compare_rows is not None:
+        validate_comparison(rows, compare_rows)
 
     x_axis_key, x_axis_label = select_x_axis(rows)
     rows.sort(key=lambda item: float(item.get(x_axis_key, item["requested_count"])))

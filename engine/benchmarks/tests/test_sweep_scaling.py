@@ -212,6 +212,20 @@ class PlotAndFailureContract(unittest.TestCase):
         self.assertEqual(refs, [1.0, 2.0, 4.0])
         quad = plot.compute_reference_curve([100.0, 200.0, 400.0], [1.0, 2.0, 4.0], "N2", anchor="first")
         self.assertEqual(quad, [1.0, 4.0, 16.0])
+        for ref, expected in (("1", [1.0, 0.5, 0.25]), ("logN", [1.0, 0.75, 0.5]),
+                              ("N", [1.0, 1.0, 1.0]), ("NlogN", [1.0, 1.5, 2.0]),
+                              ("N2", [1.0, 2.0, 4.0])):
+            curve = plot.compute_reference_curve([4.0, 8.0, 16.0], [1.0] * 3, ref,
+                                                 anchor="first", normalized=True)
+            self.assertEqual(curve, expected)
+
+        primary = dict(scenario="moving_add_and_remove", sweep_parameter="churn_count", seed=0,
+                       steady_count=1000, scripted_endpoints=0, workers=1)
+        plot.validate_comparison([primary], [dict(primary, workers=6)])
+        for field, value in (("scenario", "add_and_remove"), ("sweep_parameter", "steady_count"),
+                             ("seed", 1), ("steady_count", 2000), ("scripted_endpoints", 2)):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                plot.validate_comparison([primary], [dict(primary, **{field: value})])
 
         with tempfile.TemporaryDirectory() as directory:
             csv_w1 = Path(directory) / "w1.csv"

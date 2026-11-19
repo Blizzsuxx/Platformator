@@ -15,25 +15,22 @@
 
 void *GameObject::operator new(size_t size)
 {
-    if (size == sizeof(GameObject))
-    {
-        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::GameObject, size);
-    }
-    return ::operator new(size);
+    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::GameObject, size);
 }
 
-void GameObject::operator delete(void *ptr, size_t size) noexcept
+void GameObject::operator delete(void *ptr, size_t) noexcept
 {
-    if (ptr == nullptr)
-    {
-        return;
-    }
-    if (size == sizeof(GameObject))
-    {
-        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::GameObject, ptr, size);
-        return;
-    }
-    ::operator delete(ptr);
+    platformator_detail::deallocatePooledObject(ptr);
+}
+
+void *GameObject::operator new(size_t size, const std::nothrow_t &) noexcept
+{
+    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::GameObject, size);
+}
+
+void GameObject::operator delete(void *ptr, const std::nothrow_t &) noexcept
+{
+    platformator_detail::deallocatePooledObject(ptr);
 }
 
 GameObject::GameObject()

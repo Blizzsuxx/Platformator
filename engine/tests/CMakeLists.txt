@@ -14,6 +14,8 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/assets/" DESTINATION "${CMAKE_RU
 include("${PLATFORMATOR_ROOT_DIR}/cmake/PlatformatorTests.cmake")
 platformator_add_test(platformator_regression_tests tests/regression_tests.cpp INTERNAL LABELS physics)
 platformator_add_test(platformator_scene_script_roundtrip_test tests/scene_script_roundtrip_test.cpp INTERNAL LABELS scene)
+set_tests_properties(platformator_scene_script_roundtrip_test PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:platformator_scene_script_roundtrip_test>")
 platformator_add_test(platformator_queued_deletion_safety_test tests/queued_deletion_safety_test.cpp INTERNAL LABELS lifecycle physics)
 platformator_add_test(platformator_runtime_recreation_test tests/runtime_recreation_test.cpp INTERNAL LABELS lifecycle)
 platformator_add_test(platformator_collider_pair_cleanup_test tests/collider_pair_cleanup_test.cpp INTERNAL LABELS physics)

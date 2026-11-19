@@ -1149,6 +1149,7 @@ void GameManager::commitSceneTransition(SceneRequest selected)
     }
 
     clearAllSceneObjects(error);
+    platformator_detail::releaseEmptyObjectPools();
 
     if (clearing)
     {

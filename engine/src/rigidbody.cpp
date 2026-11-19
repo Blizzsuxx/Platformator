@@ -9,25 +9,22 @@
 
 void *Rigidbody::operator new(size_t size)
 {
-    if (size == sizeof(Rigidbody))
-    {
-        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, size);
-    }
-    return ::operator new(size);
+    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, size);
 }
 
-void Rigidbody::operator delete(void *ptr, size_t size) noexcept
+void Rigidbody::operator delete(void *ptr, size_t) noexcept
 {
-    if (ptr == nullptr)
-    {
-        return;
-    }
-    if (size == sizeof(Rigidbody))
-    {
-        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, ptr, size);
-        return;
-    }
-    ::operator delete(ptr);
+    platformator_detail::deallocatePooledObject(ptr);
+}
+
+void *Rigidbody::operator new(size_t size, const std::nothrow_t &) noexcept
+{
+    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::Rigidbody, size);
+}
+
+void Rigidbody::operator delete(void *ptr, const std::nothrow_t &) noexcept
+{
+    platformator_detail::deallocatePooledObject(ptr);
 }
 
 Rigidbody::Rigidbody() : Rigidbody(nullptr, BodyType::DYNAMIC, true)

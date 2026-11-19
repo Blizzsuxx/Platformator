@@ -22,6 +22,8 @@ class Rigidbody : public Component
   public:
     static void *operator new(size_t size);
     static void operator delete(void *ptr, size_t size) noexcept;
+    static void *operator new(size_t size, const std::nothrow_t &) noexcept;
+    static void operator delete(void *ptr, const std::nothrow_t &) noexcept;
     static void *operator new(size_t, void *ptr) noexcept
     {
         return ptr;
@@ -33,11 +35,19 @@ class Rigidbody : public Component
     {
         return ::operator new(size, alignment);
     }
-    static void operator delete(void *ptr, size_t size, std::align_val_t alignment) noexcept
+    static void operator delete(void *ptr, size_t, std::align_val_t alignment) noexcept
     {
-        ::operator delete(ptr, size, alignment);
+        ::operator delete(ptr, alignment);
     }
     static void operator delete(void *ptr, std::align_val_t alignment) noexcept
+    {
+        ::operator delete(ptr, alignment);
+    }
+    static void *operator new(size_t size, std::align_val_t alignment, const std::nothrow_t &tag) noexcept
+    {
+        return ::operator new(size, alignment, tag);
+    }
+    static void operator delete(void *ptr, std::align_val_t alignment, const std::nothrow_t &) noexcept
     {
         ::operator delete(ptr, alignment);
     }

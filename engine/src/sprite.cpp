@@ -6,25 +6,22 @@
 
 void *Sprite::operator new(size_t size)
 {
-    if (size == sizeof(Sprite))
-    {
-        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Sprite, size);
-    }
-    return ::operator new(size);
+    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Sprite, size);
 }
 
-void Sprite::operator delete(void *ptr, size_t size) noexcept
+void Sprite::operator delete(void *ptr, size_t) noexcept
 {
-    if (ptr == nullptr)
-    {
-        return;
-    }
-    if (size == sizeof(Sprite))
-    {
-        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Sprite, ptr, size);
-        return;
-    }
-    ::operator delete(ptr);
+    platformator_detail::deallocatePooledObject(ptr);
+}
+
+void *Sprite::operator new(size_t size, const std::nothrow_t &) noexcept
+{
+    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::Sprite, size);
+}
+
+void Sprite::operator delete(void *ptr, const std::nothrow_t &) noexcept
+{
+    platformator_detail::deallocatePooledObject(ptr);
 }
 
 Sprite::Sprite()

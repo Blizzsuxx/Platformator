@@ -145,10 +145,13 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
         return;
     }
 
-    if (pairsWithBothAxisOverlapping.emplace(colliderA, colliderB).second)
+    const AABBPair pair(colliderA, colliderB);
+    if (pairsWithBothAxisOverlapping.contains(pair))
     {
-        owner->recordPairDelta(colliderA, colliderB, 1);
+        return;
     }
+    pairsWithBothAxisOverlapping.insert(pair);
+    owner->recordPairDelta(colliderA, colliderB, 1);
 }
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB)

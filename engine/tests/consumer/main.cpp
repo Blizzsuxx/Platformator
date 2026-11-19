@@ -3,12 +3,27 @@
 #include <platformator/camera.h>
 #include <platformator/objectreference.h>
 #include <platformator/sprite.h>
+#include <cstdint>
 #include <iostream>
+#include <memory>
+#include <new>
+
+namespace
+{
+struct alignas(2 * __STDCPP_DEFAULT_NEW_ALIGNMENT__) AlignedCollider : BoxCollider
+{
+};
+}
 
 int main(int argc, char **argv)
 {
     try
     {
+        const std::unique_ptr<BoxCollider> pooled(new (std::nothrow) BoxCollider);
+        const std::unique_ptr<BoxCollider> aligned(new (std::nothrow) AlignedCollider);
+        if (!pooled || !aligned || reinterpret_cast<std::uintptr_t>(aligned.get()) % alignof(AlignedCollider) != 0)
+            return 5;
+
         RuntimeOptions options;
         options.windowSettings.headless = true;
         options.windowSettings.enableRenderCulling = true;

@@ -6,25 +6,22 @@
 
 void *CircleCollider::operator new(size_t size)
 {
-    if (size == sizeof(CircleCollider))
-    {
-        return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, size);
-    }
-    return ::operator new(size);
+    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, size);
 }
 
-void CircleCollider::operator delete(void *ptr, size_t size) noexcept
+void CircleCollider::operator delete(void *ptr, size_t) noexcept
 {
-    if (ptr == nullptr)
-    {
-        return;
-    }
-    if (size == sizeof(CircleCollider))
-    {
-        platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, ptr, size);
-        return;
-    }
-    ::operator delete(ptr);
+    platformator_detail::deallocatePooledObject(ptr);
+}
+
+void *CircleCollider::operator new(size_t size, const std::nothrow_t &) noexcept
+{
+    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::CircleCollider, size);
+}
+
+void CircleCollider::operator delete(void *ptr, const std::nothrow_t &) noexcept
+{
+    platformator_detail::deallocatePooledObject(ptr);
 }
 
 CircleCollider::CircleCollider()

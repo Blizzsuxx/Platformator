@@ -5,10 +5,12 @@
 #include <atomic>
 #include <cassert>
 #include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <new>
-#include <vector>
+
+#include <oneapi/tbb/spin_mutex.h>
 
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
@@ -37,7 +39,7 @@ void *allocatePooledObject(PooledObjectKind, size_t size)
     return ::operator new(size);
 }
 
-void deallocatePooledObject(PooledObjectKind, void *ptr, size_t) noexcept
+void deallocatePooledObject(void *ptr) noexcept
 {
     ::operator delete(ptr);
 }
@@ -50,339 +52,233 @@ void releaseEmptyObjectPools() noexcept
 
 namespace
 {
-static_assert(alignof(GameObject) <= alignof(std::max_align_t));
-static_assert(alignof(BoxCollider) <= alignof(std::max_align_t));
-static_assert(alignof(CircleCollider) <= alignof(std::max_align_t));
-static_assert(alignof(Rigidbody) <= alignof(std::max_align_t));
-static_assert(alignof(Sprite) <= alignof(std::max_align_t));
+constexpr size_t SLOT_ALIGNMENT = std::max<size_t>(alignof(std::max_align_t), __STDCPP_DEFAULT_NEW_ALIGNMENT__);
+constexpr size_t INITIAL_SLAB_SLOTS = 64;
+constexpr size_t MAX_SLAB_SLOTS = 256;
 
-constexpr size_t POOL_COUNT = static_cast<size_t>(PooledObjectKind::Count);
+static_assert(alignof(GameObject) <= SLOT_ALIGNMENT);
+static_assert(alignof(BoxCollider) <= SLOT_ALIGNMENT);
+static_assert(alignof(CircleCollider) <= SLOT_ALIGNMENT);
+static_assert(alignof(Rigidbody) <= SLOT_ALIGNMENT);
+static_assert(alignof(Sprite) <= SLOT_ALIGNMENT);
 
 struct FreeNode
 {
     FreeNode *next;
 };
 
-constexpr size_t alignUp(size_t value, size_t alignment) noexcept
+class SlabPool;
+
+struct alignas(SLOT_ALIGNMENT) Slab
 {
-    return (value + alignment - 1) & ~(alignment - 1);
+    SlabPool *pool;
+    FreeNode *freeHead = nullptr;
+    size_t liveSlots = 0;
+
+    // Only slabs with free slots are on this list.
+    Slab *next = nullptr;
+    Slab **previousLink = nullptr;
+};
+
+struct SlotHeader
+{
+    Slab *slab;
+};
+
+constexpr size_t alignSlotSize(size_t size) noexcept
+{
+    return (size + SLOT_ALIGNMENT - 1) & ~(SLOT_ALIGNMENT - 1);
 }
 
-class CentralPool
+constexpr size_t OBJECT_OFFSET = alignSlotSize(sizeof(SlotHeader));
+constexpr size_t SLAB_OBJECT_OFFSET = alignSlotSize(sizeof(Slab) + sizeof(SlotHeader));
+
+SlotHeader *slotHeader(void *ptr) noexcept
+{
+    return reinterpret_cast<SlotHeader *>(static_cast<std::byte *>(ptr) - sizeof(SlotHeader));
+}
+
+class SlabPool
 {
   public:
-    explicit CentralPool(size_t rawSize) noexcept
-        : slotSize(alignUp(std::max(rawSize, sizeof(FreeNode)), alignof(std::max_align_t)))
+    explicit SlabPool(size_t objectSize) noexcept
+        : objectSize(objectSize), slotSize(alignSlotSize(sizeof(SlotHeader) + std::max(objectSize, sizeof(FreeNode))))
     {
     }
 
-    ~CentralPool()
+    void *allocate(size_t size)
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (freeCount == totalSlots && !slabs.empty())
+        if (size != objectSize)
         {
-            releaseAllSlabsLocked();
+            // A derived type can inherit this allocator. Its allocation still needs a header
+            // so the corresponding nothrow placement delete can free it without a size.
+            if (size > SIZE_MAX - OBJECT_OFFSET)
+                throw std::bad_alloc();
+            auto *storage = static_cast<std::byte *>(
+                ::operator new(OBJECT_OFFSET + size, std::align_val_t{SLOT_ALIGNMENT}));
+            void *ptr = storage + OBJECT_OFFSET;
+            std::construct_at(slotHeader(ptr), SlotHeader{nullptr});
+            return ptr;
         }
+
+        std::lock_guard lock(mutex);
+        if (available == nullptr)
+            grow();
+
+        Slab *slab = available;
+        FreeNode *slot = slab->freeHead;
+        slab->freeHead = slot->next;
+        ++slab->liveSlots;
+        if (slab->freeHead == nullptr)
+            unlink(slab);
+        return slot;
     }
 
-    FreeNode *acquireOne()
+    void deallocate(Slab *slab, void *ptr) noexcept
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (freeHead == nullptr)
-        {
-            growLocked();
-        }
-        FreeNode *node = freeHead;
-        freeHead = node->next;
-        --freeCount;
-        return node;
+        std::lock_guard lock(mutex);
+        const bool wasFull = slab->freeHead == nullptr;
+        slab->freeHead = std::construct_at(static_cast<FreeNode *>(ptr), FreeNode{slab->freeHead});
+        if (wasFull)
+            link(slab);
+
+        --slab->liveSlots;
+        if (exiting && slab->liveSlots == 0)
+            release(slab);
     }
 
-    size_t acquireBatch(size_t requested, FreeNode *&outHead)
+    void trim(bool atExit = false) noexcept
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (freeHead == nullptr)
+        std::lock_guard lock(mutex);
+        exiting = atExit || exiting;
+        Slab *slab = available;
+        while (slab != nullptr)
         {
-            growLocked();
+            Slab *next = slab->next;
+            if (slab->liveSlots == 0)
+                release(slab);
+            slab = next;
         }
-        FreeNode *first = freeHead;
-        FreeNode *last = first;
-        size_t taken = 1;
-        while (taken < requested && last->next != nullptr)
-        {
-            last = last->next;
-            ++taken;
-        }
-        freeHead = last->next;
-        last->next = nullptr;
-        freeCount -= taken;
-        outHead = first;
-        return taken;
-    }
-
-    void returnBatch(FreeNode *head, FreeNode *tail, size_t count) noexcept
-    {
-        if (head == nullptr || count == 0)
-        {
-            return;
-        }
-        std::lock_guard<std::mutex> lock(mutex);
-        tail->next = freeHead;
-        freeHead = head;
-        freeCount += count;
-    }
-
-    void releaseIfEmpty() noexcept
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (freeCount == totalSlots && !slabs.empty())
-        {
-            releaseAllSlabsLocked();
-        }
-    }
-
-  private:
-    void growLocked()
-    {
-        const size_t count = nextSlabSlots;
-        nextSlabSlots = std::min<size_t>(nextSlabSlots * 2, MAX_SLAB_SLOTS);
-
-        const size_t bytes = count * slotSize;
-        auto *mem = static_cast<std::byte *>(::operator new(bytes, std::align_val_t{alignof(std::max_align_t)}));
-        try
-        {
-            slabs.push_back(mem);
-        }
-        catch (...)
-        {
-            ::operator delete(mem, std::align_val_t{alignof(std::max_align_t)});
-            throw;
-        }
-
-        // Link slots in reverse so popping yields ascending contiguous addresses.
-        FreeNode *head = freeHead;
-        for (size_t i = count; i > 0; --i)
-        {
-            auto *node = reinterpret_cast<FreeNode *>(mem + (i - 1) * slotSize);
-            node->next = head;
-            head = node;
-        }
-        freeHead = head;
-        freeCount += count;
-        totalSlots += count;
-    }
-
-    void releaseAllSlabsLocked() noexcept
-    {
-        for (std::byte *slab : slabs)
-        {
-            ::operator delete(slab, std::align_val_t{alignof(std::max_align_t)});
-        }
-        slabs.clear();
-        freeHead = nullptr;
-        freeCount = 0;
-        totalSlots = 0;
         nextSlabSlots = INITIAL_SLAB_SLOTS;
     }
 
-    static constexpr size_t INITIAL_SLAB_SLOTS = 64;
-    static constexpr size_t MAX_SLAB_SLOTS = 256;
-
-    const size_t slotSize;
-    std::mutex mutex;
-    std::vector<std::byte *> slabs;
-    FreeNode *freeHead = nullptr;
-    size_t freeCount = 0;
-    size_t totalSlots = 0;
-    size_t nextSlabSlots = INITIAL_SLAB_SLOTS;
-};
-
-using CentralPoolArray = std::array<std::shared_ptr<CentralPool>, POOL_COUNT>;
-
-std::atomic<bool> centralPoolsDestroyed{false};
-
-struct CentralPoolRegistry
-{
-    CentralPoolArray pools{
-        std::make_shared<CentralPool>(sizeof(GameObject)),
-        std::make_shared<CentralPool>(sizeof(BoxCollider)),
-        std::make_shared<CentralPool>(sizeof(CircleCollider)),
-        std::make_shared<CentralPool>(sizeof(Rigidbody)),
-        std::make_shared<CentralPool>(sizeof(Sprite)),
-    };
-
-    ~CentralPoolRegistry()
-    {
-        centralPoolsDestroyed.store(true, std::memory_order_release);
-    }
-};
-
-CentralPoolArray &centralPools()
-{
-    static CentralPoolRegistry registry;
-    return registry.pools;
-}
-
-class ThreadPoolCache;
-inline thread_local bool threadCacheDestroyed = false;
-inline thread_local ThreadPoolCache *activeThreadCache = nullptr;
-
-class ThreadPoolCache
-{
-  public:
-    explicit ThreadPoolCache(const CentralPoolArray &pools) noexcept : centrals(pools)
-    {
-        activeThreadCache = this;
-    }
-
-    ~ThreadPoolCache()
-    {
-        activeThreadCache = nullptr;
-        flushAll();
-        threadCacheDestroyed = true;
-    }
-
-    void *allocate(size_t idx)
-    {
-        SlotCache &lane = lanes[idx];
-        if (lane.head == nullptr)
-        {
-            lane.count = centrals[idx]->acquireBatch(REFILL_BATCH, lane.head);
-        }
-        FreeNode *node = lane.head;
-        lane.head = node->next;
-        --lane.count;
-        return node;
-    }
-
-    void deallocate(size_t idx, void *ptr) noexcept
-    {
-        SlotCache &lane = lanes[idx];
-        auto *node = static_cast<FreeNode *>(ptr);
-        node->next = lane.head;
-        lane.head = node;
-        ++lane.count;
-
-        if (lane.count >= MAX_LOCAL_NODES)
-        {
-            FreeNode *head = lane.head;
-            FreeNode *tail = head;
-            size_t spilled = 1;
-            while (spilled < SPILL_BATCH && tail->next != nullptr)
-            {
-                tail = tail->next;
-                ++spilled;
-            }
-            lane.head = tail->next;
-            tail->next = nullptr;
-            lane.count -= spilled;
-            centrals[idx]->returnBatch(head, tail, spilled);
-        }
-    }
-
-    void flushAll() noexcept
-    {
-        for (size_t idx = 0; idx < POOL_COUNT; ++idx)
-        {
-            SlotCache &lane = lanes[idx];
-            if (lane.head == nullptr || lane.count == 0)
-            {
-                continue;
-            }
-            FreeNode *head = lane.head;
-            FreeNode *tail = head;
-            size_t walked = 1;
-            while (tail->next != nullptr)
-            {
-                tail = tail->next;
-                ++walked;
-            }
-            assert(walked == lane.count);
-            lane.head = nullptr;
-            const size_t count = lane.count;
-            lane.count = 0;
-            centrals[idx]->returnBatch(head, tail, count);
-        }
-    }
-
   private:
-    struct SlotCache
+    void grow()
     {
-        FreeNode *head = nullptr;
-        size_t count = 0;
-    };
+        const size_t count = nextSlabSlots;
+        auto *storage = static_cast<std::byte *>(
+            ::operator new(SLAB_OBJECT_OFFSET - sizeof(SlotHeader) + count * slotSize,
+                           std::align_val_t{SLOT_ALIGNMENT}));
+        auto *slab = std::construct_at(reinterpret_cast<Slab *>(storage), Slab{this});
+        storage += SLAB_OBJECT_OFFSET;
+        for (size_t i = count; i > 0; --i)
+        {
+            auto *slot = reinterpret_cast<FreeNode *>(storage + (i - 1) * slotSize);
+            std::construct_at(slotHeader(slot), SlotHeader{slab});
+            slab->freeHead = std::construct_at(slot, FreeNode{slab->freeHead});
+        }
+        link(slab);
+        nextSlabSlots = std::min(count * 2, MAX_SLAB_SLOTS);
+    }
 
-    static constexpr size_t REFILL_BATCH = 64;
-    static constexpr size_t MAX_LOCAL_NODES = 2048;
-    static constexpr size_t SPILL_BATCH = 1024;
+    void link(Slab *slab) noexcept
+    {
+        slab->next = available;
+        slab->previousLink = &available;
+        if (available)
+            available->previousLink = &slab->next;
+        available = slab;
+    }
 
-    CentralPoolArray centrals;
-    std::array<SlotCache, POOL_COUNT> lanes{};
+    void unlink(Slab *slab) noexcept
+    {
+        *slab->previousLink = slab->next;
+        if (slab->next)
+            slab->next->previousLink = slab->previousLink;
+    }
+
+    void release(Slab *slab) noexcept
+    {
+        unlink(slab);
+        std::destroy_at(slab);
+        ::operator delete(slab, std::align_val_t{SLOT_ALIGNMENT});
+    }
+
+    const size_t objectSize;
+    const size_t slotSize;
+    tbb::spin_mutex mutex;
+    Slab *available = nullptr;
+    size_t nextSlabSlots = INITIAL_SLAB_SLOTS;
+    bool exiting = false;
 };
 
-ThreadPoolCache *tryGetThreadCache()
+using Pools = std::array<SlabPool, static_cast<size_t>(PooledObjectKind::Count)>;
+constinit std::atomic<Pools *> publishedPools{nullptr};
+
+Pools &getPools()
 {
-    if (threadCacheDestroyed || centralPoolsDestroyed.load(std::memory_order_acquire))
-    {
-        return nullptr;
-    }
-    thread_local ThreadPoolCache cache(centralPools());
-    return &cache;
+    // The registry outlives static objects that may still return a slot after exit trimming.
+    static Pools *const pools = [] {
+        std::unique_ptr<Pools> instance(new Pools{
+            SlabPool(sizeof(GameObject)),
+            SlabPool(sizeof(BoxCollider)),
+            SlabPool(sizeof(CircleCollider)),
+            SlabPool(sizeof(Rigidbody)),
+            SlabPool(sizeof(Sprite)),
+        });
+        if (std::atexit([] {
+                if (auto *pools = publishedPools.load(std::memory_order_acquire))
+                {
+                    for (auto &pool : *pools)
+                        pool.trim(true);
+                }
+            }) != 0)
+            throw std::bad_alloc();
+        Pools *ready = instance.release();
+        publishedPools.store(ready, std::memory_order_release);
+        return ready;
+    }();
+    return *pools;
 }
 } // namespace
 
 void *allocatePooledObject(PooledObjectKind kind, size_t size)
 {
-    const size_t idx = static_cast<size_t>(kind);
-    assert(idx < POOL_COUNT);
-    if (ThreadPoolCache *cache = tryGetThreadCache())
-    {
-        return cache->allocate(idx);
-    }
-    if (centralPoolsDestroyed.load(std::memory_order_acquire))
-    {
-        return ::operator new(size);
-    }
-    return centralPools()[idx]->acquireOne();
+    const size_t index = static_cast<size_t>(kind);
+    assert(index < static_cast<size_t>(PooledObjectKind::Count));
+    return getPools()[index].allocate(size);
 }
 
-void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t) noexcept
+void deallocatePooledObject(void *ptr) noexcept
 {
     if (ptr == nullptr)
-    {
         return;
-    }
-    const size_t idx = static_cast<size_t>(kind);
-    assert(idx < POOL_COUNT);
-    if (ThreadPoolCache *cache = tryGetThreadCache())
-    {
-        cache->deallocate(idx, ptr);
-        return;
-    }
-    if (centralPoolsDestroyed.load(std::memory_order_acquire))
-    {
-        return;
-    }
-    auto *node = static_cast<FreeNode *>(ptr);
-    node->next = nullptr;
-    centralPools()[idx]->returnBatch(node, node, 1);
+
+    if (Slab *slab = slotHeader(ptr)->slab)
+        slab->pool->deallocate(slab, ptr);
+    else
+        ::operator delete(static_cast<std::byte *>(ptr) - OBJECT_OFFSET, std::align_val_t{SLOT_ALIGNMENT});
 }
 
 void releaseEmptyObjectPools() noexcept
 {
-    if (centralPoolsDestroyed.load(std::memory_order_acquire))
+    if (auto *pools = publishedPools.load(std::memory_order_acquire))
     {
-        return;
-    }
-    if (activeThreadCache != nullptr)
-    {
-        activeThreadCache->flushAll();
-    }
-    for (auto &pool : centralPools())
-    {
-        pool->releaseIfEmpty();
+        for (auto &pool : *pools)
+            pool.trim();
     }
 }
-
 #endif
+
+void *allocatePooledObjectNothrow(PooledObjectKind kind, size_t size) noexcept
+{
+    try
+    {
+        return allocatePooledObject(kind, size);
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
 } // namespace platformator_detail

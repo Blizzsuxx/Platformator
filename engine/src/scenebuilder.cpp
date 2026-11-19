@@ -307,17 +307,17 @@ BaseObject *SceneBuildContext::findObject(int id, Kind kind)
 }
 TextureWrapper *SceneBuildContext::loadTexture(const std::string &path)
 {
-    return retainAcquisition(textures, manager.loadTexture(path, true));
+    return retainAcquisition(textures, manager.assetStore().loadTexture(path, true));
 }
 AudioWrapper *SceneBuildContext::loadAudio(const std::string &path)
 {
-    return retainAcquisition(audio, manager.loadAudio(path, true));
+    return retainAcquisition(audio, manager.assetStore().loadAudio(path, true));
 }
 AnimationClip *SceneBuildContext::loadAnimationClip(const std::string &path)
 {
-    return retainAcquisition(clips, manager.loadAnimationClip(path, *this, true));
+    return retainAcquisition(clips, manager.assetStore().loadAnimationClip(path, *this, true));
 }
 Template *SceneBuildContext::loadTemplate(const std::string &path)
 {
-    return retainAcquisition(templates, manager.loadTemplate(path, true));
+    return retainAcquisition(templates, manager.assetStore().loadTemplate(path, true));
 }

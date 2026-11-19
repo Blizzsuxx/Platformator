@@ -184,6 +184,35 @@ void PhysicsManager::flushPendingColliderOperations()
 
 void PhysicsManager::clearAll()
 {
+    for (Rigidbody *body : registeredBodies)
+    {
+        body->setIsRegisteredInPhysicsManager(false);
+        body->setPhysicsManagerIndex(SIZE_MAX);
+        body->awakeDynamicIndex = SIZE_MAX;
+        body->movingKinematicIndex = SIZE_MAX;
+        body->sleepCandidateIndex = SIZE_MAX;
+        body->participationQueueIndex = SIZE_MAX;
+        body->supportDeltaIndex = SIZE_MAX;
+        body->supportDelta = 0;
+    }
+    for (Rigidbody *body : pendingBodyChanges)
+    {
+        body->participationQueueIndex = SIZE_MAX;
+    }
+    for (Rigidbody *body : supportDeltaBodies)
+    {
+        body->supportDeltaIndex = SIZE_MAX;
+        body->supportDelta = 0;
+    }
+    for (Collider *collider : colliderComponents)
+    {
+        collider->setIsRegisteredInPhysicsManager(false);
+        collider->setPhysicsManagerIndex(SIZE_MAX);
+        collider->setIsRegisteredInGrid(false);
+        collider->desiredInGrid = false;
+        collider->gridQueueIndex = SIZE_MAX;
+    }
+
     registeredBodies.clear();
     awakeDynamicBodies.clear();
     movingKinematicBodies.clear();
@@ -310,9 +339,6 @@ void PhysicsManager::resolveCollisions(double timeDelta)
     for (auto *pair : solverPairs)
     {
         auto *collision = pair->getCollision();
-        const Collider *referenceCollider = collision->getReferenceObject();
-        const Collider *incidentCollider = collision->getIncidentObject();
-
         Collision::CollisionType resolutionType = collision->getResolutionType();
 
         switch (resolutionType)

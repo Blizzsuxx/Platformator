@@ -1,8 +1,8 @@
 #include "collision.h"
 #include "constants.h"
 #include "helpers.h"
+#include "physicsmanager.h"
 #include "platformator/rigidbody.h"
-#include "gamemanager.h"
 #include "runtimeaccess.h"
 
 Collision::Collision()
@@ -186,7 +186,7 @@ void Collision::clearSupportState() const
 bool Collision::isVerticalCollision() const
 {
     const Eigen::Vector2f &gravityVectorNormalized =
-        platformator_detail::RuntimeAccess::gameManager().getGravityVectorNormalized();
+        platformator_detail::RuntimeAccess::physicsManager()->getGravityVectorNormalized();
     return std::abs(normal.dot(-gravityVectorNormalized)) >= SUPPORT_NORMAL_THRESHOLD;
 }
 

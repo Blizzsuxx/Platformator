@@ -1100,6 +1100,11 @@ void SDLWindow::releaseRenderingStorage() noexcept
 
 void SDLWindow::clearSceneComponents() noexcept
 {
+    for (Sprite *sprite : spriteComponents)
+    {
+        sprite->setIsRegisteredInWindow(false);
+        sprite->setWindowIndex(SIZE_MAX);
+    }
     spriteComponents.clear();
     mainCamera = nullptr;
     releaseRenderingStorage();

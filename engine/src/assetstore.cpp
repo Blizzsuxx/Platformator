@@ -104,6 +104,10 @@ Resource *AssetStore::Cache<Resource>::replace(const std::string &request, const
 
 template <typename Resource> void AssetStore::Cache<Resource>::free(Resource *resource)
 {
+    if (resource == nullptr)
+    {
+        return;
+    }
     const auto it = entries.find(resource->getFilePath());
     if (it != entries.end() && it->second.get() == resource)
     {
@@ -240,13 +244,12 @@ TextureWrapper *AssetStore::reloadTexture(const std::string &filePath, SDL_Surfa
 
 void AssetStore::freeTexture(TextureWrapper *textureWrapper)
 {
+    if (textureWrapper == nullptr)
+    {
+        return;
+    }
     PLATFORMATOR_LOG("Freeing texture: %s\n", textureWrapper->getFilePath().c_str());
     textures.free(textureWrapper);
-}
-
-void AssetStore::freeAllTextures()
-{
-    textures.clear();
 }
 
 AudioWrapper *AssetStore::loadAudio(const std::string &filePath, bool required)
@@ -286,13 +289,18 @@ AudioWrapper *AssetStore::loadAudio(const std::string &filePath, bool required)
 
 void AssetStore::freeAudio(AudioWrapper *audioWrapper)
 {
+    if (audioWrapper == nullptr)
+    {
+        return;
+    }
     PLATFORMATOR_LOG("Freeing audio: %s\n", audioWrapper->getFilePath().c_str());
     audio.free(audioWrapper);
 }
 
-void AssetStore::freeAllAudio()
+AnimationClip *AssetStore::loadAnimationClip(const std::string &filePath)
 {
-    audio.clear();
+    ActiveReferenceResolver resolver(platformator::Runtime::current());
+    return loadAnimationClip(filePath, resolver, false);
 }
 
 AnimationClip *AssetStore::loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
@@ -401,13 +409,12 @@ AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, cons
 
 void AssetStore::freeAnimationClip(AnimationClip *animationClip)
 {
+    if (animationClip == nullptr)
+    {
+        return;
+    }
     PLATFORMATOR_LOG("Freeing animation clip: %s\n", animationClip->getFilePath().c_str());
     animations.free(animationClip);
-}
-
-void AssetStore::freeAllAnimationClips()
-{
-    animations.clear();
 }
 
 Template *AssetStore::loadTemplate(const std::string &filePath, bool required, bool *deferredCyclic)
@@ -476,16 +483,11 @@ void AssetStore::freeTemplate(Template *tpl)
     templates.free(tpl);
 }
 
-void AssetStore::freeAllTemplates()
-{
-    templates.clear();
-}
-
 void AssetStore::freeAll()
 {
-    freeAllTemplates();
-    freeAllAnimationClips();
-    freeAllTextures();
-    freeAllAudio();
+    templates.clear();
+    animations.clear();
+    textures.clear();
+    audio.clear();
 }
 } // namespace platformator_detail

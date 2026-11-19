@@ -20,9 +20,7 @@
 
 class Animator;
 class Asset;
-class Behavior;
 class ScriptComponent;
-class Template;
 
 namespace platformator
 {
@@ -122,33 +120,19 @@ class GameManager
     void simulateFrame(double timeDelta);
     bool simulateAndRenderFrame(double timeDelta);
 
-    // Asset cache facades (backed by AssetStore)
-    TextureWrapper *loadTexture(const std::string &filePath, bool required = false);
-    TextureWrapper *findTexture(const std::string &filePath);
-    std::uint64_t texture_cache_bytes() const noexcept;
-    TextureWrapper *reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface);
-    void freeTexture(TextureWrapper *textureWrapper);
-    void freeAllTextures();
-    AudioWrapper *loadAudio(const std::string &filePath, bool required = false);
-    void freeAudio(AudioWrapper *audioWrapper);
-    void freeAllAudio();
-    AnimationClip *loadAnimationClip(const std::string &filePath);
-    AnimationClip *findAnimationClip(const std::string &filePath);
-    AnimationClip *loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
-                                     bool required);
-    AnimationClip *reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument);
-    void freeAnimationClip(AnimationClip *animationClip);
-    void freeAllAnimationClips();
-    Template *loadTemplate(const std::string &filePath, bool required = false, bool *deferredCyclic = nullptr);
-    void freeTemplate(Template *tpl);
-    void freeAllTemplates();
+    platformator_detail::AssetStore &assetStore() noexcept
+    {
+        return assets;
+    }
+    const platformator_detail::AssetStore &assetStore() const noexcept
+    {
+        return assets;
+    }
 
-    void loadScene(Scene &scene);
+    void loadScene(const Scene &scene);
     void saveScene(const Scene &scene);
 
     BaseObject *getObjectById(int id) const;
-    const Eigen::Vector2f &getGravityVector() const;
-    const Eigen::Vector2f &getGravityVectorNormalized() const;
 
   private:
     struct SceneRequest

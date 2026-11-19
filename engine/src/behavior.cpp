@@ -1,14 +1,8 @@
 #include "platformator/behavior.h"
 
-#include <filesystem>
 #include <stdexcept>
 
 #include "platformator/runtime.h"
-
-#include "platformator/animationclip.h"
-#include "collision.h"
-#include "gamemanager.h"
-#include "platformator/scriptcomponent.h"
 
 Behavior::Behavior() : gameObject(nullptr)
 {

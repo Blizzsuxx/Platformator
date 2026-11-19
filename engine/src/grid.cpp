@@ -113,17 +113,6 @@ void Grid::recomputeActiveCellBounds() noexcept
     }
 }
 
-void Grid::addCollider(Collider *collider)
-{
-    addColliderInternal(collider);
-    expandActiveCellBounds(collider->getGridCellRange());
-}
-
-void Grid::removeCollider(Collider *collider)
-{
-    removeColliderInternal(collider);
-}
-
 void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
 {
     if (pair == nullptr || !pair->getIsQueuedForNarrowPhase())
@@ -488,6 +477,12 @@ void Grid::flushPendingCellUpdates()
 
 void Grid::clearAll()
 {
+    for (Collider *collider : pendingColliderOperations)
+    {
+        collider->setIsRegisteredInGrid(false);
+        collider->desiredInGrid = false;
+        collider->gridQueueIndex = SIZE_MAX;
+    }
     cells.clear();
     candidateCollisions.clear();
     pendingNarrowPhasePairs.clear();

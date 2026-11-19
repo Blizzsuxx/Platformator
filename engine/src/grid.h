@@ -32,8 +32,6 @@ class Grid
     explicit Grid(PhysicsManager *owner = nullptr);
     ~Grid();
 
-    void addCollider(Collider *collider);
-    void removeCollider(Collider *collider);
     const tbb::concurrent_unordered_map<GridCellKey, GridCell, GridCellKey::Hash> &getCells() const;
     bool containsCellPair(Collider *colliderA, Collider *colliderB) const;
     size_t getCandidatePairCount() const;

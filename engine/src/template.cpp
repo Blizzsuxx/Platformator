@@ -73,21 +73,21 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
 
     TextureWrapper *loadTexture(const std::string &path) override
     {
-        TextureWrapper *loaded = manager.loadTexture(path, true);
+        TextureWrapper *loaded = manager.assetStore().loadTexture(path, true);
         textures.push_back(Asset::retain(loaded));
         return loaded;
     }
 
     AudioWrapper *loadAudio(const std::string &path) override
     {
-        AudioWrapper *loaded = manager.loadAudio(path, true);
+        AudioWrapper *loaded = manager.assetStore().loadAudio(path, true);
         audio.push_back(Asset::retain(loaded));
         return loaded;
     }
 
     AnimationClip *loadAnimationClip(const std::string &path) override
     {
-        AnimationClip *loaded = manager.loadAnimationClip(path, *this, true);
+        AnimationClip *loaded = manager.assetStore().loadAnimationClip(path, *this, true);
         clips.push_back(Asset::retain(loaded));
         return loaded;
     }
@@ -95,7 +95,7 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
     Template *loadTemplate(const std::string &path) override
     {
         bool deferred = false;
-        Template *loaded = manager.loadTemplate(path, true, &deferred);
+        Template *loaded = manager.assetStore().loadTemplate(path, true, &deferred);
         if (deferred)
         {
             deferredCyclicPaths.insert(path);
@@ -149,22 +149,22 @@ class CloneReferenceResolver final : public platformator::ReferenceResolver
 
     TextureWrapper *loadTexture(const std::string &path) override
     {
-        return manager.loadTexture(path, true);
+        return manager.assetStore().loadTexture(path, true);
     }
 
     AudioWrapper *loadAudio(const std::string &path) override
     {
-        return manager.loadAudio(path, true);
+        return manager.assetStore().loadAudio(path, true);
     }
 
     AnimationClip *loadAnimationClip(const std::string &path) override
     {
-        return manager.loadAnimationClip(path, *this, true);
+        return manager.assetStore().loadAnimationClip(path, *this, true);
     }
 
     Template *loadTemplate(const std::string &path) override
     {
-        return manager.loadTemplate(path, true);
+        return manager.assetStore().loadTemplate(path, true);
     }
 
   private:
@@ -365,16 +365,27 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
     {
         GameManager &manager;
         GameObject *root;
+        std::vector<ScriptComponent *> &scripts;
         bool &committed;
-        ~RollbackGuard()
+        ~RollbackGuard() noexcept
         {
             if (!committed)
             {
-                manager.removeGameObject(root);
-                manager.flushIfIdle();
+                for (ScriptComponent *script : scripts)
+                {
+                    script->destructionDelivered = true;
+                }
+                try
+                {
+                    manager.removeGameObject(root);
+                    manager.flushIfIdle();
+                }
+                catch (...)
+                {
+                }
             }
         }
-    } rollbackGuard{manager, clonedRoot, committed};
+    } rollbackGuard{manager, clonedRoot, clonedScripts, committed};
 
     if (parent != nullptr)
     {

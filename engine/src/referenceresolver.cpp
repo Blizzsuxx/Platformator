@@ -16,18 +16,18 @@ BaseObject *ActiveReferenceResolver::findHandle(platformator::ObjectHandle handl
 }
 TextureWrapper *ActiveReferenceResolver::loadTexture(const std::string &path)
 {
-    return RuntimeAccess::gameManager().loadTexture(path, true);
+    return RuntimeAccess::gameManager().assetStore().loadTexture(path, true);
 }
 AudioWrapper *ActiveReferenceResolver::loadAudio(const std::string &path)
 {
-    return RuntimeAccess::gameManager().loadAudio(path, true);
+    return RuntimeAccess::gameManager().assetStore().loadAudio(path, true);
 }
 AnimationClip *ActiveReferenceResolver::loadAnimationClip(const std::string &path)
 {
-    return RuntimeAccess::gameManager().loadAnimationClip(path, *this, true);
+    return RuntimeAccess::gameManager().assetStore().loadAnimationClip(path, *this, true);
 }
 Template *ActiveReferenceResolver::loadTemplate(const std::string &path)
 {
-    return RuntimeAccess::gameManager().loadTemplate(path, true);
+    return RuntimeAccess::gameManager().assetStore().loadTemplate(path, true);
 }
 } // namespace platformator_detail

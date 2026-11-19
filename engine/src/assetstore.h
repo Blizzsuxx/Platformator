@@ -35,22 +35,19 @@ class AssetStore
     std::uint64_t textureCacheBytes() const noexcept;
     TextureWrapper *reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface);
     void freeTexture(TextureWrapper *textureWrapper);
-    void freeAllTextures();
 
     AudioWrapper *loadAudio(const std::string &filePath, bool required = false);
     void freeAudio(AudioWrapper *audioWrapper);
-    void freeAllAudio();
 
+    AnimationClip *loadAnimationClip(const std::string &filePath);
     AnimationClip *loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
                                      bool required);
     AnimationClip *findAnimationClip(const std::string &filePath);
     AnimationClip *reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument);
     void freeAnimationClip(AnimationClip *animationClip);
-    void freeAllAnimationClips();
 
     Template *loadTemplate(const std::string &filePath, bool required = false, bool *deferredCyclic = nullptr);
     void freeTemplate(Template *tpl);
-    void freeAllTemplates();
 
     void freeAll();
 

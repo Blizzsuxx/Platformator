@@ -4,6 +4,8 @@
 #include <platformator/scriptcomponent.h>
 #include <platformator/scriptregistration.h>
 #include <platformator/boxcollider.h>
+#include <platformator/rigidbody.h>
+#include <platformator/sprite.h>
 
 using namespace test_support;
 
@@ -200,6 +202,55 @@ int main()
         runtime.simulateFrame(dt);
         require(runtime.getGameObject("old") && !runtime.getGameObject("survivor"),
                 "Retirement exit requests commit on the following step");
+
+        // Regression test: mutating Sprite/Collider/Rigidbody inside onDestroy during bulk scene teardown
+        // must not access cleared render culling state or enqueue dangling pointers into physics/grid queues.
+        {
+            struct TeardownMutator : test_support::Behavior
+            {
+                int &destroys;
+                explicit TeardownMutator(int &destroys) : destroys(destroys) {}
+                void onDestroy() override
+                {
+                    ++destroys;
+                    if (auto *sprite = getGameObject()->getComponent<Sprite>())
+                    {
+                        sprite->setWidth(48.0f);
+                        sprite->setZOrder(5);
+                    }
+                    if (auto *collider = getGameObject()->getComponent<BoxCollider>())
+                    {
+                        collider->setOffset({4.0f, 5.0f});
+                        collider->setIsTrigger(true);
+                        collider->setCollisionGroup(2);
+                    }
+                    if (auto *body = getGameObject()->getComponent<Rigidbody>())
+                    {
+                        body->wakeUp();
+                        body->setVelocity({10.0f, -5.0f});
+                    }
+                }
+            };
+            int teardownDestroys = 0;
+            auto *doomed = runtime.createGameObject()
+                               ->setName("doomed")
+                               ->addComponent<Sprite>(static_cast<TextureWrapper *>(nullptr), 16.0f, 16.0f)
+                               ->addComponent<BoxCollider>(16.0f, 16.0f)
+                               ->addComponent<Rigidbody>(BodyType::DYNAMIC, false)
+                               ->addComponent<ScriptComponent>();
+            doomed->getComponent<ScriptComponent>()->addBehavior(new TeardownMutator(teardownDestroys));
+            runtime.simulateFrame(dt);
+            runtime.clearScene();
+            require(teardownDestroys == 1, "Bulk scene clear must deliver onDestroy safely");
+            auto *fresh = runtime.createGameObject()
+                              ->setName("fresh")
+                              ->addComponent<BoxCollider>(16.0f, 16.0f)
+                              ->addComponent<Rigidbody>(BodyType::DYNAMIC, false);
+            runtime.simulateFrame(dt);
+            require(runtime.getGameObject("fresh") == fresh,
+                    "Post-teardown step must run cleanly without dangling physics/grid queue entries");
+        }
+
         // Pending requests do not outlive their runtime, including an invalid path.
         runtime.requestLoadScene("must-not-load-during-shutdown.scene");
         std::filesystem::remove(a);

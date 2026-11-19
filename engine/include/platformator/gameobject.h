@@ -61,15 +61,12 @@ class Component : public BaseObject
 class GameObject : public BaseObject
 {
     friend class GameManager;
-    friend class Scene;
     friend class SceneBuildContext;
     friend class Template;
     friend class Rigidbody;
     friend class PhysicsManager;
     friend class Collider;
-    friend class Collision;
     friend class Camera;
-    friend void from_json(const nlohmann::json &j, GameObject &gameObject);
 
   public:
     GameObject(GameObject &) = delete;

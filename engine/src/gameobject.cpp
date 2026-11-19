@@ -182,7 +182,12 @@ void GameObject::queueTransform(bool refreshImmediate)
     {
         if (refreshImmediate)
             refreshImmediatePositions();
-        worldPosition = getPosition();
+        auto syncPublished = [](auto &&self, GameObject *node) -> void {
+            node->worldPosition = node->immediateWorldPosition;
+            for (auto *child : node->children)
+                self(self, child);
+        };
+        syncPublished(syncPublished, this);
     }
 }
 

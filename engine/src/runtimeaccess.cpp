@@ -46,17 +46,17 @@ TextureWrapper *RuntimeAccess::loadTexture(const std::string &filePath)
 
 TextureWrapper *RuntimeAccess::findTexture(const std::string &filePath)
 {
-    return gameManager().findTexture(filePath);
+    return gameManager().assetStore().findTexture(filePath);
 }
 
 std::uint64_t RuntimeAccess::textureCacheBytes() noexcept
 {
-    return gameManager().texture_cache_bytes();
+    return gameManager().assetStore().textureCacheBytes();
 }
 
 TextureWrapper *RuntimeAccess::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
 {
-    return gameManager().reloadTexture(filePath, preparedSurface);
+    return gameManager().assetStore().reloadTexture(filePath, preparedSurface);
 }
 
 AudioWrapper *RuntimeAccess::loadAudio(const std::string &filePath)
@@ -71,33 +71,33 @@ AnimationClip *RuntimeAccess::loadAnimationClip(const std::string &filePath)
 
 AnimationClip *RuntimeAccess::findAnimationClip(const std::string &filePath)
 {
-    return gameManager().findAnimationClip(filePath);
+    return gameManager().assetStore().findAnimationClip(filePath);
 }
 
 AnimationClip *RuntimeAccess::reloadAnimationClip(const std::string &filePath,
                                                    const nlohmann::json &preparedDocument)
 {
-    return gameManager().reloadAnimationClip(filePath, preparedDocument);
+    return gameManager().assetStore().reloadAnimationClip(filePath, preparedDocument);
 }
 
 void RuntimeAccess::freeTexture(TextureWrapper *textureWrapper)
 {
-    gameManager().freeTexture(textureWrapper);
+    gameManager().assetStore().freeTexture(textureWrapper);
 }
 
 void RuntimeAccess::freeAudio(AudioWrapper *audioWrapper)
 {
-    gameManager().freeAudio(audioWrapper);
+    gameManager().assetStore().freeAudio(audioWrapper);
 }
 
 void RuntimeAccess::freeAnimationClip(AnimationClip *animationClip)
 {
-    gameManager().freeAnimationClip(animationClip);
+    gameManager().assetStore().freeAnimationClip(animationClip);
 }
 
 void RuntimeAccess::freeTemplate(Template *tpl)
 {
-    gameManager().freeTemplate(tpl);
+    gameManager().assetStore().freeTemplate(tpl);
 }
 
 bool RuntimeAccess::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount)

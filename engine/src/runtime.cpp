@@ -148,12 +148,12 @@ void Runtime::createMainCameraIfNoMainCameraExists()
 
 AnimationClip *Runtime::loadAnimationClip(const std::string &filePath) const
 {
-    return gameManager->loadAnimationClip(filePath);
+    return gameManager->assetStore().loadAnimationClip(filePath);
 }
 
 AudioWrapper *Runtime::loadAudio(const std::string &filePath) const
 {
-    return gameManager->loadAudio(filePath);
+    return gameManager->assetStore().loadAudio(filePath);
 }
 
 void Runtime::loadScene(Scene &scene)
@@ -169,12 +169,12 @@ void Runtime::loadScene(const std::string &sceneFilePath)
 
 TextureWrapper *Runtime::loadTexture(const std::string &filePath) const
 {
-    return gameManager->loadTexture(filePath);
+    return gameManager->assetStore().loadTexture(filePath);
 }
 
 Template *Runtime::loadTemplate(const std::string &filePath) const
 {
-    return gameManager->loadTemplate(filePath);
+    return gameManager->assetStore().loadTemplate(filePath);
 }
 
 void Runtime::saveScene(Scene &scene)

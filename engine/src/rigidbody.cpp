@@ -1,7 +1,7 @@
 #include "platformator/rigidbody.h"
 #include "constants.h"
-#include "gamemanager.h"
 #include "inputvalidation.h"
+#include "physicsmanager.h"
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
 #include "runtimeaccess.h"

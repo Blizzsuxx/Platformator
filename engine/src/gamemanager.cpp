@@ -71,7 +71,7 @@ void GameManager::loadTemplateDocument(Template &tpl, const nlohmann::json &docu
 // Scene & Object Management
 // ============================================================================
 
-void GameManager::loadScene(Scene &scene)
+void GameManager::loadScene(const Scene &scene)
 {
     requestScene(scene.filePath);
     if (isIdle())
@@ -264,16 +264,6 @@ BaseObject *GameManager::getObjectById(int id) const
     return it != idToObjectMap.end() ? it->second : nullptr;
 }
 
-const Eigen::Vector2f &GameManager::getGravityVector() const
-{
-    return physicsManager->getGravityVector();
-}
-
-const Eigen::Vector2f &GameManager::getGravityVectorNormalized() const
-{
-    return physicsManager->getGravityVectorNormalized();
-}
-
 BaseObject *GameManager::resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const
 {
     return registry.get(handle, kind);
@@ -438,9 +428,9 @@ void GameManager::loop(const std::function<bool(SDLWindow &)> &ownerThreadServic
                 afterSimulationStep(simulationStepNumber);
             }
         }
-        window->clearAdvanceFrameRequest();
         if (!window->isRunning())
         {
+            window->clearAdvanceFrameRequest();
             break;
         }
         // Simulation steps update audio themselves; paused and zero-step frames still need it.
@@ -452,6 +442,7 @@ void GameManager::loop(const std::function<bool(SDLWindow &)> &ownerThreadServic
             PhaseGuard renderPhase(*this, Phase::Rendering);
             window->render();
         }
+        window->clearAdvanceFrameRequest();
         std::this_thread::sleep_until(now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                 std::chrono::duration<double>(FRAME_TIME)));
     }
@@ -476,6 +467,10 @@ bool GameManager::simulateAndRenderFrame(double timeDelta)
 bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback,
                                                            double timeDelta)
 {
+    if (!isIdle() || std::this_thread::get_id() != mainThread)
+    {
+        throw std::logic_error("Simulation steps require an idle runtime on its main thread");
+    }
     if (!window->isRunning())
     {
         return false;
@@ -814,7 +809,7 @@ void GameManager::queueReconciliation(Component *component)
     component->callbackEligible = false;
     // Notify PhysicsManager immediately so bodies retired or deactivated during
     // StepHook/FixedUpdate are ejected by reconcileChangedBodies() before applyPhysics().
-    if (component->getType() == RIGID_BODY)
+    if (component->getType() == RIGID_BODY && static_cast<Rigidbody *>(component)->getIsRegisteredInPhysicsManager())
     {
         physicsManager->queueBodyParticipationChange(static_cast<Rigidbody *>(component));
     }
@@ -1049,7 +1044,15 @@ void GameManager::clearAllSceneObjects(std::exception_ptr &error)
     dirtyTransforms.clear();
     reconciliations.clear();
     reconciliationDrain.clear();
+    for (ScriptComponent *script : scriptComponents)
+    {
+        script->setGameManagerIndex(SIZE_MAX);
+    }
     scriptComponents.clear();
+    for (Animator *animator : animatorComponents)
+    {
+        animator->setGameManagerIndex(SIZE_MAX);
+    }
     animatorComponents.clear();
     for (ScriptComponent *script : pendingStartScripts)
     {
@@ -1194,100 +1197,4 @@ void GameManager::shutdown()
     window->clearTransientAudio();
     assets.freeAll();
     shutdownComplete = true;
-}
-
-// ============================================================================
-// Asset Store Facade
-// ============================================================================
-
-TextureWrapper *GameManager::loadTexture(const std::string &filePath, bool required)
-{
-    return assets.loadTexture(filePath, required);
-}
-
-TextureWrapper *GameManager::findTexture(const std::string &filePath)
-{
-    return assets.findTexture(filePath);
-}
-
-std::uint64_t GameManager::texture_cache_bytes() const noexcept
-{
-    return assets.textureCacheBytes();
-}
-
-TextureWrapper *GameManager::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
-{
-    return assets.reloadTexture(filePath, preparedSurface);
-}
-
-void GameManager::freeTexture(TextureWrapper *textureWrapper)
-{
-    assets.freeTexture(textureWrapper);
-}
-
-void GameManager::freeAllTextures()
-{
-    assets.freeAllTextures();
-}
-
-AudioWrapper *GameManager::loadAudio(const std::string &filePath, bool required)
-{
-    return assets.loadAudio(filePath, required);
-}
-
-void GameManager::freeAudio(AudioWrapper *audioWrapper)
-{
-    assets.freeAudio(audioWrapper);
-}
-
-void GameManager::freeAllAudio()
-{
-    assets.freeAllAudio();
-}
-
-AnimationClip *GameManager::loadAnimationClip(const std::string &filePath)
-{
-    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-    return assets.loadAnimationClip(filePath, resolver, false);
-}
-
-AnimationClip *GameManager::findAnimationClip(const std::string &filePath)
-{
-    return assets.findAnimationClip(filePath);
-}
-
-AnimationClip *GameManager::loadAnimationClip(const std::string &filePath,
-                                              platformator::ReferenceResolver &resolver, bool required)
-{
-    return assets.loadAnimationClip(filePath, resolver, required);
-}
-
-AnimationClip *GameManager::reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument)
-{
-    return assets.reloadAnimationClip(filePath, preparedDocument);
-}
-
-void GameManager::freeAnimationClip(AnimationClip *animationClip)
-{
-    assets.freeAnimationClip(animationClip);
-}
-
-void GameManager::freeAllAnimationClips()
-{
-    assets.freeAllAnimationClips();
-}
-
-Template *GameManager::loadTemplate(const std::string &filePath, bool required, bool *deferredCyclic)
-{
-    return assets.loadTemplate(filePath, required, deferredCyclic);
-}
-
-void GameManager::freeTemplate(Template *tpl)
-{
-    assets.freeTemplate(tpl);
-}
-
-void GameManager::freeAllTemplates()
-{
-    assets.freeAllTemplates();
 }

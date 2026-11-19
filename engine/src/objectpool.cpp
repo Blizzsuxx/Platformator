@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <memory>
@@ -78,7 +79,10 @@ class CentralPool
     ~CentralPool()
     {
         std::lock_guard<std::mutex> lock(mutex);
-        releaseAllSlabsLocked();
+        if (freeCount == totalSlots && !slabs.empty())
+        {
+            releaseAllSlabsLocked();
+        }
     }
 
     FreeNode *acquireOne()
@@ -195,29 +199,45 @@ class CentralPool
 
 using CentralPoolArray = std::array<std::shared_ptr<CentralPool>, POOL_COUNT>;
 
-CentralPoolArray &centralPools()
+std::atomic<bool> centralPoolsDestroyed{false};
+
+struct CentralPoolRegistry
 {
-    static CentralPoolArray pools{
+    CentralPoolArray pools{
         std::make_shared<CentralPool>(sizeof(GameObject)),
         std::make_shared<CentralPool>(sizeof(BoxCollider)),
         std::make_shared<CentralPool>(sizeof(CircleCollider)),
         std::make_shared<CentralPool>(sizeof(Rigidbody)),
         std::make_shared<CentralPool>(sizeof(Sprite)),
     };
-    return pools;
+
+    ~CentralPoolRegistry()
+    {
+        centralPoolsDestroyed.store(true, std::memory_order_release);
+    }
+};
+
+CentralPoolArray &centralPools()
+{
+    static CentralPoolRegistry registry;
+    return registry.pools;
 }
 
+class ThreadPoolCache;
 inline thread_local bool threadCacheDestroyed = false;
+inline thread_local ThreadPoolCache *activeThreadCache = nullptr;
 
 class ThreadPoolCache
 {
   public:
     explicit ThreadPoolCache(const CentralPoolArray &pools) noexcept : centrals(pools)
     {
+        activeThreadCache = this;
     }
 
     ~ThreadPoolCache()
     {
+        activeThreadCache = nullptr;
         flushAll();
         threadCacheDestroyed = true;
     }
@@ -302,7 +322,7 @@ class ThreadPoolCache
 
 ThreadPoolCache *tryGetThreadCache()
 {
-    if (threadCacheDestroyed)
+    if (threadCacheDestroyed || centralPoolsDestroyed.load(std::memory_order_acquire))
     {
         return nullptr;
     }
@@ -311,13 +331,17 @@ ThreadPoolCache *tryGetThreadCache()
 }
 } // namespace
 
-void *allocatePooledObject(PooledObjectKind kind, size_t)
+void *allocatePooledObject(PooledObjectKind kind, size_t size)
 {
     const size_t idx = static_cast<size_t>(kind);
     assert(idx < POOL_COUNT);
     if (ThreadPoolCache *cache = tryGetThreadCache())
     {
         return cache->allocate(idx);
+    }
+    if (centralPoolsDestroyed.load(std::memory_order_acquire))
+    {
+        return ::operator new(size);
     }
     return centralPools()[idx]->acquireOne();
 }
@@ -335,6 +359,10 @@ void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t) noexcept
         cache->deallocate(idx, ptr);
         return;
     }
+    if (centralPoolsDestroyed.load(std::memory_order_acquire))
+    {
+        return;
+    }
     auto *node = static_cast<FreeNode *>(ptr);
     node->next = nullptr;
     centralPools()[idx]->returnBatch(node, node, 1);
@@ -342,12 +370,13 @@ void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t) noexcept
 
 void releaseEmptyObjectPools() noexcept
 {
-    if (!threadCacheDestroyed)
+    if (centralPoolsDestroyed.load(std::memory_order_acquire))
     {
-        if (ThreadPoolCache *cache = tryGetThreadCache())
-        {
-            cache->flushAll();
-        }
+        return;
+    }
+    if (activeThreadCache != nullptr)
+    {
+        activeThreadCache->flushAll();
     }
     for (auto &pool : centralPools())
     {

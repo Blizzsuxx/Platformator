@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <new>
 
 #include <Eigen/Dense>
 #include <json.hpp>
@@ -27,6 +28,18 @@ class Rigidbody : public Component
     }
     static void operator delete(void *, void *) noexcept
     {
+    }
+    static void *operator new(size_t size, std::align_val_t alignment)
+    {
+        return ::operator new(size, alignment);
+    }
+    static void operator delete(void *ptr, size_t size, std::align_val_t alignment) noexcept
+    {
+        ::operator delete(ptr, size, alignment);
+    }
+    static void operator delete(void *ptr, std::align_val_t alignment) noexcept
+    {
+        ::operator delete(ptr, alignment);
     }
 
     Rigidbody();

@@ -39,19 +39,36 @@ class FlatIdMap
     void insertOrAssign(int key, BaseObject *value)
     {
         assert(value != nullptr);
-        if (entries.empty() || (count + 1) * 10 >= entries.size() * 7)
+        if (value == nullptr)
         {
-            rehash(entries.empty() ? 16 : entries.size() * 2);
+            erase(key);
+            return;
         }
+        if (!entries.empty())
+        {
+            const size_t mask = entries.size() - 1;
+            size_t idx = hashKey(key) & mask;
+            while (entries[idx].value != nullptr)
+            {
+                if (entries[idx].key == key)
+                {
+                    entries[idx].value = value;
+                    return;
+                }
+                idx = (idx + 1) & mask;
+            }
+            if ((count + 1) * 10 < entries.size() * 7)
+            {
+                entries[idx] = Entry{key, value};
+                ++count;
+                return;
+            }
+        }
+        rehash(entries.empty() ? 16 : entries.size() * 2);
         const size_t mask = entries.size() - 1;
         size_t idx = hashKey(key) & mask;
         while (entries[idx].value != nullptr)
         {
-            if (entries[idx].key == key)
-            {
-                entries[idx].value = value;
-                return;
-            }
             idx = (idx + 1) & mask;
         }
         entries[idx] = Entry{key, value};

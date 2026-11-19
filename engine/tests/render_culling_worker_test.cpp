@@ -38,15 +38,15 @@ class ScopedStrategy
             hadPrevious_ = true;
             previous_ = current;
         }
-        if (setenv("PLATFORMATOR_RENDER_CULLING_MODE", mode, 1) != 0)
+        if (!test_support::setEnvironment("PLATFORMATOR_RENDER_CULLING_MODE", mode))
             throw std::runtime_error("Could not set render-culling worker-test mode");
     }
     ~ScopedStrategy()
     {
         if (hadPrevious_)
-            setenv("PLATFORMATOR_RENDER_CULLING_MODE", previous_.c_str(), 1);
+            test_support::setEnvironment("PLATFORMATOR_RENDER_CULLING_MODE", previous_.c_str());
         else
-            unsetenv("PLATFORMATOR_RENDER_CULLING_MODE");
+            test_support::clearEnvironment("PLATFORMATOR_RENDER_CULLING_MODE");
     }
 
   private:

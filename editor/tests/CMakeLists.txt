@@ -60,6 +60,10 @@ add_executable(platformator_editor_invalid_catalog_fixture process_fixture.cpp)
 target_compile_features(platformator_editor_invalid_catalog_fixture PRIVATE cxx_std_20)
 target_compile_definitions(platformator_editor_invalid_catalog_fixture PRIVATE
     PLATFORMATOR_EDITOR_INVALID_CATALOG=1)
+if(MINGW)
+    target_link_options(platformator_editor_process_fixture PRIVATE -municode)
+    target_link_options(platformator_editor_invalid_catalog_fixture PRIVATE -municode)
+endif()
 
 add_executable(platformator_editor_catalog_process_fixture catalog_process_fixture.cpp)
 target_compile_features(platformator_editor_catalog_process_fixture PRIVATE cxx_std_20)

@@ -2,20 +2,25 @@ function(platformator_install_editor)
     if(NOT TARGET platformator_editor)
         message(FATAL_ERROR "platformator_install_editor() requires PLATFORMATOR_BUILD_EDITOR=ON")
     endif()
-    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        message(FATAL_ERROR "The editor install layout is currently validated only on Linux")
-    endif()
-
-    # SDL and oneTBB shared dependencies are installed into CMAKE_INSTALL_LIBDIR
-    # by their upstream CMake install rules. The editor's $ORIGIN/../lib RPATH
-    # keeps that dependency lookup independent of the build and source trees.
+    # Upstream SDL and oneTBB install their Windows DLLs beside the editor.
+    # On Linux the editor's relative RPATH resolves their libraries from libdir.
     install(TARGETS platformator_editor RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    if(MINGW)
+        install(FILES ${PLATFORMATOR_MINGW_RUNTIME_DLLS} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    endif()
     install(DIRECTORY "${PROJECT_SOURCE_DIR}/editor/resources/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/platformator/editor")
     install(FILES "${PROJECT_SOURCE_DIR}/cmake/PlatformatorEditorThirdPartyNotices.txt"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/platformator-editor")
 
     set(editor_license_directory "${CMAKE_INSTALL_DATADIR}/doc/platformator-editor/licenses")
+    if(MINGW)
+        install(FILES
+            "${PROJECT_SOURCE_DIR}/cmake/licenses/GCC-COPYING3.txt"
+            "${PROJECT_SOURCE_DIR}/cmake/licenses/GCC-COPYING.RUNTIME.txt"
+            "${PROJECT_SOURCE_DIR}/cmake/licenses/Winpthreads-COPYING.txt"
+            DESTINATION "${editor_license_directory}")
+    endif()
     install(FILES "${PROJECT_SOURCE_DIR}/vendored/SDL3-3.4.18/LICENSE.txt"
         DESTINATION "${editor_license_directory}" RENAME SDL3-LICENSE.txt)
     install(FILES "${PROJECT_SOURCE_DIR}/vendored/SDL3_image-3.4.8/LICENSE.txt"

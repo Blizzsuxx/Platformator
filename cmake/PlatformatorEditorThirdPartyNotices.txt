@@ -9,3 +9,7 @@ oneTBB 2022.3.0: Apache-2.0 with LLVM exception; licenses/oneTBB-LICENSE.txt
 nlohmann/json 3.12.0: MIT, identified by SPDX metadata in the installed single-header source.
 
 The Linux host distribution supplies system dependencies such as D-Bus and the C/C++ runtime.
+
+MinGW-w64 editor installs also include these runtime DLLs.
+libgcc and libstdc++: see licenses/GCC-COPYING3.txt and licenses/GCC-COPYING.RUNTIME.txt.
+Winpthreads: see licenses/Winpthreads-COPYING.txt.

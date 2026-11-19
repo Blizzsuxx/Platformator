@@ -923,7 +923,7 @@ void test_save_all_syncs_saved_animations_before_later_failure()
                                 ResourceConsumer{sceneTab->identity(), 10, std::nullopt, "animator.clip"});
 
     RuntimeOptions runtimeOptions;
-    runtimeOptions.assetRoot = assets;
+    runtimeOptions.assetRoot = assets.string();
     runtimeOptions.windowSettings.headless = true;
     platformator::Runtime runtime(runtimeOptions);
     EditorPreview preview(runtime);

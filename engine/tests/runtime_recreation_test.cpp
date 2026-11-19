@@ -1,3 +1,5 @@
+#include "test_support.h"
+
 #include <SDL3/SDL.h>
 
 #include <cstdlib>
@@ -22,13 +24,6 @@ void require(bool condition, const std::string &message)
     {
         throw std::runtime_error(message);
     }
-}
-
-void configureHeadlessEnvironment()
-{
-    setenv("SDL_VIDEODRIVER", "dummy", 1);
-    setenv("SDL_AUDIODRIVER", "dummy", 1);
-    setenv("SDL_RENDER_DRIVER", "software", 1);
 }
 
 void writeSceneFile(const std::filesystem::path &path, const std::string &name, int objectId)
@@ -76,7 +71,7 @@ uint64_t runRuntimePass(const std::filesystem::path &scenePath, const std::files
 
 int main()
 {
-    configureHeadlessEnvironment();
+    test_support::headlessEnvironment();
 
     const std::filesystem::path scenePathA = std::filesystem::current_path() / "runtime_recreation_a.scene";
     const std::filesystem::path scenePathB = std::filesystem::current_path() / "runtime_recreation_b.scene";

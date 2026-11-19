@@ -1,6 +1,7 @@
 #include "project.h"
 #include "layersettings.h"
 #include "documentio.h"
+#include "platform/watch.h"
 
 #include <algorithm>
 #include <array>
@@ -29,6 +30,11 @@ namespace platformator_editor
             return true;
         return name == "bin" || name == "build" || name == "dist" ||
                name == "vendored" || name == "vendor" || name == "node_modules";
+    }
+
+    bool should_skip_watched_directory(std::string_view name) noexcept
+    {
+        return should_skip_directory(name);
     }
 
     struct SourceHashCacheKey

@@ -23,11 +23,27 @@ inline void require(bool condition, const std::string &message)
     if (!condition)
         throw std::runtime_error(message);
 }
+inline bool setEnvironment(const char *name, const char *value)
+{
+#if defined(_WIN32)
+    return ::_putenv_s(name, value) == 0;
+#else
+    return ::setenv(name, value, 1) == 0;
+#endif
+}
+inline bool clearEnvironment(const char *name)
+{
+#if defined(_WIN32)
+    return ::_putenv_s(name, "") == 0;
+#else
+    return ::unsetenv(name) == 0;
+#endif
+}
 inline void headlessEnvironment()
 {
-    setenv("SDL_AUDIODRIVER", "dummy", 1);
-    setenv("SDL_VIDEODRIVER", "dummy", 1);
-    setenv("SDL_RENDER_DRIVER", "software", 1);
+    setEnvironment("SDL_AUDIODRIVER", "dummy");
+    setEnvironment("SDL_VIDEODRIVER", "dummy");
+    setEnvironment("SDL_RENDER_DRIVER", "software");
 }
 inline void writeScene(const std::filesystem::path &path, const std::string &name, int id = 0)
 {

@@ -562,7 +562,7 @@ class RenderCullingFixture
         options.windowSettings.height = outputHeight;
         options.windowSettings.headless = headless;
         setCullingIfSupported(options.windowSettings, enableCulling);
-        options.assetRoot = assetRoot;
+        options.assetRoot = assetRoot.string();
         return options;
     }
 

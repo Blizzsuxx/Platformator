@@ -240,7 +240,8 @@ namespace platformator_editor
             RuntimeOptions options;
             options.windowSettings.width = 320;
             options.windowSettings.height = 240;
-            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets";
+            options.assetRoot = (std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) /
+                                 "engine/tests/fixtures/assets").string();
             platformator::Runtime runtime(options);
             DocumentSession document = make_default_document(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR,
                                                              std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets", 19);
@@ -476,7 +477,8 @@ namespace platformator_editor
             RuntimeOptions options;
             options.windowSettings.width = 320;
             options.windowSettings.height = 240;
-            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) / "engine/tests/fixtures/assets";
+            options.assetRoot = (std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) /
+                                 "engine/tests/fixtures/assets").string();
             platformator::Runtime runtime(options);
 
             DocumentSession document = make_default_document(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR,
@@ -655,8 +657,8 @@ namespace platformator_editor
             RuntimeOptions options;
             options.windowSettings.width = 320;
             options.windowSettings.height = 240;
-            options.assetRoot = std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) /
-                                "engine/tests/fixtures/assets";
+            options.assetRoot = (std::filesystem::path(PLATFORMATOR_EDITOR_TEST_SOURCE_DIR) /
+                                 "engine/tests/fixtures/assets").string();
             platformator::Runtime runtime(options);
 
             DocumentSession document;

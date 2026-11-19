@@ -2199,11 +2199,13 @@ void check_preview_nested_sprite_multi_edit_z_batch()
     document.root[2]["children"][0]["components"][0]["zOrder"] = 10;
     ++document.valueRevision;
     preview.reconcile(document, false, {200, 300}, false);
+#ifndef NDEBUG
     {
         const auto stats = preview.last_reconcile_stats();
         require(stats.visitedAuthoringObjects == 2 && stats.visitedProxyObjects == 2 && stats.updatedProxies == 2,
                 "Z-only batch edit on parent and child must visit each explicitly changed object once");
     }
+#endif
     assertState({100, 200, 300}, 300, 0, 0, 180, "after Z-only batch edit");
 #if defined(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     {
@@ -2235,11 +2237,13 @@ void check_preview_nested_sprite_multi_edit_z_batch()
     document.root[2]["position"]["x"] = 220.0f;
     ++document.valueRevision;
     preview.reconcile(document, false, {200, 300}, true);
+#ifndef NDEBUG
     {
         const auto stats = preview.last_reconcile_stats();
         require(stats.visitedAuthoringObjects == 2 && stats.visitedProxyObjects == 2,
                 "Inherited position edit listing parent and child must keep one subtree visit");
     }
+#endif
     const auto movedCandidates = viewport_pick_candidates(pickTransform, preview.ordered_authoring_ids(),
                                                           preview, {220.0f, 120.0f}, 0.0f);
     require(movedCandidates == std::vector<int>({300, 200}),

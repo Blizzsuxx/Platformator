@@ -4,7 +4,7 @@ The optional editor is a native C++20/SDL3 application built with the engine. It
 
 ## Build and launch
 
-The editor is currently supported on Linux. From the repository root:
+The editor is supported on Linux, with an experimental Windows x64 build. On Linux, run these commands from the repository root.
 
 ```sh
 cmake --preset default
@@ -22,7 +22,19 @@ cmake --build build/default --parallel 4
 cmake --install build/default --prefix /path/to/platformator-editor
 ```
 
-The installed editor resolves SDL and oneTBB from the prefix with a relative RUNPATH. Its default docking layout is compiled into the executable; the optional copy under `share/platformator/editor` is also installed. The installed `--help` command was verified from an unrelated working directory. A live GUI launch and Windows/macOS packaging remain unverified.
+The installed Linux editor resolves SDL and oneTBB from the prefix with a relative RUNPATH. Its default docking layout is compiled into the executable. The install also includes a copy under `share/platformator/editor`.
+
+To cross-build and install the Windows x64 editor with MinGW-w64 from Linux:
+
+```sh
+cmake -S . -B build/windows -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64-x86_64.cmake \
+  -DCMAKE_BUILD_TYPE=Release -DPLATFORMATOR_BUILD_EDITOR=ON
+cmake --build build/windows --parallel 4
+cmake --install build/windows --prefix build/windows-editor
+```
+
+Set `PLATFORMATOR_MINGW_RUNTIME_DIR` at configure time if the runtime DLLs are in a custom toolchain directory. Transfer the install directory to Windows and run `bin\platformator_editor.exe --help`, then launch `bin\platformator_editor.exe` to verify the desktop UI. Native Windows launch remains unverified.
 
 ## Workspace
 

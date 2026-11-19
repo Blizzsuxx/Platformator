@@ -1,0 +1,42 @@
+function(platformator_find_mingw_runtime output)
+    get_filename_component(compiler_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(runtime_dlls)
+    foreach(dll libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll)
+        if(PLATFORMATOR_MINGW_RUNTIME_DIR)
+            set(runtime_dll "${PLATFORMATOR_MINGW_RUNTIME_DIR}/${dll}")
+        else()
+            execute_process(COMMAND "${CMAKE_CXX_COMPILER}" "-print-file-name=${dll}"
+                OUTPUT_VARIABLE runtime_dll OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(NOT IS_ABSOLUTE "${runtime_dll}" OR NOT EXISTS "${runtime_dll}")
+                unset(runtime_dll)
+                unset(runtime_dll CACHE)
+                find_file(runtime_dll NAMES "${dll}" HINTS "${compiler_directory}" ${CMAKE_FIND_ROOT_PATH}
+                    PATH_SUFFIXES bin NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+                set(runtime_dll "${runtime_dll}")
+                unset(runtime_dll CACHE)
+            endif()
+        endif()
+        if(NOT IS_ABSOLUTE "${runtime_dll}" OR NOT EXISTS "${runtime_dll}")
+            message(FATAL_ERROR "Cannot find ${dll}. Set PLATFORMATOR_MINGW_RUNTIME_DIR to the MinGW-w64 runtime DLL directory.")
+        endif()
+        list(APPEND runtime_dlls "${runtime_dll}")
+    endforeach()
+    set(${output} "${runtime_dlls}" PARENT_SCOPE)
+endfunction()
+
+function(platformator_stage_windows_editor_runtime target)
+    set(runtime_dlls ${PLATFORMATOR_MINGW_RUNTIME_DLLS})
+    foreach(library IN LISTS PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
+        get_target_property(library_type "${library}" TYPE)
+        if(library_type STREQUAL "SHARED_LIBRARY")
+            list(APPEND runtime_dlls "$<TARGET_FILE:${library}>")
+        endif()
+    endforeach()
+    if(runtime_dlls)
+        add_custom_command(TARGET "${target}" POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                ${runtime_dlls} "$<TARGET_FILE_DIR:${target}>"
+            COMMENT "Staging Windows editor runtime DLLs"
+            VERBATIM)
+    endif()
+endfunction()

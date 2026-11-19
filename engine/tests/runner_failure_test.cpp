@@ -12,7 +12,7 @@ int main(int argc, char **argv)
         const std::string mode = argc > 1 ? argv[1] : "runner";
         if (mode == "startup")
         {
-            setenv("SDL_VIDEODRIVER", "platformator-invalid-driver", 1);
+            test_support::setEnvironment("SDL_VIDEODRIVER", "platformator-invalid-driver");
             bool failed = false;
             try
             {
@@ -28,8 +28,8 @@ int main(int argc, char **argv)
         }
         if (mode == "physics")
         {
-            setenv("SDL_VIDEODRIVER", "platformator-invalid-driver", 1);
-            setenv("SDL_AUDIODRIVER", "platformator-invalid-driver", 1);
+            test_support::setEnvironment("SDL_VIDEODRIVER", "platformator-invalid-driver");
+            test_support::setEnvironment("SDL_AUDIODRIVER", "platformator-invalid-driver");
             platformator::Runtime runtime(physicsOnly());
             require(SDL_WasInit(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == 0,
                     "Physics-only startup cannot acquire video/audio subsystems");

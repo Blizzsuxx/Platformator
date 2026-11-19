@@ -473,9 +473,9 @@ void checkCachedLinearGrowthRetryAndRelease()
     for (const char *mode : {static_cast<const char *>(nullptr), "cached-linear"})
     {
         if (mode == nullptr)
-            unsetenv("PLATFORMATOR_RENDER_CULLING_MODE");
+            test_support::clearEnvironment("PLATFORMATOR_RENDER_CULLING_MODE");
         else
-            setenv("PLATFORMATOR_RENDER_CULLING_MODE", mode, 1);
+            test_support::setEnvironment("PLATFORMATOR_RENDER_CULLING_MODE", mode);
         platformator_test::work = {};
         RuntimeOptions options{};
         options.windowSettings.hidden = true;
@@ -539,7 +539,7 @@ void checkCachedLinearGrowthRetryAndRelease()
                                   platformator_test::work.spriteOrderOwnedRecords == 5,
                               "Retrying SDLWindow::addSpriteComponent after allocation failure must succeed cleanly");
     }
-    unsetenv("PLATFORMATOR_RENDER_CULLING_MODE");
+    test_support::clearEnvironment("PLATFORMATOR_RENDER_CULLING_MODE");
 }
 
 void run()

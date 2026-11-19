@@ -17,16 +17,6 @@
 
 namespace platformator_editor
 {
-bool should_skip_watched_directory(std::string_view name) noexcept
-{
-    if (name.empty() || name == "." || name == "..")
-        return false;
-    if (name.starts_with('.'))
-        return true;
-    return name == "bin" || name == "build" || name == "dist" ||
-           name == "vendored" || name == "vendor" || name == "node_modules";
-}
-
 namespace
 {
 class LinuxProjectWatchService final : public ProjectWatchService

@@ -1,3 +1,5 @@
+#include "test_support.h"
+
 #include <cstdlib>
 #include <cmath>
 #include <exception>
@@ -45,13 +47,6 @@ void require(bool condition, const std::string &message)
     {
         throw std::runtime_error(message);
     }
-}
-
-void configureHeadlessEnvironment()
-{
-    setenv("SDL_VIDEODRIVER", "dummy", 1);
-    setenv("SDL_AUDIODRIVER", "dummy", 1);
-    setenv("SDL_RENDER_DRIVER", "software", 1);
 }
 
 std::filesystem::path findWorkspaceRelativePath(const std::filesystem::path &relativePath)
@@ -599,7 +594,7 @@ struct TestCase
 
 int main()
 {
-    configureHeadlessEnvironment();
+    test_support::headlessEnvironment();
     platformator::Runtime runtime;
 
     static const TestCase testCases[] = {

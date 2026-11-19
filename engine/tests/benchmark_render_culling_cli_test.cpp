@@ -24,10 +24,10 @@ class ScopedEnvSelector
         }
         if (value == nullptr)
         {
-            if (unsetenv("PLATFORMATOR_RENDER_CULLING_MODE") != 0)
+            if (!test_support::clearEnvironment("PLATFORMATOR_RENDER_CULLING_MODE"))
                 throw std::runtime_error("Could not unset PLATFORMATOR_RENDER_CULLING_MODE");
         }
-        else if (setenv("PLATFORMATOR_RENDER_CULLING_MODE", value, 1) != 0)
+        else if (!test_support::setEnvironment("PLATFORMATOR_RENDER_CULLING_MODE", value))
         {
             throw std::runtime_error("Could not set PLATFORMATOR_RENDER_CULLING_MODE");
         }
@@ -36,9 +36,9 @@ class ScopedEnvSelector
     ~ScopedEnvSelector()
     {
         if (hadPrevious_)
-            setenv("PLATFORMATOR_RENDER_CULLING_MODE", previous_.c_str(), 1);
+            test_support::setEnvironment("PLATFORMATOR_RENDER_CULLING_MODE", previous_.c_str());
         else
-            unsetenv("PLATFORMATOR_RENDER_CULLING_MODE");
+            test_support::clearEnvironment("PLATFORMATOR_RENDER_CULLING_MODE");
     }
 
   private:

@@ -26,7 +26,15 @@
 #include <tuple>
 #include <vector>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__linux__)
 #include <unistd.h>
+#endif
 
 #include <SDL3/SDL.h>
 
@@ -84,8 +92,7 @@ void *allocate(std::size_t size)
 
 void *allocate_aligned(std::size_t size, std::size_t alignment)
 {
-    void *memory = nullptr;
-    if (posix_memalign(&memory, alignment, size == 0 ? alignment : size) == 0)
+    if (void *memory = SDL_aligned_alloc(alignment, size == 0 ? alignment : size))
     {
         note_allocation(size);
         return memory;
@@ -146,6 +153,12 @@ platformator_editor::DocumentSession parse_scene(Json scene)
 
 std::uint64_t resident_kib()
 {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS counters{};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
+        return counters.WorkingSetSize / 1024;
+    return 0;
+#elif defined(__linux__)
     std::ifstream stream("/proc/self/statm");
     std::uint64_t totalPages = 0;
     std::uint64_t residentPages = 0;
@@ -153,6 +166,9 @@ std::uint64_t resident_kib()
         return 0;
     const long pageSize = sysconf(_SC_PAGESIZE);
     return pageSize > 0 ? residentPages * static_cast<std::uint64_t>(pageSize) / 1024 : 0;
+#else
+    return 0;
+#endif
 }
 
 Json workload_observation(std::string name, std::size_t population, bool deep)
@@ -684,10 +700,10 @@ void *operator new[](std::size_t size, std::align_val_t alignment)
 {
     return allocate_aligned(size, static_cast<std::size_t>(alignment));
 }
-void operator delete(void *memory, std::align_val_t) noexcept { std::free(memory); }
-void operator delete[](void *memory, std::align_val_t) noexcept { std::free(memory); }
-void operator delete(void *memory, std::size_t, std::align_val_t) noexcept { std::free(memory); }
-void operator delete[](void *memory, std::size_t, std::align_val_t) noexcept { std::free(memory); }
+void operator delete(void *memory, std::align_val_t) noexcept { SDL_aligned_free(memory); }
+void operator delete[](void *memory, std::align_val_t) noexcept { SDL_aligned_free(memory); }
+void operator delete(void *memory, std::size_t, std::align_val_t) noexcept { SDL_aligned_free(memory); }
+void operator delete[](void *memory, std::size_t, std::align_val_t) noexcept { SDL_aligned_free(memory); }
 
 int main(int argc, char **argv)
 {

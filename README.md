@@ -55,7 +55,7 @@ target_link_libraries(my_game PRIVATE Platformator::platformator)
 
 The default build enables installation: `cmake --install build/default --prefix /path/to/sdk`. For an engine-only SDK, see the standalone engine commands in [BUILD_LAYOUT.md](docs/BUILD_LAYOUT.md). Consumers use `find_package(Platformator CONFIG REQUIRED)` with that prefix in `CMAKE_PREFIX_PATH`, then the same target. Public headers are under `engine/include/platformator`; consumers do not need private source paths or hand-written dependency link lists. The installed SDK and example support prefix relocation.
 
-On Linux, configure and build the `default` preset, then install to add `bin/platformator_editor` plus its SDK runtime libraries, editor resources and license notices. The default docking layout is compiled into the editor. See [editor installation instructions](editor/README.md#build-and-launch). A relocated CLI launch is covered; a live installed GUI launch and Windows/macOS packaging remain unverified.
+On Linux, configure and build the `default` preset, then install to add `bin/platformator_editor` plus its SDK runtime libraries, editor resources and license notices. The editor can also be cross-built and installed for Windows x64 with MinGW-w64. The default docking layout is compiled into the editor. See [editor installation instructions](editor/README.md#build-and-launch). A relocated Linux CLI launch is covered, and the Windows runtime layout can be checked from the cross-build. Native Windows launch and a live installed GUI launch remain unverified.
 
 ```cpp
 #include <platformator/runtime.h>

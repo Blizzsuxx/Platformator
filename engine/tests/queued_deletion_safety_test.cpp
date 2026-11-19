@@ -1,3 +1,5 @@
+#include "test_support.h"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -31,13 +33,6 @@ void require(bool condition, const std::string &message)
 bool containsGameObjectPointer(Runtime &gameManager, int id, const GameObject *gameObject)
 {
     return gameManager.getObjectById(id) == gameObject;
-}
-
-void configureHeadlessEnvironment()
-{
-    setenv("SDL_VIDEODRIVER", "dummy", 1);
-    setenv("SDL_AUDIODRIVER", "dummy", 1);
-    setenv("SDL_RENDER_DRIVER", "software", 1);
 }
 
 class SceneScope
@@ -420,7 +415,7 @@ void testRuntimeShutdownWithActiveCollision()
 
 int main()
 {
-    configureHeadlessEnvironment();
+    test_support::headlessEnvironment();
 
     try
     {

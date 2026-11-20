@@ -31,6 +31,8 @@ Transform traversal remains serial. The sprite-heavy probe stopped during setup 
 
 Both parallel solver paths use isolated oneTBB cancellation contexts. Island jobs group small islands by constraint count and put expensive islands into separate jobs. Scheduler setup resets only participating body slots when the registered population is more than four times the constraint count. The regression suite covers a cancelled caller, dense and sparse ordered-batch parity, and the unbalanced island layout across registered-body slot changes.
 
+When a caller enters the runtime from a oneTBB task, the engine isolates its internal physics phase and grid flush. User hooks remain in the caller's context. The regression suite verifies completed motion, consistent contact-queue markers, and deferred collider publication under caller cancellation. [Cancellation reproduction](evidence/review/full-step-cancellation.json)
+
 In the focused six-worker solver probe with 256 contacts and 50,000 unrelated static bodies, the median run mean fell from 98.2 to 80.2 µs, with all three paired runs improving. With no unrelated bodies the median went from 89.0 to 82.9 µs and paired results were mixed. Sampled velocities matched across all runs. [Review verification](evidence/review/verified-fixes.json)
 
 ## Implementation plan
@@ -45,7 +47,7 @@ In the focused six-worker solver probe with 256 contacts and 50,000 unrelated st
 
 ## Reproducing the completed checks
 
-The [audit tools](tools/) rely on Linux CPU affinity, a Ninja Release benchmark build at `build/benchmark`, and its compilation database. Use the audited engine revision for direct comparisons. Run the command from the repository root after configuring and building that target.
+The audit tools rely on Linux CPU affinity and a configured Ninja Release benchmark build at `build/benchmark` with a compilation database. The builder refreshes the base benchmark target and verifies its source fingerprint before linking an instrumented runner. Use the audited engine revision for direct comparisons and run the command from the repository root. [Audit tools](tools/)
 
 ```sh
 python -B docs/physics-parallelism/tools/run.py
@@ -53,4 +55,4 @@ python -B docs/physics-parallelism/tools/run.py
 
 The command writes a fresh capture to `docs/physics-parallelism/evidence/reproduction/` by default. Pass `--output` to choose a different new directory. It reproduces the completed narrow-phase comparison, serial timing baseline, graph observations, and invariant checks. Each capture is limited to 50 MiB and 600 seconds. Generated source files are temporary, and the compiled runner goes under `build/parallel-physics-audit/`. The archived report retains the original paths and script hashes as provenance. Resolve sample filenames relative to the archived report.
 
-For the implementation comparisons, `compare_implementation.py --output PATH` uses the saved narrow-phase binaries in `build/parallel-physics-implementation/`. Run `solver_implementation.py islands --output PATH` or `solver_implementation.py ordered-batches --output PATH` to build an instrumented runner and record the corresponding comparison. Each command creates a fresh output directory before starting work.
+For the implementation comparisons, `compare_implementation.py --output PATH` uses the saved narrow-phase binaries in `build/parallel-physics-implementation/`. Run `solver_implementation.py islands --output PATH` or `solver_implementation.py ordered-batches --output PATH` to build an instrumented runner and record the corresponding comparison. Each command creates a fresh output directory before starting work. Validation and timing share the same rules for clearing inherited audit settings and applying explicit fixture options.

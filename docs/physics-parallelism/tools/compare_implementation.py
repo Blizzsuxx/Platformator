@@ -30,6 +30,12 @@ def fresh_output(parser, output):
     return folder
 
 
+def audit_environment(overrides):
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("PLATFORMATOR_AUDIT_", "PLATFORMATOR_IMPLEMENTATION_"))}
+    return {**env, **overrides}
+
+
 def capture(folder, fixtures, variants, *, extra=None, precheck=None, validated_report=None):
     budget = CaptureBudget([archive, folder])
     report = validated_report if validated_report is not None else {
@@ -62,9 +68,7 @@ def capture(folder, fixtures, variants, *, extra=None, precheck=None, validated_
         }
         report["runs"].append(data)
         save()
-        env = {key: value for key, value in os.environ.items()
-               if not key.startswith(("PLATFORMATOR_AUDIT_", "PLATFORMATOR_IMPLEMENTATION_"))}
-        with log.open("w") as stream, subprocess.Popen(command, env={**env, **extra_env},
+        with log.open("w") as stream, subprocess.Popen(command, env=audit_environment(extra_env),
                                                        stdout=stream, stderr=subprocess.STDOUT) as process:
             try:
                 if budget.wait(process):

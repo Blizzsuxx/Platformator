@@ -8,11 +8,14 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <functional>
 #include <iostream>
 #include <oneapi/tbb/global_control.h>
+#include <oneapi/tbb/task.h>
 #include <oneapi/tbb/task_arena.h>
 #include <oneapi/tbb/task_group.h>
 #include <platformator/boxcollider.h>
+#include <platformator/circlecollider.h>
 #include <platformator/rigidbody.h>
 #include <unordered_set>
 #include <vector>
@@ -429,6 +432,76 @@ SolverResult solveWithCancelledCaller(size_t workers, bool cancel)
     return captureSolverResult(physics, bodies);
 }
 
+constexpr size_t cancellationTriggerPairs = 80;
+
+void addCancellationTriggerPairs(platformator::Runtime &runtime)
+{
+    for (size_t i = 0; i < cancellationTriggerPairs; ++i)
+    {
+        const float x = float(i * 40);
+        runtime.createGameObject()->setPosition({x, 0})->addComponent<CircleCollider>(2.f);
+        runtime.createGameObject()
+            ->setPosition({x + 2, 0})
+            ->addComponent<CircleCollider>(2.f)
+            ->getComponent<CircleCollider>()
+            ->setIsTrigger(true);
+    }
+}
+
+void simulateWithCancelledCaller(platformator::Runtime &runtime, const std::function<void()> &setup = {})
+{
+    tbb::task_group caller;
+    const auto status = caller.run_and_wait([&] {
+        auto *callerContext = tbb::task::current_context();
+        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+            require(tbb::task::current_context() == callerContext, "User hook keeps its caller's context");
+            if (setup)
+                setup();
+            caller.cancel();
+        });
+    });
+    require(status == tbb::canceled, "The parent still reports cancellation");
+}
+
+void cancellationPreservesMotionAndPendingContacts(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    std::vector<Rigidbody *> bodies;
+    for (int i = 0; i < 300; ++i)
+        bodies.push_back(runtime.createGameObject()->addComponent<Rigidbody>(DYNAMIC, true)->getComponent<Rigidbody>());
+    addCancellationTriggerPairs(runtime);
+
+    const auto &physics = *platformator_detail::RuntimeAccess::physicsManager();
+    const auto &grid = physics.getGrid();
+    const auto queued = *grid.getPendingNarrowPhasePairs();
+    require(queued.size() == cancellationTriggerPairs, "Trigger contacts are queued before the cancelled step");
+    simulateWithCancelledCaller(runtime);
+
+    require(std::ranges::all_of(bodies, [](const auto *body) {
+                return body->getVelocity().y() > 0 && body->getGameObject()->getPosition().y() > 0;
+            }), "The physics phase integrates forces and movement for all bodies");
+    require(physics.getContactPairs().size() == cancellationTriggerPairs, "Narrow phase processes all pending pairs");
+    require(grid.getPendingNarrowPhasePairs()->empty() && std::ranges::none_of(queued, [](const auto *pair) {
+                return pair->getIsQueuedForNarrowPhase();
+            }), "The consumed queue and its per-pair markers agree");
+    runtime.simulateFrame(dt);
+    require(physics.getContactPairs().size() == cancellationTriggerPairs, "The next step keeps all trigger contacts");
+}
+
+void cancellationPreservesDeferredGridFlush(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    simulateWithCancelledCaller(runtime, [&] { addCancellationTriggerPairs(runtime); });
+    const auto &physics = *platformator_detail::RuntimeAccess::physicsManager();
+    require(physics.getGrid().getPendingNarrowPhasePairs()->size() == cancellationTriggerPairs,
+            "The cancelled caller's cleanup still publishes all deferred collider pairs");
+    runtime.simulateFrame(dt);
+    require(physics.getContactPairs().size() == cancellationTriggerPairs,
+            "All deferred trigger pairs reach narrow phase on the following step");
+}
+
 std::vector<SolverResult> solveConnectedColumns(size_t workers, bool sparse = false)
 {
     tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
@@ -540,6 +613,8 @@ int main()
             bodyParticipation(workers);
             sameValuesAndWakeThresholds(workers);
             sleepTransitionsAndGroups(workers);
+            cancellationPreservesMotionAndPendingContacts(workers);
+            cancellationPreservesDeferredGridFlush(workers);
         }
         const auto serial = solveAgainstSharedKinematicFloor(1);
         require(serial == solveAgainstSharedKinematicFloor(6),

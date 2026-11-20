@@ -4,13 +4,12 @@ import argparse
 import csv
 import hashlib
 import json
-import os
 from pathlib import Path
 import shlex
 import subprocess
 from tempfile import mkdtemp
 
-from compare_implementation import archive, build, capture, fresh_output
+from compare_implementation import archive, audit_environment, build, capture, fresh_output
 from prepare import benchmark_main, build_audit_runner, once, root
 
 parity = """
@@ -147,7 +146,7 @@ def validate(binary, folder, budget, scenario, options, dispatch):
     record = {"command": shlex.join(["env", *(f"{k}={v}" for k, v in environment.items()), *command]),
               "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
     try:
-        with log.open("w") as stream, subprocess.Popen(command, env={**os.environ, **environment},
+        with log.open("w") as stream, subprocess.Popen(command, env=audit_environment(environment),
                                                        stdout=stream, stderr=subprocess.STDOUT) as process:
             try:
                 if budget.wait(process):

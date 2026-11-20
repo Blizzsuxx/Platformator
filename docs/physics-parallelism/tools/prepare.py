@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import shlex
@@ -128,6 +129,27 @@ def run(item):
     return logged
 
 
+def verify_base_fingerprint():
+    generated = build / "engine/generated"
+    manifest = generated / "platformator-source-hashes.manifest"
+    entries = manifest.read_text().splitlines()
+    if not entries or not entries[-1].startswith("aggregate:"):
+        raise RuntimeError(f"Missing aggregate source fingerprint in {manifest}")
+    sources, aggregate = entries[:-1], entries[-1].split(":", 1)[1]
+    for entry in sources:
+        name, expected = entry.rsplit(":", 1)
+        path = root / name
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise RuntimeError(f"Benchmark base build source fingerprint differs for {name}")
+    expected_aggregate = hashlib.sha256("".join(f"{entry}\n" for entry in sources).encode()).hexdigest()
+    if not sources or aggregate != expected_aggregate:
+        raise RuntimeError(f"Invalid aggregate source fingerprint in {manifest}")
+    header = (generated / "benchmarkbuildconfig.h").read_text().splitlines()
+    if f'#define PLATFORMATOR_BENCH_SOURCE_SHA256 "{aggregate}"' not in header:
+        raise RuntimeError("Benchmark base build header and source manifest disagree")
+    return aggregate
+
+
 def build_audit_runner(conversions=None, runner=None):
     if conversions is None:
         conversions = {
@@ -135,6 +157,14 @@ def build_audit_runner(conversions=None, runner=None):
             "physicsmanager.cpp": physics_manager,
             "benchmark_main.cpp": benchmark_main,
         }
+    if not (build / "CMakeCache.txt").is_file():
+        raise RuntimeError(f"Configure the Ninja Release benchmark build at {build} first")
+    build_commands = [
+        run((["cmake", "-S", str(root), "-B", str(build)], root)),
+        run((["cmake", "--build", str(build), "--target", "platformator_benchmark_runner", "--parallel", "5"], root)),
+    ]
+    fingerprint = verify_base_fingerprint()
+
     database = {Path(row["file"]).name: row for row in json.loads((build / "compile_commands.json").read_text())
                 if Path(row["file"]).name in conversions}
     if runner is None:
@@ -153,7 +183,10 @@ def build_audit_runner(conversions=None, runner=None):
             command[1:1] = ["-I" + str(source), "-I" + str(tools)]
             commands.append((command, config["directory"]))
         with ThreadPoolExecutor(max_workers=3) as pool:
-            build_commands = list(pool.map(run, commands))
+            build_commands.extend(pool.map(run, commands))
+
+        if verify_base_fingerprint() != fingerprint:
+            raise RuntimeError("Benchmark base source fingerprint changed while compiling instrumented sources")
 
         link = next(line for line in reversed(subprocess.check_output(
             ["ninja", "-C", str(build), "-t", "commands", "platformator_benchmark_runner"], text=True).splitlines())

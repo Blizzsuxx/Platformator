@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <oneapi/tbb/parallel_sort.h>
 #include "physicsmanager.h"
+#include "physicstaskcontext.h"
 
 bool Grid::rangeFitsCellCache(const GridCellRange &range) noexcept
 {
@@ -531,6 +532,12 @@ void Grid::flushPendingCellUpdates()
 {
     if (pendingColliderOperations.empty() && cellsWithOperations.empty() && potentiallyEmptyCells.empty())
         return;
+
+    platformator_detail::runPhysicsWork([&] { flushPendingWork(); });
+}
+
+void Grid::flushPendingWork()
+{
     const auto prepareColliderGeometry = [](Collider *collider) {
         if (collider->desiredInGrid && (!collider->getIsRegisteredInGrid() || (collider->dirty & Collider::Geometry)))
         {

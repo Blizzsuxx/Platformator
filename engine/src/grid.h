@@ -56,6 +56,7 @@ class Grid
     }
 
   private:
+    void flushPendingWork();
     static bool rangeFitsCellCache(const GridCellRange &range) noexcept;
     void expandActiveCellBounds(const GridCellRange &range) noexcept;
     void recomputeActiveCellBounds() noexcept;

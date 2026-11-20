@@ -12,6 +12,7 @@
 #include "benchmark.h"
 #include "constants.h"
 #include "objectpool.h"
+#include "physicstaskcontext.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
 #include "platformator/camera.h"
@@ -347,13 +348,15 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
         stage(Phase::FixedUpdate, [&] { fixedUpdateScriptComponents(timeDelta); });
         stage(Phase::Physics, [&] {
             PLATFORMATOR_BENCH_SCOPE(Physics);
-            synchronizeTransforms();
-            physicsManager->checkForCollisions();
-            physicsManager->reconcileChangedBodies();
-            physicsManager->applyPhysics(timeDelta);
-            physicsManager->resolveCollisions(timeDelta);
-            physicsManager->applyMovement(timeDelta);
-            synchronizeTransforms();
+            platformator_detail::runPhysicsWork([&] {
+                synchronizeTransforms();
+                physicsManager->checkForCollisions();
+                physicsManager->reconcileChangedBodies();
+                physicsManager->applyPhysics(timeDelta);
+                physicsManager->resolveCollisions(timeDelta);
+                physicsManager->applyMovement(timeDelta);
+                synchronizeTransforms();
+            });
         });
         stage(Phase::CollisionDispatch, [&] { physicsManager->handlePendingPhysicsEvents(timeDelta); });
         stage(Phase::Update, [&] { updateScriptComponents(timeDelta); });

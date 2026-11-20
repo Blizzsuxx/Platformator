@@ -7,6 +7,8 @@
 #include "platformator/circlecollider.h"
 #include "runtimeaccess.h"
 
+#include <numbers>
+
 void *Rigidbody::operator new(size_t size)
 {
     return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Rigidbody, size);
@@ -322,7 +324,7 @@ uint8_t Rigidbody::integrateLocal(double timeDelta)
     }
     if (rotated)
     {
-        object->rotation = std::fmod(object->rotation + angularVelocity * timeDelta, 2.0 * M_PI);
+        object->rotation = std::fmod(object->rotation + angularVelocity * timeDelta, 2.0 * std::numbers::pi);
         object->sinRotation = std::sin(object->rotation);
         object->cosRotation = std::cos(object->rotation);
     }

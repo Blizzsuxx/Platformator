@@ -11,7 +11,7 @@
 #include "platformator/baseobject.h"
 #include "platformator/gameobject.h"
 
-class AnimationClip;
+struct AnimationClip;
 class AudioWrapper;
 class GameManager;
 class ScriptComponent;

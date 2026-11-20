@@ -1263,6 +1263,7 @@ void test_linked_templates_flattening_and_live_sync()
     const auto savedTemplate = parse_template_envelope(
         std::string{std::istreambuf_iterator<char>(savedTemplateInput),
                     std::istreambuf_iterator<char>()});
+    savedTemplateInput.close();
     require(savedTemplate && savedTemplate.asset->reference_bindings().size() == 3 &&
                 savedTemplate.asset->reference_bindings()[1].value("owner_id", -1) == tmplRootId &&
                 savedTemplate.asset->reference_bindings()[1].value("component_id", -1) == 4 &&
@@ -1372,8 +1373,10 @@ void test_linked_templates_flattening_and_live_sync()
                 CommandStatus::Changed &&
             tmplTab->history().erase_property(tmplDoc,
                 address_for_document(tmplDoc, addedChildId, addedChildComponentId, 0,
-                                     {std::string("target")})).status == CommandStatus::Changed &&
-            manager.save_template_tab(*tmplTabId, &tmplErr),
+                                     {std::string("target")})).status == CommandStatus::Changed,
+            "new child component defaults and references must be editable");
+    const bool childEditsSaved = manager.save_template_tab(*tmplTabId, &tmplErr);
+    require(childEditsSaved,
             "new child component defaults and reference deletion must save through propagation: " + tmplErr);
     const int secondAddedChildId = find_document_object_by_id(sceneDoc, secondInstId)
                                        ->at("children")[1].value("id", -1);
@@ -1474,6 +1477,7 @@ void test_linked_templates_flattening_and_live_sync()
     const auto finalTemplate = parse_template_envelope(
         std::string{std::istreambuf_iterator<char>(finalTemplateInput),
                     std::istreambuf_iterator<char>()});
+    finalTemplateInput.close();
     require(finalTemplate && finalTemplate.asset->reference_bindings().size() == 1 &&
                 finalTemplate.asset->root()["children"].size() == 1 &&
                 finalTemplate.asset->reference_bindings()[0].value("path", std::string{}) ==
@@ -1497,6 +1501,7 @@ void test_linked_templates_flattening_and_live_sync()
     const auto appliedTemplate = parse_template_envelope(
         std::string{std::istreambuf_iterator<char>(appliedTemplateInput),
                     std::istreambuf_iterator<char>()});
+    appliedTemplateInput.close();
     const Json *appliedRoot = appliedTemplate ? &appliedTemplate.asset->root() : nullptr;
     const Json *appliedLocalChild = nullptr;
     if (appliedRoot != nullptr && appliedRoot->contains("children") && (*appliedRoot)["children"].is_array())
@@ -1879,6 +1884,7 @@ void test_template_save_failure_preserves_previous_file_and_dirty_draft()
     std::ifstream originalInput(templatePath, std::ios::binary);
     const std::string originalContents{std::istreambuf_iterator<char>(originalInput),
                                        std::istreambuf_iterator<char>()};
+    originalInput.close();
     const auto blockedDirectory = temporary.path() / "templates.backup";
     std::error_code moveError;
     std::filesystem::rename(templateDirectory, blockedDirectory, moveError);
@@ -1892,6 +1898,7 @@ void test_template_save_failure_preserves_previous_file_and_dirty_draft()
     std::ifstream preservedInput(blockedDirectory / "Autosave.pttemplate", std::ios::binary);
     const std::string preservedContents{std::istreambuf_iterator<char>(preservedInput),
                                         std::istreambuf_iterator<char>()};
+    preservedInput.close();
     require(std::filesystem::is_regular_file(templateDirectory) &&
                 preservedContents == originalContents,
             "a failed template save must leave the previous template file intact");

@@ -5,7 +5,7 @@
 
 class TextureWrapper;
 class AudioWrapper;
-class AnimationClip;
+struct AnimationClip;
 class Template;
 
 namespace platformator

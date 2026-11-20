@@ -26,6 +26,9 @@ function(platformator_editor_add_test name)
     set_tests_properties(${name} PROPERTIES
         LABELS "platformator;editor;editor-headless"
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+    if(WIN32)
+        set_tests_properties(${name} PROPERTIES FIXTURES_REQUIRED platformator_windows_runtime)
+    endif()
 endfunction()
 
 function(platformator_editor_add_test_if_sources name)
@@ -51,6 +54,9 @@ function(platformator_editor_add_desktop_test name)
     target_link_libraries(${name} PRIVATE platformator_editor_core Platformator::platformator)
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES LABELS "platformator;editor;editor-desktop")
+    if(WIN32)
+        set_tests_properties(${name} PROPERTIES FIXTURES_REQUIRED platformator_windows_runtime)
+    endif()
 endfunction()
 
 add_executable(platformator_editor_process_fixture process_fixture.cpp)
@@ -79,7 +85,7 @@ else()
     platformator_editor_add_test_if_sources(platformator_editor_nativeprocess_windows_test
         nativeprocess_windows_test.cpp)
     target_compile_definitions(platformator_editor_nativeprocess_windows_test PRIVATE
-        PLATFORMATOR_EDITOR_PROCESS_FIXTURE="$<TARGET_FILE:platformator_editor_process_fixture>")
+        PLATFORMATOR_EDITOR_PROCESS_FIXTURE="$<TARGET_FILE_NAME:platformator_editor_process_fixture>")
     add_dependencies(platformator_editor_nativeprocess_windows_test platformator_editor_process_fixture)
 endif()
 
@@ -159,6 +165,10 @@ add_test(NAME platformator_editor_playsession_test COMMAND platformator_editor_p
 set_tests_properties(platformator_editor_playsession_test PROPERTIES
     LABELS "platformator;editor;editor-headless"
     ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+if(WIN32)
+    set_tests_properties(platformator_editor_playsession_test PROPERTIES
+        FIXTURES_REQUIRED platformator_windows_runtime)
+endif()
 if(NOT WIN32 AND PLATFORMATOR_ENABLE_EDITOR_SESSION)
     add_executable(platformator_editor_session_process_fixture session_process_fixture.cpp)
     target_compile_features(platformator_editor_session_process_fixture PRIVATE cxx_std_20)
@@ -217,6 +227,10 @@ target_link_libraries(platformator_editor_hierarchy_move_test PRIVATE platformat
 platformator_editor_add_test_if_sources(platformator_editor_discovery_test discovery_test.cpp)
 platformator_editor_add_test_if_sources(platformator_editor_project_watch_test project_watch_test.cpp)
 platformator_editor_add_test_if_sources(platformator_editor_audiopreview_test audiopreview_test.cpp)
+foreach(test platformator_editor_document_test platformator_editor_preview_test platformator_editor_tabs_test
+        platformator_editor_asset_watch_integration_test platformator_editor_workspace_test)
+    target_include_directories(${test} PRIVATE "${PLATFORMATOR_ENGINE_DIR}/tests")
+endforeach()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME platformator_editor_capture_budget_test

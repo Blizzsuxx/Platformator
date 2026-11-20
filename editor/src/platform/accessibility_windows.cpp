@@ -94,6 +94,8 @@
 #ifndef UIA_WindowControlTypeId
 #define UIA_WindowControlTypeId (50032)
 #endif
+#else
+#include <uiautomationclient.h>
 #endif
 
 #include <algorithm>

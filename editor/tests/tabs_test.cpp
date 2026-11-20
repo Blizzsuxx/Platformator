@@ -2,6 +2,7 @@
 #include "async_requests.h"
 #include "editcommands.h"
 #include "editorapp.h"
+#include "filesystem_test_support.h"
 #include "preview.h"
 #include "resourceindex.h"
 #include "selection.h"
@@ -703,16 +704,16 @@ void test_save_as_rejects_open_canonical_sources_without_rebasing_drafts()
     const auto sceneAHistory = sceneATab->history().history_status().currentToken;
     const auto sceneBHistory = sceneBTab->history().history_status().currentToken;
     const auto sceneBDisk = read_json(sceneB);
-    std::error_code symlinkError;
-    const auto sceneAlias = scenes / "b-alias.scene";
-    std::filesystem::create_symlink(sceneB, sceneAlias, symlinkError);
-    require(!symlinkError, "the Linux fixture must create a canonical source alias");
+    const bool symlinks = test_filesystem::supports_symlinks(temporary.path());
+    const auto sceneAlias = symlinks ? scenes / "b-alias.scene" : sceneB;
+    if (symlinks)
+        std::filesystem::create_symlink(sceneB, sceneAlias);
     std::string ownerError;
     const auto sceneOwner = documents.source_owner_for_destination(
         sceneAlias, *sceneAId, &ownerError);
     require(sceneOwner && sceneOwner->tabId == *sceneBId &&
                 sceneOwner->kind == DocumentTabKind::Scene && ownerError.empty(),
-            "Save As ownership must resolve a symlink to the open canonical Scene source");
+            "Save As ownership must resolve to the open canonical Scene source");
     const auto sceneOverwrite = documents.save_scene_tab_as(
         sceneATab->identity(), sceneAlias, true);
     require(sceneOverwrite.status == WorkspaceActionStatus::Failed &&
@@ -747,14 +748,14 @@ void test_save_as_rejects_open_canonical_sources_without_rebasing_drafts()
     const auto animationAHistory = animationATab->document().history_token();
     const auto animationBHistory = animationBTab->document().history_token();
     const Json animationBDisk = read_json(animationB);
-    const auto animationAlias = assets / "b-alias.animset";
-    std::filesystem::create_symlink(animationB, animationAlias, symlinkError);
-    require(!symlinkError, "the animation fixture must create a contained source alias");
+    const auto animationAlias = symlinks ? assets / "b-alias.animset" : animationB;
+    if (symlinks)
+        std::filesystem::create_symlink(animationB, animationAlias);
     const auto animationOwner = documents.source_owner_for_destination(
         animationAlias, *animationAId, &ownerError);
     require(animationOwner && animationOwner->tabId == *animationBId &&
                 animationOwner->kind == DocumentTabKind::Animation,
-            "animation ownership must resolve contained symlink aliases across open tabs");
+            "animation ownership must resolve to the open animation source");
     const auto animationOverwrite = documents.save_animation_tab_as(
         animationATab->identity(), animationAlias,
         AssetOverwriteObservation{native_file_identity(animationB, ownerError)});

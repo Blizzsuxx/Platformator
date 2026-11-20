@@ -3,6 +3,7 @@
 #include "assetformats.h"
 #include "editorwork.h"
 #include "editcommands.h"
+#include "filesystem_test_support.h"
 #include "componenttypes.h"
 #include "panels/hierarchy.h"
 #include "panels/referencefields.h"
@@ -531,7 +532,9 @@ void run_typed_reference_cases()
     std::ofstream(assets / "Templates" / "Enemy.pttemplate", std::ios::binary)
         << R"({"format":"platformator.object-template","version":1,"name":"Enemy","root":{"id":0,"name":"Enemy"}})";
     std::ofstream(temporary.path() / "Outside.png", std::ios::binary) << "outside";
-    std::filesystem::create_directory_symlink(temporary.path(), assets / "Escape");
+    const bool symlinks = test_filesystem::supports_symlinks(temporary.path());
+    if (symlinks)
+        std::filesystem::create_directory_symlink(temporary.path(), assets / "Escape");
 
     Json referenceBehavior{{"type", "ReferenceFixture"}, {"fields", {{"target", 99}}}};
     auto root = object(0, "Root", Json::array({component(1, 2, Json{{"width", 640.0}, {"height", 480.0}}),
@@ -601,7 +604,8 @@ void run_typed_reference_cases()
     require(validate_asset_reference_assignment(document, texturePath, "Texture", false, error) &&
                 !validate_asset_reference_assignment(document, audioPath, "Texture", false, error) &&
                 !validate_asset_reference_assignment(document, "assets/../Outside.png", "Texture", false, error) &&
-                !validate_asset_reference_assignment(document, "assets/Escape/Outside.png", "Texture", false, error) &&
+                (!symlinks || !validate_asset_reference_assignment(
+                    document, "assets/Escape/Outside.png", "Texture", false, error)) &&
                 inspect_asset_reference(document, "assets/missing.png", "Texture").state == ReferenceState::Dangling &&
                 validate_asset_reference_assignment(document, nullptr, "Texture", true, error) &&
                 !validate_asset_reference_assignment(document, nullptr, "Texture", false, error) &&

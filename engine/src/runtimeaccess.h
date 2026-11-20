@@ -5,7 +5,7 @@
 
 #include <json.hpp>
 
-class AnimationClip;
+struct AnimationClip;
 class AudioWrapper;
 class GameManager;
 class PhysicsManager;

@@ -949,6 +949,7 @@ TemplateRetargetResult DocumentManager::retarget_template_asset_links(
         try
         {
             root = Json::parse(input);
+            input.close();
         }
         catch (const std::exception &error)
         {

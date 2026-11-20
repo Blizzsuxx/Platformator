@@ -23,7 +23,7 @@
 
 template <typename T> class AssetReference;
 template <typename T> class ObjectReference;
-class AnimationClip;
+struct AnimationClip;
 class Animator;
 class Audio;
 class AudioWrapper;

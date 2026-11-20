@@ -13,6 +13,9 @@ endif()
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/assets/" DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets")
 include("${PLATFORMATOR_ROOT_DIR}/cmake/PlatformatorTests.cmake")
 platformator_add_test(platformator_regression_tests tests/regression_tests.cpp INTERNAL LABELS physics)
+if(WIN32)
+    platformator_add_windows_test_runtime(platformator_regression_tests)
+endif()
 platformator_add_test(platformator_scene_script_roundtrip_test tests/scene_script_roundtrip_test.cpp INTERNAL LABELS scene)
 set_tests_properties(platformator_scene_script_roundtrip_test PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:platformator_scene_script_roundtrip_test>")
@@ -54,6 +57,10 @@ platformator_add_test(platformator_runner_failure_test tests/runner_failure_test
 add_test(NAME platformator_runner_startup_failure COMMAND platformator_runner_failure_test startup)
 add_test(NAME platformator_physics_only_startup COMMAND platformator_runner_failure_test physics)
 set_tests_properties(platformator_runner_startup_failure platformator_physics_only_startup PROPERTIES LABELS "platformator;package;runner")
+if(WIN32)
+    set_tests_properties(platformator_runner_startup_failure platformator_physics_only_startup PROPERTIES
+        FIXTURES_REQUIRED platformator_windows_runtime)
+endif()
 add_test(NAME platformator_package_smoke COMMAND "${CMAKE_COMMAND}"
     "-DPLATFORMATOR_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
     "-DPLATFORMATOR_BINARY_DIR=${PROJECT_BINARY_DIR}" -P "${PLATFORMATOR_ENGINE_DIR}/tests/package_smoke.cmake")

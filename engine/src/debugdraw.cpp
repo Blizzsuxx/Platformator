@@ -2,6 +2,7 @@
 #include "constants.h"
 #include "gridcell.h"
 #include <cmath>
+#include <numbers>
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
 
@@ -109,7 +110,7 @@ void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
     const int numSegments = 36;
     for (int i = 0; i < numSegments; i++)
     {
-        float angle = static_cast<float>(i) / numSegments * 2.0f * static_cast<float>(M_PI);
+        float angle = static_cast<float>(i) / numSegments * 2.0f * std::numbers::pi_v<float>;
         vertices.emplace_back(center.x() + radius * std::cos(angle), center.y() + radius * std::sin(angle));
     }
     addDebugObject(std::move(vertices), 0x00, 0xFF, 0x00, 0xCC, true, collider.getGameObject()->getName());

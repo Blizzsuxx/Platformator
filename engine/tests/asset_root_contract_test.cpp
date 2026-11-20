@@ -1,4 +1,5 @@
 #include "test_support.h"
+#include "filesystem_test_support.h"
 #include <iostream>
 #include <platformator/assetreference.h>
 #include <platformator/scene.h>
@@ -86,8 +87,12 @@ int main()
             fs::copy_file(source / "textures/missing.png", directory / "outside.png",
                           fs::copy_options::overwrite_existing);
             fs::remove(root / "outside-link.png");
-            fs::create_symlink(directory / "outside.png", root / "outside-link.png");
-            rejects([&] { runtime.loadTexture("assets/outside-link.png"); });
+            const bool symlinks = test_filesystem::supports_symlinks(root);
+            if (symlinks)
+            {
+                fs::create_symlink(directory / "outside.png", root / "outside-link.png");
+                rejects([&] { runtime.loadTexture("assets/outside-link.png"); });
+            }
             const auto missing = [](const std::string &path, auto &&load) {
                 try
                 {
@@ -105,7 +110,6 @@ int main()
             missing("assets/absent.png", [&](const auto &path) { runtime.loadTexture(path); });
             missing("assets/absent.wav", [&](const auto &path) { runtime.loadAudio(path); });
             missing("assets/absent.animset", [&](const auto &path) { runtime.loadAnimationClip(path); });
-            fs::create_symlink("loop", root / "loop");
             const std::string filesystemError = "assets\\loop\\file.png";
             const auto reportsFilesystemError = [&](auto &&load) {
                 try
@@ -122,9 +126,13 @@ int main()
                             "Filesystem errors retain the original request and underlying context");
                 }
             };
-            reportsFilesystemError([&](const auto &path) { runtime.loadTexture(path); });
-            reportsFilesystemError([&](const auto &path) { runtime.loadAudio(path); });
-            reportsFilesystemError([&](const auto &path) { runtime.loadAnimationClip(path); });
+            if (symlinks)
+            {
+                fs::create_directory_symlink("loop", root / "loop");
+                reportsFilesystemError([&](const auto &path) { runtime.loadTexture(path); });
+                reportsFilesystemError([&](const auto &path) { runtime.loadAudio(path); });
+                reportsFilesystemError([&](const auto &path) { runtime.loadAnimationClip(path); });
+            }
             for (const auto &name : {"broken.png", "broken.wav", "broken.animset"})
             {
                 std::ofstream broken(root / name);
@@ -173,8 +181,9 @@ int main()
                         "Retained animation request survives file deletion");
             }
             missing("assets/animations/nested/temporary.animset", [&](const auto &path) { runtime.loadAnimationClip(path); });
-            fs::create_symlink(root / "textures/MiXeD.PNG", root / "cached-link.png");
+            if (symlinks)
             {
+                fs::create_symlink(root / "textures/MiXeD.PNG", root / "cached-link.png");
                 AssetReference<TextureWrapper> link(runtime.loadTexture("assets/cached-link.png"));
                 auto *expected = link.get();
                 fs::remove(root / "cached-link.png");
@@ -182,8 +191,8 @@ int main()
                 require(runtime.loadTexture("assets/cached-link.png") == expected,
                         "Previously validated request remains stable after symlink change");
                 rejects([&] { runtime.loadTexture("assets\\cached-link.png"); });
+                fs::remove(root / "cached-link.png");
             }
-            fs::remove(root / "cached-link.png");
             fs::create_directories(directory / "Elsewhere");
             fs::current_path(directory / "Elsewhere");
             require(runtime.loadTexture("assets/textures/MiXeD.PNG") == texture.get(),
@@ -239,11 +248,14 @@ int main()
                 require(checked, "Saved scene must include the behavior asset fields");
             }
             auto *committed = runtime.getGameObject("case");
-            document[0]["components"][0]["textureFilePath"] = filesystemError;
-            { std::ofstream file(scene); file << document; }
-            reportsFilesystemError([&](const auto &) { runtime.loadScene(scene.string()); });
-            require(runtime.getGameObject("case") == committed,
-                    "Filesystem errors during scene preparation preserve the committed scene");
+            if (symlinks)
+            {
+                document[0]["components"][0]["textureFilePath"] = filesystemError;
+                { std::ofstream file(scene); file << document; }
+                reportsFilesystemError([&](const auto &) { runtime.loadScene(scene.string()); });
+                require(runtime.getGameObject("case") == committed,
+                        "Filesystem errors during scene preparation preserve the committed scene");
+            }
             document[0]["components"][0]["textureFilePath"] = "../textures/MiXeD.PNG";
             {
                 std::ofstream file(scene);

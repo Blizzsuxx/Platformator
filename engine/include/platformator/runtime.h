@@ -19,7 +19,7 @@ class GameManager;
 class GameObject;
 class Scene;
 class SDLWindow;
-class AnimationClip;
+struct AnimationClip;
 class AudioWrapper;
 class Template;
 class TextureWrapper;

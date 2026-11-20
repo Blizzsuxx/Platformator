@@ -3,6 +3,8 @@
 #include "editorprocess.h"
 #include "test_support.h"
 
+#include <SDL3/SDL_filesystem.h>
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -58,7 +60,9 @@ ProcessRequest fixture_request(std::vector<std::string> arguments,
                                const std::filesystem::path &workingDirectory)
 {
     ProcessRequest request;
-    request.argv = {PLATFORMATOR_EDITOR_PROCESS_FIXTURE};
+    const char *basePath = SDL_GetBasePath();
+    require(basePath != nullptr, "cannot locate the Windows process fixture directory");
+    request.argv = {std::string(basePath) + PLATFORMATOR_EDITOR_PROCESS_FIXTURE};
     request.argv.insert(request.argv.end(), std::make_move_iterator(arguments.begin()),
                         std::make_move_iterator(arguments.end()));
     request.workingDirectory = workingDirectory;
@@ -119,7 +123,7 @@ void wait_for_process_exit(DWORD processId)
 
 void test_wide_argv_and_working_directory(const std::filesystem::path &root)
 {
-    const auto directory = root / std::filesystem::u8path("wide 雪 path");
+    const auto directory = root / std::filesystem::path(u8"wide 雪 path");
     std::filesystem::create_directories(directory);
     ProcessService process;
     Capture capture;

@@ -401,6 +401,9 @@ class WindowsProjectWatchService final : public ProjectWatchService
 
     void run()
     {
+        for (const auto &root : roots_)
+            notify(ProjectChangeKind::RootAvailable, root.path, true);
+
         while (!stopping_.load(std::memory_order_acquire))
         {
             struct PendingWatch

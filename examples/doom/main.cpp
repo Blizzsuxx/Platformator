@@ -1,9 +1,10 @@
 #include <cmath>
-#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <SDL3/SDL_hints.h>
 
 #include "platformator/behaviorquery.h"
 #include "platformator/gameobject.h"
@@ -65,9 +66,9 @@ namespace
 
     int runSelfTest(const std::string &assetRootOverride)
     {
-        setenv("SDL_VIDEODRIVER", "dummy", 0);
-        setenv("SDL_AUDIODRIVER", "dummy", 0);
-        setenv("SDL_RENDER_DRIVER", "software", 0);
+        SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "dummy", SDL_HINT_DEFAULT);
+        SDL_SetHintWithPriority(SDL_HINT_AUDIO_DRIVER, "dummy", SDL_HINT_DEFAULT);
+        SDL_SetHintWithPriority(SDL_HINT_RENDER_DRIVER, "software", SDL_HINT_DEFAULT);
 
         RuntimeOptions options;
         options.sceneFilePath = "assets/scenes/e1m1_hangar.scene";

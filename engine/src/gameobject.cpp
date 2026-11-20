@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <stdexcept>
 
 #include "objectpool.h"
@@ -54,7 +55,7 @@ float GameObject::getRotation() const
 
 float GameObject::getRotationInDegrees() const
 {
-    return rotation * 180.0f / static_cast<float>(M_PI);
+    return rotation * 180.0f / std::numbers::pi_v<float>;
 }
 
 Eigen::Vector2f GameObject::getPosition() const
@@ -78,7 +79,7 @@ GameObject *GameObject::setRotation(const float rotation)
 {
     validateMutation();
     platformator_detail::finite(rotation, "rotation");
-    const float wrapped = std::fmod(rotation, 2.0f * static_cast<float>(M_PI));
+    const float wrapped = std::fmod(rotation, 2.0f * std::numbers::pi_v<float>);
     if (this->rotation == wrapped)
         return this;
     this->rotation = wrapped;

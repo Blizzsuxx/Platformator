@@ -11,6 +11,9 @@ function(platformator_add_test name source)
         WORKING_DIRECTORY "${PROJECT_BINARY_DIR}"
         LABELS "platformator;${TEST_LABELS}"
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;SDL_RENDER_DRIVER=software")
+    if(WIN32)
+        set_tests_properties(${name} PROPERTIES FIXTURES_REQUIRED platformator_windows_runtime)
+    endif()
     if(TEST_PROBE)
         set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
         set_property(TEST ${name} APPEND PROPERTY LABELS probe)

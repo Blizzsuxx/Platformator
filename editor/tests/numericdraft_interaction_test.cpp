@@ -1,6 +1,7 @@
 #include "assetdocument.h"
 #include "documentmanager.h"
 #include "panels/animation.h"
+#include "panels/numericscrub.h"
 #include "panels/spriteeditor.h"
 #include "test_support.h"
 
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -52,6 +54,37 @@ void require(bool condition, const char *message)
 {
     if (!condition)
         throw std::runtime_error(message);
+}
+
+void test_integer_scrub_bounds()
+{
+    constexpr auto signedMin = std::numeric_limits<std::int64_t>::min();
+    constexpr auto signedMax = std::numeric_limits<std::int64_t>::max();
+    constexpr auto unsignedMax = std::numeric_limits<std::uint64_t>::max();
+    const Json signedValue = signedMax;
+    const Json unsignedValue = unsignedMax;
+    const auto signedResult = apply_numeric_delta(signedValue, -1.0);
+    const auto unsignedResult = apply_numeric_delta(unsignedValue, -1.0);
+    require(signedResult.type() == signedValue.type() && signedResult.get<std::int64_t>() == signedMax - 1,
+            "subtracting one from INT64_MAX preserves the exact signed value");
+    require(unsignedResult.type() == unsignedValue.type() && unsignedResult.get<std::uint64_t>() == unsignedMax - 1,
+            "subtracting one from UINT64_MAX preserves the exact unsigned value");
+    require(apply_numeric_delta(signedValue, -1.0, {}, -0x1p63).get<std::int64_t>() == signedMin,
+            "INT64_MIN is an inclusive upper bound");
+    require(apply_numeric_delta(unsignedValue, -1.0, {}, 0.0).get<std::uint64_t>() == 0,
+            "zero is an inclusive unsigned upper bound");
+    require(apply_numeric_delta(Json(std::int64_t{-1}), 0x1p63).get<std::int64_t>() == signedMax,
+            "a delta larger than INT64_MAX can cross zero");
+    require(apply_numeric_delta(signedValue, -0x1p64).get<std::int64_t>() == signedMin,
+            "an oversized negative delta saturates at INT64_MIN");
+    require(apply_numeric_delta(Json(std::uint64_t{0}), 0x1p64).get<std::uint64_t>() == unsignedMax,
+            "an oversized positive delta saturates at UINT64_MAX");
+    require(apply_numeric_delta(signedValue, -1.0, 0x1p63) == signedValue &&
+                apply_numeric_delta(unsignedValue, -1.0, 0x1p64) == unsignedValue,
+            "out-of-range lower bounds leave the integer unchanged");
+    require(apply_numeric_delta(Json(std::int64_t{-1}), 10.0, -1.5, 2.5).get<std::int64_t>() == 2 &&
+                apply_numeric_delta(Json(std::int64_t{1}), -10.0, -1.5, 2.5).get<std::int64_t>() == -1,
+            "fractional bounds round inward before clamping an integer");
 }
 
 std::string animation_address(const AssetDocument &document,
@@ -412,6 +445,7 @@ int main()
 {
     try
     {
+        test_integer_scrub_bounds();
         AddressNumericDraftTestProbe::check_steps();
         const bool ownsSdlVideo = (SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0;
         if (ownsSdlVideo)

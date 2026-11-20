@@ -1,11 +1,13 @@
 #include "project.h"
 #include "layersettings.h"
 #include "documentio.h"
+#include "platform/nativefile.h"
 #include "platform/watch.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -16,7 +18,6 @@
 #include <system_error>
 #include <unordered_map>
 #include <utility>
-#include <sys/stat.h>
 
 #include <json.hpp>
 
@@ -41,9 +42,8 @@ namespace platformator_editor
     {
         std::string canonicalPath;
         std::uintmax_t size = 0;
-        long long lastWriteTime = 0;
-        long long changeTimeSec = 0;
-        long long changeTimeNsec = 0;
+        std::int64_t lastWriteTime = 0;
+        std::int64_t changeTime = 0;
 
         bool operator<(const SourceHashCacheKey &other) const
         {
@@ -51,10 +51,8 @@ namespace platformator_editor
                 return size < other.size;
             if (lastWriteTime != other.lastWriteTime)
                 return lastWriteTime < other.lastWriteTime;
-            if (changeTimeSec != other.changeTimeSec)
-                return changeTimeSec < other.changeTimeSec;
-            if (changeTimeNsec != other.changeTimeNsec)
-                return changeTimeNsec < other.changeTimeNsec;
+            if (changeTime != other.changeTime)
+                return changeTime < other.changeTime;
             return canonicalPath < other.canonicalPath;
         }
     };
@@ -697,34 +695,19 @@ namespace platformator_editor
                     const auto canonicalPath = std::filesystem::canonical(entry.path(), canonError);
                     const std::string canonicalKey = canonError ? entry.path().string() : canonicalPath.string();
 
-#if defined(_WIN32)
-                    struct _stat st{};
-                    const bool statOk = ::_wstat(entry.path().c_str(), &st) == 0;
-#else
-                    struct stat st{};
-                    const bool statOk = ::stat(entry.path().c_str(), &st) == 0;
-#endif
-                    long long ctimeSec = 0;
-                    long long ctimeNsec = 0;
-                    if (statOk)
-                    {
-                        ctimeSec = static_cast<long long>(st.st_ctime);
-#if defined(__linux__)
-                        ctimeNsec = static_cast<long long>(st.st_ctim.tv_nsec);
-#elif defined(__APPLE__)
-                        ctimeNsec = static_cast<long long>(st.st_ctimespec.tv_nsec);
-#endif
-                    }
+                    std::string identityError;
+                    const auto identity = native_file_identity(entry.path(), identityError);
+                    const bool cacheable = identity && identity->changeTimeNanoseconds != 0;
 
                     const SourceHashCacheKey cacheKey{
                         canonicalKey,
                         size,
-                        static_cast<long long>(modified.time_since_epoch().count()),
-                        ctimeSec,
-                        ctimeNsec};
+                        identity ? identity->modificationTimeNanoseconds : 0,
+                        identity ? identity->changeTimeNanoseconds : 0};
 
                     std::uint64_t contentHash = 0;
                     bool foundInCache = false;
+                    if (cacheable)
                     {
                         std::lock_guard lock(s_sourceHashCacheMutex);
                         auto it = s_sourceHashCache.find(cacheKey);
@@ -765,7 +748,7 @@ namespace platformator_editor
                             result.error = "could not finish reading source input: " + entry.path().string();
                             return;
                         }
-                        if (!result.cancelled)
+                        if (!result.cancelled && cacheable)
                         {
                             std::lock_guard lock(s_sourceHashCacheMutex);
                             s_sourceHashCache[cacheKey] = contentHash;

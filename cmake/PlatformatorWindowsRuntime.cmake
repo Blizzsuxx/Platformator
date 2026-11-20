@@ -24,7 +24,7 @@ function(platformator_find_mingw_runtime output)
     set(${output} "${runtime_dlls}" PARENT_SCOPE)
 endfunction()
 
-function(platformator_stage_windows_editor_runtime target)
+function(platformator_collect_windows_runtime output)
     set(runtime_dlls ${PLATFORMATOR_MINGW_RUNTIME_DLLS})
     foreach(library IN LISTS PLATFORMATOR_RUNTIME_LIBRARY_TARGETS)
         get_target_property(library_type "${library}" TYPE)
@@ -32,11 +32,27 @@ function(platformator_stage_windows_editor_runtime target)
             list(APPEND runtime_dlls "$<TARGET_FILE:${library}>")
         endif()
     endforeach()
+    set(${output} "${runtime_dlls}" PARENT_SCOPE)
+endfunction()
+
+function(platformator_stage_windows_editor_runtime target)
+    platformator_collect_windows_runtime(runtime_dlls)
     if(runtime_dlls)
         add_custom_command(TARGET "${target}" POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 ${runtime_dlls} "$<TARGET_FILE_DIR:${target}>"
             COMMENT "Staging Windows editor runtime DLLs"
             VERBATIM)
+    endif()
+endfunction()
+
+function(platformator_add_windows_test_runtime target)
+    platformator_collect_windows_runtime(runtime_dlls)
+    if(runtime_dlls)
+        add_test(NAME platformator_windows_test_runtime
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                ${runtime_dlls} "$<TARGET_FILE_DIR:${target}>")
+        set_tests_properties(platformator_windows_test_runtime PROPERTIES
+            FIXTURES_SETUP platformator_windows_runtime LABELS "platformator;windows")
     endif()
 endfunction()

@@ -19,7 +19,7 @@
 
 class GameObject;
 class Sprite;
-class AnimationClip;
+struct AnimationClip;
 class Camera;
 
 namespace platformator

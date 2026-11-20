@@ -3,6 +3,7 @@
 #include "documentmanager.h"
 #include "editcommands.h"
 #include "editorwork.h"
+#include "filesystem_test_support.h"
 #include "audiopreview.h"
 #include "layersettings.h"
 #include "panels/project.h"
@@ -2144,6 +2145,7 @@ void run_project_cases()
     std::ifstream refusedInput(customCmakePath, std::ios::binary);
     const std::string refusedContents((std::istreambuf_iterator<char>(refusedInput)),
                                       std::istreambuf_iterator<char>());
+    refusedInput.close();
     require(!refusedRepair.succeeded && refusedContents == customCmake &&
                 std::filesystem::is_regular_file(authoredAsset),
             "a rejected engine path must preserve custom CMake and authored assets");
@@ -2152,6 +2154,7 @@ void run_project_cases()
     std::ifstream repairedInput(customCmakePath, std::ios::binary);
     const std::string repairedContents((std::istreambuf_iterator<char>(repairedInput)),
                                        std::istreambuf_iterator<char>());
+    repairedInput.close();
     require(repairedPath.succeeded && engineStatus.sourceDirectoryAvailable &&
                 repairedContents.find(std::filesystem::canonical(engineSource).generic_string()) != std::string::npos &&
                 repairedContents.find("add_subdirectory(custom-game)") != std::string::npos &&
@@ -2489,9 +2492,12 @@ void run_project_cases()
             "unchanged canonical roots must not create a new project generation");
 
     test_folder_scans_recover_from_capacity_pressure();
-    test_project_panel_alias_presentation_invalidation();
-    test_directory_alias_file_events_refresh_descendant_previews();
-    test_initially_broken_alias_repairs_project_listings_and_previews();
+    if (test_filesystem::supports_symlinks(temporary.path()))
+    {
+        test_project_panel_alias_presentation_invalidation();
+        test_directory_alias_file_events_refresh_descendant_previews();
+        test_initially_broken_alias_repairs_project_listings_and_previews();
+    }
     test_project_search_tracks_listing_revisions();
     test_project_assignment_uses_explicit_validated_target();
     test_project_template_selection_has_no_detached_controls();

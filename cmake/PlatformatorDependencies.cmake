@@ -12,6 +12,9 @@ if(platformator_stale_vendor_tests)
 endif()
 
 # Use dependency-owned export/install rules for offline SDK consumption.
+# The checked-in SDL extensions omit their optional external codec trees.
+set(SDLIMAGE_VENDORED OFF CACHE BOOL "Build SDL_image's optional external codec sources")
+set(SDLMIXER_VENDORED OFF CACHE BOOL "Build SDL_mixer's optional external codec sources")
 foreach(install_option SDL_INSTALL SDLIMAGE_INSTALL SDLMIXER_INSTALL TBB_INSTALL EIGEN_BUILD_CMAKE_PACKAGE)
     set(${install_option} ${PLATFORMATOR_INSTALL} CACHE BOOL "Follow Platformator SDK installation" FORCE)
 endforeach()

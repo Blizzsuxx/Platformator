@@ -5,7 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(PLATFORMATOR_ENGINE_SOURCE_DIR "/home/user/Projects/Platformator" CACHE PATH
+get_filename_component(platformator_source_default "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(PLATFORMATOR_ENGINE_SOURCE_DIR "${platformator_source_default}" CACHE PATH
     "Fallback path to local Platformator source tree when Platformator CONFIG package is not installed")
 
 if(NOT TARGET Platformator::platformator)

@@ -1,5 +1,6 @@
 #include "platform/watch.h"
 #include "editorapp.h"
+#include "filesystem_test_support.h"
 #include "preview.h"
 #include "projectchanges.h"
 #include "projectsession.h"
@@ -2159,15 +2160,19 @@ int main()
     test_linux_watcher_recovers_when_root_parent_is_replaced();
     test_linux_watcher_recovers_when_started_before_root_parent_exists();
     test_nested_root_parent_does_not_hide_project_root_changes();
-    test_resource_aliases_versions_and_unresolved_paths();
-    test_initially_broken_contained_alias_dependencies();
-    test_initially_rejected_contained_alias_dependencies();
+    const TemporaryDirectory symlinkProbe;
+    if (test_filesystem::supports_symlinks(symlinkProbe.path()))
+    {
+        test_resource_aliases_versions_and_unresolved_paths();
+        test_initially_broken_contained_alias_dependencies();
+        test_initially_rejected_contained_alias_dependencies();
 #if !defined(_WIN32)
-    test_initially_unreadable_contained_alias_dependencies();
+        test_initially_unreadable_contained_alias_dependencies();
 #endif
-    test_directory_alias_non_directory_invalidation();
-    test_transitive_alias_hop_invalidation();
-    test_alias_parent_directory_invalidation();
+        test_directory_alias_non_directory_invalidation();
+        test_transitive_alias_hop_invalidation();
+        test_alias_parent_directory_invalidation();
+    }
     test_bounded_fallback_reference_checks();
     test_visible_audio_reference_fallback_demand();
     test_recovery_inventory_revalidates_equal_metadata_and_replacement();

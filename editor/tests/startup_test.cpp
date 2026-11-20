@@ -190,7 +190,8 @@ void projectless_adoption_cases()
     std::filesystem::create_directories(savedProject / "assets");
     std::ofstream(savedProject / "CMakeLists.txt") << "project(removed-startup-fixture)\n";
     std::string persistenceError;
-    require(save_last_workspace(lastWorkspacePath, savedProject, persistenceError),
+    const bool workspaceSaved = save_last_workspace(lastWorkspacePath, savedProject, persistenceError);
+    require(workspaceSaved,
             "a valid workspace choice must be saved before missing-root restoration coverage: " +
                 persistenceError);
     std::filesystem::remove_all(savedProject);

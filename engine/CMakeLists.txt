@@ -42,6 +42,8 @@ list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}" "${PLATFORMA
 add_library(platformator_engine STATIC ${PLATFORMATOR_SOURCES})
 add_library(Platformator::platformator ALIAS platformator_engine)
 target_compile_features(platformator_engine PUBLIC cxx_std_20)
+# Consumers expand SERIALIZABLE_SCRIPT in their own translation units.
+target_compile_options(platformator_engine PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>")
 set_target_properties(platformator_engine PROPERTIES EXPORT_NAME platformator)
 set_target_properties(nlohmann_json PROPERTIES EXPORT_NAME json)
 target_compile_definitions(platformator_engine PUBLIC

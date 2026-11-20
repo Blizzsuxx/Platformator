@@ -124,12 +124,18 @@ std::filesystem::path normalized_save_path(const std::filesystem::path &path, st
 
 std::int64_t filetime_nanoseconds(LONGLONG ticks) noexcept
 {
-    const auto maximum = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t unixEpoch = 116444736000000000LL;
+    constexpr std::int64_t minimum = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t maximum = std::numeric_limits<std::int64_t>::max();
     if (ticks <= 0)
         return 0;
-    if (ticks > maximum / 100)
+    // Windows counts 100 ns ticks since 1601. Convert the epoch before scaling.
+    const auto unixTicks = ticks - unixEpoch;
+    if (unixTicks < minimum / 100)
+        return minimum;
+    if (unixTicks > maximum / 100)
         return maximum;
-    return static_cast<std::int64_t>(ticks * 100);
+    return unixTicks * 100;
 }
 
 bool path_exists(const std::filesystem::path &path) noexcept
@@ -244,6 +250,8 @@ AtomicWriteResult native_write_file_atomically(const std::filesystem::path &path
         return {AtomicWriteStatus::Failed, std::move(identityError), false};
     if (verifyDestinationIdentity && initialIdentity != expectedDestination)
         return {AtomicWriteStatus::Conflict, "save destination changed before writing", false};
+    if (initialIdentity && (initialIdentity->mode & FILE_ATTRIBUTE_DIRECTORY))
+        return {AtomicWriteStatus::Failed, "save destination is a directory", false};
 
     const auto sequence = temporarySequence.fetch_add(1, std::memory_order_relaxed);
     const auto hooks = current_test_hooks();
@@ -333,7 +341,7 @@ AtomicWriteResult native_write_file_atomically(const std::filesystem::path &path
     bool durabilityWarning = false;
     DWORD durabilityError = ERROR_SUCCESS;
     std::string durabilityMessage;
-    if (allowReplaceExisting)
+    if (allowReplaceExisting && preCommitIdentity)
     {
         const DWORD originalAttributes = ::GetFileAttributesW(target.c_str());
         if (originalAttributes == INVALID_FILE_ATTRIBUTES)
@@ -343,6 +351,11 @@ AtomicWriteResult native_write_file_atomically(const std::filesystem::path &path
             if (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND)
                 return {AtomicWriteStatus::Conflict, "save destination disappeared before replacement", false};
             return {AtomicWriteStatus::Failed, system_error("cannot inspect destination attributes", code), false};
+        }
+        if (originalAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            cleanup_temporary();
+            return {AtomicWriteStatus::Failed, "save destination is a directory", false};
         }
         const bool wasReadOnly = (originalAttributes & FILE_ATTRIBUTE_READONLY) != 0;
         if (wasReadOnly && !::SetFileAttributesW(target.c_str(), originalAttributes & ~FILE_ATTRIBUTE_READONLY))

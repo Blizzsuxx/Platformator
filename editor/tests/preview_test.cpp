@@ -1,6 +1,7 @@
 #include "document.h"
 #include "editorapp.h"
 #include "editorwork.h"
+#include "filesystem_test_support.h"
 #include "preview.h"
 #include "test_support.h"
 #include "validation.h"
@@ -2456,12 +2457,16 @@ int main()
         check_preview_render_and_lifetimes();
         check_malformed_collider_preview_placeholders();
         check_preview_versioned_asset_reload();
-        check_scene_directory_alias_event_reload();
-        check_scene_dispatch_repairs_first_demand_broken_alias();
-        check_scene_dispatch_repairs_first_demand_rejected_aliases();
+        const platformator_editor_test::TemporaryDirectory symlinkProbe;
+        if (test_filesystem::supports_symlinks(symlinkProbe.path()))
+        {
+            check_scene_directory_alias_event_reload();
+            check_scene_dispatch_repairs_first_demand_broken_alias();
+            check_scene_dispatch_repairs_first_demand_rejected_aliases();
 #if !defined(_WIN32)
-        check_scene_dispatch_repairs_first_demand_unreadable_alias();
+            check_scene_dispatch_repairs_first_demand_unreadable_alias();
 #endif
+        }
         check_shared_animation_dependency_reload();
         check_animation_dependency_queue_recovery_and_stale_generation();
         check_shared_texture_and_animation_consumers_after_rebuild();

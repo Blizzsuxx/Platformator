@@ -17,7 +17,6 @@
 #else
 #include <sys/stat.h>
 #endif
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -96,8 +95,9 @@ void test_unicode_identity_and_mode_preservation(const std::filesystem::path &ro
     require_file(read_text(target) == "first", "Unicode path contains committed bytes");
 
     const auto originalIdentity = native_file_identity(target, error);
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    const auto originalWriteTime = std::filesystem::last_write_time(target);
     write_text(target, "other");
+    std::filesystem::last_write_time(target, originalWriteTime - std::chrono::hours(1));
     const auto changedIdentity = native_file_identity(target, error);
     require_file(originalIdentity.has_value() && changedIdentity.has_value() && error.empty() &&
                      originalIdentity->size == changedIdentity->size &&
@@ -300,7 +300,7 @@ int main()
         test_create_if_absent_race(temporary.path());
         test_committed_directory_durability_warning(temporary.path());
         test_replace_durability_warning_retains_prior_content(temporary.path());
-        std::cout << "Native POSIX file contract cases passed\n";
+        std::cout << "Native file contract cases passed\n";
         return 0;
     }
     catch (const std::exception &error)
